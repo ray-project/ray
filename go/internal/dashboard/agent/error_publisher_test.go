@@ -22,42 +22,34 @@ import (
 	"github.com/ray-project/ray/go/pkg/gcs"
 )
 
-// publishingClient is a gcs.Client that also implements gcs.ErrorInfoPublisher,
-// recording publications so tests can observe them. It mirrors the reporter
-// package's publishingClient shape for the node-resource counterpart.
-type publishingClient struct {
-	gcs.Client
+// configuredGCSClient is a GCSClient whose PublishErrorInfo records
+// publications so tests can observe them. It embeds the narrow interface (which
+// already requires PublishErrorInfo) and overrides that method.
+type configuredGCSClient struct {
+	GCSClient
 	mu       sync.Mutex
 	payloads []gcs.ErrorInfoPayload
 }
 
-func (c *publishingClient) PublishErrorInfo(_ context.Context, _ string, payload gcs.ErrorInfoPayload) error {
+func (c *configuredGCSClient) PublishErrorInfo(_ context.Context, _ string, payload gcs.ErrorInfoPayload) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.payloads = append(c.payloads, payload)
 	return nil
 }
 
-func (c *publishingClient) count() int {
+func (c *configuredGCSClient) count() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return len(c.payloads)
 }
 
-// nonPublishingClient is a gcs.Client that does NOT implement
-// gcs.ErrorInfoPublisher. It embeds the interface (per the pattern in
-// agent_test.go) so it satisfies gcs.Client while lacking the publishing
-// method, which lets ResolveErrorPublisher fall through to the no-op branch.
-type nonPublishingClient struct {
-	gcs.Client
-}
-
 // TestResolveErrorPublisherUsesConfiguredClient verifies that when the config
-// carries a GCS client that also implements ErrorInfoPublisher,
-// ResolveErrorPublisher returns that exact client without consulting the global
-// singleton.
+// carries a GCS client (which always implements ErrorInfoPublisher through the
+// narrow interface), ResolveErrorPublisher returns that exact client without
+// consulting the global singleton.
 func TestResolveErrorPublisherUsesConfiguredClient(t *testing.T) {
-	pub := &publishingClient{}
+	pub := &configuredGCSClient{}
 	got := ResolveErrorPublisher(Config{GCS: pub})
 	if got == nil {
 		t.Fatal("ResolveErrorPublisher returned nil")
@@ -70,22 +62,6 @@ func TestResolveErrorPublisherUsesConfiguredClient(t *testing.T) {
 	}
 	if n := pub.count(); n != 1 {
 		t.Errorf("configured client publish count = %d, want 1 (publisher not routed to configured client)", n)
-	}
-}
-
-// TestResolveErrorPublisherDegradesWithoutPublishingMethod verifies that a
-// configured client lacking PublishErrorInfo degrades to the no-op fallback
-// instead of failing.
-func TestResolveErrorPublisherDegradesWithoutPublishingMethod(t *testing.T) {
-	gcs.ClearClient()
-	defer gcs.ClearClient()
-
-	got := ResolveErrorPublisher(Config{GCS: &nonPublishingClient{}})
-	if got == nil {
-		t.Fatal("ResolveErrorPublisher returned nil")
-	}
-	if _, ok := got.(noopErrorPublisher); !ok {
-		t.Errorf("ResolveErrorPublisher returned %T, want noopErrorPublisher", got)
 	}
 }
 

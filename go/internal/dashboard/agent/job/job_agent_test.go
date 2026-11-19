@@ -45,13 +45,14 @@ func TestWritePlainText(t *testing.T) {
 	assert.Equal(t, "bad request", rec.Body.String())
 }
 
-// newTestJobAgent builds an agent backed by the in-memory GCS client and a
+// newTestJobAgent builds a head agent backed by the in-memory GCS client and a
 // temporary log directory, so the routes can be exercised without a real GCS
-// or a real Ray runtime.
+// or a real Ray runtime. IsHead keeps the submission endpoints registered,
+// which is the production head shape.
 func newTestJobAgent(t *testing.T) *JobAgent {
 	t.Helper()
 	fake := newFakeGCSClient()
-	ja, err := New(agent.Config{GCS: fake, LogDir: t.TempDir()})
+	ja, err := New(agent.Config{IsHead: true, GCS: fake, LogDir: t.TempDir()})
 	require.NoError(t, err)
 	require.NoError(t, ja.Start(t.Context()))
 	// Inject the manager directly instead of going through NewJobManager: that
@@ -184,6 +185,56 @@ func TestJobRoutesAreMethodScoped(t *testing.T) {
 	rec = serveJobRequest(mux, http.MethodPost, "/api/job_agent/jobs/job-1", "")
 	require.Equal(t, http.StatusMethodNotAllowed, rec.Code)
 	assert.Contains(t, rec.Header().Get("Allow"), http.MethodDelete)
+}
+
+// newJobAgentForRole builds a JobAgent with the given role and a fake GCS
+// client, registering its HTTP routes on a fresh mux.
+func newJobAgentForRole(t *testing.T, isHead bool) (*JobAgent, *http.ServeMux) {
+	t.Helper()
+	cfg := agent.Config{
+		IsHead: isHead,
+		LogDir: t.TempDir(),
+		GCS:    newFakeGCSClient(),
+	}
+	a, err := New(cfg)
+	require.NoError(t, err)
+	mux := http.NewServeMux()
+	require.NoError(t, a.RegisterHTTP(mux))
+	return a, mux
+}
+
+// TestJobAgentSubmissionRoutesHeadOnly verifies the capability split: the
+// submission endpoints are registered only on a head agent, so a worker agent
+// returns 404 for POST /api/job_agent/jobs/ and never constructs JobManager.
+func TestJobAgentSubmissionRoutesHeadOnly(t *testing.T) {
+	// Head: the submission route is registered — the unparseable body reaches
+	// the handler and yields a 400, not the router's 404.
+	a, mux := newJobAgentForRole(t, true)
+	rec := serveJobRequest(mux, http.MethodPost, "/api/job_agent/jobs/", "{")
+	require.NotEqual(t, http.StatusNotFound, rec.Code,
+		"head agent: POST /api/job_agent/jobs/ returned 404, want the submission route registered")
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+
+	// Worker: the submission route is absent, and no manager was built.
+	a, mux = newJobAgentForRole(t, false)
+	rec = serveJobRequest(mux, http.MethodPost, "/api/job_agent/jobs/", "{")
+	require.Equal(t, http.StatusNotFound, rec.Code,
+		"worker agent: POST /api/job_agent/jobs/ status = %d, want 404 (route not registered)", rec.Code)
+	require.Nil(t, a.jobManager, "worker agent must not construct JobManager")
+}
+
+// TestJobAgentLogRoutesOnWorker verifies a worker agent still serves the job
+// log endpoints (GET .../logs) without constructing JobManager. The job does
+// not exist in the fake GCS, so the request resolves to a job-not-found 404
+// through jobInfoClient — proving the route is registered and read without the
+// runtime, rather than returning a route-missing 404.
+func TestJobAgentLogRoutesOnWorker(t *testing.T) {
+	a, mux := newJobAgentForRole(t, false)
+
+	rec := serveJobRequest(mux, http.MethodGet, "/api/job_agent/jobs/some_submission_id/logs", "")
+	require.Equal(t, http.StatusNotFound, rec.Code)
+	assert.Equal(t, "Job some_submission_id does not exist", rec.Body.String())
+	require.Nil(t, a.jobManager, "worker agent: jobManager must stay nil after a log request")
 }
 
 // startTailJobServer serves the tail route behind a real HTTP server and

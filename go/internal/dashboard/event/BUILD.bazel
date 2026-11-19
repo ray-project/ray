@@ -14,7 +14,6 @@ go_library(
         "//go/internal/common",
         "//go/internal/dashboard/agent",
         "//go/internal/dashboard/auth",
-        "//go/pkg/gcs",
         "//go/pkg/log",
         "@org_golang_google_grpc//:go_default_library",
     ],
@@ -33,6 +32,5 @@ go_test(
         "//go/internal/common",
         "//go/internal/dashboard/agent",
         "//go/internal/dashboard/auth",
-        "//go/pkg/gcs",
     ],
 )

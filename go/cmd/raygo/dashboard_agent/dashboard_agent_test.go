@@ -292,15 +292,11 @@ func TestRunDashboardAgentMinimalSkipsModules(t *testing.T) {
 		t.Fatalf("parse flags: %v", err)
 	}
 
-	origLoad := loadGCSClientFn
-	loadGCSClientFn = func(gcs.ClientOptions) (gcs.Client, error) {
+	origLoad := newGCSClientFn
+	newGCSClientFn = func(gcs.ClientOptions) (agent.GCSClient, error) {
 		return &rejectGetAllGCS{t: t}, nil
 	}
-	defer func() { loadGCSClientFn = origLoad }()
-
-	origValidate := validatePluginLoadableFn
-	validatePluginLoadableFn = func() error { return nil }
-	defer func() { validatePluginLoadableFn = origValidate }()
+	defer func() { newGCSClientFn = origLoad }()
 
 	var got agent.Config
 	var gotMods []agent.Module
@@ -402,7 +398,7 @@ func TestPreRunERejectsBadLoggingLevel(t *testing.T) {
 // without dialing a real GCS (the healthz module never calls CheckAlive during
 // construction).
 type buildModulesFakeGCS struct {
-	gcs.Client
+	agent.GCSClient
 	isHead bool
 	err    error
 	// failFirst makes the first N GetAll calls return an error before the
@@ -542,21 +538,17 @@ func TestIsHeadRetryDelayIsJittered(t *testing.T) {
 	}
 }
 
-func TestRunDashboardAgentConnectsThroughPluginSeam(t *testing.T) {
+func TestRunDashboardAgentConnectsThroughGCSClientSeam(t *testing.T) {
 	args := testArgs(map[string]string{"log-dir": t.TempDir()})
 	if err := DashboardAgentCmd.ParseFlags(args); err != nil {
 		t.Fatalf("parse flags: %v", err)
 	}
 
-	orig := loadGCSClientFn
-	loadGCSClientFn = func(opts gcs.ClientOptions) (gcs.Client, error) {
-		return nil, errors.New("plugin connect failed")
+	orig := newGCSClientFn
+	newGCSClientFn = func(opts gcs.ClientOptions) (agent.GCSClient, error) {
+		return nil, errors.New("gcs connect failed")
 	}
-	defer func() { loadGCSClientFn = orig }()
-
-	origValidate := validatePluginLoadableFn
-	validatePluginLoadableFn = func() error { return nil }
-	defer func() { validatePluginLoadableFn = origValidate }()
+	defer func() { newGCSClientFn = orig }()
 
 	err := runDashboardAgent(context.Background())
 	if err == nil {
@@ -573,7 +565,7 @@ func TestRunDashboardAgentConnectsThroughPluginSeam(t *testing.T) {
 // before registering its own node, so the agent would poll for a node that only
 // appears once the agent is ready.
 type rejectGetAllGCS struct {
-	gcs.Client
+	agent.GCSClient
 	t *testing.T
 }
 
@@ -583,7 +575,7 @@ func (f *rejectGetAllGCS) GetAll(_ context.Context, _ []ids.NodeID) (map[ids.Nod
 }
 
 // Close is a no-op so runDashboardAgent's deferred Close does not dispatch to
-// the nil embedded gcs.Client.
+// the nil embedded agent.GCSClient.
 func (f *rejectGetAllGCS) Close() error { return nil }
 
 // TestRunDashboardAgentExplicitIsHeadSkipsGCS verifies that an explicit
@@ -610,15 +602,11 @@ func TestRunDashboardAgentExplicitIsHeadSkipsGCS(t *testing.T) {
 				t.Fatalf("parse flags: %v", err)
 			}
 
-			origLoad := loadGCSClientFn
-			loadGCSClientFn = func(gcs.ClientOptions) (gcs.Client, error) {
+			origLoad := newGCSClientFn
+			newGCSClientFn = func(gcs.ClientOptions) (agent.GCSClient, error) {
 				return &rejectGetAllGCS{t: t}, nil
 			}
-			defer func() { loadGCSClientFn = origLoad }()
-
-			origValidate := validatePluginLoadableFn
-			validatePluginLoadableFn = func() error { return nil }
-			defer func() { validatePluginLoadableFn = origValidate }()
+			defer func() { newGCSClientFn = origLoad }()
 
 			var got agent.Config
 			origRun := runAgentFn

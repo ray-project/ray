@@ -30,7 +30,11 @@ import (
 // mismatches on the job paths produce aiohttp's 405 envelope with the Allow
 // header, which is only possible because every job route is method-scoped.
 func TestRouterServesJobModule(t *testing.T) {
-	mod, err := job.New(agent.Config{})
+	// IsHead is required for the submit route: submission endpoints are
+	// registered only on a head agent. The parse failure below happens before
+	// any handler touches GCS or builds the job manager, so the config needs no
+	// GCS client.
+	mod, err := job.New(agent.Config{IsHead: true})
 	if err != nil {
 		t.Fatalf("job.New: %v", err)
 	}

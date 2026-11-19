@@ -133,6 +133,17 @@ func DialGCS(ctx context.Context, address string, opts DialOptions) (*grpc.Clien
 	}
 	if opts.Dialer != nil {
 		dialOpts = append(dialOpts, grpc.WithContextDialer(opts.Dialer))
+	} else if !grpcHTTPProxyEnabled() {
+		// Without a custom dialer, grpc-go's default dialer honors http_proxy /
+		// https_proxy and would route loopback and private-cluster addresses
+		// through the proxy, where Ray components are unreachable. The C++
+		// channels disable the proxy the same way
+		// (GRPC_ARG_ENABLE_HTTP_PROXY=0 in src/ray/rpc/grpc_client.cc), so every
+		// env-dialed channel here is proxy-free too — unless the operator opted
+		// in via the documented escape hatch for non-C++ children
+		// (RAY_grpc_enable_http_proxy, src/ray/common/ray_config_def.h), in
+		// which case the proxy stays enabled.
+		dialOpts = append(dialOpts, grpc.WithNoProxy())
 	}
 	tlsCfg, err := buildTLSConfig(opts.CAFile, opts.CertFile, opts.KeyFile)
 	if err != nil {
@@ -264,3 +275,12 @@ func (t *tokenCred) GetRequestMetadata(ctx context.Context, uri ...string) (map[
 }
 
 func (t *tokenCred) RequireTransportSecurity() bool { return false }
+
+// grpcHTTPProxyEnabled reports whether RAY_grpc_enable_http_proxy is turned on,
+// mirroring ray_constants.GRPC_ENABLE_HTTP_PROXY: the documented escape hatch
+// for giving non-C++ children (such as the dashboard agent) a proxy-enabled
+// gRPC channel when the C++ default has proxies disabled. Off by default,
+// matching the C++ GRPC_ARG_ENABLE_HTTP_PROXY=0.
+func grpcHTTPProxyEnabled() bool {
+	return isEnvTrue(os.Getenv("RAY_grpc_enable_http_proxy"))
+}

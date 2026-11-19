@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/internal/dashboard/jobutil"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
@@ -189,10 +190,10 @@ func ptrUint64(v uint64) *uint64 { return &v }
 // JobInfoStorageClient persists JobInfo records in the GCS internal KV under
 // the "job" namespace.
 type JobInfoStorageClient struct {
-	client gcs.Client
+	client agent.GCSClient
 }
 
-func NewJobInfoStorageClient(client gcs.Client) *JobInfoStorageClient {
+func NewJobInfoStorageClient(client agent.GCSClient) *JobInfoStorageClient {
 	return &JobInfoStorageClient{client: client}
 }
 

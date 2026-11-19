@@ -16,7 +16,6 @@ import (
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
-	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/log"
 )
 
@@ -356,7 +355,7 @@ const gcsPIDFetchTimeout = 60 * time.Second
 // missing value or an unparsable one reports ok=false so the caller omits the
 // gcs entry instead of failing the collection cycle; Python likewise leaves
 // _gcs_pid as None and _get_gcs returns an empty dict.
-func newGCSPIDFetcher(client gcs.Client) func() (int, bool) {
+func newGCSPIDFetcher(client agent.GCSClient) func() (int, bool) {
 	return func() (int, bool) {
 		ctx, cancel := context.WithTimeout(context.Background(), gcsPIDFetchTimeout)
 		defer cancel()

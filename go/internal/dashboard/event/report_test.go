@@ -31,14 +31,13 @@ import (
 	"github.com/ray-project/ray/go/internal/common"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/internal/dashboard/auth"
-	"github.com/ray-project/ray/go/pkg/gcs"
 )
 
-// fakeGCS is a gcs.Client stub: it only overrides Get and satisfies the rest
-// of the interface through the embedded nil gcs.Client, which the event module
-// never invokes.
+// fakeGCS is an agent.GCSClient stub: it only overrides Get and satisfies the
+// rest of the interface through the embedded nil agent.GCSClient, which the
+// event module never invokes.
 type fakeGCS struct {
-	gcs.Client
+	agent.GCSClient
 	// dashboardAddr is the value Get returns for the dashboard address key
 	// under the dashboard namespace.
 	dashboardAddr string

@@ -24,15 +24,14 @@ import (
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
-	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 )
 
-// fakeGCS is a gcs.Client stub: it only overrides CheckAlive and satisfies the
-// rest of the interface through the embedded nil gcs.Client, which the module
-// under test never invokes.
+// fakeGCS is an agent.GCSClient stub: it only overrides CheckAlive and
+// satisfies the rest of the interface through the embedded nil
+// agent.GCSClient, which the module under test never invokes.
 type fakeGCS struct {
-	gcs.Client
+	agent.GCSClient
 	alive   []bool
 	err     error
 	delay   time.Duration

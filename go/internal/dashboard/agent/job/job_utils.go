@@ -32,8 +32,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/internal/dashboard/jobutil"
-	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/proto"
 )
 
@@ -268,7 +268,7 @@ func fastTailLastNLines(path string, numLines int, maxChars int) string {
 // getDriverJobs returns every non-internal driver job keyed by job id together
 // with the running driver of each submission job keyed by submission id,
 // aligned with get_driver_jobs in job/utils.py.
-func getDriverJobs(ctx context.Context, client gcs.Client, jobOrSubmissionID string) (map[string]*JobDetails, map[string]*DriverInfo, error) {
+func getDriverJobs(ctx context.Context, client agent.GCSClient, jobOrSubmissionID string) (map[string]*JobDetails, map[string]*DriverInfo, error) {
 	allJobs, err := client.ListJobsWithFilter(ctx, jobOrSubmissionID, true, true)
 	if err != nil {
 		return nil, nil, fmt.Errorf("list jobs: %w", err)
@@ -325,7 +325,7 @@ func getDriverJobs(ctx context.Context, client gcs.Client, jobOrSubmissionID str
 // findJobByIDs resolves a job id or a submission id to its job details,
 // aligned with find_job_by_ids in job/utils.py. It returns (nil, nil) when
 // neither the driver table nor the KV holds a match.
-func findJobByIDs(ctx context.Context, client gcs.Client, infoClient *JobInfoStorageClient, jobOrSubmissionID string) (*JobDetails, error) {
+func findJobByIDs(ctx context.Context, client agent.GCSClient, infoClient *JobInfoStorageClient, jobOrSubmissionID string) (*JobDetails, error) {
 	driverJobs, submissionDrivers, err := getDriverJobs(ctx, client, jobOrSubmissionID)
 	if err != nil {
 		return nil, err

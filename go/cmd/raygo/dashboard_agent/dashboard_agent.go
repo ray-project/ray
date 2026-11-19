@@ -30,11 +30,11 @@ import (
 	"github.com/ray-project/ray/go/internal/dashboard/healthz"
 	dashboardlog "github.com/ray-project/ray/go/internal/dashboard/log"
 	dashboardreporter "github.com/ray-project/ray/go/internal/dashboard/reporter"
+	gcsgrpc "github.com/ray-project/ray/go/internal/gcs/grpc"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/log/logconfig"
-	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/spf13/cobra"
 )
 
@@ -78,13 +78,12 @@ var (
 	minimal bool
 )
 
-// loadGCSClientFn builds the GCS client via the go_runtime.so plugin export
-// surface. It is a package-level variable so tests can inject a fake.
-var loadGCSClientFn = plugin.LoadGCSClient
-
-// validatePluginLoadableFn wraps plugin.CheckPluginLoadable (the startup
-// plugin loadability pre-check) so tests can inject a fake.
-var validatePluginLoadableFn = plugin.CheckPluginLoadable
+// newGCSClientFn builds the pure-Go GCS gRPC client (no go_runtime.so) the
+// dashboard agent uses for KV, node info, job listing and publishing. It is a
+// package-level variable so tests can inject a fake.
+var newGCSClientFn = func(opts gcs.ClientOptions) (agent.GCSClient, error) {
+	return gcsgrpc.NewClient(context.Background(), opts)
+}
 
 // runAgentFn wraps agent.Run so tests can capture the assembled Config and
 // stop before any server binds.
@@ -255,7 +254,7 @@ func isHeadRetryDelay(interval time.Duration) time.Duration {
 // (python/ray/dashboard/agent.py: _fetch_node_info sets is_head from
 // GcsNodeInfo.is_head_node). A nil node id or a lookup failure leaves isHead
 // false so the agent errs on the side of not probing GCS on non-head nodes.
-func resolveIsHead(ctx context.Context, gcsClient gcs.Client, nodeID ids.NodeID) (bool, error) {
+func resolveIsHead(ctx context.Context, gcsClient agent.GCSClient, nodeID ids.NodeID) (bool, error) {
 	return resolveIsHeadRetry(ctx, gcsClient, nodeID, isHeadRetryAttempts, isHeadRetryInterval)
 }
 
@@ -263,7 +262,7 @@ func resolveIsHead(ctx context.Context, gcsClient gcs.Client, nodeID ids.NodeID)
 // the Python call_with_retry wrapper, it retries both RPC errors and a node
 // missing from the node table (a not-found is not an RPC error, so the
 // underlying RPC-level retry cannot cover it).
-func resolveIsHeadRetry(ctx context.Context, gcsClient gcs.Client, nodeID ids.NodeID, attempts int, interval time.Duration) (bool, error) {
+func resolveIsHeadRetry(ctx context.Context, gcsClient agent.GCSClient, nodeID ids.NodeID, attempts int, interval time.Duration) (bool, error) {
 	// The Python agent derives is_head from its own node id; a freshly
 	// generated id (no --node-id-hex) can never be found, so we only look up
 	// an explicitly provided node id.
@@ -302,7 +301,7 @@ func resolveIsHeadRetry(ctx context.Context, gcsClient gcs.Client, nodeID ids.No
 // only registers once the agent is ready). services.py already knows the
 // topology when it builds the command and passes --is-head explicitly; an
 // empty value keeps the GCS-derived path for callers that do not.
-func determineIsHead(ctx context.Context, gcsClient gcs.Client, nodeID ids.NodeID, explicit string) (bool, error) {
+func determineIsHead(ctx context.Context, gcsClient agent.GCSClient, nodeID ids.NodeID, explicit string) (bool, error) {
 	switch explicit {
 	case "":
 		return resolveIsHead(ctx, gcsClient, nodeID)
@@ -336,18 +335,15 @@ func runDashboardAgent(ctx context.Context) error {
 		return fmt.Errorf("failed to setup default logger: %w", err)
 	}
 
-	// Fail fast on deployment errors (missing/invalid go_runtime.so).
-	if err := validatePluginLoadableFn(); err != nil {
-		return err
-	}
-
 	cfg, err := buildConfig()
 	if err != nil {
 		return err
 	}
 
-	// 10s connect timeout mirrors the Python dashboard agent defaults.
-	gcsClient, err := loadGCSClientFn(gcs.ClientOptions{
+	// 10s connect timeout mirrors the Python dashboard agent defaults. The GCS
+	// client is the pure-Go gRPC one, so no go_runtime.so plugin is loaded for
+	// GCS access; the job module loads it lazily only when a job is submitted.
+	gcsClient, err := newGCSClientFn(gcs.ClientOptions{
 		Address:   gcsAddress,
 		ClusterID: cfg.ClusterID,
 		TimeoutMs: 10_000,

@@ -14,15 +14,18 @@
 
 load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 
-# Pure-Go GCS gRPC client: internal KV reads and log batch publishing over
-# gRPC, without the cgo client (and therefore without go_runtime.so).
+# Pure-Go GCS gRPC client: internal KV, node info, job info, driver node
+# lookup, and node-resource-usage / error / log publishing over gRPC, without
+# the cgo client (and therefore without go_runtime.so).
 go_library(
     name = "grpc",
     srcs = ["client.go"],
     importpath = "github.com/ray-project/ray/go/internal/gcs/grpc",
     visibility = ["//go:__subpackages__"],
     deps = [
+        "//go/internal/common",
         "//go/pkg/gcs",
+        "//go/pkg/ids",
         "//go/proto",
         "@org_golang_google_grpc//:go_default_library",
         "@org_golang_google_grpc//codes",
@@ -37,6 +40,7 @@ go_test(
     embed = [":grpc"],
     deps = [
         "//go/pkg/gcs",
+        "//go/pkg/ids",
         "//go/proto",
         "@org_golang_google_grpc//:go_default_library",
         "@org_golang_google_grpc//codes",

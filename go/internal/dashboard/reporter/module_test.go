@@ -432,12 +432,12 @@ func TestReporterModuleCollectLoopKeepsPublishing(t *testing.T) {
 	}
 }
 
-// fakeGCSClient is a gcs.Client whose InternalKV read is scripted, so the
+// fakeGCSClient is an agent.GCSClient whose InternalKV read is scripted, so the
 // autoscaler-status fetch can be exercised without a live GCS. It embeds the
 // interface, per the pattern used elsewhere in the package, so the unused
 // methods stay unimplemented.
 type fakeGCSClient struct {
-	gcs.Client
+	agent.GCSClient
 	value []byte
 	err   error
 	keys  []string
@@ -721,7 +721,7 @@ func TestReporterModuleClusterGaugesOmittedOnWorker(t *testing.T) {
 func TestReporterModuleFetchClusterStatsDegrades(t *testing.T) {
 	cases := []struct {
 		name   string
-		client gcs.Client
+		client agent.GCSClient
 	}{
 		{"nil client", nil},
 		{"read error", &fakeGCSClient{err: errors.New("kv unavailable")}},

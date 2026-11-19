@@ -18,6 +18,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -25,12 +26,14 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/internal/dashboard/jobutil"
-	"github.com/ray-project/ray/go/pkg/gcs"
+	rayerrors "github.com/ray-project/ray/go/pkg/errors"
 	"github.com/ray-project/ray/go/pkg/log"
 	"github.com/ray-project/ray/go/pkg/options"
 	"github.com/ray-project/ray/go/pkg/runtime/api"
 	"github.com/ray-project/ray/go/pkg/runtime/object"
+	"github.com/ray-project/ray/go/pkg/runtime/plugin"
 	"github.com/ray-project/ray/go/pkg/runtime/submitter"
 )
 
@@ -64,7 +67,7 @@ type jobEventSink interface {
 type JobManager struct {
 	ctx context.Context
 
-	gcsClient  gcs.Client
+	gcsClient  agent.GCSClient
 	logsDir    string
 	gcsAddress string
 	nodeIP     string
@@ -76,8 +79,15 @@ type JobManager struct {
 	monitoredJobs sync.Map
 	recoverDone   chan struct{}
 
-	runtimeOnce sync.Once
-	runtimeErr  error
+	// runtimeMu serializes lazy runtime init. It is a mutex (not sync.Once) so
+	// a failed init can be retried on the next submission instead of being
+	// cached forever; the double-check against api.IsInitialized keeps a
+	// successful init a cheap no-op on concurrent submissions.
+	runtimeMu sync.Mutex
+
+	// jobID caches the JobID allocated by the driver handshake so retried
+	// preflight attempts reuse it instead of draining the GCS job-id counter.
+	jobID string
 
 	// statusMu serializes the status read-modify-write of every submission
 	// owned by this manager. JobInfoStorageClient.PutStatus has no
@@ -89,7 +99,7 @@ type JobManager struct {
 
 // NewJobManager creates the job manager and starts recovering the jobs that
 // were still running before the agent restarted.
-func NewJobManager(ctx context.Context, gcsClient gcs.Client, logsDir, nodeIP string) *JobManager {
+func NewJobManager(ctx context.Context, gcsClient agent.GCSClient, logsDir, nodeIP string) *JobManager {
 	jm := &JobManager{
 		ctx:           ctx,
 		gcsClient:     gcsClient,
@@ -109,48 +119,96 @@ func NewJobManager(ctx context.Context, gcsClient gcs.Client, logsDir, nodeIP st
 // create Python actor supervisors. The runtime is shared by every submission
 // of this agent process.
 func (m *JobManager) ensureRuntime() error {
-	m.runtimeOnce.Do(func() {
-		if api.IsInitialized() {
-			return
-		}
-		codeSearchPath := supervisorCodeSearchPath()
-		builder := options.NewJobConfigBuilder().
-			WithNamespace(rayInternalDashboardNamespace).
-			WithCodeSearchPath(codeSearchPath...)
-		if err := builder.MergeFromEnv(); err != nil {
-			m.runtimeErr = fmt.Errorf("failed to build JobConfig for job submission: %w", err)
-			return
-		}
-		jobOpts, err := builder.BuildToJobOptions()
-		if err != nil {
-			m.runtimeErr = fmt.Errorf("failed to build JobConfig for job submission: %w", err)
-			return
-		}
-		log.Log.Info("initialized JobConfig for job submission",
-			"codeSearchPath", codeSearchPath)
-		opts := &options.InitializeOptions{
-			WorkerType: options.WorkerTypeDriver,
-			Network: options.NetworkOptions{
-				GcsAddress:    m.gcsAddress,
-				NodeIPAddress: m.nodeIP,
-			},
-			Runtime: options.RuntimeOptions{
-				LogDir: m.logsDir,
-			},
-			Job: options.JobOptions{
-				JobConfig: jobOpts.JobConfig,
-			},
-			SkipDriverLogSetup: true,
-		}
-		if err := api.InitWithOptions(opts); err != nil {
-			m.runtimeErr = fmt.Errorf("failed to initialize Ray runtime for job submission: %w", err)
-			return
-		}
-		if err := verifyTaskSubmitter(); err != nil {
-			m.runtimeErr = err
-		}
-	})
-	return m.runtimeErr
+	if api.IsInitialized() {
+		return nil
+	}
+	m.runtimeMu.Lock()
+	defer m.runtimeMu.Unlock()
+	if api.IsInitialized() {
+		return nil
+	}
+	codeSearchPath := supervisorCodeSearchPath()
+	builder := options.NewJobConfigBuilder().
+		WithNamespace(rayInternalDashboardNamespace).
+		WithCodeSearchPath(codeSearchPath...)
+	if err := builder.MergeFromEnv(); err != nil {
+		return fmt.Errorf("failed to build JobConfig for job submission: %w", err)
+	}
+	jobOpts, err := builder.BuildToJobOptions()
+	if err != nil {
+		return fmt.Errorf("failed to build JobConfig for job submission: %w", err)
+	}
+	log.Log.Info("initialized JobConfig for job submission",
+		"codeSearchPath", codeSearchPath)
+	opts := &options.InitializeOptions{
+		WorkerType: options.WorkerTypeDriver,
+		Network: options.NetworkOptions{
+			GcsAddress:    m.gcsAddress,
+			NodeIPAddress: m.nodeIP,
+		},
+		Runtime: options.RuntimeOptions{
+			LogDir: m.logsDir,
+		},
+		Job: options.JobOptions{
+			JobConfig: jobOpts.JobConfig,
+		},
+		SkipDriverLogSetup: true,
+	}
+	if m.jobID != "" {
+		// Reuse the JobID a previous handshake allocated so retried attempts do
+		// not drain the GCS job-id counter.
+		opts.Job.JobID = m.jobID
+	}
+
+	// Perform the driver handshake through the pure-Go GCS client (no
+	// go_runtime.so), fill the sockets / node manager port / JobID that
+	// api.InitWithOptions would otherwise derive, then fail closed and TCP
+	// preflight the raylet before api.InitWithOptions. api.InitWithOptions dials
+	// the raylet through the C++ core worker, and an unreachable raylet reaches
+	// CoreWorkerProcess::QuickExit, which _Exit(1)s the whole agent process.
+	// This mirrors Python's init_ray_and_catch_exceptions, which surfaces a 500
+	// and keeps the agent alive on init failure.
+	if err := plugin.DriverHandshake(m.ctx, m.gcsClient, opts); err != nil {
+		return fmt.Errorf("failed to fill driver node connection info: %w", err)
+	}
+	if m.jobID == "" && opts.Job.JobID != "" {
+		m.jobID = opts.Job.JobID
+	}
+	if opts.Runtime.StoreSocket == "" || opts.Runtime.RayletSocket == "" || opts.Network.NodeManagerPort == 0 {
+		return fmt.Errorf("driver handshake did not fill node connection info for %s", m.nodeIP)
+	}
+	if err := preflightNodeManager(opts.Network.NodeIPAddress, opts.Network.NodeManagerPort); err != nil {
+		return err
+	}
+
+	if err := api.InitWithOptions(opts); err != nil {
+		return fmt.Errorf("failed to initialize Ray runtime for job submission: %w", err)
+	}
+	if err := verifyTaskSubmitter(); err != nil {
+		return err
+	}
+	return nil
+}
+
+// preflightNodeManager checks that the node manager port actually accepts TCP
+// connections before api.InitWithOptions dials it, so an unreachable raylet
+// degrades to an error (surfaced as a 500) instead of killing the agent via
+// CoreWorkerProcess::QuickExit. Mirrors the dashboard head's preflight
+// (head/lazy_init.go preflightNodeManager).
+func preflightNodeManager(nodeIP string, port int32) error {
+	if port == 0 || nodeIP == "" {
+		return nil
+	}
+	addr := net.JoinHostPort(nodeIP, strconv.Itoa(int(port)))
+	conn, err := net.DialTimeout("tcp", addr, 500*time.Millisecond)
+	if err != nil {
+		log.Log.Error(err, "node_manager_port unreachable; degrading instead of initializing",
+			"node_manager_address", nodeIP, "node_manager_port", port)
+		return fmt.Errorf("node_manager_port unreachable: %s: %w", addr, err)
+	}
+	_ = conn.Close()
+	log.Log.Info("node_manager_port reachable", "node_manager_address", addr)
+	return nil
 }
 
 // supervisorCodeSearchPath returns the directory the Python workers should add
@@ -187,10 +245,6 @@ func verifyTaskSubmitter() error {
 
 func isActorNotFoundError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "not found")
-}
-
-func (m *JobManager) getJobInfoClient() *JobInfoStorageClient {
-	return m.jobInfoClient
 }
 
 // appendDriverLog appends one line to the driver log file of a submission.
@@ -594,11 +648,26 @@ func (m *JobManager) monitorJobInternal(jobID string, supervisor *supervisorActo
 		}
 
 		if supervisor == nil {
-			if err := m.ensureRuntime(); err == nil {
-				supervisor, err = getSupervisorActorForJob(jobID)
-				if err != nil {
-					supervisor = nil
+			// Do not initialize the runtime from the monitor loop: the recovery/
+			// monitor path must not load go_runtime.so without a genuine user
+			// submission. ErrRuntimeNotInitialized means this agent process has
+			// not initialized the runtime yet (typically right after a restart,
+			// before the first new submission): the supervisor actor may still
+			// be alive, so keep monitoring instead of failing the job on a
+			// state this process cannot observe yet.
+			supervisor, err = getSupervisorActorForJob(jobID)
+			if err != nil {
+				if errors.Is(err, rayerrors.ErrRuntimeNotInitialized) {
+					// The KV status is observable without the runtime, and the
+					// supervisor writes the authoritative terminal outcome into
+					// it: end the monitor as soon as the job is terminal instead
+					// of spinning until some submission initializes the runtime.
+					if jobStatus != nil && jobStatus.IsTerminal() {
+						break
+					}
+					continue
 				}
+				supervisor = nil
 			}
 		}
 		if supervisor == nil {
@@ -620,12 +689,14 @@ func (m *JobManager) monitorJobInternal(jobID string, supervisor *supervisorActo
 	}
 
 	if supervisor == nil {
-		if err := m.ensureRuntime(); err == nil {
-			var err error
-			supervisor, err = getSupervisorActorForJob(jobID)
-			if err != nil {
-				supervisor = nil
-			}
+		// See the monitor-loop note above: never initialize the runtime here, so
+		// a head with recovered jobs does not load go_runtime.so without a
+		// submission. A nil supervisor (including the uninitialized-runtime
+		// case) degrades to a no-op kill below.
+		var err error
+		supervisor, err = getSupervisorActorForJob(jobID)
+		if err != nil {
+			supervisor = nil
 		}
 	}
 	if supervisor != nil {
@@ -755,59 +826,6 @@ func (m *JobManager) getJobInfo(ctx context.Context, jobID string) (*JobInfo, er
 
 func (m *JobManager) listJobs(ctx context.Context) (map[string]*JobInfo, error) {
 	return m.jobInfoClient.GetAllJobs(ctx)
-}
-
-func (m *JobManager) getJobLogs(jobID string) string {
-	return m.logClient.getLogs(jobID)
-}
-
-// tailJobLogs streams the driver log of a job. It only returns once the job is
-// terminal and the tail iterator stops producing lines.
-func (m *JobManager) tailJobLogs(ctx context.Context, jobID string) (<-chan string, error) {
-	status, err := m.jobInfoClient.GetStatus(ctx, jobID)
-	if err != nil {
-		return nil, err
-	}
-	if status == nil {
-		return nil, fmt.Errorf("job '%s' does not exist.", jobID)
-	}
-
-	out := make(chan string)
-	go func() {
-		defer close(out)
-		linesCh, errCh := m.logClient.tailLogs(ctx, jobID)
-		jobFinished := false
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case err := <-errCh:
-				if err != nil {
-					return
-				}
-			case lines, ok := <-linesCh:
-				if !ok {
-					return
-				}
-				if lines == nil {
-					if jobFinished {
-						return
-					}
-					status, err := m.jobInfoClient.GetStatus(ctx, jobID)
-					if err == nil && status != nil && status.IsTerminal() {
-						jobFinished = true
-					}
-				} else {
-					select {
-					case out <- joinLines(lines):
-					case <-ctx.Done():
-						return
-					}
-				}
-			}
-		}
-	}()
-	return out, nil
 }
 
 // joinLines concatenates a chunk of log lines into one payload, preserving the

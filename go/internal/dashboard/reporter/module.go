@@ -62,13 +62,14 @@ var _ agent.Module = (*ReporterModule)(nil)
 // resolvePublisher picks the publisher to publish node resource usage with. It
 // prefers the explicitly-configured GCS client on the config, falling back to the
 // package-level singleton, and finally to a no-op publisher so the module always
-// has a non-nil publisher. A client is only used when it also implements
-// gcs.NodeResourceUsagePublisher (an independent interface, not part of
-// gcs.Client), so clients without node-resource publishing still degrade to the
-// no-op instead of failing.
+// has a non-nil publisher. The config's GCS client (agent.GCSClient) already
+// carries PublishNodeResourceUsage, so it is used directly; the singleton
+// fallback (a full gcs.Client) is only used when it also implements
+// gcs.NodeResourceUsagePublisher, so clients without node-resource publishing
+// still degrade to the no-op instead of failing.
 func resolvePublisher(cfg agent.Config) gcs.NodeResourceUsagePublisher {
-	if p, ok := asNodeResourceUsagePublisher(cfg.GCS); ok {
-		return p
+	if cfg.GCS != nil {
+		return cfg.GCS
 	}
 	if c, err := gcs.GetClient(); err == nil && c != nil {
 		if p, ok := asNodeResourceUsagePublisher(c); ok {

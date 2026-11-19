@@ -20,12 +20,13 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/ray-project/ray/go/internal/dashboard/agent"
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/proto"
 )
 
-// fakeGCSClient is an in-memory gcs.Client used by the unit tests in this
+// fakeGCSClient is an in-memory agent.GCSClient used by the unit tests in this
 // package. Only the internal KV surface is meaningful; the remaining methods
 // return zero values because the agent job tests do not exercise them.
 // mockgcs does not implement the KV interface, hence the hand-rolled fake.
@@ -35,7 +36,7 @@ type fakeGCSClient struct {
 	jobs []*proto.JobTableData
 }
 
-var _ gcs.Client = (*fakeGCSClient)(nil)
+var _ agent.GCSClient = (*fakeGCSClient)(nil)
 
 func newFakeGCSClient() *fakeGCSClient {
 	return &fakeGCSClient{kv: map[string][]byte{}}
@@ -210,3 +211,11 @@ func (f *fakeGCSClient) ClusterID() ids.ClusterID { return ids.ClusterID{} }
 func (f *fakeGCSClient) Close() error { return nil }
 
 func (f *fakeGCSClient) IsClosed() bool { return false }
+
+func (f *fakeGCSClient) PublishNodeResourceUsage(ctx context.Context, keyID, jsonPayload string) error {
+	return nil
+}
+
+func (f *fakeGCSClient) PublishErrorInfo(ctx context.Context, keyID string, payload gcs.ErrorInfoPayload) error {
+	return nil
+}

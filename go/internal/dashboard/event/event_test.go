@@ -24,7 +24,6 @@ import (
 	"testing"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
-	"github.com/ray-project/ray/go/pkg/gcs"
 )
 
 func TestNewValidations(t *testing.T) {
@@ -133,6 +132,6 @@ func TestInternalStatesAccessorStillWorks(t *testing.T) {
 // compile-time check that EventAgent implements the module contract; the
 // concrete assertion lives at the package level in event.go.
 var (
-	_ agent.Module = (*EventAgent)(nil)
-	_ gcs.Client   = (*fakeGCS)(nil)
+	_ agent.Module    = (*EventAgent)(nil)
+	_ agent.GCSClient = (*fakeGCS)(nil)
 )

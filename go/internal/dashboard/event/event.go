@@ -24,7 +24,6 @@ import (
 	"time"
 
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
-	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/log"
 	"google.golang.org/grpc"
 )
@@ -37,7 +36,7 @@ type EventAgent struct {
 	// eventDir is <log_dir>/events, the directory monitored for event logs.
 	eventDir string
 	// gcs is used to lazily resolve the head dashboard HTTP address.
-	gcs gcs.Client
+	gcs agent.GCSClient
 
 	// queue holds batches of event lines read by the monitor.
 	queue chan []string

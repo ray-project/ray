@@ -34,13 +34,14 @@ func (noopErrorPublisher) PublishErrorInfo(context.Context, string, gcs.ErrorInf
 // ResolveErrorPublisher picks the publisher the parent watcher publishes
 // raylet death errors with. It prefers the explicitly-configured GCS client on
 // the config, falls back to the package-level singleton, and finally to a
-// no-op publisher so the watcher always has a non-nil publisher. A client is
-// only used when it also implements gcs.ErrorInfoPublisher (an independent
-// interface, not part of gcs.Client), so clients without error publishing
+// no-op publisher so the watcher always has a non-nil publisher. The config's
+// GCS client (agent.GCSClient) already carries PublishErrorInfo, so it is used
+// directly; the singleton fallback (a full gcs.Client) is only used when it
+// also implements gcs.ErrorInfoPublisher, so clients without error publishing
 // still degrade to the no-op instead of failing.
 func ResolveErrorPublisher(cfg Config) gcs.ErrorInfoPublisher {
-	if p, ok := asErrorInfoPublisher(cfg.GCS); ok {
-		return p
+	if cfg.GCS != nil {
+		return cfg.GCS
 	}
 	if c, err := gcs.GetClient(); err == nil && c != nil {
 		if p, ok := asErrorInfoPublisher(c); ok {
@@ -55,7 +56,10 @@ func ResolveErrorPublisher(cfg Config) gcs.ErrorInfoPublisher {
 }
 
 // asErrorInfoPublisher reports whether client implements the
-// gcs.ErrorInfoPublisher interface and returns it when it does.
+// gcs.ErrorInfoPublisher interface and returns it when it does. The parameter
+// is the full gcs.Client because the only caller feeds it the package-level
+// singleton; the config client is returned directly by ResolveErrorPublisher
+// (agent.GCSClient always implements the publisher).
 func asErrorInfoPublisher(client gcs.Client) (gcs.ErrorInfoPublisher, bool) {
 	if client == nil {
 		return nil, false

@@ -25,8 +25,33 @@ import (
 	"github.com/ray-project/ray/go/pkg/gcs"
 	"github.com/ray-project/ray/go/pkg/ids"
 	"github.com/ray-project/ray/go/pkg/log"
+	"github.com/ray-project/ray/go/proto"
 	"google.golang.org/grpc"
 )
+
+// GCSClient is the subset of the GCS client the dashboard agent needs. It is a
+// narrow interface (rather than the full gcs.Client) so it can be satisfied by
+// the pure-Go go/internal/gcs/grpc.Client, avoiding the cgo/native GCS client
+// that lives inside go_runtime.so. The job module's actor submission still
+// relies on the Go runtime, but its GCS KV/listing access goes through this
+// narrow interface. Because the interface carries both publish methods, every
+// GCSClient also satisfies gcs.ErrorInfoPublisher and
+// gcs.NodeResourceUsagePublisher.
+type GCSClient interface {
+	Get(ctx context.Context, ns, key string) ([]byte, error)
+	Put(ctx context.Context, ns, key string, value []byte, overwrite bool) (bool, error)
+	Del(ctx context.Context, ns, key string, delByPrefix bool) (int, error)
+	Keys(ctx context.Context, ns, prefix string) ([]string, error)
+	GetAll(ctx context.Context, nodeIDs []ids.NodeID) (map[ids.NodeID]*proto.GcsNodeInfo, error)
+	CheckAlive(ctx context.Context, nodeIDs []ids.NodeID) ([]bool, error)
+	GetNodeToConnect(ctx context.Context, nodeIpAddress string) (*proto.GcsNodeInfo, error)
+	ListJobsWithFilter(ctx context.Context, jobOrSubmissionID string, skipSubmissionJobInfoField, skipIsRunningTasksField bool) ([]*proto.JobTableData, error)
+	NextJobID(ctx context.Context) (ids.JobID, error)
+	PublishNodeResourceUsage(ctx context.Context, keyID, jsonPayload string) error
+	PublishErrorInfo(ctx context.Context, keyID string, payload gcs.ErrorInfoPayload) error
+	Address() string
+	Close() error
+}
 
 // Config is the process-level context shared by all dashboard-agent modules.
 type Config struct {
@@ -45,7 +70,7 @@ type Config struct {
 	// ClusterID identifies the cluster this agent belongs to.
 	ClusterID ids.ClusterID
 	// GCS is the connected GCS client used for KV registration and reads.
-	GCS gcs.Client
+	GCS GCSClient
 	// LogDir is the directory where this agent writes its logs.
 	LogDir string
 	// TempDir is the temporary directory used by this agent.

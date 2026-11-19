@@ -38,11 +38,11 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// fakeKVClient is a minimal in-memory gcs.Client used to observe KV writes.
-// It embeds the gcs.Client interface so it satisfies the full interface while
+// fakeKVClient is a minimal in-memory GCSClient used to observe KV writes.
+// It embeds the GCSClient interface so it satisfies the narrow interface while
 // only overriding the operations exercised by the tests.
 type fakeKVClient struct {
-	gcs.Client
+	GCSClient
 	kv map[string]map[string][]byte
 }
 
@@ -663,11 +663,11 @@ func TestUnaryRecoveryInterceptorKeepsServerAlive(t *testing.T) {
 	}
 }
 
-// failingKVClient is a gcs.Client whose Put always fails, forcing the GCS
-// registration step of Run to return an error. It embeds the gcs.Client
-// interface so it satisfies the full interface while only overriding Put.
+// failingKVClient is a GCSClient whose Put always fails, forcing the GCS
+// registration step of Run to return an error. It embeds the GCSClient
+// interface so it satisfies the narrow interface while only overriding Put.
 type failingKVClient struct {
-	gcs.Client
+	GCSClient
 }
 
 func (f *failingKVClient) Put(context.Context, string, string, []byte, bool) (bool, error) {

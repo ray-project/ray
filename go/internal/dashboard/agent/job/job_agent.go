@@ -25,21 +25,32 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/ray-project/ray/go/internal/dashboard/agent"
-	"github.com/ray-project/ray/go/pkg/gcs"
-	"github.com/ray-project/ray/go/pkg/log"
 	"google.golang.org/grpc"
 )
 
 // JobAgent implements the dashboard-agent job module, mirroring the Python
-// JobAgent (python/ray/dashboard/modules/job/job_agent.py). It serves the job
-// REST API and the websocket log tail on top of the JobManager.
+// JobAgent (python/ray/dashboard/modules/job/job_agent.py).
+//
+// The module is split by capability rather than by node role: submission
+// endpoints (submit/stop/delete) are head-only and need the Go runtime (they
+// construct JobManager, which drives api.InitWithOptions); the log endpoints
+// are registered on every node and only read local files plus GCS, so a worker
+// agent serves them without ever constructing JobManager (and therefore without
+// loading go_runtime.so). This mirrors the head routing job-log requests to the
+// driver's agent, which is a worker whenever the job specifies resources.
 type JobAgent struct {
 	cfg       agent.Config
-	gcsClient gcs.Client
+	gcsClient agent.GCSClient
 	ctx       context.Context
 
+	// Runtime-independent clients, used by the log endpoints on every node.
+	jobInfoClient *JobInfoStorageClient
+	logClient     *JobLogStorageClient
+
 	mu         sync.Mutex
-	jobManager *JobManager
+	jobManager *JobManager // constructed only when enableSubmission
+
+	enableSubmission bool // cfg.IsHead
 }
 
 var _ agent.Module = (*JobAgent)(nil)
@@ -48,7 +59,13 @@ var _ agent.Module = (*JobAgent)(nil)
 // lazily on the first request so construction neither contacts GCS nor
 // initializes the runtime.
 func New(cfg agent.Config) (*JobAgent, error) {
-	return &JobAgent{cfg: cfg, gcsClient: cfg.GCS}, nil
+	return &JobAgent{
+		cfg:              cfg,
+		gcsClient:        cfg.GCS,
+		jobInfoClient:    NewJobInfoStorageClient(cfg.GCS),
+		logClient:        NewJobLogStorageClient(cfg.LogDir),
+		enableSubmission: cfg.IsHead,
+	}, nil
 }
 
 // Start records the agent context used to build the job manager. The Python
@@ -63,14 +80,24 @@ func (a *JobAgent) RegisterGRPC(_ *grpc.Server) error {
 	return nil
 }
 
-// RegisterHTTP registers the five job routes of the Python agent. Every route
-// is method-scoped so the agent router can answer aiohttp's 405 envelope for a
+// RegisterHTTP registers the job routes of the Python agent. Every route is
+// method-scoped so the agent router can answer aiohttp's 405 envelope for a
 // method mismatch. The submit route ends in {$} because the Python path is
 // "/api/job_agent/jobs/" and must not match nested paths.
+//
+// Submission endpoints are head-only: the head routes job submissions to the
+// head agent (job_head.py get_target_agent -> _get_head_node_agent), and they
+// are the only handlers that need the Go runtime. Registering them only here
+// keeps a worker agent from ever constructing JobManager.
 func (a *JobAgent) RegisterHTTP(mux *http.ServeMux) error {
-	mux.HandleFunc("POST /api/job_agent/jobs/{$}", a.handleSubmitJob)
-	mux.HandleFunc("POST /api/job_agent/jobs/{job_or_submission_id}/stop", a.handleStopJob)
-	mux.HandleFunc("DELETE /api/job_agent/jobs/{job_or_submission_id}", a.handleDeleteJob)
+	if a.enableSubmission {
+		mux.HandleFunc("POST /api/job_agent/jobs/{$}", a.handleSubmitJob)
+		mux.HandleFunc("POST /api/job_agent/jobs/{job_or_submission_id}/stop", a.handleStopJob)
+		mux.HandleFunc("DELETE /api/job_agent/jobs/{job_or_submission_id}", a.handleDeleteJob)
+	}
+	// Log endpoints are registered on every node: the head forwards
+	// GET /api/jobs/{id}/logs and /logs/tail to the driver's agent (job_head.py
+	// get_job_driver_agent_client), which may be a worker. They need no runtime.
 	mux.HandleFunc("GET /api/job_agent/jobs/{job_or_submission_id}/logs/tail", a.handleTailJobLogs)
 	mux.HandleFunc("GET /api/job_agent/jobs/{job_or_submission_id}/logs", a.handleGetJobLogs)
 	return nil
@@ -111,7 +138,7 @@ func (a *JobAgent) handleSubmitJob(w http.ResponseWriter, r *http.Request) {
 // response.
 func (a *JobAgent) resolveJob(w http.ResponseWriter, r *http.Request) *JobDetails {
 	jobOrSubmissionID := r.PathValue("job_or_submission_id")
-	job, err := findJobByIDs(r.Context(), a.gcsClient, a.getJobManager().getJobInfoClient(), jobOrSubmissionID)
+	job, err := findJobByIDs(r.Context(), a.gcsClient, a.jobInfoClient, jobOrSubmissionID)
 	if err != nil {
 		writePlainText(w, http.StatusInternalServerError, err.Error())
 		return nil
@@ -169,7 +196,7 @@ func (a *JobAgent) handleGetJobLogs(w http.ResponseWriter, r *http.Request) {
 		writePlainText(w, http.StatusBadRequest, "Can only get logs of submission type jobs")
 		return
 	}
-	logs := a.getJobManager().getJobLogs(*job.SubmissionID)
+	logs := a.logClient.getLogs(*job.SubmissionID)
 	writeJSON(w, http.StatusOK, JobLogsResponse{Logs: logs})
 }
 
@@ -183,6 +210,23 @@ func (a *JobAgent) handleTailJobLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	if job.Type != JobTypeSubmission {
 		writePlainText(w, http.StatusBadRequest, "Can only get logs of submission type jobs")
+		return
+	}
+
+	// The tail handler runs on every node and must not construct JobManager, so
+	// it reads the log file directly through the runtime-independent clients.
+	// The job's existence is checked before the websocket upgrade so a missing
+	// job or a GCS failure answers plain HTTP; the stream itself is started
+	// after the upgrade with the derived (drain-cancellable) context, because
+	// net/http stops watching a hijacked connection: only the derived context
+	// observes the peer going away.
+	status, err := a.jobInfoClient.GetStatus(r.Context(), *job.SubmissionID)
+	if err != nil {
+		writePlainText(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if status == nil {
+		writePlainText(w, http.StatusNotFound, fmt.Sprintf("Job %s does not exist", *job.SubmissionID))
 		return
 	}
 
@@ -208,16 +252,57 @@ func (a *JobAgent) handleTailJobLogs(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	lines, err := a.getJobManager().tailJobLogs(ctx, *job.SubmissionID)
-	if err != nil {
-		log.Log.Error(err, "failed to tail job logs", "submission_id", *job.SubmissionID)
-		return
-	}
-	for line := range lines {
+	for line := range a.streamJobLogs(ctx, *job.SubmissionID) {
 		if err := ws.Write(ctx, websocket.MessageText, []byte(line)); err != nil {
 			return
 		}
 	}
+}
+
+// streamJobLogs streams a job's driver log lines, without touching the Go
+// runtime, so a worker agent can serve it without constructing JobManager. The
+// caller passes a cancellable context (the drain-cancellable one, not
+// r.Context(): net/http stops watching a hijacked connection) and the stream
+// ends when the context is cancelled. The log iterator emits a nil batch while
+// the file has not appeared yet, and once the job is terminal a trailing nil
+// batch ends the stream.
+func (a *JobAgent) streamJobLogs(ctx context.Context, jobID string) <-chan string {
+	out := make(chan string)
+	go func() {
+		defer close(out)
+		linesCh, errCh := a.logClient.tailLogs(ctx, jobID)
+		jobFinished := false
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-errCh:
+				if err != nil {
+					return
+				}
+			case lines, ok := <-linesCh:
+				if !ok {
+					return
+				}
+				if lines == nil {
+					if jobFinished {
+						return
+					}
+					status, err := a.jobInfoClient.GetStatus(ctx, jobID)
+					if err == nil && status != nil && status.IsTerminal() {
+						jobFinished = true
+					}
+				} else {
+					select {
+					case out <- joinLines(lines):
+					case <-ctx.Done():
+						return
+					}
+				}
+			}
+		}
+	}()
+	return out
 }
 
 // writeJSON writes v as a JSON response with the given status code.
