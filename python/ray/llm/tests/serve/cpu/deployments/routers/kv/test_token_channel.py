@@ -72,6 +72,15 @@ async def _wait_until_staged(store, keys):
     pytest.fail(f"Timed out waiting for staged prompt tokens: {sorted(remaining)}")
 
 
+@pytest.mark.parametrize(
+    "ids, match",
+    [([-1], "uint32"), ([2**32], "uint32"), ([[1, 2]], "one-dimensional")],
+)
+def test_encode_rejects_invalid_ids(ids, match):
+    with pytest.raises(ValueError, match=match):
+        encode_prompt_token_ids(ids)
+
+
 def test_sender_exceeds_default_socket_cap():
     """Opens more sockets than the default context's 1023 cap."""
     sender = TokenSender(max_sockets=1100)
