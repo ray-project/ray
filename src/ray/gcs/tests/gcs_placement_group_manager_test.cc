@@ -585,9 +585,19 @@ TEST_F(GcsPlacementGroupManagerTest, TestRemovingCreatedPlacementGroup) {
   const auto &placement_group_id = placement_group->GetPlacementGroupID();
   fake_placement_group_scheduler_->destroy_bundle_resources_calls_.clear();
   fake_placement_group_scheduler_->mark_schedule_cancelled_calls_.clear();
+  // The listener is called once the removal is stored, before the bundles are released.
+  std::vector<PlacementGroupID> removed_placement_groups;
+  gcs_placement_group_manager_->AddPlacementGroupRemovedListener(
+      [&](const PlacementGroupID &removed_placement_group_id) {
+        ASSERT_TRUE(
+            fake_placement_group_scheduler_->destroy_bundle_resources_calls_.empty());
+        removed_placement_groups.push_back(removed_placement_group_id);
+      });
   gcs_placement_group_manager_->RemovePlacementGroup(placement_group_id,
                                                      [](const Status &status) {});
+  ASSERT_TRUE(removed_placement_groups.empty());
   RunIOService();
+  ASSERT_EQ(removed_placement_groups, std::vector<PlacementGroupID>{placement_group_id});
   ASSERT_EQ(fake_placement_group_scheduler_->destroy_bundle_resources_calls_.size(), 1);
   ASSERT_EQ(fake_placement_group_scheduler_->destroy_bundle_resources_calls_[0],
             placement_group_id);

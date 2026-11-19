@@ -73,6 +73,23 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
 
   ~GcsPlacementGroupManager() override = default;
 
+  /**
+   * @brief Add a listener for the removal of a placement group.
+   *
+   * @param listener Called with the id of a removed placement group once its REMOVED
+   * state is stored.
+   */
+  void AddPlacementGroupRemovedListener(
+      std::function<void(const PlacementGroupID &)> listener);
+
+  /**
+   * @brief Check whether a placement group exists and has not been removed.
+   *
+   * @param placement_group_id The id of the placement group.
+   * @return True if the placement group exists and has not been removed.
+   */
+  bool IsPlacementGroupRegistered(const PlacementGroupID &placement_group_id) const;
+
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
@@ -377,6 +394,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
       &placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::MetricInterface &placement_group_count_gauge_;
   ClockInterface &clock_;
+
+  /// Listeners which monitor the removal of placement groups.
+  std::vector<std::function<void(const PlacementGroupID &)>>
+      placement_group_removed_listeners_;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);
