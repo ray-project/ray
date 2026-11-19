@@ -464,6 +464,7 @@ def _read_physical_schema_with_retry(
             lambda: [_read_physical_schema(path, file_format, filesystem)],
             f"read Hive {file_format} schema for {path}",
             match=retryable_errors,
+            max_attempts=DataContext.get_current().io_retry_max_attempts,
         )
     )
 

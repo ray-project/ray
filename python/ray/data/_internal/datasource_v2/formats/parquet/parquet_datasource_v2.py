@@ -80,10 +80,12 @@ def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[i
     fragment = pds.ParquetFileFormat().make_fragment(
         path, filesystem=filesystem, file_size=size
     )
+    ctx = DataContext.get_current()
     return call_with_retry(
         lambda: fragment.metadata,
         description=f"read Parquet footer for {path}",
-        match=DataContext.get_current().retried_io_errors,
+        match=ctx.retried_io_errors,
+        max_attempts=ctx.io_retry_max_attempts,
     )
 
 
@@ -244,15 +246,16 @@ class ParquetDatasourceV2(FileDataSourceV2):
             FooterFileIndexer,
         )
 
+        ctx = DataContext.get_current()
         return FooterFileIndexer(
             ignore_missing_paths=self._ignore_missing_paths,
             skip_paths=self._skip_paths,
             coalesce_bytes=env_integer("RAY_DATA_PARQUET_FOOTER_COALESCE_BYTES", 0),
-            small_shuffle_chunk_size=(
-                DataContext.get_current().small_shuffle_chunk_size
-            ),
+            small_shuffle_chunk_size=ctx.small_shuffle_chunk_size,
             partitioning=self._partitioning,
             logical_schema=self._user_schema,
+            retried_io_errors=ctx.retried_io_errors,
+            io_retry_max_attempts=ctx.io_retry_max_attempts,
         )
 
     def get_file_partitioner(self, **kwargs):

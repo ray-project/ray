@@ -455,6 +455,7 @@ class WebDatasetDatasource(FileBasedDatasource):
             get_tar_file_iterator,
             "iterate tar file",
             match=self._data_context.retried_io_errors,
+            max_attempts=self._data_context.io_retry_max_attempts,
         )
 
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)

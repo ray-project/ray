@@ -36,10 +36,12 @@ def _with_io_retry(f: Callable[[], R], description: str) -> R:
     """
     from ray.data.context import DataContext
 
+    ctx = DataContext.get_current()
     return call_with_retry(
         f,
         description=description,
-        match=DataContext.get_current().retried_io_errors,
+        match=ctx.retried_io_errors,
+        max_attempts=ctx.io_retry_max_attempts,
     )
 
 

@@ -22,6 +22,146 @@ def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
 
 
 @pytest.mark.parametrize(
+    "value, expected",
+    [
+        (None, ("default",)),
+        ('["timeout", "HTTP (429|503), retry"]', ("timeout", "HTTP (429|503), retry")),
+        ("[]", ()),
+    ],
+)
+def test_retry_errors_env(monkeypatch, value, expected):
+    from ray.data.context import _env_retry_errors
+
+    name = "RAY_DATA_RETRIED_IO_ERRORS"
+    monkeypatch.delenv(name, raising=False)
+    if value is not None:
+        monkeypatch.setenv(name, value)
+    assert _env_retry_errors(name, ("default",)) == expected
+
+
+@pytest.mark.parametrize(
+    "value", ["", "not-json", "{}", '"timeout"', "null", '["timeout", 1]']
+)
+def test_retry_errors_env_invalid(monkeypatch, value):
+    from ray.data.context import _env_retry_errors
+
+    name = "RAY_DATA_RETRIED_IO_ERRORS"
+    monkeypatch.setenv(name, value)
+    with pytest.raises(ValueError, match=name):
+        _env_retry_errors(name, ())
+
+
+def test_retry_errors_env_defaults_in_subprocess():
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env["RAY_DATA_RETRIED_IO_ERRORS"] = '["read-error"]'
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-c",
+            "from ray.data.context import DataContext, DEFAULT_RETRIED_IO_ERRORS; "
+            "assert DEFAULT_RETRIED_IO_ERRORS == ('read-error',); "
+            "a, b = DataContext(), DataContext(); "
+            "assert a.retried_io_errors == ['read-error']; "
+            "a.retried_io_errors.append('extra'); "
+            "assert b.retried_io_errors == ['read-error']",
+        ],
+        env=env,
+    )
+
+
+def test_io_retry_max_attempts_default_and_validation():
+    from ray.data.context import DEFAULT_IO_RETRY_MAX_ATTEMPTS
+
+    ctx = ray.data.DataContext()
+    assert ctx.io_retry_max_attempts == DEFAULT_IO_RETRY_MAX_ATTEMPTS
+    assert ctx.io_retry_max_attempts >= 1
+
+    with pytest.raises(ValueError, match="io_retry_max_attempts"):
+        ray.data.DataContext(io_retry_max_attempts=0)
+
+
+def test_io_retry_max_attempts_env_override():
+    import os
+    import subprocess
+    import sys
+
+    env = os.environ.copy()
+    env["RAY_DATA_IO_RETRY_MAX_ATTEMPTS"] = "7"
+    output = subprocess.check_output(
+        [
+            sys.executable,
+            "-c",
+            "from ray.data import context; "
+            "print(context.DEFAULT_IO_RETRY_MAX_ATTEMPTS)",
+        ],
+        env=env,
+        text=True,
+    )
+    assert output.strip() == "7"
+
+
+def test_parquet_v2_io_retry_uses_context(monkeypatch):
+    from ray._common import retry as retry_module
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
+        _with_io_retry,
+    )
+
+    monkeypatch.setattr(retry_module.time, "sleep", lambda _: None)
+
+    ctx = ray.data.DataContext.get_current()
+    original = ctx.io_retry_max_attempts
+    original_errors = ctx.retried_io_errors
+    ctx.io_retry_max_attempts = 3
+    ctx.retried_io_errors = ["transient"]
+    calls = []
+
+    def _fail():
+        calls.append(1)
+        raise ValueError("transient")
+
+    try:
+        with pytest.raises(ValueError, match="transient"):
+            _with_io_retry(_fail, "test op")
+    finally:
+        ctx.io_retry_max_attempts = original
+        ctx.retried_io_errors = original_errors
+
+    assert len(calls) == 3
+
+
+@pytest.mark.parametrize("explicit_attempts, expected_attempts", [(None, 3), (2, 2)])
+def test_retrying_filesystem_captures_context_attempts(
+    monkeypatch, explicit_attempts, expected_attempts
+):
+    from pyarrow.fs import LocalFileSystem
+
+    from ray._common import retry as retry_module
+    from ray.data._internal.util import RetryingPyFileSystem
+
+    monkeypatch.setattr(retry_module.time, "sleep", lambda _: None)
+    ctx = ray.data.DataContext(io_retry_max_attempts=3)
+    calls = []
+
+    def fail():
+        calls.append(1)
+        raise ValueError("transient")
+
+    with ray.data.DataContext.current(ctx):
+        fs = RetryingPyFileSystem.wrap(
+            LocalFileSystem(), ["transient"], max_attempts=explicit_attempts
+        )
+        ctx.io_retry_max_attempts = 5
+        with pytest.raises(ValueError, match="transient"):
+            fs.handler._retry_operation(fail, "test op")
+
+    assert len(calls) == expected_attempts
+
+
+@pytest.mark.parametrize(
     ("attr", "value"),
     [
         ("scheduling_strategy", "DEFAULT"),

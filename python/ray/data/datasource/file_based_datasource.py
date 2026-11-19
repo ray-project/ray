@@ -319,6 +319,7 @@ class FileBasedDatasource(Datasource):
                     with RetryingContextManager(
                         self._open_input_source(fs, read_path, **open_stream_args),
                         context=self._data_context,
+                        max_attempts=self._data_context.io_retry_max_attempts,
                     ) as f:
                         yield from self._read_stream(f, read_path)
 
@@ -326,6 +327,7 @@ class FileBasedDatasource(Datasource):
                     open_and_read_stream,
                     description="read stream iteratively",
                     match=self._data_context.retried_io_errors,
+                    max_attempts=self._data_context.io_retry_max_attempts,
                 ):
                     if partitions:
                         block = _add_partitions(

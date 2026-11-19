@@ -2,6 +2,7 @@ import contextlib
 import copy
 import enum
 import importlib
+import json
 import logging
 import os
 import threading
@@ -251,6 +252,21 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+def _env_retry_errors(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        errors = json.loads(value)
+    except json.JSONDecodeError:
+        raise ValueError(f"`{name}` must be a JSON array of strings.") from None
+    if not isinstance(errors, list) or not all(
+        isinstance(error, str) for error in errors
+    ):
+        raise ValueError(f"`{name}` must be a JSON array of strings.")
+    return tuple(errors)
+
+
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
@@ -260,22 +276,30 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error UNKNOWN (HTTP status 503)",
 )
 
-DEFAULT_RETRIED_IO_ERRORS = (
-    "AWS Error INTERNAL_FAILURE",
-    "AWS Error NETWORK_CONNECTION",
-    "AWS Error SLOW_DOWN",
-    "AWS Error UNKNOWN (HTTP status 503)",
-    "AWS Error SERVICE_UNAVAILABLE",
-    # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
-    # (e.g. an empty IMDS response under load) as ACCESS_DENIED on the
-    # bucket-existence check that `create_dir` runs before a write, e.g.
-    # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
-    # Deliberately not the bare "AWS Error ACCESS_DENIED": a genuine per-object
-    # denial (HeadObject) on a read must still fail fast so the credentials hint
-    # in `_handle_read_os_error` is shown promptly instead of after ~3 minutes
-    # of retries.
-    "AWS Error ACCESS_DENIED during HeadBucket operation",
+DEFAULT_RETRIED_IO_ERRORS = _env_retry_errors(
+    "RAY_DATA_RETRIED_IO_ERRORS",
+    (
+        "AWS Error INTERNAL_FAILURE",
+        "AWS Error NETWORK_CONNECTION",
+        "AWS Error SLOW_DOWN",
+        "AWS Error UNKNOWN (HTTP status 429)",
+        "AWS Error UNKNOWN (HTTP status 503)",
+        "AWS Error SERVICE_UNAVAILABLE",
+        # PyArrow's S3FileSystem surfaces a transient credential-lookup failure
+        # (e.g. an empty IMDS response under load) as ACCESS_DENIED on the
+        # bucket-existence check that `create_dir` runs before a write, e.g.
+        # "AWS Error ACCESS_DENIED during HeadBucket operation" (DATA-3602).
+        # Deliberately not the bare "AWS Error ACCESS_DENIED": a genuine per-object
+        # denial (HeadObject) on a read must still fail fast so the credentials hint
+        # in `_handle_read_os_error` is shown promptly instead of after ~3 minutes
+        # of retries.
+        "AWS Error ACCESS_DENIED during HeadBucket operation",
+    ),
 )
+
+# Maximum total attempts (first try + retries) for the shared Ray Data IO retry
+# wrappers (filesystem operations, stream reads, per-file writes).
+DEFAULT_IO_RETRY_MAX_ATTEMPTS = env_integer("RAY_DATA_IO_RETRY_MAX_ATTEMPTS", 10)
 
 DEFAULT_ICEBERG_WRITE_FILE_MAX_ATTEMPTS = env_integer(
     "RAY_DATA_ICEBERG_WRITE_FILE_MAX_ATTEMPTS", 10
@@ -890,7 +914,17 @@ class DataContext:
         retried_io_errors: A list of patterns to match against error messages that should
             trigger a retry when reading or writing files. Each pattern is first checked
             as a substring, then as a regex. This is useful for handling
-            transient errors when reading from remote storage systems.
+            transient errors when reading from remote storage systems. The default
+            can be replaced by ``RAY_DATA_RETRIED_IO_ERRORS``, a JSON array of
+            strings read at module import. An empty array clears this list;
+            connector-specific retry patterns may still apply.
+        io_retry_max_attempts: Maximum number of total attempts (the first try plus
+            retries) for Ray Data's shared IO retry wrappers and Parquet reads.
+            Defaults to the ``RAY_DATA_IO_RETRY_MAX_ATTEMPTS`` environment variable,
+            or 10 if unset. Must be at least 1. Set this before creating a Dataset;
+            existing filesystem wrappers retain their configured retry budget.
+            Explicit retry counts and independent datasource or datasink retry
+            settings take precedence over this value.
         lance_config: Configuration for Lance datasource and datasink operations
             including retry settings for read and write operations. See
             :class:`LanceConfig` for details.
@@ -1193,6 +1227,7 @@ class DataContext:
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
+    io_retry_max_attempts: int = DEFAULT_IO_RETRY_MAX_ATTEMPTS
     lance_config: LanceConfig = field(default_factory=LanceConfig)
     iceberg_config: IcebergConfig = field(default_factory=IcebergConfig)
     delta_config: DeltaConfig = field(default_factory=DeltaConfig)
@@ -1254,6 +1289,11 @@ class DataContext:
     ] = DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION
 
     def __post_init__(self):
+        if self.io_retry_max_attempts < 1:
+            raise ValueError(
+                "`io_retry_max_attempts` must be at least 1, got "
+                f"{self.io_retry_max_attempts}."
+            )
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.
         self._task_pool_data_task_remote_args: Dict[str, Any] = {}

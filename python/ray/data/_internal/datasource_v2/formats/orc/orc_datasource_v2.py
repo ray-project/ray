@@ -66,6 +66,7 @@ def _read_orc_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
         read,
         description=f"read ORC schema for {path}",
         match=DataContext.get_current().retried_io_errors,
+        max_attempts=DataContext.get_current().io_retry_max_attempts,
     )
 
 
