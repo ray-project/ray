@@ -4433,6 +4433,49 @@ class TestPrecomputeSerializeKeys:
         assert to_launch == {"type_1": 2}
 
 
+def test_running_node_of_type_removed_from_config():
+    node_type_configs = {
+        "head": NodeTypeConfig(
+            name="head", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=1
+        ),
+        "type_1": NodeTypeConfig(
+            name="type_1", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=4
+        ),
+    }
+    instances = []
+    for i, (node_type, kind) in enumerate(
+        [("head", NodeKind.HEAD), ("removed_type", NodeKind.WORKER)]
+    ):
+        instances.append(
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type=node_type,
+                    status=Instance.RAY_RUNNING,
+                    instance_id=str(i),
+                    node_id=f"r{i}",
+                    node_kind=kind,
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name=node_type,
+                    available_resources={"CPU": 4},
+                    total_resources={"CPU": 4},
+                    node_id=f"r{i}".encode(),
+                ),
+            )
+        )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        instances=instances,
+        disable_launch_config_check=True,
+    )
+    reply = ResourceDemandScheduler(event_logger).schedule(request)
+
+    to_launch, to_terminate = _launch_and_terminate(reply)
+    assert to_launch == {}
+    assert to_terminate == []
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

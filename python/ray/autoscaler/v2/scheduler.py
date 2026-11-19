@@ -1289,7 +1289,11 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Step 1. Enforce the max number of workers for each node type.
         for node_type in non_terminating_nodes_by_type.keys():
             non_terminate_nodes_of_type = non_terminating_nodes_by_type[node_type]
-            node_config = ctx.get_node_type_configs()[node_type]
+            node_config = ctx.get_node_type_configs().get(node_type)
+            if node_config is None:
+                # The node type was removed from the config while its nodes still run,
+                # so there is no per-type max to enforce.
+                continue
             num_max_nodes_per_type = node_config.max_worker_nodes
             num_extra_nodes = len(non_terminate_nodes_of_type) - num_max_nodes_per_type
 
