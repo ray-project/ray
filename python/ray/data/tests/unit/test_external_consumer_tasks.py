@@ -45,8 +45,13 @@ def _produce(tracker: LineageTracker, producer: str, num_outputs: int):
         tracker.register_block_output(producer, ref.hex(), output_index)
         tracker.register_block_queued(producer, output_index)
         refs.append(ref)
-    tracker.register_task_complete(producer)
+    tracker.register_task_complete(producer, num_outputs=num_outputs)
     return refs
+
+
+def _task_ids(tracker: LineageTracker) -> List[str]:
+    """The tasks whose lineage the tracker still keeps."""
+    return sorted(tracker._lineage_task_id_to_task_node)
 
 
 def _lost_error() -> ObjectLostError:
@@ -110,6 +115,8 @@ def test_reproduced_block_resubmits_under_its_stamp():
 
     assert _update_and_pop(external_tasks, tracker) == []
     assert not external_tasks.has_unresolved()
+    # The retry completing collects the lineage the lost input kept.
+    assert _task_ids(tracker) == []
 
 
 def test_unresolved_until_the_drain_applies_the_outcome():
@@ -136,6 +143,8 @@ def test_abandoned_task_is_not_reconstructed():
 
     assert _update_and_pop(external_tasks, tracker) == []
     assert not external_tasks.has_unresolved()
+    # An abandoned task never completes, so its lineage is kept.
+    assert _task_ids(tracker) == ["consumer:0", "seed"]
 
 
 def test_lost_input_reported_after_update_waits_for_the_next_update():
@@ -155,6 +164,54 @@ def test_lost_input_reported_after_update_waits_for_the_next_update():
         ExternalTaskLostInput(f"consumer:{handle}", frozenset(), error)
     ]
     seeds, _ = tracker.register_task_failed(f"consumer:{handle}")
+    assert seeds == ["seed"]
+
+
+def test_completed_external_tasks_garbage_collect_their_lineage():
+    """Once every output of a task is consumed by a completed external task,
+    its lineage is collected, through to the seed and its retained input."""
+    tracker = LineageTracker()
+    [seed_ref] = _produce(tracker, "seed", 1)
+    tracker.register_seed_input("seed", object())
+    tracker.register_task_submission(
+        "map", tracker.resolve_dependencies([seed_ref.hex()])
+    )
+    map_refs = []
+    for output_index in range(2):
+        ref = _FakeRef(f"map/block{output_index}")
+        tracker.register_block_output("map", ref.hex(), output_index)
+        tracker.register_block_queued("map", output_index)
+        map_refs.append(ref)
+    tracker.register_task_complete("map", num_outputs=2)
+    external_tasks = ExternalConsumerTasks()
+    handles = [_take_and_submit(external_tasks, ref) for ref in map_refs]
+
+    external_tasks.complete(handles[0])
+    _update_and_pop(external_tasks, tracker)
+    # The map's other output can still be lost, so its lineage is kept.
+    assert _task_ids(tracker) == [f"consumer:{handles[1]}", "map", "seed"]
+
+    external_tasks.complete(handles[1])
+    _update_and_pop(external_tasks, tracker)
+    assert _task_ids(tracker) == []
+
+
+def test_output_awaiting_submission_keeps_its_lineage():
+    tracker = LineageTracker()
+    refs = _produce(tracker, "seed", 2)
+    external_tasks = ExternalConsumerTasks()
+    external_tasks.on_output_taken(_FakeBundle([_FakeEntry(ref) for ref in refs]))
+
+    external_tasks.complete(external_tasks.submit(refs[0], None))
+    _update_and_pop(external_tasks, tracker)
+    assert _task_ids(tracker) == ["seed"]
+
+    # The task for the other output resolves its producer, which is still
+    # registered, so its input can be reconstructed.
+    handle = external_tasks.submit(refs[1], None)
+    external_tasks.report_lost_input(handle, _lost_error())
+    [lost] = _update_and_pop(external_tasks, tracker)
+    seeds, _ = tracker.register_task_failed(lost.lineage_task_id)
     assert seeds == ["seed"]
 
 

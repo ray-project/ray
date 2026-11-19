@@ -14,16 +14,17 @@ it consumed are re-produced. The re-produced blocks are stamped for the external
 task and leave the executor like any other output, so the consumer submits a
 new external task for them.
 
-TODO(push-split): garbage collect the lineage that completed external tasks
-make unreachable. A task's lineage is needed while any of its downstream outputs
-can still be lost, so collect bottom-up. A completed or abandoned external task
-is collectable. Any other task is collectable once it completed, no
-reconstruction plan is in flight through it, and every output it queued has a
-collected consumer. Collecting a task can make its parents collectable.
-Collecting a seed task releases its retained input
-(``MapOperator._seed_task_inputs``). Without external consumers the final
-operator's outputs never get a consumer, so nothing is collected and the default
-path is unchanged.
+A completed external task produces nothing, so the lineage tracker garbage
+collects it at completion. Collecting it makes the output it consumed durable on
+its producer, which is collected once all of its outputs are, and so on up to
+the seeds, whose retained inputs are released. A task is kept while an attempt
+or a reconstruction plan still runs through it.
+
+Lineage some external tasks never consume stays until the executor shuts down.
+That is the lineage of an output that a finished split took but never submitted
+a task for, and of an abandoned task, which never completes. Without external
+consumers the final operator's outputs never get a consumer, so nothing is
+collected and the default path is unchanged.
 """
 
 import itertools
@@ -202,7 +203,8 @@ class ExternalConsumerTasks:
         Executor thread only.
 
         Registers submitted tasks and completes completed ones with
-        ``lineage_tracker``, if there is one. Drops abandoned ones. Sets the
+        ``lineage_tracker``, if there is one, which garbage collects them. Drops
+        abandoned ones without telling the tracker. Sets the
         lost inputs reported with them aside for ``pop_lost_inputs``. Their
         tasks are registered by then, since a task is always submitted before
         its input can be reported lost.
@@ -240,11 +242,15 @@ class ExternalConsumerTasks:
             lineage_task_id, plan_ids = self._lineage_ids.pop(handle)
             if lineage_tracker is None:
                 continue
+            # The task produces nothing, so completing it garbage collects it
+            # and whatever lineage only it still needed.
             if plan_ids:
                 for plan_id in sorted(plan_ids):
-                    lineage_tracker.register_task_complete(lineage_task_id, plan_id)
+                    lineage_tracker.register_task_complete(
+                        lineage_task_id, num_outputs=0, reconstruction_plan_id=plan_id
+                    )
             else:
-                lineage_tracker.register_task_complete(lineage_task_id)
+                lineage_tracker.register_task_complete(lineage_task_id, num_outputs=0)
 
         for handle in abandoned:
             del self._lineage_ids[handle]

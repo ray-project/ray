@@ -38,7 +38,7 @@ def _emit_and_push(
             push_id, tracker.resolve_dependencies([block_id])
         )
         push_ids.append(push_id)
-    tracker.register_task_complete(producer)
+    tracker.register_task_complete(producer, num_outputs=num_outputs)
     return push_ids
 
 
@@ -53,7 +53,7 @@ def test_lost_push_reproduces_only_its_block():
     tracker = LineageTracker()
     tracker.register_task_submission("seed", [])
     push_ids = _emit_and_push(tracker, "seed", num_outputs=3)
-    tracker.register_task_complete(push_ids[0])
+    tracker.register_task_complete(push_ids[0], num_outputs=0)
 
     seeds, plan_id = tracker.register_task_failed(push_ids[1])
 
@@ -82,7 +82,7 @@ def test_lost_push_through_a_map_reruns_only_the_owed_branch():
     for output_index in range(2):
         tracker.register_block_output("seed", f"seed/block{output_index}", output_index)
         tracker.register_block_queued("seed", output_index)
-    tracker.register_task_complete("seed")
+    tracker.register_task_complete("seed", num_outputs=2)
     # One map task consumes both seed blocks and emits two blocks.
     tracker.register_task_submission(
         "map", tracker.resolve_dependencies(["seed/block0", "seed/block1"])
