@@ -10,7 +10,12 @@ import ray._common.usage.usage_lib as ray_usage_lib
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._common.network_utils import build_address, get_localhost_ip, is_localhost
+from ray._common.network_utils import (
+    build_address,
+    get_all_interfaces_ip_for_node,
+    get_localhost_ip,
+    is_localhost,
+)
 from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private import ray_constants
 from ray._private.async_utils import enable_monitor_loop_lag
@@ -484,11 +489,10 @@ class DashboardHead:
                         DASHBOARD_METRIC_PORT
                     )
                 )
-                kwargs = {"addr": get_localhost_ip()} if is_localhost(self.ip) else {}
                 start_metrics_http_server(
                     port=DASHBOARD_METRIC_PORT,
                     registry=metrics.registry,
-                    **kwargs,
+                    addr=get_all_interfaces_ip_for_node(self.ip),
                 )
             except Exception:
                 logger.exception(

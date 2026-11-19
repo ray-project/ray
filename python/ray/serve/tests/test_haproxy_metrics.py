@@ -1,11 +1,14 @@
-"""Unit tests for `HAProxyMetricsCollector`.
+"""Unit tests for HAProxy metrics internals.
 
-The collector is the parser + recorder that sits behind the Unix dgram
-socket HAProxy writes RFC 5424 log lines to. These tests drive the pure
+`HAProxyMetricsCollector` is the parser + recorder that sits behind the Unix
+dgram socket HAProxy writes RFC 5424 log lines to. These tests drive the pure
 parsing and record paths directly (no socket, no HAProxy, no asyncio).
 End-to-end coverage of the whole pipeline -- HAProxy emits a log line,
 asyncio reader picks it up, metric increments visible on /metrics --
 lives in the integration suite alongside `test_haproxy_api.py`.
+
+The exporter listen-address test only constructs `HAProxyManager` and checks
+which interface its metrics server binds; it never starts HAProxy.
 """
 
 import asyncio
@@ -13,10 +16,11 @@ import os
 import socket as stdlib_socket
 import tempfile
 from typing import Optional
+from unittest.mock import MagicMock
 
 import pytest
 
-from ray.serve._private import haproxy_metrics
+from ray.serve._private import haproxy, haproxy_metrics
 from ray.serve._private.haproxy_metrics import (
     HAProxyMetricsCollector,
     ParsedMetrics,
@@ -1037,6 +1041,49 @@ def test_rendered_lua_has_no_timing_calls_when_metrics_disabled() -> None:
     assert "core.now()" not in lua
     assert "ingress_request_router_latency_us" not in lua
     assert "ingress_request_router_truncated_full_length" not in lua
+
+
+# ---------------------------------------------------------------------------
+# exporter listen address
+# ---------------------------------------------------------------------------
+
+# Node IPs that are deliberately not localhost: reverting the exporter to the
+# old localhost/empty default must fail these cases.
+_NODE_ADDRESS_CASES = [
+    ("10.0.0.42", "0.0.0.0"),
+    ("2001:db8::42", "::"),
+]
+
+
+@pytest.mark.parametrize("node_ip,expected_addr", _NODE_ADDRESS_CASES)
+def test_haproxy_metrics_exporter_binds_node_family(
+    monkeypatch, node_ip, expected_addr
+):
+    """The HAProxy exporter listens on the node IP's address family."""
+    haproxy_manager_cls = haproxy.HAProxyManager.__ray_metadata__.modified_class
+    haproxy_manager = haproxy_manager_cls.__new__(haproxy_manager_cls)
+    haproxy_manager._node_ip_address = node_ip
+    haproxy_manager._haproxy = MagicMock()
+    haproxy_manager._haproxy.cfg.metrics_port = 9101
+    haproxy_manager._haproxy.cfg.enable_so_reuseport = True
+
+    captured = {}
+
+    def fake_start_metrics_wsgi_server(port, app, addr=None, reuse_port=False):
+        captured.update(port=port, addr=addr, reuse_port=reuse_port)
+
+    monkeypatch.setattr(
+        haproxy, "start_metrics_wsgi_server", fake_start_metrics_wsgi_server
+    )
+    monkeypatch.setattr(haproxy, "make_exporter_proxy_app", lambda cfg: object())
+
+    haproxy_manager._start_metrics_exporter_server()
+
+    assert captured == {
+        "port": 9101,
+        "addr": expected_addr,
+        "reuse_port": True,
+    }
 
 
 if __name__ == "__main__":

@@ -159,6 +159,23 @@ def get_token_auth_wsgi_app(app):
 class _ThreadingWSGIServer(ThreadingMixIn, WSGIServer):
     daemon_threads = True
 
+    def server_bind(self):
+        # "::" is the wildcard for IPv6 nodes. Clear IPV6_V6ONLY before
+        # binding so IPv4 loopback scrapes keep working on hosts that support
+        # dual-stack sockets. The option cannot be changed after bind().
+        if (
+            self.address_family == socket.AF_INET6
+            and self.server_address[0] == "::"
+            and socket.has_dualstack_ipv6()
+        ):
+            try:
+                self.socket.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            except OSError:
+                logger.debug(
+                    "Failed to clear IPV6_V6ONLY, binding IPv6 only", exc_info=True
+                )
+        super().server_bind()
+
 
 class _ReusePortThreadingWSGIServer(_ThreadingWSGIServer):
     """Sets SO_REUSEPORT so several processes on one host can share the port.
@@ -174,22 +191,38 @@ class _SilentHandler(WSGIRequestHandler):
         pass
 
 
-def start_metrics_http_server(port: int, registry, addr: str = "0.0.0.0") -> None:
+def start_metrics_http_server(port: int, registry, addr: Optional[str] = None) -> None:
     """Serve ``registry`` on ``addr:port`` from a daemon thread, like
     ``prometheus_client.start_http_server``, but requiring the token when token
-    auth is on."""
+    auth is on.
+
+    If ``addr`` is None or empty, bind to all interfaces for the host's IP
+    family (``0.0.0.0`` for IPv4, ``::`` for IPv6). That default follows
+    localhost resolution; callers that know the node IP should pass
+    ``get_all_interfaces_ip_for_node(node_ip)`` instead."""
     from prometheus_client import make_wsgi_app
 
     start_metrics_wsgi_server(port, make_wsgi_app(registry), addr)
 
 
 def start_metrics_wsgi_server(
-    port: int, app, addr: str = "0.0.0.0", reuse_port: bool = False
+    port: int, app, addr: Optional[str] = None, reuse_port: bool = False
 ) -> WSGIServer:
     """Serve the WSGI metrics ``app`` on ``addr:port`` from a daemon thread,
     behind the same token check as start_metrics_http_server. With
     ``reuse_port``, other processes that set SO_REUSEPORT can bind the same
-    port. Returns the server so the caller can shut it down."""
+    port. Returns the server so the caller can shut it down.
+
+    If ``addr`` is None or empty, bind to all interfaces for the host's IP
+    family. That default follows localhost resolution; node-aware callers
+    should pass ``get_all_interfaces_ip_for_node(node_ip)``. An IPv6 wildcard
+    (``"::"``) accepts IPv4 connections on dual-stack hosts.
+    """
+    if not addr:
+        from ray._common.network_utils import get_all_interfaces_ip
+
+        addr = get_all_interfaces_ip()
+
     family, _, _, _, sockaddr = socket.getaddrinfo(
         addr, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
     )[0]
