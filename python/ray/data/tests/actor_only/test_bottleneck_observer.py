@@ -414,9 +414,13 @@ class _Clock:
 
 
 class _Pool:
-    def __init__(self, states=None, max_size=10):
+    def __init__(self, states=None, max_size=10, per_actor=None):
         self.states = states or {}
         self._max_size = max_size
+        self._per_actor = per_actor or ExecutionResources(cpu=1)
+
+    def per_actor_resource_usage(self):
+        return self._per_actor
 
     def serving_size(self):
         return sum(len(by_actor) for by_actor in self.states.values())
@@ -694,6 +698,67 @@ def test_assessment_eligibility_and_victims(
             read: DonorVictims(count=2, ttf_min_s=4.0, ttf_p50_s=4.0, circular=True)
         }
         assert "victims for W=[R n=2 ttf min=4s p50=4s circular]" in line
+
+
+@pytest.mark.parametrize(
+    "bundle_free_cpu, headroom, expected",
+    [
+        (1, None, "yes: placement group"),
+        (0, None, "no: placement group full"),
+        (None, 2, "yes: placement group"),
+        (None, 0, "no: placement group full"),
+    ],
+    ids=["bundle-room", "bundles-full", "pg-per-actor-headroom", "pg-per-actor-full"],
+)
+def test_pg_bottleneck_is_eligible_by_room_in_its_pg_but_never_a_recipient(
+    bundle_free_cpu, headroom, expected
+):
+    """dataset_constraint_pg_scheduling: the PG-scheduled op (C) is the stable
+    bottleneck. It can grow only into its own placement group (free bundles,
+    or headroom for a PG minted per actor), never from victims, so it is
+    eligible by PG room alone and is never the transfer recipient."""
+
+    def actors(n):
+        return {f"a{i}": SimpleNamespace(status=ActorStatus.ACTIVE) for i in range(n)}
+
+    producer = _Op("P", serving=2, obp_actors=2)
+    producer.actor_pool = _Pool({"n1": actors(2)})
+    consumer = _Op("C", serving=1, busy_slots=1.0)
+    consumer.actor_pool = _Pool(
+        {"n2": actors(1)}, max_size=8, per_actor=ExecutionResources(cpu=1, gpu=1)
+    )
+    observer, _, step = _observer(producer, consumer, queued=(5, 5))
+    observer._profiles.is_pg_managed = lambda op: op is consumer
+    observer._profiles.non_pg_ops = cast(Any, (producer,))
+    step(5)
+
+    bundle = ("pg", 0)
+    capacity = cast(
+        Any,
+        SimpleNamespace(
+            free_by_node={"n1": ExecutionResources(cpu=8, memory=8 * GiB)},
+            schedulable_nodes_by_op={producer: {"n1"}},
+            per_actor_resources_by_op={producer: _NEEDS},
+            pg_free_by_bundle=(
+                {bundle: ExecutionResources(cpu=bundle_free_cpu, gpu=bundle_free_cpu)}
+                if bundle_free_cpu is not None
+                else {}
+            ),
+            schedulable_bundles_by_op=(
+                {consumer: (bundle,)} if bundle_free_cpu is not None else {}
+            ),
+            unknown_pg_headroom_by_op=(
+                {consumer: headroom} if headroom is not None else {}
+            ),
+        ),
+    )
+
+    snapshot = observer.snapshot()
+    assessment = observer.assess(snapshot, capacity, stable=cast(Any, {consumer}))
+
+    assert [op for op, _ in snapshot.bottlenecks] == [consumer]
+    assert assessment.eligibility == {consumer: expected}
+    assert assessment.recipient is None and assessment.victims == {}
 
 
 def _edge(producer, consumer, arrow):

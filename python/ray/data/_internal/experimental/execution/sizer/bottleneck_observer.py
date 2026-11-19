@@ -105,6 +105,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Eligibility of a PG-managed bottleneck with room in its placement group.
+PG_ELIGIBLE = "yes: placement group"
+
 K = TypeVar("K", bound=Hashable)
 
 
@@ -954,6 +957,8 @@ class BottleneckObserver:
                 op
                 for op, sev in ranked_stable
                 if sev >= self._min_severity and not eligibility[op].startswith("no:")
+                # A PG op grows into its own bundles; donors cannot fund it.
+                and not self._profiles.is_pg_managed(op)
             ),
             None,
         )
@@ -1039,7 +1044,7 @@ class BottleneckObserver:
         if pool.serving_size() >= bounded_max_size(pool):
             return "no: at max size"
         if self._profiles.is_pg_managed(op):
-            return "no: placement group (not assessed)"
+            return self._pg_eligibility(op, capacity)
         per_actor = capacity.per_actor_resources_by_op[op]
         nodes = [n for n in free_by_node if n in capacity.schedulable_nodes_by_op[op]]
         if not nodes:
@@ -1059,6 +1064,24 @@ class BottleneckObserver:
             if best is None or len(short) < len(best):
                 best = short
         return f"no: short {_format_resources(best or {})} after all victims"
+
+    @staticmethod
+    def _pg_eligibility(
+        op: "ExperimentalActorPoolMapOperator", capacity: "TickCapacitySnapshot"
+    ) -> str:
+        """A PG-managed op grows only into its own placement group: other
+        ops' actors hold none of its bundles, so it never takes victims."""
+        bundles = capacity.schedulable_bundles_by_op.get(op)
+        if bundles is None:
+            room = capacity.unknown_pg_headroom_by_op.get(op, 0) >= 1
+        else:
+            per_actor = op.actor_pool.per_actor_resource_usage()
+            room = any(
+                max_placeable_actors(capacity.pg_free_by_bundle[key], per_actor) >= 1
+                for key in bundles
+                if key in capacity.pg_free_by_bundle
+            )
+        return PG_ELIGIBLE if room else "no: placement group full"
 
     def _consume_rate(self, donor: "ExperimentalActorPoolMapOperator") -> float:
         """Blocks/s that clear ``donor``'s outputs: its actor-pool consumers'

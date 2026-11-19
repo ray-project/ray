@@ -70,6 +70,28 @@ def fill_pg_bundles(
     )
 
 
+def grow_pg_op(
+    op: "ExperimentalActorPoolMapOperator",
+    delta: int,
+    ctx: OptimizationContext,
+    reason: str,
+) -> Optional[PlacedSizingRequest]:
+    """Up to ``delta`` more actors for a PG-managed op, or None if its
+    placement group has no room. The PG places them, so the request is
+    untargeted. Draining actors are reclaimed first: they still hold their
+    bundles, so only new ones need room in the PG."""
+    num_to_reclaim = min(delta, op.actor_pool.num_reclaimable_draining_actors())
+    num_new = fill_pg_bundles(ctx, op, delta - num_to_reclaim)
+    if num_to_reclaim + num_new <= 0:
+        return None
+    return upscale_request(
+        op,
+        ScaleUpRequest.untargeted(
+            num_to_reclaim + num_new, num_to_reclaim=num_to_reclaim, reason=reason
+        ),
+    )
+
+
 def upscale_request(
     op: "ExperimentalActorPoolMapOperator", request: ScaleUpRequest
 ) -> PlacedSizingRequest:

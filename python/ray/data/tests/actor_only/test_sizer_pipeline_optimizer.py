@@ -25,6 +25,9 @@ from ray.data._internal.experimental.execution.sizer import (
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     OpPlacementView,
 )
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    PG_ELIGIBLE,
+)
 from ray.data._internal.experimental.execution.sizer.models import OpShortfall
 from ray.data._internal.experimental.execution.sizer.optimizer.bottleneck_transfer import (  # noqa: E501
     BottleneckTransfer,
@@ -1769,3 +1772,70 @@ def test_one_bottleneck_transfer_at_a_time():
 )
 def test_transfer_timeout_from_victim_ttf(ttfs, expected):
     assert transfer_timeout_s(ttfs) == pytest.approx(expected)
+
+
+def _apply_pg_bottleneck(rule, tick, pg_op, *, bundle_free_cpu, others=()):
+    """Apply ``rule`` with ``pg_op`` placed by a one-bundle placement group
+    and no free node capacity."""
+    bundle = ("pg", 0)
+    ctx = _ctx(
+        non_pg_ops=list(others),
+        actor_pool_ops=[pg_op, *others],
+        schedulable_bundles={pg_op: (bundle,)},
+        pg_free={bundle: ExecutionResources(cpu=bundle_free_cpu)},
+        bottleneck=tick,
+    )
+    state = rule.new_state()
+    return ctx, state, rule.apply(ctx, state), bundle
+
+
+@pytest.mark.parametrize(
+    "bundle_free_cpu, reclaimable, expected_delta",
+    [(2, 0, 2), (2, 1, 3), (0, 0, None)],
+    ids=["new-actors-capped-by-bundles", "reclaims-first", "pg-full"],
+)
+def test_named_pg_bottleneck_grows_into_its_placement_group(
+    bundle_free_cpu, reclaimable, expected_delta
+):
+    """dataset_constraint_pg_scheduling: FakeGPUInfer (PG-scheduled) is the
+    named bottleneck at 4 actors with no free node room. It grows toward its
+    growth target (8), but only as far as its PG has room: untargeted (the PG
+    picks the bundle), draining actors reclaimed first, and no transfer."""
+    infer = _op("Infer", pool=_Pool(current=4), reclaimable=reclaimable)
+    gen = _idle_victims_op("Gen", "node", ["g0", "g1"], current=11)
+    tick = _tick(
+        named=[(infer, 1.7)],
+        stable=[infer],
+        eligibility={infer: PG_ELIGIBLE},
+        shares={infer: None, gen: None},
+        target={infer: 8},
+    )
+    ctx, state, requests, bundle = _apply_pg_bottleneck(
+        _bottleneck_rule(), tick, infer, bundle_free_cpu=bundle_free_cpu, others=[gen]
+    )
+
+    assert not state.in_flight
+    if expected_delta is None:
+        assert requests == []
+        return
+    (placed,) = requests
+    req = placed.request[infer]
+    assert isinstance(req, ScaleUpRequest)
+    assert req.delta == expected_delta
+    assert req.num_to_reclaim == reclaimable
+    assert req.nodes == ()
+    assert ctx.pg_free[bundle].cpu == 0
+
+
+def test_balanced_pg_op_grows_one_step_into_its_placement_group():
+    # No bottleneck named and the PG op nearly always busy: it grows one
+    # actor into its PG, not into (absent) free node capacity.
+    infer = _op("Infer", pool=_Pool(current=4))
+    tick = _tick(named=[], shares={infer: SimpleNamespace(busy=0.95)})
+    ctx, _, requests, bundle = _apply_pg_bottleneck(
+        _bottleneck_rule(), tick, infer, bundle_free_cpu=2
+    )
+    (placed,) = requests
+    assert placed.request[infer].delta == 1
+    assert placed.request[infer].nodes == ()
+    assert ctx.pg_free[bundle].cpu == 1

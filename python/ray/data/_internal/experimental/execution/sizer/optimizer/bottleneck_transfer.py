@@ -37,6 +37,9 @@ from ray.data._internal.experimental.execution.sizer import placement_view
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
     max_placeable_actors,
 )
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    PG_ELIGIBLE,
+)
 from ray.data._internal.experimental.execution.sizer.models import (
     PlacedSizingRequest,
 )
@@ -56,6 +59,7 @@ from ray.data._internal.experimental.execution.sizer.optimizer.context import (
 from ray.data._internal.experimental.execution.sizer.optimizer.utils import (
     fill_free_nodes,
     free_schedulable_nodes,
+    grow_pg_op,
     upscale_request,
 )
 
@@ -157,7 +161,7 @@ class BottleneckTransfer(CapacityTransfer):
         # the cluster is still resizing (when it is most needed); only
         # transfers wait for it to settle.
         for op, _ in tick.snapshot.bottlenecks:
-            if tick.assessment.eligibility.get(op) != "yes: free":
+            if tick.assessment.eligibility.get(op) not in ("yes: free", PG_ELIGIBLE):
                 continue
             blocked = self._why_cannot_grow(op, ctx)
             if blocked is not None:
@@ -203,8 +207,6 @@ class BottleneckTransfer(CapacityTransfer):
     def _why_cannot_grow(
         self, op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
     ) -> Optional[str]:
-        if ctx.is_pg_managed(op):
-            return "placement group"
         if not self._guard.can_scale(op):
             return f"guard ({self._guard.reason(op)})"
         if op.actor_pool.num_pending_actors() > 0:
@@ -242,7 +244,10 @@ class BottleneckTransfer(CapacityTransfer):
         reason: str = "bottleneck",
     ) -> Optional[PlacedSizingRequest]:
         """Grow toward ``b_prime`` (the model's growth target) as far as free
-        capacity allows, or None if no actor fits."""
+        capacity allows, or None if no actor fits. A PG-managed op grows into
+        its own placement group's free bundles instead."""
+        if ctx.is_pg_managed(recipient):
+            return self._grow_into_pg(recipient, b_prime, ctx, reason)
         per_actor = recipient.actor_pool.per_actor_resource_usage()
         nodes = free_schedulable_nodes(ctx, recipient)
         if not any(max_placeable_actors(ctx.free[n], per_actor) >= 1 for n in nodes):
@@ -276,6 +281,32 @@ class BottleneckTransfer(CapacityTransfer):
                 reason=f"optimizer: {reason} grows into free capacity",
             ),
         )
+
+    @staticmethod
+    def _grow_into_pg(
+        op: "ExperimentalActorPoolMapOperator",
+        b_prime: int,
+        ctx: OptimizationContext,
+        reason: str,
+    ) -> Optional[PlacedSizingRequest]:
+        step = max(1, b_prime - op.actor_pool.serving_size())
+        grown = grow_pg_op(
+            op, step, ctx, reason=f"optimizer: {reason} grows into placement group"
+        )
+        if grown is None:
+            logger.debug(
+                "PipelineOptimizer: %s %s not grown: placement group full",
+                reason,
+                op.name,
+            )
+            return None
+        logger.debug(
+            "PipelineOptimizer: %s %s grows +%d into its placement group",
+            reason,
+            op.name,
+            grown.request[op].delta,
+        )
+        return grown
 
     def _transfer_to(
         self,
