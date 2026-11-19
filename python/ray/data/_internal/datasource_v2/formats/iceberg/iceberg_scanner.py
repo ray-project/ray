@@ -1,8 +1,18 @@
-"""``Scanner`` for Iceberg tables, plus the Ray-to-Iceberg filter translation."""
+"""``Scanner`` for Iceberg tables: the read state every read task gets.
+
+``IcebergScanner`` is a frozen dataclass that travels to the read tasks. It
+holds what PyIceberg's ``ArrowScan`` needs (table metadata, ``FileIO``,
+projected schema, row filter) and creates one ``IcebergFileReader`` per task.
+
+It takes all three pushdowns: a filter is translated to Iceberg's and ANDed into
+the row filter (``combine_row_filter``), and the part Iceberg can't express
+stays above the read; pruned columns are reprojected in the order asked for;
+the limit is handed to the reader. It has no partition pruning, since
+``plan_files()`` already prunes on Iceberg's own partition values.
+"""
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Optional, Tuple
 
@@ -11,6 +21,10 @@ from typing_extensions import override
 
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (
     IcebergFileReader,
+)
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
+    _get_empty_projection_schema,
+    combine_row_filter,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
@@ -28,42 +42,6 @@ if TYPE_CHECKING:
     from pyiceberg.schema import Schema
     from pyiceberg.table.metadata import TableMetadata
 
-logger = logging.getLogger(__name__)
-
-
-def combine_row_filter(
-    row_filter: "BooleanExpression", predicate: Optional[Expr]
-) -> Tuple["BooleanExpression", Optional[Expr]]:
-    """AND a Ray expression into an Iceberg filter.
-
-    Args:
-        row_filter: The scan's current Iceberg filter.
-        predicate: The Ray expression to AND into it, or ``None``.
-
-    Returns:
-        ``(filter, residual)``. ``residual`` is the whole ``predicate`` if it
-        has no Iceberg equivalent, e.g. ``col("x") * 2 > 10``, else ``None``.
-    """
-    from pyiceberg.expressions import AlwaysTrue, And, BooleanExpression
-
-    from ray.data._internal.datasource.iceberg_datasource import (
-        _IcebergExpressionVisitor,
-    )
-
-    if predicate is None:
-        return row_filter, None
-    try:
-        translated = _IcebergExpressionVisitor().visit(predicate)
-    except (ValueError, TypeError) as e:
-        logger.debug("Not pushing %s into the Iceberg scan: %s", predicate, e)
-        return row_filter, predicate
-    if not isinstance(translated, BooleanExpression):
-        # A bare column like ``col("is_valid")`` is a term, not a filter.
-        return row_filter, predicate
-    if isinstance(row_filter, AlwaysTrue):
-        return translated, None
-    return And(row_filter, translated), None
-
 
 @DeveloperAPI
 @dataclass(frozen=True)
@@ -75,9 +53,7 @@ class IcebergScanner(
 ):
     """What every read task needs to decode an Iceberg table's files.
 
-    No ``SupportsPartitionPruning``: that reads partition values from paths,
-    and ``plan_files()`` already prunes on Iceberg's own. ``columns`` and
-    ``limit`` come from the pushdown mixins.
+    ``columns`` and ``limit`` come from the pushdown mixins.
     """
 
     # Arrow form of ``projected_schema``, before any column pruning.
@@ -117,10 +93,6 @@ class IcebergScanner(
         return schema_to_pyarrow(self._pruned_schema(), include_field_ids=False)
 
     def create_reader(self) -> IcebergFileReader:
-        from ray.data._internal.datasource.iceberg_datasource import (
-            _get_empty_projection_schema,
-        )
-
         pruned = self._pruned_schema()
         # PyIceberg returns zero rows for an empty projection (``count()``), so
         # project V1's stub field: no file has it, so it reads as one null per row.

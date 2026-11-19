@@ -1,4 +1,16 @@
-"""``FileIndexer`` that lists an Iceberg table by asking PyIceberg to plan it."""
+"""``FileIndexer`` that lists an Iceberg table by asking PyIceberg to plan it.
+
+Runs in the ``ListFiles`` task. It plans a catalog-less ``DataScan`` from the
+table metadata and ``FileIO`` the driver loaded, since the catalog's config may
+exist only on the driver, and turns the planned ``FileScanTask``s into manifest
+blocks of up to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
+
+    plan_files() -> FileScanTask per data file -> manifest_from_scan_tasks
+                 -> FileManifest blocks -> OnlineBinPacker -> read units
+
+Planning reads Iceberg metadata only, never a data file. A pushed predicate is
+ANDed into the scan's row filter so planning prunes partitions and files.
+"""
 
 from __future__ import annotations
 
@@ -16,9 +28,11 @@ from typing import (
 
 from typing_extensions import override
 
-from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     manifest_from_scan_tasks,
+)
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
+    combine_row_filter,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
@@ -40,19 +54,15 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Files encoded per manifest block, to build Arrow arrays once per block rather
-# than once per file. ``OnlineBinPacker`` still decides the read units.
-_FILES_PER_MANIFEST_BLOCK = env_integer(
-    "RAY_DATA_ICEBERG_FILES_PER_MANIFEST_BLOCK", 1024
-)
+# Files encoded per manifest block. Big enough that building Arrow arrays once
+# per block costs little next to planning, small enough that the packer can emit
+# read units while later files are still being encoded. ``OnlineBinPacker``
+# still decides the read units.
+_FILES_PER_MANIFEST_BLOCK = 1024
 
 
 class IcebergFileIndexer(FileIndexer):
-    """Lists an Iceberg table's data files with ``plan_files()``, one row each.
-
-    Plans from the table metadata the driver loaded, not from the catalog,
-    whose config may exist only on the driver.
-    """
+    """Lists an Iceberg table's data files with ``plan_files()``, one row each."""
 
     def __init__(
         self,
@@ -88,7 +98,9 @@ class IcebergFileIndexer(FileIndexer):
 
         ``predicate`` is ANDed into the row filter so planning prunes files.
         ``excluded_read_unit_ids`` are file paths, since a read unit is a whole
-        file. The other arguments don't apply and are ignored.
+        file. ``limit`` is applied by the reader; stopping listing early from
+        Iceberg's per-file row counts is a follow-up. The other arguments don't
+        apply and are ignored.
         """
         pending_tasks: List["FileScanTask"] = []
         for task in self._plan_files(predicate=predicate):
@@ -120,10 +132,6 @@ class IcebergFileIndexer(FileIndexer):
 
     def _plan_files(self, predicate: Optional["Expr"]) -> Iterator["FileScanTask"]:
         from pyiceberg.table import DataScan
-
-        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_scanner import (
-            combine_row_filter,
-        )
 
         row_filter, residual = combine_row_filter(
             row_filter=self._row_filter, predicate=predicate

@@ -1,8 +1,18 @@
-"""``Reader`` that decodes an Iceberg read unit through PyIceberg."""
+"""``Reader`` that decodes an Iceberg read unit through PyIceberg.
+
+A read unit is a ``FileManifest`` of whole data files. Each row's pickled
+``FileScanTask`` goes to PyIceberg's ``ArrowScan`` unchanged, one file at a
+time, so deletes, schema evolution and partition backfill stay PyIceberg's job:
+
+    manifest row -> FileScanTask -> ArrowScan (one file) -> record batches
+                 -> pickle check -> cast to the projected schema -> block
+
+The reader yields a block per record batch and stops once the pushed limit is
+reached.
+"""
 
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Iterator, Optional
 
 import pyarrow as pa
@@ -23,17 +33,14 @@ if TYPE_CHECKING:
     from pyiceberg.schema import Schema
     from pyiceberg.table.metadata import TableMetadata
 
-logger = logging.getLogger(__name__)
-
 
 @DeveloperAPI
 class IcebergFileReader(Reader[FileManifest]):
     """Decodes a manifest's files with PyIceberg's ``ArrowScan``, one at a time.
 
-    ``ArrowScan`` applies deletes, schema evolution and partition backfill. It
-    reads Parquet and ORC data files; Avro ones raise ``ValueError``, as in V1.
-    It holds every batch of the files it is given, so one file per call keeps
-    memory to one file.
+    ``ArrowScan`` reads Parquet and ORC data files; Avro ones raise
+    ``ValueError``, as in V1. It holds every batch of the files it is given, so
+    one file per call keeps memory to one file.
     """
 
     def __init__(
@@ -90,7 +97,7 @@ class IcebergFileReader(Reader[FileManifest]):
                 table = table.cast(target_schema)
                 if self._drop_all_columns:
                     # Zero-column tables lose their length on concat, so use the
-                    # Parquet V2 reader's null stub column.
+                    # shared ``FileReader``'s null stub column.
                     table = table.select([]).append_column(
                         _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
                         pa.nulls(table.num_rows),
