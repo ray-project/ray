@@ -2706,13 +2706,16 @@ Status CoreWorker::SubmitActorTask(
   // consuming task. That task can still fail (for example, if the actor is dead), and the
   // ref stays MOVED.
   std::vector<ObjectID> arg_ids;
-  for (const std::unique_ptr<TaskArg> &arg : args) {
-    if (std::optional<ObjectID> arg_id = arg->GetReferenceId()) {
+  std::vector<size_t> arg_indices;
+  for (size_t i = 0; i < args.size(); i++) {
+    if (std::optional<ObjectID> arg_id = args[i]->GetReferenceId()) {
       arg_ids.push_back(*arg_id);
+      arg_indices.push_back(i);
     }
   }
+  std::vector<bool> is_move;
   if (!arg_ids.empty() && reference_counter_->HasConsumeOnceObjects()) {
-    RAY_RETURN_NOT_OK(reference_counter_->TryCommitMoves(arg_ids));
+    RAY_ASSIGN_OR_RETURN(is_move, reference_counter_->TryCommitMoves(arg_ids));
   }
 
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
@@ -2765,6 +2768,11 @@ Status CoreWorker::SubmitActorTask(
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{},
                       task_options.num_objects_per_yield);
+  for (size_t i = 0; i < is_move.size(); i++) {
+    if (is_move[i]) {
+      builder.SetArgIsMove(arg_indices[i]);
+    }
+  }
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -3801,25 +3809,36 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       /*consumption_update_callback=*/
       [this, worker_addr, generator_id = consumption_generator_id](
           const Status &status, int64_t total_num_object_consumed) {
-        rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
-        update_request.set_generator_id(generator_id.Binary());
-        update_request.set_total_num_object_consumed(
-            status.ok() ? total_num_object_consumed : -1);
-        auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-        client->UpdateGeneratorBackpressureConsumed(
-            std::move(update_request),
-            [generator_id](const Status &update_status,
-                           const rpc::UpdateGeneratorBackpressureConsumedReply &) {
-              if (!update_status.ok()) {
-                // The retryable RPC layer retries transient failures; a
-                // permanent failure usually means the executor is gone, in
-                // which case no one is blocked on the corresponding
-                // WaitUntilObjectConsumed. Still WARN so unexpected
-                // executor-side stalls (if any) are visible.
-                RAY_LOG(WARNING).WithField(generator_id)
-                    << "Failed to update generator consumed progress: " << update_status;
-              }
-            });
+        // This callback runs on every read from the stream, usually on the
+        // consumer's Python thread. Post the RPC to io_service_ so the gRPC send
+        // cost stays off that thread.
+        io_service_.post(
+            [this,
+             worker_addr,
+             generator_id,
+             total_num_object_consumed =
+                 status.ok() ? total_num_object_consumed : int64_t{-1}]() {
+              rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
+              update_request.set_generator_id(generator_id.Binary());
+              update_request.set_total_num_object_consumed(total_num_object_consumed);
+              auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
+              client->UpdateGeneratorBackpressureConsumed(
+                  std::move(update_request),
+                  [generator_id](const Status &update_status,
+                                 const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+                    if (!update_status.ok()) {
+                      // The retryable RPC layer retries transient failures; a
+                      // permanent failure usually means the executor is gone, in
+                      // which case no one is blocked on the corresponding
+                      // WaitUntilObjectConsumed. Still WARN so unexpected
+                      // executor-side stalls (if any) are visible.
+                      RAY_LOG(WARNING).WithField(generator_id)
+                          << "Failed to update generator consumed progress: "
+                          << update_status;
+                    }
+                  });
+            },
+            "CoreWorker.UpdateGeneratorBackpressureConsumed");
       });
 }
 

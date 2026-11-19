@@ -18,7 +18,6 @@ from ray.air._internal.uri_utils import URI
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray.train import Checkpoint, CheckpointConfig, Result, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.train.v2.api.context import LocalTrainContext
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.api.report_config import (
@@ -672,19 +671,15 @@ def test_validation_only_score_unvalidated_checkpoint_ranks_worst(
     assert os.path.exists(result.checkpoint.path)
 
 
-@pytest.mark.parametrize("num_validation_workers", [0, 1])
-def test_report_validation_fn_with_trainer_train_fn_report(num_validation_workers):
+def test_report_validation_fn_with_trainer_train_fn_report():
     """Test implementing the validation_fn with train_fn that reports metrics."""
 
-    def eval_only_train_fn(config_dict):
-        if isinstance(ray.train.get_context(), LocalTrainContext):
-            checkpoint = config_dict["checkpoint"]
-        else:
-            checkpoint = ray.train.Checkpoint(
-                ray.train.get_context()
-                .get_storage()
-                .build_checkpoint_path_from_name("placeholder")
-            )
+    def eval_only_train_fn():
+        checkpoint = ray.train.Checkpoint(
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name("placeholder")
+        )
 
         ray.train.report(
             metrics={"validation": ray.train.get_context().get_world_rank()},
@@ -695,8 +690,7 @@ def test_report_validation_fn_with_trainer_train_fn_report(num_validation_worker
     def validation_fn(checkpoint: ray.train.Checkpoint):
         validation_trainer = DataParallelTrainer(
             eval_only_train_fn,
-            train_loop_config={"checkpoint": checkpoint},
-            scaling_config=ScalingConfig(num_workers=num_validation_workers),
+            scaling_config=ScalingConfig(num_workers=1),
         )
         validation_results = validation_trainer.fit()
         return validation_results.metrics
@@ -718,8 +712,7 @@ def test_report_validation_fn_with_trainer_train_fn_report(num_validation_worker
     assert results.metrics == {"training": 0, "validation": 0}
 
 
-@pytest.mark.parametrize("num_validation_workers", [0, 1])
-def test_report_validation_fn_with_trainer_train_fn_return(num_validation_workers):
+def test_report_validation_fn_with_trainer_train_fn_return():
     """Test implementing the validation_fn with train_fn returns metrics."""
 
     def eval_only_train_fn(config_dict):
@@ -728,7 +721,7 @@ def test_report_validation_fn_with_trainer_train_fn_return(num_validation_worker
     def validation_fn(checkpoint: ray.train.Checkpoint):
         validation_trainer = DataParallelTrainer(
             eval_only_train_fn,
-            scaling_config=ScalingConfig(num_workers=num_validation_workers),
+            scaling_config=ScalingConfig(num_workers=1),
         )
         validation_results = validation_trainer.fit()
         return validation_results.return_value

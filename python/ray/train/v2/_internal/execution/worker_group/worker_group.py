@@ -13,6 +13,7 @@ from ray._private.state import state as ray_state
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
 from ray.runtime_env import RuntimeEnv
+from ray.train.health._internal.constants import ON_DEMAND_PROBE_GRACE_S
 from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.constants import (
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
@@ -919,7 +920,9 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             probes: The probes to poll.
-            timeout_s: Timeout in seconds for the workers to answer.
+            timeout_s: How long the probes have to return. A worker answers
+                once they did or this passed, and one that hasn't answered
+                ``ON_DEMAND_PROBE_GRACE_S`` later gets a ``TimeoutError``.
             ranks: The world ranks of the workers to poll them on. ``None`` means
                 every worker.
 
@@ -935,11 +938,13 @@ class WorkerGroup(ExecutionGroup):
         if missing:
             raise ValueError(f"No workers with ranks {missing}.")
         self._on_demand_probe_names = [probe.probe_name() for probe in probes]
-        self._on_demand_deadline = time_monotonic() + timeout_s
+        self._on_demand_deadline = (
+            time_monotonic() + timeout_s + ON_DEMAND_PROBE_GRACE_S
+        )
         self._on_demand_asked_once_more = False
         self._world_rank_to_on_demand_poll = {
             rank: world_rank_to_worker[rank].execute_async(
-                start_on_demand_probes, probes
+                start_on_demand_probes, probes, timeout_s
             )
             for rank in ranks
         }

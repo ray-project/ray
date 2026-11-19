@@ -147,6 +147,9 @@ class ShuffleHandle(TypedDict, total=False):
     """
 
     path: str
+    # Index of the map task that wrote this file; the regroup orders handles
+    # by it so every reducer sees shards in the same order.
+    map_id: int
     # Dense per-partition range index (see _build_range_index): row ``p`` is
     # ``(offset, length)`` of partition ``p``'s on-disk IPC frame.
     # ``length == 0`` => this mapper wrote no frame for ``p`` (reducer skips
@@ -533,6 +536,8 @@ class _NodeGroup:
     shuffle_id: str
     node_id: str
     members: List[_FileRanges] = field(default_factory=list)
+    # Position of each member in the reducer's source list (map task order).
+    source_idxs: List[int] = field(default_factory=list)
 
 
 class _PwriteSink:
@@ -937,7 +942,7 @@ def _handles_to_sources(
 def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
     """Collapse sources by file server so each file server gets ONE Flight connection."""
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
-    for source in sources:
+    for source_idx, source in enumerate(sources):
         key = (source.shuffle_id, source.node_id)
         group = by_key.get(key)
         if group is None:
@@ -948,7 +953,25 @@ def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
             )
             by_key[key] = group
         group.members.append(source.file)
+        group.source_idxs.append(source_idx)
     return list(by_key.values())
+
+
+def _order_tables_by_source(
+    groups: List[_NodeGroup], tables_by_group: List[List[List[pa.Table]]]
+) -> List[pa.Table]:
+    """Return the decoded tables of ``groups`` in source (map task) order.
+
+    ``tables_by_group[g][m]`` holds the tables decoded from member ``m`` of
+    group ``g``. Grouping by file server orders sources by node, which follows
+    where the scheduler placed each map task; ``source_idxs`` undoes that so
+    the reduce input is the same on every run.
+    """
+    by_source: Dict[int, List[pa.Table]] = {}
+    for group, member_tables in zip(groups, tables_by_group):
+        for source_idx, tables in zip(group.source_idxs, member_tables):
+            by_source[source_idx] = tables
+    return [table for idx in sorted(by_source) for table in by_source[idx]]
 
 
 def _compute_prefetch_layout(

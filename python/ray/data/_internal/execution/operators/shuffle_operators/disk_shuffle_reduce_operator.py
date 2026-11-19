@@ -2,7 +2,7 @@ import functools
 import logging
 import typing
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -45,7 +45,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operat
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (  # noqa: E501
     _SHUFFLE_REDUCE_RUNTIME_ENV,
-    _merged_reduce_runtime_env,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks import (
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
@@ -54,8 +53,9 @@ from ray.data._internal.execution.operators.sort_shuffle import plan_range_parti
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.util import merge_label_selector
+from ray.data._internal.execution.util import merge_label_selector, merge_runtime_envs
 from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
@@ -105,6 +105,8 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         self._num_partitions: int = num_partitions
         self._handle_bundles: List[RefBundle] = []
         self._handle_refs_by_input: List[List[ObjectRef]] = [[] for _ in input_ops]
+        # Map task index of each handle, parallel to ``_handle_refs_by_input``.
+        self._handle_map_ids_by_input: List[List[int]] = [[] for _ in input_ops]
         self._partition_rows_by_input: List[np.ndarray] = [
             np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
         ]
@@ -131,7 +133,9 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         zero-row partition can be answered without a reduce task."""
         return True
 
-    def source_selector(self, partition_id: int):
+    def source_selector(
+        self, partition_id: int
+    ) -> Union[_PartitionSources, _KeyRangeSources]:
         """What the reduce task for ``partition_id`` reads from each mapper file."""
         return _PartitionSources(partition_id)
 
@@ -148,8 +152,12 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         handle_refs = [entry.ref for entry in refs.blocks]
         handle_blocks = ray.get(handle_refs)  # pyrefly: ignore[no-matching-overload]
         for ref, handle_block in zip(handle_refs, handle_blocks):
-            self._record_handle(handle_from_block(handle_block), input_index)
+            handle = handle_from_block(handle_block)
+            self._record_handle(handle, input_index)
             self._handle_refs_by_input[input_index].append(ref)
+            self._handle_map_ids_by_input[input_index].append(
+                handle.get("map_id", len(self._handle_map_ids_by_input[input_index]))
+            )
         self._handle_bundles.append(refs)
 
     def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
@@ -180,7 +188,14 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         if not any(self._handle_refs_by_input):
             return
         self._finalize_partitions()
-        shared_handles = [ray.put(refs) for refs in self._handle_refs_by_input]
+        # Writers finish in any order; publish handles in map task order so a
+        # reducer's input, and so its output, is the same on every run.
+        shared_handles = [
+            ray.put([ref for _, ref in sorted(zip(map_ids, refs), key=lambda t: t[0])])
+            for map_ids, refs in zip(
+                self._handle_map_ids_by_input, self._handle_refs_by_input
+            )
+        ]
         for partition_id in range(self._num_partitions):
             entries = tuple(
                 BlockEntry(
@@ -244,6 +259,7 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
             bundle.destroy_if_owned()
         self._handle_bundles.clear()
         self._handle_refs_by_input = [[] for _ in range(self.num_inputs)]
+        self._handle_map_ids_by_input = [[] for _ in range(self.num_inputs)]
 
 
 class DiskRangeShuffleRegroupOp(DiskHashShuffleRegroupOp):
@@ -289,7 +305,9 @@ class DiskRangeShuffleRegroupOp(DiskHashShuffleRegroupOp):
         # With no rows at all every partition is exactly empty.
         return self._inputs_complete and self._total_rows == 0
 
-    def source_selector(self, partition_id: int) -> _KeyRangeSources:
+    def source_selector(
+        self, partition_id: int
+    ) -> Union[_PartitionSources, _KeyRangeSources]:
         assert (
             self._boundaries is not None
         ), "boundaries are computed at all_inputs_done"
@@ -430,11 +448,16 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        user_args = dict(self._reduce_ray_remote_args)
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._reduce_ray_remote_args.items() if v is not None
+        }
         user_runtime_env = user_args.pop("runtime_env", None)
         remote_args.update(user_args)
         if user_runtime_env is not None:
-            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
+            remote_args["runtime_env"] = merge_runtime_envs(
+                _SHUFFLE_REDUCE_RUNTIME_ENV, user_runtime_env
+            )
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
         remote_args = merge_label_selector(
@@ -549,7 +572,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         build the empty block from the schema the mappers reported and queue it
         as this partition's single output block.
         """
-        empty_block = schema.empty_table()
+        empty_block = _create_empty_table(schema)
         block_meta = BlockAccessor.for_block(empty_block).get_metadata()
         out_bundle = RefBundle(
             (
@@ -678,14 +701,16 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
 
     def current_logical_usage(self) -> ExecutionResources:
         cpu: float = 0
+        gpu: float = 0
         memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
             cpu += bundle.cpu
+            gpu += bundle.gpu
             memory += bundle.memory
-        return ExecutionResources(cpu=cpu, memory=memory)
+        return ExecutionResources(cpu=cpu, gpu=gpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator: the

@@ -290,6 +290,27 @@ class FuseOperators(Rule):
         ]
         return dag
 
+    def _can_fuse_op_types(
+        self, up_op: PhysicalOperator, down_op: PhysicalOperator
+    ) -> bool:
+        """Whether the physical operator *types* of the pair are fusable.
+
+        Extension point factored out of :meth:`_can_fuse`. Subclasses may
+        widen the set of fusable type pairs (e.g. the actor-only backend
+        additionally allows Actor->Actor).
+        """
+        # We currently only support fusing for the following cases:
+        # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
+        # - TaskPoolMapOperator -> AllToAllOperator
+        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
+        return (
+            isinstance(up_op, TaskPoolMapOperator)
+            and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
+        ) or (
+            isinstance(up_op, TaskPoolMapOperator)
+            and isinstance(down_op, AllToAllOperator)
+        )
+
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
         """Returns whether the provided downstream operator can be fused with the given
         upstream operator.
@@ -306,20 +327,7 @@ class FuseOperators(Rule):
         if not up_op.supports_fusion() or not down_op.supports_fusion():
             return False
 
-        # We currently only support fusing for the following cases:
-        # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
-        # - TaskPoolMapOperator -> AllToAllOperator
-        # (only RandomShuffle and Repartition LogicalOperators are currently supported)
-        if not (
-            (
-                isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, (TaskPoolMapOperator, ActorPoolMapOperator))
-            )
-            or (
-                isinstance(up_op, TaskPoolMapOperator)
-                and isinstance(down_op, AllToAllOperator)
-            )
-        ):
+        if not self._can_fuse_op_types(up_op, down_op):
             return False
 
         down_logical_op = self._op_map[down_op]
@@ -535,6 +543,7 @@ class FuseOperators(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
             supports_fusion=True,
+            is_read_op=up_op.is_read_op or down_op.is_read_op,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
@@ -702,6 +711,8 @@ class FuseOperators(Rule):
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
             isolate_workers=isolate_workers,
+            # A fused op that contains a read stays a read op.
+            is_read_op=up_op.is_read_op or down_op.is_read_op,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
         for map_task_kwargs_fn in itertools.chain(
