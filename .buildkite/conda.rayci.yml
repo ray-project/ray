@@ -1,0 +1,20 @@
+group: conda tests
+steps:
+  # Runs this build's Ray wheel in a conda-forge environment, where grpcio
+  # loads a shared libgrpc.so next to the gRPC that Ray links statically into
+  # _raylet.so. See ci/conda/grpc_runtime_test.sh.
+  - label: ":snake: conda: gRPC runtime test"
+    key: conda_grpc_runtime_test
+    tags:
+      - conda_grpc
+      - oss
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
+        --wanda-image-name=ray-wheel-py3.12
+        --file-glob='*.whl'
+        --output-dir=.whl
+      - PYTHON_VERSION=3.12 ./ci/conda/grpc_runtime_test.sh .whl
+    depends_on:
+      - ray-wheel-build(python=3.12)
+      - forge

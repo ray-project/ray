@@ -80,6 +80,12 @@ ci/raydepsets/raydepsets.py: tools python_dependencies
 ci/docker/min.build.Dockerfile: min_build
 ci/docker/min.build.wanda.yaml: min_build
 
+# === conda-forge gRPC runtime test ===
+
+ci/conda/grpc_runtime_test.sh: conda_grpc
+ci/conda/grpc_runtime_smoke_test.py: conda_grpc
+.buildkite/conda.rayci.yml: conda_grpc
+
 # === Java/C++ ===
 
 java/ray.java: java
