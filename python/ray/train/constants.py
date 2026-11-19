@@ -76,10 +76,7 @@ def _v2_migration_warnings_enabled() -> bool:
     return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
 
 
-V1_REMOVAL_MESSAGE = (
-    "Ray Train V1 is deprecated and will be removed in Ray 3.0, "
-    "no earlier than May 2027."
-)
+V1_REMOVAL_MESSAGE = "Ray Train V1 is deprecated and will be removed in Ray 3.0."
 
 V1_DEPRECATION_MESSAGE = (
     "Ray Train V1 was enabled by setting `RAY_TRAIN_V2_ENABLED=0`. "

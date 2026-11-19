@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 _TORCH_AMP_DEPRECATION_MESSAGE = (
     "The `accelerate`, `backward`, and `prepare_optimizer` utility methods "
     "in the `ray.train.torch` module are deprecated, are not supported in "
-    "Ray Train V2, and will be removed in Ray 3.0, no earlier than May 2027. "
+    "Ray Train V2, and will be removed in Ray 3.0. "
     "Please use the native PyTorch mixed precision API directly, or "
     "a library such as Lightning or HuggingFace Transformers/Accelerate. "
     f"{V2_MIGRATION_GUIDE_LINK_MESSAGE}"
