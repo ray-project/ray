@@ -67,6 +67,7 @@ from ray._private.authentication.authentication_token_setup import (
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
 from ray._private.inspect_util import is_cython
+from ray._private.log import clear_logger
 from ray._private.ray_logging import (
     global_worker_stdstream_dispatcher,
     setup_logger,
@@ -1622,7 +1623,8 @@ def init(
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
-        logging.getLogger("ray").handlers.clear()
+        clear_logger("ray")
+        logging.getLogger("ray").setLevel(logging.NOTSET)
 
     # Configure the logging settings for the driver process.
     if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
