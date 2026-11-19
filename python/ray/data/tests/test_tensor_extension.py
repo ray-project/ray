@@ -99,11 +99,31 @@ def test_tensor_array_astype_string_and_object():
     assert pandas_string_result.dtype == pd.StringDtype()
     assert pandas_string_result.tolist() == expected_strings
 
+    arrow_string_result = tensor_array.astype(pd.ArrowDtype(pa.string()))
+    assert arrow_string_result.dtype == pd.ArrowDtype(pa.string())
+    assert arrow_string_result.tolist() == expected_strings
+
     object_result = tensor_array.astype(object)
     assert object_result.dtype == object
     assert object_result.shape == (2,)
     for actual, expected in zip(object_result, tensor_array):
         np.testing.assert_array_equal(actual, expected)
+
+
+def test_tensor_array_astype_empty_string():
+    tensor_array = TensorArray(np.empty((0, 2), dtype=np.int64))
+
+    for dtype in (str, np.str_):
+        result = tensor_array.astype(dtype)
+        assert isinstance(result, np.ndarray)
+        assert result.dtype.kind == "U"
+        assert result.shape == (0,)
+
+    for dtype in (pd.StringDtype(), pd.ArrowDtype(pa.string())):
+        result = tensor_array.astype(dtype)
+        assert isinstance(result, dtype.construct_array_type())
+        assert result.dtype == dtype
+        assert result.tolist() == []
 
 
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):

@@ -1241,11 +1241,17 @@ class TensorArray(
         elif pd.api.types.is_string_dtype(dtype) and not pd.api.types.is_object_dtype(
             dtype
         ):
-            values = np.array([str(t) for t in self._tensor])
-            if isinstance(dtype, pd.StringDtype):
-                return dtype.construct_array_type()._from_sequence(values, copy=False)
-            else:
-                return values
+            values = np.array(
+                [str(t) for t in self._tensor],
+                dtype=object
+                if isinstance(dtype, pd.api.extensions.ExtensionDtype)
+                else dtype,
+            )
+            if isinstance(dtype, pd.api.extensions.ExtensionDtype):
+                return dtype.construct_array_type()._from_sequence(
+                    values, dtype=dtype, copy=False
+                )
+            return values
         elif pd.api.types.is_object_dtype(dtype):
             # Interpret astype(object) as "cast to an array of numpy arrays"
             values = np.empty(len(self), dtype=object)
