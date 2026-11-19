@@ -170,6 +170,7 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         self._expire_pending_actors(topology)
 
         self._resource_bank.drain_consumed_blocks()
+        self._release_drained_actors_of_completed_ops(topology)
         self._launch_tasks()
         self._sample_output_backpressure(topology)
 
@@ -198,6 +199,30 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
                 and op.get_autoscaling_actor_pools()
             ):
                 op.actor_pool.release_expired_pending_actors()
+
+    @staticmethod
+    def _release_drained_actors_of_completed_ops(topology: Topology) -> None:
+        """Keep releasing a completed op's draining actors as their outputs
+        are consumed downstream.
+
+        ``has_completed()`` means the op starts no more tasks, not that its
+        actors are released. Both steps of releasing them come after
+        completion: the sizer marks a completed op's whole pool draining on a
+        later tick, and a draining actor is torn down only once its outputs
+        are consumed downstream. The op's own teardown path
+        (``refresh_state``) no longer runs by then, so without this the
+        actors hold their node's resources until the dataset ends. Checked
+        every step rather than tracked from completion, also because lineage
+        reconstruction can run a completed op again and leave it with new
+        draining actors.
+        """
+        for op in topology:
+            if (
+                isinstance(op, ExperimentalActorPoolMapOperator)
+                and op.has_completed()
+                and op.actor_pool.num_draining_actors() > 0
+            ):
+                op.actor_pool.process_draining_actors()
 
     def _maybe_run_escape_hatch(self) -> None:
         now = time.perf_counter()
