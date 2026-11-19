@@ -1,11 +1,30 @@
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import zipfile
 from typing import List, Optional
 
 import runfiles
+
+
+def _extract_windows_zip(zip_path: str, extract_dir: str) -> None:
+    with zipfile.ZipFile(zip_path) as archive:
+        for member in archive.infolist():
+            try:
+                archive.extract(member, extract_dir)
+            except PermissionError as exc:
+                # Retry a read-only build output using zipfile's normalized path.
+                target = exc.filename
+                if (
+                    not target
+                    or not os.path.isfile(target)
+                    or os.access(target, os.W_OK)
+                ):
+                    raise
+                os.chmod(target, stat.S_IWRITE)
+                archive.extract(member, extract_dir)
 
 
 def gen_extract(
@@ -37,8 +56,7 @@ def gen_extract(
             raise ValueError(f"Zip file {zip_file} not found")
 
         if sys.platform == "win32":
-            with zipfile.ZipFile(zip_path) as archive:
-                archive.extractall(extract_dir)
+            _extract_windows_zip(zip_path, extract_dir)
         else:
             # zipfile does not restore the executable permissions needed on POSIX.
             subprocess.check_call(["unzip", "-q", "-o", zip_path, "-d", extract_dir])
