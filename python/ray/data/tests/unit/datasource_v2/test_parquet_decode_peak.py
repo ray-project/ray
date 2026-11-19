@@ -150,7 +150,8 @@ _CASES = {
     # Measured 1.82: a dictionary's entries are counted as 4 bytes each, and these
     # are 18.
     "strings": _case(lambda: pa.table({"a": _strings(N // 4)}), high=2.0),
-    # Measured 1.75: the builder's copy is charged with the offsets it holds once.
+    # Measured 1.75: the builder's copy is charged at the decoded size, offsets
+    # included, and its offsets again at twice their slots.
     "dictionary-strings": _case(lambda: pa.table({"a": _strings(1000)}), high=2.0),
     "uncompressed": _case(
         lambda: pa.table({"a": _ints(), "s": _strings(1000)}),

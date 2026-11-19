@@ -132,9 +132,9 @@ def estimate_leaf_buffers(leaf: LeafChunk, column: ColumnSchema, reserved: int) 
         buffers += _list_offset_width(leaf) * reserved
     dictionary = _dictionary_bytes(chunk=chunk, encodings=encodings)
     if chunk.physical_type == "BYTE_ARRAY":
-        # The builder's copy of the values and its 4-byte offsets. The dictionary,
-        # and parquet-cpp's 16-byte length and pointer for each of its entries,
-        # which are at least a 4-byte length each.
+        # The builder's copy of the values and its 4-byte offsets. The dictionary
+        # page, and parquet-cpp's 16-byte length and pointer per entry: an entry
+        # takes at least 4 bytes of the page, so at most 4 times the page.
         buffers += decoded + 4 * slots + 5 * dictionary
     else:
         if chunk.physical_type == "FIXED_LEN_BYTE_ARRAY":
