@@ -5,10 +5,14 @@ import math
 import sys
 from typing import TYPE_CHECKING, Optional
 
-from .autoscaling_actor_pool import ActorPoolScalingRequest, AutoscalingActorPool
+from .autoscaling_actor_pool import (
+    ActorPoolScalingRequest,
+    AutoscalingActorPool,
+    drain_floor,
+)
 from .base_actor_autoscaler import ActorAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data.context import WARN_PREFIX, AutoscalingConfig
+from ray.data.context import WARN_PREFIX, AutoscalingConfig, DataContext
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -18,6 +22,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolve_upscale_gate(data_context: DataContext) -> bool:
+    """Whether growth requires the pool's output to be consumable.
+
+    Growing a pool whose output is not being taken only re-creates the backlog
+    that parked its tasks (see `ResourceManager.downstream_can_absorb`), so the
+    gate is part of the drain feature: it follows ``actor_pool_drain_window_s``,
+    meaning a pipeline that never opted into draining keeps its previous
+    autoscaling behaviour.
+
+    ``data_context`` is the one the *executor* was built with, and has to be passed
+    in rather than read from ``DataContext.get_current()`` -- which
+    ``DataContext`` itself tells internal components not to do. It also matters
+    beyond style: the executor's context is a snapshot copy taken when the Dataset
+    was created (see the read APIs), while ``get_current()`` is the live ambient
+    one. Reading the latter would let the gate be on for a pipeline whose drain
+    policy -- built from the snapshot -- is inert, which is exactly the coupling
+    this default is meant to express.
+    """
+    return data_context.actor_pool_drain_window_s is not None
+
+
 class DefaultActorAutoscaler(ActorAutoscaler):
     def __init__(
         self,
@@ -25,6 +50,7 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         resource_manager: "ResourceManager",
         *,
         config: AutoscalingConfig,
+        data_context: DataContext,
     ):
         super().__init__(topology, resource_manager)
 
@@ -37,6 +63,9 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         self._actor_pool_max_upscaling_delta: Optional[
             int
         ] = config.actor_pool_max_upscaling_delta
+        self._upscale_requires_downstream_capacity: bool = _resolve_upscale_gate(
+            data_context
+        )
 
         self._validate_autoscaling_config()
 
@@ -55,9 +84,14 @@ class DefaultActorAutoscaler(ActorAutoscaler):
         op: "PhysicalOperator",
         op_state: "OpState",
     ) -> ActorPoolScalingRequest:
-        # If all inputs have been consumed, short-circuit
-        if op.has_completed() or (
-            op._inputs_complete and op_state.total_enqueued_input_blocks() == 0
+        # If all inputs have been consumed, short-circuit. While a drain is in
+        # progress, leave the decision to the drain branch below: by the time the
+        # stall window fills, all inputs are commonly already dispatched, and the
+        # teardown shortcut would otherwise preempt the drain every time. The
+        # shortcut takes over again once the policy releases.
+        if not op.actor_pool_drain_in_progress and (
+            op.has_completed()
+            or (op._inputs_complete and op_state.total_enqueued_input_blocks() == 0)
         ):
             num_to_scale_down = self._compute_downscale_delta(actor_pool)
             return ActorPoolScalingRequest.downscale(
@@ -95,6 +129,41 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     "but cannot scale below min size",
                 )
 
+        if op.actor_pool_drain_in_progress:
+            # The operator is withholding inputs so its tasks can drain and its
+            # actors can be reclaimed. Its utilization is useless here -- the tasks
+            # that keep it high are parked on the output budget, not doing work --
+            # so hand actors back without waiting for utilization to drop. This is
+            # checked after the allocation case: an operator that is over its
+            # resource allocation has to release down to that allocation first, even
+            # while draining (the allocation path is a hard resource constraint).
+            #
+            # The pool is only walked down to its *drain floor*: `min_size` as
+            # before, or the adaptive ceiling maintained by `ActorPoolDrainPolicy`
+            # (see `AutoscalingActorPool.set_dynamic_max_size`) once it has been
+            # stepped down -- shrinking past the ceiling would hand back actors the
+            # operator needs again as soon as the blockage clears.
+            drain_target = drain_floor(actor_pool)
+            if actor_pool.current_size() <= drain_target:
+                reason = (
+                    "reached min size"
+                    if actor_pool.dynamic_max_size() is None
+                    else "reached drain target"
+                )
+                return ActorPoolScalingRequest.no_op(reason=reason)
+            max_can_release = actor_pool.current_size() - drain_target
+            num_to_scale_down = min(
+                self._compute_downscale_delta(actor_pool), max_can_release
+            )
+            # Forced: the cool-off exists so a freshly scaled-up pool gets a chance
+            # to be utilized, but a drain already established that more actors
+            # cannot help this operator.
+            return ActorPoolScalingRequest.downscale(
+                delta=-num_to_scale_down,
+                force=True,
+                reason="draining a stalled actor pool",
+            )
+
         # To prevent unexpected downscaling from the initial size, short-circuit if
         # the operator hasn't received any inputs.
         if op.metrics.num_inputs_received == 0:
@@ -119,14 +188,25 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 _get_max_scale_up(actor_pool, budget) if budget else sys.maxsize
             )
 
+            # Adaptive ceiling maintained by `ActorPoolDrainPolicy`: while the
+            # operator keeps producing output its downstream cannot read, the
+            # ceiling is stepped down; it is stepped back up as the blockage
+            # clears. Growing past it would immediately re-create the backlog
+            # that triggered the drain in the first place.
+            effective_max_size = actor_pool.effective_max_size()
+            if actor_pool.current_size() >= effective_max_size:
+                return ActorPoolScalingRequest.no_op(
+                    reason="reached dynamic max size (drain cap)"
+                )
+
             # Determine maximum available scale up based on
             #   - Maximum available resource budget
             #   - Configured max scale-up delta (or "+inf" if not configured)
-            #   - Total # of actors needed to reach `max_size`
+            #   - Total # of actors needed to reach the effective `max_size`
             max_scale_up: int = min(
                 budget_max_scale_up,
                 self._get_actor_pool_max_upscaling_delta(),
-                actor_pool.max_size() - actor_pool.current_size(),
+                effective_max_size - actor_pool.current_size(),
             )
 
             if max_scale_up == 0:
@@ -135,6 +215,17 @@ class DefaultActorAutoscaler(ActorAutoscaler):
             if util == float("inf"):
                 return ActorPoolScalingRequest.upscale(
                     delta=1, reason="no running actors, scale up immediately"
+                )
+
+            # Growth is only useful if the pool's output can actually be taken: an
+            # operator whose tasks are parked on the output budget produces nothing
+            # by adding actors, it only re-creates the backlog. Liveness is
+            # preserved -- a downstream that has run dry always allows growth.
+            if self._upscale_requires_downstream_capacity and not (
+                self._resource_manager.downstream_can_absorb(op)
+            ):
+                return ActorPoolScalingRequest.no_op(
+                    reason="downstream cannot absorb more output"
                 )
 
             delta = self._compute_upscale_delta(actor_pool, op_state)
