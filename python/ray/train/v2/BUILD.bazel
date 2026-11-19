@@ -496,6 +496,21 @@ py_test(
 )
 
 py_test(
+    name = "test_jax_public_path",
+    size = "small",
+    srcs = ["tests/test_jax_public_path.py"],
+    env = _TRAIN_V2_TEST_ENV,
+    tags = [
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_jax_trainer",
     size = "large",
     srcs = ["tests/test_jax_trainer.py"],

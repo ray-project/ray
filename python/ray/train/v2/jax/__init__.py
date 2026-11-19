@@ -1,3 +1,5 @@
+# The public import path is `ray.train.jax`. This module holds the
+# implementation and stays importable as an alias, without a deprecation warning.
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
