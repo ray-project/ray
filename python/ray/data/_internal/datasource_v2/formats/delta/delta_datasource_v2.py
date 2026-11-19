@@ -149,6 +149,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         include_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         version_pinned_by_caller: bool = False,
+        partition_filters: Optional[List[Any]] = None,
     ):
         """Create the datasource.
 
@@ -168,6 +169,9 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
                 table's data files before reading them.
             version_pinned_by_caller: Whether the caller chose the version
                 ``table`` is opened at, rather than the latest one.
+            partition_filters: ``read_delta``'s ``partition_filters``, already
+                checked. The listing reads only the files they select, which
+                ``deltalake`` picks as it does for the V1 reader.
         """
         super().__init__(name="DeltaV2", category=DatasourceCategory.DATA_LAKE)
         # Pinned here so every listing task, retry and re-execution reads the
@@ -176,6 +180,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             table_uri=table.table_uri,
             version=table.version(),
             storage_options=storage_options,
+            partition_filters=partition_filters,
         )
         self._table_schema = pa.schema(table.schema().to_arrow())
         self._partition_columns: List[str] = list(table.metadata().partition_columns)

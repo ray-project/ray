@@ -6992,14 +6992,7 @@ def read_delta(
 
     ctx = DataContext.get_current()
     dt = None
-    # The V2 reader doesn't turn ``partition_filters`` into partition pruning
-    # yet, so it would read every partition. Such a read goes to the V1
-    # reader without opening the table for the V2 checks.
-    if (
-        ctx.use_datasource_v2
-        and ctx._use_delta_datasource_v2
-        and partition_filters is None
-    ):
+    if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
         import deltalake
         from packaging.version import parse as parse_version
 
@@ -7026,6 +7019,10 @@ def read_delta(
             arrow_parquet_args=arrow_parquet_args,
         )
         if unsupported_reason is None:
+            if partition_filters is not None:
+                # Rejects what the V1 reader rejects; the V2 listing then has
+                # ``deltalake`` select the files, as V1 does.
+                _delta_partition_filter_kwargs(checked_table, partition_filters)
             datasource_v2 = DeltaDatasourceV2(
                 checked_table,
                 storage_options=storage_options,
@@ -7034,6 +7031,7 @@ def read_delta(
                 include_paths=include_paths,
                 shuffle=shuffle,
                 version_pinned_by_caller=version is not None,
+                partition_filters=partition_filters,
             )
             return _read_datasource_v2(
                 datasource_v2,
@@ -7063,17 +7061,6 @@ def read_delta(
                 version=checked_table.version(),
                 storage_options=storage_options,
             )
-        )
-
-    elif (
-        ctx.use_datasource_v2
-        and ctx._use_delta_datasource_v2
-        and partition_filters is not None
-    ):
-        logger.info(
-            "Reading Delta table %r with the V1 reader: the DataSourceV2 reader "
-            "doesn't apply `partition_filters` yet.",
-            path,
         )
 
     if dt is None:

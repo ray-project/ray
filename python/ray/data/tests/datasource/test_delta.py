@@ -8,7 +8,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data import Schema
+from ray.data import DataContext, Schema
 from ray.data._internal.object_extensions.arrow import (
     ArrowPythonObjectArray,
     _contains_pickle_object_type,
@@ -346,9 +346,23 @@ def _write_partitioned_table(path: str) -> None:
 
 def _input_dates(ds) -> list:
     """The partition dates of the files the read lists, without running it."""
+    if DataContext.get_current().use_datasource_v2:
+        # The V2 reader lists in a Ray task when the read runs, so
+        # ``input_files()`` is empty here: run its listing instead.
+        (list_files,) = ds._logical_plan.dag.input_dependencies
+        indexer = list_files.file_indexer.as_whole_file_indexer()
+        files = [
+            path
+            for manifest in indexer.list_files(
+                pa.array(list_files.paths), filesystem=None
+            )
+            for path in manifest.paths.tolist()
+        ]
+    else:
+        files = ds.input_files()
     return sorted(
         part.split("=", 1)[1]
-        for file in ds.input_files()
+        for file in files
         for part in file.split("/")
         if part.startswith("date=")
     )
@@ -373,7 +387,6 @@ def _supports_file_pruning_predicate() -> bool:
     ],
     ids=["eq", "in", "range", "and"],
 )
-@_V1_ONLY
 def test_delta_read_partition_filters(tmp_path, partition_filters, dates):
     """Only the matching partitions' files are listed, and the rows are exact."""
     path = os.path.join(tmp_path, "partitioned")
@@ -385,7 +398,6 @@ def test_delta_read_partition_filters(tmp_path, partition_filters, dates):
     assert sorted(row["date"] for row in ds.take_all()) == sorted(dates * 2)
 
 
-@_V1_ONLY
 def test_delta_read_partition_filters_or_groups(tmp_path):
     """An OR of AND groups needs deltalake's ``file_pruning_predicate`` (1.6.6+)."""
     path = os.path.join(tmp_path, "partitioned")
@@ -412,7 +424,6 @@ def test_delta_read_partition_filters_or_groups(tmp_path):
     ],
     ids=["data-column", "empty", "short-tuple", "empty-group"],
 )
-@_V1_ONLY
 def test_delta_read_partition_filters_rejects_invalid(
     tmp_path, partition_filters, match
 ):
@@ -423,7 +434,6 @@ def test_delta_read_partition_filters_rejects_invalid(
         ray.data.read_delta(path, partition_filters=partition_filters)
 
 
-@_V1_ONLY
 def test_read_unity_catalog_partition_filters(tmp_path):
     """``partition_filters`` reaches ``read_delta`` through ``reader_kwargs``."""
     from ray.data.catalog import DatabricksUnityCatalog, ResolvedSource
