@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import time
+from functools import wraps
 from typing import AsyncIterator, Dict, List
+from unittest.mock import call, patch
 
 import pytest
 
@@ -11,6 +13,8 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.test_utils import passthrough_decorator
+from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.batching import _BatchQueue
 from ray.serve.exceptions import RayServeException
 
@@ -363,6 +367,36 @@ async def test_batch_timeout_counts_time_waiting_for_a_permit():
     release.set()
     assert await asyncio.gather(first, second) == [0, 1]
     assert batch_start_times[1] - release_time < 0.5
+
+
+@pytest.mark.asyncio
+async def test_queue_length_gauge_reads_empty_queue_after_backlog_batch():
+    # Requests that wait for the only permit form the next batch in one pass.
+    # Once that batch is taken, the gauge must read the empty queue, not the
+    # backlog it saw before draining it.
+    batch_sizes = []
+    release = asyncio.Event()
+    with patch("ray.serve.batching.Gauge") as gauge_cls:
+
+        @serve.batch(
+            max_batch_size=4, batch_wait_timeout_s=0.01, max_concurrent_batches=1
+        )
+        async def func(requests):
+            batch_sizes.append(len(requests))
+            await release.wait()
+            return requests
+
+        first = get_or_create_event_loop().create_task(func(0))
+        while not batch_sizes:
+            await asyncio.sleep(0.01)
+        rest = [get_or_create_event_loop().create_task(func(i)) for i in range(1, 5)]
+        await asyncio.sleep(0.05)
+        release.set()
+        assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4]
+    assert batch_sizes == [1, 4]
+    assert gauge_cls.return_value.set.call_args_list[-1] == call(
+        0, tags={"function_name": "func"}
+    )
 
 
 @pytest.mark.asyncio
@@ -1314,6 +1348,103 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
         else:
             assert over_bound_warning_message not in stream.messages
         stream.reset_message()
+
+
+def test_extract_self_if_method_call_follows_wrapped_chain():
+    """`extract_self_if_method_call` must follow the full `__wrapped__` chain,
+    so `@serve.batch` keeps working when wrapped in another decorator that
+    uses `functools.wraps`. See #47449."""
+
+    class ClassA:
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
+        async def single_wrapped(self, x):
+            return [2 * v for v in x]
+
+        @passthrough_decorator
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
+        async def double_wrapped(self, x):
+            return [2 * v for v in x]
+
+    instance = ClassA()
+    original_single = ClassA.single_wrapped.__wrapped__
+    original_double = ClassA.double_wrapped.__wrapped__.__wrapped__
+
+    assert extract_self_if_method_call((instance, 1), original_single) is instance
+    assert extract_self_if_method_call((instance, 1), original_double) is instance
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_outer_decorators", [1, 2])
+@pytest.mark.parametrize("use_gen", [False, True])
+async def test_batch_method_wrapped_by_other_decorators(num_outer_decorators, use_gen):
+    """`self` must still be detected when another decorator wraps `@serve.batch`."""
+
+    if use_gen:
+
+        class Handler:
+            def __init__(self, tag: str):
+                self.tag = tag
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, requests):
+                yield [f"{self.tag}:{request}" for request in requests]
+
+        decorator = _passthrough_gen_decorator
+    else:
+
+        class Handler:
+            def __init__(self, tag: str):
+                self.tag = tag
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, requests):
+                return [f"{self.tag}:{request}" for request in requests]
+
+        decorator = passthrough_decorator
+
+    for _ in range(num_outer_decorators):
+        Handler.method = decorator(Handler.method)
+
+    handler = Handler("a")
+    if use_gen:
+
+        async def collect(request):
+            return [item async for item in handler.method(request)]
+
+        results = await asyncio.gather(collect("x"), collect("y"))
+        assert results == [["a:x"], ["a:y"]]
+    else:
+        results = await asyncio.gather(handler.method("x"), handler.method("y"))
+        assert results == ["a:x", "a:y"]
+
+
+def _passthrough_gen_decorator(func):
+    """A user decorator that wraps an async generator with ``functools.wraps``."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        async for item in func(*args, **kwargs):
+            yield item
+
+    return wrapper
+
+
+@pytest.mark.asyncio
+async def test_batch_method_with_inner_decorator():
+    """A decorator below `@serve.batch` must keep working."""
+
+    class Handler:
+        def __init__(self, tag: str):
+            self.tag = tag
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        @passthrough_decorator
+        async def method(self, requests):
+            return [f"{self.tag}:{request}" for request in requests]
+
+    handler = Handler("a")
+    results = await asyncio.gather(handler.method("x"), handler.method("y"))
+    assert results == ["a:x", "a:y"]
 
 
 if __name__ == "__main__":

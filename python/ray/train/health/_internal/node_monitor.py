@@ -4,7 +4,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Dict, List, Optional, Union
 
 import ray
-from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health._internal.probe_utils import OnDemandPolls, ScheduledProbe
 from ray.train.health.probe import Probe, ProbeResult
 
 
@@ -60,33 +60,37 @@ class NodeMonitor:
             return NodeMonitorStatus(probe_results=dict(self._latest))
 
     @ray.method(concurrency_group="on_demand")
-    def poll_probes(self, probes: List[Probe]) -> NodeMonitorStatus:
-        """Poll probes on demand, one call at a time, in a thread of their own,
-        so that ``poll_status()`` still answers meanwhile.
+    def poll_probes(self, probes: List[Probe], timeout_s: float) -> NodeMonitorStatus:
+        """Poll probes on demand, one call at a time, so that ``poll_status()``
+        still answers meanwhile. Each probe is polled in a thread of its own,
+        and one still running after ``timeout_s`` gets a result with a
+        ``TimeoutError``.
 
         Args:
             probes: The probes to poll.
+            timeout_s: How long the probes have to return.
 
         Returns:
             The result of each probe.
         """
-        return NodeMonitorStatus(
-            probe_results={probe.probe_name(): self._poll(probe) for probe in probes}
-        )
+        polls = OnDemandPolls(probes, self._poll, timeout_s)
+        return NodeMonitorStatus(probe_results=polls.results(wait=True))
 
     def _sample(self, scheduled_probe: ScheduledProbe) -> None:
-        """Poll the probe every ``poll_interval_s`` until the monitor is
-        killed.
+        """Poll the probe every ``poll_interval_s``, from the start of one poll
+        to the start of the next, until the monitor is killed.
 
         Args:
             scheduled_probe: The probe and its interval.
         """
         probe = scheduled_probe.probe
         while True:
+            started = time.monotonic()
             result = self._poll(probe)
             with self._lock:
                 self._latest[probe.probe_name()] = result
-            time.sleep(scheduled_probe.poll_interval_s)
+            elapsed_s = time.monotonic() - started
+            time.sleep(max(0.0, scheduled_probe.poll_interval_s - elapsed_s))
 
     @staticmethod
     def _poll(probe: Probe) -> Union[ProbeResult, Dict[Any, ProbeResult]]:
