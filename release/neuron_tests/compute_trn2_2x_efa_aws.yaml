@@ -7,7 +7,7 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 #   NEURON_TEST_SUBNET_ID, NEURON_TEST_SECURITY_GROUP_ID
 # The security group has to allow all traffic to and from itself, as EFA requires.
 zones:
-    - {{env["NEURON_TEST_ZONE"]}}
+    - {{env["NEURON_TEST_ZONE"] | default("us-east-2b")}}
 enable_cross_zone_scaling: false
 
 head_node:

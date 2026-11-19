@@ -4,7 +4,7 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 # zone and the subnet in that zone come from the environment of the run:
 #   NEURON_TEST_ZONE, NEURON_TEST_CAPACITY_RESERVATION_ID
 zones:
-    - {{env["NEURON_TEST_ZONE"]}}
+    - {{env["NEURON_TEST_ZONE"] | default("us-east-2b")}}
 enable_cross_zone_scaling: false
 
 head_node:
