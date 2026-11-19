@@ -18,11 +18,14 @@
 
 #include <list>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
+#include "ray/common/placement_group.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/gcs/gcs_placement_group.h"
@@ -317,6 +320,64 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
                                                                   double cpu_per_bundle) {
     auto request = GenCreatePlacementGroupRequest(
         /*name=*/"", rpc::PlacementStrategy::STRICT_PACK, bundles_count, cpu_per_bundle);
+    return std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
+  }
+
+  // Adds a node whose "zone" label is `zone`. Its fake raylet client is
+  // raylet_clients_[port].
+  std::shared_ptr<rpc::GcsNodeInfo> AddNodeInZone(uint16_t port,
+                                                  const std::string &zone,
+                                                  int cpu_num) {
+    auto node = GenNodeInfo(port);
+    (*node->mutable_labels())["zone"] = zone;
+    AddNode(node, cpu_num);
+    return node;
+  }
+
+  // Returns the node IDs of the bundles of `placement_group`, nil for unplaced ones.
+  std::vector<NodeID> BundleNodeIds(const GcsPlacementGroup &placement_group) {
+    std::vector<NodeID> node_ids;
+    for (const auto &bundle : placement_group.GetPlacementGroupTableData().bundles()) {
+      node_ids.push_back(NodeID::FromBinary(bundle.node_id()));
+    }
+    return node_ids;
+  }
+
+  // Makes a placement group whose bundles all carry `label_selector`, with one fallback
+  // option for each entry of `fallback_label_selectors`. Every bundle of an option
+  // carries that entry.
+  std::shared_ptr<GcsPlacementGroup> MakePlacementGroupWithFallback(
+      rpc::PlacementStrategy strategy,
+      int bundles_count,
+      double cpu_per_bundle,
+      const std::unordered_map<std::string, std::string> &label_selector,
+      const std::vector<std::unordered_map<std::string, std::string>>
+          &fallback_label_selectors) {
+    std::vector<std::unordered_map<std::string, double>> bundles(
+        bundles_count, {{"CPU", cpu_per_bundle}});
+    std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector(
+        bundles_count, label_selector);
+    std::vector<std::vector<std::unordered_map<std::string, std::string>>>
+        fallback_strategy;
+    for (const auto &fallback_label_selector : fallback_label_selectors) {
+      fallback_strategy.emplace_back(bundles_count, fallback_label_selector);
+    }
+    const auto job_id = JobID::FromInt(1);
+    PlacementGroupSpecBuilder builder;
+    builder.SetPlacementGroupSpec(PlacementGroupID::Of(job_id),
+                                  /*name=*/"",
+                                  bundles,
+                                  strategy,
+                                  /*is_detached=*/false,
+                                  /*soft_target_node_id=*/NodeID::Nil(),
+                                  job_id,
+                                  /*creator_actor_id=*/ActorID::Nil(),
+                                  /*is_creator_detached_actor=*/false,
+                                  bundle_label_selector,
+                                  /*topology_strategy=*/{},
+                                  fallback_strategy);
+    rpc::CreatePlacementGroupRequest request;
+    *request.mutable_placement_group_spec() = builder.Build().GetMessage();
     return std::make_shared<GcsPlacementGroup>(request, "", counter_, clock_);
   }
 
@@ -1582,6 +1643,150 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackStrategyIsKeptWithPlacementGroup) {
+  auto placement_group =
+      MakePlacementGroupWithFallback(rpc::PlacementStrategy::PACK,
+                                     /*bundles_count=*/2,
+                                     /*cpu_per_bundle=*/1,
+                                     /*label_selector=*/{{"zone", "a"}},
+                                     /*fallback_label_selectors=*/{{{"zone", "b"}}, {}});
+
+  const auto &fallback_strategy =
+      placement_group->GetPlacementGroupTableData().fallback_strategy();
+  ASSERT_EQ(fallback_strategy.size(), 2);
+  for (const auto &option : fallback_strategy) {
+    ASSERT_EQ(option.bundle_label_selector_size(), 2);
+  }
+  EXPECT_EQ(fallback_strategy[0].bundle_label_selector(1).label_selector().at("zone"),
+            "b");
+  EXPECT_TRUE(fallback_strategy[1].bundle_label_selector(0).label_selector().empty());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestOwnLabelSelectorsWinWhenTheyFit) {
+  auto node_a = AddNodeInZone(/*port=*/0, "a", /*cpu_num=*/10);
+  AddNodeInZone(/*port=*/1, "b", /*cpu_num=*/10);
+  auto placement_group = MakePlacementGroupWithFallback(rpc::PlacementStrategy::PACK,
+                                                        /*bundles_count=*/2,
+                                                        /*cpu_per_bundle=*/1,
+                                                        {{"zone", "a"}},
+                                                        {{{"zone", "b"}}});
+
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_EQ(raylet_clients_[1]->num_lease_requested, 0);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  const auto node_a_id = NodeID::FromBinary(node_a->node_id());
+  EXPECT_EQ(BundleNodeIds(*placement_group), std::vector<NodeID>({node_a_id, node_a_id}));
+  EXPECT_EQ(placement_group->GetSelectedFallbackIndex(), 0);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestFallbackOptionsAreTriedInOrder) {
+  // Zone a can't take both bundles, no node is in zone c, and zone b has room.
+  AddNodeInZone(/*port=*/0, "a", /*cpu_num=*/1);
+  auto node_b = AddNodeInZone(/*port=*/1, "b", /*cpu_num=*/10);
+  auto placement_group =
+      MakePlacementGroupWithFallback(rpc::PlacementStrategy::PACK,
+                                     /*bundles_count=*/2,
+                                     /*cpu_per_bundle=*/1,
+                                     {{"zone", "a"}},
+                                     {{{"zone", "c"}}, {{"zone", "b"}}});
+
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_EQ(raylet_clients_[0]->num_lease_requested, 0);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Both bundles use the second fallback option, so neither lands in zone a.
+  const auto node_b_id = NodeID::FromBinary(node_b->node_id());
+  EXPECT_EQ(BundleNodeIds(*placement_group), std::vector<NodeID>({node_b_id, node_b_id}));
+  EXPECT_EQ(placement_group->GetSelectedFallbackIndex(), 2);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestInfeasibleOnlyWhenEveryOptionIsInfeasible) {
+  AddNodeInZone(/*port=*/0, "a", /*cpu_num=*/1);
+  std::vector<bool> is_feasible_results;
+  auto failure_handler = [this, &is_feasible_results](
+                             std::shared_ptr<GcsPlacementGroup> placement_group,
+                             bool is_feasible) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+    is_feasible_results.push_back(is_feasible);
+  };
+  auto success_handler = [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  // No node is in zone c or zone d.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{MakePlacementGroupWithFallback(rpc::PlacementStrategy::PACK,
+                                                       /*bundles_count=*/2,
+                                                       /*cpu_per_bundle=*/1,
+                                                       {{"zone", "c"}},
+                                                       {{{"zone", "d"}}}),
+                        failure_handler,
+                        success_handler});
+  // Zone a is feasible but has room for only one bundle now.
+  scheduler_->ScheduleUnplacedBundles(
+      SchedulePgRequest{MakePlacementGroupWithFallback(rpc::PlacementStrategy::PACK,
+                                                       /*bundles_count=*/2,
+                                                       /*cpu_per_bundle=*/1,
+                                                       {{"zone", "c"}},
+                                                       {{{"zone", "a"}}}),
+                        failure_handler,
+                        success_handler});
+
+  CheckPlacementGroupSize(2, GcsPlacementGroupStatus::FAILURE);
+  EXPECT_EQ(is_feasible_results, std::vector<bool>({false, true}));
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestPartlyPlacedGroupKeepsItsFallbackOption) {
+  AddNodeInZone(/*port=*/0, "a", /*cpu_num=*/1);
+  auto node_b = AddNodeInZone(/*port=*/1, "b", /*cpu_num=*/10);
+  auto placement_group = MakePlacementGroupWithFallback(rpc::PlacementStrategy::PACK,
+                                                        /*bundles_count=*/2,
+                                                        /*cpu_per_bundle=*/1,
+                                                        {{"zone", "a"}},
+                                                        {{{"zone", "b"}}});
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+  ASSERT_EQ(placement_group->GetSelectedFallbackIndex(), 1);
+
+  // Zone a now has room, but a lost bundle rejoins the other one in zone b.
+  auto node_a2 = AddNodeInZone(/*port=*/2, "a", /*cpu_num=*/10);
+  placement_group->GetMutableBundle(0)->clear_node_id();
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_EQ(raylet_clients_[2]->num_lease_requested, 0);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(2, GcsPlacementGroupStatus::SUCCESS);
+  const auto node_b_id = NodeID::FromBinary(node_b->node_id());
+  EXPECT_EQ(BundleNodeIds(*placement_group), std::vector<NodeID>({node_b_id, node_b_id}));
+  EXPECT_EQ(placement_group->GetSelectedFallbackIndex(), 1);
+
+  // Once every bundle is lost, the bundles' own label selectors are tried first again.
+  placement_group->GetMutableBundle(0)->clear_node_id();
+  placement_group->GetMutableBundle(1)->clear_node_id();
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[2]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[2]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[2]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(3, GcsPlacementGroupStatus::SUCCESS);
+  const auto node_a2_id = NodeID::FromBinary(node_a2->node_id());
+  EXPECT_EQ(BundleNodeIds(*placement_group),
+            std::vector<NodeID>({node_a2_id, node_a2_id}));
+  EXPECT_EQ(placement_group->GetSelectedFallbackIndex(), 0);
 }
 
 }  // namespace gcs

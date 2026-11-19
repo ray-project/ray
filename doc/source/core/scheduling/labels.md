@@ -91,11 +91,25 @@ The following table shows the basic syntax for label selector operator logic:
 | Not equal | Label matches anything by one value. | `{“key”: “!value”}`
 | In | Label matches one of the provided values. | `{“key”: “in(val1,val2)”}`
 | Not in | Label matches none of the provided values. | `{“key”: “!in(val1,val2)”}`
+| Exists | Node has the label, with any value. | `{“key”: “exists()”}`
+| Does not exist | Node doesn't have the label. | `{“key”: “!exists()”}`
 
 You can specify one or more label selectors as a dict. When specifying multiple label selectors, the candidate node must meet all requirements. The following example configuration uses a custom label to require an `m5.16xlarge` EC2 instance and a default label to require node ID to be 123:
 
 ```python
 label_selector={"instance_type": "m5.16xlarge", "ray.io/node-id": "123"}  
+```
+
+One value can also hold several expressions for the same key, separated by commas. The candidate node must match all of them. Commas inside `in(...)` still separate the values of that expression. The following example requires a node in `us-west-2a` or `us-west-2b`, but not `us-west-2b`, so only `us-west-2a` matches:
+
+```python
+label_selector={"ray.io/availability-zone": "in(us-west-2a,us-west-2b),!us-west-2b"}
+```
+
+Not equal and not in also match a node that doesn't have the label. Add `exists()` to require the label. The following example requires a node with a zone label other than `us-west-2a`:
+
+```python
+label_selector={"ray.io/availability-zone": "exists(),!us-west-2a"}
 ```
 
 ## Specify label requirements for tasks and actors

@@ -752,6 +752,14 @@ class SchedulingNode:
                         if node_val in values:
                             all_constraints_pass = False
                             break
+                    elif op == LabelSelectorOperator.LABEL_OPERATOR_EXISTS:
+                        if key not in self.labels:
+                            all_constraints_pass = False
+                            break
+                    elif op == LabelSelectorOperator.LABEL_OPERATOR_DOES_NOT_EXIST:
+                        if key in self.labels:
+                            all_constraints_pass = False
+                            break
                     else:
                         all_constraints_pass = False
                         break
@@ -1651,27 +1659,34 @@ class ResourceDemandScheduler(IResourceScheduler):
             gang_requests, key=_sort_gang_resource_requests, reverse=True
         ):
             if gang_req.bundle_selectors:
-                # TODO: @ryanaoleary multiple `bundle_selectors` will be supported
-                # for `fallback_strategy`.
-                requests = gang_req.bundle_selectors[0].resource_requests
+                # Try each bundle selector in order, the way the GCS tries a
+                # placement group's fallback options, and use the first that fits.
+                options = [
+                    bundle_selector.resource_requests
+                    for bundle_selector in gang_req.bundle_selectors
+                ]
             else:
                 # Use legacy field if `bundle_selectors` not provided.
-                requests = gang_req.requests
-            # Try to combine requests with affinity constraints into the same request.
-            requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
+                options = [gang_req.requests]
 
-            nodes, infeasible = ResourceDemandScheduler._try_schedule(
-                ctx, requests, ResourceRequestSource.PENDING_DEMAND
-            )
+            for requests in options:
+                # Try to combine requests with affinity constraints into the same
+                # request.
+                requests = ResourceRequestUtil.combine_requests_with_affinity(requests)
 
-            if infeasible:
-                # Unable to satisfy the constraint. We will skip the gang request.
+                nodes, infeasible = ResourceDemandScheduler._try_schedule(
+                    ctx, requests, ResourceRequestSource.PENDING_DEMAND
+                )
+
+                if not infeasible:
+                    # We are able to satisfy the constraint and thus update the
+                    # context.
+                    ctx.update(nodes)
+                    break
+            else:
+                # Unable to satisfy any option. We will skip the gang request.
                 # Don't update the context.
                 infeasible_gang_requests.append(gang_req)
-                continue
-
-            # We are able to satisfy the constraint and thus update the context.
-            ctx.update(nodes)
 
         return infeasible_gang_requests
 

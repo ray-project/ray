@@ -181,5 +181,27 @@ void GcsPlacementGroup::ClearTopologyAssignments() {
   placement_group_table_data_.mutable_topology_assignments()->clear();
 }
 
+int GcsPlacementGroup::GetFallbackStrategySize() const {
+  return placement_group_table_data_.fallback_strategy_size();
+}
+
+LabelSelector GcsPlacementGroup::GetFallbackLabelSelector(int fallback_index,
+                                                          int64_t bundle_index) const {
+  RAY_CHECK(fallback_index > 0 && fallback_index <= GetFallbackStrategySize());
+  const auto &option = placement_group_table_data_.fallback_strategy(fallback_index - 1);
+  if (bundle_index >= option.bundle_label_selector_size()) {
+    return LabelSelector();
+  }
+  return LabelSelector(option.bundle_label_selector(bundle_index).label_selector());
+}
+
+int GcsPlacementGroup::GetSelectedFallbackIndex() const {
+  return placement_group_table_data_.selected_fallback_index();
+}
+
+void GcsPlacementGroup::SetSelectedFallbackIndex(int fallback_index) {
+  placement_group_table_data_.set_selected_fallback_index(fallback_index);
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -22,9 +22,11 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/hash/hash.h"
 #include "gtest/gtest.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 
 namespace ray {
 
@@ -207,6 +209,129 @@ TEST(LabelSelectorTest, Deduplication) {
   ASSERT_EQ(selector.GetConstraints().size(), 4);
 }
 
+TEST(LabelSelectorTest, SplitLabelSelectorValue) {
+  using Expressions = std::vector<std::string>;
+  EXPECT_EQ(LabelSelector::SplitLabelSelectorValue(""), Expressions({""}));
+  EXPECT_EQ(LabelSelector::SplitLabelSelectorValue("a"), Expressions({"a"}));
+  EXPECT_EQ(LabelSelector::SplitLabelSelectorValue("!in(a,b)"),
+            Expressions({"!in(a,b)"}));
+  // Commas inside parentheses separate values, and commas outside separate expressions.
+  EXPECT_EQ(LabelSelector::SplitLabelSelectorValue("in(a,b),!c,!in(d,e)"),
+            Expressions({"in(a,b)", "!c", "!in(d,e)"}));
+}
+
+TEST(LabelSelectorTest, SeveralExpressionsParsing) {
+  LabelSelector selector;
+  selector.AddConstraint("zone", "in(a,b,c),!in(b),!c");
+
+  const auto &constraints = selector.GetConstraints();
+  ASSERT_EQ(constraints.size(), 3);
+  EXPECT_EQ(constraints[0],
+            LabelConstraint("zone", LabelSelectorOperator::LABEL_IN, {"a", "b", "c"}));
+  EXPECT_EQ(constraints[1],
+            LabelConstraint("zone", LabelSelectorOperator::LABEL_NOT_IN, {"b"}));
+  EXPECT_EQ(constraints[2],
+            LabelConstraint("zone", LabelSelectorOperator::LABEL_NOT_IN, {"c"}));
+}
+
+TEST(LabelSelectorTest, ToStringMapJoinsConstraintsOnOneKey) {
+  LabelSelector selector;
+  selector.AddConstraint("zone", "in(b,a),!b");
+  selector.AddConstraint("zone", "!c");
+
+  auto string_map = selector.ToStringMap();
+  ASSERT_EQ(string_map.size(), 1);
+  EXPECT_EQ(string_map.at("zone"), "in(a,b),!b,!c");
+  // The joined value parses back into the same constraints.
+  EXPECT_EQ(LabelSelector(string_map), selector);
+}
+
+TEST(LabelSelectorTest, ProtoRoundTripKeepsEveryExpression) {
+  LabelSelector selector;
+  selector.AddConstraint("zone", "in(a,b),!b");
+
+  rpc::LabelSelector proto_selector;
+  selector.ToProto(&proto_selector);
+  ASSERT_EQ(proto_selector.label_constraints_size(), 2);
+  EXPECT_EQ(LabelSelector(proto_selector), selector);
+}
+
+// Returns whether a node with the given labels satisfies `value` on `key`.
+bool NodeMatches(absl::flat_hash_map<std::string, std::string> node_labels,
+                 const std::string &key,
+                 const std::string &value) {
+  NodeResources node;
+  node.labels = std::move(node_labels);
+  LabelSelector selector;
+  selector.AddConstraint(key, value);
+  return node.HasRequiredLabels(selector);
+}
+
+TEST(LabelSelectorTest, NodeMustMatchEveryExpressionOnOneKey) {
+  EXPECT_TRUE(NodeMatches({{"zone", "a"}}, "zone", "in(a,b),!b"));
+  EXPECT_FALSE(NodeMatches({{"zone", "b"}}, "zone", "in(a,b),!b"));
+  EXPECT_FALSE(NodeMatches({{"zone", "c"}}, "zone", "in(a,b),!b"));
+  EXPECT_FALSE(NodeMatches({}, "zone", "in(a,b),!b"));
+
+  // Negated expressions alone still match a node without the key.
+  EXPECT_TRUE(NodeMatches({}, "zone", "!a,!in(b,c)"));
+  EXPECT_TRUE(NodeMatches({{"zone", "d"}}, "zone", "!a,!in(b,c)"));
+  EXPECT_FALSE(NodeMatches({{"zone", "c"}}, "zone", "!a,!in(b,c)"));
+}
+
+TEST(LabelSelectorTest, ExistsOperatorParsing) {
+  LabelSelector selector;
+  selector.AddConstraint("zone", "exists()");
+  selector.AddConstraint("gpu", "!exists()");
+
+  const auto &constraints = selector.GetConstraints();
+  ASSERT_EQ(constraints.size(), 2);
+  EXPECT_EQ(constraints[0],
+            LabelConstraint("zone", LabelSelectorOperator::LABEL_EXISTS, {}));
+  EXPECT_EQ(constraints[1],
+            LabelConstraint("gpu", LabelSelectorOperator::LABEL_DOES_NOT_EXIST, {}));
+  EXPECT_EQ(selector.DebugString(), "{'zone': exists (), 'gpu': !exists ()}");
+}
+
+TEST(LabelSelectorTest, ExistsOperatorRoundTrips) {
+  LabelSelector selector;
+  selector.AddConstraint("zone", "exists(),!in(a,b)");
+  selector.AddConstraint("gpu", "!exists()");
+
+  auto string_map = selector.ToStringMap();
+  ASSERT_EQ(string_map.size(), 2);
+  EXPECT_EQ(string_map.at("zone"), "exists(),!in(a,b)");
+  EXPECT_EQ(string_map.at("gpu"), "!exists()");
+
+  rpc::LabelSelector proto_selector;
+  selector.ToProto(&proto_selector);
+  ASSERT_EQ(proto_selector.label_constraints_size(), 3);
+  EXPECT_EQ(proto_selector.label_constraints(0).operator_(),
+            rpc::LabelSelectorOperator::LABEL_OPERATOR_EXISTS);
+  EXPECT_EQ(proto_selector.label_constraints(0).label_values_size(), 0);
+  EXPECT_EQ(proto_selector.label_constraints(2).operator_(),
+            rpc::LabelSelectorOperator::LABEL_OPERATOR_DOES_NOT_EXIST);
+  EXPECT_EQ(LabelSelector(proto_selector), selector);
+}
+
+TEST(LabelSelectorTest, NodeMatchesExistsOperators) {
+  EXPECT_TRUE(NodeMatches({{"zone", "a"}}, "zone", "exists()"));
+  EXPECT_TRUE(NodeMatches({{"zone", ""}}, "zone", "exists()"));
+  EXPECT_FALSE(NodeMatches({{"region", "a"}}, "zone", "exists()"));
+
+  EXPECT_FALSE(NodeMatches({{"zone", "a"}}, "zone", "!exists()"));
+  EXPECT_TRUE(NodeMatches({{"region", "a"}}, "zone", "!exists()"));
+
+  // exists() turns a negated expression into one that needs the key.
+  EXPECT_TRUE(NodeMatches({{"zone", "c"}}, "zone", "exists(),!in(a,b)"));
+  EXPECT_FALSE(NodeMatches({{"zone", "a"}}, "zone", "exists(),!in(a,b)"));
+  EXPECT_FALSE(NodeMatches({}, "zone", "exists(),!in(a,b)"));
+
+  // Contradictory expressions match no node.
+  EXPECT_FALSE(NodeMatches({{"zone", "a"}}, "zone", "exists(),!exists()"));
+  EXPECT_FALSE(NodeMatches({}, "zone", "exists(),!exists()"));
+}
+
 namespace {
 
 LabelSelector OneConstraint(std::string key,
@@ -275,6 +400,26 @@ TEST(LabelSelectorTest, SelectorsDifferingOnlyInKeyOrOperatorHashDifferently) {
   EXPECT_NE(
       absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_IN, values)),
       absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_NOT_IN, values)));
+  EXPECT_NE(
+      absl::HashOf(OneConstraint("region", LabelSelectorOperator::LABEL_EXISTS, {})),
+      absl::HashOf(
+          OneConstraint("region", LabelSelectorOperator::LABEL_DOES_NOT_EXIST, {})));
+}
+
+// Each expression becomes its own constraint, so an extra expression on a key changes
+// both equality and the hash, while reordering an in() list changes neither.
+TEST(LabelSelectorTest, ExpressionsOnOneKeyCompareAndHashTogether) {
+  LabelSelector in_only;
+  in_only.AddConstraint("zone", "in(a,b)");
+  LabelSelector with_not_in;
+  with_not_in.AddConstraint("zone", "in(a,b),!b");
+  LabelSelector reordered;
+  reordered.AddConstraint("zone", "in(b,a),!b");
+
+  EXPECT_FALSE(in_only == with_not_in);
+  EXPECT_NE(absl::HashOf(in_only), absl::HashOf(with_not_in));
+  EXPECT_EQ(with_not_in, reordered);
+  EXPECT_EQ(absl::HashOf(with_not_in), absl::HashOf(reordered));
 }
 
 }  // namespace ray

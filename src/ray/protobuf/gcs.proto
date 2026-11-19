@@ -703,6 +703,11 @@ message PlacementGroupTableData {
   // PlacementGroupSpec.topology_strategy. Empty if the PG does not use
   // a topology strategy.
   map<string, PlacementStrategy> topology_strategy = 18;
+  // Mirrors PlacementGroupSpec.fallback_strategy.
+  repeated PlacementGroupFallbackOption fallback_strategy = 19;
+  // The label selectors the bundles were last scheduled with. 0 means the bundles'
+  // own label selectors, and n means fallback_strategy[n - 1].
+  int32 selected_fallback_index = 20;
 }
 
 message JobTableData {
