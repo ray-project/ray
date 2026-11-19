@@ -116,13 +116,17 @@ class AutoscalingCoordinator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_reserved_resources(self) -> SplitReservedResources:
+    def get_reserved_resources(self, recompute: bool = False) -> SplitReservedResources:
         """Everything assigned to this requester on each node.
 
         Split into the non-placement-group part (bundles the coordinator
         packed plus its ``request_remaining`` share) and the bundles its
         registered placement groups hold. It is an accounting split of node
         totals, not what is free; ``total()`` sums the two.
+
+        Args:
+            recompute: Recompute against current cluster state and wait for the
+                result instead of returning the cached allocation.
 
         Returns:
             Both parts keyed by node id. Empty if there is no ongoing request.

@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import pytest
 
 import ray
+import ray.exceptions
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray.cluster_utils import Cluster
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
@@ -1589,6 +1590,41 @@ def test_requester_with_several_placement_groups():
     # An empty set unregisters pg_b too.
     coordinator.register_placement_groups(requester_id="data_a", placement_group_ids=[])
     assert coordinator._placement_group_ids == {}
+
+
+def test_forced_reservations_replace_pending_cache(monkeypatch):
+    """A fresh allocation cannot be overwritten by an older asynchronous poll."""
+    actor = Mock()
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=actor
+    )
+    stale_ref, fresh_ref = Mock(), Mock()
+    fresh = SplitReservedResources({"new-node": {"CPU": 2}}, {})
+    coordinator._pending_reserved_resources = stale_ref
+    coordinator._cached_reserved_resources = SplitReservedResources(
+        {"dead-node": {"CPU": 2}}, {}
+    )
+    actor.get_reserved_resources.remote.return_value = fresh_ref
+    get = Mock(return_value=fresh)
+    monkeypatch.setattr(ray, "get", get)
+    assert coordinator.get_reserved_resources(recompute=True) == fresh
+    actor.get_reserved_resources.remote.assert_called_once_with("test", recompute=True)
+    get.assert_called_once_with(fresh_ref)
+    assert coordinator._pending_reserved_resources is None
+    # The next ordinary poll returns the refreshed cache and starts a new RPC.
+    assert coordinator.get_reserved_resources() == fresh
+    get.assert_called_once_with(fresh_ref)
+
+
+def test_forced_reservations_do_not_fall_back_to_stale_cache(monkeypatch):
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=Mock()
+    )
+    monkeypatch.setattr(
+        ray, "get", Mock(side_effect=ray.exceptions.RayError("refresh failed"))
+    )
+    with pytest.raises(ray.exceptions.RayError, match="refresh failed"):
+        coordinator.get_reserved_resources(recompute=True)
 
 
 if __name__ == "__main__":

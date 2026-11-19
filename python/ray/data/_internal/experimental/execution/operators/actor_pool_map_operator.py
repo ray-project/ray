@@ -131,7 +131,7 @@ from ray.data._internal.experimental.execution.withheld_deadlock import (
 from ray.data._internal.util import MiB
 from ray.data.context import DataContext
 from ray.data.exceptions import LineageReconstructionError
-from ray.exceptions import GetTimeoutError, RayActorError
+from ray.exceptions import ActorUnschedulableError, GetTimeoutError, RayActorError
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
@@ -310,6 +310,8 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         self._fn_placement_groups: Dict[PlacementGroupIdStr, "PlacementGroup"] = {}
 
         super().__init__(*args, **kwargs)
+        # Consumed by the executor before its next sizing decision.
+        self.actor_placement_failed = False
         self._input_queue_bytes_by_node: DefaultDict[NodeIdStr, int] = defaultdict(int)
         # Pool draining-generation last reconciled into the output queue's
         # prioritized set. -1 forces the first sync. See _sync_draining_priorities.
@@ -455,14 +457,20 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
 
     @override
     def _on_actor_init_death(self, error: Exception) -> None:
-        """Charge ``max_consecutive_actor_init_deaths`` for every startup
-        failure except a lost process or node. A broken UDF (``__init__``
-        raised) or a bad ``runtime_env`` (``RuntimeEnvSetupError``) fails every
-        replacement, so it must exhaust the budget and fail the dataset. A
-        process or node loss while starting (OOM, preemption, chaos) is not the
-        user's fault; the pool already dropped the pending actor and the sizer
-        re-places it.
+        """Charge the init-death budget for constructor/runtime-env failures.
+
+        Lost processes or nodes are replaced without charging the budget.
+        Rejected placements also bypass it and request a fresh allocation
+        before the sizer retries. The pool has already rolled back the failed
+        pending actor's resource claims in either case.
         """
+        if isinstance(error, ActorUnschedulableError):
+            self.actor_placement_failed = True
+            logger.debug(
+                f"{self.name}: actor placement failed; refreshing the allocation.",
+                exc_info=error,
+            )
+            return
         if isinstance(error, RayActorError) and not error.actor_init_failed:
             logger.debug(
                 f"{self.name}: an actor was lost while starting; the sizer "

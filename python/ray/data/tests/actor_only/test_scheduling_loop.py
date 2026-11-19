@@ -200,7 +200,10 @@ def test_escape_hatch_sees_consumption_queued_this_step(monkeypatch):
     assert calls == ["drain", "hatch"]
 
 
-def test_bottleneck_observer_samples_after_tasks_launch(monkeypatch):
+@pytest.mark.parametrize("num_placement_failures", [0, 2])
+def test_bottleneck_observer_samples_after_tasks_launch(
+    monkeypatch, num_placement_failures
+):
     """The observer reads slots at one instant. Sampled before the launch,
     every slot a task freed this step looks idle though the launch refills
     it, which made producers look self-limited. It samples after."""
@@ -209,13 +212,35 @@ def test_bottleneck_observer_samples_after_tasks_launch(monkeypatch):
     )
 
     calls: List[str] = []
+    ops = [
+        MagicMock(spec=ExperimentalActorPoolMapOperator)
+        for _ in range(num_placement_failures)
+    ]
+    for op in ops:
+        op.actor_placement_failed = False
+
+    def complete(**kwargs):
+        calls.append("complete")
+        for op in ops:
+            op.actor_placement_failed = True
+        return 0
+
     monkeypatch.setattr(
         executor_mod,
         "process_completed_tasks",
-        lambda **kwargs: calls.append("complete") or 0,
+        complete,
     )
     executor = ExperimentalStreamingExecutor.__new__(ExperimentalStreamingExecutor)
     executor._resource_reporter = MagicMock()
+    stale_view, fresh_view = MagicMock(), MagicMock()
+
+    def get_view(**kwargs):
+        if kwargs.get("recompute"):
+            calls.append("refresh")
+            return fresh_view
+        return stale_view
+
+    executor._resource_reporter.get_cluster_view.side_effect = get_view
     executor._resource_bank = MagicMock()
     executor._actor_only_metrics = MagicMock()
     executor._cluster_autoscaler = MagicMock()
@@ -232,9 +257,24 @@ def test_bottleneck_observer_samples_after_tasks_launch(monkeypatch):
     executor._report_current_usage = lambda: None
     executor._finalize_scheduling_loop_step = lambda topology: True
 
-    executor._scheduling_loop_step({})
+    executor._expire_pending_actors = lambda topology: None
+    executor._release_drained_actors_of_completed_ops = lambda topology: None
+    executor._sample_output_backpressure = lambda topology: None
+    executor._scheduling_loop_step({op: MagicMock() for op in ops})
 
-    assert calls == ["complete", "size", "launch", "observe"]
+    assert calls == (["complete", "refresh"] if ops else ["complete"]) + [
+        "size",
+        "launch",
+        "observe",
+    ]
+    expected_view = fresh_view if ops else stale_view
+    assert (
+        sizer.perform_sizing_decision.call_args.kwargs["cluster_view"] is expected_view
+    )
+    executor._resource_bank.set_node_view.assert_called_with(
+        node_view=expected_view.reserved_by_node
+    )
+    assert all(not op.actor_placement_failed for op in ops)
 
 
 class _DrainingOp:
