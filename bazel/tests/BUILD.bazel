@@ -1,0 +1,8 @@
+load("@rules_python//python:defs.bzl", "py_test")
+
+py_test(
+    name = "test_gen_extract",
+    size = "small",
+    srcs = ["test_gen_extract.py"],
+    deps = ["//bazel:gen_extract"],
+)
