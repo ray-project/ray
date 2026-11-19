@@ -281,9 +281,7 @@ class SGLangServer:
         try:
             await engine_check_health()
         except Exception:
-            logger.error(
-                "SGLang engine health check failed. The replica will be restarted."
-            )
+            logger.error("SGLang engine health check failed.")
             raise
 
     async def __serve_build_asgi_app__(self) -> Any:
