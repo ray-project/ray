@@ -1867,3 +1867,100 @@ def test_balanced_pg_op_grows_one_step_into_its_placement_group():
     assert placed.request[infer].delta == 1
     assert placed.request[infer].nodes == ()
     assert ctx.pg_free[bundle].cpu == 1
+
+
+@pytest.mark.parametrize(
+    "free_cpu, expected", [(54, 12), (42, 14), (28, 9), (2, 1), (0, 0)]
+)
+def test_bottleneck_free_growth_is_capped_by_competing_share(free_cpu, expected):
+    current = {54: 24, 42: 36, 28: 50}.get(free_cpu, 24)
+    download = _op("Download", pool=_Pool(current=current))
+    peers = [_op("Decode"), _op("Plan")]
+    tick = _tick(
+        named=[(download, 0.43)],
+        eligibility={download: "yes: free"},
+        target={download: int(current * 1.5)},
+    )
+    ctx, _, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [download, *peers], free_cpu=free_cpu
+    )
+    added = sum(p.request[download].delta for p in requests)
+    assert added == expected
+    assert ctx.free["node"].cpu == free_cpu - expected
+
+
+@pytest.mark.parametrize("excluded", ["completed", "at-cap", "gpu", "other-node", "pg"])
+def test_bottleneck_free_share_excludes_noncompeting_ops(excluded):
+    recipient = _op("Download", pool=_Pool(current=24))
+    peer = _op("Peer")
+    ctx = _ctx(non_pg_ops=[recipient, peer], free={"node": ExecutionResources(cpu=12)})
+    if excluded == "completed":
+        peer.has_completed = lambda: True
+    elif excluded == "at-cap":
+        peer.actor_pool._max_size = peer.actor_pool.serving_size()
+    elif excluded == "gpu":
+        peer.actor_pool._per_actor = ExecutionResources(cpu=1, gpu=1)
+    elif excluded == "other-node":
+        ctx.schedulable_nodes[peer] = frozenset({"other"})
+    else:
+        ctx.non_pg_ops = [recipient]
+    assert BottleneckTransfer._free_growth_share(recipient, ctx) == 12
+
+
+def test_bottleneck_free_share_counts_pending_peers_and_node_fragmentation():
+    recipient = _op("B", pool=_Pool(current=24, cpu=2, gpu=1))
+    recipient.actor_pool._per_actor = ExecutionResources(cpu=2, gpu=1, memory=4)
+    peer = _op("Pending", pool=_Pool(pending=2, cpu=2, gpu=1))
+    ctx = _ctx(
+        non_pg_ops=[recipient, peer],
+        free={
+            "a": ExecutionResources(cpu=20, gpu=4, memory=8),  # 2 actors
+            "b": ExecutionResources(cpu=1, gpu=8, memory=100),  # 0 actors
+            "c": ExecutionResources(cpu=8, gpu=8, memory=8),  # 2 actors
+        },
+    )
+    assert BottleneckTransfer._free_growth_share(recipient, ctx) == 2
+
+
+def test_bottleneck_free_share_does_not_charge_reclaimed_actors():
+    recipient = _op("B", pool=_Pool(current=24), reclaimable=4)
+    peer = _op("Peer")
+    tick = _tick(
+        named=[(recipient, 0.5)],
+        eligibility={recipient: "yes: free"},
+        target={recipient: 36},
+    )
+    ctx, _, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [recipient, peer], free_cpu=6
+    )
+    request = requests[0].request[recipient]
+    assert request.num_to_reclaim == 4
+    assert len(request.nodes) == 3
+    assert request.delta == 7
+    assert ctx.free["node"].cpu == 3
+
+
+def test_bottleneck_pg_free_share_counts_only_shared_bundles():
+    recipient, shared, separate, ordinary = [
+        _op(n) for n in ["B", "Shared", "Separate", "Ordinary"]
+    ]
+    bundle, other = ("pg", 0), ("other", 0)
+    ctx = _ctx(
+        actor_pool_ops=[recipient, shared, separate, ordinary],
+        non_pg_ops=[ordinary],
+        schedulable_bundles={
+            recipient: (bundle,),
+            shared: (bundle,),
+            separate: (other,),
+        },
+        pg_free={
+            bundle: ExecutionResources(cpu=12),
+            other: ExecutionResources(cpu=100),
+        },
+    )
+    assert BottleneckTransfer._free_growth_share(recipient, ctx) == 6
+    requests = _bottleneck_rule()._grow_into_pg(recipient, 20, ctx, "bottleneck")
+    assert requests is not None
+    assert requests.request[recipient].delta == 6
+    assert ctx.pg_free[bundle].cpu == 6
+    assert ctx.pg_free[other].cpu == 100

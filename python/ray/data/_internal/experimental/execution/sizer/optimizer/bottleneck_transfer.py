@@ -127,7 +127,10 @@ class BottleneckTransfer(CapacityTransfer):
        at or above the floor) with room on a node it may use grows there
        toward its growth target b' = ceil(b / (1 - w)), w the largest share
        of time a neighbour waits on it. Growing into free capacity drains nothing and is cheap to
-       undo, so it does not wait for the bottleneck to be stable.
+       undo, so it does not wait for the bottleneck to be stable. New actors
+       are capped at a share of free placeable capacity among unfinished,
+       growable operators competing for the same resource class and placement
+       domain (at least one actor when any fits). Reclaims spend no free capacity.
        With no bottleneck named, every op that is nearly always busy grows
        one actor into free capacity instead (balanced stages).
     2. Otherwise, with no transfer in flight, the assessment's recipient
@@ -272,7 +275,8 @@ class BottleneckTransfer(CapacityTransfer):
         )
         view = placement_view.build_op_placement_view(recipient, rank_victims=False)
         ranked = sorted(nodes, key=lambda node: self._placement.rank_node(view, node))
-        targets = fill_free_nodes(ctx, recipient, step - num_to_reclaim, ranked)
+        new_actors = min(step - num_to_reclaim, self._free_growth_share(recipient, ctx))
+        targets = fill_free_nodes(ctx, recipient, new_actors, ranked)
         if not targets and not num_to_reclaim:
             return None
         logger.debug(
@@ -298,6 +302,10 @@ class BottleneckTransfer(CapacityTransfer):
         reason: str,
     ) -> Optional[PlacedSizingRequest]:
         step = max(1, b_prime - op.actor_pool.serving_size())
+        reclaimable = min(step, op.actor_pool.num_reclaimable_draining_actors())
+        step = reclaimable + min(
+            step - reclaimable, BottleneckTransfer._free_growth_share(op, ctx)
+        )
         grown = grow_pg_op(
             op, step, ctx, reason=f"optimizer: {reason} grows into placement group"
         )
@@ -315,6 +323,59 @@ class BottleneckTransfer(CapacityTransfer):
             grown.request[op].delta,
         )
         return grown
+
+    @staticmethod
+    def _free_growth_share(
+        op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
+    ) -> int:
+        """Cap new actors at floor(free actor slots / competing operators).
+
+        Count slots per eligible node/bundle so fragmented CPU/GPU/memory is
+        not mistaken for placeable actors. Peers must be unfinished, below
+        their pool cap, use the same primary resource (CPU or GPU), and share
+        at least one eligible node/bundle. Keep pending or temporarily guarded
+        peers in the denominator so their startup does not erase their share.
+        Unknown PG capacity is already per-op headroom. A nonzero capacity
+        always permits one actor to avoid stranding the last few slots.
+        """
+        pg = ctx.is_pg_managed(op)
+        if pg and op not in ctx.schedulable_bundles:
+            return max(0, ctx.unknown_pg_headroom.get(op, 0))
+        domains = ctx.schedulable_bundles if pg else ctx.schedulable_nodes
+        eligible = set(domains.get(op, ()))
+        per_actor = op.actor_pool.per_actor_resource_usage()
+        if pg:
+            slots = sum(
+                max_placeable_actors(ctx.pg_free[bundle], per_actor)
+                for bundle in ctx.schedulable_bundles.get(op, ())
+                if bundle in ctx.pg_free
+            )
+        else:
+            slots = sum(
+                max_placeable_actors(ctx.free[node], per_actor)
+                for node in ctx.schedulable_nodes.get(op, ())
+                if node in ctx.free
+            )
+        competitors = sum(
+            1
+            for peer in ctx.actor_pool_ops
+            if ctx.is_pg_managed(peer) == pg
+            and not peer.has_completed()
+            and peer.actor_pool.serving_size() < bounded_max_size(peer.actor_pool)
+            and (peer.actor_pool.per_actor_resource_usage().gpu > 0)
+            == (per_actor.gpu > 0)
+            and eligible.intersection(domains.get(peer, ()))
+        )
+        share = max(1, math.floor(slots / max(1, competitors))) if slots else 0
+        logger.debug(
+            "PipelineOptimizer: %s free-capacity growth cap=%d "
+            "(placeable=%d, competing_ops=%d)",
+            op.name,
+            share,
+            slots,
+            competitors,
+        )
+        return share
 
     def _transfer_to(
         self,
