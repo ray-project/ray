@@ -44,6 +44,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.util import call_with_retry
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from mcap.records import ChunkIndex, Statistics
@@ -122,8 +123,6 @@ def read_summaries(
     ``budget_bytes``, and the next file always fits when nothing is held. A
     section counts against the budget until the caller asks for the next item.
     """
-    from ray.data.context import DataContext
-
     retried_io_errors = DataContext.get_current().retried_io_errors
     queue = iter(items)
     with ThreadPoolExecutor(max_workers=max(1, io_concurrency)) as pool:
@@ -213,7 +212,10 @@ def _read_tail(
             return read_tail(f, path)
 
     return call_with_retry(
-        read, description=f"read MCAP summary for {path}", match=retried_io_errors
+        read,
+        description=f"read MCAP summary for {path}",
+        match=retried_io_errors,
+        max_attempts=DataContext.get_current().io_retry_max_attempts,
     )
 
 
@@ -235,6 +237,7 @@ def _read_section(
         read,
         description=f"read MCAP summary for {tail.path}",
         match=retried_io_errors,
+        max_attempts=DataContext.get_current().io_retry_max_attempts,
     )
 
 

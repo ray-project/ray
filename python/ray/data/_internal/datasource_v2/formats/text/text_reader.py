@@ -104,7 +104,7 @@ class TextReader(Reader[FileManifest]):
         assert all(
             metadata is None for metadata in input_split.file_chunk_metadatas
         ), "TextReader reads whole files; the manifest carries chunk metadata"
-        retried_io_errors = DataContext.get_current().retried_io_errors
+        ctx = DataContext.get_current()
         remaining = self._limit
         for path in input_split.paths:
             if remaining is not None and remaining <= 0:
@@ -115,7 +115,8 @@ class TextReader(Reader[FileManifest]):
             tables = iterate_with_retry(
                 partial(self._read_file, path, remaining),
                 f"read text file {path}",
-                match=retried_io_errors,
+                match=ctx.retried_io_errors,
+                max_attempts=ctx.io_retry_max_attempts,
             )
             for table in tables:
                 if remaining is not None:

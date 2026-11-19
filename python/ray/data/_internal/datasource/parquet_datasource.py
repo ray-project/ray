@@ -993,6 +993,7 @@ def read_fragments(
             ),
             "reading batches",
             match=ctx.retried_io_errors,
+            max_attempts=ctx.io_retry_max_attempts,
         ):
             # If the table is empty, drop it.
             if table.num_rows > 0:

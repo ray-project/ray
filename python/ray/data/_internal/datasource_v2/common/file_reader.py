@@ -559,6 +559,7 @@ class FileReader(Reader[FileManifest]):
                 ),
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
+                max_attempts=ctx.io_retry_max_attempts,
             ):
                 if table.num_rows > 0:
                     yield table, ReadUnitPosition(

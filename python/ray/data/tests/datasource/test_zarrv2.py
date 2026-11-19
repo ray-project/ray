@@ -625,6 +625,47 @@ def test_per_task_row_limit_caps_chunks_read(
     assert len(reads) == 3
 
 
+@pytest.mark.parametrize("align_axis_0", [False, True])
+@pytest.mark.parametrize("max_attempts", [1, 3])
+@pytest.mark.parametrize("explicit_context", [False, True])
+def test_read_tasks_capture_io_retry_context(
+    tmp_path, monkeypatch, align_axis_0, max_attempts, explicit_context
+):
+    from ray.data.context import DataContext
+
+    store_path = tmp_path / "retry.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(4, dtype="<i4"), (4,))})
+    datasource = zarrv2_datasource.ZarrV2Datasource(
+        str(store_path), align_axis_0=align_axis_0
+    )
+
+    class FlakyArray:
+        attempts = 0
+
+        def __getitem__(self, _index):
+            self.attempts += 1
+            raise OSError("flaky storage")
+
+    array = FlakyArray()
+    monkeypatch.setattr(datasource, "root", {"data": array})
+    monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
+    ctx = DataContext(io_retry_max_attempts=max_attempts)
+    ctx.retried_io_errors = ["flaky storage"]
+    global_ctx = DataContext(io_retry_max_attempts=5)
+    with DataContext.current(global_ctx if explicit_context else ctx):
+        tasks = datasource.get_read_tasks(
+            parallelism=1, data_context=ctx if explicit_context else None
+        )
+
+    # A planned task keeps its budget even if the caller changes the context.
+    ctx.io_retry_max_attempts = 7
+    with DataContext.current(global_ctx):
+        with pytest.raises(OSError, match="flaky storage"):
+            _execute_read_tasks(tasks)
+
+    assert array.attempts == max_attempts
+
+
 def test_read_chunk_retries_transient_io(monkeypatch):
     """_read_chunk retries reads whose error matches retry_match (Ray Data's
     DataContext.retried_io_errors), then succeeds."""
@@ -648,6 +689,7 @@ def test_read_chunk_retries_transient_io(monkeypatch):
         "x",
         ((0, 4),),
         retry_match=["Connection reset"],
+        max_attempts=3,
     )
     np.testing.assert_array_equal(out, np.arange(4, dtype="<i4"))
     assert _FlakyArray.attempts == 3  # failed twice, then succeeded
