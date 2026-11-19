@@ -10,9 +10,15 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
-from ray.serve._private.test_utils import fake_replica_context, running_serve
+from ray.serve._private.test_utils import (
+    fake_replica_context,
+    passthrough_decorator,
+    running_serve,
+)
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper, _unpinned_model_lookups
@@ -831,6 +837,45 @@ class TestBasicAPI:
             ray.serve.context._RequestContext(multiplexed_model_id="1")
         )
         assert serve.get_multiplexed_model_id() == "1"
+
+    @pytest.mark.asyncio
+    async def test_multiplexed_method_wrapped_by_other_decorator(self, monkeypatch):
+        monkeypatch.setattr(
+            _ModelMultiplexWrapper, "_push_model_ids_info", lambda self: None
+        )
+        monkeypatch.setattr(
+            ray.serve.context,
+            "_INTERNAL_REPLICA_CONTEXT",
+            ray.serve.context.ReplicaContext(
+                replica_id=ReplicaID(
+                    "wrapped-method", deployment_id=DeploymentID(name="model")
+                ),
+                servable_object=None,
+                _deployment_config=DeploymentConfig(),
+                rank=0,
+                world_size=1,
+            ),
+        )
+
+        class Model:
+            def __init__(self):
+                self.num_loads = 0
+
+            @passthrough_decorator
+            @serve.multiplexed
+            async def load_model(self, model_id: str):
+                self.num_loads += 1
+                return model_id
+
+        model = Model()
+        try:
+            assert await model.load_model("model") == "model"
+            assert await model.load_model("model") == "model"
+            assert model.num_loads == 1
+        finally:
+            multiplexer = getattr(model, "__serve_multiplex_wrapper", None)
+            if multiplexer is not None:
+                await multiplexer.metrics_pusher.graceful_shutdown()
 
 
 def test_request_routing_info(serve_instance):

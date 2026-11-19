@@ -991,6 +991,12 @@ class PhysicalOperator(Operator):
         """
         return ""
 
+    def lineage_reconstruction_progress_str(self) -> str:
+        """Return the object-loss reconstruction status to be displayed in the
+        operator progress bar, or "" if this operator has no reconstruction
+        activity."""
+        return ""
+
     def num_outputs_total(self) -> Optional[int]:
         """Returns the total number of output bundles of this operator,
         or ``None`` if unable to provide a reasonable estimate (for example,
@@ -1148,6 +1154,13 @@ class PhysicalOperator(Operator):
         This should return True for operators that only manipulate bundle metadata
         (e.g., the OutputSplitter operator). This hints to the execution engine that
         these operators should not be throttled based on resource usage.
+        """
+        return False
+
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        """True if no downstream operator can start until this one has
+        completed, i.e. its whole output must exist before any of it is usable.
         """
         return False
 

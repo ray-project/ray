@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.train.health import ControllerProbe, NodeProbe, ProbeResult
+from ray.train.health._internal import node_monitor_group
 from ray.train.health._internal.node_monitor import NodeMonitor
 from ray.train.health._internal.node_monitor_group import NodeMonitorGroup
 from ray.train.health._internal.probe_utils import ScheduledProbe
@@ -123,6 +124,22 @@ def test_poll_status_does_not_wait_for_a_slow_probe():
     assert time.monotonic() - started < 0.5
 
 
+def test_on_demand_probes_run_at_once_until_the_timeout():
+    fast, also_fast = _slow_probe("Fast", 1.0).probe, _slow_probe("AlsoFast", 1.0).probe
+    hung = _slow_probe("Hung", 10.0).probe
+
+    started = time.monotonic()
+    status = NodeMonitor([]).poll_probes([fast, also_fast, hung], timeout_s=1.5)
+    results = status.probe_results
+
+    # In parallel: the two 1s probes don't add up, and the hung one isn't
+    # waited for past the timeout.
+    assert time.monotonic() - started < 2.5
+    assert results["Fast"].metrics == results["AlsoFast"].metrics == {"seconds": 1.0}
+    assert isinstance(results["Hung"].error, TimeoutError)
+    assert "within 1.5s" in str(results["Hung"].error)
+
+
 def _local_node_id():
     return ray.get_runtime_context().get_node_id()
 
@@ -191,7 +208,7 @@ class UnresponsiveMonitor:
     def poll_status(self):
         time.sleep(600)
 
-    def poll_probes(self, probes):
+    def poll_probes(self, probes, timeout_s):
         time.sleep(600)
 
 
@@ -284,15 +301,20 @@ def test_a_monitor_stopped_during_on_demand_probes_answers_with_its_error(
 
 
 def test_a_node_that_does_not_answer_its_probes_in_time_gets_a_timeout_error(
-    ray_start_4_cpus,
+    ray_start_4_cpus, monkeypatch
 ):
+    # A node has the grace period past timeout_s to answer.
+    monkeypatch.setattr(node_monitor_group, "ON_DEMAND_PROBE_GRACE_S", 0.5)
     group = NodeMonitorGroup([])
     group._worker_node_monitors["n1"] = UnresponsiveMonitor.remote()
     group._controller_node_monitor = UnresponsiveMonitor.remote()
 
     group.poll_probes_async([Pid(), Comms()], timeout_s=1.0)
     assert group.poll_probe_results() is None
-    time.sleep(1.5)
+    time.sleep(1.2)
+    # Still within the grace period.
+    assert group.poll_probe_results() is None
+    time.sleep(0.5)
     status = group.poll_probe_results()
     assert isinstance(status.errors["n1"], TimeoutError)
     error = status.controller_node_monitor_status.monitor_error
