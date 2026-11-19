@@ -1,6 +1,6 @@
 import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, List, Optional, Set
 
 import pyarrow as pa
 
@@ -172,14 +172,27 @@ def _is_statistics_safe(predicate: Expr, float_columns: Set[str]) -> bool:
     )
 
 
+@dataclass(frozen=True)
+class StatisticsSafeSplit:
+    """A predicate split by whether Parquet statistics evaluate it correctly.
+
+    Attributes:
+        safe: Conjuncts a Parquet scan can apply, or None if there are none.
+        unsafe: Conjuncts to apply after the read, or None if there are none.
+    """
+
+    safe: Optional[Expr]
+    unsafe: Optional[Expr]
+
+
 def split_statistics_safe_predicate(
     predicate: Expr, schema: pa.Schema
-) -> Tuple[Optional[Expr], Optional[Expr]]:
-    """Split ``predicate`` into ``(safe, unsafe)`` for a Parquet scan.
+) -> StatisticsSafeSplit:
+    """Split ``predicate`` into safe and unsafe conjuncts for a Parquet scan.
 
     Parquet min/max statistics skip NaN, so PyArrow drops NaN rows when it
     prunes row groups on a float column with ``!=``, ``is_in``, ``not_in`` or
-    anything under ``~``. Those conjuncts are ``unsafe`` and must be applied
+    anything under ``~``. Those conjuncts are unsafe and must be applied
     after the read; a float column is safe only in ``<``, ``<=``, ``>``,
     ``>=``, ``==`` and null checks against a column or literal.
 
@@ -194,9 +207,9 @@ def split_statistics_safe_predicate(
             safe.append(conjunct)
         else:
             unsafe.append(conjunct)
-    return (
-        combine_predicate_chain(safe, Operation.AND),
-        combine_predicate_chain(unsafe, Operation.AND),
+    return StatisticsSafeSplit(
+        safe=combine_predicate_chain(safe, Operation.AND),
+        unsafe=combine_predicate_chain(unsafe, Operation.AND),
     )
 
 

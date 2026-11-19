@@ -52,13 +52,11 @@ class ParquetScanner(ArrowFileScanner):
     @override
     def push_filters(self, predicate: Expr) -> Tuple[ArrowFileScanner, Optional[Expr]]:
         # Parquet statistics skip NaN, so some float filters run after the read.
-        safe, unsafe = split_statistics_safe_predicate(
-            predicate=predicate, schema=self.schema
-        )
-        if safe is None:
-            return self, unsafe
-        scanner, residual = super().push_filters(predicate=safe)
-        return scanner, combine_predicates(residual, unsafe)
+        split = split_statistics_safe_predicate(predicate=predicate, schema=self.schema)
+        if split.safe is None:
+            return self, split.unsafe
+        scanner, residual = super().push_filters(predicate=split.safe)
+        return scanner, combine_predicates(residual, split.unsafe)
 
     @override
     def prune_partitions(self, predicate: Expr) -> "ParquetScanner":

@@ -816,10 +816,10 @@ class ParquetDatasource(Datasource):
         """
         # Parquet statistics skip NaN, so some float filters must stay in the
         # ``Filter`` above the read; returning ``self`` keeps it there.
-        _, unsafe = split_statistics_safe_predicate(
+        statistics_split = split_statistics_safe_predicate(
             predicate=predicate_expr, schema=self._file_schema
         )
-        if unsafe is not None:
+        if statistics_split.unsafe is not None:
             return self
 
         partition_cols = set(self._partition_columns)
