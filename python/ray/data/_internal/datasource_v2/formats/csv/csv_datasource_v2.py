@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections import deque
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Deque, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -13,6 +12,10 @@ from typing_extensions import override
 
 import ray
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.common.actor_pool import (
+    dispatch_batches,
+    reader_actor_pool,
+)
 from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
     ArrowFileScanner,
 )
@@ -123,79 +126,53 @@ class CsvFileIndexer(LineChunkFileIndexer):
         if self._num_actors == 0:
             yield from super()._process_file_infos_to_manifests(file_infos)
             return
-        actors: List[ActorProxy[HeaderReader]] = [
-            HeaderReaderActor.options(
-                scheduling_strategy="SPREAD",
-                max_restarts=_MAX_ACTOR_RETRIES,
-                max_task_retries=_MAX_ACTOR_RETRIES,
-            ).remote(
+        try:
+            self._header_names = {}
+            with reader_actor_pool(
+                HeaderReaderActor,
+                num_actors=self._num_actors,
+                options={
+                    # Restart an actor that dies or OOMs and re-run its batch.
+                    "max_restarts": _MAX_ACTOR_RETRIES,
+                    "max_task_retries": _MAX_ACTOR_RETRIES,
+                },
                 filesystem=self._filesystem,
                 file_format=self._header_format,
                 io_concurrency=self._io_concurrency,
-            )
-            for _ in range(self._num_actors)
-        ]
-        logger.debug("Provisioned %d HeaderReader actors", self._num_actors)
-        try:
-            self._header_names = {}
-            yield from super()._process_file_infos_to_manifests(
-                self._with_prefetched_headers(file_infos, actors)
-            )
+            ) as actors:
+                logger.debug("Provisioned %d HeaderReader actors", self._num_actors)
+                yield from super()._process_file_infos_to_manifests(
+                    self._with_prefetched_headers(file_infos, actors)
+                )
         finally:
             self._header_names = {}
-            for actor in actors:
-                # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
-                # pyrefly: ignore[bad-argument-type]
-                ray.kill(actor)
 
     def _with_prefetched_headers(
         self,
         file_infos: Iterable[FileInfo],
         actors: List["ActorProxy[HeaderReader]"],
     ) -> Iterable[FileInfo]:
-        """Yield files in order, their headers read ahead by the actor pool.
+        """Yield files in order, their headers read ahead by the actor pool."""
 
-        Mirrors the footer indexer's dispatch: a FIFO of in-flight batches,
-        up to two per actor, delivered in order, so manifest assembly never
-        waits unless every batch in the window is still being read.
-        """
-        infos = iter(file_infos)
-        # One entry per dispatched batch: its files, the ones whose headers
-        # the actor reads, and the read's ObjectRef.
-        pending: Deque[
-            Tuple[List[FileInfo], List[FileInfo], Optional[ray.ObjectRef]]
-        ] = deque()
-        window = self._num_actors * 2
-        batch_no = 0
-
-        def dispatch_next() -> bool:
-            nonlocal batch_no
-            batch = next(batch_file_infos(infos, self._header_batch_size), None)
-            if batch is None:
-                return False
+        def submit(
+            actor: "ActorProxy[HeaderReader]", batch: List[FileInfo]
+        ) -> Optional[Tuple[List[FileInfo], "ray.ObjectRef"]]:
             with_headers = [info for info in batch if self._needs_header(info)]
-            ref = None
-            if with_headers:
-                actor = actors[batch_no % len(actors)]
-                # ``ActorProxy`` stubs type ``.remote`` narrower than it is.
-                ref = actor.read_headers.remote(
-                    with_headers
-                )  # pyrefly: ignore[missing-attribute]
-            pending.append((batch, with_headers, ref))
-            batch_no += 1
-            return True
+            if not with_headers:
+                return None
+            # ``ActorProxy`` stubs type ``.remote`` narrower than it is.
+            ref = actor.read_headers.remote(
+                with_headers
+            )  # pyrefly: ignore[missing-attribute]
+            return with_headers, ref
 
-        # Prime the window.
-        for _ in range(window):
-            if not dispatch_next():
-                break
-        while pending:
-            batch, with_headers, ref = pending.popleft()
-            if ref is not None:
+        batches = batch_file_infos(file_infos, self._header_batch_size)
+        for batch, headers in dispatch_batches(actors, batches, submit):
+            if headers is not None:
+                with_headers, ref = headers
                 for info, names in zip(with_headers, ray.get(ref)):
                     self._header_names[info.path] = names
             yield from batch
-            dispatch_next()
 
     def _needs_header(self, file_info: FileInfo) -> bool:
         # The whole-file branch of ``_chunk_metadatas_of_file`` is the exact

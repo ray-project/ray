@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import logging
-from collections import deque
-from typing import TYPE_CHECKING, AbstractSet, Deque, Iterable, Iterator, List, Optional
+from typing import TYPE_CHECKING, AbstractSet, Any, Iterable, Iterator, List, Optional
 
 import numpy as np
 import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.common.actor_pool import (
+    dispatch_batches,
+    reader_actor_pool,
+)
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
@@ -315,26 +318,24 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
-        actors: List[ActorProxy[FooterReader]] = [
-            FooterReaderActor.options(scheduling_strategy="SPREAD").remote(
-                filesystem,
+        with reader_actor_pool(
+            FooterReaderActor,
+            num_actors=self._num_actors,
+            filesystem=filesystem,
+            io_concurrency=self._io_concurrency,
+            filter_expr=predicate,
+            projected_cols=projected_columns,
+            coalesce_bytes=coalesce_bytes,
+            excluded_read_unit_ids=excluded_read_unit_ids,
+            partitioning=self._partitioning,
+            partition_pruner=partition_pruner,
+            logical_schema=self._logical_schema,
+        ) as actors:
+            logger.debug(
+                "Provisioned %d FooterReader actors (io_concurrency=%d)",
+                self._num_actors,
                 self._io_concurrency,
-                predicate,
-                projected_columns,
-                coalesce_bytes,
-                excluded_read_unit_ids=excluded_read_unit_ids,
-                partitioning=self._partitioning,
-                partition_pruner=partition_pruner,
-                logical_schema=self._logical_schema,
             )
-            for _ in range(self._num_actors)
-        ]
-        logger.debug(
-            "Provisioned %d FooterReader actors (io_concurrency=%d)",
-            self._num_actors,
-            self._io_concurrency,
-        )
-        try:
             manifests = self._read_footers(actors, file_infos, limit)
             if shuffle_row_groups:
                 assert shuffle_config is not None
@@ -344,11 +345,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                     max_rows_per_output=self._max_paths_per_output,
                 )
             yield from manifests
-        finally:
-            for actor in actors:
-                # ``ActorProxy`` is ``ActorHandle | type[T]``; kill wants a handle.
-                # pyrefly: ignore[bad-argument-type]
-                ray.kill(actor)
 
     def _read_footers(
         self,
@@ -356,39 +352,21 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
     ) -> Iterator[FileManifest]:
-        # Bound the number of in-flight footer batches so listing stays roughly
-        # demand-driven (matters under a limit) and memory stays flat.
-        window = max(1, self._max_inflight_batches)
-        batches = self._batches(file_infos)
-        # FIFO of in-flight streaming generators, one per dispatched footer batch.
-        pending: Deque[ray.ObjectRefGenerator] = deque()
-        batch_no = 0
-        delivered_fully_matched_rows = 0
-
-        def dispatch_next() -> bool:
-            nonlocal batch_no
-            batch = next(batches, None)
-            if batch is None:
-                return False
-            actor: ActorProxy[FooterReader] = actors[batch_no % len(actors)]
+        def submit(actor: "ActorProxy[FooterReader]", batch: List[FileInfo]) -> Any:
             # Streaming ``@ray.method``; stub types ``.remote`` as ``ObjectRef``
             # and don't preserve the method's keyword args.
-            # pyrefly: ignore[bad-assignment]
-            gen: ray.ObjectRefGenerator = actor.read_footers.remote(
+            return actor.read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
             )
-            pending.append(gen)
-            batch_no += 1
-            return True
 
-        # Prime the window.
-        for _ in range(window):
-            if not dispatch_next():
-                break
-
-        while pending:
-            gen = pending.popleft()
+        delivered_fully_matched_rows = 0
+        # A bounded window keeps listing roughly demand-driven (matters under a
+        # limit) and memory flat; the pool is killed even on an early return.
+        window = max(1, self._max_inflight_batches)
+        for _batch, gen in dispatch_batches(
+            actors, self._batches(file_infos), submit, window=window
+        ):
             for ref in gen:  # blocks until this generator's next result lands
                 for chunked_file in ray.get(ref):
                     yield _chunked_file_to_manifest(chunked_file)
@@ -401,11 +379,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                             if rg.fully_matched
                         )
                 if limit is not None and delivered_fully_matched_rows >= limit:
-                    # Stop listing; abandon in-flight generators (the actor
-                    # teardown cancels them).
+                    # Stop listing; abandoned in-flight generators are
+                    # cancelled when the pool is killed.
                     return
-            # This generator drained; keep the window full.
-            dispatch_next()
 
     def _batches(self, file_infos: "Iterable[FileInfo]") -> Iterator[List[FileInfo]]:
         return batch_file_infos(file_infos, self._footer_batch_size)
