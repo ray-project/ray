@@ -180,7 +180,7 @@ class Fail(Action):
         seed_task_ids, reconstruction_plan_id = runner.tracker.register_task_failed(
             self.lineage_task_id, reconstruction_plan_id=bound_reconstruction_plan_id
         )
-        assert seed_task_ids == list(self.expected_seed_task_ids)
+        assert list(seed_task_ids) == list(self.expected_seed_task_ids)
         assert reconstruction_plan_id is not None
         if bound_reconstruction_plan_id is None:
             runner.bind(self.plan, reconstruction_plan_id)

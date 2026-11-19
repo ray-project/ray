@@ -861,7 +861,7 @@ def test_retry_does_not_release_a_queued_sibling_again():
 
     # left is submitted and loses its output. right's input is still queued.
     tracker.register_task_submission(left, left_input, plan)
-    assert tracker.register_task_failed(left, plan) == ([seed], plan)
+    assert tracker.register_task_failed(left, plan) == ({seed: None}, plan)
     tracker.register_task_submission(seed, [], plan)
 
     assert tracker.get_pending_children(seed, plan) == {

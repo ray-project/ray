@@ -9,7 +9,7 @@ the bundler.
 
 import pickle
 from dataclasses import replace
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING, Dict, FrozenSet, List
 from unittest.mock import MagicMock
 
 import pytest
@@ -244,16 +244,29 @@ def _drain(op):
     return bundles
 
 
-def _lose(topology: Dict, tracker: LineageTracker, lost_task_id: str) -> None:
+def _lose(
+    topology: Dict,
+    tracker: LineageTracker,
+    lost_task_id: str,
+    reconstruction_plan_ids: FrozenSet[str] = frozenset(),
+) -> None:
     """Report that ``lost_task_id``'s output was lost, the way the executor does.
 
     Args:
         topology: The operator topology to reconstruct in.
         tracker: The lineage tracker the operators share.
         lost_task_id: The lineage task ID of the task whose output was lost.
+        reconstruction_plan_ids: The plans the failed attempt was serving; empty
+            for a fresh attempt.
     """
     task = DataOpTask(
-        0, MagicMock(), MagicMock(), "lost_op", lineage_task_id=lost_task_id
+        0,
+        MagicMock(),
+        MagicMock(),
+        "lost_op",
+        lineage_task_id=lost_task_id,
+        reconstruction_plan_ids=reconstruction_plan_ids,
+        cancel_callback=lambda: None,
     )
     _reconstruct_lost_object(
         topology,
@@ -393,7 +406,7 @@ def test_joined_plans_sharing_a_child_release_it_once(
     plan_ids = [
         tracker.register_task_failed(leaf_task_id)[1] for leaf_task_id in leaf_task_ids
     ]
-    stamped_seed_input = producer.stamp_seed_reconstruction_task(
+    stamped_seed_input = producer.stamp_reconstruction_task(
         seed_task_id, {plan_ids[0]}, seed_input
     )
     assert producer.join_queued_reconstruction_task(seed_task_id, {plan_ids[1]})
@@ -514,16 +527,14 @@ def test_shared_child_is_batched_until_it_is_submitted(
     (second_seed_a,) = _produced_bundles([[2]])
     _run_to_completion(
         producer,
-        producer.stamp_seed_reconstruction_task(seed_task_ids[1], {plan_a}, seed_input),
+        producer.stamp_reconstruction_task(seed_task_ids[1], {plan_a}, seed_input),
         [second_seed_a],
     )
     assert not producer.has_next()
 
     # Both plans share the first seed's re-run. Its completion completes the child's
     # input for the first plan only.
-    stamped = producer.stamp_seed_reconstruction_task(
-        seed_task_ids[0], {plan_a}, seed_input
-    )
+    stamped = producer.stamp_reconstruction_task(seed_task_ids[0], {plan_a}, seed_input)
     assert producer.join_queued_reconstruction_task(seed_task_ids[0], {plan_b})
     (first_seed,) = _produced_bundles([[1]])
     _run_to_completion(producer, stamped, [first_seed])
@@ -540,7 +551,7 @@ def test_shared_child_is_batched_until_it_is_submitted(
     (second_seed_b,) = _produced_bundles([[2]])
     _run_to_completion(
         producer,
-        producer.stamp_seed_reconstruction_task(seed_task_ids[1], {plan_b}, seed_input),
+        producer.stamp_reconstruction_task(seed_task_ids[1], {plan_b}, seed_input),
         [second_seed_b],
     )
     assert producer._reconstruction_outputs == {}
@@ -600,9 +611,7 @@ def test_seed_targeted_by_one_plan_and_reused_by_another(
     seed_plan = tracker.register_task_failed(seed_task_id)[1]
     child_plan = tracker.register_task_failed(child_task_id)[1]
 
-    stamped = producer.stamp_seed_reconstruction_task(
-        seed_task_id, {seed_plan}, seed_input
-    )
+    stamped = producer.stamp_reconstruction_task(seed_task_id, {seed_plan}, seed_input)
     assert producer.join_queued_reconstruction_task(seed_task_id, {child_plan})
     consumed_output, unqueued_output = _produced_bundles([[1], [2]])
     task = _run_to_completion(producer, stamped, [consumed_output, unqueued_output])
@@ -661,6 +670,112 @@ def test_loss_after_the_seed_reconstruction_task_is_submitted_re_injects_the_see
     )
     # The second plan is on the new stamp, and nothing is batched into it yet.
     assert producer._batched_plans == {seed_task_id: set()}
+
+
+@pytest.mark.parametrize("first_rerun_finishes_first", [True, False])
+def test_failed_child_rerun_re_injects_a_seed_whose_rerun_is_still_streaming(
+    ray_start_regular_shared, first_rerun_finishes_first  # noqa: F405
+):
+    """Two re-runs of one seed serve the same plan at once.
+
+    Unlike ``test_loss_after_the_seed_reconstruction_task_is_submitted_re_injects_the_seed``,
+    where the second failure is a fresh task that opens its own plan, here it is
+    a re-run that keeps the plan it serves. Both seed re-runs then share one
+    plan's record of what is owed downstream, so the owed output must be
+    restored for the second re-run and released only once.
+
+    Notation: three operators, the seed A (``producer``), B (``consumer``) and a
+    leaf C. ``A:0`` is the lineage task ID of A's task 0, shared by all of its
+    attempts; a0 is its first attempt, and a0', a0'' are its re-runs.
+
+    Lineage: ``A:0`` feeds output 0 to ``B:0`` and output 1 to ``B:1``, and
+    ``B:0`` feeds ``C:0``.
+
+    1. c0 loses its input, opening plan ``C:0``; the seed re-runs as a0'.
+    2. a0' produces output 0, which releases b0' (a re-run of ``B:0``), and
+       keeps streaming.
+    3. b0' fails. Its failure keeps plan ``C:0``, and a0' is already submitted,
+       so the seed is re-injected as a0'' while a0' is still running.
+    4. a0'' releases ``B:0`` exactly once more; a0', finishing before or after
+       a0'', releases nothing more.
+    """
+    from ray.data._internal.execution.interfaces.physical_operator import (
+        TaskExecDriverStats,
+    )
+
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+
+    # First run: A:0 -> (B:0, B:1), and B:0 -> C:0. C has no operator here; only
+    # its lineage matters.
+    seed_task_id = producer._lineage_task_id_for(0)  # A:0
+    # B:0, B:1
+    child_task_ids = [consumer._lineage_task_id_for(index) for index in range(2)]
+    leaf_task_id = "C:0"
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_seed_input(seed_task_id, seed_input)
+    for output_index, child_task_id in enumerate(child_task_ids):
+        block_id = f"{seed_task_id}/{output_index}"
+        tracker.register_block_output(seed_task_id, block_id, output_index)
+        tracker.register_block_queued(seed_task_id, output_index)
+        tracker.register_task_submission(
+            child_task_id, tracker.resolve_dependencies([block_id])
+        )
+    child_block_id = f"{child_task_ids[0]}/0"
+    tracker.register_block_output(child_task_ids[0], child_block_id, 0)
+    tracker.register_block_queued(child_task_ids[0], 0)
+    tracker.register_task_submission(
+        leaf_task_id, tracker.resolve_dependencies([child_block_id])
+    )
+
+    source_op = producer.input_dependencies[0]
+    topology = {source_op: MagicMock(), producer: MagicMock(), consumer: MagicMock()}
+    plan = frozenset({leaf_task_id})
+
+    # Step 1: c0 loses its input, so plan C:0 re-injects the seed as a0'.
+    # Step 2: a0' produces output 0, which releases b0', and keeps streaming.
+    _lose(topology, tracker, leaf_task_id)
+    (first_call,) = topology[source_op].add_output.call_args_list
+    producer._submit_data_task(MagicMock(), first_call.args[0])
+    (first_rerun,) = producer._data_tasks.values()
+    first_outputs = _produced_bundles([[1], [2]])
+    first_rerun._output_ready_callback(first_outputs[0])
+    (released,) = _drain(producer)
+    assert released.reconstruction_stamp == ReconstructionStamp(child_task_ids[0], plan)
+    consumer._submit_data_task(MagicMock(), released)
+    assert consumer._batched_plans == {}
+
+    # Step 3: b0' fails under plan C:0. a0' is already submitted, so the seed is
+    # re-injected as a0'' under the same plan while a0' is still running.
+    _lose(topology, tracker, child_task_ids[0], reconstruction_plan_ids=plan)
+    _, second_call = topology[source_op].add_output.call_args_list
+    assert second_call.args[0].reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, plan
+    )
+    assert first_rerun.task_index() in producer._data_tasks
+
+    def finish_first_rerun():
+        first_rerun._output_ready_callback(first_outputs[1])
+        first_rerun._task_done_callback(
+            None, None, TaskExecDriverStats(task_output_backpressure_s=0.0), False
+        )
+
+    if first_rerun_finishes_first:
+        finish_first_rerun()
+        # a0' already released B:0, so it releases nothing more.
+        assert not producer.has_next()
+    second_outputs = _produced_bundles([[1], [2]])
+    second_rerun = _run_to_completion(producer, second_call.args[0], second_outputs)
+    assert second_rerun.reconstruction_plan_ids == plan
+    if not first_rerun_finishes_first:
+        finish_first_rerun()
+
+    # Step 4: B:0 is released once more, from a0''; B:1's input is not.
+    (released_again,) = _drain(producer)
+    assert released_again.block_refs == second_outputs[0].block_refs
+    assert released_again.reconstruction_stamp == ReconstructionStamp(
+        child_task_ids[0], plan
+    )
+    assert producer._reconstruction_outputs == {}
 
 
 @pytest.mark.parametrize("reads_before_loss", [5, 10])
@@ -994,11 +1109,12 @@ def test_reconstruction_input_passes_through_the_bundler(
     assert bundler.num_blocks() == 1
 
 
-def _abortable_task(task_done_callback):
+def _abortable_task(task_done_callback, cancel_callback=lambda: None):
     """A ``DataOpTask`` in its freshly-submitted (ACTIVE) state.
 
     ``mark_aborted`` reads neither the generator nor the ref counter, so both are
-    stubs; this keeps the test on the state machine and off a live cluster.
+    stubs, and cancelling goes through ``cancel_callback``; this keeps the test
+    on the state machine and off a live cluster.
     """
     return DataOpTask(
         0,
@@ -1007,29 +1123,33 @@ def _abortable_task(task_done_callback):
         "test_op",
         task_done_callback=task_done_callback,
         lineage_task_id="seed:0",
+        cancel_callback=cancel_callback,
     )
 
 
 def test_mark_aborted_fires_the_done_callback_exactly_once():
-    """Abort from ACTIVE runs the done-callback with the error and finishes the task.
+    """Abort from ACTIVE cancels the Ray task, runs the done-callback with the
+    error and finishes the task.
 
-    A repeat abort, or an abort after normal completion, must not run it again: that
-    would double-release the task's resource reservations.
+    A repeat abort, or an abort after normal completion, must not run either again:
+    that would double-release the task's resource reservations.
     """
     calls = []
     task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc),
+        cancel_callback=lambda: calls.append("cancel"),
     )
     error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
 
     task.mark_aborted(error)
     task.mark_aborted(error)
-    assert calls == [error]
+    assert calls == ["cancel", error]
     assert task.has_finished
 
     calls.clear()
     task = _abortable_task(
-        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc)
+        lambda exc, worker_stats, driver_stats, aborted: calls.append(exc),
+        cancel_callback=lambda: calls.append("cancel"),
     )
     task.mark_done()
     task.mark_aborted(error)
@@ -1248,7 +1368,7 @@ def test_started_reconstruction_aborts_for_reconstruction():
     calls = []
     task = _abortable_task(lambda *args: calls.append(args))
     tracker = MagicMock()
-    tracker.register_task_failed.return_value = (set(), "plan_a")
+    tracker.register_task_failed.return_value = ({}, "plan_a")
     lost_error = ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
 
     _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
@@ -1279,10 +1399,9 @@ def test_reconstruction_error_wraps_object_lost_error():
         )
     reconstruction_error = raised.value
 
-    assert isinstance(reconstruction_error, ObjectLostError)
-    assert isinstance(reconstruction_error, LineageReconstructionError)
     assert reconstruction_error.lost_error is object_lost_error
     assert reconstruction_error.__cause__ is object_lost_error
+    assert isinstance(reconstruction_error, ObjectLostError)
     for field in ("object_ref_hex", "owner_address", "call_site"):
         assert getattr(reconstruction_error, field) == getattr(object_lost_error, field)
     assert str(object_lost_error) in str(reconstruction_error)

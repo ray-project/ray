@@ -691,6 +691,15 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         pass
 
     @override
+    def available_task_inputs(
+        self, lineage_task_id: LineageTaskId
+    ) -> Optional[RefBundle]:
+        # A running task holds its input until it finishes.
+        for task_index, task in self._data_tasks.items():
+            if task.lineage_task_id == lineage_task_id:
+                return self._metrics._running_tasks[task_index].inputs
+        return None
+
     def _enqueue_reconstruction_output(self, bundle: RefBundle, task_index: int):
         self._output_queue.add(bundle, **self._output_add_kwargs(task_index))
         self._metrics.on_output_queued(bundle)

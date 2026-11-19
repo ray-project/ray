@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
@@ -503,7 +503,10 @@ class LineageTracker:
         self,
         lineage_task_id: LineageTaskId,
         reconstruction_plan_id: Optional[ReconstructionPlanId] = None,
-    ) -> Tuple[List[LineageTaskId], ReconstructionPlanId]:
+        available_input: Callable[
+            [LineageTaskId], Optional["RefBundle"]
+        ] = lambda _: None,
+    ) -> Tuple[Dict[LineageTaskId, Optional["RefBundle"]], ReconstructionPlanId]:
         """Mark a task as failed and begin reconstruction of it and its lineage.
 
         Args:
@@ -511,11 +514,16 @@ class LineageTracker:
             reconstruction_plan_id: The reconstruction plan ID of the failed task if the task was a
                 re-execution attempt. If not provided, the task is assumed to be
                 the target of reconstruction from a fresh attempt.
+            available_input: A task's input if it is still available to re-run
+                the task on, else ``None``. Tracing stops at such a task rather
+                than continuing to its parents.
 
         Returns:
-            A tuple of the lineage task IDs of the seed tasks to resubmit for
-            reconstruction, sorted to keep the order deterministic, and the plan
-            ID associated with this reconstruction attempt.
+            A tuple of the tasks to resubmit for reconstruction, each mapped to
+            the most recently available input to re-run it on (its available
+            input, else its retained seed input, ``None`` for a seed with
+            neither), ordered by task ID to keep the order deterministic, and
+            the plan ID associated with this reconstruction attempt.
 
         Raises:
             ValueError: If the task, or a child of a task along the failed path,
@@ -536,7 +544,7 @@ class LineageTracker:
         )
         self._finish_attempt(task_node)
 
-        seed_task_ids: Set[LineageTaskId] = set()
+        restart_inputs: Dict[LineageTaskId, Optional["RefBundle"]] = {}
         # Maps a task's lineage task ID to the IDs of the children it has already
         # been traced from, so that every lineage edge is walked at most once.
         traced_child_ids: Dict[LineageTaskId, Set[LineageTaskId]] = {}
@@ -589,17 +597,23 @@ class LineageTracker:
                 node.lineage_task_id,
                 node.plan_to_child_block_lineages,
             )
-            if len(node.parent_tasks) == 0:
-                # Idempotent: a seed reached through multiple paths is recorded
+            restart_input = available_input(node.lineage_task_id)
+            if restart_input is None:
+                restart_input = node.seed_input
+            if restart_input is not None or len(node.parent_tasks) == 0:
+                # Idempotent: a task reached through multiple paths is recorded
                 # only once.
-                seed_task_ids.add(node.lineage_task_id)
+                restart_inputs[node.lineage_task_id] = restart_input
             else:
                 for parent_task_node in node.parent_tasks:
                     _trace_parent_for_reconstruction(parent_task_node, node)
 
         _trace_parent_for_reconstruction(task_node)
-        # Sort to keep the order of the seed task IDs deterministic.
-        return sorted(seed_task_ids), reconstruction_plan_id_to_attach
+        # Sort to keep the order of the restart tasks deterministic.
+        return (
+            {task_id: restart_inputs[task_id] for task_id in sorted(restart_inputs)},
+            reconstruction_plan_id_to_attach,
+        )
 
     def register_seed_input(
         self, seed_task_id: LineageTaskId, seed_input: "RefBundle"

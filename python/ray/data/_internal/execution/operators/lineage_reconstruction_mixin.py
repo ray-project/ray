@@ -62,6 +62,14 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod
+    def available_task_inputs(
+        self, lineage_task_id: LineageTaskId
+    ) -> Optional[RefBundle]:
+        """The input of this operator's task ``lineage_task_id``, if it is still
+        available to re-run the task on, else ``None``."""
+        ...
+
+    @abc.abstractmethod
     def _enqueue_reconstruction_output(self, bundle: RefBundle, task_index: int):
         """Add a released reconstruction input bundle to this operator's output
         queue, on behalf of the task with ``task_index``."""
@@ -146,13 +154,14 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
 
         return self._lineage_task_id_for(task_index), frozenset(), dependencies
 
-    def stamp_seed_reconstruction_task(
+    def stamp_reconstruction_task(
         self,
         seed_task_id: LineageTaskId,
         reconstruction_plan_ids: Iterable[ReconstructionPlanId],
         seed_input: RefBundle,
     ) -> RefBundle:
-        """Prepare a seed task's retained input to be re-injected for reconstruction.
+        """Prepare a task's input to be re-injected for reconstruction: a seed
+        task's retained input, or the input a task whose actor died still holds.
 
         Stamping marks the input as a reconstruction task for ``seed_task_id`` rather than a
         fresh task. When the seed operator submits it, the task registers under the

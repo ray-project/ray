@@ -1,8 +1,9 @@
 import sys
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, cast
 
 import pytest
 
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.lineage_tracker import (
     LineageTaskId,
     LineageTracker,
@@ -199,7 +200,7 @@ def test_seed_task_fail_resubmit_and_complete():
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         seed_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Register the seed task for submission again to emulate resubmission.
@@ -306,7 +307,7 @@ def _fail_child_of_seed(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         _CHILD_TASK_ID
     )
-    assert seed_tasks_to_retry == [_SEED_TASK_ID]
+    assert list(seed_tasks_to_retry) == [_SEED_TASK_ID]
     assert reconstruction_plan_id is not None
     return tracker, reconstruction_plan_id
 
@@ -363,7 +364,7 @@ def test_resubmission_of_an_already_claimed_block_raises():
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         leaf_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     tracker.register_task_submission(
         seed_task_id, dependencies=[], reconstruction_plan_id=reconstruction_plan_id
     )
@@ -454,7 +455,7 @@ def test_target_consumed_output_pruned_and_unconsumed_output_new():
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         seed_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     tracker.register_task_submission(
         seed_task_id, dependencies=[], reconstruction_plan_id=reconstruction_plan_id
     )
@@ -468,6 +469,48 @@ def test_target_consumed_output_pruned_and_unconsumed_output_new():
     )
     _assert_reuse_status(
         tracker, seed_task_id, [1], reconstruction_plan_id, ObjectReuseStatus.OBJECT_NEW
+    )
+
+
+@pytest.mark.parametrize("has_input", [False, True])
+def test_trace_stops_at_a_task_with_available_input(has_input):
+    """Tracing a failure stops at the first task whose input is still
+    available, rather than at the seed. A rerun target drops the outputs it
+    already queued and queues the rest."""
+    tracker = LineageTracker()
+    _register_linear_chain(tracker, ["seed_task", "child_task"], [0])
+    # The child queues output 0, then fails.
+    tracker.register_block_queued("child_task", 0)
+
+    child_input = cast(RefBundle, object())
+    restart_inputs, reconstruction_plan_id = tracker.register_task_failed(
+        "child_task",
+        available_input=lambda task_id: (
+            child_input if has_input and task_id == "child_task" else None
+        ),
+    )
+
+    # Without the child's input, the seed is the restart point. No seed input
+    # was registered here, so it maps to None.
+    assert restart_inputs == (
+        {"child_task": child_input} if has_input else {"seed_task": None}
+    )
+    tracker.register_task_submission(
+        "child_task", dependencies=[], reconstruction_plan_id=reconstruction_plan_id
+    )
+    _assert_reuse_status(
+        tracker,
+        "child_task",
+        [0],
+        reconstruction_plan_id,
+        ObjectReuseStatus.OBJECT_PRUNED,
+    )
+    _assert_reuse_status(
+        tracker,
+        "child_task",
+        [1],
+        reconstruction_plan_id,
+        ObjectReuseStatus.OBJECT_NEW,
     )
 
 
@@ -534,7 +577,7 @@ def test_child_task_fail_recovers_seed_and_reuse_status(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         child_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery. The child is still pending
@@ -598,7 +641,7 @@ def test_child_task_fail_recovers_seed_when_submitted_after_parent_complete(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         child_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery. The child is still pending
@@ -661,7 +704,7 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         child_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit and complete the seed to emulate the first recovery, then resubmit
@@ -678,7 +721,7 @@ def test_child_task_fail_twice_recovers_seed_and_reuse_status(
     seed_tasks_to_retry, retry_reconstruction_plan_id = tracker.register_task_failed(
         child_task_id, reconstruction_plan_id=reconstruction_plan_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert retry_reconstruction_plan_id == reconstruction_plan_id
 
     # Resubmit the seed again to emulate the second recovery. The child is still
@@ -728,7 +771,7 @@ def test_deep_chain_leaf_fail_recovers_seed_and_reuse_status(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         leaf_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate recovery of the chain root.
@@ -789,7 +832,7 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
     seed_tasks_to_retry, reconstruction_plan_id = tracker.register_task_failed(
         leaf_task_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert reconstruction_plan_id is not None
 
     # Resubmit the seed to emulate the first recovery.
@@ -816,7 +859,7 @@ def test_deep_chain_retry_fail_recovers_seed_and_reuse_status(
     seed_tasks_to_retry, retry_reconstruction_plan_id = tracker.register_task_failed(
         task_ids[retry_failure_index], reconstruction_plan_id=reconstruction_plan_id
     )
-    assert seed_tasks_to_retry == [seed_task_id]
+    assert list(seed_tasks_to_retry) == [seed_task_id]
     assert retry_reconstruction_plan_id == reconstruction_plan_id
 
     # Resubmit the seed again to emulate the second recovery, then walk the full
