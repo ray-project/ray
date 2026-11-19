@@ -24,7 +24,8 @@ print("torch", torch.__version__, "torch_neuronx native library loads")
 """
 
 
-@ray.remote(num_cpus=1)
+# num_cpus=0: the head node advertises no CPUs, and it has to be checked too.
+@ray.remote(num_cpus=0)
 def check_node() -> dict:
     import os
     import platform
