@@ -192,7 +192,15 @@ def test_imputer_all_nan_raise_error():
         imputer.transform_batch(df)
 
 
-def test_imputer_constant_categorical():
+@pytest.mark.parametrize(
+    "output_columns, fill_value",
+    [
+        (None, "three"),
+        (["A_cat_imputed"], "three"),
+        (None, "two"),
+    ],
+)
+def test_imputer_constant_categorical(output_columns, fill_value):
     data = {
         "A_cat": ["one", "two", None, "four"],
     }
@@ -200,28 +208,34 @@ def test_imputer_constant_categorical():
     df["A_cat"] = df["A_cat"].astype("category")
     dataset = ray.data.from_pandas(df)
 
-    imputer = SimpleImputer(columns=["A_cat"], strategy="constant", fill_value="three")
+    imputer = SimpleImputer(
+        columns=["A_cat"],
+        output_columns=output_columns,
+        strategy="constant",
+        fill_value=fill_value,
+    )
     imputer.fit(dataset)
 
-    transformed_df = imputer.transform_batch(df)
+    out_col = output_columns[0] if output_columns else "A_cat"
+    transformed_df = imputer.transform_batch(df.copy())
 
-    expected = {
-        "A_cat": ["one", "two", "three", "four"],
-    }
-
-    for column in data.keys():
-        np.testing.assert_array_equal(transformed_df[column].values, expected[column])
+    np.testing.assert_array_equal(
+        transformed_df[out_col].values, ["one", "two", fill_value, "four"]
+    )
+    if output_columns is not None:
+        assert pd.isna(transformed_df["A_cat"].iloc[2])
+        assert fill_value not in transformed_df["A_cat"].cat.categories
 
     df = pd.DataFrame({"A": [1, 2, 3, 4]})
     transformed_df = imputer.transform_batch(df)
 
     expected = {
         "A": [1, 2, 3, 4],
-        "A_cat": ["three", "three", "three", "three"],
+        out_col: [fill_value, fill_value, fill_value, fill_value],
     }
 
-    for column in df:
-        np.testing.assert_array_equal(transformed_df[column].values, expected[column])
+    for column, expected_values in expected.items():
+        np.testing.assert_array_equal(transformed_df[column].values, expected_values)
 
 
 class TestSimpleImputerSerialization:

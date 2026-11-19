@@ -542,9 +542,13 @@ def _filter_join_sum_add_column() -> Dataset:
 def test_restored_shuffle_is_planned_as_without_elimination(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
+    restore_data_context,
     monkeypatch,
     build: Callable[[], Dataset],
 ):
+    # Keep sort().limit() as Sort + Limit so the downstream Limit still blocks
+    # fusion into the reduce.
+    restore_data_context.enable_top_n_rewrite = False
     ds = build()
     names = [op.name for op in _physical_dag(ds).post_order_iter()]
     assert not any("mode=complete" in name for name in names)
