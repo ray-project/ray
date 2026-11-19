@@ -23,6 +23,11 @@ logger = logging.getLogger(__file__)
 DEFAULT_FULL_TEST_NUM_REPLICA = 1000
 DEFAULT_FULL_TEST_TRIAL_LENGTH_S = 60
 CLOUD = "serve_release_tests_cloud"
+# Worker instance families, in order of preference. All are x86 with the same
+# vCPU and memory per size; the later ones are fallbacks for when the earlier
+# ones have no capacity.
+WORKER_FAMILIES = ["m7i", "m6i", "m5", "m6a"]
+MAX_WORKERS = 1000
 
 
 @click.command()
@@ -55,14 +60,31 @@ def main(
     compute_config = ComputeConfig(
         cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m7i.8xlarge"),
+        # One logical pool of 4-CPU workers. Anyscale launches the first group
+        # in `group_order` and moves to the next group in the same zone when a
+        # launch fails for lack of capacity.
         worker_nodes=[
             WorkerNodeGroupConfig(
-                instance_type="m7i.xlarge",
+                name=f"worker-{family}",
+                instance_type=f"{family}.xlarge",
                 min_nodes=0,
-                max_nodes=1000,
+                max_nodes=MAX_WORKERS,
                 resources={"worker_resource": 1},
-            ),
+            )
+            for family in WORKER_FAMILIES
         ],
+        # Keeps the pool at MAX_WORKERS in total rather than per group.
+        max_resources={"worker_resource": MAX_WORKERS},
+        flags={
+            "instance_ranking_strategy": [
+                {
+                    "ranker_type": "custom_group_order",
+                    "ranker_config": {
+                        "group_order": [f"worker-{f}" for f in WORKER_FAMILIES]
+                    },
+                }
+            ]
+        },
     )
     stages = [
         LocustStage(

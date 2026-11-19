@@ -11,10 +11,19 @@ head_node:
     # 32 cpus, x86, 128G mem, 12.5Gb NIC
     instance_type: m7i.8xlarge
 
+# Workers come from one logical pool of 32-CPU / 128 GiB x86 nodes. Anyscale
+# launches the first group in `group_order` and moves to the next group in
+# the same zone when a launch fails for lack of capacity. Every group has the
+# same `resources`, so Ray treats them as interchangeable.
+#
+# The pool is a fixed 32 workers. The size is set by `min_resources` and
+# `max_resources` on the custom `worker` resource rather than by a per-group
+# `min_nodes`, so that a fallback type can also fill the initial 32.
 worker_nodes:
-    # 32 cpus, x86, 128G mem, 12.5Gb NIC
-    - instance_type: m7i.8xlarge
-      min_nodes: 32
+    # 32 cpus, x86 (Intel Sapphire Rapids), 128G mem, 12.5Gb NIC. Preferred type.
+    - name: worker-m7i
+      instance_type: m7i.8xlarge
+      min_nodes: 0
       max_nodes: 32
       market_type: ON_DEMAND
       # New SDK's `resources` is a full override (not a merge with natural
@@ -23,3 +32,44 @@ worker_nodes:
       resources:
         CPU: 32
         worker: 1
+    # Fallbacks: same resources, used only when the groups above cannot launch.
+    # 32 cpus, x86 (Intel Ice Lake), 128G mem
+    - name: worker-m6i
+      instance_type: m6i.8xlarge
+      min_nodes: 0
+      max_nodes: 32
+      market_type: ON_DEMAND
+      resources:
+        CPU: 32
+        worker: 1
+    # 32 cpus, x86 (Intel Skylake/Cascade Lake), 128G mem
+    - name: worker-m5
+      instance_type: m5.8xlarge
+      min_nodes: 0
+      max_nodes: 32
+      market_type: ON_DEMAND
+      resources:
+        CPU: 32
+        worker: 1
+    # 32 cpus, x86 (AMD EPYC Milan), 128G mem
+    - name: worker-m6a
+      instance_type: m6a.8xlarge
+      min_nodes: 0
+      max_nodes: 32
+      market_type: ON_DEMAND
+      resources:
+        CPU: 32
+        worker: 1
+
+# Exactly 32 workers in total, however they split across the groups above.
+# Only workers carry the `worker` resource, so the head is not counted.
+min_resources:
+  worker: 32
+max_resources:
+  worker: 32
+
+flags:
+  instance_ranking_strategy:
+    - ranker_type: custom_group_order
+      ranker_config:
+        group_order: [worker-m7i, worker-m6i, worker-m5, worker-m6a]
