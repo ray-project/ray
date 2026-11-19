@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "absl/time/time.h"
+#include "boost/asio/ip/host_name.hpp"
 #include "ray/asio/asio_util.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -32,6 +33,7 @@
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_worker_manager.h"
 #include "ray/gcs/grpc_services.h"
+#include "ray/gcs/leader_election/leader_election_client_factory.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -59,6 +61,33 @@ RedisMetrics MakeRedisMetrics(const GcsServerMetrics &metrics) {
   return RedisMetrics{metrics.redis_request_payload_bytes_sum,
                       metrics.redis_response_payload_bytes_sum,
                       metrics.redis_command_count_counter};
+}
+
+LeaderElectionConfig MakeLeaderElectionConfig(const GcsServerConfig &config,
+                                              std::function<void()> on_started_leading,
+                                              std::function<void()> on_stopped_leading) {
+  RAY_CHECK(!config.node_id.empty()) << "GCS leader election requires a node ID.";
+  auto &ray_config = RayConfig::instance();
+  LeaderElectionConfig election_config;
+  election_config.lease_client =
+      config.lease_client != nullptr
+          ? config.lease_client
+          : LeaderLeaseClientFactory::Create(
+                ray_config.gcs_leader_election_lease_namespace(),
+                ray_config.gcs_leader_election_lease_name());
+  // Unique per GCS process, so a restarted pod never mistakes the old lease for its own.
+  election_config.holder_id = boost::asio::ip::host_name() + "_" + config.node_id;
+  election_config.lease_duration_seconds =
+      ray_config.gcs_leader_election_lease_duration_s();
+  election_config.renew_deadline_seconds =
+      ray_config.gcs_leader_election_renew_deadline_s();
+  election_config.retry_period_seconds = ray_config.gcs_leader_election_retry_period_s();
+  election_config.on_started_leading = std::move(on_started_leading);
+  election_config.on_stopped_leading = std::move(on_stopped_leading);
+  election_config.on_new_leader = [](const std::string &leader) {
+    RAY_LOG(INFO) << "Observed GCS leader: " << leader;
+  };
+  return election_config;
 }
 
 }  // namespace
@@ -188,7 +217,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_started_(false),
       is_stopped_(false),
       // Leader election disabled => always the leader (legacy single-GCS behavior).
-      // Enabled => start passive; promotion to leader is wired up in a later PR.
+      // Enabled => start passive until the leader elector promotes this GCS.
       is_leader_(!config.enable_gcs_leader_election) {
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
@@ -291,6 +320,24 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
       std::move(observability_inner_publisher));
+
+  if (config_.enable_gcs_leader_election) {
+    // Runs on the elector's thread, but promotion must run on the default io context.
+    auto on_started_leading = [this]() {
+      io_context_provider_.GetDefaultIOContext().post([this]() { PromoteToLeader(); },
+                                                      "GcsServer.PromoteToLeader");
+    };
+    // Another head may already be writing as the leader, so serving even one more request
+    // risks split-brain writes to storage. Close the leader gate before the exit, which
+    // takes time to flush the log.
+    auto on_stopped_leading = [this]() {
+      lease_lost_ = true;
+      is_leader_ = false;
+      RAY_LOG(FATAL) << "GCS lost the leader lease. Exiting to avoid split-brain.";
+    };
+    leader_elector_ = std::make_unique<LeaderElector>(MakeLeaderElectionConfig(
+        config_, std::move(on_started_leading), std::move(on_stopped_leading)));
+  }
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -334,6 +381,10 @@ void GcsServer::Start() {
          RAY_LOG(INFO) << "GCS was promoted during startup. Starting as the leader.";
          auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
          gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                                     // The lease may have been lost during the load.
+                                     if (lease_lost_ || is_stopped_) {
+                                       return;
+                                     }
                                      DoStart(*gcs_init_data);
                                      // Init skipped these: leader election was enabled,
                                      // so this GCS was still passive when they ran.
@@ -342,6 +393,9 @@ void GcsServer::Start() {
                                    io_context_provider_.GetDefaultIOContext()});
        },
        io_context_provider_.GetDefaultIOContext()});
+  RAY_CHECK(leader_elector_ != nullptr)
+      << "Leader election is enabled but no leader elector was created.";
+  leader_elector_->Run();
 }
 
 void GcsServer::GetOrGenerateClusterId(
@@ -516,6 +570,13 @@ void GcsServer::PromoteToLeader() {
       io_context_provider_.GetDefaultIOContext().get_executor().running_in_this_thread())
       << "PromoteToLeader() must run on the default io context.";
 
+  // The lease is released in Stop(), so promoting afterwards could overlap the next
+  // leader.
+  if (is_stopped_) {
+    RAY_LOG(INFO) << "Ignoring GCS promotion because the server is stopped.";
+    return;
+  }
+
   // Both conditions are needed. IsLeader() alone leaves a window: it only becomes true
   // once the table load below completes, so a second call arriving in that window would
   // start a second load. promotion_started_ alone misses the GCS that is already active
@@ -539,6 +600,12 @@ void GcsServer::PromoteToLeader() {
   RAY_LOG(INFO) << "GCS promoting to leader. Loading GCS tables.";
   auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
   gcs_init_data->AsyncLoad({[this, gcs_init_data] {
+                              // The lease may have been lost during the table load.
+                              if (lease_lost_ || is_stopped_) {
+                                RAY_LOG(WARNING) << "GCS lost the leader lease while "
+                                                    "loading tables. Not promoting.";
+                                return;
+                              }
                               // Hydrate before opening the gate, so no mutating RPC is
                               // served against half-loaded state, and before promoting
                               // the node manager, so the head node registration retires
@@ -670,6 +737,11 @@ void GcsServer::Stop() {
     pubsub_handler_.reset();
     rpc_server_.Shutdown();
     kv_manager_.reset();
+
+    // Released only after this GCS stops serving, so the next leader never overlaps it.
+    if (leader_elector_) {
+      leader_elector_->Stop();
+    }
 
     is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";

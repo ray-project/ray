@@ -180,13 +180,10 @@ int main(int argc, char *argv[]) {
   gcs_server_config.enable_gcs_leader_election =
       RayConfig::instance().ENABLE_GCS_LEADER_ELECTION();
   if (gcs_server_config.enable_gcs_leader_election) {
-    // Nothing drives promotion yet, so this GCS stays passive until a future release
-    // wires up the leader election client. Warn loudly: on a cluster with no other
-    // active GCS it will block in startup waiting for a cluster ID.
     RAY_LOG(WARNING)
         << "RAY_ENABLE_GCS_LEADER_ELECTION is set. Active-passive GCS leader election "
-           "is experimental and incomplete: this GCS starts passive and cannot yet be "
-           "promoted. Unset it unless you are developing this feature.";
+           "is experimental: this GCS starts passive and is promoted only after it "
+           "acquires the Kubernetes leader lease.";
   }
 
   // Create individual metrics
