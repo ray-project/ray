@@ -56,6 +56,7 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.util import merge_label_selector, merge_runtime_envs
 from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockAccessor, BlockMetadata, BlockStats, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -477,7 +478,7 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         build the empty block from the schema the mappers reported and queue it
         as this partition's single output block.
         """
-        empty_block = schema.empty_table()
+        empty_block = _create_empty_table(schema)
         block_meta = BlockAccessor.for_block(empty_block).get_metadata()
         out_bundle = RefBundle(
             (
