@@ -961,8 +961,14 @@ def test_pbt_missing_nested_hyperparam_init(caplog):
         stub=True,
         config={"b": 42},
     )
-    with caplog.at_level(logging.WARNING):
-        scheduler.on_trial_add(mock_runner, trial_non_dict)
+    ray_logger = logging.getLogger("ray")
+    old_propagate = ray_logger.propagate
+    ray_logger.propagate = True
+    try:
+        with caplog.at_level(logging.WARNING, logger="ray.tune.schedulers.pbt"):
+            scheduler.on_trial_add(mock_runner, trial_non_dict)
+    finally:
+        ray_logger.propagate = old_propagate
     assert isinstance(trial_non_dict.config["b"], dict)
     assert 2.0 <= trial_non_dict.config["b"]["c"] <= 4.0
     assert trial_non_dict.config["b"]["d"]["e"] in [10, 20]
