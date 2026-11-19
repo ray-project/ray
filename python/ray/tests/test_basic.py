@@ -394,7 +394,14 @@ def test_num_threads_env_var_set(
             "OMP_NUM_THREADS,RAYON_NUM_THREADS",
             {"OMP_NUM_THREADS": "2", "RAYON_NUM_THREADS": "2"},
         ),
-        ("", {"OMP_NUM_THREADS": None, "RAYON_NUM_THREADS": None}),
+        pytest.param(
+            "",
+            {"OMP_NUM_THREADS": None, "RAYON_NUM_THREADS": None},
+            marks=pytest.mark.skipif(
+                sys.platform == "win32",
+                reason="Windows deletes an env var set to an empty string.",
+            ),
+        ),
     ],
 )
 def test_num_threads_env_vars_config(

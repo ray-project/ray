@@ -10,10 +10,13 @@ import ray.util.spark.databricks_hook
 from ray._common.test_utils import wait_for_condition
 from ray.util.spark import setup_ray_cluster
 
-pytestmark = pytest.mark.skipif(
-    not sys.platform.startswith("linux"),
-    reason="Ray on spark only supports running on Linux.",
-)
+pytestmark = [
+    pytest.mark.skipif(
+        not sys.platform.startswith("linux"),
+        reason="Ray on spark only supports running on Linux.",
+    ),
+    pytest.mark.usefixtures("create_auth_token"),
+]
 
 
 class MockDbApiEntry:

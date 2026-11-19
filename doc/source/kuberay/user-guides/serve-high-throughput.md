@@ -21,7 +21,6 @@ With Ray 2.56 and later, high throughput config options are available for Ray Se
 - `RAY_SERVE_ENABLE_HA_PROXY=1`: Enables HAProxy ingress for the proxy ingress on each of the RayCluster's Pods (serving on port 8000 by default), which is a highly optimized, battle-tested open-source load balancer written in C.
 - `RAY_SERVE_THROUGHPUT_OPTIMIZED=1`: Enables multiple high throughput serving optimizations, including direct gRPC data-plane communications between Ray Serve replicas, improving the performance of inter-deployment traffic.
 - `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1`: Enables direct streaming, allowing requests and responses to stream directly to the backend server instead of passing through an ingress.
-- `VLLM_USE_RAY_V2_EXECUTOR_BACKEND=1`: Configures vLLM to use the Ray V2 executor backend.
 
 ## Example: Serving Qwen on GKE
 
@@ -109,8 +108,6 @@ spec:
                   value: "1"
                 - name: RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
                   value: "1"
-                - name: VLLM_USE_RAY_V2_EXECUTOR_BACKEND
-                  value: "1"
     workerGroupSpecs:
       - template:
           spec:
@@ -122,8 +119,6 @@ spec:
                   - name: RAY_SERVE_THROUGHPUT_OPTIMIZED
                     value: "1"
                   - name: RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
-                    value: "1"
-                  - name: VLLM_USE_RAY_V2_EXECUTOR_BACKEND
                     value: "1"
 ```
 

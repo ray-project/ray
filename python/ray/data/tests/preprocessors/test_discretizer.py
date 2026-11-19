@@ -324,6 +324,28 @@ def test_uniform_kbins_discretizer_defers_non_integer_bins_to_fit(bins):
         discretizer.fit(ds)
 
 
+def test_kbins_discretizer_transform_batch_non_mutation_and_empty_batch():
+    df = pd.DataFrame({"A": [0.5, 1.5, 2.5], "B": [10.0, 20.0, 30.0]})
+    discretizer = CustomKBinsDiscretizer(
+        columns=["A", "B"],
+        bins={"A": [0.0, 1.0, 2.0, 3.0], "B": [0.0, 15.0, 35.0]},
+        output_columns=["A_binned", "B_binned"],
+    )
+    out = discretizer.transform_batch(df)
+    assert list(df.columns) == ["A", "B"]
+    assert list(df["A"]) == [0.5, 1.5, 2.5]
+    assert list(df["B"]) == [10.0, 20.0, 30.0]
+    assert list(out["A_binned"]) == [0, 1, 2]
+    assert list(out["B_binned"]) == [0, 1, 1]
+
+    empty_df = pd.DataFrame(
+        {"A": pd.Series([], dtype=float), "B": pd.Series([], dtype=float)}
+    )
+    empty_out = discretizer.transform_batch(empty_df)
+    assert len(empty_out) == 0
+    assert list(empty_out.columns) == ["A", "B", "A_binned", "B_binned"]
+
+
 if __name__ == "__main__":
     import sys
 

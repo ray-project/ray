@@ -61,42 +61,37 @@ class BatchIndividualItems(ConnectorV2):
     For the multi-agent case, the output `data` looks like this:
     [module_id] -> [col0] -> [possibly complex struct of batches (at the leafs)].
 
-    .. testcode::
-
-        from ray.rllib.connectors.common import BatchIndividualItems
-        from ray.rllib.utils.test_utils import check
-
-        single_agent_batch = {
-            "obs": {
-                # Note that at this stage, next-obs is not part of the data anymore ..
-                ("MA-EPS0",): [0, 1],
-                ("MA-EPS1",): [2, 3],
-            },
-            "actions": {
-                # .. so we have as many actions per episode as we have observations.
-                ("MA-EPS0",): [4, 5],
-                ("MA-EPS1",): [6, 7],
-            },
-        }
-
-        # Create our (single-agent) connector piece.
-        connector = BatchIndividualItems()
-
-        # Call the connector (and thereby batch the individual items).
-        output_batch = connector(
-            rl_module=None,  # This particular connector works without an RLModule.
-            batch=single_agent_batch,
-            episodes=[],  # This particular connector works without a list of episodes.
-            explore=True,
-            shared_data={},
-        )
-
-        # `output_batch` should now be batched (episode IDs should have been removed
-        # from the struct).
-        check(
-            output_batch,
-            {"obs": [0, 1, 2, 3], "actions": [4, 5, 6, 7]},
-        )
+    Examples:
+        >>> from ray.rllib.connectors.common import BatchIndividualItems
+        >>> from ray.rllib.utils.test_utils import check
+        >>> single_agent_batch = {
+        ...     "obs": {
+        ...         # Note that at this stage, next-obs is not part of the data anymore ..
+        ...         ("MA-EPS0",): [0, 1],
+        ...         ("MA-EPS1",): [2, 3],
+        ...     },
+        ...     "actions": {
+        ...         # .. so we have as many actions per episode as we have observations.
+        ...         ("MA-EPS0",): [4, 5],
+        ...         ("MA-EPS1",): [6, 7],
+        ...     },
+        ... }
+        >>> # Create our (single-agent) connector piece.
+        >>> connector = BatchIndividualItems()
+        >>> # Call the connector (and thereby batch the individual items).
+        >>> output_batch = connector(
+        ...     rl_module=None,  # This particular connector works without an RLModule.
+        ...     batch=single_agent_batch,
+        ...     episodes=[],  # This particular connector works without a list of episodes.
+        ...     explore=True,
+        ...     shared_data={},
+        ... )
+        >>> # `output_batch` should now be batched (episode IDs should have been removed
+        >>> # from the struct).
+        >>> check(
+        ...     output_batch,
+        ...     {"obs": [0, 1, 2, 3], "actions": [4, 5, 6, 7]},
+        ... )
     """
 
     def __init__(
