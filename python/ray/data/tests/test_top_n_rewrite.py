@@ -8,10 +8,6 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import Limit, MapRows, Sort, TopN
 from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data._internal.logical.rules.top_n_rewrite import (
-    TOP_N_REWRITE_ENABLED_CONFIG_KEY,
-    TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY,
-)
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
@@ -34,7 +30,7 @@ class _Input(LogicalOperator):
 def _make_context(*, enabled: bool = True) -> DataContext:
     context = DataContext()
     context.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    context.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, enabled)
+    context.enable_top_n_rewrite = enabled
     return context
 
 
@@ -192,7 +188,7 @@ def test_rewrite_keeps_ineligible_sort_limit(
     context = _make_context(enabled=enabled)
     context.shuffle_strategy = shuffle_strategy
     if max_limit is not None:
-        context.set_config(TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY, max_limit)
+        context.top_n_rewrite_max_limit = max_limit
     input_operator = _Input()
     operator = Limit(
         limit,
@@ -207,7 +203,7 @@ def test_rewrite_keeps_ineligible_sort_limit(
 
 def test_rewrite_rejects_invalid_max_limit():
     context = _make_context()
-    context.set_config(TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY, True)
+    context.top_n_rewrite_max_limit = True
 
     with pytest.raises(ValueError, match="must be a positive integer"):
         _optimize_dag(
