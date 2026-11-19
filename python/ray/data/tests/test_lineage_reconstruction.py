@@ -182,7 +182,7 @@ def test_losses_before_the_seed_is_submitted_share_one_reconstruction_task(
         tracker.register_task_submission(
             child_task_id, tracker.resolve_dependencies([block_id])
         )
-    tracker.register_task_complete(seed_task_id)
+    tracker.register_task_complete(seed_task_id, num_outputs=len(child_task_ids))
 
     # Both children are lost before the seed's re-execution is submitted. Each plan
     # is keyed by its lost child. The first loss re-injects the seed, and the second
@@ -593,6 +593,57 @@ def raise_original_map_exception(restore_data_context):
     restore_data_context.raise_original_map_exception = True
 
 
+@pytest.fixture
+def trackers(monkeypatch):
+    """Every ``LineageTracker`` the executor builds during the test."""
+    created = []
+    original_init = LineageTracker.__init__
+
+    def spy(self, *args, **kwargs):
+        original_init(self, *args, **kwargs)
+        created.append(self)
+
+    monkeypatch.setattr(LineageTracker, "__init__", spy)
+    return created
+
+
+@pytest.fixture
+def submissions(monkeypatch):
+    """Record ``(lineage_task_id, parent ids)`` for every task submission.
+
+    An empty graph after a write only means something if tasks were registered in
+    the first place.
+    """
+    recorded = []
+    original = LineageTracker.register_task_submission
+
+    def spy(self, lineage_task_id, dependencies, *args, **kwargs):
+        recorded.append(
+            (
+                lineage_task_id,
+                {dep.parent_lineage_task_id for dep in dependencies},
+            )
+        )
+        return original(self, lineage_task_id, dependencies, *args, **kwargs)
+
+    monkeypatch.setattr(LineageTracker, "register_task_submission", spy)
+    return recorded
+
+
+@pytest.fixture
+def durable_task_ids(monkeypatch):
+    """Record the lineage task ID of every ``try_garbage_collect_lineage`` call."""
+    recorded = set()
+    original = LineageTracker.try_garbage_collect_lineage
+
+    def spy(self, lineage_task_id):
+        recorded.add(lineage_task_id)
+        return original(self, lineage_task_id)
+
+    monkeypatch.setattr(LineageTracker, "try_garbage_collect_lineage", spy)
+    return recorded
+
+
 @ray.remote(num_cpus=0)
 class LossInjector:
     """Fails the first batch that contains each row in ``rows``.
@@ -736,16 +787,100 @@ def test_lineage_reconstruction_delivers_every_row_once(
 
 @reconstruction_enabled
 def test_write_after_a_lost_block_writes_every_row_once(
-    ray_start_regular_shared, raise_original_map_exception, tmp_path
+    ray_start_regular_shared,
+    raise_original_map_exception,
+    trackers,
+    submissions,
+    tmp_path,
 ):
-    """A write operator runs after the reconstructed one, so its files hold the rows."""
+    """A write operator runs after the reconstructed one, so its files hold the rows.
+
+    The write also makes the output durable, so the whole lineage graph is garbage
+    collected, including the re-executed tasks.
+    """
     injector = LossInjector.remote([45])  # pyrefly: ignore[missing-attribute]
 
     _linear(injector).write_parquet(str(tmp_path))
 
     assert ray.get(injector.fired.remote()) == [45]
+    submitted_ids = [lineage_task_id for lineage_task_id, _ in submissions]
+    assert len(submitted_ids) > len(set(submitted_ids)), "nothing was re-executed"
+    (tracker,) = trackers
+    assert _nodes(tracker) == {}
+    assert tracker._block_id_to_parent_output == {}
     rows = ray.data.read_parquet(str(tmp_path)).take_all()
     assert_every_row_once([row["id"] for row in rows])
+
+
+@reconstruction_enabled
+def test_reconstruction_status_records_the_re_run_task(
+    ray_start_regular_shared, raise_original_map_exception, monkeypatch
+):
+    """After a real reconstruction, the seed operator and the operator that lost the
+    block each report one re-run task as finished, with nothing left queued or
+    running."""
+    started_ops = []
+    original_start = MapOperator.start
+
+    def recording_start(self, *args, **kwargs):
+        started_ops.append(self)
+        return original_start(self, *args, **kwargs)
+
+    monkeypatch.setattr(MapOperator, "start", recording_start)
+    injector = LossInjector.remote([45])  # pyrefly: ignore[missing-attribute]
+
+    _linear(injector).take_all()
+
+    assert ray.get(injector.fired.remote()) == [45]
+    statuses = [op.lineage_reconstruction_progress_str() for op in started_ops]
+    assert statuses == ["Reconstruction: 0 queued, 0 running, 1 finished"] * 2
+
+
+@pytest.mark.parametrize("actor_stage", [False, True])
+@reconstruction_enabled
+def test_write_collects_the_whole_lineage_graph(
+    ray_start_regular_shared,
+    trackers,
+    submissions,
+    durable_task_ids,
+    tmp_path,
+    actor_stage,
+):
+    """Verifies the lineage graph is garbage collected after
+    the output is made durable by a write to sink.
+    """
+    ds = ray.data.range(NUM_ROWS, override_num_blocks=4).map(
+        lambda row: {"id": row["id"]}
+    )
+    if actor_stage:
+        ds = ds.map_batches(lambda batch: batch, concurrency=1)
+    ds.write_parquet(str(tmp_path))
+
+    assert durable_task_ids, "no write task was garbage collected"
+    if actor_stage:
+        assert any(
+            parents and lineage_task_id in durable_task_ids
+            for lineage_task_id, parents in submissions
+        ), "no write task recorded a parent, so nothing had to cascade"
+    (tracker,) = trackers
+    assert _nodes(tracker) == {}
+    assert tracker._block_id_to_parent_output == {}
+
+    rows = ray.data.read_parquet(str(tmp_path)).take_all()
+    assert_every_row_once([row["id"] for row in rows])
+
+
+@reconstruction_enabled
+def test_without_a_write_nothing_is_collected(
+    ray_start_regular_shared, trackers  # noqa: F405
+):
+    """Rows handed to the driver are not durable, so their lineage stays."""
+    ray.data.range(NUM_ROWS, override_num_blocks=4).map(
+        lambda row: {"id": row["id"]}
+    ).take_all()
+
+    (tracker,) = trackers
+    assert len(_nodes(tracker)) == 4
 
 
 @reconstruction_disabled

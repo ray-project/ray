@@ -1,4 +1,9 @@
-pymongoarrow==1.7.2
+# pymongoarrow 1.16+ requires Python >= 3.11 (pyarrow 26); 1.15.0 is the newest
+# release that supports this image's Python 3.10 and pyarrow >= 23.
+pymongoarrow==1.15.0
 pymongo>=4.4
 # The Data integration image also runs the HiveServer2 suite.
 impyla==0.23.0
+# daft is relaxed in the base depset and nothing depends on it, so each
+# variant must re-list it.
+daft

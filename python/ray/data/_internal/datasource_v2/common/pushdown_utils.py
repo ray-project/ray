@@ -1,5 +1,6 @@
+import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     ListFilesPushdown,
@@ -95,6 +96,33 @@ def combine_predicates(left: Optional[Expr], right: Optional[Expr]) -> Optional[
     return left & right
 
 
+def flatten_predicate_chain(predicate: Expr, op: Operation) -> List[Expr]:
+    """Operands of ``predicate``'s top level ``op`` chain, left to right (iterative)."""
+    operands: List[Expr] = []
+    stack = [predicate]
+    while stack:
+        expr = stack.pop()
+        if isinstance(expr, BinaryExpr) and expr.op == op:
+            stack.append(expr.right)
+            stack.append(expr.left)
+        else:
+            operands.append(expr)
+    return operands
+
+
+def combine_predicate_chain(predicates: List[Expr], op: Operation) -> Optional[Expr]:
+    """Fold ``predicates`` into one ``op`` chain, left to right; ``None`` if empty."""
+    if not predicates:
+        return None
+    return functools.reduce(lambda left, right: BinaryExpr(op, left, right), predicates)
+
+
+def append_unique_predicate(predicates: List[Expr], predicate: Expr) -> None:
+    """Append ``predicate`` unless a structurally equal one is already listed."""
+    if not any(predicate.structurally_equals(existing) for existing in predicates):
+        predicates.append(predicate)
+
+
 @dataclass
 class _SplitPredicateResult:
     """Result of splitting a predicate by column type.
@@ -179,50 +207,21 @@ def _split_predicate_by_columns(
         >>> result.residual_predicate is not None
         True
     """
-    referenced_cols = set(get_column_references(predicate))
-    data_cols = referenced_cols - partition_columns
-    partition_cols_in_predicate = referenced_cols & partition_columns
-
-    if not partition_cols_in_predicate:
-        # Pure data predicate (or no column refs).
-        return _SplitPredicateResult(
-            data_predicate=predicate,
-            partition_predicate=None,
-            residual_predicate=None,
-        )
-
-    if not data_cols:
-        # Pure partition predicate.
-        return _SplitPredicateResult(
-            data_predicate=None,
-            partition_predicate=predicate,
-            residual_predicate=None,
-        )
-
-    # Mixed predicate - keep splitting if it's an AND chain.
-    if isinstance(predicate, BinaryExpr) and predicate.op == Operation.AND:
-        left_result = _split_predicate_by_columns(predicate.left, partition_columns)
-        right_result = _split_predicate_by_columns(predicate.right, partition_columns)
-
-        return _SplitPredicateResult(
-            data_predicate=combine_predicates(
-                left_result.data_predicate, right_result.data_predicate
-            ),
-            partition_predicate=combine_predicates(
-                left_result.partition_predicate, right_result.partition_predicate
-            ),
-            residual_predicate=combine_predicates(
-                left_result.residual_predicate, right_result.residual_predicate
-            ),
-        )
-
-    # ``OR``/``NOT``/etc. straddling both column kinds — not safely
-    # splittable. Surface as residual so the caller doesn't silently drop
-    # it (the prior version returned ``(None, None)`` here, which let the
-    # surrounding ``AND`` chain push partial conjuncts and over-include
-    # rows that should have been filtered by this one).
+    data: List[Expr] = []
+    partition: List[Expr] = []
+    residual: List[Expr] = []
+    for conjunct in flatten_predicate_chain(predicate, Operation.AND):
+        referenced_cols = set(get_column_references(conjunct))
+        if not (referenced_cols & partition_columns):
+            # Pure data conjunct (or no column refs).
+            data.append(conjunct)
+        elif referenced_cols <= partition_columns:
+            partition.append(conjunct)
+        else:
+            # Straddles both kinds (e.g. an ``OR``): must stay a Filter above.
+            residual.append(conjunct)
     return _SplitPredicateResult(
-        data_predicate=None,
-        partition_predicate=None,
-        residual_predicate=predicate,
+        data_predicate=combine_predicate_chain(data, Operation.AND),
+        partition_predicate=combine_predicate_chain(partition, Operation.AND),
+        residual_predicate=combine_predicate_chain(residual, Operation.AND),
     )
