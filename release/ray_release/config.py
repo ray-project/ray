@@ -56,6 +56,7 @@ ALLOWED_BYOD_TYPES = [
     "llm-cu130",
     "torch-cu128",
     "torch-cu133",
+    "neuron",
 ]
 
 NEW_COMPUTE_CONFIG_KEYS = {
@@ -319,6 +320,8 @@ def validate_byod_type(byod_type: str, python_version: str) -> None:
         "3.14",
     ]:
         raise Exception(f"{byod_type} BYOD tests must use Python 3.11 or 3.14")
+    if byod_type == "neuron" and python_version != "3.12":
+        raise Exception("Neuron BYOD tests must use Python 3.12")
     if byod_type in ["cpu", "cu123"] and python_version not in [
         "3.10",
         "3.11",

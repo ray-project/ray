@@ -60,6 +60,18 @@ APT_PKGS=(
 
 apt-get install -y "${APT_PKGS[@]}"
 
+# Ubuntu 25.10 and newer default to sudo-rs, which has no -E and cannot exec
+# inside a container build. The classic sudo is installed next to it.
+if [[ -x /usr/bin/sudo.ws ]]; then
+    update-alternatives --set sudo /usr/bin/sudo.ws
+fi
+
+# Ubuntu 24.04 and newer ship a default "ubuntu" user that already owns UID 1000.
+EXISTING_USER="$(getent passwd "$RAY_UID" | cut -d: -f1 || true)"
+if [[ -n "$EXISTING_USER" && "$EXISTING_USER" != "ray" ]]; then
+    userdel -r "$EXISTING_USER"
+fi
+
 useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers

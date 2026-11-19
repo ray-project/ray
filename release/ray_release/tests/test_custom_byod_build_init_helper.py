@@ -259,6 +259,12 @@ _ECR = get_global_config()["byod_ecr"]
             "ray-project/ray:a-b-c-py312-cpu",
             "anyscalecpubuild--python312",
         ),
+        # Neuron image: python dimension only, like cpu
+        (
+            "ray-project/ray:a-c",
+            "ray-project/ray:a-py312-neuron",
+            "anyscaleneuronbuild--python312",
+        ),
         # Unknown platform falls back to raw value
         (
             "ray-project/ray:a-c",
@@ -279,6 +285,7 @@ _ECR = get_global_config()["byod_ecr"]
         "ray-llm-cu130",
         "ecr-prefix",
         "dashed-build-id",
+        "ray-neuron-py312",
         "unknown-platform",
         "no-python-ray",
     ],

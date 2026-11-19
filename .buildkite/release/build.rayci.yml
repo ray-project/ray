@@ -82,6 +82,42 @@ steps:
     depends_on:
       - raycudabaseextra($)
 
+  # Ubuntu 26.04 CPU base and the AWS Neuron (Trainium / Inferentia) image built
+  # on it. TorchNeuron needs glibc >= 2.43, which Ubuntu 22.04 and 24.04 do not have.
+  - name: raycpuresolutebase
+    label: "wanda: ray-py{{array.python}}-cpu-resolute-base"
+    wanda: docker/base-deps/cpu-resolute.wanda.yaml
+    array:
+      python:
+        - "3.12"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      ARCH_SUFFIX: ""
+
+  - name: raycpuresolutebaseextra
+    label: "wanda: ray-py{{array.python}}-cpu-resolute-base-extra"
+    wanda: docker/base-extra/cpu-resolute.wanda.yaml
+    array:
+      python:
+        - "3.12"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      IMAGE_TYPE: "ray"
+      ARCH_SUFFIX: ""
+    depends_on:
+      - raycpuresolutebase($)
+
+  - name: rayneuronbase
+    label: "wanda: ray-py{{array.python}}-neuron-base"
+    wanda: docker/ray-neuron/cpu.wanda.yaml
+    array:
+      python:
+        - "3.12"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+    depends_on:
+      - raycpuresolutebaseextra($)
+
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
     wanda: ci/docker/ray-anyscale-cpu.wanda.yaml
@@ -264,3 +300,38 @@ steps:
       gpu:
         - cu12.8.1-cudnn
         - cu13.3.1-cudnn
+
+  - name: ray-anyscale-neuron-build
+    label: "wanda: ray-anyscale py{{array.python}} neuron"
+    wanda: ci/docker/ray-anyscale-neuron.wanda.yaml
+    env_file: rayci.env
+    array:
+      python:
+        - "3.12"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build($)
+      - rayneuronbase($)
+
+  - label: ":crane: publish: ray-anyscale py{{array.python}} neuron"
+    key: anyscaleneuronbuild
+    instance_type: release-medium
+    mount_buildkite_agent: true
+    tags:
+      - oss
+    commands:
+      - bazel run //ci/ray_ci/automation:push_release_test_image --
+        --python-version {{array.python}}
+        --platform neuron
+        --image-type ray
+        --upload
+    depends_on:
+      - forge
+      - ray-anyscale-neuron-build($)
+    array:
+      python:
+        - "3.12"

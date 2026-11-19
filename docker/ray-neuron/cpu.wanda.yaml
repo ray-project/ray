@@ -1,0 +1,9 @@
+# Named "ray-...-neuron-base" so that ci/docker/ray-image.Dockerfile can pick it
+# up with IMAGE_TYPE=ray, PLATFORM=neuron, BASE_VARIANT=base.
+name: "ray-py$PYTHON_VERSION-neuron-base"
+froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-resolute-base-extra"]
+dockerfile: docker/ray-neuron/Dockerfile
+build_args:
+  - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-resolute-base-extra
+tags:
+  - cr.ray.io/rayproject/ray-py$PYTHON_VERSION-neuron-base

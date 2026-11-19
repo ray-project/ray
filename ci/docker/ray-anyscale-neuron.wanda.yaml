@@ -1,0 +1,18 @@
+# Ray Anyscale Neuron Image (for release tests)
+# Installs the ray wheel into the Neuron base image: Ubuntu 26.04, CPU-only,
+# with the AWS Neuron user-space stack for Trainium / Inferentia nodes.
+#
+name: "ray-anyscale-py$PYTHON_VERSION-neuron$ARCH_SUFFIX"
+disable_caching: true
+froms:
+  - "cr.ray.io/rayproject/ray-py$PYTHON_VERSION-neuron-base"
+  - "cr.ray.io/rayproject/ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
+dockerfile: ci/docker/ray-image.Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - ARCH_SUFFIX
+  - IMAGE_TYPE=ray
+  - PLATFORM=neuron
+  - BASE_VARIANT=base
+  - RAY_COMMIT=$BUILDKITE_COMMIT
+  - RAY_VERSION

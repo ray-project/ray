@@ -110,6 +110,63 @@
       cluster:
         ray_version: 2.50.0
 
+#######################
+# AWS Neuron (Trainium / Inferentia) image tests
+#######################
+# The `neuron` image is Ubuntu 26.04, CPU-only, with the Neuron user-space stack.
+- name: neuron_image_smoke
+  python: "3.12"
+  team: reef
+  group: neuron
+  frequency: manual
+  working_dir: neuron_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: neuron
+    cluster_compute: compute_cpu_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python image_smoke.py
+
+# The Trainium tests need an EC2 Capacity Block for trn2.48xlarge. See the
+# compute configs for the environment variables that point at it.
+- name: neuron_trainium2_single_node
+  python: "3.12"
+  team: reef
+  group: neuron
+  frequency: manual
+  working_dir: neuron_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: neuron
+    cluster_compute: compute_trn2_1x_aws.yaml
+
+  run:
+    timeout: 3600
+    script: python trainium_single_node.py
+
+- name: neuron_trainium2_efa_nccom_multinode
+  python: "3.12"
+  team: reef
+  group: neuron
+  frequency: manual
+  working_dir: neuron_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: neuron
+    cluster_compute: compute_trn2_2x_efa_aws.yaml
+
+  run:
+    timeout: 3600
+    script: python nccom_test_multinode.py
+
 - name: hello_world_custom_byod
   python: "3.10"
   team: reef

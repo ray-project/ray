@@ -32,18 +32,25 @@ echo "[GoogleCompute]" > "${HOME}/.boto"
 echo "service_account = default" >> "${HOME}/.boto"
 chmod 600 "${HOME}/.boto"
 
-if [[ "$ARCH" == "x86_64" ]]; then
-    sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
-    sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
-else
-    sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/arm64/7fa2af80.pub
-    # Nvidia does not have machine-learning repo for arm64
-fi
-
 echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" \
     | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
-    | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+
+if command -v apt-key >/dev/null; then
+    if [[ "$ARCH" == "x86_64" ]]; then
+        sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub
+        sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
+    else
+        sudo apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/arm64/7fa2af80.pub
+        # Nvidia does not have machine-learning repo for arm64
+    fi
+    wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+else
+    # apt-key is gone as of Ubuntu 25.10 (apt 3). Only CPU images are built on
+    # those releases, so the NVIDIA repository keys are not needed there.
+    wget -O - https://packages.cloud.google.com/apt/doc/apt-key.gpg \
+        | sudo gpg --dearmor -o /usr/share/keyrings/cloud.google.gpg
+fi
 
 # Add gdb since ray dashboard uses `memray attach`, which requires gdb.
 
@@ -183,9 +190,10 @@ else
     echo "Skip installing aws-ofi-nccl"
 fi
 
-# Remove apt sources so that it won't run into apt update issues when running
-# the image.
-sudo rm -rf /etc/apt/sources.list.d/*
+# Remove third-party apt sources so that it won't run into apt update issues
+# when running the image. Ubuntu 24.04 and newer keep the distribution's own
+# sources in this directory (ubuntu.sources); those have to stay.
+sudo find /etc/apt/sources.list.d -mindepth 1 ! -name ubuntu.sources -delete
 sudo rm -rf /var/lib/apt/lists/*
 
 EOF
