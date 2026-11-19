@@ -143,9 +143,7 @@ class RayEventManager:
 
             num_results = min(num_results or len(futures), len(futures))
 
-            ready, _ = ray.wait(
-                list(futures), timeout=timeout, num_returns=num_results
-            )
+            ready, _ = ray.wait(list(futures), timeout=timeout, num_returns=num_results)
             for future in ready:
                 if future in self._tracked_futures:
                     self.resolve_future(future)
