@@ -293,10 +293,12 @@ class FooterReader:
             self.partitioning is None and self.logical_schema is None
         ):
             return _FileFilter(
-                self.filter,
-                self._prune_expression(self._predicate, self.filter, schema),
-                self.filter_columns,
-                True,
+                file_filter=self.filter,
+                prune_filter=self._prune_expression(
+                    self._predicate, self.filter, schema
+                ),
+                filter_columns=self.filter_columns,
+                complete_filter=True,
             )
         values = (
             self._partition_value_parser(path)
@@ -367,9 +369,6 @@ class FooterReader:
             return plain
         try:
             bounds = _add_statistics_bounds(predicate, schema.to_arrow_schema())
-            # The rewrite returns its input untouched when it has nothing to
-            # add; reusing ``plain`` then keeps ``prune_filter is file_filter``
-            # exact, so an unevaluable form never splits twice.
             return plain if bounds is predicate else bounds.to_pyarrow()
         except Exception as e:
             logger.debug(

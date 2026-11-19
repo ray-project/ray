@@ -262,14 +262,13 @@ def test_derived_bounds_fully_matched_flag(
     chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
 
     by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
-    # A pinned group shows exactly that flag once it is selected (a pruned
-    # group does not appear at all), and no group outside the expectation may
-    # be marked fully matched. Group 0 of the wrap case may or may not be
-    # pruned depending on how PyArrow folds the addition against single-valued
-    # statistics, so only its flag is pinned, not its presence.
+    # A pinned group must appear with exactly that flag, so a group the
+    # rewrite prunes by mistake fails instead of being skipped. Group 0 of
+    # the wrap case may or may not be pruned depending on how PyArrow folds
+    # the addition against single-valued statistics, so only its flag is
+    # pinned, not its presence.
     for idx, fully in expected.items():
-        if idx in by_idx:
-            assert by_idx[idx] is fully
+        assert by_idx.get(idx) is fully
     assert not [i for i, f in by_idx.items() if f and not expected.get(i, False)]
 
 

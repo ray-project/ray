@@ -179,9 +179,11 @@ def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
         # the leaf; the negation just stays unevaluable, like the leaf itself.
         return expr & lower
 
-    # U+D7FF has no successor inside a single UTF-8 unit step (U+D800 is a
-    # surrogate), so skip the whole surrogate block.
-    next_char = "\ue000" if last == 0xD7FF else chr(last + 1)
+    next_char = (
+        chr(_SURROGATE_RANGE.stop)
+        if last == _SURROGATE_RANGE.start - 1
+        else chr(last + 1)
+    )
     return lower & (column < prefix[:-1] + next_char)
 
 
