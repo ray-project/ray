@@ -1916,36 +1916,68 @@ TEST(LeaseRequestRateLimiterTest, StaticLeaseRequestRateLimiter) {
   ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 10);
 }
 
+namespace {
+
+rpc::GcsNodeAddressAndLiveness MakeNode(const NodeID &node_id,
+                                        rpc::GcsNodeInfo::GcsNodeState state) {
+  rpc::GcsNodeAddressAndLiveness node;
+  node.set_node_id(node_id.Binary());
+  node.set_state(state);
+  return node;
+}
+
+}  // namespace
+
 TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
-  rpc::GcsNodeAddressAndLiveness dead_node;
-  dead_node.set_state(rpc::GcsNodeInfo::DEAD);
-  rpc::GcsNodeAddressAndLiveness alive_node;
-  alive_node.set_state(rpc::GcsNodeInfo::ALIVE);
+  const NodeID node1 = NodeID::FromRandom();
+  const NodeID node2 = NodeID::FromRandom();
   {
     ClusterSizeBasedLeaseRequestRateLimiter limiter(1);
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(alive_node);
+    limiter.OnNodeChanges(MakeNode(node1, rpc::GcsNodeInfo::ALIVE));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(alive_node);
+    limiter.OnNodeChanges(MakeNode(node2, rpc::GcsNodeInfo::ALIVE));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 2);
-    limiter.OnNodeChanges(dead_node);
+    limiter.OnNodeChanges(MakeNode(node1, rpc::GcsNodeInfo::DEAD));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(dead_node);
+    limiter.OnNodeChanges(MakeNode(node2, rpc::GcsNodeInfo::DEAD));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
   }
 
   {
     ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(alive_node);
+    limiter.OnNodeChanges(MakeNode(node1, rpc::GcsNodeInfo::ALIVE));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
-    limiter.OnNodeChanges(dead_node);
+    limiter.OnNodeChanges(MakeNode(node1, rpc::GcsNodeInfo::DEAD));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(dead_node);
+    limiter.OnNodeChanges(MakeNode(node1, rpc::GcsNodeInfo::DEAD));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 0);
-    limiter.OnNodeChanges(alive_node);
+    limiter.OnNodeChanges(MakeNode(node2, rpc::GcsNodeInfo::ALIVE));
     ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 1);
   }
+}
+
+TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedIgnoresDeadNodesNeverSeenAlive) {
+  // The initial node snapshot reports the alive nodes and then the nodes that were
+  // already dead. Those dead nodes were never counted, so they must not be subtracted.
+  ClusterSizeBasedLeaseRequestRateLimiter limiter(0);
+  std::vector<NodeID> alive_nodes;
+  for (int i = 0; i < 12; ++i) {
+    alive_nodes.push_back(NodeID::FromRandom());
+    limiter.OnNodeChanges(MakeNode(alive_nodes.back(), rpc::GcsNodeInfo::ALIVE));
+  }
+  for (int i = 0; i < 5; ++i) {
+    limiter.OnNodeChanges(MakeNode(NodeID::FromRandom(), rpc::GcsNodeInfo::DEAD));
+  }
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 12);
+
+  // A repeated notification for a node that is already counted is a no-op.
+  limiter.OnNodeChanges(MakeNode(alive_nodes[0], rpc::GcsNodeInfo::ALIVE));
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 12);
+
+  limiter.OnNodeChanges(MakeNode(alive_nodes[0], rpc::GcsNodeInfo::DEAD));
+  ASSERT_EQ(limiter.GetMaxPendingLeaseRequestsPerSchedulingCategory(), 11);
 }
 
 }  // namespace core
