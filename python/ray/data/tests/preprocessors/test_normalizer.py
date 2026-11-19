@@ -121,6 +121,7 @@ def test_normalizer_zero_norm_rows(norm):
     df = pd.DataFrame({"A": [0.0, 3.0], "B": [0.0, 4.0]})
     normalizer = Normalizer(columns=["A", "B"], norm=norm)
     out = normalizer.transform_batch(df.copy())
+    assert isinstance(out, pd.DataFrame)
     assert out.loc[0, "A"] == 0.0
     assert out.loc[0, "B"] == 0.0
     assert not out.isna().any().any()
