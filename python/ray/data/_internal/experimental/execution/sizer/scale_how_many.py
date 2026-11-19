@@ -19,7 +19,10 @@ from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     FIT_EPS,
 )
-from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
+from ray.data._internal.experimental.execution.sizer.op_profile import (
+    OpProfiles,
+    has_produced_output,
+)
 from ray.data._internal.experimental.execution.sizer.pg_bundles import (
     PlacementGroupBundles,
 )
@@ -141,8 +144,12 @@ class OpSizingPolicy:
         grant to what fits per node / bundle.
 
         Upscale only: a shrinking share just stops further growth, and the
-        delta self-zeroes because serving_size() counts pendings.
+        delta self-zeroes because serving_size() counts pendings. An op holds
+        at min until every upstream actor-pool op has produced output, so a
+        stage fed by a tiny, finite upstream never takes a full share.
         """
+        if not all(has_produced_output(prev) for prev in self._profiles.prev_ops[op]):
+            return None
         pool = op.actor_pool
         target = self.warmup_target(op, cluster_capacity)
         if target is None:
@@ -366,6 +373,19 @@ class OpSizingPolicy:
         if demand <= op.actor_pool.serving_size():
             return None, f"hold (at demand={demand})"
         return None, "hold (at max size)"
+
+    def remaining_work_cap(
+        self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
+    ) -> Optional[int]:
+        """Most actors ``op`` can still use, or None while more input can come.
+
+        Once every upstream op has completed, the op's backlog (queued plus
+        in-flight inputs) is all the work it has left.
+        """
+        upstream = op.input_dependencies
+        if not upstream or not all(dep.has_completed() for dep in upstream):
+            return None
+        return max(op.actor_pool.min_size(), self.backlog_actor_target(op, op_state))
 
     def backlog_actor_target(
         self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"

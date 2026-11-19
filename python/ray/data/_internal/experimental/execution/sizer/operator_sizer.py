@@ -356,13 +356,15 @@ class OperatorSizer:
                     op, self._topology[op], backpressured_with_demand
                 )
             # Released from its on_start hold: grow straight into the room
-            # held for it while it waited (its warmup share), once.
+            # held for it while it waited (its warmup share), once. Capped
+            # below, like any want, at the work left once upstream is done.
             held = self._grow_to_held.pop(op, 0)
             to_held = held - pool.serving_size()
             if to_held > 0 and (want is None or want.delta < to_held):
                 want = ActorPoolScalingRequest.upscale(
                     delta=to_held, reason="held share (on_start ran)"
                 )
+            want = self._cap_at_remaining_work(op, want)
             below_min = pool.min_size() - pool.serving_size()
             if below_min > 0 and (want is None or want.delta < below_min):
                 want = ActorPoolScalingRequest.upscale(
@@ -371,6 +373,24 @@ class OperatorSizer:
             if want is not None:
                 wants[op] = want
         return wants
+
+    def _cap_at_remaining_work(
+        self,
+        op: ExperimentalActorPoolMapOperator,
+        want: Optional[ActorPoolScalingRequest],
+    ) -> Optional[ActorPoolScalingRequest]:
+        """Trim an upscale to the actors ``op``'s remaining work can use."""
+        if want is None or want.delta <= 0:
+            return want
+        cap = self._policy.remaining_work_cap(op, self._topology[op])
+        if cap is None:
+            return want
+        allowed = cap - op.actor_pool.serving_size()
+        if allowed <= 0:
+            return None
+        return ActorPoolScalingRequest.upscale(
+            delta=min(want.delta, allowed), reason=want.reason
+        )
 
     def _grant_within_capacity(
         self,

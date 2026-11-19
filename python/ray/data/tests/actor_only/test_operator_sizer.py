@@ -1199,12 +1199,16 @@ def test_sizer_measures_core_placed_caps(pg, uses_fn, pool_kwargs, expected_cap)
 
 def test_warmup_equal_share_targets():
     ops, topo = _linear_pipeline(running=1)
+    # a has output, so b is not held at min. infer has none (its first output
+    # ends warmup), so write, downstream of it, is held at min.
+    ops["a"].metrics.num_task_outputs_generated = 1
     sizer = _make_sizer(topo, cpu=100.0, gpu=4.0)
     result = _tick(sizer, topo)
     # min_reserved_cpu = 3 (a, b, write at min 1 x 1 cpu); 3 autoscaled cpu
     # ops. ceiling = (100 - 3) * 0.8 / 3 = 25.87 -> target 25 -> delta 24.
-    for key in ("a", "b", "write"):
+    for key in ("a", "b"):
         assert result.request[ops[key]].delta == 24, key
+    assert ops["write"] not in result.request
     # Fixed GPU pool at size: no resize request.
     assert ops["infer"] not in result.request
 
@@ -1213,6 +1217,60 @@ def test_warmup_equal_share_targets():
     gpu_op = _FakeOp("GpuMap", _FakePool(min_size=1, max_size=40, gpu=1, running=1))
     sizer, topo = _bootstrapped(gpu_op, cpu=100.0, gpu=8.0)
     assert _tick(sizer, topo).request[gpu_op].delta == 4
+
+
+@pytest.mark.parametrize("upstream_has_output", [False, True])
+def test_warmup_holds_ops_at_min_until_upstream_produces_output(upstream_has_output):
+    source = _FakeOp("ListFiles", _FakePool(min_size=1, max_size=500, cpu=1, running=1))
+    op = _FakeOp(
+        "MapBatches(count_rows)",
+        _FakePool(min_size=1, max_size=500, cpu=1, running=1),
+        inputs=(source,),
+    )
+    if upstream_has_output:
+        source.metrics.num_task_outputs_generated = 1
+    sizer, topo = _bootstrapped(source, op, cpu=100.0, gpu=0.0)
+
+    result = _tick(sizer, topo)
+
+    # The source is never gated. Share: (100 - 2) * 0.8 / 2 = 39.2 -> 39.
+    assert result.request[source].delta == 38
+    if upstream_has_output:
+        assert result.request[op].delta == 38
+    else:
+        assert op not in result.request
+
+
+@pytest.mark.parametrize(
+    "upstream_completed,expected_delta",
+    [
+        # No more input can arrive: ceil(40 / 1.75) = 23 actors cover the
+        # backlog -> delta 3, not its full share of (100 - 1) * 0.8 = 79.
+        (True, 3),
+        # Upstream still producing: the warmup share, (100 - 2) * 0.8 / 2 =
+        # 39.2 -> target 39 -> delta 19.
+        (False, 19),
+    ],
+)
+def test_upscale_is_capped_at_remaining_work_once_upstream_completes(
+    upstream_completed, expected_delta
+):
+    upstream = _FakeOp(
+        "ListFiles",
+        _FakePool(min_size=1, max_size=200, cpu=1, running=1),
+        completed=upstream_completed,
+        execution_finished=upstream_completed,
+    )
+    # Past the upstream-output gate either way.
+    upstream.metrics.num_task_outputs_generated = 1
+    op = _FakeOp(
+        "MapBatches(count_rows)",
+        _FakePool(min_size=1, max_size=500, cpu=1, running=20),
+        inputs=(upstream,),
+    )
+    sizer, topo = _bootstrapped(upstream, op, enqueued=40, cpu=100.0, gpu=0.0)
+
+    assert _tick(sizer, topo).request[op].delta == expected_delta
 
 
 def test_warmup_share_survives_float_division():
@@ -1249,6 +1307,9 @@ def test_warmup_pg_ops_share_their_placement_group():
         _FakePool(min_size=1, max_size=40, gpu=1, running=1),
         inputs=pg_ops[-1:],
     )
+    # Upstreams have output (no op held at min); plain keeps warmup going.
+    for op in pg_ops:
+        op.metrics.num_task_outputs_generated = 1
     sizer, _ = _bootstrapped(*pg_ops, plain, view=view)
     result = sizer.how_many()
     # (10 GPU - 2 floors) * 0.8 / 2 = 3.2 -> target 3 -> +2 each.
