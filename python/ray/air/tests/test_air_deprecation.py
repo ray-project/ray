@@ -65,6 +65,7 @@ def test_attribute_access_warns(name, expected, drop_in, other):
     assert f"`{drop_in}`" in message
     if other:
         assert f"`{other}`" in message
+    assert "https://github.com/ray-project/ray/issues/49454" in message
     # The warning points at the caller, so users can find the line to fix.
     assert warning.filename == __file__
 
