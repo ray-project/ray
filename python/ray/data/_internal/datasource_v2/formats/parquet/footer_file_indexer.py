@@ -24,7 +24,7 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     FooterReaderActor,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
-    is_exact_count_read,
+    _is_exact_count_read,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
@@ -323,14 +323,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
-        # Zero bytes are only honest when the reader will answer the run from
-        # its footer, and a row-group shuffle clears the listing limit while
-        # the scanner keeps it, so keep real sizes for shuffled listings.
+        # A row-group shuffle clears the listing's limit but not the scanner's,
+        # so the reader may still open matched runs; keep their real sizes.
         read_predicate = combine_predicates(
             predicate,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        stub_fully_matched = not shuffle_row_groups and is_exact_count_read(
+        stub_fully_matched = not shuffle_row_groups and _is_exact_count_read(
             predicate=read_predicate,
             limit=limit,
             columns=projected_columns,

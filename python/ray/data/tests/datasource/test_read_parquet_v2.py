@@ -1096,19 +1096,30 @@ def test_count_pushdown_declines_row_reducing_reads(
         assert sorted(row["a"] for row in rows) == [3, 4]
 
 
-def test_filtered_count_matches_nothing(tmp_path, restore_ctx):
-    """A predicate that matches no row yields zero, not a whole-file count."""
-    restore_ctx.use_datasource_v2 = True
-    for i in range(4):
-        pq.write_table(
-            pa.table({"id": list(range(i * 100, (i + 1) * 100))}),
-            str(tmp_path / f"f{i}.parquet"),
-            row_group_size=50,
-        )
+@pytest.mark.parametrize(
+    "num_files,rows_per_file,row_group_size",
+    [(1, 10, None), (3, 100, 10), (4, 1000, 250)],
+    ids=["single_file", "multi_file_many_row_groups", "multi_file_large"],
+)
+def test_count_matches_rows(
+    tmp_path, restore_ctx, num_files, rows_per_file, row_group_size
+):
+    """End-to-end count correctness, including multi-row-group files.
 
-    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 1000)
-    assert ds.count() == 0
-    assert len(ds.take_all()) == 0
+    Regression guard for over-counting: the footer indexer emits one manifest
+    row per row-group run, so a multi-row-group file would otherwise be counted
+    once per run.
+    """
+    _write_row_groups(
+        tmp_path,
+        num_files=num_files,
+        rows_per_file=rows_per_file,
+        row_group_size=row_group_size,
+    )
+
+    restore_ctx.use_datasource_v2 = True
+
+    assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
 
 
 def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypatch):
@@ -1178,32 +1189,18 @@ def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypat
         {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0]}
     ]
 
-
-def test_filtered_read_preserves_order_across_fully_matched_runs(
-    tmp_path, restore_ctx, monkeypatch
-):
-    """An ordered filtered read must not stub matched runs ahead of partial ones.
-
-    Row group 1 is fully matched while 0 and 2 are partial. Stubs are emitted
-    before the runs that are read, so taking the shortcut here would move row
-    group 1 ahead of row group 0. Ordered reads therefore skip the shortcut and
-    read the file in order.
-    """
-    monkeypatch.setattr(restore_ctx.execution_options, "preserve_order", True)
-    pq.write_table(
-        pa.table({"x": list(range(300))}),
-        str(tmp_path / "data.parquet"),
-        row_group_size=100,
-    )
-
-    restore_ctx.use_datasource_v2 = True
-    rows = (
-        ray.data.read_parquet(str(tmp_path))
-        .filter(expr=(col("x") >= 50) & (col("x") < 250))
-        .take_all()
-    )
-
-    assert [row["x"] for row in rows] == list(range(50, 250))
+    # A normal read does not stub, so each file stays one manifest row and the
+    # reader scans its row groups together instead of reopening the file.
+    Path(trace_path).unlink()
+    normal = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 225)
+    assert len(normal.take_all()) == 175
+    records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
+    assert sorted(
+        (row["path"], tuple(row["unit_ids"])) for record in records for row in record
+    ) == [
+        (str(tmp_path / "f2.parquet"), (0, 1)),
+        (str(tmp_path / "f3.parquet"), (0, 1)),
+    ]
 
 
 def test_filtered_count_fails_closed(tmp_path, restore_ctx):

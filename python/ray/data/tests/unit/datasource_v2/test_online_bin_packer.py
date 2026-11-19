@@ -206,6 +206,31 @@ def test_bin_to_manifest_splits_at_fully_matched_transitions_in_unit_order() -> 
     ]
 
 
+def test_matched_runs_with_real_bytes_merge_for_a_normal_read() -> None:
+    # Without the footer-only shortcut, matched runs are read like any other,
+    # so they must merge with the file's partial runs; splitting here would
+    # open the file once per row group.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(
+        _file(
+            "a",
+            400,
+            [
+                _run((0,), 10, rows=5, fully_matched=False),
+                _run((1,), 10, rows=15, fully_matched=True),
+                _run((2,), 10, rows=7, fully_matched=False),
+            ],
+        )
+    )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    chunks = [FileChunk.from_metadata(md) for md in manifest.file_chunk_metadatas]
+    assert [
+        (c.unit_ids, c.fully_matched, c.num_rows, c.size_bytes) for c in chunks
+    ] == [((0, 1, 2), False, 27, 30)]
+
+
 def test_duplicated_file_with_mixed_match_flags_splits_each_copy() -> None:
     # A file listed twice where each copy mixes partial and matched units must
     # emit the split row sequence once per copy without merging across copies.

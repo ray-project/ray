@@ -334,25 +334,34 @@ def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
     return groups
 
 
-def _merge_runs_by_match(disjoint_runs: List[FileChunk]) -> List[FileChunk]:
-    """Merge a copy's pairwise-disjoint runs in unit order, starting a new
-    chunk wherever ``fully_matched`` changes.
+def _is_stubbed(run: FileChunk) -> bool:
+    """Whether the reader will answer this run from listing metadata.
 
-    Walking in ascending unit order keeps the output rows in file order, while
-    breaking on ``fully_matched`` transitions gives every row an exact flag, so
-    the reader can stub all fully matched runs instead of reading them next to
-    a partial run.
+    The listing prices a stubbed run at zero read bytes; a matched run with
+    real bytes is read like any other and must merge with its file's partial
+    runs, or a normal read would open the file once per row group.
+    """
+    return run.fully_matched and run.size_bytes == 0
+
+
+def _merge_runs_by_match(disjoint_runs: List[FileChunk]) -> List[FileChunk]:
+    """Merge a copy's runs in unit order, starting a new chunk where the reader
+    switches from stubbing to reading.
+
+    Stubbed runs cost no read bytes, so they get their own row and the reader
+    answers them from metadata; every other run merges into one row, so a
+    normal read opens the file once.
     """
     ordered = sorted(disjoint_runs, key=lambda run: min(run.unit_ids))
     merged: List[FileChunk] = []
-    for fully_matched, group in groupby(ordered, key=lambda run: run.fully_matched):
+    for _, group in groupby(ordered, key=_is_stubbed):
         span = list(group)
         merged.append(
             FileChunk(
                 unit_ids=tuple(sorted(i for run in span for i in run.unit_ids)),
                 num_rows=sum(run.num_rows for run in span),
                 size_bytes=sum(run.size_bytes for run in span),
-                fully_matched=fully_matched,
+                fully_matched=all(run.fully_matched for run in span),
             )
         )
     return merged

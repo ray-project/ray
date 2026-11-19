@@ -179,19 +179,17 @@ def _estimate_batch_size_from_metadata(
     return target_batch_size
 
 
-def empty_projection_stub(num_rows: int) -> pa.Table:
+def _empty_projection_stub(num_rows: int) -> pa.Table:
     """An all-null, zero-buffer table that keeps zero-column reads from losing
     their rows in ``pa.concat_tables``."""
     return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
 
 
-def split_fully_matched(
+def _split_fully_matched(
     manifest: FileManifest,
 ) -> Tuple[List[int], FileManifest]:
-    """Split a manifest into ``(stub_num_rows, to_read)``, stubbing only
-    ``fully_matched`` rows that carry chunk metadata and leaving the caller to
-    guarantee the flag was computed against the same predicate and that no
-    limit or block UDF can change the count afterwards."""
+    """Split a manifest into the row counts of its fully matched runs and the
+    rows still to read."""
     stub_num_rows: List[int] = []
     to_read: List[int] = []
     for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
@@ -238,7 +236,7 @@ def _estimate_batch_size_from_chunk_stats(
     return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
 
 
-def is_exact_count_read(
+def _is_exact_count_read(
     *,
     predicate: Optional[Expr],
     limit: Optional[int],
@@ -816,28 +814,19 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         }
         return kwargs
 
-    def _is_exact_count_read(self) -> bool:
-        """Whether this read needs only surviving row counts; see
-        :func:`is_exact_count_read`."""
-        return is_exact_count_read(
+    @override
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Answer fully matched runs from their row counts on an exact-count
+        read; read everything else."""
+        if _is_exact_count_read(
             predicate=self._predicate,
             limit=self._limit,
             columns=self._columns,
             preserve_order=DataContext.get_current().execution_options.preserve_order,
-        )
-
-    @override
-    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read a manifest, answering each ``fully_matched`` run from its
-        ``num_rows`` on an exact-count read and reading everything else, since
-        stubs are emitted before reads (ordered reads skip them) and the flag is
-        trusted only from ``FooterFileIndexer``."""
-        if self._is_exact_count_read():
-            stub_num_rows, input_split = split_fully_matched(input_split)
-            # ``empty_projection_stub`` allocates no buffers, so one table per
-            # run costs O(1) regardless of ``num_rows``.
-            for num_rows in stub_num_rows:
-                yield empty_projection_stub(num_rows)
+        ):
+            stub_num_rows, input_split = _split_fully_matched(input_split)
+            if stub_num_rows:
+                yield _empty_projection_stub(sum(stub_num_rows))
         yield from super().read(input_split)
 
     @override
