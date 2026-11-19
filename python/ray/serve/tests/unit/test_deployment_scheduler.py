@@ -1422,16 +1422,17 @@ def test_build_pack_placement_candidates():
         actor_options={},
         actor_init_args=(),
         on_scheduled=Mock(),
-        placement_group_bundles=[{"CPU": 5}],
+        placement_group_bundles=[{"CPU": 5}, {"CPU": 1}],
         placement_group_strategy="PACK",
         placement_group_bundle_label_selector=[
             {"accelerator-type": "H100"},
-            {"accelerator-type": "H100"},
+            {"accelerator-type": "A100"},
         ],
     )
 
-    with pytest.raises(NotImplementedError):
-        scheduler._build_pack_placement_candidates(req_pack)
+    assert scheduler._build_pack_placement_candidates(req_pack) == [
+        (RequestedResources({"CPU": 5}), [{"accelerator-type": "H100"}])
+    ]
 
     # Scheduling replica with placement group STRICT_PACK strategy and bundle_label_selector
     req_pg = ReplicaSchedulingRequest(
@@ -3620,7 +3621,7 @@ def test_tie_break_ignores_node_labels_and_memory_jitter():
 @pytest.mark.skipif(
     not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
 )
-def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
+def test_loose_placement_groups_keep_pack_and_compaction_on():
     d_id = DeploymentID(name="deployment1")
     pg_id = DeploymentID(name="pg")
     cluster_node_info_cache = MockClusterNodeInfoCache()
@@ -3632,7 +3633,6 @@ def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
     scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
     scheduler.on_replica_running(ReplicaID("r0", d_id), "node1")
     scheduler.on_replica_running(ReplicaID("r1", d_id), "node2")
-    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
 
     scheduler.on_deployment_created(pg_id, SpreadDeploymentSchedulingPolicy())
     scheduler.on_deployment_deployed(
@@ -3643,12 +3643,10 @@ def test_get_node_to_compact_disabled_when_pack_falls_back_to_spread():
             placement_group_strategy="PACK",
         ),
     )
-    assert not scheduler._use_pack_strategy()
-    assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
-    assert scheduler._compacting_node is None
+    scheduler.on_replica_running(ReplicaID("pg0", pg_id), "node1")
+    assert scheduler._use_pack_strategy()
 
-    scheduler.on_deployment_deleted(pg_id)
-    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node2"
 
 
 def _two_node_compaction_scheduler(cache, d_id, big="node1", small="node2"):
@@ -4430,7 +4428,9 @@ class TestMinReplicaNodes:
         zones = [{"label_key": ZONE, "min_domains": 2}]
         assert self._rules(2, rconfig(topology_spread=zones), is_gang=True) == []
         assert self._rules(2, rconfig(), pins_replicas=True) == []
-        assert self._rules(2, rconfig(placement_group_bundles=[{"CPU": 1}])) == []
+        assert self._rules(2, rconfig(placement_group_bundles=[{"CPU": 1}])) == [
+            "topology_spread[ray.io/node-id>=2]"
+        ]
 
 
 class TestRolloutFloors:
@@ -5141,6 +5141,103 @@ def test_outdated_replica_in_a_needed_domain_stops_first():
     scheduler.schedule(upscales={}, downscales={})
     assert _target_node(request) == b1
     assert scheduler.get_outdated_replicas_to_stop() == {}
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_pack_leaves_loose_placement_groups_to_ray():
+    cache = MockClusterNodeInfoCache()
+    cache.add_node(_hex(1), {"CPU": 4})
+    requests = []
+
+    def create_pg(request):
+        requests.append(request)
+        return MockPlacementGroup(request)
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=create_pg,
+    )
+    d_id = DeploymentID(name="pg")
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        d_id,
+        rconfig(
+            placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+            placement_group_strategy="SPREAD",
+        ),
+    )
+    request = _request(ReplicaID("r1", d_id))
+    request.placement_group_bundles = [{"CPU": 1}, {"CPU": 1}]
+    request.placement_group_strategy = "SPREAD"
+    request.actor_options = {"name": "r1"}
+    scheduler.schedule(upscales={d_id: [request]}, downscales={})
+
+    assert scheduler._use_pack_strategy()
+    assert [r.target_node_id for r in requests] == [None]
+
+
+class TestPlacementGroupRules:
+    @staticmethod
+    def _scheduler(strategy):
+        requests = []
+
+        def create_pg(request):
+            requests.append(request)
+            return MockPlacementGroup(request)
+
+        a1, b1 = _hex(1), _hex(2)
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(a1, {"CPU": 4}, {ZONE: "a"})
+        cache.add_node(b1, {"CPU": 4}, {ZONE: "b"})
+        scheduler = default_impl.create_deployment_scheduler(
+            cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=create_pg,
+        )
+        scheduler._create_domain_probe_fn = FakeProbe
+        d_id = DeploymentID(name="pg")
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            rconfig(
+                placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+                placement_group_strategy=strategy,
+                topology_spread=[{"label_key": ZONE, "min_domains": 2}],
+            ),
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+
+        request = _request(ReplicaID("r1", d_id))
+        request.placement_group_bundles = [{"CPU": 1}, {"CPU": 1}]
+        request.placement_group_strategy = strategy
+        request.actor_options = {"name": "r1"}
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        return scheduler, requests, b1
+
+    def test_loose_group_is_aimed_at_the_picked_node(self):
+        scheduler, requests, b1 = self._scheduler("SPREAD")
+        (pg_request,) = requests
+        assert pg_request.target_node_id is None
+        assert pg_request.bundle_label_selector == [
+            {RAY_NODE_ID_LABEL: f"in({b1})"},
+            {},
+        ]
+        assert pg_request.fallback_strategy == [
+            {"bundle_label_selector": [{ZONE: "exists(),!in(a)"}, {}]},
+            {"bundle_label_selector": [{}, {}]},
+        ]
+        r1 = ReplicaID("r1", DeploymentID(name="pg"))
+        assert scheduler._launching_replicas[r1.deployment_id][r1].target_node_id == b1
+
+    def test_strict_pack_group_keeps_its_soft_target(self):
+        scheduler, requests, b1 = self._scheduler("STRICT_PACK")
+        (pg_request,) = requests
+        assert pg_request.target_node_id == b1
+        assert pg_request.bundle_label_selector == [{ZONE: "exists(),!in(a)"}, {}]
+        assert pg_request.fallback_strategy == [{"bundle_label_selector": [{}, {}]}]
 
 
 if __name__ == "__main__":

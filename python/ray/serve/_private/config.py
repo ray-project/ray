@@ -867,16 +867,6 @@ class ReplicaConfig:
                 "placement_group_bundles is provided."
             )
 
-        if (
-            self.topology_spread
-            and self.placement_group_bundles is not None
-            and self.placement_group_strategy != "STRICT_PACK"
-        ):
-            raise ValueError(
-                "Setting topology_spread is only supported with the STRICT_PACK "
-                "placement_group_strategy, because Serve can only steer a "
-                "STRICT_PACK placement group to a node."
-            )
         self._validate_required_rules_against_label_selectors()
 
     def _validate_required_rules_against_label_selectors(self) -> None:
