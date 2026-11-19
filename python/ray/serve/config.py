@@ -729,19 +729,31 @@ class BackpressureConfig(BaseModel):
 class TopologySpread(BaseModel):
     """A floor on how many values of a node label a deployment's replicas cover.
 
-    Rules apply in list order, and the last listed rule gives way first. A
-    floor is best effort: it is capped at the replica count and at the
-    domains the replica can use.
+    Rules apply in list order, and the last listed rule that isn't required
+    gives way first. A best effort floor is capped at the replica count and
+    at the domains the replica can use. A required floor is capped only at
+    the replica count, and its replicas wait for a node in a missing domain.
 
     Args:
         label_key: The node label whose values are the domains.
         min_domains: How many domains the replicas should cover.
+        required: Whether replicas wait for a node that satisfies the rule.
+        wait_timeout_s: Only with `required`. How long a replica waits
+            before it is placed without the rule. None waits forever.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     label_key: str = Field(min_length=1)
     min_domains: int = Field(ge=1, strict=True)
+    required: bool = False
+    wait_timeout_s: Optional[PositiveFloat] = None
+
+    @model_validator(mode="after")
+    def _wait_timeout_needs_required(self):
+        if self.wait_timeout_s is not None and not self.required:
+            raise ValueError("wait_timeout_s can only be set with required=True.")
+        return self
 
 
 @PublicAPI(stability="stable")
