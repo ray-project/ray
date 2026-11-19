@@ -892,7 +892,7 @@ def test_lost_child_reconstructs_across_graph_shapes(
 
 
 @reconstruction_enabled
-def test_recovery_status_records_the_re_run_task(
+def test_reconstruction_status_records_the_re_run_task(
     ray_start_regular_shared, lose_output, monkeypatch  # noqa: F405
 ):
     """After a real reconstruction, the seed operator reports the re-run task as
@@ -912,8 +912,8 @@ def test_recovery_status_records_the_re_run_task(
     ).take_all()
 
     assert fired == [0]
-    statuses = [op.lineage_recovery_progress_str() for op in started_ops]
-    assert statuses == ["Recovery: 0 queued, 0 running, 1 finished"]
+    statuses = [op.lineage_reconstruction_progress_str() for op in started_ops]
+    assert statuses == ["Reconstruction: 0 queued, 0 running, 1 finished"]
 
 
 def test_reconstruction_stamp_survives_schema_divergence():

@@ -906,7 +906,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         assert self._started
         return self._output_queue.has_next()
 
-    def lineage_recovery_progress_str(self) -> str:
+    def lineage_reconstruction_progress_str(self) -> str:
         if self._lineage_tracker is None:
             return ""
         num_queued = len(self._batched_plans)
@@ -917,7 +917,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         if not (num_queued or num_running or num_finished):
             return ""
         return (
-            f"Recovery: {num_queued} queued, {num_running} running, "
+            f"Reconstruction: {num_queued} queued, {num_running} running, "
             f"{num_finished} finished"
         )
 

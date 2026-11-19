@@ -21,7 +21,7 @@ from ray.data.context import DataContext
 from ray.data.tests.conftest import noop_counter
 
 
-def test_recovery_status_counts_queued_running_and_finished():
+def test_reconstruction_status_counts_queued_running_and_finished():
     """Queued counts reconstruction tasks not yet submitted, and running counts only
     tasks serving a plan, once each however many plans they serve."""
     # Only the attributes the method reads; cast so it type-checks as ``self``.
@@ -36,17 +36,17 @@ def test_recovery_status_counts_queued_running_and_finished():
         _num_reconstruction_tasks_finished=3,
     )
     op = cast(MapOperator, state)
-    assert MapOperator.lineage_recovery_progress_str(op) == (
-        "Recovery: 2 queued, 2 running, 3 finished"
+    assert MapOperator.lineage_reconstruction_progress_str(op) == (
+        "Reconstruction: 2 queued, 2 running, 3 finished"
     )
 
     state._lineage_tracker = None
-    assert MapOperator.lineage_recovery_progress_str(op) == ""
+    assert MapOperator.lineage_reconstruction_progress_str(op) == ""
 
 
-def test_summary_str_lineage_recovery():
-    """The recovery status shows only when seed-input lineage recovery is on and
-    the operator has re-run tasks."""
+def test_summary_str_lineage_reconstruction():
+    """The reconstruction status shows only when seed-input lineage reconstruction
+    is on and the operator has re-run tasks."""
     data_context = DataContext.get_current()
     o1 = InputDataBuffer(data_context, [])
     o2 = MapOperator.create(
@@ -58,19 +58,19 @@ def test_summary_str_lineage_recovery():
     topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
     resource_manager = MagicMock()
 
-    # Recovery disabled: nothing shown, even with re-run tasks recorded.
+    # Reconstruction disabled: nothing shown, even with re-run tasks recorded.
     o2._num_reconstruction_tasks_finished = 2
-    assert "Recovery" not in format_op_state_summary(topo[o2], resource_manager)
+    assert "Reconstruction" not in format_op_state_summary(topo[o2], resource_manager)
 
-    # Recovery enabled but nothing re-run: nothing shown.
+    # Reconstruction enabled but nothing re-run: nothing shown.
     o2._lineage_tracker = LineageTracker()
     o2._num_reconstruction_tasks_finished = 0
-    assert "Recovery" not in format_op_state_summary(topo[o2], resource_manager)
+    assert "Reconstruction" not in format_op_state_summary(topo[o2], resource_manager)
 
-    # The cumulative count stays on the line after recovery has finished.
+    # The cumulative count stays on the line after reconstruction has finished.
     o2._num_reconstruction_tasks_finished = 2
     summary = format_op_state_summary(topo[o2], resource_manager)
-    assert summary.endswith("; Recovery: 0 queued, 0 running, 2 finished")
+    assert summary.endswith("; Reconstruction: 0 queued, 0 running, 2 finished")
 
 
 if __name__ == "__main__":

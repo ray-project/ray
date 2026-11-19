@@ -991,9 +991,10 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def lineage_recovery_progress_str(self) -> str:
-        """Return the object-loss recovery status to be displayed in the operator
-        progress bar, or "" if this operator has no recovery activity."""
+    def lineage_reconstruction_progress_str(self) -> str:
+        """Return the object-loss reconstruction status to be displayed in the
+        operator progress bar, or "" if this operator has no reconstruction
+        activity."""
         return ""
 
     def num_outputs_total(self) -> Optional[int]:
