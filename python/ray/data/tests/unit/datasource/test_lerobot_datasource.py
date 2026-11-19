@@ -8,6 +8,7 @@ import pytest
 
 from ray.data._internal.datasource.lerobot_datasource import (
     _LeRobotRoot,
+    _prepare_delta_segment,
     _raise_on_pickle_object_meta_parquet,
     _read_lerobot_segment,
 )
@@ -155,6 +156,53 @@ def test_raise_on_pickle_object_meta_parquet_allows_clean(tmp_path):
     empty = tmp_path / "empty_meta"
     empty.mkdir()
     _raise_on_pickle_object_meta_parquet(str(empty), "s3://bucket/ds")
+
+
+@pytest.mark.parametrize(
+    "indices,row_episodes,ep_ids,ep_from,ep_to,exc_type,match",
+    [
+        # Interior duplicate/gap with matching first/last index.
+        (
+            [0, 1, 1, 3],
+            [0, 0, 0, 0],
+            [0],
+            [0],
+            [4],
+            RuntimeError,
+            "contiguous whole-episode",
+        ),
+        # Duplicate episode_index rows in ep_slice.
+        (
+            [0, 1, 2, 3],
+            [0, 0, 1, 1],
+            [0, 1, 1],
+            [0, 2, 99],
+            [2, 4, 101],
+            ValueError,
+            "duplicate episode_index",
+        ),
+    ],
+)
+def test_prepare_delta_segment_rejects_invalid_inputs(
+    tmp_path, indices, row_episodes, ep_ids, ep_from, ep_to, exc_type, match
+):
+    root = _make_root(tmp_path)._replace(delta_steps={"state": [-1, 0, 1]})
+    full = pa.table(
+        {
+            "index": pa.array(indices, pa.int64()),
+            "episode_index": pa.array(row_episodes, pa.int64()),
+            "state": pa.array([1.0, 2.0, 3.0, 4.0], pa.float32()),
+        }
+    )
+    ep_slice = pa.table(
+        {
+            "episode_index": pa.array(ep_ids, pa.int64()),
+            "_global_from_index": pa.array(ep_from, pa.int64()),
+            "_global_to_index": pa.array(ep_to, pa.int64()),
+        }
+    )
+    with pytest.raises(exc_type, match=match):
+        _prepare_delta_segment(root, full, ep_slice)
 
 
 if __name__ == "__main__":

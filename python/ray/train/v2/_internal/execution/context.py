@@ -6,11 +6,13 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
 import ray
+from ray._common.observability.annotation import AnnotationEmitter
 from ray._common.retry import retry
 from ray._common.utils import env_float
 from ray.actor import ActorHandle
@@ -19,6 +21,8 @@ from ray.train.v2._internal.constants import (
     AWS_RETRYABLE_TOKENS,
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
+    TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
+    TRAIN_ANNOTATION_SOURCE,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import (
     SynchronizationActor,
@@ -29,6 +33,8 @@ from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_p
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
 )
+from ray.train.v2._internal.metrics.base import RUN_ID_TAG_KEY, RUN_NAME_TAG_KEY
+from ray.train.v2._internal.metrics.worker import WORKER_WORLD_RANK_TAG_KEY
 from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
     context_watchdog,
@@ -44,6 +50,7 @@ from ray.train.v2.api.validation_config import ValidationTaskConfig
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import BackendConfig, Checkpoint, DataConfig
+    from ray.train.health._internal.probe_utils import OnDemandPolls
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
         DatasetShardProvider,
@@ -140,8 +147,8 @@ class TrainContext:
     report_call_index: int = 0
     # Identifies which collective a call to the `SynchronizationActor` belongs to.
     collective_seq: int = 0
-    # The thread launcher that runs the latest on-demand probes.
-    on_demand_probe_runner: Optional["ThreadRunner"] = None
+    # The polls of the latest on-demand probes.
+    on_demand_polls: Optional["OnDemandPolls"] = None
     report_order_condition: threading.Condition = threading.Condition()
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS
@@ -156,6 +163,18 @@ class TrainContext:
         # Ray train initializes worker with current report index
         # report_call_index should start at the current report index
         self.report_call_index = self.current_report_index
+
+    @cached_property
+    def annotation_emitter(self) -> AnnotationEmitter:
+        """The annotation emitter for this worker, cached as its tags are fixed."""
+        return AnnotationEmitter(
+            source=TRAIN_ANNOTATION_SOURCE,
+            base_tags={
+                RUN_NAME_TAG_KEY: self.get_experiment_name(),
+                RUN_ID_TAG_KEY: self.train_run_context.run_id,
+                WORKER_WORLD_RANK_TAG_KEY: str(self.get_world_rank()),
+            },
+        )
 
     def next_collective_seq(self) -> int:
         """Sequence number identifying the next collective this worker enters.
@@ -517,6 +536,18 @@ class TrainContext:
                 # Keep collective sequence aligned across workers. The next report will increment it.
                 self.collective_seq -= 1
                 return
+
+            # Log annotation once every rank has reached the barrier
+            if self.get_world_rank() == 0:
+                self.annotation_emitter.emit(
+                    event=TRAIN_ANNOTATION_RAY_TRAIN_REPORT,
+                    metrics=metrics,
+                    has_checkpoint=checkpoint is not None,
+                    checkpoint_dir_name=(
+                        checkpoint_dir_name if checkpoint is not None else ""
+                    ),
+                    validation=bool(validation),
+                )
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:

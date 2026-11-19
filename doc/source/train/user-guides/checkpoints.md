@@ -281,7 +281,11 @@ Configure checkpointing with {class}`~ray.train.CheckpointConfig`. The primary o
 
 
 :::{note}
-To save the top `num_to_keep` checkpoints with respect to a metric through {py:class}`~ray.train.CheckpointConfig`, always report the metric together with the checkpoints.
+To save the top `num_to_keep` checkpoints with respect to a metric through {py:class}`~ray.train.CheckpointConfig`, always report the metric together with the checkpoints. If the metric comes from asynchronous validation instead, see {ref}`train-rank-checkpoints-by-validation-metric`.
+:::
+
+:::{note}
+Ray Train never deletes the latest checkpoint, because training resumes from it after a failure. If the latest checkpoint isn't among the top `num_to_keep`, Ray Train keeps `num_to_keep + 1` checkpoints. Ray Train also keeps any checkpoint whose {ref}`validation <train-validating-checkpoints>` hasn't finished, until the validation completes.
 :::
 
 (using-checkpoints-during-training)=
@@ -307,7 +311,7 @@ This function supports two consistency modes:
 
 Access the latest saved checkpoint with {attr}`Result.checkpoint <ray.train.Result>`.
 
-Access the full list of persisted checkpoints with {attr}`Result.best_checkpoints <ray.train.Result>`. If you set {class}`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>`, this list contains the best `num_to_keep` checkpoints.
+Access the best checkpoints with {attr}`Result.best_checkpoints <ray.train.Result>`. If you set {class}`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>`, this list contains the best `num_to_keep` checkpoints. It doesn't include the latest checkpoint unless the latest is also one of the best, even though Ray Train keeps the latest checkpoint on disk.
 
 For a full guide on inspecting training results, see {ref}`train-inspect-results`.
 

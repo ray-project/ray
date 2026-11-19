@@ -13,42 +13,14 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 from ray.data._internal.datasource_v2.common.file_reader import (
     FileFormat,
 )
-from ray.data._internal.datasource_v2.common.pushdown_utils import (
-    _split_predicate_by_columns,
-    combine_predicates,
-)
+from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.planner.plan_expression.expression_visitors import (
-    get_column_references,
-)
-from ray.data.datasource.partitioning import Partitioning
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
-
-
-class _OrcPartitionPredicatePruner(PartitionPredicatePruner):
-    """Keep paths whose missing keys require evaluation by the ORC reader."""
-
-    def __init__(
-        self,
-        partitioning: Partitioning,
-        predicate: Expr,
-        *,
-        schema: Optional[pa.Schema] = None,
-    ):
-        super().__init__(partitioning, predicate, schema=schema)
-        self._predicate_columns = set(get_column_references(predicate))
-
-    @override
-    def should_include(self, path: str) -> bool:
-        partitions = self._parser(path)
-        if not self._predicate_columns.issubset(partitions):
-            return True
-        return super().should_include(path)
 
 
 @DeveloperAPI
@@ -79,8 +51,11 @@ class OrcScanner(ArrowFileScanner):
     def _create_partition_pruner(self) -> Optional[FilePruner]:
         if self.partitioning is None or self.partition_predicate is None:
             return None
-        return _OrcPartitionPredicatePruner(
-            self.partitioning, self.partition_predicate, schema=self.schema
+        return PartitionPredicatePruner(
+            self.partitioning,
+            self.partition_predicate,
+            schema=self.schema,
+            keep_unknown=True,
         )
 
     def read_schema(self) -> pa.Schema:
@@ -113,25 +88,6 @@ class OrcScanner(ArrowFileScanner):
             assert index >= 0, f"Column {name} not found in schema"
             fields.append(self.schema.field(index))
         return pa.schema(fields)
-
-    @override
-    def push_filters(
-        self, predicate: Expr
-    ) -> Tuple["ArrowFileScanner", Optional[Expr]]:
-        """Keep predicates on post-read synthesized columns above the read."""
-        if self.partitioning is not None:
-            # Synthesized columns are added after scanning, so their filters
-            # stay above the read.
-            synthesized = {column.name for column in self.synthesized_columns}
-            split = _split_predicate_by_columns(predicate, synthesized)
-            residual = combine_predicates(
-                split.partition_predicate, split.residual_predicate
-            )
-            if split.data_predicate is None:
-                return self, residual
-            scanner, _ = super().push_filters(split.data_predicate)
-            return scanner, residual
-        return super().push_filters(predicate)
 
     def create_reader(self) -> OrcFileReader:
         """Create a reader with this scanner's projection and filters."""

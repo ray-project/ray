@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Optional
 from unittest.mock import create_autospec
@@ -14,6 +15,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
+from ray.train.v2.api.validation_config import ValidationTaskConfig
 from ray.train.v2.tests.util import create_dummy_training_reports
 
 
@@ -249,6 +251,121 @@ async def test_pending_checkpoint_management(tmp_path):
         high_initial_low_final_training_report.checkpoint,  # keep latest checkpoint
         low_initial_high_final_training_report.checkpoint,  # keep highest score checkpoint
     ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "validation_result",
+    [
+        ({"score": 5}, ReportedCheckpointStatus.VALIDATED),
+        ({}, ReportedCheckpointStatus.VALIDATION_FAILED),
+    ],
+)
+async def test_scoreless_checkpoint_is_worst_in_min_mode(tmp_path, validation_result):
+    """A checkpoint without the score attribute (for example, one whose
+    validation is pending or failed) must rank below every scored checkpoint in
+    "min" mode too, not above them."""
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="scoreless_checkpoint_min_mode_experiment",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="score",
+            checkpoint_score_order="min",
+        ),
+    )
+    best_report, pending_report, latest_report = create_dummy_training_reports(
+        num_results=3, storage_context=storage_context
+    )
+    best_report.metrics = {"score": 1}
+    pending_report.metrics = {}
+    pending_report.validation = ValidationTaskConfig()
+    latest_report.metrics = {"score": 2}
+
+    checkpoint_manager.register_checkpoint(best_report)
+    checkpoint_manager.register_checkpoint(pending_report)
+    checkpoint_manager.register_checkpoint(latest_report)
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        pending_report.checkpoint,  # keep pending
+        latest_report.checkpoint,  # keep latest
+        best_report.checkpoint,  # keep lowest score
+    ]
+
+    checkpoint_manager.update_checkpoints_with_validation_result(
+        {pending_report.checkpoint: validation_result}
+    )
+    assert [tr.checkpoint for tr in checkpoint_manager._checkpoint_results] == [
+        latest_report.checkpoint,  # keep latest
+        best_report.checkpoint,  # keep lowest score
+    ]
+    assert (
+        checkpoint_manager.best_checkpoint_result.checkpoint == best_report.checkpoint
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status",
+    [
+        ReportedCheckpointStatus.VALIDATED,
+        ReportedCheckpointStatus.VALIDATION_FAILED,
+        ReportedCheckpointStatus.VALIDATION_TIMEOUT,
+    ],
+)
+async def test_missing_score_attribute_logging(
+    tmp_path, caplog, propagate_logs, status
+):
+    """A checkpoint that lacks the score attribute because its validation is
+    pending, failed or timed out is expected, so it is not logged as an error.
+    A finalized checkpoint without the attribute is a misconfiguration and is
+    logged once, however many times it is scored."""
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="missing_score_attribute_logging_experiment",
+    )
+    checkpoint_manager = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(
+            checkpoint_score_attribute="score",
+            checkpoint_score_order="min",
+        ),
+    )
+    reports = create_dummy_training_reports(
+        num_results=6, storage_context=storage_context
+    )
+    pending_report = reports[1]
+    pending_report.metrics = {}
+    pending_report.validation = ValidationTaskConfig()
+    reports[4].metrics = {}  # Reported without the attribute or a validation.
+
+    def missing_score_errors():
+        return [
+            r
+            for r in caplog.records
+            if "missing the checkpoint_score_attribute key (score)" in r.message
+        ]
+
+    with caplog.at_level(
+        logging.ERROR, logger="ray.train._internal.checkpoint_manager"
+    ):
+        for report in reports[:3]:
+            checkpoint_manager.register_checkpoint(report)
+        assert not missing_score_errors()
+
+        # A validation that doesn't return the attribute is a misconfiguration.
+        checkpoint_manager.update_checkpoints_with_validation_result(
+            {pending_report.checkpoint: ({}, status)}
+        )
+        checkpoint_manager.register_checkpoint(reports[3])
+        expected = 1 if status == ReportedCheckpointStatus.VALIDATED else 0
+        assert len(missing_score_errors()) == expected
+
+        for report in reports[4:]:
+            checkpoint_manager.register_checkpoint(report)
+        assert len(missing_score_errors()) == expected + 1
 
 
 @pytest.mark.asyncio

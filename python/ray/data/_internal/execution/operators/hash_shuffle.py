@@ -38,16 +38,14 @@ from ray._private.ray_constants import (
 from ray._raylet import StreamingGeneratorStats
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    _create_empty_table,
-    hash_partition,
-)
+from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
     RefBundle,
+    actor_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -62,6 +60,7 @@ from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeO
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -869,6 +868,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         self._try_finalize()
         return len(self._output_queue) > 0
 
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # Partitions are finalized only after every input has been shuffled.
+        return True
+
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         if not self._shuffle_started:
@@ -1042,6 +1046,19 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         finalizing_tasks: List[DataOpTask] = list(self._finalizing_tasks.values())
 
         return shuffling_tasks + finalizing_tasks
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        requests = self._get_base_resource_requests()
+        if self._aggregator_pool is not None:
+            # Report aggregator demand even before ``AggregatorPool.start()`` has
+            # issued the ``.remote()`` calls, so a capacity-starved shuffle can
+            # already trigger scale-up.
+            aggregator_request = self._aggregator_pool.get_resource_request()
+            requests.extend(
+                dict(aggregator_request)
+                for _ in range(self._aggregator_pool.num_aggregators)
+            )
+        return requests
 
     def _get_active_shuffling_tasks(self) -> List[MetadataOpTask]:
         return list(
@@ -1839,6 +1856,10 @@ class AggregatorPool:
     @property
     def num_aggregators(self):
         return self._num_aggregators
+
+    def get_resource_request(self) -> Dict[str, float]:
+        """Return the exact resource request used to create each aggregator."""
+        return actor_resource_dict(self._aggregator_ray_remote_args)
 
     def get_aggregator_for_partition(self, partition_id: int) -> ActorHandle:
         return self._aggregators[self._get_aggregator_id_for_partition(partition_id)]
