@@ -1,8 +1,11 @@
 import abc
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, Iterable, List, NamedTuple, Optional
 
-from ray.data._internal.execution.interfaces.common import NodeIdStr
+from ray.data._internal.execution.interfaces.common import (
+    NodeIdStr,
+    PlacementGroupIdStr,
+)
 
 ResourceType = str
 ResourceDict = Dict[ResourceType, float]
@@ -12,6 +15,29 @@ LabelValue = str
 LabelSelector = Dict[LabelKey, LabelValue]
 ReservedResources = Dict[NodeIdStr, ResourceDict]
 NodeResources = Dict[NodeIdStr, ResourceDict]
+
+
+class SplitReservedResources(NamedTuple):
+    """A requester's reservation per node, split by what holds it.
+
+    ``non_placement_group`` is what the coordinator packed for the requester
+    plus its share of leftovers; ``placement_group`` is the bundles of its
+    registered placement groups, on the nodes Ray placed them.
+    """
+
+    non_placement_group: ReservedResources
+    placement_group: ReservedResources
+
+    def total(self) -> ReservedResources:
+        """Both parts summed per node."""
+        total: ReservedResources = {}
+        for part in self:
+            for node_id, resources in part.items():
+                node_total = total.setdefault(node_id, {})
+                for key, amount in resources.items():
+                    node_total[key] = node_total.get(key, 0) + amount
+        return total
+
 
 # Standard resource types Ray Data requests leftovers for when
 # ``request_remaining`` is non-empty.
@@ -90,15 +116,25 @@ class AutoscalingCoordinator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def get_reserved_resources(self) -> NodeResources:
+    def get_reserved_resources(self) -> SplitReservedResources:
         """Everything assigned to this requester on each node.
 
-        Per node, the requester's bundles placed there plus its share of what
-        is left (``request_remaining``), summed into one dict. That includes
-        bundles it holds through a placement group: PG and non-PG are not
-        split. It is an accounting split of node totals, not what is free.
+        Split into the non-placement-group part (bundles the coordinator
+        packed plus its ``request_remaining`` share) and the bundles its
+        registered placement groups hold. It is an accounting split of node
+        totals, not what is free; ``total()`` sums the two.
 
         Returns:
-            Resources keyed by node id. Empty if there is no ongoing request.
+            Both parts keyed by node id. Empty if there is no ongoing request.
         """
+        ...
+
+    @abc.abstractmethod
+    def register_placement_groups(
+        self, placement_group_ids: Iterable[PlacementGroupIdStr]
+    ) -> None:
+        """Tell the coordinator which placement groups this requester holds, so
+        their bundles are reserved where Ray placed them and kept out of
+        everyone else's capacity. Replaces the previous set; empty unregisters
+        them."""
         ...

@@ -121,11 +121,12 @@ class OperatorSizer:
         """Validate the topology and build the per-run state.
 
         ``resource_reporter`` is read here, once, for placement-group capacity
-        and to warm the allocation cache. After this the sizer never
-        touches it: every tick is handed the cluster view the scheduling loop
-        already read (see ``perform_sizing_decision``).
+        and to warm the allocation cache. After this the sizer only registers
+        placement groups through it: every tick is handed the cluster view the
+        scheduling loop already read (see ``perform_sizing_decision``).
         """
         self._dataset_id = dataset_id
+        self._resource_reporter = resource_reporter
         self._topology = topology
         self._clock = clock
         self._placement: ActorPlacementStrategy = LocalityBasedActorPlacement()
@@ -217,6 +218,9 @@ class OperatorSizer:
         if ctx is None:
             return
         self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        # Picks up placement groups a ray_remote_args_fn created since the
+        # last tick, so later views take their bundles out of the slice.
+        self._register_placement_groups()
 
         self._cross_op_optimize(ctx, seconds_since_allocation_change)
         t2 = time.perf_counter()
@@ -502,21 +506,20 @@ class OperatorSizer:
         self, resource_reporter: "ActorOnlyResourceReporter"
     ) -> Tuple[PlacementGroupBundles, Dict[ExperimentalActorPoolMapOperator, int]]:
         """Capacity for PG-managed ops, read once: bundle shapes are fixed at
-        PG creation.
+        PG creation. Also registers the placement groups with the coordinator.
 
-        An op's PG capacity is unknown when it mints a PG per actor (no bundles
-        to inspect) or its PG has no bundles in the view yet (not created, or
-        the PG table unreadable). Either way it is capped at its pool's max
-        size, and Ray core still places its actors into the PG.
+        An op that mints a PG per actor has no bundles to inspect, so its PG
+        capacity is unknown. It is capped at its pool's max size instead, and
+        Ray core still places its actors into their PGs.
         """
         ops = self._profiles.actor_pool_ops
-        resource_reporter.prefetch_pg_bundles(
-            [
-                pg
-                for op in ops
-                if (pg := op.placement_constraint().placement_group) is not None
-            ]
-        )
+        placement_groups = [
+            pg
+            for op in ops
+            if (pg := op.placement_constraint().placement_group) is not None
+        ]
+        resource_reporter.cache_pg_bundle_shapes(placement_groups)
+        self._register_placement_groups()
         view = resource_reporter.get_cluster_view(include_pg_bundles=True)
         pg_bundles = PlacementGroupBundles.measure(ops, view)
         unknown_pg_caps = {
@@ -526,6 +529,17 @@ class OperatorSizer:
             and op not in pg_bundles.bundles_by_op
         }
         return pg_bundles, unknown_pg_caps
+
+    def _register_placement_groups(self) -> None:
+        """Register every placement group the ops hold with the coordinator:
+        static ones, and those a ``ray_remote_args_fn`` created per actor."""
+        placement_groups = []
+        for op in self._profiles.actor_pool_ops:
+            pg = op.placement_constraint().placement_group
+            if pg is not None:
+                placement_groups.append(pg)
+            placement_groups.extend(op.fn_placement_groups())
+        self._resource_reporter.register_placement_groups(placement_groups)
 
     @staticmethod
     def _validate_topology(topology: "Topology") -> None:

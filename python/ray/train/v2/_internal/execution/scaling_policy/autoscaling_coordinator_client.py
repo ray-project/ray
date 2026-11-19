@@ -97,9 +97,9 @@ class TrainAutoscalingCoordinatorClient:
         so it reserves them on the nodes Ray actually placed them on."""
         try:
             ray.get(
-                self._autoscaling_coordinator.register_placement_group.remote(
+                self._autoscaling_coordinator.register_placement_groups.remote(
                     requester_id=self._requester_id,
-                    placement_group_id=placement_group_id,
+                    placement_group_ids=[placement_group_id],
                 ),
                 timeout=AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
             )

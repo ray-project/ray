@@ -10,6 +10,7 @@ from typing_extensions import override
 
 import ray
 import ray.exceptions
+from ray._raylet import PlacementGroupID
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorConfig,
@@ -1574,6 +1575,11 @@ class TestExperimentalActorPool(unittest.TestCase):
         )
 
 
+def _new_pg() -> PlacementGroup:
+    """A placement group handle with a fresh id; no cluster needed."""
+    return PlacementGroup(PlacementGroupID.from_random())
+
+
 def _make_actor_op(
     ray_remote_args: Dict[str, Any],
     ray_remote_args_fn=None,
@@ -1897,25 +1903,31 @@ def test_ray_remote_args_fn_must_only_assign_a_placement_group():
     cleanly (the PG strategy is preserved); a fn that overrides the resource
     footprint or sets a non-PG strategy would break the sizer's accounting and is
     rejected at merge time (the one point the fn's realized output is
-    available)."""
+    available). Each PG the fn creates is recorded, for registration with the
+    coordinator."""
     # (a) fn assigns a PG -> merge OK, PG strategy preserved.
     ok = _make_actor_op(
         {"num_gpus": 0},
         ray_remote_args_fn=lambda: {
             "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                placement_group=cast(PlacementGroup, object())
+                placement_group=_new_pg()
             )
         },
     )
     merged = ok._merge_ray_remote_args()
     assert isinstance(merged["scheduling_strategy"], PlacementGroupSchedulingStrategy)
+    second = ok._merge_ray_remote_args()["scheduling_strategy"].placement_group
+    assert ok.fn_placement_groups() == [
+        merged["scheduling_strategy"].placement_group,
+        second,
+    ]
 
     # (b) fn overrides the resource footprint -> rejected (takeover).
     takeover = _make_actor_op(
         {"num_gpus": 0},
         ray_remote_args_fn=lambda: {
             "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                placement_group=cast(PlacementGroup, object())
+                placement_group=_new_pg()
             ),
             "num_gpus": 4,
         },
@@ -1989,7 +2001,7 @@ def test_actors_are_never_restarted_by_ray_core():
         {"num_cpus": 1},
         ray_remote_args_fn=lambda: {
             "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                placement_group=cast(PlacementGroup, object())
+                placement_group=_new_pg()
             ),
             "max_restarts": -1,
         },

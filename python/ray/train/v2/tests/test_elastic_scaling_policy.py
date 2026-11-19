@@ -8,10 +8,11 @@ from freezegun import freeze_time
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     ReservedResources,
     ResourceDict,
-    ResourceRequestStrategy,
+    SplitReservedResources,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
+    ResourceRequestStrategy,
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.scaling_policy import (
@@ -36,8 +37,11 @@ from ray.train.v2.api.config import ScalingConfig
 def mock_autoscaling_coordinator(monkeypatch):
     mock_coordinator = MagicMock()
     mock_coordinator._reserved_resources = None
+    # Tests set ``_reserved_resources`` to the non-placement-group part.
     mock_coordinator.get_reserved_resources.remote = MagicMock(
-        side_effect=lambda _: mock_coordinator._reserved_resources
+        side_effect=lambda _: SplitReservedResources(
+            mock_coordinator._reserved_resources or {}, {}
+        )
     )
 
     monkeypatch.setattr(
@@ -214,7 +218,7 @@ def test_get_reserved_resources_interval():
     with freeze_time() as frozen_time:
         # No resources are available at the start
         reserved_resources = policy._get_reserved_resources()
-        assert reserved_resources is None
+        assert reserved_resources == {}
 
         # Resources for < min workers are available
         frozen_time.tick(get_reserved_resources_interval_s)
