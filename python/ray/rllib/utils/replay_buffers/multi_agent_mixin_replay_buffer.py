@@ -41,8 +41,7 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
     in between, all newly added batches are returned (plus some older samples
     according to the "replay ratio").
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         # replay ratio 0.66 (2/3 replayed, 1/3 new samples):
         buffer = MultiAgentMixInReplayBuffer(capacity=100,
@@ -51,53 +50,49 @@ class MultiAgentMixInReplayBuffer(MultiAgentPrioritizedReplayBuffer):
         buffer.add(<B>)
         buffer.sample(1)
 
-    .. testoutput::
+    .. code-block:: text
 
         ..[<A>, <B>, <B>]
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         buffer.add(<C>)
         buffer.sample(1)
 
-    .. testoutput::
+    .. code-block:: text
 
         [<C>, <A>, <B>]
         or: [<C>, <A>, <A>], [<C>, <B>, <A>] or [<C>, <B>, <B>],
         but always <C> as it is the newest sample
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         buffer.add(<D>)
         buffer.sample(1)
 
-    .. testoutput::
+    .. code-block:: text
 
         [<D>, <A>, <C>]
         or [<D>, <A>, <A>], [<D>, <B>, <A>] or [<D>, <B>, <C>], etc..
         but always <D> as it is the newest sample
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         # replay proportion 0.0 -> replay disabled:
-        buffer = MixInReplay(capacity=100, replay_ratio=0.0)
+        buffer = MultiAgentMixInReplayBuffer(capacity=100, replay_ratio=0.0)
         buffer.add(<A>)
         buffer.sample()
 
-    .. testoutput::
+    .. code-block:: text
 
         [<A>]
 
-    .. testcode::
-        :skipif: True
+    .. code-block:: python
 
         buffer.add(<B>)
         buffer.sample()
 
-    .. testoutput::
+    .. code-block:: text
 
         [<B>]
     """

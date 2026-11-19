@@ -9,6 +9,10 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    _split_predicate_by_columns,
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
@@ -32,18 +36,16 @@ class ArrowFileScanner(
     Holds shared Arrow types and options (schema, projection, filesystem,
     etc.). Subclasses set the file format in :meth:`create_reader`.
 
-    Provides default implementations of filter pushdown, column pruning and
-    limit pushdown that work for all Arrow-backed formats. Partition pruning
-    comes from :class:`FileScanner`.
+    Provides a default implementation of filter pushdown that works for all
+    Arrow-backed formats. Column pruning and limit pushdown come from the
+    ``Supports*`` mixins, partition pruning from :class:`FileScanner`.
 
     Non-Arrow file formats should subclass :class:`FileScanner` directly.
     """
 
     schema: pa.Schema
     batch_size: Optional[int] = None
-    columns: Optional[Tuple[str, ...]] = None
     predicate: Optional[Expr] = None
-    limit: Optional[int] = None
     filesystem: Optional[FileSystem] = None
     ignore_prefixes: Optional[List[str]] = None
 
@@ -98,9 +100,9 @@ class ArrowFileScanner(
     def push_filters(
         self, predicate: "Expr"
     ) -> Tuple["ArrowFileScanner", Optional["Expr"]]:
-        """Push filter predicate down to the scanner.
+        """Push physical-column conjuncts down and retain synthesized filters.
 
-        ANDs the predicate with any existing predicate. The Ray ``Expr`` is
+        ANDs accepted conjuncts with any existing predicate. The Ray ``Expr`` is
         retained as the source of truth so the reader can introspect filter
         columns; conversion to a PyArrow expression happens at the
         scanner-kwargs boundary in :class:`FileReader`.
@@ -108,60 +110,29 @@ class ArrowFileScanner(
         This method handles data-column predicates only. Partition predicates
         should be pushed via :meth:`prune_partitions` instead; the optimizer
         is responsible for splitting them before calling either method.
+        Predicates referencing enabled synthesized columns must run after the
+        reader computes them. Only top-level AND conjuncts can be separated;
+        a mixed OR or NOT stays intact as a residual.
 
         Args:
             predicate: Ray Data expression to push down.
 
         Returns:
-            A pair ``(scanner, residual)`` where ``scanner`` has the predicate
-            merged into its PyArrow filter. ``residual`` is ``None`` because
-            PyArrow handles the full filter at scan time.
+            A pair ``(scanner, residual)`` where ``scanner`` has accepted
+            conjuncts merged into its PyArrow filter. ``residual`` contains
+            conjuncts requiring synthesized columns, or ``None`` if all
+            conjuncts were accepted.
         """
-        if self.predicate is not None:
-            combined = self.predicate & predicate
-        else:
-            combined = predicate
+        split = _split_predicate_by_columns(predicate, self._synthesized_column_names())
+        residual = combine_predicates(
+            split.partition_predicate, split.residual_predicate
+        )
+        if split.data_predicate is None:
+            return self, residual
 
-        return replace(self, predicate=combined), None
+        combined = combine_predicates(self.predicate, split.data_predicate)
+        return replace(self, predicate=combined), residual
 
     @override
     def pushed_predicate(self) -> Optional["Expr"]:
         return self.predicate
-
-    @override
-    def prune_columns(self, columns: List[str]) -> "ArrowFileScanner":
-        """Prune to only the specified columns.
-
-        Args:
-            columns: List of column names to keep.
-
-        Returns:
-            New scanner with column pruning applied.
-        """
-        if self.columns:
-            existing = set(self.columns)
-            columns = [c for c in columns if c in existing]
-
-        return replace(self, columns=tuple(columns))
-
-    @override
-    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
-        return self.columns
-
-    @override
-    def push_limit(self, limit: int) -> "ArrowFileScanner":
-        """Push row limit down to the scanner.
-
-        Args:
-            limit: Maximum number of rows to read.
-
-        Returns:
-            New scanner with limit applied.
-        """
-        current = self.limit
-        new_limit = min(current, limit) if current is not None else limit
-        return replace(self, limit=new_limit)
-
-    @override
-    def pushed_limit(self) -> Optional[int]:
-        return self.limit

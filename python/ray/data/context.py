@@ -172,6 +172,22 @@ def _deduce_default_enable_disk_shuffle() -> bool:
 
 DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
+DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
+    "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
+)
+
+DEFAULT_PARTIAL_AGGREGATION_MODE = os.environ.get(
+    "RAY_DATA_PARTIAL_AGGREGATION_MODE", "estimate"
+)
+
+DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS = env_integer(
+    "RAY_DATA_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS", 100_000
+)
+
+DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD = env_float(
+    "RAY_DATA_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD", 0.8
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -714,8 +730,9 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        use_datasource_v2: When True, ``ray.data.read_parquet()`` and
-            ``ray.data.read_orc()`` route through the DataSourceV2 pipeline.
+        use_datasource_v2: When True, ``ray.data.read_parquet()``,
+            ``ray.data.read_orc()``, ``ray.data.read_mcap()`` and
+            ``ray.data.read_text()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
@@ -856,9 +873,12 @@ class DataContext:
         max_errored_blocks: Max number of blocks that are allowed to have errors,
             unlimited if negative. This option allows application-level exceptions in
             block processing tasks. These exceptions may be caused by UDFs (e.g., due to
-            corrupted data samples) or IO errors. Data in the failed blocks are dropped.
-            This option can be useful to prevent a long-running job from failing due to
-            a small number of bad blocks.
+            corrupted data samples) or IO errors. A failed map task keeps the rows it
+            produced before the error and drops the rest of its input. While the
+            task can still be rerun (``retried_map_errors``, or Ray's ``max_retries``
+            with ``retry_exceptions``), a failed attempt emits no rows, so the rerun
+            produces each row once. This option can be useful to prevent a
+            long-running job from failing due to a small number of bad blocks.
         log_internal_stack_trace: Whether to write the full Ray Data/Ray Core
             internal code stack frames to the Ray Data log file when logging a
             user-code error. These internal frames are always omitted from
@@ -905,22 +925,43 @@ class DataContext:
             timeout, fetching each batch in a single blocking call.
         shuffle_input_batch_bytes: Target batch size in bytes for coalescing
             shuffle input blocks before partitioning. Applies to the
-            ``SHUFFLE_V2`` shuffle strategy (including disk-based hash shuffle).
-            Other shuffle strategies ignore it. Input blocks are buffered per
-            node and
-            processed as a batch once this size is reached; remaining
-            buffered blocks are flushed when input is exhausted. Lower values
-            increase shuffle parallelism (useful for CPU-intensive shuffles)
-            at the cost of more, smaller intermediate shard objects. Set to
-            ``0`` to disable batching, processing each input bundle
-            individually. Defaults to 1GiB.
-        use_disk_based_hash_shuffle: Whether ``repartition()`` with keys or shuffle,
-            aggregations, and joins under the ``SHUFFLE_V2`` strategy use the
-            disk-based (file-transport) shuffle instead of the object
-            store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
+            object-store ``SHUFFLE_V2`` shuffle strategy only; the disk-based
+            hash shuffle (``use_disk_based_hash_shuffle``) runs one map task
+            per input bundle since a file per mapper already bounds the
+            number of shards, and other shuffle strategies ignore it. Input
+            blocks are buffered per node and processed as a batch once this
+            size is reached; remaining buffered blocks are flushed when input
+            is exhausted. Lower values increase shuffle parallelism (useful
+            for CPU-intensive shuffles) at the cost of more, smaller intermediate
+            shard objects. Set to ``0`` to disable batching, processing each
+            input bundle individually. Defaults to 1GiB.
+        use_disk_based_hash_shuffle: Whether ``random_shuffle()``, ``sort()``,
+            ``repartition()`` with keys or shuffle, aggregations, and joins under
+            the ``SHUFFLE_V2`` strategy use the disk-based (file-transport)
+            shuffle instead of the object store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
             environment variable (``False`` when unset). Deprecated
             aliases: ``use_external_hash_shuffle`` and the
             ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
+        enable_aggregate_shuffle_elimination: Whether a group-by skips its shuffle
+            when its input is already hash-partitioned on its keys under the
+            ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
+            Defaults to the ``RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION``
+            environment variable (``True`` when unset).
+        partial_aggregation_mode: Whether the map tasks of a ``SHUFFLE_V2``
+            group-by pre-aggregate their input. ``"estimate"`` (default) makes
+            each map task skip partial aggregation when its group keys are
+            nearly unique, shipping column-pruned rows to the reducers
+            instead. ``"always"`` pre-aggregates in every map task, which
+            turns adaptive skipping off, and ``"never"`` skips it in every map
+            task. Defaults to the ``RAY_DATA_PARTIAL_AGGREGATION_MODE``
+            environment variable.
+        adaptive_partial_aggregation_sample_rows: Number of rows a map task
+            samples, spread across its whole input, to estimate how many
+            distinct keys the input has. Tasks with fewer input rows always
+            aggregate.
+        adaptive_partial_aggregation_unique_ratio_threshold: A map task skips
+            partial aggregation when its estimated distinct keys divided by
+            its input rows is above this ratio.
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1078,9 +1119,26 @@ class DataContext:
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
     # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
-    # hash-shuffle operations (keyed repartition, aggregations, joins).
+    # shuffle operations (random shuffle, sort, keyed repartition, aggregations,
+    # joins).
     # When False, use the object-store path.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
+
+    # Whether EliminateAggregateShuffle may skip a group-by's shuffle when its
+    # input is already hash-partitioned on its keys (SHUFFLE_V2 only).
+    enable_aggregate_shuffle_elimination: bool = (
+        DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION
+    )
+
+    # Whether SHUFFLE_V2 group-by map tasks pre-aggregate (see the Args
+    # docstring).
+    partial_aggregation_mode: str = DEFAULT_PARTIAL_AGGREGATION_MODE
+    adaptive_partial_aggregation_sample_rows: int = (
+        DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS
+    )
+    adaptive_partial_aggregation_unique_ratio_threshold: float = (
+        DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD
+    )
 
     ################################################################
     # GPU Shuffle configuration

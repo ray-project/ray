@@ -9,6 +9,9 @@ import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer
+from ray.data._internal.datasource_v2.common.file_pruners import (
+    PartitionPredicatePruner,
+)
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
@@ -35,6 +38,7 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.datasource.partitioning import Partitioning
     from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
@@ -150,6 +154,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         footer_batch_size: Optional[int] = None,
         result_batch_size: Optional[int] = None,
         max_inflight_batches: Optional[int] = None,
+        partitioning: Optional[Partitioning] = None,
+        logical_schema: Optional[pa.Schema] = None,
     ):
         super().__init__(
             ignore_missing_paths=ignore_missing_paths,
@@ -158,6 +164,8 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             max_paths_per_output=max_paths_per_output,
         )
         self._coalesce_bytes = coalesce_bytes
+        self._partitioning = partitioning
+        self._logical_schema = logical_schema
         # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
         # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
         # than a single, possibly tiny, row group.
@@ -230,7 +238,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
-            preserve_order=preserve_order,
+            pruners=pruners,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -244,6 +252,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
+        pruners: Optional[List["FilePruner"]] = None,
         preserve_order: bool = False,
         predicate: Optional["Expr"] = None,
         limit: Optional[int] = None,
@@ -252,6 +261,12 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         execution_idx: int = 0,
         excluded_read_unit_ids: Optional[AbstractSet[str]] = None,
     ) -> Iterable[FileManifest]:
+        if pruners:
+            file_infos = (
+                info
+                for info in file_infos
+                if all(pruner.should_include(info.path) for pruner in pruners)
+            )
         if excluded_read_unit_ids:
             file_infos = (
                 info for info in file_infos if info.path not in excluded_read_unit_ids
@@ -263,7 +278,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         yield from self._process_file_infos(
             file_infos,
             filesystem=filesystem,
-            preserve_order=preserve_order,
+            pruners=pruners,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -277,7 +292,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         file_infos: Iterable[FileInfo],
         *,
         filesystem: Optional["FileSystem"],
-        preserve_order: bool,
+        pruners: Optional[List["FilePruner"]],
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
@@ -285,6 +300,14 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         execution_idx: int,
         excluded_read_unit_ids: Optional[AbstractSet[str]],
     ) -> Iterator[FileManifest]:
+        partition_pruner = next(
+            (
+                pruner
+                for pruner in pruners or []
+                if isinstance(pruner, PartitionPredicatePruner)
+            ),
+            None,
+        )
         shuffle_row_groups = (
             shuffle_config is not None and shuffle_config.small_chunks_shuffle
         )
@@ -299,6 +322,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                 projected_columns,
                 coalesce_bytes,
                 excluded_read_unit_ids=excluded_read_unit_ids,
+                partitioning=self._partitioning,
+                partition_pruner=partition_pruner,
+                logical_schema=self._logical_schema,
             )
             for _ in range(self._num_actors)
         ]
@@ -308,9 +334,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            manifests = self._read_footers(
-                actors, file_infos, limit, preserve_order=preserve_order
-            )
+            manifests = self._read_footers(actors, file_infos, limit)
             if shuffle_row_groups:
                 assert shuffle_config is not None
                 manifests = _shuffle_row_group_runs(
@@ -330,8 +354,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         actors: List["ActorProxy[FooterReader]"],
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
-        *,
-        preserve_order: bool = False,
     ) -> Iterator[FileManifest]:
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
@@ -354,7 +376,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen: ray.ObjectRefGenerator = actor.read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
-                preserve_order=preserve_order,  # pyrefly: ignore[unexpected-keyword]
             )
             pending.append(gen)
             batch_no += 1

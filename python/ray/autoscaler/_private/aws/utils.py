@@ -22,12 +22,7 @@ class LazyDefaultDict(defaultdict):
     """
 
     def __missing__(self, key):
-        """
-        __missing__(key) # Called by __getitem__ for missing key; pseudo-code:
-          if self.default_factory is None: raise KeyError((key,))
-          self[key] = value = self.default_factory(key)
-          return value
-        """
+        """Store and return ``default_factory(key)`` for a missing key."""
         self[key] = self.default_factory(key)
         return self[key]
 

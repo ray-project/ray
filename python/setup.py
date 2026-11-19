@@ -223,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 17.0.0",
+        "pyarrow >= 23.0.0",
     ]
     pydantic_deps = [
         "pydantic>=2.5.0,<3; python_version < '3.14'",
@@ -385,7 +385,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.32.0",
+                "vllm[audio]==0.33.0",
                 "nixl==1.5.0",
                 "nixl-cu13==1.5.0",
                 "jsonref>=1.1.0",

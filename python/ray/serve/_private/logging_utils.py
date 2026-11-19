@@ -327,7 +327,7 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     See https://docs.python.org/3/library/functions.html#print
     """
     if file not in [sys.stdout, sys.stderr, None]:
-        return buildin_print(objects, sep=sep, end=end, file=file, flush=flush)
+        return buildin_print(*objects, sep=sep, end=end, file=file, flush=flush)
 
     serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
     message = sep.join(map(str, objects)) + end

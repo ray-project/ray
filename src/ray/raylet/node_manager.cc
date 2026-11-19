@@ -1831,7 +1831,6 @@ void NodeManager::HandleGetResourceLoad(rpc::GetResourceLoadRequest request,
                                         rpc::SendReplyCallback send_reply_callback) {
   auto resources_data = reply->mutable_resources();
   resources_data->set_node_id(self_node_id_.Binary());
-  resources_data->set_node_manager_address(initial_config_.node_manager_address);
   cluster_lease_manager_.FillResourceUsage(*resources_data);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

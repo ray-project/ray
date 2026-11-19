@@ -16,7 +16,7 @@ from ci.ray_ci.docker_container import GPU_PLATFORM
 
 def make_ctx(
     image_type: str = "ray",
-    python_version: str = "3.11",
+    python_version: str = "3.12",
     platform: str = "cu12.3.2-cudnn9",
     branch: str = "master",
     commit: str = "abc123def456",
@@ -69,21 +69,21 @@ class TestWandaImageName:
     @pytest.mark.parametrize(
         ("python_version", "platform", "image_type", "expected"),
         [
-            ("3.10", "cpu", "ray", "ray-anyscale-py3.10-cpu"),
-            ("3.11", "cu12.1.1-cudnn8", "ray", "ray-anyscale-py3.11-cu12.1.1-cudnn8"),
-            ("3.10", "cpu", "ray-llm", "ray-llm-anyscale-py3.10-cpu"),
+            ("3.11", "cpu", "ray", "ray-anyscale-py3.11-cpu"),
+            ("3.12", "cu12.1.1-cudnn8", "ray", "ray-anyscale-py3.12-cu12.1.1-cudnn8"),
+            ("3.11", "cpu", "ray-llm", "ray-llm-anyscale-py3.11-cpu"),
             (
                 "3.12",
                 "cu13.0.0-cudnn",
                 "ray-llm",
                 "ray-llm-anyscale-py3.12-cu13.0.0-cudnn",
             ),
-            ("3.10", "cpu", "ray-ml", "ray-ml-anyscale-py3.10-cpu"),
+            ("3.11", "cpu", "ray-ml", "ray-ml-anyscale-py3.11-cpu"),
             (
-                "3.11",
+                "3.12",
                 "cu12.3.2-cudnn9",
                 "ray-ml",
-                "ray-ml-anyscale-py3.11-cu12.3.2-cudnn9",
+                "ray-ml-anyscale-py3.12-cu12.3.2-cudnn9",
             ),
         ],
     )
@@ -97,7 +97,7 @@ class TestWandaImageName:
 class TestDestinationTags:
     def test_master_branch_tags(self):
         ctx = make_ctx(
-            python_version="3.11",
+            python_version="3.12",
             platform="cu12.3.2-cudnn9",
             image_type="ray",
             branch="master",
@@ -107,13 +107,13 @@ class TestDestinationTags:
         tags = ctx.destination_tags()
 
         assert tags == [
-            "abc123-py311-cu123",
-            "build-123-py311-cu123",
+            "abc123-py312-cu123",
+            "build-123-py312-cu123",
         ]
 
     def test_release_branch_tags(self):
         ctx = make_ctx(
-            python_version="3.11",
+            python_version="3.12",
             platform="cu12.3.2-cudnn9",
             image_type="ray",
             branch="releases/2.44.0",
@@ -123,19 +123,19 @@ class TestDestinationTags:
         tags = ctx.destination_tags()
 
         assert tags == [
-            "2.44.0.abc123-py311-cu123",
-            "build-456-py311-cu123",
+            "2.44.0.abc123-py312-cu123",
+            "build-456-py312-cu123",
         ]
 
     def test_gpu_platform_includes_alias(self):
         """GPU_PLATFORM gets -gpu alias, other platforms do not."""
         gpu_ctx = make_ctx(
-            python_version="3.11", platform=GPU_PLATFORM, image_type="ray"
+            python_version="3.12", platform=GPU_PLATFORM, image_type="ray"
         )
         other_cuda_ctx = make_ctx(
-            python_version="3.11", platform="cu12.3.2-cudnn9", image_type="ray"
+            python_version="3.12", platform="cu12.3.2-cudnn9", image_type="ray"
         )
-        cpu_ctx = make_ctx(python_version="3.11", platform="cpu", image_type="ray")
+        cpu_ctx = make_ctx(python_version="3.12", platform="cpu", image_type="ray")
 
         gpu_tags = gpu_ctx.destination_tags()
         other_cuda_tags = other_cuda_ctx.destination_tags()
@@ -148,28 +148,28 @@ class TestDestinationTags:
     def test_ray_ml_gpu_platform_includes_empty_platform_suffix(self):
         """ray-ml with GPU_PLATFORM gets -gpu alias AND empty platform suffix."""
         ctx = make_ctx(
-            python_version="3.11", platform=GPU_PLATFORM, image_type="ray-ml"
+            python_version="3.12", platform=GPU_PLATFORM, image_type="ray-ml"
         )
         tags = ctx.destination_tags()
 
         # Should have: -cu121, -gpu, and empty suffix (no platform)
-        assert "abc123-py311-cu121" in tags
-        assert "abc123-py311-gpu" in tags
-        assert "abc123-py311" in tags
-        assert "build-123-py311-cu121" in tags
-        assert "build-123-py311-gpu" in tags
-        assert "build-123-py311" in tags
+        assert "abc123-py312-cu121" in tags
+        assert "abc123-py312-gpu" in tags
+        assert "abc123-py312" in tags
+        assert "build-123-py312-cu121" in tags
+        assert "build-123-py312-gpu" in tags
+        assert "build-123-py312" in tags
 
     def test_ray_ml_non_gpu_platform_no_empty_suffix(self):
         """ray-ml with non-GPU_PLATFORM does NOT get empty suffix."""
         ctx = make_ctx(
-            python_version="3.11", platform="cu12.3.2-cudnn9", image_type="ray-ml"
+            python_version="3.12", platform="cu12.3.2-cudnn9", image_type="ray-ml"
         )
         tags = ctx.destination_tags()
 
         assert tags == [
-            "abc123-py311-cu123",
-            "build-123-py311-cu123",
+            "abc123-py312-cu123",
+            "build-123-py312-cu123",
         ]
 
     def test_pr_branch_tags(self):
@@ -191,7 +191,7 @@ class TestDestinationTags:
 
     def test_non_pr_feature_branch_tags(self):
         ctx = make_ctx(
-            python_version="3.11",
+            python_version="3.12",
             platform="cu12.3.2-cudnn9",
             image_type="ray",
             branch="feature-branch",
@@ -202,68 +202,68 @@ class TestDestinationTags:
         tags = ctx.destination_tags()
 
         assert tags == [
-            "abc123-py311-cu123",
-            "build-789-py311-cu123",
+            "abc123-py312-cu123",
+            "build-789-py312-cu123",
         ]
 
     def test_default_python_version_includes_empty_suffix(self):
-        """DEFAULT_PYTHON_TAG_VERSION (3.10) gets empty python suffix."""
-        assert DEFAULT_PYTHON_TAG_VERSION == "3.10"
+        """DEFAULT_PYTHON_TAG_VERSION (3.11) gets empty python suffix."""
+        assert DEFAULT_PYTHON_TAG_VERSION == "3.11"
         ctx = make_ctx(
-            python_version="3.10", platform="cu12.3.2-cudnn9", image_type="ray"
+            python_version="3.11", platform="cu12.3.2-cudnn9", image_type="ray"
         )
         tags = ctx.destination_tags()
 
-        # Should have both -py310 and empty python suffix
-        assert "abc123-py310-cu123" in tags
+        # Should have both -py311 and empty python suffix
+        assert "abc123-py311-cu123" in tags
         assert "abc123-cu123" in tags
-        assert "build-123-py310-cu123" in tags
+        assert "build-123-py311-cu123" in tags
         assert "build-123-cu123" in tags
 
     def test_cpu_ray_includes_empty_platform_suffix(self):
         """ray with cpu gets empty platform suffix."""
-        ctx = make_ctx(python_version="3.11", platform="cpu", image_type="ray")
+        ctx = make_ctx(python_version="3.12", platform="cpu", image_type="ray")
         tags = ctx.destination_tags()
 
         # Should have both -cpu and empty platform suffix
-        assert "abc123-py311-cpu" in tags
-        assert "abc123-py311" in tags
-        assert "build-123-py311-cpu" in tags
-        assert "build-123-py311" in tags
+        assert "abc123-py312-cpu" in tags
+        assert "abc123-py312" in tags
+        assert "build-123-py312-cpu" in tags
+        assert "build-123-py312" in tags
 
     def test_cpu_ray_ml_no_empty_platform_suffix(self):
         """ray-ml with cpu does NOT get empty platform suffix."""
-        ctx = make_ctx(python_version="3.11", platform="cpu", image_type="ray-ml")
+        ctx = make_ctx(python_version="3.12", platform="cpu", image_type="ray-ml")
         tags = ctx.destination_tags()
 
         assert tags == [
-            "abc123-py311-cpu",
-            "build-123-py311-cpu",
+            "abc123-py312-cpu",
+            "build-123-py312-cpu",
         ]
 
     def test_extra_image_type_includes_variation_suffix(self):
         """-extra image types get -extra variation suffix."""
         ray_extra_ctx = make_ctx(
-            python_version="3.11", platform="cu12.3.2-cudnn9", image_type="ray-extra"
+            python_version="3.12", platform="cu12.3.2-cudnn9", image_type="ray-extra"
         )
         ray_ml_extra_ctx = make_ctx(
-            python_version="3.11", platform="cu12.3.2-cudnn9", image_type="ray-ml-extra"
+            python_version="3.12", platform="cu12.3.2-cudnn9", image_type="ray-ml-extra"
         )
 
         ray_extra_tags = ray_extra_ctx.destination_tags()
         ray_ml_extra_tags = ray_ml_extra_ctx.destination_tags()
 
-        assert "abc123-extra-py311-cu123" in ray_extra_tags
-        assert "abc123-extra-py311-cu123" in ray_ml_extra_tags
+        assert "abc123-extra-py312-cu123" in ray_extra_tags
+        assert "abc123-extra-py312-cu123" in ray_ml_extra_tags
 
     def test_ray_extra_cpu_includes_empty_platform_suffix(self):
         """ray-extra with cpu gets empty platform suffix (like ray)."""
-        ctx = make_ctx(python_version="3.11", platform="cpu", image_type="ray-extra")
+        ctx = make_ctx(python_version="3.12", platform="cpu", image_type="ray-extra")
         tags = ctx.destination_tags()
 
         # Should have both -cpu and empty platform suffix
-        assert "abc123-extra-py311-cpu" in tags
-        assert "abc123-extra-py311" in tags
+        assert "abc123-extra-py312-cpu" in tags
+        assert "abc123-extra-py312" in tags
 
 
 class TestAnnotatePushedImage:

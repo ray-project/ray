@@ -272,6 +272,22 @@ def get_call_location(back: int = 1):
         return "UNKNOWN"
 
 
+def add_exception_note(exc: BaseException, note: str) -> None:
+    """Attach a note to an exception without changing its type or args.
+
+    Notes are kept in ``__notes__``, so they survive pickling and appear in the
+    formatted traceback. Rewriting ``args`` instead can break unpickling for
+    exceptions whose constructor doesn't take its own ``args``. Does nothing on
+    Python 3.10, which has no ``BaseException.add_note``.
+
+    Args:
+        exc: The exception to annotate.
+        note: The text to attach.
+    """
+    if sys.version_info >= (3, 11):
+        exc.add_note(note)
+
+
 def resolve_user_ray_temp_dir(gcs_client: GcsClient, node_id: str):
     """Get the ray temp directory.
 
