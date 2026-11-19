@@ -81,6 +81,10 @@ std::string WriteSpilledObject(const std::string &data,
 class ObjectManagerTest : public ::testing::Test {
  protected:
   ObjectManagerTest()
+      : ObjectManagerTest(RayConfig::instance().object_manager_max_bytes_in_flight(),
+                          RayConfig::instance().object_manager_default_chunk_size()) {}
+
+  ObjectManagerTest(uint64_t max_bytes_in_flight, uint64_t object_chunk_size)
       : io_work_(boost::asio::make_work_guard(io_context_.get_executor())),
         rpc_work_(boost::asio::make_work_guard(rpc_context_.get_executor())) {
     ObjectManagerConfig config_;
@@ -88,9 +92,8 @@ class ObjectManagerTest : public ::testing::Test {
     config_.object_manager_port = 0;
     config_.timer_freq_ms = RayConfig::instance().object_manager_timer_freq_ms();
     config_.pull_timeout_ms = RayConfig::instance().object_manager_pull_timeout_ms();
-    config_.object_chunk_size = RayConfig::instance().object_manager_default_chunk_size();
-    config_.max_bytes_in_flight =
-        RayConfig::instance().object_manager_max_bytes_in_flight();
+    config_.object_chunk_size = object_chunk_size;
+    config_.max_bytes_in_flight = max_bytes_in_flight;
     config_.store_socket_name = "test_store_socket";
     config_.push_timeout_ms = RayConfig::instance().object_manager_push_timeout_ms();
     config_.rpc_service_threads_number = 1;
@@ -153,6 +156,15 @@ class ObjectManagerTest : public ::testing::Test {
     EXPECT_EQ(fake_object_directory_->added_objects.back(), object_id);
   }
 
+  void AddLocalObject(const ObjectID &object_id, int64_t data_size) {
+    ASSERT_TRUE(fake_plasma_client_->objects_in_plasma_
+                    .emplace(object_id,
+                             std::make_pair(std::vector<uint8_t>(data_size),
+                                            std::vector<uint8_t>{}))
+                    .second);
+    NotifyObjectAdded(object_id, data_size, 0);
+  }
+
   /// Makes GetRpcClient() able to resolve `node_id` to a FakeObjectManagerClient.
   void RegisterRemoteNode(const NodeID &node_id) {
     rpc::GcsNodeAddressAndLiveness node_info;
@@ -173,6 +185,10 @@ class ObjectManagerTest : public ::testing::Test {
       return nullptr;
     }
     return static_cast<rpc::FakeObjectManagerClient *>(it->second.get());
+  }
+
+  int64_t NumChunksInFlight() const {
+    return object_manager_->push_manager_->NumChunksInFlight();
   }
 
   /// Drains the two services the spill-file push path hops between: the rpc
@@ -203,6 +219,77 @@ class ObjectManagerTest : public ::testing::Test {
   std::unique_ptr<ObjectManager> object_manager_;
   std::shared_ptr<plasma::FakePlasmaClient> fake_plasma_client_;
 };
+
+class PushSlotTest : public ObjectManagerTest {
+ protected:
+  PushSlotTest()
+      : ObjectManagerTest(/*max_bytes_in_flight=*/2, /*object_chunk_size=*/1) {}
+};
+
+TEST_F(PushSlotTest, PushSlotsStayHeldWhileChunkRpcsAreOutstanding) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  const NodeID remote_node_id = NodeID::FromRandom();
+  AddLocalObject(object_id, /*data_size=*/4);
+  RegisterRemoteNode(remote_node_id);
+
+  object_manager_->Push(object_id, remote_node_id);
+  DrainServices();
+
+  auto *remote_client = GetRemoteClient(remote_node_id);
+  ASSERT_NE(remote_client, nullptr);
+  ASSERT_EQ(remote_client->num_push_requests, 2);
+  ASSERT_EQ(NumChunksInFlight(), 2);
+
+  // A Pull retry re-enters Push, but deduplication cannot free a slot whose RPC
+  // has never completed.
+  for (int retry = 0; retry < 3; retry++) {
+    object_manager_->Push(object_id, remote_node_id);
+    DrainServices();
+  }
+
+  EXPECT_EQ(remote_client->num_push_requests, 2);
+  EXPECT_EQ(NumChunksInFlight(), 2);
+}
+
+TEST_F(PushSlotTest, DeadlineFailureReleasesPushSlotAndAllowsQueuedPushes) {
+  const ObjectID object_id = ObjectID::FromRandom();
+  const ObjectID queued_object_id = ObjectID::FromRandom();
+  const NodeID remote_node_id = NodeID::FromRandom();
+  AddLocalObject(object_id, /*data_size=*/4);
+  AddLocalObject(queued_object_id, /*data_size=*/1);
+  RegisterRemoteNode(remote_node_id);
+
+  object_manager_->Push(object_id, remote_node_id);
+  DrainServices();
+
+  auto *remote_client = GetRemoteClient(remote_node_id);
+  ASSERT_NE(remote_client, nullptr);
+  ASSERT_EQ(remote_client->num_push_requests, 2);
+  ASSERT_EQ(NumChunksInFlight(), 2);
+
+  ASSERT_TRUE(remote_client->ReplyPush(
+      Status::RpcError("deadline exceeded", grpc::StatusCode::DEADLINE_EXCEEDED)));
+  DrainServices();
+  EXPECT_EQ(remote_client->num_push_requests, 3);
+  EXPECT_EQ(NumChunksInFlight(), 2);
+
+  object_manager_->Push(queued_object_id, remote_node_id);
+  DrainServices();
+  for (int completion = 0; completion < 4 && remote_client->num_push_requests < 5;
+       completion++) {
+    ASSERT_TRUE(remote_client->ReplyPush());
+    DrainServices();
+  }
+
+  EXPECT_EQ(remote_client->num_push_requests, 5);
+  EXPECT_EQ(NumChunksInFlight(), 2);
+
+  ASSERT_TRUE(remote_client->ReplyPush());
+  ASSERT_TRUE(remote_client->ReplyPush());
+  DrainServices();
+  EXPECT_EQ(NumChunksInFlight(), 0);
+  EXPECT_TRUE(remote_client->push_callbacks.empty());
+}
 
 TEST_F(ObjectManagerTest, MarkObjectFailedReleasesPlaceholderAndWritesSentinel) {
   // While a pull is in flight, we put an unsealed buffer at that
