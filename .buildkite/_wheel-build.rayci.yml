@@ -12,6 +12,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -52,6 +53,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env_file: rayci.env
     env:
       PYTHON_VERSION: "{{array.python}}"
