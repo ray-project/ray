@@ -71,6 +71,11 @@ class CSVLoggerCallback(LoggerCallback):
         self._trial_files[trial].flush()
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
+        # Release the trial's continue flag even when the trial never opened
+        # a CSV file: finished trials must not be retained, as the Trial
+        # object is used as the dict key (see #64231).
+        self._trial_continue.pop(trial, None)
+
         if trial not in self._trial_files:
             return
 
