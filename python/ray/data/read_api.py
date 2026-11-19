@@ -936,6 +936,7 @@ def read_audio(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = None,
@@ -981,6 +982,9 @@ def read_audio(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1030,6 +1034,7 @@ def read_audio(
     datasource = AudioDatasource(
         paths,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -1060,6 +1065,7 @@ def read_videos(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = None,
@@ -1115,6 +1121,9 @@ def read_videos(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1174,6 +1183,7 @@ def read_videos(
     datasource = VideoDatasource(
         paths,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -1680,6 +1690,7 @@ def read_parquet(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     catalog: Optional["Catalog"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -1785,6 +1796,23 @@ def read_parquet(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used. If ``None``, this function uses a system-chosen implementation.
+        storage_options: Optional dictionary of ``pyarrow.fs.S3FileSystem``
+            keyword arguments, such as ``access_key``, ``secret_key``,
+            ``session_token``, ``region``, and ``endpoint_override``.
+            Requires ``s3://`` or ``s3a://`` paths and cannot be combined
+            with ``filesystem``. An empty dictionary enables
+            ``DataContext.s3_filesystem_defaults`` (initially
+            ``connect_timeout=10.0`` and ``request_timeout=30.0`` seconds).
+            Per-call options override the defaults. Paths must be plain S3 URIs
+            without query parameters or userinfo. Put credentials and connection
+            settings in ``storage_options`` instead of the URI, or omit
+            ``storage_options`` to use native URI configuration. Percent-encode
+            ``?`` in object keys. ``s3a://`` is treated as an S3 alias only when
+            this argument is provided. None preserves existing filesystem inference.
+            These are PyArrow option names, not Lance or Delta SDK storage options.
+            On Linux with the AWS SDK Curl backend, ``request_timeout`` controls
+            the low-speed/stalled-transfer timeout, not the total request duration.
+            Cannot be combined with ``catalog``.
         catalog: An optional :class:`~ray.data.Catalog` (e.g.
             :class:`~ray.data.DatabricksUnityCatalog`) used to authenticate access.
             When provided, ``paths`` is interpreted as a catalog table identifier
@@ -1902,6 +1930,8 @@ def read_parquet(
         The tradeoff is that you might see a performance regression if Ray needs to
         restart more workers.
     """
+    if catalog is not None and storage_options is not None:
+        raise ValueError("`storage_options` and `catalog` cannot be combined.")
     _validate_shuffle_arg(shuffle)
 
     if catalog is not None:
@@ -2033,6 +2063,7 @@ def read_parquet(
         datasource_v2 = ParquetDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
             filesystem=filesystem,
+            storage_options=storage_options,
             partitioning=partitioning,
             file_extensions=file_extensions,
             ignore_missing_paths=ignore_missing_paths,
@@ -2086,6 +2117,7 @@ def read_parquet(
         to_batch_kwargs=arrow_parquet_args,
         _block_udf=_block_udf,
         filesystem=filesystem,
+        storage_options=storage_options,
         schema=schema,
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -2117,6 +2149,7 @@ def read_images(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2199,6 +2232,9 @@ def read_images(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2268,6 +2304,7 @@ def read_images(
         mode=mode,
         include_paths=include_paths,
         filesystem=filesystem,
+        storage_options=storage_options,
         meta_provider=ImageFileMetadataProvider(),
         open_stream_args=arrow_open_file_args,
         partition_filter=partition_filter,
@@ -2300,6 +2337,7 @@ def read_json(
     *,
     lines: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2380,6 +2418,9 @@ def read_json(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2448,6 +2489,7 @@ def read_json(
 
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -2496,6 +2538,7 @@ def read_csv(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2599,6 +2642,9 @@ def read_csv(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2657,6 +2703,7 @@ def read_csv(
         paths,
         arrow_csv_args=arrow_csv_args,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -2720,6 +2767,7 @@ def read_text(
     encoding: str = "utf-8",
     drop_empty_lines: bool = True,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2784,6 +2832,9 @@ def read_text(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -2843,6 +2894,7 @@ def read_text(
             encoding=encoding,
             drop_empty_lines=drop_empty_lines,
             filesystem=filesystem,
+            storage_options=storage_options,
             partitioning=partitioning,
             file_extensions=file_extensions,
             ignore_missing_paths=ignore_missing_paths,
@@ -2871,6 +2923,7 @@ def read_text(
         drop_empty_lines=drop_empty_lines,
         encoding=encoding,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -2903,6 +2956,7 @@ def read_avro(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -2952,6 +3006,9 @@ def read_avro(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -3004,6 +3061,7 @@ def read_avro(
     datasource = AvroDatasource(
         paths,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -3036,6 +3094,7 @@ def read_orc(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -3092,6 +3151,9 @@ def read_orc(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -3175,6 +3237,7 @@ def read_orc(
         datasource = OrcDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
             filesystem=filesystem,
+            storage_options=storage_options,
             partitioning=partitioning,
             file_extensions=file_extensions,
             ignore_missing_paths=ignore_missing_paths,
@@ -3202,6 +3265,7 @@ def read_orc(
     datasource = ORCDatasource(
         paths,
         filesystem=filesystem,
+        storage_options=storage_options,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -3233,6 +3297,7 @@ def read_numpy(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -3277,6 +3342,9 @@ def read_numpy(
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`_.
@@ -3316,6 +3384,7 @@ def read_numpy(
         numpy_load_args=numpy_load_args,
         allow_pickle=allow_pickle,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -3338,6 +3407,7 @@ def read_tfrecords(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -3394,6 +3464,9 @@ def read_tfrecords(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -3450,6 +3523,7 @@ def read_tfrecords(
         paths,
         tf_schema=tf_schema,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -3487,6 +3561,7 @@ def read_mcap(
     log_time_order: bool = True,
     include_row_id: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -3640,6 +3715,9 @@ def read_mcap(
             ``CheckpointConfig(generated_id_column=...)``, which only
             ``read_parquet`` supports.
         filesystem: The PyArrow filesystem implementation to read from.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -3742,6 +3820,7 @@ def read_mcap(
             include_row_id=include_row_id,
             include_paths=include_paths,
             filesystem=filesystem,
+            storage_options=storage_options,
             partitioning=partitioning,
             partition_filter=partition_filter,
             file_extensions=file_extensions,
@@ -3780,6 +3859,7 @@ def read_mcap(
         message_types=message_types,
         include_metadata=include_metadata,
         filesystem=filesystem,
+        storage_options=storage_options,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
         partitioning=partitioning,
@@ -4086,6 +4166,7 @@ def read_webdataset(
     paths: Union[str, List[str]],
     *,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4119,6 +4200,9 @@ def read_webdataset(
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
         filesystem: The filesystem implementation to read from.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4184,6 +4268,7 @@ def read_webdataset(
         suffixes=suffixes,
         verbose_open=verbose_open,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,
@@ -4216,6 +4301,7 @@ def read_binary_files(
     *,
     include_paths: bool = False,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    storage_options: Optional[Dict[str, Any]] = None,
     parallelism: int = -1,
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
@@ -4275,6 +4361,9 @@ def read_binary_files(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        storage_options: Optional PyArrow S3FileSystem settings. See
+            :func:`~ray.data.read_parquet` for options, platform defaults,
+            and restrictions. Cannot be combined with ``filesystem``.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4326,6 +4415,7 @@ def read_binary_files(
         paths,
         include_paths=include_paths,
         filesystem=filesystem,
+        storage_options=storage_options,
         open_stream_args=arrow_open_stream_args,
         meta_provider=DefaultFileMetadataProvider(),
         partition_filter=partition_filter,

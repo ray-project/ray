@@ -182,6 +182,7 @@ class ParquetDatasink(_FileDatasink):
         max_rows_per_file: Optional[int] = None,
         min_bytes_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -255,6 +256,7 @@ class ParquetDatasink(_FileDatasink):
         super().__init__(
             path,
             filesystem=filesystem,
+            storage_options=storage_options,
             try_create_dir=try_create_dir,
             open_stream_args=open_stream_args,
             filename_provider=filename_provider,

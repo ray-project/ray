@@ -213,6 +213,7 @@ class ParquetDatasource(Datasource):
         to_batch_kwargs: Optional[Dict[str, Any]] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         schema: Optional[Union["pyarrow.lib.Schema"]] = None,
         meta_provider: Optional[FileMetadataProvider] = None,
         partition_filter: Optional[PathPartitionFilter] = None,
@@ -244,7 +245,9 @@ class ParquetDatasource(Datasource):
         # causing this data being duplicated and excessive object store spilling.
         source_paths_ref = ray.put(paths)
 
-        paths, resolved_filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, resolved_filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem, storage_options=storage_options
+        )
         filesystem = RetryingPyFileSystem.wrap(
             resolved_filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,

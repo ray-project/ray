@@ -35,6 +35,7 @@ class _FileDatasink(Datasink[None]):
         path: str,
         *,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        storage_options: Optional[Dict[str, Any]] = None,
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
@@ -48,6 +49,12 @@ class _FileDatasink(Datasink[None]):
             path: The folder to write files to.
             filesystem: The filesystem to write files to. If not provided, the
                 filesystem is inferred from the path.
+            storage_options: Optional PyArrow S3FileSystem settings passed to the
+                shared path resolver. Requires plain ``s3://`` or ``s3a://`` URIs
+                without query parameters or userinfo and cannot be combined with
+                ``filesystem``. Per-call options override
+                DataContext.s3_filesystem_defaults. ``s3a://`` is an S3 alias when
+                this argument is provided. None preserves inference.
             try_create_dir: Whether to create the directory to write files to.
             open_stream_args: Arguments to pass to ``filesystem.open_output_stream``.
             filename_provider: A :class:`ray.data.datasource.FilenameProvider` that
@@ -69,7 +76,9 @@ class _FileDatasink(Datasink[None]):
 
         self._data_context = DataContext.get_current()
         self.unresolved_path = path
-        paths, self.filesystem = _resolve_paths_and_filesystem(path, filesystem)
+        paths, self.filesystem = _resolve_paths_and_filesystem(
+            path, filesystem, storage_options=storage_options
+        )
         self.filesystem = RetryingPyFileSystem.wrap(
             self.filesystem, retryable_errors=self._data_context.retried_io_errors
         )

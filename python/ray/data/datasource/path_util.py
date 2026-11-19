@@ -2,7 +2,7 @@ import logging
 import pathlib
 import sys
 import warnings
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
 from ray.data._internal.util import (
@@ -417,6 +417,8 @@ def _resolve_single_path_with_fallback(
 def _resolve_paths_and_filesystem(
     paths: Union[str, List[str]],
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    *,
+    storage_options: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[str], "pyarrow.fs.FileSystem"]:
     """Resolves and normalizes all provided paths, infers a filesystem from the
     paths and assumes that all paths use the same filesystem.
@@ -429,6 +431,13 @@ def _resolve_paths_and_filesystem(
             None, the provided filesystem will still be validated against all
             filesystems inferred from the provided paths to ensure
             compatibility.
+        storage_options: Optional PyArrow S3FileSystem keyword arguments. Requires
+            plain ``s3://`` or ``s3a://`` URIs without userinfo or query parameters
+            and cannot be combined with filesystem. An empty dictionary enables
+            DataContext.s3_filesystem_defaults; explicit options override those
+            defaults. ``s3a://`` is treated as an S3 alias only when this argument
+            is provided. None preserves existing inference. Invalid configuration
+            errors omit sensitive values.
 
     Returns:
         A pair ``(resolved_paths, filesystem)``. *resolved_paths* lists the
@@ -449,6 +458,47 @@ def _resolve_paths_and_filesystem(
         schemes in a single call is unsupported and may fail when reading.
     """
     paths = _normalize_paths_to_strings(paths)
+    if storage_options is not None:
+        if not isinstance(storage_options, dict):
+            raise TypeError("`storage_options` must be a dictionary.")
+        if filesystem is not None:
+            raise ValueError("`storage_options` and `filesystem` cannot be combined.")
+        if not all(path.lower().startswith(("s3://", "s3a://")) for path in paths):
+            raise ValueError("`storage_options` requires s3:// or s3a:// paths.")
+
+        from pyarrow.fs import S3FileSystem
+
+        from ray.data.context import DataContext
+
+        resolved_paths = []
+        for path in paths:
+            try:
+                parsed = urlparse(path, allow_fragments=False)
+                if not parsed.netloc:
+                    raise ValueError("Missing bucket.")
+            except ValueError:
+                raise ValueError("Invalid S3 URI in `paths`.") from None
+            if parsed.username is not None or "?" in path:
+                raise ValueError(
+                    "`storage_options` cannot be combined with URI connection "
+                    "parameters or credentials. Use a plain S3 URI, or omit "
+                    "`storage_options` to use native URI configuration."
+                )
+            resolved_paths.append(unquote(_unwrap_protocol(path)))
+        try:
+            filesystem = S3FileSystem(
+                **{
+                    **DataContext.get_current().s3_filesystem_defaults,
+                    **storage_options,
+                }
+            )
+            resolved_paths = [
+                filesystem.normalize_path(path) for path in resolved_paths
+            ]
+        except (TypeError, ValueError, OSError):
+            raise ValueError("Invalid `storage_options`.") from None
+        return resolved_paths, filesystem
+
     if any(path.lower().startswith("local:") for path in paths):
         warnings.warn(
             "`local://` paths in Ray Data are deprecated and will be removed after "

@@ -10,6 +10,94 @@ from ray.data.block import BlockAccessor
 from ray.data.datasource import BlockBasedFileDatasink, RowBasedFileDatasink
 
 
+@pytest.mark.parametrize("scheme", ["s3", "s3a"])
+@pytest.mark.parametrize("kind", ["row", "block", "parquet"])
+def test_file_datasink_forwards_storage_options(monkeypatch, scheme, kind):
+    from unittest.mock import Mock
+
+    from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+    from ray.data.datasource import file_datasink
+
+    filesystem = LocalFileSystem()
+    resolver = Mock(return_value=(["output"], filesystem))
+    monkeypatch.setattr(file_datasink, "_resolve_paths_and_filesystem", resolver)
+    classes = {
+        "row": file_datasink.RowBasedFileDatasink,
+        "block": file_datasink.BlockBasedFileDatasink,
+        "parquet": ParquetDatasink,
+    }
+    options = {"region": "us-west-2", "connect_timeout": 5.0}
+    original = options.copy()
+    path = f"{scheme}://bucket/output"
+    sink = classes[kind](path, storage_options=options)
+    resolver.assert_called_once_with(path, None, storage_options=options)
+    assert sink.path == "output"
+    assert options == original
+
+
+@pytest.mark.parametrize(
+    "api, constructor",
+    [
+        ("write_parquet", "ParquetDatasink"),
+        ("write_json", "JSONDatasink"),
+        ("write_images", "ImageDatasink"),
+        ("write_csv", "CSVDatasink"),
+        ("write_orc", "ORCDatasink"),
+        ("write_tfrecords", "TFRecordDatasink"),
+        ("write_webdataset", "WebDatasetDatasink"),
+        ("write_numpy", "NumpyDatasink"),
+    ],
+)
+def test_file_write_api_forwards_storage_options(
+    monkeypatch, ray_start_regular_shared, api, constructor
+):
+    from unittest.mock import Mock
+
+    import ray.data.dataset as dataset_module
+
+    ds = ray.data.range(1)
+    factory = Mock()
+    write = Mock()
+    monkeypatch.setattr(dataset_module, constructor, factory)
+    monkeypatch.setattr(ds, "write_datasink", write)
+    options = {"connect_timeout": 5.0}
+    kwargs = {"column": "id"} if api in ("write_images", "write_numpy") else {}
+    getattr(ds, api)("s3://bucket/output", storage_options=options, **kwargs)
+    assert factory.call_args.kwargs["storage_options"] is options
+    write.assert_called_once()
+
+
+def test_parquet_write_storage_options_rejects_catalog(ray_start_regular_shared):
+    ds = ray.data.range(1)
+    with pytest.raises(ValueError, match="cannot be combined"):
+        ds.write_parquet(
+            "s3://bucket/output",
+            storage_options={},
+            catalog=object(),
+            try_create_dir=False,
+        )
+
+
+@pytest.mark.parametrize(
+    "path, filesystem, error",
+    [
+        ("s3://bucket/output", LocalFileSystem(), "cannot be combined"),
+        ("/tmp/output", None, "requires s3://"),
+        ("s3://bucket/output?region=us-west-2", None, "cannot be combined with URI"),
+        ("s3://anonymous@bucket/output", None, "cannot be combined with URI"),
+        ("s3a://bucket/output?region=us-west-2", None, "cannot be combined with URI"),
+        ("S3A://anonymous@bucket/output", None, "cannot be combined with URI"),
+    ],
+)
+def test_file_datasink_rejects_invalid_storage_options_combinations(
+    path, filesystem, error
+):
+    from ray.data.datasource.file_datasink import _FileDatasink
+
+    with pytest.raises(ValueError, match=error):
+        _FileDatasink(path, filesystem=filesystem, storage_options={})
+
+
 class FlakyOutputStream:
     def __init__(self, stream: pyarrow.NativeFile, num_attempts: int):
         self._stream = stream
