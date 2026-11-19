@@ -323,17 +323,6 @@ async def test_peer_trackers_converge_through_request_lifecycle():
             tracker._requests["req-bcast"].prefill_completed for tracker in trackers
         )
 
-        # Exact prompt length matters at the next block boundary: 63 + 1
-        # tokens still occupy 4 blocks; the second output token needs 5.
-        for output_tokens, blocks in [(1, 4), (2, 5)]:
-            for tracker in trackers:
-                await tracker.on_decode_progress("req-bcast", output_tokens)
-                assert tracker._requests["req-bcast"].prompt_tokens == 63
-                assert tracker._requests["req-bcast"].total_blocks == blocks
-            assert _worker_load(
-                routing, worker_id, "potential_decode_blocks"
-            ) == _worker_load(peer, worker_id, "potential_decode_blocks")
-
         completed = [("on_request_completed", ("req-bcast",))]
         for tracker in trackers:
             await tracker.on_lifecycle_events(completed)

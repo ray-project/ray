@@ -101,6 +101,7 @@ anyio==4.13.0
     #   gradio
     #   httpx
     #   jupyter-server
+    #   mlflow-skinny
     #   starlette
     #   taskiq
     #   watchfiles
@@ -163,7 +164,7 @@ aws-sam-translator==1.98.0
     # via cfn-lint
 aws-xray-sdk==2.15.0
     # via moto
-ax-platform==1.2.1 ; python_version < "3.15"
+ax-platform==1.2.1
     # via -r python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.77.0
     # via -r python/requirements/test-requirements.txt
@@ -392,9 +393,9 @@ configspace==1.2.2 ; python_version < "3.12"
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   hpbandster
-confluent-kafka==2.14.0 ; python_version < "3.15"
+confluent-kafka==2.14.0
     # via -r python/requirements/ml/data-test-requirements.txt
-contourpy==1.3.3 ; python_version >= "3.11" and python_version < "3.15"
+contourpy==1.3.3 ; python_version >= "3.11"
     # via
     #   -r python/requirements/test-requirements.txt
     #   bokeh
@@ -430,9 +431,9 @@ cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via -r python/requirements/test-requirements.txt
-daft==0.7.15 ; python_version < "3.15"
+daft==0.7.26
     # via -r python/requirements/ml/data-requirements.txt
-dask==2026.3.0 ; python_version < "3.15"
+dask==2026.3.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   distributed
@@ -495,7 +496,7 @@ dm-control==1.0.12 ; python_version < "3.12"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 dm-env==1.6
     # via dm-control
-dm-tree==0.1.10 ; python_version < "3.15"
+dm-tree==0.1.10
     # via
     #   -r python/requirements.txt
     #   dm-control
@@ -606,7 +607,6 @@ fsspec==2023.12.1
     # via
     #   -r python/requirements.txt
     #   adlfs
-    #   daft
     #   dask
     #   datasets
     #   delta-sharing
@@ -712,7 +712,7 @@ googleapis-common-protos==1.74.0
     #   tensorflow-metadata
 gpytorch==1.15.2
     # via botorch
-gradio==6.15.2 ; platform_system != "Windows" and python_version < "3.15"
+gradio==6.15.2 ; platform_system != "Windows"
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -840,6 +840,8 @@ humanize==4.15.0
     # via -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
+hypothesis==6.170.15 ; python_version >= "3.11"
+    # via -r python/requirements/ml/data-test-requirements.txt
 identify==2.6.19
     # via pre-commit
 idna==3.18
@@ -935,7 +937,7 @@ jmespath==1.1.0
     #   boto3
     #   botocore
     #   knack
-joblib==1.2.0 ; python_version < "3.15"
+joblib==1.2.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   scikit-learn
@@ -1016,7 +1018,7 @@ jupytext==1.19.3
     #   -r python/requirements/test-requirements.txt
 jwcrypto==1.5.7
     # via delta-sharing
-keras==3.14.0 ; python_version >= "3.11" and python_version < "3.15"
+keras==3.14.0 ; python_version >= "3.11"
     # via
     #   -r python/requirements/ml/ml-requirements.txt
     #   tensorflow
@@ -1068,7 +1070,7 @@ lxml==6.1.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   dm-control
-lz4==4.4.5 ; python_version < "3.15"
+lz4==4.4.5
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1106,7 +1108,7 @@ matplotlib-inline==0.2.1
     # via
     #   ipykernel
     #   ipython
-mcap==1.4.0 ; python_version < "3.15"
+mcap==1.4.0
     # via -r python/requirements/ml/data-test-requirements.txt
 mdit-py-plugins==0.3.5
     # via
@@ -1135,19 +1137,19 @@ ml-dtypes==0.5.4
     #   onnx-ir
     #   onnxscript
     #   tensorflow
-mlflow==3.11.1
+mlflow==3.18.0
     # via
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/test-requirements.txt
-mlflow-skinny==3.11.1
+mlflow-skinny==3.18.0
     # via mlflow
-mlflow-tracing==3.11.1
+mlflow-tracing==3.18.0
     # via mlflow
 mmh3==5.2.1
     # via
     #   -r python/requirements.txt
     #   pyiceberg
-modin==0.37.1 ; python_version < "3.15"
+modin==0.37.1
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
@@ -1161,7 +1163,7 @@ mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
 moto==5.1.18
     # via -r python/requirements/test-requirements.txt
-moviepy==2.2.1 ; python_version < "3.15"
+moviepy==2.2.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
 mpmath==1.3.0
     # via
@@ -1263,7 +1265,7 @@ numcodecs==0.15.1 ; python_version >= "3.11" and python_version < "3.14"
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   zarr
-numexpr==2.14.1 ; python_version < "3.15"
+numexpr==2.14.1
     # via
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
@@ -1382,7 +1384,7 @@ onnx==1.22.0 ; sys_platform != "darwin" or platform_machine != "arm64"
     #   onnxscript
 onnx-ir==0.2.1
     # via onnxscript
-onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10" and python_version < "3.15"
+onnxruntime==1.24.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version > "3.10"
     # via -r python/requirements/ml/rllib-test-requirements.txt
 onnxscript==0.7.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -1708,7 +1710,7 @@ py-spy==0.4.2 ; python_version < "3.12"
     # via -r python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
-pyarrow==23.0.1
+pyarrow==25.0.1
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-test-requirements.txt
@@ -1930,7 +1932,9 @@ python-json-logger==4.1.0
 python-lsp-jsonrpc==1.0.0
     # via semgrep
 python-multipart==0.0.26
-    # via gradio
+    # via
+    #   gradio
+    #   mlflow-skinny
 python-snappy==0.7.3
     # via -r python/requirements/ml/data-test-requirements.txt
 pytorch-lightning==2.6.1
@@ -2131,7 +2135,7 @@ scikit-learn==1.7.2
     #   pymars
     #   skops
     #   torch-geometric
-scipy==1.17.1 ; python_version >= "3.11" and python_version < "3.15"
+scipy==1.17.1 ; python_version >= "3.11"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -2169,7 +2173,7 @@ semgrep==1.32.0
     # via -r python/requirements/lint-requirements.txt
 send2trash==2.1.0
     # via jupyter-server
-sentencepiece==0.2.1 ; python_version < "3.15"
+sentencepiece==0.2.1
     # via -r python/requirements/ml/train-test-requirements.txt
 sentry-sdk==2.58.0
     # via
@@ -2225,6 +2229,7 @@ snowflake-connector-python==4.3.0
 sortedcontainers==2.4.0
     # via
     #   distributed
+    #   hypothesis
     #   snowflake-connector-python
 soundfile==0.13.1
     # via -r python/requirements/ml/data-test-requirements.txt
@@ -2253,7 +2258,8 @@ starlette==1.0.1
     #   -r python/requirements/test-requirements.txt
     #   fastapi
     #   gradio
-statsforecast==1.7.0 ; python_version < "3.15"
+    #   mlflow-skinny
+statsforecast==1.7.0
     # via -r python/requirements/ml/tune-test-requirements.txt
 statsmodels==0.14.6
     # via
@@ -2326,7 +2332,7 @@ tensorflow-metadata==1.17.3
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   tensorflow-datasets
-tensorflow-probability==0.24.0 ; python_version < "3.15"
+tensorflow-probability==0.24.0
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
@@ -2354,7 +2360,7 @@ tf-keras==2.19.0 ; python_version < "3.12"
     #   -r python/requirements/ml/ml-requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
-threadpoolctl==3.1.0 ; python_version < "3.15"
+threadpoolctl==3.1.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   botorch
@@ -2383,7 +2389,7 @@ toolz==1.1.0
     #   dask
     #   distributed
     #   partd
-torch==2.10.0 ; python_version < "3.15"
+torch==2.10.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt
@@ -2410,9 +2416,9 @@ torch-geometric==2.5.3
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torch-optimizer==0.1.0
     # via mosaicml
-torch-scatter==2.1.2 ; sys_platform == "linux" and python_version < "3.15"
+torch-scatter==2.1.2 ; sys_platform == "linux"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torch-sparse==0.6.18 ; sys_platform == "linux" and python_version < "3.15"
+torch-sparse==0.6.18 ; sys_platform == "linux"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchmetrics==0.10.3
     # via
@@ -2422,7 +2428,7 @@ torchmetrics==0.10.3
     #   pytorch-lightning
 torchtext==0.18.0 ; python_version < "3.14"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-torchvision==0.25.0 ; python_version < "3.15"
+torchvision==0.25.0
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
     #   -r python/requirements/ml/dl-cpu-requirements.txt

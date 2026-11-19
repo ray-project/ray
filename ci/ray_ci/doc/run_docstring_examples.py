@@ -106,9 +106,9 @@ OMITTED_LIBRARIES = {
     # doctest image installs pylance through data-test-requirements.txt.
     "lance": (),
     # The LightGBM and XGBoost integrations in Ray Train and Ray Tune import
-    # these at module level, but none of their examples runs here: Tune's are
-    # render-only (+SKIP_EXAMPLE), and Train's are still testcode blocks. The
-    # ML images install both through
+    # these at module level. Tune's examples are render-only (+SKIP_EXAMPLE).
+    # Train's runnable ones skip here as a missing library and run in
+    # py_doctest[train] instead. The ML images install both through
     # python/requirements/ml/core-requirements.txt, and xgboost pulls
     # nvidia-nccl-cu12 on Linux x86_64.
     "lightgbm": (),

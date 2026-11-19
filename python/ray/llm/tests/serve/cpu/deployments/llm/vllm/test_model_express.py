@@ -2,6 +2,7 @@ import asyncio
 import importlib
 import os
 import socket
+import subprocess
 import sys
 import threading
 import urllib.error
@@ -108,8 +109,8 @@ def test_setup_sets_client_env():
     assert looked_up == [("ModelExpressServer", "mx")]
     assert env["MX_SERVER_ADDRESS"] == MX_ADDRESS
     # MX adds each worker's GPU index to the bases.
-    assert env["MX_METADATA_PORT"] == "15555"
-    assert env["MX_WORKER_GRPC_PORT"] == "16555"
+    assert env["MX_METADATA_PORT"] == "21555"
+    assert env["MX_WORKER_GRPC_PORT"] == "22555"
     # Copied to every vLLM worker, which can be on other nodes; MX detects it.
     assert "MX_WORKER_HOST" not in env
     assert env["MX_MODEL_NAME_OVERRIDE"] == "Qwen/Qwen3-0.6B"
@@ -182,8 +183,8 @@ def test_mx_server_envs():
     with patch.dict("os.environ", {}, clear=True):
         assert mx_envs.get_mx_server_binary() == "/usr/local/bin/modelexpress-server"
         assert mx_envs.get_mx_app_name() == "mx"
-        assert mx_envs.get_mx_metadata_port_base() == 15555
-        assert mx_envs.get_mx_worker_grpc_port_base() == 16555
+        assert mx_envs.get_mx_metadata_port_base() == 21555
+        assert mx_envs.get_mx_worker_grpc_port_base() == 22555
         assert mx_envs.get_mx_server_port() == 8931
         assert importlib.reload(mx_envs).MX_SERVER_HEALTH_CHECK_PERIOD_S == 10
     with patch.dict(
@@ -326,6 +327,82 @@ def test_compile_cache_compat_on_torch_with_compile_on_one_rank(
             compile_cache_compat.apply()
         assert os.environ.get("VLLM_COMPILE_ON_ONE_RANK") == expected_env
         assert compiler_config.compile_on_one_rank is expected_torch_flag
+
+
+def _run_python(code: str, pythonpath: str = "") -> None:
+    env = dict(os.environ)
+    if pythonpath:
+        env["PYTHONPATH"] = os.pathsep.join(
+            filter(None, [pythonpath, env.get("PYTHONPATH")])
+        )
+    result = subprocess.run(
+        [sys.executable, "-c", code], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_worker_process_setup_hook_imports_neither_torch_nor_vllm():
+    # The hook runs before Ray sets OMP_NUM_THREADS for the actor; torch sizes its
+    # thread pool when it is first imported.
+    _run_python(
+        "import sys\n"
+        "from ray.llm._internal.serve import _worker_process_setup_hook\n"
+        "_worker_process_setup_hook()\n"
+        "assert 'torch' not in sys.modules, 'hook imported torch'\n"
+        "assert 'vllm' not in sys.modules, 'hook imported vllm'\n"
+    )
+
+
+@pytest.mark.parametrize("probe_first", [False, True])
+def test_compile_cache_compat_install_applies_after_vllm_import(tmp_path, probe_first):
+    # A stand-in vllm package: apply must run once, after it has executed. A
+    # find_spec probe before the import must not use up the hook.
+    (tmp_path / "vllm").mkdir()
+    (tmp_path / "vllm" / "__init__.py").write_text("EXECUTED = True\n")
+    probe = (
+        "assert importlib.util.find_spec('vllm') is not None\n" if probe_first else ""
+    )
+    _run_python(
+        "import importlib.util, sys\n"
+        "from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat\n"
+        "calls = []\n"
+        "compile_cache_compat.apply = lambda: calls.append(sys.modules['vllm'].EXECUTED)\n"
+        "compile_cache_compat.install()\n" + probe + "assert calls == []\n"
+        "import vllm\n"
+        "import vllm\n"
+        "assert calls == [True], calls\n",
+        pythonpath=str(tmp_path),
+    )
+
+
+def test_worker_process_setup_hook_keeps_ray_thread_limit():
+    """A worker running Serve LLM's setup hook gets torch threads = num_cpus."""
+    import ray
+
+    @ray.remote(num_cpus=2)
+    class Worker:
+        def num_threads(self):
+            try:
+                import vllm  # noqa: F401
+            except ImportError:
+                pass
+            import torch
+
+            return torch.get_num_threads()
+
+    # Ray runs worker_process_setup_hook only from the job's runtime_env.
+    ray.init(
+        num_cpus=4,
+        runtime_env={
+            "worker_process_setup_hook": (
+                "ray.llm._internal.serve._worker_process_setup_hook"
+            )
+        },
+    )
+    try:
+        assert ray.get(Worker.remote().num_threads.remote()) == 2
+    finally:
+        ray.shutdown()
 
 
 if __name__ == "__main__":

@@ -108,8 +108,8 @@ RLlib, Tune, Autoscaler, and most Python files don't require you to build and co
 3. Pip install the **latest Ray wheels**. See {ref}`install-nightlies` for instructions.
 
 ```shell
-# For example, for Python 3.10:
-pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl
+# For example, for Python 3.11:
+pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-manylinux2014_x86_64.whl
 ```
 
 4. Replace Python files in the installed package with your local editable copy. Use the script `python python/ray/setup-dev.py` to do this. The script removes the `ray/tune`, `ray/rllib`, `ray/autoscaler` directories (among others) bundled with the `ray` pip package, replacing them with links to your local code. This way, changing files in your git clone directly affects the behavior of your installed Ray.
