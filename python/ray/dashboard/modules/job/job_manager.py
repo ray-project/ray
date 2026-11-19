@@ -12,6 +12,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._common.utils import Timer, run_background_task
 from ray._private.accelerators.mlu import NOSET_CN_VISIBLE_DEVICES_ENV_VAR
+from ray._private.accelerators.mt_gpu import NOSET_MUSA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.event.event_logger import get_event_logger
@@ -411,6 +412,7 @@ class JobManager:
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
             env_vars[NOSET_CN_VISIBLE_DEVICES_ENV_VAR] = "1"
+            env_vars[NOSET_MUSA_VISIBLE_DEVICES_ENV_VAR] = "1"
             env_vars[NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR] = "1"
 
         runtime_env["env_vars"] = env_vars
