@@ -32,7 +32,7 @@ import pyarrow.parquet as pq
 import ray
 from ray.data._internal.datasource._lerobot_compat import new_decoder_cache
 from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
-from ray.data._internal.untrusted_unpickling import ray_get_trusted
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data._internal.util import (
     _check_import,
     _is_local_scheme,
@@ -757,7 +757,10 @@ def _read_lerobot_task(
 ) -> Iterator[pa.Table]:
     """Stream decoded rows as Arrow tables, iterating over all segments."""
     # Get only the roots this task needs.
-    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, ray_get_trusted(root_refs)))
+    # Ray's own objects, so they may be unpickled inside the guard.
+    with allow_unsafe_unpickling():
+        fetched_roots = ray.get(root_refs)
+    roots: Dict[int, _LeRobotRoot] = dict(zip(root_indices, fetched_roots))
     for root_idx, start, end, parquet_segs, ep_slice in segments_resolved:
         yield from _read_lerobot_segment(
             roots[root_idx],

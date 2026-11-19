@@ -19,7 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
-from ray.data._internal.untrusted_unpickling import ray_get_trusted
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data._internal.util import (
     RetryingContextManager,
     RetryingPyFileSystem,
@@ -254,15 +254,19 @@ class FileBasedDatasource(Datasource):
         self._paths_ref = ray.put(paths)
         self._file_sizes_ref = ray.put(file_sizes)
 
+    # These refs hold Ray's own objects, so they may be unpickled inside the guard.
     @property
     def _source_paths(self) -> List[str]:
-        return ray_get_trusted(self._source_paths_ref)
+        with allow_unsafe_unpickling():
+            return ray.get(self._source_paths_ref)
 
     def _paths(self) -> List[str]:
-        return ray_get_trusted(self._paths_ref)
+        with allow_unsafe_unpickling():
+            return ray.get(self._paths_ref)
 
     def _file_sizes(self) -> List[float]:
-        return ray_get_trusted(self._file_sizes_ref)
+        with allow_unsafe_unpickling():
+            return ray.get(self._file_sizes_ref)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0

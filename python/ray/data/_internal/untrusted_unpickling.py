@@ -14,9 +14,10 @@ While the flag is set, ``ArrowPythonObjectType`` also refuses to be rebuilt from
 a file or stream.
 
 The guard does not tell Ray's own bytes from external ones. Datasource code that
-fetches Ray-produced objects (``ray.get`` of shared read state, for example) uses
-:func:`ray_get_trusted`. A reader that must unpickle external bytes wraps only
-that call in :func:`allow_unsafe_unpickling`, behind an explicit opt-in.
+fetches Ray-produced objects (``ray.get`` of shared read state, for example)
+wraps that ``ray.get`` in :func:`allow_unsafe_unpickling`. A reader that must
+unpickle external bytes wraps only that call in it too, behind an explicit
+opt-in.
 
 Threat model: the attacker controls bytes, not code. The flag is a context
 variable: it covers the thread that set it, not helper threads a library starts.
@@ -30,7 +31,7 @@ import os
 import sys
 import threading
 from contextlib import contextmanager
-from typing import Any, Callable, Generator, Iterable, Iterator, TypeVar
+from typing import Callable, Generator, Iterable, Iterator, TypeVar
 
 from ray._common.utils import env_bool
 
@@ -122,18 +123,6 @@ def allow_unsafe_unpickling():
         yield
     finally:
         _forbid_flag.reset(token)
-
-
-def ray_get_trusted(refs: Any, **kwargs) -> Any:
-    """``ray.get`` for objects Ray itself produced, allowed inside the guard.
-
-    ``ray.get`` unpickles, so datasource code that fetches its own shared state
-    (paths, read-task state, actor results) goes through this.
-    """
-    import ray
-
-    with allow_unsafe_unpickling():
-        return ray.get(refs, **kwargs)
 
 
 def guard_iterator(

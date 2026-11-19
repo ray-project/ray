@@ -41,7 +41,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.untrusted_unpickling import ray_get_trusted
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 from ray.data._internal.util import (
     MiB,
     RetryingPyFileSystem,
@@ -557,7 +557,9 @@ class ParquetDatasource(Datasource):
 
     @property
     def _source_paths(self) -> List[str]:
-        return ray_get_trusted(self._source_paths_ref)
+        # Ray's own object, so it may be unpickled inside the guard.
+        with allow_unsafe_unpickling():
+            return ray.get(self._source_paths_ref)
 
     def estimate_inmemory_data_size(self) -> int:
         # In case of empty projections no data will be read

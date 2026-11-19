@@ -11,7 +11,11 @@ import pytest
 
 import ray
 from ray.data._internal.datasource_v2.common import schema_inference as inference
-from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+from ray.data._internal.object_extensions.arrow import (
+    AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR,
+    ArrowPythonObjectType,
+)
+from ray.data._internal.untrusted_unpickling import UntrustedUnpicklingError
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.data.tests.parquet_test_utils import write_map_with_empty_struct
@@ -133,12 +137,22 @@ def test_worker_schemas_preserve_driver_unifier(
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
         trace = tmp_path / "schema-reads.jsonl"
-        schema = ray.data.read_parquet(
-            [str(p) for p in paths],
-            merge_schema=True,
-            filesystem=_filesystem(trace, require_env="RAY_SCHEMA_TEST"),
-            runtime_env={"env_vars": {"RAY_SCHEMA_TEST": "enabled"}},
-        ).schema(fetch_if_missing=False)
+
+        def read_schema():
+            return ray.data.read_parquet(
+                [str(p) for p in paths],
+                merge_schema=True,
+                filesystem=_filesystem(trace, require_env="RAY_SCHEMA_TEST"),
+                runtime_env={"env_vars": {"RAY_SCHEMA_TEST": "enabled"}},
+            ).schema(fetch_if_missing=False)
+
+        if case == "late_object":
+            # A pickled-object column in a file is refused unless the user opts
+            # in; with the opt-in the merged schema must still match the driver's.
+            with pytest.raises(UntrustedUnpicklingError, match="arrow_pickled_object"):
+                read_schema()
+            monkeypatch.setenv(AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR, "1")
+        schema = read_schema()
         assert schema is not None and schema.base_schema.equals(
             expected, check_metadata=True
         )

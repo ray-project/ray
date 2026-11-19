@@ -3,7 +3,7 @@
 Covers the audit-hook mechanism, generator scoping, the pickled-object
 extension-type check, the datasource hooks and the
 ``RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR`` switch. The read-operator boundaries
-and ``ray_get_trusted`` are covered end to end by
+and Ray-internal ``ray.get`` under the guard are covered end to end by
 ``python/ray/data/tests/test_untrusted_unpickling.py``.
 """
 
@@ -82,8 +82,8 @@ def test_python_unpickler_subclass_blocked():
 
 
 def test_ray_cloudpickle_is_not_exempt():
-    # Ray's own bytes are allowed per call site (``ray_get_trusted``,
-    # ``allow_unsafe_unpickling``), not by exempting cloudpickle.
+    # Ray's own bytes are allowed per call site with
+    # ``allow_unsafe_unpickling()``, not by exempting cloudpickle.
     import ray.cloudpickle as cloudpickle
 
     blob = cloudpickle.dumps(_Plain(2))

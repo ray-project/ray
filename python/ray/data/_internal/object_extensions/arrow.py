@@ -81,7 +81,7 @@ class ArrowPythonObjectType(pa.ExtensionType):
         # pyarrow calls this while parsing the schema of a file or stream. During
         # a read that means untrusted bytes declare a column that unpickles on
         # access, so refuse it. Ray's own transport rebuilds the type outside
-        # reads or under ``ray_get_trusted``, where the flag is off.
+        # reads or under ``allow_unsafe_unpickling()``, where the flag is off.
         if is_unpickling_forbidden():
             raise UntrustedUnpicklingError(
                 f"This data contains a column stored as "

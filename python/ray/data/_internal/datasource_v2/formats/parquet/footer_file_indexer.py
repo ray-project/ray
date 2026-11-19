@@ -26,7 +26,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data._internal.untrusted_unpickling import ray_get_trusted
+from ray.data._internal.untrusted_unpickling import allow_unsafe_unpickling
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -398,7 +398,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         while pending:
             gen = pending.popleft()
             for ref in gen:  # blocks until this generator's next result lands
-                for chunked_file in ray_get_trusted(ref):
+                # Actor results, so they may be unpickled inside the guard. Fetch
+                # before yielding so the consumer doesn't run with the flag lifted.
+                with allow_unsafe_unpickling():
+                    chunked_files = ray.get(ref)
+                for chunked_file in chunked_files:
                     yield _chunked_file_to_manifest(chunked_file)
                     if limit is not None:
                         # Count only fully-matched (exact-survivor) rows so
