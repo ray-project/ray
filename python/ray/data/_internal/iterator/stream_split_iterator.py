@@ -77,15 +77,22 @@ class StreamSplitDataIterator(DataIterator):
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
         )
 
+    def _to_batch_ref_bundle_iterator(self):
+        return self._to_ref_bundle_iterator(for_batches=True)
+
     def _to_ref_bundle_iterator(
         self,
+        *,
+        for_batches: bool = False,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
         initial_rows = self._iter_stats.iter_rows_total
 
         def gen_blocks() -> Iterator[RefBundle]:
             logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
             cur_epoch = ray.get(
-                self._coord_actor.start_epoch.remote(self._output_split_idx)
+                self._coord_actor.start_epoch.remote(
+                    self._output_split_idx, for_batches
+                )
             )
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} started")
 
@@ -239,6 +246,9 @@ class SplitCoordinator:
         # down so it stops producing blocks into the object store.
         # Guarded by self._lock.
         self._finished_splits: Set[int] = set()
+        self._next_batch_readers: Set[int] = set()
+        self._batch_readers: Set[int] = set()
+        self._separate_byte_offsets: Set[int] = set()
         self._cur_epoch = -1
 
         # Track prefetched bytes reported by each client (from BatchIterator).
@@ -299,19 +309,20 @@ class SplitCoordinator:
 
         return stats
 
-    def start_epoch(self, split_idx: int) -> str:
+    def start_epoch(self, split_idx: int, for_batches: bool = False) -> int:
         """Called to start an epoch.
 
         Args:
             split_idx: The split index of the caller; used as the barrier key
                 so all split consumers synchronize before a new epoch starts.
+            for_batches: Whether the consumer discards empty blocks when batching.
 
         Returns:
-            UUID for the epoch, which must be used when accessing results via get().
+            Epoch number to use when accessing results via get().
         """
 
         # Wait for all clients to arrive at the barrier before starting a new epoch.
-        epoch_id = self._barrier(split_idx)
+        epoch_id = self._barrier(split_idx, for_batches)
         return epoch_id
 
     def _try_start_new_epoch(self, starting_epoch: int):
@@ -331,6 +342,7 @@ class SplitCoordinator:
                     ds = self._base_dataset
                     # Re-execute dataset
                     self._current_executor = ds._create_executor()
+                    self._current_executor.batch_readers = self._batch_readers
                     self._output_iterator = ds._build_bundle_iterator(
                         self._current_executor
                     )
@@ -355,8 +367,11 @@ class SplitCoordinator:
     def _reset_state(self):
         self._num_unarrived_splits_at_barrier = self._n
         self._finished_splits.clear()
+        self._batch_readers = self._next_batch_readers
+        self._next_batch_readers = set()
         self._next_bundle.clear()
         self._last_delivery.clear()
+        self._separate_byte_offsets.clear()
         self._client_prefetched_bytes.clear()
         self._gen_epoch_error = None
         # Reset per-split dispatch counters for the new epoch.
@@ -403,10 +418,16 @@ class SplitCoordinator:
                 )
 
         returned_normally = False
+        contains_empty_bytes = False
         try:
             while next_bundle is None or not next_bundle.blocks:
                 # Block outside the lock on this epoch's iterator.
                 next_bundle = output_iterator.get_next(output_split_idx)
+                if self._batch_readers and output_split_idx not in self._batch_readers:
+                    contains_empty_bytes = any(
+                        entry.metadata.num_rows == 0 and entry.metadata.size_bytes
+                        for entry in next_bundle.blocks
+                    )
 
             schema = next_bundle.schema
             last_entry = next_bundle.blocks[-1]
@@ -429,6 +450,10 @@ class SplitCoordinator:
                     del self._next_bundle[output_split_idx]
 
                 if self._consumers_per_split > 1:
+                    if contains_empty_bytes:
+                        self._separate_byte_offsets.add(
+                            output_split_idx // self._consumers_per_split
+                        )
                     _, start = self._last_delivery.get(output_split_idx, (0, 0))
                     self._last_delivery[output_split_idx] = (
                         start,
@@ -496,7 +521,13 @@ class SplitCoordinator:
         if self._consumers_per_split > 1:
             total = 0
             for first in range(0, self._n, self._consumers_per_split):
-                windows = []
+                # Once batching omits bytes, its offsets differ from an exact
+                # reader's. Sum those two window unions conservatively; actual
+                # object-store usage is charged once per ObjectID independently.
+                separate = (
+                    first // self._consumers_per_split in self._separate_byte_offsets
+                )
+                windows = ([], [])
                 for slot in range(first, first + self._consumers_per_split):
                     if slot not in self._last_delivery:
                         continue
@@ -504,18 +535,20 @@ class SplitCoordinator:
                     # The request reports the FIFO window before this delivery.
                     # The coordinator holds the remainder of the bundle after it.
                     prefetched = self._client_prefetched_bytes.get(slot, 0)
+                    reader_windows = windows[separate and slot in self._batch_readers]
                     if prefetched:
-                        windows.append((start - prefetched, start))
+                        reader_windows.append((start - prefetched, start))
                     pending = self._next_bundle.get(slot)
                     if pending is not None:
-                        windows.append((end, end + pending.size_bytes()))
+                        reader_windows.append((end, end + pending.size_bytes()))
 
                 # All replicas read the same block sequence. Count overlapping
                 # byte ranges once, and count disjoint ranges in full.
-                covered_end = 0
-                for start, end in sorted(windows):
-                    total += max(0, end - max(start, covered_end))
-                    covered_end = max(covered_end, end)
+                for reader_windows in windows:
+                    covered_end = 0
+                    for start, end in sorted(reader_windows):
+                        total += max(0, end - max(start, covered_end))
+                        covered_end = max(covered_end, end)
             return total
 
         # Bytes buffered in the coordinator.
@@ -624,7 +657,7 @@ class SplitCoordinator:
             )
             executor_to_shutdown.shutdown(force=True)
 
-    def _barrier(self, split_idx: int) -> int:
+    def _barrier(self, split_idx: int, for_batches: bool) -> int:
         """Arrive and block until the start of the given epoch."""
         # Decrement and await all clients to arrive here.
         with self._lock:
@@ -633,6 +666,8 @@ class SplitCoordinator:
                 f"{self._cur_epoch + 1}."
             )
             starting_epoch = self._cur_epoch
+            if for_batches and self._consumers_per_split > 1:
+                self._next_batch_readers.add(split_idx)
             self._num_unarrived_splits_at_barrier -= 1
 
         start_time = time.time()

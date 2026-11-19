@@ -234,7 +234,9 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         """Determine if we can add input to the operator based on
         downstream capacity.
         """
-        return not self._should_apply_backpressure(op)
+        return not self._should_apply_backpressure(
+            op
+        ) or self._resource_manager.can_drain_for_replica(op)
 
     def max_task_output_bytes_to_read(self, op: "PhysicalOperator") -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for

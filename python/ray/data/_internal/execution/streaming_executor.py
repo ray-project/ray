@@ -4,7 +4,7 @@ import os
 import threading
 import time
 import typing
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
@@ -201,6 +201,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._execution_started = False
         self._shutdown = False
         self._force_shutdown_requested = False
+        self.batch_readers: Optional[Set[int]] = None
 
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
@@ -319,7 +320,14 @@ class StreamingExecutor(Executor, threading.Thread):
             )
         ):
             self._lineage_tracker = LineageTracker()
-        self._block_ref_counter = BlockRefCounter()
+        replicated = isinstance(dag, OutputSplitter) and dag.consumers_per_split > 1
+        if replicated:
+            dag.batch_readers = self.batch_readers
+        self._block_ref_counter = BlockRefCounter(
+            target_block_size=self._data_context.target_max_block_size
+            if replicated
+            else None
+        )
         self._topology = build_streaming_topology(
             dag,
             self._options,

@@ -457,6 +457,10 @@ class OpState:
             }
             if not queued:
                 return True
+            if self.op.batch_readers is not None and queued - self.op.batch_readers:
+                # Exact block consumers can drain queued input without filling a
+                # batch. A stalled materializer must not accumulate empty blocks.
+                return False
             waiting -= queued
             # A reader may need more blocks to yield its current batch. Stop once
             # all requesting readers are ahead of a backlogged reader's deliveries.

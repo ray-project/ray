@@ -7,6 +7,7 @@ from typing import Any, List
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -369,29 +370,36 @@ def test_replicated_streaming_split(ray_start_10_cpus_shared, equal):
 
 
 @pytest.mark.parametrize("num_splits", [1, 2])
+@pytest.mark.parametrize("single_task", [True, False])
 def test_replicated_split_training_barrier(
-    ray_start_10_cpus_shared, restore_data_context, num_splits
+    ray_start_10_cpus_shared, restore_data_context, num_splits, single_task
 ):
     # One rank reaches the training barrier while the other fills its prefetch window.
     block_rows = 128
     ctx = DataContext.get_current()
     ctx.target_max_block_size = 8 * block_rows
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
-        object_store_memory=4 * ctx.target_max_block_size
+        cpu=2, object_store_memory=4 * ctx.target_max_block_size
     )
 
     def blocks(_):
         for i in range(32):
             yield {"id": np.arange(i * block_rows, (i + 1) * block_rows)}
 
-    ds = ray.data.range(1, override_num_blocks=1).map_batches(blocks, batch_size=None)
+    if single_task:
+        ds = ray.data.range(1, override_num_blocks=1).map_batches(
+            blocks, batch_size=None
+        )
+    else:
+        # Filling the same batch now requires admission of another read task.
+        ds = ray.data.range(32 * block_rows, override_num_blocks=32)
     readers = ds.streaming_split(num_splits, equal=True, consumers_per_split=2)
     barriers = [threading.Barrier(2) for _ in range(num_splits)]
 
     def train(slot):
         steps = 0
         for batch in readers[slot].iter_batches(
-            batch_size=block_rows, prefetch_batches=0 if slot < num_splits else 4
+            batch_size=block_rows, prefetch_batches=0 if slot < num_splits else 8
         ):
             assert len(batch["id"]) == block_rows
             barriers[slot % num_splits].wait(timeout=30)
@@ -401,6 +409,88 @@ def test_replicated_split_training_barrier(
     with ThreadPoolExecutor(max_workers=len(readers)) as pool:
         steps = list(pool.map(train, range(len(readers))))
     assert steps == [32 // num_splits] * len(readers)
+
+
+@pytest.mark.parametrize("first_rows", [0, 8])
+def test_replicated_empty_blocks(ray_start_10_cpus_shared, first_rows):
+    def encode(batch):
+        i = int(batch["id"][0])
+        indices = pa.array([0] * (first_rows if i == 0 else 0), type=pa.int32())
+        dictionary = pa.array([bytes([i]) * 131072])
+        return pa.table(
+            {"value": pa.DictionaryArray.from_arrays(indices, dictionary)}
+        ).replace_schema_metadata({b"ordinal": bytes([i])})
+
+    ds = ray.data.range(12, override_num_blocks=12).map_batches(encode, batch_size=None)
+    ds.context.execution_options.resource_limits = (
+        ds.context.execution_options.resource_limits.copy(
+            object_store_memory=256 * 1024
+        )
+    )
+    readers = ds.streaming_split(1, consumers_per_split=2)
+    barrier = threading.Barrier(2)
+
+    def train(i):
+        steps = 0
+        for batch in readers[i].iter_batches(
+            batch_size=1, prefetch_batches=16 if i else 0, batch_format="pyarrow"
+        ):
+            assert batch.num_rows == 1
+            barrier.wait(timeout=30)
+            steps += 1
+        return steps
+
+    with ThreadPoolExecutor(2) as pool:
+        assert list(pool.map(train, range(2))) == [first_rows] * 2
+        # The same readers may choose exact block consumption in a later epoch.
+        materialized = list(pool.map(lambda reader: reader.materialize(), readers))
+        exact = pool.submit(readers[0].materialize)
+        assert (
+            sum(len(b) for b in readers[1].iter_batches(batch_format="pyarrow"))
+            == first_rows
+        )
+        assert exact.result().num_blocks() == 12
+    refs = [ds.to_arrow_refs() for ds in materialized]
+    assert refs[0] == refs[1]
+    assert len(refs[0]) == 12
+    tables = ray.get(refs[0])
+    assert sum(t.num_rows for t in tables) == first_rows
+    for t in tables:
+        ordinal = t.schema.metadata[b"ordinal"]
+        assert t.column("value").chunk(0).dictionary[0].as_py() == ordinal * 131072
+    assert sorted(t.schema.metadata[b"ordinal"][0] for t in tables) == list(range(12))
+
+
+@pytest.mark.parametrize("null_column", [True, False])
+def test_replicated_split_charges_serialized_blocks(
+    ray_start_10_cpus_shared, null_column
+):
+    def encode(_):
+        values = pa.nulls(16) if null_column else pa.array([True] * 16)
+        return pa.table({"value": values}).replace_schema_metadata(
+            {b"origin": bytes(128 * 1024)}
+        )
+
+    ds = ray.data.range(8, override_num_blocks=8).map_batches(encode, batch_size=None)
+    a, _ = ds.streaming_split(1, consumers_per_split=2)
+    coord = a._coord_actor
+    epoch, _ = ray.get([coord.start_epoch.remote(i, True) for i in range(2)])
+    try:
+        first = ray.get(coord.get.remote(epoch, 0))
+        assert first.size_bytes() <= 2
+        stored = ray.experimental.get_object_locations(first.block_refs)[
+            first.block_refs[0]
+        ]["object_size"]
+        assert stored > 128 * 1024
+
+        def charged(c):
+            return sum(
+                op.estimate_object_store_usage() for op in c._current_executor._topology
+            )
+
+        assert ray.get(coord.__ray_call__.remote(charged)) >= stored
+    finally:
+        ray.get([coord.notify_split_finished.remote(epoch, i) for i in range(2)])
 
 
 def test_streaming_split_over_materialized_all_to_all(ray_start_10_cpus_shared):

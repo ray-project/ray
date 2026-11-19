@@ -74,24 +74,35 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
         )
 
 
-def test_replicated_split_reuses_block_refs(ray_start_regular_shared):
+@pytest.mark.parametrize("batch_readers", [set(), {1}, {0, 1}])
+def test_replicated_split_reuses_block_refs(ray_start_regular_shared, batch_readers):
     ctx = DataContext.get_current()
-    inputs = make_ref_bundles([[0, 1]])
+    positive, empty = make_ref_bundles([[0, 1], []])
+    bundle = RefBundle.merge_ref_bundles([positive, empty])
     op = OutputSplitter(
-        InputDataBuffer(ctx, inputs),
+        InputDataBuffer(ctx, [bundle]),
         1,
         equal=False,
         data_context=ctx,
         consumers_per_split=2,
     )
+    op.batch_readers = batch_readers
     op.start(ExecutionOptions(), noop_counter())
-    op.add_input(inputs[0], 0)
+    op.add_input(bundle, 0)
+    op.add_input(empty, 0)
     op.all_inputs_done()
-    outputs = [op.get_next(), op.get_next()]
-    assert {out.output_split_idx for out in outputs} == {0, 1}
-    assert all(out.block_refs == inputs[0].block_refs for out in outputs)
-    assert all(not out.owns_blocks for out in outputs)
-    assert not op.has_next()
+    deliveries = collections.defaultdict(list)
+    while op.has_next():
+        out = op.get_next()
+        assert not out.owns_blocks
+        deliveries[out.output_split_idx].extend(out.block_refs)
+    for slot in (0, 1):
+        expected = (
+            positive.block_refs
+            if slot in batch_readers
+            else (bundle.block_refs + empty.block_refs)
+        )
+        assert deliveries[slot] == expected
 
 
 @pytest.mark.parametrize("equal", [False, True])

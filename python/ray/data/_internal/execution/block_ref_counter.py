@@ -4,6 +4,7 @@ from typing import Callable, Dict, Optional
 
 import ray
 from ray._private.worker import global_worker
+from ray.experimental.locations import get_local_object_locations
 
 
 class BlockRefCounter:
@@ -23,7 +24,10 @@ class BlockRefCounter:
         add_object_out_of_scope_callback: Optional[
             Callable[["ray.ObjectRef", Callable[[bytes], None]], bool]
         ] = None,
+        *,
+        target_block_size: Optional[int] = None,
     ):
+        self._target_block_size = target_block_size
         if add_object_out_of_scope_callback is None:
             add_object_out_of_scope_callback = (
                 global_worker.core_worker.add_object_out_of_scope_callback  # pyrefly: ignore[missing-attribute]
@@ -41,7 +45,7 @@ class BlockRefCounter:
         block_ref: "ray.ObjectRef",
         size_bytes: int,
         producer_id: str,
-    ) -> None:
+    ) -> int:
         """Register a block and attribute its memory to producer_id.
 
         Registers a Ray Core out-of-scope callback so that when all references
@@ -51,12 +55,18 @@ class BlockRefCounter:
         Idempotent: calling twice with the same block_ref is a no-op.
 
         The caller must own block_ref. Ray Core rejects a callback registered
-        by any other worker.
+        by any other worker. Returns the size charged to the producer.
         """
+        if self._target_block_size is not None:
+            # Arrow nbytes excludes schema metadata, even for nonempty tables.
+            location = get_local_object_locations([block_ref]).get(block_ref)
+            # If Core has not published a size yet, budget at least a target block.
+            stored = location.get("object_size") if location else None
+            size_bytes = stored or max(size_bytes, self._target_block_size)
         id_binary = block_ref.binary()
         with self._lock:
             if id_binary in self._registered_ids:
-                return
+                return size_bytes
             self._registered_ids.add(id_binary)
             self._bytes_by_producer[producer_id] += size_bytes
 
@@ -71,6 +81,7 @@ class BlockRefCounter:
         registered = self._add_callback_fn(block_ref, _on_object_freed)
         if not registered:
             _on_object_freed(id_binary)
+        return size_bytes
 
     def get_object_store_memory_usage(self, producer_id: str) -> int:
         """Total bytes of live blocks attributed to producer_id."""

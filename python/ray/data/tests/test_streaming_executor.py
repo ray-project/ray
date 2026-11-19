@@ -686,7 +686,7 @@ def test_split_consumer_backpressure_override(
     )
     topo = build_streaming_topology(splitter, ExecutionOptions(), noop_counter())
     resource_manager = ResourceManager(
-        topo, ExecutionOptions(), MagicMock(), ctx, noop_counter()
+        topo, ExecutionOptions(), lambda: ExecutionResources(cpu=2), ctx, noop_counter()
     )
     resource_manager.set_external_consumer_bytes(0)
     guard = OutputBackpressureGuard(topo, resource_manager)
@@ -722,6 +722,16 @@ def test_split_consumer_backpressure_override(
 
         state.record_split_progress(1, consumed=0, delivered=8)
         check_overrides(True)
+        # An exact reader can drain its queue without another task to fill a batch.
+        splitter.batch_readers = {0, 2, 3}
+        check_overrides(False)
+        splitter.batch_readers.add(1)
+        check_overrides(True)
+        # The next read task still needs its CPU, even if its per-op share is zero.
+        with patch.object(
+            resource_manager, "get_global_usage", return_value=ExecutionResources(cpu=2)
+        ):
+            assert not alloc.can_submit_new_task(producer)
         # Once the applications have consumed more rows than slot 1 received,
         # a different rank's ongoing requests must not feed the paused replica.
         for slot in (2, 3):

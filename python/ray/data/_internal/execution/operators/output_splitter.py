@@ -2,7 +2,7 @@ import logging
 import math
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Collection, Dict, List, Optional, Set, Tuple
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
@@ -80,6 +80,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             raise NotImplementedError(
                 "Replicated splits do not yet support the actor-only Data backend"
             )
+        self.batch_readers: Optional[Set[int]] = None
         self.consumers_per_split = consumers_per_split
         super().__init__(
             f"split({n}, equal={equal})",
@@ -243,8 +244,16 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         return stats
 
     def _add_input_inner(self, bundle, input_index) -> None:
-        if bundle.num_rows() is None:
+        num_rows = bundle.num_rows()
+        if num_rows is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
+        if (
+            num_rows == 0
+            and self.batch_readers
+            and len(self.batch_readers) == self.num_output_splits()
+            and all(b.metadata.num_rows == 0 for b in bundle.blocks)
+        ):
+            return
         self._buffer.add(bundle)
         self._metrics.on_input_queued(bundle, input_index=0)
         # Try dispatch buffered bundles
@@ -356,9 +365,32 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
     def _enqueue_for_consumers(self, bundle: RefBundle, split_idx: int) -> None:
         first = split_idx * self.consumers_per_split
+        # Both batchers discard empty blocks. Exact block consumers, including
+        # materialize(), need the original references and per-block schemas.
+        batch_bundle = bundle
+        if self.batch_readers and any(b.metadata.num_rows == 0 for b in bundle.blocks):
+            keep = [i for i, b in enumerate(bundle.blocks) if b.metadata.num_rows != 0]
+            batch_bundle = (
+                replace(
+                    bundle,
+                    blocks=tuple(bundle.blocks[i] for i in keep),
+                    slices=tuple(bundle.slices[i] for i in keep),
+                    _cached_object_meta=None,
+                    _cached_preferred_locations=None,
+                )
+                if keep
+                else None
+            )
         for idx in range(first, first + self.consumers_per_split):
+            delivery = (
+                batch_bundle
+                if self.batch_readers and idx in self.batch_readers
+                else bundle
+            )
+            if delivery is None:
+                continue
             out = replace(
-                bundle,
+                delivery,
                 output_split_idx=idx,
                 owns_blocks=bundle.owns_blocks and self.consumers_per_split == 1,
             )
