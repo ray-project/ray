@@ -1,6 +1,7 @@
 """Tests for the deprecation aliases of `ray.air` public paths (removed in Ray 3.0)."""
 
 import importlib
+import pickle
 import subprocess
 import sys
 import textwrap
@@ -11,6 +12,8 @@ import pytest
 import ray.air
 import ray.air.config
 import ray.air.result
+import ray.tune
+from ray.tune._result import Result
 from ray.util.annotations import RayDeprecationWarning
 
 # (deprecated name, object it must resolve to, replacement that must be a drop-in,
@@ -38,7 +41,7 @@ ALIASES = [
         "ray.train.FailureConfig",
     ),
     ("ScalingConfig", ray.air.config.ScalingConfig, "ray.train.ScalingConfig", None),
-    ("Result", ray.air.result.Result, "ray.tune.Result", "ray.train.Result"),
+    ("Result", Result, "ray.tune.Result", "ray.train.Result"),
 ]
 
 
@@ -116,9 +119,100 @@ def test_non_deprecated_names_do_not_warn():
         _ = ray.air.ResourceRequest
         _ = ray.air.AcquiredResources
         _ = ray.air.config.RunConfig
-        _ = ray.air.result.Result
 
     assert not _air_warnings(record)
+
+
+def test_result_module_access_warns():
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        obj = ray.air.result.Result
+
+    # `Result` moved into Ray Tune; the old path returns the very same class.
+    assert obj is ray.tune.Result
+    [warning] = _air_warnings(record)
+    message = str(warning.message)
+    assert "`ray.air.result.Result` is deprecated" in message
+    assert "Ray 3.0" in message
+    assert "`ray.tune.Result`" in message
+    assert "`ray.train.Result`" in message
+    assert "https://github.com/ray-project/ray/issues/49454" in message
+    assert warning.filename == __file__
+
+
+def test_result_module_from_import_warns():
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        namespace = {}
+        exec("from ray.air.result import Result", namespace)
+
+    assert namespace["Result"] is ray.tune.Result
+    air_warnings = _air_warnings(record)
+    assert air_warnings
+    assert {w.filename for w in air_warnings} == {"<string>"}
+
+
+def test_result_module_import_does_not_warn():
+    """Importing the shim module warns only once `Result` is accessed."""
+    script = textwrap.dedent(
+        """
+        import warnings
+
+        from ray.util.annotations import RayDeprecationWarning
+
+        warnings.simplefilter("error", RayDeprecationWarning)
+
+        import ray.air.result
+        from ray.air import result
+
+        assert "Result" in dir(ray.air.result)
+        print("OK")
+        """
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True, timeout=120
+    )
+    assert proc.returncode == 0 and "OK" in proc.stdout, proc.stderr[-5000:]
+
+
+def test_result_module_unknown_attribute_raises():
+    with pytest.raises(AttributeError, match="has no attribute 'DoesNotExist'"):
+        _ = ray.air.result.DoesNotExist
+
+
+def test_result_pickle_round_trip():
+    result = Result(metrics={"score": 1}, checkpoint=None, error=None, path="/tmp/x")
+
+    with warnings.catch_warnings(record=True) as record:
+        warnings.simplefilter("always")
+        payload = pickle.dumps(result)
+        loaded = pickle.loads(payload)
+
+    assert type(loaded) is Result
+    assert loaded.metrics == {"score": 1}
+    assert loaded.path == "/tmp/x"
+    # New pickles reference the public path, not the deprecated one.
+    assert Result.__module__ == "ray.tune"
+    assert b"ray.air" not in payload
+    assert not _air_warnings(record)
+
+
+def test_old_pickle_referencing_air_result_still_loads():
+    result = Result(metrics={"score": 1}, checkpoint=None, error=None, path="/tmp/x")
+    # Rewrite the class reference to the deprecated path, as in a pickle written by
+    # an older Ray, where `Result` was defined in `ray.air.result`.
+    # Protocol 2 writes the class as a `GLOBAL` opcode: "c<module>\n<name>\n".
+    payload = pickle.dumps(result, protocol=2)
+    new_ref = b"c" + Result.__module__.encode() + b"\nResult\n"
+    assert payload.count(new_ref) == 1
+    old_payload = payload.replace(new_ref, b"cray.air.result\nResult\n")
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RayDeprecationWarning)
+        loaded = pickle.loads(old_payload)
+
+    assert type(loaded) is Result
+    assert loaded.metrics == {"score": 1}
 
 
 def test_ray_does_not_trigger_air_warnings():

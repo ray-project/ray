@@ -14,9 +14,10 @@ except ImportError as exc:
 
 
 from ray.air.config import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
-from ray.air.result import Result
 
-# Import this first so it can be used in other modules
+# Import this first so it can be used in other modules. `Result` lives in Ray Tune,
+# so importing it (or `base_trainer`) imports `ray.tune`, which in turn needs
+# `ray.train.Checkpoint` and `ray.train.CheckpointConfig` to be bound already.
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import get_checkpoint, get_dataset_shard, report
@@ -26,6 +27,7 @@ from ray.train.base_trainer import TrainingFailedError
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import TrainContext, get_context
 from ray.train.v2._internal.constants import is_v2_enabled
+from ray.tune._result import Result
 
 if is_v2_enabled():
     try:
@@ -108,7 +110,11 @@ Checkpoint.__module__ = "ray.train"
 CheckpointConfig.__module__ = "ray.train"
 DataConfig.__module__ = "ray.train"
 FailureConfig.__module__ = "ray.train"
-Result.__module__ = "ray.train"
+if is_v2_enabled():
+    # In v1 mode, `Result` is Tune's class. `ray.tune` gives it the public module
+    # `ray.tune`, and keeping that means it pickles under one path whichever of
+    # `ray.train` and `ray.tune` finishes importing last.
+    Result.__module__ = "ray.train"
 RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"

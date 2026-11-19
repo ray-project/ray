@@ -19,7 +19,6 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.config import ensure_only_allowed_dataclass_keys_updated
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.air.result import Result
 from ray.train import Checkpoint
 from ray.train._internal.session import get_session
 from ray.train._internal.storage import (
@@ -34,6 +33,7 @@ from ray.train.constants import (
 )
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
 from ray.train.utils import _log_deprecation_warning
+from ray.tune._result import Result
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:

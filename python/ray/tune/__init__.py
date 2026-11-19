@@ -15,7 +15,7 @@ except ImportError as exc:
 from ray.tune.trainable.trainable_fn_utils import Checkpoint, get_checkpoint, report
 from ray.tune.impl.config import CheckpointConfig, FailureConfig, RunConfig
 from ray.tune.syncer import SyncConfig
-from ray.air.result import Result
+from ray.tune._result import Result
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.context import TuneContext, get_context

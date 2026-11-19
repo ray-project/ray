@@ -7,7 +7,6 @@ import pandas as pd
 import pyarrow
 
 import ray
-from ray.air.result import Result as ResultV1
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train.v2._internal.constants import CHECKPOINT_MANAGER_SNAPSHOT_FILENAME
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
@@ -19,6 +18,7 @@ from ray.train.v2._internal.execution.storage import (
     get_fs_and_path,
 )
 from ray.train.v2.api.exceptions import TrainingFailedError
+from ray.tune._result import Result as ResultV1
 from ray.util.annotations import Deprecated, PublicAPI
 
 logger = logging.getLogger(__name__)
