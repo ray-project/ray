@@ -308,9 +308,19 @@ class LongPollClient:
 
             # Bind the parameters because closures are late-binding.
             # https://docs.python-guide.org/writing/gotchas/#late-binding-closures # noqa: E501
-            def chained(callback=callback, arg=update.object_snapshot):
-                callback(arg)
-                self._on_callback_completed(trigger_at=len(updates))
+            def chained(callback=callback, arg=update.object_snapshot, key=key):
+                try:
+                    callback(arg)
+                except Exception:
+                    logger.exception(
+                        f"LongPollClient {self.client_id!r} listener for key "
+                        f"{key} raised."
+                    )
+                finally:
+                    # Count the callback either way. This is what schedules the
+                    # next _poll_next(), so skipping it on an exception leaves
+                    # the client parked forever with is_running still True.
+                    self._on_callback_completed(trigger_at=len(updates))
 
             self._schedule_to_event_loop(chained)
 
