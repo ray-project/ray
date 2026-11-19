@@ -213,15 +213,30 @@ class TaskSubmitterOperations {
       const std::string &resources_str);
 
   /**
-   * @brief Add a default CPU=1 resource if the resource map is empty.
+   * @brief Add a default CPU=1 resource to a task's resource map if it is empty.
    *
-   * This matches Python's behavior of requesting one CPU when no resources are
-   * specified, which keeps autoscaler compatibility (it triggers pending lease
-   * reporting). An explicit CPU:0 keeps the map non-empty and is honored.
+   * This matches Python's behavior of requesting one CPU for a task that
+   * specifies nothing. An explicit CPU:0 keeps the map non-empty and is honored.
    *
    * @param resources The resource map to normalize in place.
    */
   static void EnsureDefaultCPU(std::unordered_map<std::string, double> &resources);
+
+  /**
+   * @brief Fill an actor's creation and placement resources when the caller
+   * specified none.
+   *
+   * Mirrors the default actor case in python/ray/actor.py: creation resources
+   * carry CPU 0, so an idle actor holds nothing, while placement resources carry
+   * CPU 1, so the actor lands on a node that can actually run it. A caller that
+   * names any resource, including an explicit CPU:0, keeps both maps as given.
+   *
+   * @param resources The creation resource map, normalized in place.
+   * @param placement_resources The placement resource map, normalized in place.
+   */
+  static void ApplyDefaultActorResources(
+      std::unordered_map<std::string, double> &resources,
+      std::unordered_map<std::string, double> &placement_resources);
 
   /**
    * @brief Convert the flat C concurrency-group arrays in CActorCreationOptions

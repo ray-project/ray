@@ -387,6 +387,39 @@ func jsonMarshal(v interface{}) ([]byte, error) {
 	return json.Marshal(v)
 }
 
+// reservedActorResourceNames are the resource names Ray computes itself: CPU,
+// GPU and memory have dedicated actor options, and "bundle" belongs to
+// placement groups. The reference implementation rejects them inside an actor's
+// resources dictionary (ray._common.utils.resources_from_ray_options) rather
+// than letting them shadow the dedicated fields.
+var reservedActorResourceNames = map[string]struct{}{
+	"CPU":                 {},
+	"GPU":                 {},
+	"memory":              {},
+	"object_store_memory": {},
+	"bundle":              {},
+}
+
+// validateEntrypointResources rejects a custom resource map that names a
+// reserved resource, reproducing the reference messages so a caller who hits
+// this gets the same diagnostic from either implementation.
+func validateEntrypointResources(resources map[string]float64) error {
+	for name := range resources {
+		if _, reserved := reservedActorResourceNames[name]; !reserved {
+			continue
+		}
+		switch name {
+		case "CPU", "GPU":
+			return fmt.Errorf("The resources dictionary must not contain the key 'CPU' or 'GPU'")
+		case "memory", "object_store_memory":
+			return fmt.Errorf("The resources dictionary must not contain the key 'memory' or 'object_store_memory'")
+		default:
+			return fmt.Errorf("The resource should not include `%s` which is reserved for Ray. resources: %v", name, resources)
+		}
+	}
+	return nil
+}
+
 // valueError marks a request validation failure so the route layer can map it
 // to HTTP 400 rather than 500.
 type valueError struct{ msg string }

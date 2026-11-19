@@ -39,6 +39,12 @@ const (
 	rayletPIDEnvName = "RAY_RAYLET_PID"
 	// parentCheckIntervalSEnvName overrides the parent liveness poll interval.
 	parentCheckIntervalSEnvName = "RAY_DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S"
+	// pipeHealthCheckEnvName is set by the raylet on every agent it spawns. Its
+	// value tracks the same ray config that decides whether the raylet
+	// redirects a parent-lifetime pipe to the child's stdin, so the flag and the
+	// pipe are always created together. Mirrors
+	// dashboard_consts.PARENT_HEALTH_CHECK_BY_PIPE.
+	pipeHealthCheckEnvName = "RAY_enable_pipe_based_agent_to_parent_health_check"
 	// defaultParentCheckInterval mirrors DASHBOARD_AGENT_CHECK_PARENT_INTERVAL_S.
 	defaultParentCheckInterval = 400 * time.Millisecond
 	// parentDeathThreshold is how many consecutive failed polls count as a
@@ -67,17 +73,24 @@ const (
 // process.
 var parentPidFn = os.Getppid
 
+// stdinReader is the parent-lifetime pipe the raylet redirects to this process's
+// stdin. It is a package-level variable so tests can substitute a pipe they
+// control instead of the test binary's own stdin.
+var stdinReader io.Reader = os.Stdin
+
 // StartParentWatcher monitors the raylet that spawned this agent and
-// fate-shares with it: after parentDeathThreshold consecutive polls in which
-// this process's parent is not the raylet, it records a raylet death
-// diagnostic, publishes RAYLET_DIED_ERROR to every attached driver, and
-// cancels ctx so the agent shuts down. It mirrors Python's
-// create_check_raylet_task on the pid-polling path.
+// fate-shares with it: once it has proof of the raylet's death it records a
+// diagnostic, publishes RAYLET_DIED_ERROR to every attached driver, and cancels
+// ctx so the agent shuts down. Proof is a zero-byte read on the parent-lifetime
+// pipe when the raylet provides one, and parentDeathThreshold consecutive polls
+// in which this process's parent is not the raylet otherwise. It mirrors
+// Python's create_check_raylet_task.
 //
 // When RAY_RAYLET_PID is unset or invalid the watcher does nothing: an agent
 // started outside a raylet must not shut itself down.
 //
-// Python's alternative PARENT_HEALTH_CHECK_BY_PIPE path is not implemented.
+// Both of Python's paths are implemented: the pipe read is preferred when the
+// raylet asks for it, and the pid poll covers the rest.
 //
 // A nil publisher degrades to log-only reporting; production callers pass
 // ResolveErrorPublisher(cfg), which never returns nil.
@@ -86,6 +99,27 @@ func StartParentWatcher(ctx context.Context, cancel context.CancelFunc, logDir s
 	if !ok {
 		return
 	}
+
+	// The raylet chooses how this agent watches it. With pipe-based health
+	// checking (on by default) the raylet redirects a pipe to this process's
+	// stdin and holds the write end for as long as it lives, so the read's EOF
+	// is the death signal — that is Python's create_check_raylet_task path too.
+	// Otherwise the agent polls its parent pid.
+	//
+	// The flag and the pipe are established by the same raylet from the same
+	// config value, so gating on the flag is what keeps a hand-started agent —
+	// whose stdin is a terminal or /dev/null and reads EOF at once — from
+	// shutting itself down.
+	if parentHealthCheckByPipe() {
+		// Capture the reader once: the goroutine must not read the package-level
+		// seam after launch, or a test that restores it in cleanup would race
+		// with a read still in flight.
+		reader := stdinReader
+		log.Log.Info("checking the raylet health by pipe", "raylet_pid", rayletPid)
+		go watchParentPipe(ctx, cancel, logDir, publisher, reader)
+		return
+	}
+
 	interval := parentCheckInterval()
 	log.Log.Info("starting raylet health check",
 		"raylet_pid", rayletPid,
@@ -128,6 +162,45 @@ func StartParentWatcher(ctx context.Context, cancel context.CancelFunc, logDir s
 			}
 		}
 	}()
+}
+
+// watchParentPipe fate-shares with the raylet through the parent-lifetime pipe
+// that the raylet redirects to this process's stdin: the raylet holds the write
+// end for as long as it lives, so a zero-byte read is a confirmed parent death.
+// It mirrors Python's _check_parent_via_pipe.
+//
+// The read blocks until the raylet closes the write end and cannot be
+// interrupted, so it runs on its own goroutine while the watcher stays
+// responsive to ctx. A read that ends in an error rather than EOF is not proof
+// of a death, so the watcher stands down and leaves the agent running; Python
+// logs the exception and keeps re-reading, which on a broken stdin only spins.
+func watchParentPipe(ctx context.Context, cancel context.CancelFunc, logDir string, publisher gcs.ErrorInfoPublisher, r io.Reader) {
+	eof := make(chan struct{})
+	readErr := make(chan error, 1) // buffered: the reader must never block on a returned watcher
+	go func() {
+		if _, err := io.Copy(io.Discard, r); err != nil {
+			readErr <- err
+			return
+		}
+		close(eof)
+	}()
+
+	select {
+	case <-ctx.Done():
+		return
+	case err := <-readErr:
+		log.Log.Error(err, "raylet health check by pipe failed; the agent may outlive the raylet")
+		return
+	case <-eof:
+		reportRayletDeath(logDir, publisher)
+		cancel()
+	}
+}
+
+// parentHealthCheckByPipe reports whether the raylet asked this agent to watch
+// it through the stdin pipe instead of by polling its pid.
+func parentHealthCheckByPipe() bool {
+	return common.EnvBool(pipeHealthCheckEnvName, false)
 }
 
 // rayletPid reads and validates RAY_RAYLET_PID, returning ok=false when it is

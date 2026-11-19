@@ -620,6 +620,46 @@ TEST(TaskSubmitterOperationsBuildActorOptionsTest, NoPlacementGroupUsesDefault) 
   EXPECT_FALSE(built.scheduling_strategy.has_placement_group_scheduling_strategy());
 }
 
+// TestTaskSubmitterOperationsBuildActorOptionsTest_ExplicitZeroCPU verifies
+// that an explicitly requested zero CPU survives the bridge. Only an EMPTY
+// resource map takes the default of one CPU; a map that names CPU at zero must
+// keep it as both the creation and the placement requirement, because that is
+// what lets a job supervisor pinned to a one-CPU head coexist with later jobs.
+TEST(TaskSubmitterOperationsBuildActorOptionsTest, ExplicitZeroCPU) {
+  ray::go::ActorCreateOptions options;
+  options.resources = {{"CPU", 0.0}};
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_EQ(built.resources.size(), 1u);
+  auto it = built.resources.find("CPU");
+  ASSERT_NE(it, built.resources.end());
+  EXPECT_EQ(it->second, 0.0);
+  ASSERT_EQ(built.placement_resources.size(), 1u);
+  auto placement_it = built.placement_resources.find("CPU");
+  ASSERT_NE(placement_it, built.placement_resources.end());
+  EXPECT_EQ(placement_it->second, 0.0);
+}
+
+// TestTaskSubmitterOperationsBuildActorOptionsTest_EmptyResourcesMatchTheDefaultActorCase
+// verifies the empty-map default mirrors the reference's default actor case: the
+// actor creation charges no CPU for its lifetime, while placement still requires
+// one so the actor lands where it can run. Charging the CPU to both maps, as the
+// bridge did before, made every idle actor hold a CPU on its node forever.
+TEST(TaskSubmitterOperationsBuildActorOptionsTest,
+     EmptyResourcesMatchTheDefaultActorCase) {
+  ray::go::ActorCreateOptions options;
+
+  auto &ops = ray::go::TaskSubmitterOperations::GetInstance();
+  ray::core::ActorCreationOptions built = ops.BuildActorOptions(options);
+
+  ASSERT_EQ(built.resources.size(), 1u);
+  EXPECT_EQ(built.resources.at("CPU"), 0.0);
+  ASSERT_EQ(built.placement_resources.size(), 1u);
+  EXPECT_EQ(built.placement_resources.at("CPU"), 1.0);
+}
+
 // TestTaskSubmitterOperationsBuildActorOptionsTest_NodeAffinity verifies that a
 // node-affinity bound actor (head-node pinning for the job driver) produces a
 // node_affinity_scheduling_strategy in the built ActorCreationOptions.

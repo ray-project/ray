@@ -435,6 +435,20 @@ func (m *JobManager) submitJob(ctx context.Context, req *JobSubmitRequest) (stri
 
 	m.eventLogger.submissionStarted(submissionID)
 
+	// A custom resource map that names a reserved resource is rejected here, as
+	// the reference rejects it while the supervisor actor is being built: the
+	// job is recorded and then FAILED, rather than accepted with a request the
+	// scheduler would silently reinterpret.
+	if err := validateEntrypointResources(req.EntrypointResources); err != nil {
+		msg := fmt.Sprintf("Failed to start supervisor actor %s: '%s'", submissionID, err)
+		log.Log.Error(err, "failed to build supervisor actor resources")
+		et := JobErrorTypeJobSupervisorActorStartFailure
+		if _, perr := m.putStatus(ctx, submissionID, JobStatusFailed, &msg, nil, &et); perr != nil {
+			log.Log.Error(perr, "failed to update job status to FAILED")
+		}
+		return submissionID, nil
+	}
+
 	if runtimeEnvJSONErr != nil {
 		tb := fmt.Sprintf("failed to serialize runtime env for job %s: %v", submissionID, runtimeEnvJSONErr)
 		log.Log.Error(fmt.Errorf("%s", tb), "failed to serialize job runtime env")

@@ -194,6 +194,158 @@ func TestParentWatcherIsANoOpWithoutARayletPid(t *testing.T) {
 	}
 }
 
+// stubStdin replaces the parent-lifetime pipe reader for a test and returns the
+// write end. Closing that write end is exactly what the raylet does when it
+// dies, which turns the read into a zero-byte read.
+func stubStdin(t *testing.T) *os.File {
+	t.Helper()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	old := stdinReader
+	stdinReader = r
+	t.Cleanup(func() {
+		stdinReader = old
+		_ = r.Close()
+		_ = w.Close()
+	})
+	return w
+}
+
+// TestParentWatcherPipeModeReportsTheDeath proves the pipe path publishes the
+// raylet-death diagnostic and shuts the agent down as soon as the write end
+// closes, without waiting for any polling threshold.
+func TestParentWatcherPipeModeReportsTheDeath(t *testing.T) {
+	t.Setenv(rayletPIDEnvName, "4242")
+	t.Setenv(pipeHealthCheckEnvName, "1")
+	w := stubStdin(t)
+
+	dir := t.TempDir()
+	writeRayletLog(t, dir, "starting up\nunexpected exit\n")
+	pub := &stubErrorPublisher{}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	StartParentWatcher(ctx, cancel, dir, pub)
+
+	// The pipe never carries data; the raylet only holds its write end open.
+	if err := w.Close(); err != nil {
+		t.Fatalf("close the pipe write end: %v", err)
+	}
+
+	select {
+	case <-ctx.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("a zero-byte read on the parent pipe did not cancel the agent")
+	}
+	_, payloads := pub.recorded()
+	if len(payloads) != 1 {
+		t.Fatalf("published %d diagnostics on pipe EOF, want exactly 1", len(payloads))
+	}
+	if payloads[0].Type != rayletDiedErrorType {
+		t.Errorf("type = %q, want %q", payloads[0].Type, rayletDiedErrorType)
+	}
+	if !strings.Contains(payloads[0].Message, "Termination is unexpected") {
+		t.Errorf("message %q does not report an unexpected termination", payloads[0].Message)
+	}
+}
+
+// TestParentWatcherPipeModeDoesNotPollTheParentPid proves the two health paths
+// are exclusive: with the pipe requested, the pid source must never be read, so
+// the multi-poll threshold cannot delay or mask the pipe signal.
+func TestParentWatcherPipeModeDoesNotPollTheParentPid(t *testing.T) {
+	t.Setenv(rayletPIDEnvName, "4242")
+	t.Setenv(pipeHealthCheckEnvName, "1")
+	_ = stubStdin(t) // never closed: the parent is still alive
+
+	var calls atomic.Int32
+	stubParentPid(t, func() int {
+		calls.Add(1)
+		return 1
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	StartParentWatcher(ctx, cancel, t.TempDir(), nil)
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("pipe mode cancelled on a pid mismatch; the pid path must not run")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if n := calls.Load(); n != 0 {
+		t.Fatalf("parent pid consulted %d times in pipe mode, want 0", n)
+	}
+}
+
+// TestWatchParentPipeReturnsWhenTheContextIsCancelled pins the watcher's second
+// way out: a context cancelled for an unrelated reason must end it without any
+// death being reported. The pipe stays open, so nothing but the cancellation can
+// end the wait, and the watcher is driven directly because its return is the
+// behavior under test — a never-closed pipe leaves no other observable.
+func TestWatchParentPipeReturnsWhenTheContextIsCancelled(t *testing.T) {
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	defer func() { _ = r.Close() }()
+	defer func() { _ = w.Close() }()
+
+	pub := &stubErrorPublisher{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		watchParentPipe(ctx, cancel, t.TempDir(), pub, r)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("watchParentPipe did not return after the context was cancelled")
+	}
+	if _, payloads := pub.recorded(); len(payloads) != 0 {
+		t.Fatalf("published %d diagnostics on a bare cancellation, want 0", len(payloads))
+	}
+}
+
+// failingReader fails every read, standing in for a stdin that is not the
+// parent-lifetime pipe.
+type failingReader struct{ err error }
+
+func (r failingReader) Read([]byte) (int, error) { return 0, r.err }
+
+// TestParentWatcherPipeModeTreatsAReadErrorAsNotADeath pins the conservative
+// branch: a failed read is not proof that the parent died, so the watcher must
+// neither publish a diagnostic nor shut the agent down.
+func TestParentWatcherPipeModeTreatsAReadErrorAsNotADeath(t *testing.T) {
+	t.Setenv(rayletPIDEnvName, "4242")
+	t.Setenv(pipeHealthCheckEnvName, "1")
+
+	old := stdinReader
+	stdinReader = failingReader{err: errors.New("stdin is not a pipe")}
+	t.Cleanup(func() { stdinReader = old })
+
+	pub := &stubErrorPublisher{}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	StartParentWatcher(ctx, cancel, t.TempDir(), pub)
+
+	select {
+	case <-ctx.Done():
+		t.Fatal("a failed pipe read cancelled the agent; only EOF proves the raylet is gone")
+	case <-time.After(100 * time.Millisecond):
+	}
+	if _, payloads := pub.recorded(); len(payloads) != 0 {
+		t.Fatalf("published %d diagnostics on a failed read, want 0", len(payloads))
+	}
+}
+
 func TestClassifyRayletDeathDetectsGracefulExit(t *testing.T) {
 	graceful, msg := classifyRayletDeath([]string{"starting", "Raylet received SIGTERM, shutting down"})
 	if !graceful {

@@ -89,14 +89,27 @@ func createSupervisorActor(opts supervisorCreateOptions, constructorArgs ...inte
 	return &supervisorActor{handle: handle}, nil
 }
 
-// buildActorResources merges the entrypoint resource requests of a job into an
-// actor resource map. Zero and negative quantities are dropped so the actor
-// falls back to the scheduler defaults.
+// buildActorResources builds the resource map the JobSupervisor actor requests:
+// the CPU request, plus the entrypoint's GPU, memory and custom resource
+// requests when they are positive. A custom entrypoint resource named CPU, GPU
+// or memory is merged last and therefore wins over the dedicated field, which
+// is the pre-existing behaviour; the reference implementation rejects those
+// names instead.
+//
+// The CPU key is always present, including at zero. These are the job's own
+// scheduling demands, and the reference implementation forwards them
+// unconditionally: a missing request becomes an explicit zero, which selects the
+// specified-resources branch of the actor options and charges no CPU per method
+// call. Dropping the zero instead leaves an empty map, and an empty map asks the
+// actor bridge for its defaults — a placement requirement of one CPU, which a
+// supervisor pinned to a head node with a single CPU cannot always satisfy.
 func buildActorResources(numCPUs, numGPUs float64, memory int64, resources map[string]float64) map[string]float64 {
-	out := map[string]float64{}
-	if numCPUs > 0 {
-		out["CPU"] = numCPUs
+	// A negative request cannot be satisfied; clamp it to the documented
+	// default of zero rather than forwarding it to the scheduler.
+	if numCPUs < 0 {
+		numCPUs = 0
 	}
+	out := map[string]float64{"CPU": numCPUs}
 	if numGPUs > 0 {
 		out["GPU"] = numGPUs
 	}

@@ -501,3 +501,55 @@ func TestHandleSupervisorFailureAfterDelete(t *testing.T) {
 	_, err = os.Stat(jm.logClient.getLogFilePath("job1"))
 	assert.True(t, os.IsNotExist(err), "a deleted job must not get a recreated driver log")
 }
+
+// TestSubmitJobRejectsReservedEntrypointResources pins the reference's rejection
+// of resource names Ray reserves for its own accounting. Python raises from
+// resources_from_ray_options while the supervisor actor options are built, so a
+// caller observes a FAILED job rather than an accepted request. Accepting them
+// here would let a custom "CPU" entry silently override entrypoint_num_cpus,
+// because the custom map is merged last into the actor's resources.
+func TestSubmitJobRejectsReservedEntrypointResources(t *testing.T) {
+	cases := []struct {
+		name string
+		want string
+	}{
+		{"CPU", "The resources dictionary must not contain the key 'CPU' or 'GPU'"},
+		{"GPU", "The resources dictionary must not contain the key 'CPU' or 'GPU'"},
+		{"memory", "The resources dictionary must not contain the key 'memory' or 'object_store_memory'"},
+		{"object_store_memory", "The resources dictionary must not contain the key 'memory' or 'object_store_memory'"},
+		{"bundle", "reserved for Ray"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := t.Context()
+			jm, sink := newTestJobManager(t)
+			jm.recoverDone = make(chan struct{})
+			close(jm.recoverDone)
+
+			submissionID, err := jm.submitJob(ctx, &JobSubmitRequest{
+				Entrypoint:          "echo",
+				SubmissionID:        ptrString("sub-reserved"),
+				EntrypointResources: map[string]float64{tc.name: 1},
+			})
+			require.NoError(t, err)
+			assert.Equal(t, "sub-reserved", submissionID)
+
+			info, err := jm.jobInfoClient.GetInfo(ctx, "sub-reserved")
+			require.NoError(t, err)
+			require.NotNil(t, info)
+			assert.Equal(t, JobStatusFailed, info.Status)
+			require.NotNil(t, info.ErrorType)
+			assert.Equal(t, string(JobErrorTypeJobSupervisorActorStartFailure), *info.ErrorType)
+			require.NotNil(t, info.Message)
+			assert.Contains(t, *info.Message, tc.want)
+			assert.Len(t, sink.started, 1, "the job is recorded and announced before it is rejected")
+		})
+	}
+}
+
+// TestValidateEntrypointResourcesAcceptsCustomNames keeps the rejection narrow:
+// a custom resource name is what the field is for.
+func TestValidateEntrypointResourcesAcceptsCustomNames(t *testing.T) {
+	assert.NoError(t, validateEntrypointResources(nil))
+	assert.NoError(t, validateEntrypointResources(map[string]float64{"custom": 1}))
+}

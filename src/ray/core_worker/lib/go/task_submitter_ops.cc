@@ -213,6 +213,23 @@ void TaskSubmitterOperations::EnsureDefaultCPU(
   }
 }
 
+void TaskSubmitterOperations::ApplyDefaultActorResources(
+    std::unordered_map<std::string, double> &resources,
+    std::unordered_map<std::string, double> &placement_resources) {
+  if (!resources.empty()) {
+    return;
+  }
+  // The default actor case of python/ray/actor.py: an actor that specifies no
+  // resources is created with zero CPU and reserves one only for placement. An
+  // idle actor then holds nothing, while placement still steers it to a node
+  // that can run it — which is also what the autoscaler reads for actor demand
+  // (TaskSpecification uses placement resources when
+  // report_actor_placement_resources is on). Charging the CPU to the creation
+  // resources as well would keep it reserved for the actor's whole lifetime.
+  resources["CPU"] = 0.0;
+  placement_resources["CPU"] = 1.0;
+}
+
 std::string TaskSubmitterOperations::HexToBinary(const std::string &hex_str) {
   // Delegate to the local helper function
   // See HexStringToBinary above for why this is a local implementation
@@ -324,11 +341,11 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
         BuildSchedulingStrategy(options.placement_group_id_hex, options.bundle_index);
   }
 
-  // Add default CPU=1 if no resources are specified, matching Python's behavior
-  // for autoscaler compatibility (it triggers pending lease reporting). The
-  // same map is used as placement resources, as needed by the constructor.
+  // Default resources apply only when the caller specified none; the two maps
+  // then differ, which is why they are built separately.
   std::unordered_map<std::string, double> resources = options.resources;
-  EnsureDefaultCPU(resources);
+  std::unordered_map<std::string, double> placement_resources = resources;
+  ApplyDefaultActorResources(resources, placement_resources);
 
   // max_concurrency: 1 means serialized (the Ray default), -1 means unlimited
   // and values >= 1 allow that many concurrent method calls. A zero value (from
@@ -364,7 +381,7 @@ ray::core::ActorCreationOptions TaskSubmitterOperations::BuildActorOptions(
       options.max_task_retries,
       max_concurrency,
       resources,
-      resources,
+      placement_resources,
       {},  // dynamic_worker_options
       // Always pass the explicit value: when the actor is NON_DETACHED,
       // std::nullopt would fall back to the job's default_actor_lifetime (which
