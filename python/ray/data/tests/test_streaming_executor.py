@@ -5,6 +5,7 @@ import random
 import threading
 import time
 import unittest
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from typing import List, Literal, Optional, Union
@@ -17,6 +18,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
+from ray.cluster_utils import Cluster
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -29,6 +31,7 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
+    RefBundle,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
@@ -72,7 +75,12 @@ from ray.data._internal.logical.operators import (
     Write,
 )
 from ray.data._internal.util import MiB
-from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadataWithSchema,
+    TaskExecWorkerStats,
+)
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
@@ -1429,7 +1437,9 @@ def test_create_topology_metadata_with_sub_stages():
 
 
 def create_stub_streaming_gen(
-    block_nbytes: List[int], raise_exception: Optional[Exception] = None
+    block_nbytes: List[int],
+    raise_exception: Optional[Exception] = None,
+    raise_after_outputs: bool = False,
 ) -> ray.ObjectRefGenerator:
     """Creating a streaming generator for testing.
 
@@ -1441,17 +1451,18 @@ def create_stub_streaming_gen(
     Args:
         block_nbytes: A list of the sizes of blocks yielded by the returned streaming
             generator.
-        raise_exception: An exception that the streaming generator immediately raises.
+        raise_exception: An exception raised by the streaming generator.
+        raise_after_outputs: If True, raise after yielding all block/metadata pairs.
 
     Returns:
         A streaming generator that you can pass to ``DataOpTask``.
     """
 
     @ray.remote
-    def stub_map_task():
+    def stub_map_task() -> Iterator[Union[Block, bytes]]:
         import time as _time
 
-        if raise_exception is not None:
+        if raise_exception is not None and not raise_after_outputs:
             raise raise_exception
 
         task_start_s = _time.perf_counter()
@@ -1474,6 +1485,9 @@ def create_stub_streaming_gen(
                     block_metadata, schema=block_accessor.schema()
                 )
             )
+
+        if raise_exception is not None and raise_after_outputs:
+            raise raise_exception
 
     generator_backpressure_num_objects = (
         ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer
@@ -1503,6 +1517,82 @@ def ensure_block_metadata_stored_in_plasma(monkeypatch):
 
 
 class TestDataOpTask:
+    @pytest.mark.parametrize("cancel", [False, True])
+    def test_discarded_output_drains_remote_return(
+        self,
+        ray_start_cluster_enabled: Cluster,
+        ensure_block_metadata_stored_in_plasma: None,
+        cancel: bool,
+    ) -> None:
+        ray.shutdown()
+        cluster = ray_start_cluster_enabled
+        cluster.add_node(num_cpus=0, object_store_memory=128 * MiB)
+        ray.init(address=cluster.address)
+        cluster.add_node(num_cpus=1, object_store_memory=128 * MiB)
+        cluster.wait_for_nodes()
+
+        gen = create_stub_streaming_gen([], raise_exception=ValueError("unused"))
+        ray.wait([gen.completed()], timeout=20, fetch_local=False)
+        core_worker = ray._private.worker.global_worker.core_worker
+        assert not core_worker.object_exists(gen.completed())
+        done: list[Optional[Exception]] = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            task_done_callback=lambda error, *_: done.append(error),
+        )
+        if cancel:
+            task.cancel_if_no_output()
+        else:
+            task.output_discarded = True
+
+        def drain() -> bool:
+            # Zero output budget must still allow unused output to drain.
+            assert task.on_data_ready(0, InlineMetadataFetcher()) == 0
+            return task.has_finished
+
+        wait_for_condition(drain, timeout=20)
+        assert core_worker.object_exists(gen.completed())
+        assert drain() and done == [None]
+
+    def test_discarded_output_waits_for_pending_metadata(
+        self, ray_start_regular_shared: object
+    ) -> None:
+        gen = create_stub_streaming_gen([100, 200])
+        outputs: list[RefBundle] = []
+        done: list[Optional[Exception]] = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            output_ready_callback=outputs.append,
+            task_done_callback=lambda error, *_: done.append(error),
+        )
+        # Hold the first pair's metadata while the remaining stream drains.
+        fetcher = ThreadedMetadataFetcher()
+        wait_for_condition(lambda: task.on_data_ready(1, fetcher) > 0)
+        deferred = fetcher._pending_deferred[0]
+        fetcher.submit("op", [task])
+        task.output_discarded = True
+
+        def drain() -> bool:
+            assert task.on_data_ready(0, fetcher) == 0
+            return task.is_drained()
+
+        wait_for_condition(drain)
+        assert not task.has_finished and done == []
+        fetcher.submit("op", [task])
+        with fetcher._results_lock:
+            fetcher._results[deferred.meta_ref] = ValueError("unused metadata")
+        assert fetcher.emit_ready_and_fire_done_callbacks() == []
+        assert task.has_finished and outputs == [] and done == [None]
+        assert not fetcher_has_pending_work(fetcher)
+        task.on_data_ready(0, fetcher)
+        assert done == [None]
+
     def test_on_data_ready_single_output(self, ray_start_regular_shared):
         streaming_gen = create_stub_streaming_gen(block_nbytes=[128 * MiB])
 
@@ -1806,15 +1896,22 @@ class TestDataOpTask:
         assert [b.size_bytes() for b in outputs] == [108, 208]
         assert task.has_finished
 
+    @pytest.mark.parametrize("discard_output", [False, True])
+    @pytest.mark.parametrize("task_fails", [False, True])
     def test_prefetcher_fetch_failure_is_returned_not_raised(
-        self, ray_start_regular_shared
-    ):
+        self, ray_start_regular_shared: object, discard_output: bool, task_fails: bool
+    ) -> None:
         """A metadata-fetch error is returned from emit_ready() (so the caller
         can apply max_errored_blocks) rather than raised; the bad block is
         dropped, the other pair still emits, and the task still completes."""
-        gen = create_stub_streaming_gen(block_nbytes=[100, 200])
-        outputs: list = []
-        done: list = []
+        task_error = ValueError("unused task failed") if task_fails else None
+        gen = create_stub_streaming_gen(
+            block_nbytes=[100, 200],
+            raise_exception=task_error,
+            raise_after_outputs=True,
+        )
+        outputs: list[RefBundle] = []
+        done: list[int] = []
         task = DataOpTask(
             0,
             gen,
@@ -1842,13 +1939,18 @@ class TestDataOpTask:
             fetcher._results[first.meta_ref] = good_bytes
             fetcher._results[second.meta_ref] = boom
 
+        task.output_discarded = discard_output
         failures = fetcher.emit_ready_and_fire_done_callbacks()
 
         # The error is surfaced (not raised), tagged with the operator name.
-        assert failures == [("Map(fn)", boom)]
+        expected = [("Map(fn)", boom)]
+        if task_error is not None:
+            expected.append(("Map(fn)", task.task_error))
+        assert failures == ([] if discard_output else expected)
         # The good block still emitted; the failed one was dropped.
-        assert len(outputs) == 1
-        assert outputs[0].size_bytes() == 108
+        assert len(outputs) == (0 if discard_output else 1)
+        if not discard_output:
+            assert outputs[0].size_bytes() == 108
         # The task completed despite the dropped block (done callback fired).
         assert done == [1]
         assert task.has_finished

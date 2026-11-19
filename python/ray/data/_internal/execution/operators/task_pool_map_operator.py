@@ -236,6 +236,11 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def progress_str(self) -> str:
         return ""
 
+    def cancel_unneeded_tasks(self) -> None:
+        """Request graceful cancellation without delaying operator completion."""
+        for task in self._data_tasks.values():
+            task.cancel_if_no_output()
+
     def current_logical_usage(self) -> ExecutionResources:
         return self._current_logical_usage
 

@@ -35,8 +35,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.lineage_reconstruction_mixin import (
     LineageReconstructionMixin,
+)
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
 )
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
@@ -389,6 +393,7 @@ class OpState:
         self.op = op
         self.num_completed_tasks = 0
         self.inputs_done_called = False
+        self.input_abandoned: bool = False
         # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         # Used for StreamingExecutor to signal exception or end of execution
@@ -861,6 +866,10 @@ def process_completed_tasks(
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     for op, state in topology.items():
         for task in op.get_active_tasks():
+            # Unused output must still be drained so producers can finish and
+            # release resources needed by downstream work.
+            if state.input_abandoned and isinstance(task, DataOpTask):
+                task.output_discarded = True
             active_tasks[task.get_waitable()] = (state, task)
 
     remaining_output_budget: Dict[OpState, int] = {}
@@ -1049,9 +1058,23 @@ def process_completed_tasks(
     # Pull any operator outputs into the streaming op state.
     for op, op_state in topology.items():
         while op.has_next():
-            op_state.add_output(op.get_next())
+            output = op.get_next()
+            if not op_state.input_abandoned:
+                op_state.add_output(output)
 
     return num_errored_blocks
+
+
+def _should_abandon_input(op: PhysicalOperator, topology: Topology) -> bool:
+    """Whether downstream early termination makes this operator's input unnecessary."""
+    # Follow a satisfied Limit through upstream maps, including unfused reads.
+    # Every consumer must have stopped requesting input before it can be abandoned.
+    consumers = op.output_dependencies
+    return bool(consumers) and all(
+        topology[dep].input_abandoned
+        or (isinstance(dep, LimitOperator) and dep.has_execution_finished())
+        for dep in consumers
+    )
 
 
 def update_operator_states(topology: Topology) -> None:
@@ -1060,7 +1083,7 @@ def update_operator_states(topology: Topology) -> None:
 
     for op, op_state in topology.items():
         # Call inputs_done() on ops where no more inputs are coming.
-        if op_state.inputs_done_called:
+        if op_state.inputs_done_called or op_state.input_abandoned:
             continue
         all_inputs_done = True
         for idx, dep in enumerate(op.input_dependencies):
@@ -1082,6 +1105,9 @@ def update_operator_states(topology: Topology) -> None:
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
+        if isinstance(op, TaskPoolMapOperator) and _should_abandon_input(op, topology):
+            op_state.input_abandoned = True
+            op.cancel_unneeded_tasks()
         # For terminal operators (no output dependencies, e.g. OutputSplitter),
         # mark execution finished once the operator has fully completed so that
         # internal queues are properly cleared via clear_internal_input_queue()
@@ -1093,7 +1119,7 @@ def update_operator_states(topology: Topology) -> None:
         # Drain external input queue if current operator is execution finished.
         # This is needed when the limit is reached, and `mark_execution_finished`
         # is called manually.
-        if op.has_execution_finished():
+        if op.has_execution_finished() or op_state.input_abandoned:
             for input_queue in op_state.input_queues:
                 # Drain input queue
                 input_queue.clear()
@@ -1140,7 +1166,8 @@ def get_eligible_operators(
         #   - It can accept at least one input
         #   - Its input queue has a valid bundle
         if (
-            not op.has_completed()
+            not state.input_abandoned
+            and not op.has_completed()
             and op.can_add_input()
             and state.has_pending_bundles()
         ):
