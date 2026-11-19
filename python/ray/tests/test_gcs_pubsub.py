@@ -6,6 +6,7 @@ import tempfile
 import threading
 import time
 from typing import Dict, NamedTuple, Optional
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -14,6 +15,7 @@ from ray._common.test_utils import wait_for_condition
 from ray._private.gcs_pubsub import (
     GcsAioResourceUsageSubscriber,
 )
+from ray.core.generated import gcs_service_pb2
 
 
 def test_publish_and_subscribe_error_info(ray_start_regular):
@@ -79,6 +81,31 @@ async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     assert await subscriber.poll() == ("bbb_id", '{"cpu": 2}')
 
     await subscriber.close()
+
+
+@pytest.mark.asyncio
+async def test_aio_poll_and_close_complete_simultaneously():
+    """Regression test for https://github.com/ray-project/ray/issues/65672.
+
+    When the poll RPC and the close event both finish in the same event loop
+    iteration, ``asyncio.wait`` returns both tasks as done and leaves nothing
+    pending. ``_poll`` used to assume exactly one pending task and raised
+    ``KeyError: 'pop from an empty set'`` during shutdown.
+    """
+    subscriber = GcsAioResourceUsageSubscriber(channel=MagicMock())
+    subscriber._stub.GcsSubscriberPoll = AsyncMock(
+        return_value=gcs_service_pb2.GcsSubscriberPollReply()
+    )
+    # Closing before polling makes both tasks complete immediately.
+    subscriber._close.set()
+
+    initial_tasks = asyncio.all_tasks()
+    await subscriber._poll()
+
+    assert len(subscriber._queue) == 0
+    # No stray tasks created by _poll() are left behind.
+    await asyncio.sleep(0)
+    assert all(t.done() for t in asyncio.all_tasks() - initial_tasks)
 
 
 @pytest.mark.asyncio
