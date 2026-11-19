@@ -11,6 +11,8 @@ accelerate==1.15.0
     # via
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/ml/train-requirements.txt
+adagio==0.2.6
+    # via fugue
 adal==1.2.7
     # via msrestazure
 adlfs==2026.4.0
@@ -292,6 +294,7 @@ cloudpickle==3.1.1
     #   hyperopt
     #   joblib
     #   mlflow-skinny
+    #   statsforecast
     #   tensordict
 cma==4.4.4
     # via nevergrad
@@ -317,6 +320,8 @@ comm==0.2.3
     #   ipywidgets
 configobj==5.0.9
     # via everett
+confluent-kafka==2.16.2
+    # via -r python/requirements/ml/data-test-requirements.txt
 contourpy==1.4.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -465,6 +470,8 @@ flask-cors==6.0.2
     #   moto
 fonttools==4.62.1
     # via matplotlib
+formulaic==1.2.2
+    # via statsmodels
 fqdn==1.5.1
     # via jsonschema
 freezegun==1.1.0
@@ -490,6 +497,9 @@ fsspec==2023.12.1
     #   s3fs
     #   torch
     #   torch-geometric
+    #   triad
+fugue==0.9.9
+    # via statsforecast
 future==1.0.0
     # via -r python/requirements/ml/tune-requirements.txt
 gcs-oauth2-boto-plugin==3.3
@@ -662,6 +672,8 @@ humanize==4.15.0
     # via -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
+hypothesis==6.170.15
+    # via -r python/requirements/ml/data-test-requirements.txt
 identify==2.6.19
     # via pre-commit
 idna==3.15
@@ -686,6 +698,8 @@ importlib-resources==7.1.0
     # via prophet
 iniconfig==2.3.0
     # via pytest
+interface-meta==2.0.1
+    # via formulaic
 ipykernel==7.2.0
     # via jupyterlab
 ipython==8.12.3
@@ -972,7 +986,10 @@ mypy-extensions==1.0.0
     #   black
     #   mypy
 narwhals==2.20.0
-    # via scikit-learn
+    # via
+    #   formulaic
+    #   scikit-learn
+    #   utilsforecast
 nbclient==0.10.4
     # via nbconvert
 nbconvert==7.17.1
@@ -1002,7 +1019,9 @@ nodeenv==1.10.0
 notebook-shim==0.2.4
     # via jupyterlab
 numba==0.68.1
-    # via -r python/requirements/test-requirements.txt
+    # via
+    #   -r python/requirements/test-requirements.txt
+    #   statsforecast
 numpy==2.5.4
     # via
     #   -r python/requirements/test-requirements.txt
@@ -1019,6 +1038,7 @@ numpy==2.5.4
     #   deepspeed
     #   directsearch
     #   evaluate
+    #   formulaic
     #   gymnasium
     #   hyperopt
     #   imageio
@@ -1038,6 +1058,7 @@ numpy==2.5.4
     #   opencv-python-headless
     #   optuna
     #   pandas
+    #   patsy
     #   pettingzoo
     #   prophet
     #   pylance
@@ -1046,6 +1067,8 @@ numpy==2.5.4
     #   skops
     #   soundfile
     #   stanio
+    #   statsforecast
+    #   statsmodels
     #   tensorboard
     #   tensorboardx
     #   tensordict
@@ -1053,6 +1076,8 @@ numpy==2.5.4
     #   torchmetrics
     #   torchvision
     #   transformers
+    #   triad
+    #   utilsforecast
     #   webdataset
     #   xgboost
     #   zoopt
@@ -1170,6 +1195,7 @@ packaging==26.3
     #   deepspeed
     #   distributed
     #   evaluate
+    #   fugue
     #   google-cloud-bigquery
     #   gunicorn
     #   huggingface-hub
@@ -1197,11 +1223,14 @@ packaging==26.3
     #   pytorch-lightning
     #   semgrep
     #   skops
+    #   statsmodels
     #   taskiq
     #   tensorboard
     #   tensorboardx
     #   torchmetrics
     #   transformers
+    #   triad
+    #   utilsforecast
     #   virtualenv
     #   wandb
     #   wheel
@@ -1215,9 +1244,15 @@ pandas==3.1.1
     #   datasets
     #   delta-sharing
     #   evaluate
+    #   formulaic
+    #   fugue
     #   mlflow
     #   nevergrad
     #   prophet
+    #   statsforecast
+    #   statsmodels
+    #   triad
+    #   utilsforecast
 pandocfilters==1.5.1
     # via nbconvert
 parso==0.8.6
@@ -1230,6 +1265,8 @@ pathspec==1.0.4
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   black
+patsy==1.0.2
+    # via statsmodels
 peewee==3.19.0
     # via semgrep
 pettingzoo==1.24.3
@@ -1351,6 +1388,7 @@ pyarrow==26.0.1
     #   hudi
     #   mlflow
     #   pylance
+    #   triad
 pyarrow-hotfix==0.7
     # via hudi
 pyasn1==0.6.3
@@ -1682,6 +1720,7 @@ scipy==1.18.1
     #   -r python/requirements.txt
     #   bayesian-optimization
     #   directsearch
+    #   formulaic
     #   hyperopt
     #   jax
     #   jaxlib
@@ -1689,6 +1728,8 @@ scipy==1.18.1
     #   mlflow
     #   scikit-learn
     #   skops
+    #   statsforecast
+    #   statsmodels
     #   torch-geometric
     #   xgboost
 segment-analytics-python==2.2.0
@@ -1699,6 +1740,8 @@ semgrep==1.32.0
     # via -r python/requirements/lint-requirements.txt
 send2trash==2.1.0
     # via jupyter-server
+sentencepiece==0.2.3
+    # via -r python/requirements/ml/train-test-requirements.txt
 sentry-sdk==2.58.0
     # via
     #   comet-ml
@@ -1727,6 +1770,7 @@ six==1.17.0
     #   python-dateutil
     #   pyu2f
     #   rfc3339-validator
+    #   triad
 skops==0.14.0
     # via mlflow
 smart-open==6.2.0
@@ -1739,7 +1783,9 @@ smmap==5.0.3
 snowflake-connector-python==5.2.0
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
-    # via distributed
+    # via
+    #   distributed
+    #   hypothesis
 soundfile==0.13.1
     # via -r python/requirements/ml/data-test-requirements.txt
 soupsieve==2.8.3
@@ -1764,6 +1810,10 @@ starlette==1.0.1
     #   -r python/requirements.txt
     #   fastapi
     #   mlflow-skinny
+statsforecast==1.7.0
+    # via -r python/requirements/ml/tune-test-requirements.txt
+statsmodels==0.15.0
+    # via statsforecast
 sympy==1.14.0
     # via
     #   cfn-lint
@@ -1891,6 +1941,7 @@ tqdm==4.67.1
     #   optuna
     #   prophet
     #   pytorch-lightning
+    #   statsforecast
     #   torch-geometric
     #   transformers
 traitlets==5.14.3
@@ -1912,6 +1963,10 @@ transformers==5.19.0
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/ml/ml-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
+triad==1.0.4
+    # via
+    #   adagio
+    #   fugue
 trustme==0.9.0
     # via -r python/requirements/test-requirements.txt
 typer==0.24.1
@@ -1944,6 +1999,7 @@ typing-extensions==4.16.0
     #   cfn-lint
     #   etils
     #   fastapi
+    #   formulaic
     #   graphene
     #   grpcio
     #   gymnasium
@@ -2009,6 +2065,8 @@ urllib3==1.26.20
     #   semgrep
     #   sentry-sdk
     #   testcontainers
+utilsforecast==0.2.15
+    # via statsforecast
 uv==0.8.9
     # via -r python/requirements/test-requirements.txt
 uvicorn==0.53.0
@@ -2075,6 +2133,7 @@ wrapt==1.17.3
     #   aws-xray-sdk
     #   comet-ml
     #   deprecated
+    #   formulaic
     #   opentelemetry-instrumentation
     #   testcontainers
 wurlitzer==3.1.1
