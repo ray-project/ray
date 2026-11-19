@@ -148,12 +148,13 @@ def float_column_names(schema: pa.Schema) -> Set[str]:
 def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool:
     """Whether Parquet row-group pruning on ``predicate`` keeps every matching row.
 
-    Parquet min/max statistics skip NaN, so PyArrow can drop NaN rows when it
-    prunes on a float column. Only ``<``, ``<=``, ``>``, ``>=``, ``==`` and null
-    checks between a float column and a literal or column are safe.
+    Parquet min/max statistics skip NaN and do not tell -0.0 from 0.0, so PyArrow
+    can drop matching rows when it prunes on a float column. Only ``<``, ``<=``,
+    ``>``, ``>=``, ``==`` and null checks between a float column and a literal or
+    column are safe, plus ``is_in`` with no NaN or zero in its list.
 
-    TODO: Remove once PyArrow handles NaN in statistics (apache/arrow#50807,
-    apache/arrow#54915).
+    TODO: Remove once PyArrow fixes NaN (apache/arrow#50807) and signed zero
+    (apache/arrow#54915) in statistics.
     """
     if isinstance(predicate, BinaryExpr) and predicate.op in (
         Operation.AND,
@@ -169,6 +170,16 @@ def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool
             Operation.IS_NULL,
             Operation.IS_NOT_NULL,
         ) and isinstance(predicate.operand, ColumnExpr)
+    if (
+        isinstance(predicate, BinaryExpr)
+        and predicate.op == Operation.IN
+        and isinstance(predicate.left, ColumnExpr)
+        and isinstance(predicate.right, LiteralExpr)
+    ):
+        values = predicate.right.value
+        values = values if isinstance(values, list) else [values]
+        # ``value == value`` is false only for NaN; ``value != 0`` also rejects -0.0.
+        return all(value == value and value != 0 for value in values)
     return (
         isinstance(predicate, BinaryExpr)
         and predicate.op in _STATISTICS_SAFE_FLOAT_COMPARISONS
