@@ -47,7 +47,7 @@ prometheus_client>=0.7.1
 pandas>=2.2.3
 tensorboardX
 aiohttp>=3.14.4
-starlette>=1.0.1
+starlette>=1.3.1
 typer
 fsspec
 pydantic>=2.5.0,<3; python_version < '3.14'
