@@ -172,17 +172,24 @@ class NCCLHangEvaluator(Evaluator):
         # suspicion: it's logged once per suspicion, and fetched again on the
         # next warning if the fetch failed.
         self._ras_text_logged = False
-        # The communicators whose confirmed hang was diagnosed. The
-        # HealthManager drops a Diagnose returned while other on-demand checks
-        # run, so a confirmed hang is diagnosed on each report until it is.
+        # The communicators whose confirmed hang was diagnosed.
         self._diagnosed_comms: Set[str] = set()
+        # The Diagnose of a confirmed hang that hasn't run yet. The
+        # HealthManager drops a Diagnose returned while other on-demand checks
+        # run, so it's returned on every evaluation until it runs.
+        self._pending_diagnose: Optional[Diagnose] = None
         # The node whose report was evaluated last, and when that report was
         # taken, so each report is evaluated once.
         self._report_node: Optional[str] = None
         self._report_timestamp_s: Optional[float] = None
+        # When each node's latest report that didn't parse was taken, so that
+        # it's parsed once.
+        self._unparsed_timestamps_s: Dict[str, float] = {}
         # When the latest poll that no node answered was taken, so that it's
         # logged once.
         self._failed_poll_timestamp_s: Optional[float] = None
+        # Whether a fatal error that didn't disable detection was logged.
+        self._fatal_error_logged = False
         # Disabled for the rest of the run, such as after a missing binary.
         self._is_ras_degraded = False
 
@@ -192,6 +199,7 @@ class NCCLHangEvaluator(Evaluator):
         self.reset_hang_counters()
         self._report_node = None
         self._report_timestamp_s = None
+        self._unparsed_timestamps_s = {}
         self.record_detector_metrics()
 
     def on_shutdown(self) -> None:
@@ -203,6 +211,7 @@ class NCCLHangEvaluator(Evaluator):
         """Per-healthy-poll debounce reset `_prev_report` left for the next poll as comparison."""
         self.comm_deadlock_count = {}
         self._diagnosed_comms = set()
+        self._pending_diagnose = None
 
     def evaluate(self, state: HealthState) -> HealthDecision:
         if self._is_ras_degraded:
@@ -225,6 +234,8 @@ class NCCLHangEvaluator(Evaluator):
         )
         if result is None:
             # No new report since the last evaluation
+            if self._pending_diagnose is not None:
+                return self._pending_diagnose
             return Noop()
         if isinstance(result, Exception):
             logger.warning(
@@ -251,8 +262,9 @@ class NCCLHangEvaluator(Evaluator):
         self, results: Mapping[str, ProbeResult]
     ) -> Union[None, RASReport, Exception]:
         """Take the report to evaluate: the latest from the node evaluated
-        last, or else from the first node that answered. Every node sees the
-        whole RAS mesh, so one report per poll is enough.
+        last, or else from the first other node whose report parses, as the
+        callback tried the next worker. Every node sees the whole RAS mesh, so
+        one report per poll is enough.
 
         Args:
             results: ``NCCLRASProbe``'s latest result on each node.
@@ -269,15 +281,21 @@ class NCCLHangEvaluator(Evaluator):
         }
         if not answered:
             errors = [result.error for result in results.values()]
-            # Like the callback, which tried every worker, wait for every
-            # worker node: one that failed first can't stop the detector alone.
-            worker_nodes = {worker.metadata.node_id for worker in self._workers()}
-            if (
-                errors
-                and worker_nodes <= results.keys()
-                and all(getattr(error, "fatal", False) for error in errors)
-            ):
-                return errors[0]
+            if errors and all(getattr(error, "fatal", False) for error in errors):
+                # Like the callback, which tried every worker, wait for every
+                # worker node: one that failed first can't stop the detector
+                # alone. A node whose NodeMonitor failed never reports, so
+                # warn meanwhile.
+                worker_nodes = {worker.metadata.node_id for worker in self._workers()}
+                if worker_nodes <= results.keys():
+                    return errors[0]
+                if not self._fatal_error_logged:
+                    self._fatal_error_logged = True
+                    logger.warning(
+                        "The Ray Train NCCL hang detector can't detect hangs "
+                        "while `ncclras` fails on every node that answered (%s).",
+                        errors[0],
+                    )
             # Until NCCL creates its first communicator there is no RAS
             # service to answer, so failed polls before the first report are
             # expected, and only logged at DEBUG.
@@ -293,12 +311,23 @@ class NCCLHangEvaluator(Evaluator):
                 )
             return None
 
-        node = self._report_node if self._report_node in answered else min(answered)
-        result = answered[node]
-        if node == self._report_node and result.timestamp_s == self._report_timestamp_s:
-            return None
-        self._report_node, self._report_timestamp_s = node, result.timestamp_s
-        return parse_ras_schema(result.detail)
+        # The node evaluated last first, then the others in order.
+        for node in sorted(answered, key=lambda n: (n != self._report_node, n)):
+            result = answered[node]
+            if (
+                node == self._report_node
+                and result.timestamp_s == self._report_timestamp_s
+            ):
+                return None
+            if self._unparsed_timestamps_s.get(node) == result.timestamp_s:
+                continue
+            report = parse_ras_schema(result.detail)
+            if report is None:
+                self._unparsed_timestamps_s[node] = result.timestamp_s
+                continue
+            self._report_node, self._report_timestamp_s = node, result.timestamp_s
+            return report
+        return None
 
     def evaluate_comm_mismatch(self, report: RASReport) -> HealthDecision:
         """Advance the per-communicator frozen streaks and act on them.
@@ -332,6 +361,7 @@ class NCCLHangEvaluator(Evaluator):
         self.log_recovered_comms(frozen_counts)
         self.comm_deadlock_count = frozen_counts
         self._diagnosed_comms &= set(frozen_counts)
+        self._pending_diagnose = None
         # Recorded before acting, as a confirmed hang can reattempt the run.
         self.record_detector_metrics()
 
@@ -443,9 +473,9 @@ class NCCLHangEvaluator(Evaluator):
             message,
             list(self.ras_history),
             self._action,
-            on_done=lambda: self._diagnosed_comms.update(confirmed_comm_hangs),
+            on_done=lambda: self._on_diagnosed(confirmed_comm_hangs),
         )
-        return Diagnose(
+        self._pending_diagnose = Diagnose(
             reason=(
                 f"NCCL hang confirmed in {len(confirmed_comm_hangs)} "
                 "communicator(s); capturing its diagnostics."
@@ -457,6 +487,28 @@ class NCCLHangEvaluator(Evaluator):
                 )
             ],
         )
+        return self._pending_diagnose
+
+    def _on_diagnosed(self, comm_ids: List[str]) -> bool:
+        """Called once a confirmed hang's diagnostics are back. Marks its
+        communicators that are still hung as diagnosed, so that their hang
+        isn't diagnosed again. One that made progress since can be confirmed
+        again.
+
+        Args:
+            comm_ids: The communicators whose hang was confirmed.
+
+        Returns:
+            Whether any of them is still hung.
+        """
+        self._pending_diagnose = None
+        still_hung = [
+            comm_id
+            for comm_id in comm_ids
+            if self.comm_deadlock_count.get(comm_id, 0) >= self._confirm_poll_counts
+        ]
+        self._diagnosed_comms.update(still_hung)
+        return bool(still_hung)
 
     def handle_suspected_hangs(self, report: RASReport) -> HealthDecision:
         # A communicator first warns at the suspicion threshold, then every
@@ -639,7 +691,9 @@ class SuspectedHangEvaluator(Evaluator):
 class ConfirmedHangEvaluator(Evaluator):
     """Evaluates the ``Diagnose`` of a confirmed hang: uploads the results of
     its four probes to ``<experiment_fs_path>/hang_detector/<tool>/``, then
-    reattempts the run (``fail``) or only logs the hang (``observe``).
+    reattempts the run (``fail``) or only logs the hang (``observe``). If
+    every one of its communicators made progress since, it still uploads
+    them, but only logs that.
 
     Every rank (``nvidia-smi``: every node) gets a file, holding its
     diagnostic, or why there is none.
@@ -651,7 +705,8 @@ class ConfirmedHangEvaluator(Evaluator):
         message: What the detector saw.
         ras_history: The latest RAS reports.
         action: ``"fail"`` or ``"observe"``.
-        on_done: Called once the diagnostics are evaluated.
+        on_done: Called once the diagnostics are back. Returns whether any of
+            the communicators is still hung.
     """
 
     def __init__(
@@ -661,7 +716,7 @@ class ConfirmedHangEvaluator(Evaluator):
         message: str,
         ras_history: List[RASReport],
         action: str,
-        on_done: Callable[[], None],
+        on_done: Callable[[], bool],
     ):
         self._storage_context = storage_context
         self._node_ips = node_ips
@@ -671,7 +726,7 @@ class ConfirmedHangEvaluator(Evaluator):
         self._on_done = on_done
 
     def evaluate(self, state: HealthState) -> HealthDecision:
-        self._on_done()
+        still_hung = self._on_done()
         results = state.probe_results
         flight_recorder_dir = self.upload_flight_recorder(
             results.get(FlightRecorderProbe.probe_name(), {})
@@ -713,6 +768,13 @@ class ConfirmedHangEvaluator(Evaluator):
         if debug_steps:
             message += "To debug:\n" + "".join(f"  - {step}\n" for step in debug_steps)
 
+        if not still_hung:
+            logger.warning(
+                "%sThe communicator(s) resumed making progress while these "
+                "diagnostics were captured.",
+                message,
+            )
+            return Noop()
         if self._action == NCCL_RAS_ACTION_FAIL:
             return Reattempt(reason=message)
         logger.warning(message)

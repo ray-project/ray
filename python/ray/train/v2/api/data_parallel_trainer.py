@@ -24,6 +24,7 @@ from ray.train.base_trainer import (
 )
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.health.nccl_ras.check import nccl_hang_config
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -42,6 +43,7 @@ from ray.train.v2._internal.callbacks.state_manager import StateManagerCallback
 from ray.train.v2._internal.callbacks.user_callback import UserCallbackHandler
 from ray.train.v2._internal.constants import (
     DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE,
+    ENABLE_NCCL_HANG_DETECTOR_ENV_VAR,
     METRICS_ENABLED_ENV_VAR,
     V2_ENABLED_ENV_VAR,
     get_env_vars_to_propagate,
@@ -166,6 +168,11 @@ class DataParallelTrainer:
                 This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
                 training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
+        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
+            # The controller runs the NCCL hang detector. Its env vars are
+            # read here too, so that an invalid one raises a ValueError.
+            nccl_hang_config()
+
         train_fn_ref = ObjectRefWrapper(self._get_train_func())
 
         result = self._initialize_and_run_controller(

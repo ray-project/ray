@@ -599,5 +599,22 @@ def test_the_nccl_hang_detector_names_only_the_hung_communicator(
     assert _HEALTHY_COMM["hash"] not in message
 
 
+def test_an_invalid_nccl_hang_detector_env_var_raises_a_value_error(
+    monkeypatch, tmp_path
+):
+    """fit() validates the detector's env vars on the driver, before the
+    controller starts, rather than failing the controller."""
+    monkeypatch.setenv(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, "1")
+    monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, "raise")
+    trainer = DataParallelTrainer(
+        lambda: None,
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+        run_config=ray.train.RunConfig(storage_path=str(tmp_path / "storage")),
+    )
+    with pytest.raises(ValueError, match=NCCL_RAS_ACTION_ENV_VAR):
+        trainer.fit()
+    assert not ray.is_initialized()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-x", __file__]))

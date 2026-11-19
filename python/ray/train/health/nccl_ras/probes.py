@@ -24,6 +24,11 @@ class NCCLRASProbe(NodeProbe):
     in ``detail``. Every node sees the whole RAS mesh. After a fatal error,
     such as a missing binary, it returns that error without querying again."""
 
+    # TODO: Every worker node runs this query on each poll, and the controller
+    # receives every node's report on each tick, but the evaluator uses only
+    # one. The callback queried one worker per poll. Let a probe run on a
+    # single node, and have NodeMonitor return a result only when it changed.
+    # NCCLRASTextProbe has the same cost.
     fmt = "json"
     # Over ncclras's own default -t of 5.
     timeout_s = 8.0

@@ -269,6 +269,12 @@ class TrainController:
             The checks.
         """
         # TODO: The NCCL hang detector is experimental. Off by default for now.
+        # TODO: Let users add the NCCL hang detector through
+        #  `RunConfig(health_config=...)`, configured by arguments instead of
+        #  env vars. Users can't build the check itself, as it needs the
+        #  controller's run context and worker group, so they'd pass a spec of
+        #  it that the controller builds here. Skip the env var's check when
+        #  `health_config` already has one, so the detector doesn't run twice.
         if not ray_constants.env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
             return []
         return [nccl_hang_check(self._train_run_context, self.get_worker_group)]
@@ -820,6 +826,10 @@ class TrainController:
             logger.warning(
                 "Restarting the worker group to diagnose: %s", decision.reason
             )
+            # TODO: Carry only the checks that require idle workers. The others
+            # diagnose this attempt, so running them on the next one captures
+            # the new workers instead, such as the NCCL hang detector's
+            # diagnostics of a confirmed hang merged into this Diagnose.
             self._health_callback.run_at_next_start(decision.checks)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),

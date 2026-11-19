@@ -753,6 +753,8 @@ def create_two_op_report(allgather):
 
 # A frozen, mismatched communicator: confirmed after the baseline + 2 polls.
 _FROZEN = create_single_comm_report({1: 5, 2: 4})
+# The same communicator after both ranks launched one more AllReduce.
+_RESUMED = create_single_comm_report({1: 6, 2: 5})
 
 # Each case is the expected number of confirm counts and simulated NCCL RAS polls.
 # The first poll of every case is a baseline: there is nothing to diff it against.
@@ -1006,18 +1008,60 @@ def test_confirmed_hang_is_diagnosed_once(monkeypatch, uploads):
 
 def test_a_dropped_diagnosis_is_returned_again(monkeypatch, uploads):
     # The HealthManager drops a Diagnose returned while other on-demand checks
-    # run, so the evaluator returns it again until it runs.
+    # run, so the evaluator returns it on every evaluation until it runs, and
+    # not only on the ones with a new report.
     detector = make_detector(monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2)
     detector.tick(_FROZEN)
     detector.tick(_FROZEN)
 
     detector.run = lambda decision: decision  # the manager drops the Diagnose
     assert isinstance(detector.tick(_FROZEN), Diagnose)
+    assert isinstance(detector.tick_without_a_new_report(), Diagnose)
     assert isinstance(detector.tick(_FROZEN), Diagnose)
     del detector.run
 
-    assert isinstance(detector.tick(_FROZEN), Reattempt)
+    assert isinstance(detector.tick_without_a_new_report(), Reattempt)
+    assert isinstance(detector.tick_without_a_new_report(), Noop)
     assert uploaded_tools(uploads) == _ALL_DIAGNOSTICS
+
+
+def test_a_dropped_diagnosis_is_not_returned_once_the_hang_resumes(monkeypatch):
+    detector = make_detector(monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=2)
+    detector.tick(_FROZEN)
+    detector.tick(_FROZEN)
+
+    detector.run = lambda decision: decision  # the manager drops the Diagnose
+    assert isinstance(detector.tick(_FROZEN), Diagnose)
+    assert isinstance(detector.tick(_RESUMED), Noop)
+    assert isinstance(detector.tick_without_a_new_report(), Noop)
+
+
+@pytest.mark.parametrize("action", [NCCL_RAS_ACTION_FAIL, NCCL_RAS_ACTION_OBSERVE])
+def test_a_hang_that_resumes_while_diagnosed_can_be_confirmed_again(
+    monkeypatch, caplog, propagate_logs, uploads, action
+):
+    # Training goes on while the diagnostics are captured. A communicator that
+    # resumed meanwhile doesn't reattempt the run, and its next hang is
+    # confirmed again.
+    detector = make_detector(monkeypatch, action, confirm_count=2)
+    detector.tick(_FROZEN)
+    detector.tick(_FROZEN)
+    detector.run = lambda decision: decision  # the diagnostics are still running
+    diagnose = detector.tick(_FROZEN)
+    assert isinstance(diagnose, Diagnose)
+    detector.tick(_RESUMED)
+    del detector.run
+
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        assert isinstance(detector.run(diagnose), Noop)
+    assert "resumed making progress while these diagnostics" in caplog.text
+    assert uploaded_tools(uploads) == _ALL_DIAGNOSTICS
+
+    detector.tick(_RESUMED)  # frozen -> 1/2
+    decision = detector.tick(_RESUMED)  # frozen -> 2/2
+    expected = Reattempt if action == NCCL_RAS_ACTION_FAIL else Noop
+    assert isinstance(decision, expected)
+    assert uploaded_tools(uploads) == _ALL_DIAGNOSTICS * 2
 
 
 def test_a_failed_upload_is_logged(monkeypatch, caplog, propagate_logs):
@@ -1059,6 +1103,38 @@ def test_each_report_is_evaluated_once(monkeypatch):
     # node-a fails, so node-b takes over.
     failed = ProbeResult(error=RASQueryError("exit_1"), timestamp_s=2)
     evaluator.evaluate(_state(**{"node-a": failed, "node-b": b2}))
+    assert len(evaluator.ras_history) == 2
+    assert evaluator.comm_deadlock_count == {_COMM_A: 1}
+
+
+def test_a_report_that_does_not_parse_is_skipped(monkeypatch):
+    # Like the callback, which raised `unparseable_json` and tried the next
+    # worker: the next node's report is evaluated, and that node is kept.
+    # A report that doesn't parse is parsed once.
+    detector = make_detector(monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5)
+    evaluator = detector.evaluator
+    parsed = []
+    monkeypatch.setattr(
+        nccl_ras,
+        "parse_ras_schema",
+        lambda detail: parsed.append(detail) or parse_ras_schema(detail),
+    )
+    garbage = ProbeResult(detail="not a report", timestamp_s=1)
+
+    for _ in range(2):
+        evaluator.evaluate(_state(**{"node-a": garbage}))
+    assert parsed == ["not a report"]
+    assert evaluator.prev_report is None
+
+    b1 = ProbeResult(detail=to_ras_json(_FROZEN), timestamp_s=1.5)
+    evaluator.evaluate(_state(**{"node-a": garbage, "node-b": b1}))
+    assert len(evaluator.ras_history) == 1
+    # node-a parses again, but node-b is kept: nothing new.
+    a2 = ProbeResult(detail=to_ras_json(_FROZEN), timestamp_s=2)
+    evaluator.evaluate(_state(**{"node-a": a2, "node-b": b1}))
+    assert len(evaluator.ras_history) == 1
+    b2 = ProbeResult(detail=to_ras_json(_FROZEN), timestamp_s=2.5)
+    evaluator.evaluate(_state(**{"node-a": a2, "node-b": b2}))
     assert len(evaluator.ras_history) == 2
     assert evaluator.comm_deadlock_count == {_COMM_A: 1}
 
@@ -1114,10 +1190,12 @@ def test_a_fatal_error_on_one_node_does_not_disable_detection(monkeypatch):
 
 
 def test_a_fatal_error_disables_detection_once_every_worker_node_has_it(
-    monkeypatch,
+    monkeypatch, caplog, propagate_logs
 ):
     # Like the callback, which tried every worker: a node that reports a fatal
-    # error first, before the others report, doesn't disable detection.
+    # error first, before the others report, doesn't disable detection. A node
+    # whose NodeMonitor failed never reports, so the error is logged once
+    # meanwhile.
     workers = [
         make_train_worker(0, "10.0.0.1", 100, node_id="node-a"),
         make_train_worker(1, "10.0.0.2", 100, node_id="node-b"),
@@ -1127,8 +1205,11 @@ def test_a_fatal_error_disables_detection_once_every_worker_node_has_it(
     )
     fatal = ProbeResult(error=RASQueryError("binary_not_found", fatal=True))
 
-    detector.evaluator.evaluate(_state(**{"node-a": fatal}))
+    with caplog.at_level(logging.WARNING, logger=nccl_ras.logger.name):
+        for _ in range(2):
+            detector.evaluator.evaluate(_state(**{"node-a": fatal}))
     assert detector.evaluator._is_ras_degraded is False
+    assert caplog.text.count("can't detect hangs while `ncclras` fails") == 1
 
     detector.evaluator.evaluate(_state(**{"node-a": fatal, "node-b": fatal}))
     assert detector.evaluator._is_ras_degraded is True
@@ -1392,7 +1473,7 @@ def make_diagnostics(monkeypatch, workers=None, ras_history=()):
         "hang",
         list(ras_history),
         NCCL_RAS_ACTION_FAIL,
-        lambda: None,
+        lambda: True,
     )
 
 

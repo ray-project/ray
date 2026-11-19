@@ -63,7 +63,7 @@ The detector only has value if it confirms a hang before the PyTorch watchdog ab
 
 ## Configure the detector
 
-Set the variables on the driver before you construct the trainer. Ray Train propagates them to its controller, which reads and validates them when the run starts. An invalid value fails `trainer.fit()` before training starts, with an error that names the variable.
+Set the variables on the driver before you construct the trainer. Ray Train propagates them to its controller, which reads them when the run starts. `trainer.fit()` validates them first, and raises a `ValueError` that names an invalid one.
 
 ```{list-table} NCCL hang detector environment variables
 :header-rows: 1
@@ -97,11 +97,11 @@ The time from the first frozen poll to a confirmed hang is at least the confirm 
 
 The detector escalates in three stages, all logged on the Ray Train controller:
 
-1. **Suspected.** When a communicator has been frozen for about 60 seconds, the detector logs a `WARNING` naming the communicator and, in `fail` mode, how long until it reattempts the run. It keeps monitoring, because a transient stall looks the same at this point.
-1. **Still suspected.** About every 120 seconds, it logs a `WARNING` listing every still-frozen communicator and how long each one has stalled, followed by the human-readable `ncclras` report at `INFO` level. The report lists every rank, its status, and its collective counts per communicator, so you can see which ranks fell behind.
-1. **Confirmed.** When a communicator stays frozen for the full confirm duration, the detector logs the `ncclras` report, captures the diagnostics described in the next section, and then either logs a summary in `observe` mode or reattempts the run in `fail` mode. The summary lists where each diagnostic was uploaded.
+1. **Suspected.** When a communicator has been frozen for about 60 seconds, the detector logs a `WARNING` naming the communicator and, in `fail` mode, how long until it reattempts the run. It keeps monitoring, because a transient stall looks the same at this point. Once per suspected hang, it also logs the human-readable `ncclras` report at `INFO` level. The report lists every rank, its status, and its collective counts per communicator, so you can see which ranks fell behind.
+1. **Still suspected.** About every 120 seconds, it logs a `WARNING` listing every still-frozen communicator and how long each one has stalled.
+1. **Confirmed.** When a communicator stays frozen for the full confirm duration, the detector captures the diagnostics described in the next section, including the `ncclras` report, and then either logs a summary in `observe` mode or reattempts the run in `fail` mode. The summary lists where each diagnostic was uploaded.
 
-If a suspected communicator resumes progress at any stage, the detector logs that it recovered and resets its streak.
+If a suspected communicator resumes progress at any stage, the detector logs that it recovered and resets its streak. If it resumes while the diagnostics of its confirmed hang are captured, the detector still uploads them, but doesn't reattempt the run.
 
 (train-nccl-hang-diagnostics)=
 
