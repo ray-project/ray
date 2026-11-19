@@ -1632,6 +1632,7 @@ void TaskManager::FailPendingTaskInternal(
   std::optional<rpc::ReturnObject> serialized_task_error;
   size_t num_streaming_returns_to_keep = 0;
   if (execution_error_reply != nullptr) {
+    RAY_CHECK(!execution_error_reply->return_objects().empty());
     serialized_task_error = execution_error_reply->return_objects(0);
     num_streaming_returns_to_keep =
         execution_error_reply->streaming_generator_return_ids_size();

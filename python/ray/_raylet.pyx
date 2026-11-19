@@ -1311,6 +1311,9 @@ cdef report_streaming_generator_output(
             &return_objs,
             context.application_error)
         output_error_reported = True
+        assert return_objs.back().second.get().GetData().get() != NULL, (
+            "Serialized generator errors must contain data."
+        )
         context.completion_error = make_shared[CRayObject](
             dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
                 make_shared[LocalMemoryBuffer](
@@ -1398,6 +1401,9 @@ cdef report_streaming_generator_exception(
     # Carry an owned, inlined copy in the completion reply. A streamed exception
     # may be in plasma, and the owner needs its serialized cause to fail missing
     # objects from a replay without depending on another object fetch.
+    assert return_objs[0].second.get().GetData().get() != NULL, (
+        "Serialized generator errors must contain data."
+    )
     context.completion_error = make_shared[CRayObject](
         dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
             make_shared[LocalMemoryBuffer](
