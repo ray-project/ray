@@ -200,6 +200,43 @@ def test_escape_hatch_sees_consumption_queued_this_step(monkeypatch):
     assert calls == ["drain", "hatch"]
 
 
+def test_bottleneck_observer_samples_after_tasks_launch(monkeypatch):
+    """The observer reads slots at one instant. Sampled before the launch,
+    every slot a task freed this step looks idle though the launch refills
+    it, which made producers look self-limited. It samples after."""
+    from ray.data._internal.experimental.execution import (
+        streaming_executor as executor_mod,
+    )
+
+    calls: List[str] = []
+    monkeypatch.setattr(
+        executor_mod,
+        "process_completed_tasks",
+        lambda **kwargs: calls.append("complete") or 0,
+    )
+    executor = ExperimentalStreamingExecutor.__new__(ExperimentalStreamingExecutor)
+    executor._resource_reporter = MagicMock()
+    executor._resource_bank = MagicMock()
+    executor._actor_only_metrics = MagicMock()
+    executor._cluster_autoscaler = MagicMock()
+    executor._metadata_fetcher = MagicMock()
+    executor._lineage_tracker = None
+    executor._max_errored_blocks = 0
+    executor._num_errored_blocks = 0
+    sizer = MagicMock()
+    sizer.perform_sizing_decision.side_effect = lambda **kwargs: calls.append("size")
+    sizer.observe_after_launch.side_effect = lambda: calls.append("observe")
+    executor._sizer = sizer
+    executor._maybe_run_escape_hatch = lambda: None
+    executor._launch_tasks = lambda: calls.append("launch")
+    executor._report_current_usage = lambda: None
+    executor._finalize_scheduling_loop_step = lambda topology: True
+
+    executor._scheduling_loop_step({})
+
+    assert calls == ["complete", "size", "launch", "observe"]
+
+
 class _DrainingOp:
     """An actor-pool op whose draining actors finish one per
     ``process_draining_actors`` call."""

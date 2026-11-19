@@ -281,9 +281,22 @@ class OperatorSizer:
         self._awaiting_on_start -= started
 
     def _observe(self) -> None:
-        """Sample the signals the optimizer decides on, and the bottleneck
-        observer's (which decides nothing yet)."""
+        """Sample the signals the optimizer decides on."""
         self._optimizer.observe(self._profiles.actor_pool_ops)
+
+    def observe_after_launch(self) -> None:
+        """Sample the bottleneck observer's slot shares. Called by the
+        scheduling loop once per step after it launches tasks, not with the
+        other signals at the start of ``perform_sizing_decision``.
+
+        The observer reads each op's slots at one instant. Before the launch,
+        every slot a task freed this step is still empty, though the launch
+        refills it moments later: a consumer looks like it has an idle slot,
+        and its producer's output-blocked time counts as self-limited instead
+        of blocked by the consumer. Consumers whose tasks finish every few
+        seconds would almost always look that way. After the launch, a slot
+        is empty only if the consumer had no work for it.
+        """
         self._bottleneck_observer.observe(self._topology)
 
     def _cross_op_optimize(
