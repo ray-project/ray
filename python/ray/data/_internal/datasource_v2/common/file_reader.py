@@ -71,6 +71,9 @@ class FileReader(Reader[FileManifest]):
     prune row groups while ORC filters are applied after reading.
     """
 
+    # Readers stored in older dataset lineages lack this instance attribute.
+    _max_fragment_workers: Optional[int] = None
+
     def __init__(
         self,
         format: FileFormat,
@@ -83,6 +86,7 @@ class FileReader(Reader[FileManifest]):
         ignore_prefixes: Optional[List[str]] = None,
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
+        max_fragment_workers: Optional[int] = None,
     ):
         """Initialize the reader.
         Refer to https://arrow.apache.org/docs/python/generated/pyarrow.dataset.dataset.html for more details.
@@ -110,8 +114,13 @@ class FileReader(Reader[FileManifest]):
                 is all-null doesn't pin the type to ``null``) and to cast
                 path-derived partition values to their target types when
                 ``Partitioning(field_types=...)`` is set.
+            max_fragment_workers: Maximum concurrent Python fragment scans per
+                read task. None allows one worker per fragment.
 
         """
+        if max_fragment_workers is not None and max_fragment_workers < 1:
+            raise ValueError("max_fragment_workers must be positive")
+        self._max_fragment_workers = max_fragment_workers
         self._format = format
         self._columns = columns
         self._predicate = predicate
@@ -482,9 +491,8 @@ class FileReader(Reader[FileManifest]):
         When there is more than one fragment and
         ``execution_options.preserve_order`` is False, fragments are
         read concurrently via :func:`make_async_gen`. We still pass
-        ``preserve_ordering=True`` so concurrent reads emit blocks in
-        fragment order; otherwise Ray Data task retries (block
-        reconstruction) could produce a different block sequence.
+        ``preserve_ordering=True`` so the same worker count yields a
+        deterministic sequence of batches on Ray Data task retries.
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
@@ -506,14 +514,14 @@ class FileReader(Reader[FileManifest]):
             return
 
         num_workers = len(fragments_with_offsets)
+        if self._max_fragment_workers is not None:
+            num_workers = min(num_workers, self._max_fragment_workers)
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs
             )
             return
 
-        # Set `preserve_ordering=True` to ensure deterministic output ordering.
-        # This is required so that Ray Data task retries (block reconstruction)
         yield from make_async_gen(
             base_iterator=iter(fragments_with_offsets),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),

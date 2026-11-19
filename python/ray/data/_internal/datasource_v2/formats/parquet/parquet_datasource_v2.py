@@ -393,11 +393,37 @@ class ParquetDatasourceV2(FileDataSourceV2):
         filesystem: Optional["FileSystem"] = None,
         **options: Any,
     ) -> ParquetScanner:
+        """Create a Parquet scanner with its fragment worker limit fixed.
+
+        Args:
+            schema: Schema for the data to read.
+            filesystem: Filesystem to use for reading. Defaults to the
+                datasource's filesystem.
+            **options: Optional partitioning and file ignore prefixes.
+
+        Returns:
+            Scanner with the resolved schema, partitioning, and worker limit.
+
+        Raises:
+            ValueError: If the configured fragment worker limit is not a
+                positive integer.
+        """
         # Callers (``_read_datasource_v2``) supply the sample-resolved
         # ``Partitioning`` via ``options["partitioning"]`` so the
         # datasource itself stays immutable — fall back to the
         # constructor-provided one for direct users of this API.
         partitioning = options.get("partitioning", self._partitioning)
+
+        ctx = DataContext.get_current()
+        max_fragment_workers = ctx.parquet_max_fragment_workers
+        if max_fragment_workers is not None and (
+            type(max_fragment_workers) is not int or max_fragment_workers < 1
+        ):
+            raise ValueError(
+                "DataContext.parquet_max_fragment_workers must be a positive "
+                f"integer, got {max_fragment_workers!r}"
+            )
+
         return ParquetScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,
@@ -405,8 +431,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
             synthesized_columns=self._synthesized_columns,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),
-            target_block_size=DataContext.get_current().target_max_block_size,
+            target_block_size=ctx.target_max_block_size,
             parquet_format_kwargs=dict(self._parquet_format_kwargs),
+            # Retries must use the same worker count to replay the batch order.
+            max_fragment_workers=max_fragment_workers,
         )
 
 

@@ -546,6 +546,7 @@ class _HiveParquetScanner(ParquetScanner):
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
             parquet_format_kwargs=dict(self.parquet_format_kwargs),
+            max_fragment_workers=self.max_fragment_workers,
         )
 
 

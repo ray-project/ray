@@ -1774,6 +1774,10 @@ def read_parquet(
         `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
         pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
+    To limit the number of fragment scan workers per Parquet V2 read task, set
+    ``DataContext.get_current().parquet_max_fragment_workers`` to a positive integer
+    before creating the dataset.
+
     Args:
         paths: A single file path, directory, a list of file paths, or a table name
             (when used with ``catalog``). Multiple directories/tables are not supported.

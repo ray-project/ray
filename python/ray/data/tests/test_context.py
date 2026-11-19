@@ -1,6 +1,9 @@
+import os
+
 import pytest
 
 import ray
+from ray._common.test_utils import run_string_as_driver
 from ray.data.context import (
     ShuffleStrategy,
     _deduce_default_enable_disk_shuffle,
@@ -60,6 +63,20 @@ def test_data_context_current_context_manager():
             raise ValueError("boom")
 
     assert DataContext.get_current() is original
+
+
+@pytest.mark.parametrize("cap,expected", [("4", 4), ("16x", None)])
+def test_parquet_fragment_worker_cap_environment_default(cap, expected):
+    run_string_as_driver(
+        f"""
+from ray.data import DataContext
+
+assert DataContext().parquet_max_fragment_workers == {expected!r}
+assert DataContext(parquet_max_fragment_workers=2).parquet_max_fragment_workers == 2
+assert DataContext(parquet_max_fragment_workers=None).parquet_max_fragment_workers is None
+""",
+        env={**os.environ, "RAY_DATA_PARQUET_MAX_FRAGMENT_WORKERS": cap},
+    )
 
 
 def test_hash_shuffle_v2_strategy_alias():
