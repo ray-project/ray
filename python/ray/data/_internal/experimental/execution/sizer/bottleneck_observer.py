@@ -191,8 +191,9 @@ class Assessment(Generic[K]):
     # Stable bottlenecks (see the module docstring), most severe first, with
     # their severity this tick.
     stable: Tuple[Tuple[K, float], ...]
-    # Per bottleneck or stable bottleneck: "yes: free" / "yes: victims" /
-    # "no: <reason>".
+    # Per bottleneck or stable bottleneck: "yes: free" / "yes: victims (...)"
+    # (the node victims would free most easily, and what they must free
+    # there) / "no: <reason>".
     eligibility: Mapping[K, str]
     # The most severe stable bottleneck able to grow, whose victims are listed.
     recipient: Optional[K]
@@ -1052,17 +1053,26 @@ class BottleneckObserver:
         if any(max_placeable_actors(free_by_node[n], per_actor) >= 1 for n in nodes):
             return "yes: free"
         best: Optional[Dict[str, float]] = None
+        # Among nodes victims could make room on: the one needing the fewest
+        # resource kinds freed, then the least of them.
+        fit: Optional[Tuple[Tuple[int, float], NodeIdStr, Dict[str, float]]] = None
         for node in nodes:
             room = free_by_node[node].add(freeable.get(node, ExecutionResources.zero()))
             if max_placeable_actors(room, per_actor) >= 1:
-                return "yes: victims"
-            short = {
-                dim: getattr(per_actor, dim) - getattr(room, dim)
-                for dim in PLACEMENT_RESOURCE_DIMS
-                if getattr(per_actor, dim) > getattr(room, dim) + FIT_EPS
-            }
+                to_free = _shortfall(per_actor, free_by_node[node])
+                rank = (len(to_free), sum(to_free.values()))
+                if fit is None or rank < fit[0]:
+                    fit = (rank, node, to_free)
+                continue
+            short = _shortfall(per_actor, room)
             if best is None or len(short) < len(best):
                 best = short
+        if fit is not None:
+            _, node, to_free = fit
+            return (
+                f"yes: victims (on {node[:8]}: free "
+                f"{_format_resources(to_free)} more)"
+            )
         return f"no: short {_format_resources(best or {})} after all victims"
 
     @staticmethod
@@ -1217,6 +1227,15 @@ def _minus_held(
             else free
         )
         for node, free in free_by_node.items()
+    }
+
+
+def _shortfall(needs: ExecutionResources, has: ExecutionResources) -> Dict[str, float]:
+    """Per placement dimension, how much ``needs`` exceeds ``has``."""
+    return {
+        dim: getattr(needs, dim) - getattr(has, dim)
+        for dim in PLACEMENT_RESOURCE_DIMS
+        if getattr(needs, dim) > getattr(has, dim) + FIT_EPS
     }
 
 

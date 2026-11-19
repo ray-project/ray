@@ -614,8 +614,14 @@ _NEEDS = ExecutionResources(cpu=1, memory=2.4 * GiB)
     [
         (3, {"n1"}, None, "yes: free"),
         # The same room, held for an open transfer's recipient, is not free.
-        (3, {"n1"}, ExecutionResources(cpu=1, memory=3 * GiB), "yes: victims"),
-        (0.5, {"n1"}, None, "yes: victims"),
+        (
+            3,
+            {"n1"},
+            ExecutionResources(cpu=1, memory=3 * GiB),
+            "yes: victims (on n1: free {cpu=1, memory=2.4GiB} more)",
+        ),
+        # Victims on n1 need only free the memory the actor lacks there.
+        (0.5, {"n1"}, None, "yes: victims (on n1: free {memory=1.9GiB} more)"),
         (0.5, {"n3"}, None, "no: short {cpu=1, memory=2.4GiB} after all victims"),
     ],
     ids=["free-room", "free-room-held", "victims-on-its-node", "no-actors-on-its-node"],
