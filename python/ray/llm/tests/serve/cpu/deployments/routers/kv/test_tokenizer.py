@@ -2,7 +2,7 @@ import copy
 import json
 import sys
 from typing import Any, Dict
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -16,6 +16,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
+from ray.llm._internal.serve.routing_policies.kv_aware import metrics
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
@@ -276,15 +277,18 @@ class TestRoute:
         request.headers = Headers(
             {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
         )
-        response = await router.route(request)
+        with patch.object(metrics, "_tokenization_bypass_counter") as counter:
+            response = await router.route(request)
 
         router._push_prompt_tokens.assert_called_once()
         if pushed_token_key:
             assert response[RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD] == {
                 KV_TOKEN_KEY_HEADER: pushed_token_key
             }
+            counter.assert_not_called()
         else:
             assert RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD not in response
+            counter().inc.assert_called_once_with(tags={"outcome": "send_failed"})
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
