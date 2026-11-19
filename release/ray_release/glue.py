@@ -296,6 +296,17 @@ def _running_test_script(
     command = test["run"]["script"]
     command_env = test.get_byod_runtime_env()
 
+    # Forward Ray Data config flags set at the build level (the Buildkite "New
+    # Build" environment variables) to the test cluster, so any selected suite
+    # can run under a backend configuration (e.g. RAY_DATA_ACTOR_ONLY_BACKEND)
+    # without per-test variants. Every team gets them: the flags are inert for
+    # tests that never touch Ray Data. Only the RAY_DATA_ prefix is forwarded
+    # (the runner environment also carries CI infra vars and secrets), and
+    # ``setdefault`` lets a test that pins its own value in runtime_env win.
+    for key, value in os.environ.items():
+        if key.startswith("RAY_DATA_"):
+            command_env.setdefault(key, value)
+
     if smoke_test:
         command = f"{command} --smoke-test"
         command_env["IS_SMOKE_TEST"] = "1"
