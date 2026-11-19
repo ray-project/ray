@@ -14,6 +14,7 @@ carries them to the reader in a manifest column (``PARTITION_VALUES_COLUMN``).
 
 from __future__ import annotations
 
+import inspect
 import logging
 import posixpath
 import urllib.parse
@@ -28,6 +29,7 @@ from typing import (
     Mapping,
     Optional,
     Sequence,
+    Set,
 )
 
 import pyarrow as pa
@@ -94,11 +96,14 @@ class DeltaTableSnapshot:
         table_uri: The table URI, as ``DeltaTable.table_uri`` reports it.
         version: The table version to read.
         storage_options: ``deltalake`` storage options, for credentials.
+        partition_filters: ``read_delta``'s ``partition_filters``, already
+            checked: only the data files they select are read.
     """
 
     table_uri: str
     version: int
     storage_options: Optional[Dict[str, Any]] = None
+    partition_filters: Optional[List[Any]] = None
 
     def open(self) -> "DeltaTable":
         """Open the table at the pinned version."""
@@ -111,10 +116,72 @@ class DeltaTableSnapshot:
         )
 
     def add_actions(self) -> pa.Table:
-        """The ``add`` actions of the pinned version, one row per data file."""
+        """The ``add`` actions of the pinned version, one row per data file.
+
+        With ``partition_filters``, only the files they select.
+        """
+        table = self.open()
         # ``deltalake`` returns an arro3-core table, not a PyArrow one;
         # ``pa.table`` converts it through the Arrow C stream interface.
-        return pa.table(self.open().get_add_actions(flatten=True))
+        add_actions = pa.table(table.get_add_actions(flatten=True))
+        if self.partition_filters is None:
+            return add_actions
+        file_paths = [
+            resolve_data_file_path(path)
+            for path in add_actions[ADD_ACTION_PATH_COLUMN].to_pylist()
+        ]
+        selected = _files_selected_by_partition_filters(
+            table, self.partition_filters, file_paths
+        )
+        return add_actions.filter(pa.array([path in selected for path in file_paths]))
+
+
+def _files_selected_by_partition_filters(
+    table: "DeltaTable", partition_filters: List[Any], file_paths: Sequence[str]
+) -> Set[str]:
+    """The paths in ``file_paths`` of the files ``partition_filters`` select.
+
+    ``DeltaTable.file_uris`` selects them as ``to_pyarrow_dataset`` does for
+    the V1 reader, so both readers read the same files. It returns each file
+    as the table location followed by its path relative to the table, as
+    stored on disk, which is what ``file_paths`` hold.
+
+    Args:
+        table: The table, opened at the pinned version.
+        partition_filters: ``read_delta``'s ``partition_filters``.
+        file_paths: Every data file of the table, relative to its root.
+
+    Returns:
+        The selected paths, a subset of ``file_paths``.
+
+    Raises:
+        ValueError: If ``deltalake``'s URIs don't end in the log's paths.
+    """
+    all_uris = table.file_uris()
+    if not all_uris:
+        return set()
+    # ``deltalake`` 1.6.6 deprecated the positional filters for this keyword,
+    # which also takes an OR of AND lists.
+    if "file_pruning_predicate" in inspect.signature(table.file_uris).parameters:
+        # pyrefly: ignore[unexpected-keyword]
+        selected_uris = table.file_uris(file_pruning_predicate=partition_filters)
+    else:
+        selected_uris = table.file_uris(partition_filters)
+    # Every URI is the same prefix followed by a log path. Find the prefix
+    # with the first URI and check it against all of them, so a URI form
+    # this doesn't expect fails the read instead of dropping files.
+    expected = set(all_uris)
+    for path in file_paths:
+        if all_uris[0].endswith("/" + path):
+            prefix = all_uris[0][: -len(path)]
+            if {prefix + p for p in file_paths} == expected:
+                return {uri[len(prefix) :] for uri in selected_uris}
+    raise ValueError(
+        "Couldn't match the data files `deltalake` selected with "
+        f"`partition_filters` (such as {all_uris[0]!r}) to the Delta log's file "
+        "paths. Set `DataContext.use_datasource_v2 = False` to read the table "
+        "with the V1 reader."
+    )
 
 
 def resolve_data_file_path(logged_path: str) -> str:
