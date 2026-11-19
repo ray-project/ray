@@ -14,6 +14,8 @@ from ray._private.accelerators.metax_gpu import MetaxGPUAcceleratorManager
 from ray._private.accelerators.mlu import MLUAcceleratorManager
 from ray._private.accelerators.mt_gpu import MTGPUAcceleratorManager
 from ray._private.accelerators.neuron import NeuronAcceleratorManager
+from ray._private.accelerators.npu import NPUAcceleratorManager
+from ray._private.accelerators.nvidia_gpu import NvidiaGPUAcceleratorManager
 from ray._private.accelerators.rbln import RBLNAcceleratorManager
 from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray._private.accelerators.ttnpu import TTNPUAcceleratorManager
