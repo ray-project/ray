@@ -92,6 +92,8 @@ cdef extern from "ray/common/ray_config.h" nogil:
         # TODO: Deprecate this once task events are fully moved out of GCS.
         int64_t task_events_max_num_task_in_gcs() const
 
+        int64_t task_events_max_num_bytes_in_gcs() const
+
         int64_t task_events_max_num_profile_events_per_task() const
 
         int64_t task_events_max_dropped_task_attempts_tracked_per_job_in_gcs() const
