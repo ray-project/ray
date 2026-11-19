@@ -2,8 +2,8 @@
 
 The sizer owns every actor-pool sizing decision under the actor-only backend:
 initial pool sizes, per-tick up/downscale deltas, and placement-resolved
-requests (which node a new actor lands on, which actor drains -- see
-``ExperimentalActorPoolScalingRequest``). Operators never size themselves:
+requests (which nodes gain actors, which nodes shed them -- see
+``ScaleUpRequest`` / ``ScaleDownRequest``). Operators never size themselves:
 ``ExperimentalActorPoolMapOperator._scale_to_initial_size`` is a no-op for
 exactly this reason.
 
@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import Counter
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
@@ -25,7 +26,8 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
     ExperimentalActorPoolMapOperator,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    ExperimentalActorPoolScalingRequest,
+    PlacedScalingRequest,
+    ScaleUpRequest,
 )
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     ActorPlacementStrategy,
@@ -90,8 +92,9 @@ class OperatorSizer:
     2. PER-OP HOW MANY    Per-operator greedy up/downscale deltas from queue
                  depth and backpressure (``OpSizingPolicy``), clamped to what
                  the cluster can place (``ConstraintAwareCapacityLedger``).
-    3. PER-OP WHERE       Each delta resolved to nodes (up) or to exact victim
-                 actors (down) by the ``ActorPlacementStrategy``.
+    3. PER-OP WHERE       Each delta resolved to nodes -- where new actors land,
+                 where actors are shed -- by the ``ActorPlacementStrategy``.
+                 The pool picks the actors on each node.
     4. APPLY     The resolved requests handed to the pools.
 
     Phase 1 is the odd one out: it emits requests that already name their
@@ -99,7 +102,7 @@ class OperatorSizer:
 
     Alongside the phases it gives back capacity when the coordinator shrinks
     this dataset's slice: the tick reports where we now hold more than we are
-    allowed, and WHERE evicts off those nodes before it places anything new.
+    allowed, and WHERE sheds off those nodes before it places anything new.
 
     Everything a phase decides lives in the phase's own component; this class
     only sequences them.
@@ -169,9 +172,8 @@ class OperatorSizer:
             delta = pool.initial_size() - pool.serving_size()
             if delta > 0:
                 pool.scale(
-                    ActorPoolScalingRequest(
-                        delta=delta,
-                        reason="scaling to initial size (sizer-ordered)",
+                    ScaleUpRequest.untargeted(
+                        delta, reason="scaling to initial size (sizer-ordered)"
                     )
                 )
             op.wait_for_min_actors()
@@ -339,9 +341,9 @@ class OperatorSizer:
         for op in ordered_ops:
             pool = op.actor_pool
 
-            # Completed: release the pool. Safe despite the full-size delta --
-            # the pool only removes pending or idle actors, so active ones
-            # finish their work first, and force=True skips the debounce.
+            # Completed: release the whole pool, pending and running alike
+            # (force=True skips the debounce). Running actors drain before
+            # they are released, so in-flight work still finishes.
             if op.has_completed():
                 if pool.serving_size() > 0:
                     self._telemetry.log_completed_release(op, pool.serving_size())
@@ -376,11 +378,11 @@ class OperatorSizer:
     def _per_op_where(
         self, request: PerOpSizingRequest, ctx: TickContext
     ) -> PlacedSizingRequest:
-        """Phase 3: resolve each delta to nodes (up) or to victims (down).
+        """Phase 3: resolve each delta to nodes.
 
-        1. evict off nodes being removed from the dataset's allocation
-        2. resolve downscales to victims
-        3. resolve upscales to target nodes
+        1. shed off nodes being removed from the dataset's allocation
+        2. resolve downscales to the nodes they shed from
+        3. resolve upscales to the nodes new actors land on
 
         Stateless across ticks: placement is re-derived from current state
         every time, so a failed placement or a slow drain simply retries when
@@ -393,9 +395,7 @@ class OperatorSizer:
         reserved = dict(cluster.reserved_by_node)
         # Copy: place_upscales spends from this map; the snapshot stays intact.
         free = {node_id: res.copy() for node_id, res in cluster.free_by_node.items()}
-        placed: Dict[
-            ExperimentalActorPoolMapOperator, ExperimentalActorPoolScalingRequest
-        ] = {}
+        placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest] = {}
 
         # Give back nodes we are losing first -- that takes precedence over
         # this tick's sizing for the same op, which re-requests next tick.
@@ -405,7 +405,7 @@ class OperatorSizer:
             profiles=self._profiles,
         )
         views = build_placement_views(request=request.request, capacity=cluster)
-        # Nodes the capacity-short upscalers want freed, so victims are taken
+        # Nodes the capacity-short upscalers want freed, so downscales shed
         # where the freed capacity actually helps.
         favored = compute_favored_nodes(
             request=request.request,
@@ -449,11 +449,10 @@ class OperatorSizer:
             request.request.items(), key=lambda entry: entry[1].delta
         ):
             logger.debug(
-                "scale: %s delta=%d nodes=%s victims=%s",
+                "scale: %s delta=%d nodes=%s",
                 op.name,
                 req.delta,
-                req.target_nodes_to_scale_actors_on,
-                req.actor_ids_to_downscale,
+                dict(Counter(req.nodes)),
             )
             op.actor_pool.scale(req)
 
