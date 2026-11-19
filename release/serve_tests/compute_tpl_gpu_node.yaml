@@ -16,7 +16,7 @@ head_node:
       GPU: 1
 
 worker_nodes:
-    - instance_type: m5.4xlarge
+    - instance_type: m7i.4xlarge
       min_nodes: 0
       max_nodes: 1
       market_type: ON_DEMAND

@@ -54,10 +54,10 @@ def main(
     }
     compute_config = ComputeConfig(
         cloud=CLOUD,
-        head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
+        head_node=HeadNodeConfig(instance_type="m7i.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
-                instance_type="m5.xlarge",
+                instance_type="m7i.xlarge",
                 min_nodes=0,
                 max_nodes=1000,
                 resources={"worker_resource": 1},
