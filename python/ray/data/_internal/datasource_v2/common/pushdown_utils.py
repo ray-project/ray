@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, AbstractSet, List, Optional, Set
 
 import pyarrow as pa
+import pyarrow.compute as pc
 
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     ListFilesPushdown,
@@ -20,6 +21,7 @@ from ray.data.expressions import (
     Expr,
     LiteralExpr,
     Operation,
+    PyArrowComputeUDFExpr,
     UnaryExpr,
 )
 
@@ -173,6 +175,45 @@ def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool
         and isinstance(predicate.left, (ColumnExpr, LiteralExpr))
         and isinstance(predicate.right, (ColumnExpr, LiteralExpr))
     )
+
+
+# Arithmetic operators whose result type PyArrow takes from the column.
+_ARITHMETIC_OPERATIONS = frozenset(
+    {
+        Operation.ADD,
+        Operation.SUB,
+        Operation.MUL,
+        Operation.DIV,
+        Operation.MOD,
+        Operation.FLOORDIV,
+    }
+)
+
+
+def has_column_arithmetic(expr: Expr) -> bool:
+    """Whether ``expr`` does arithmetic on a column.
+
+    PyArrow evaluates a pushed filter's arithmetic in the column's type, so
+    int8 ``x + 100`` wraps to -56, while Ray's row filter widens it first.
+    ``power`` is the only compute method that takes a second operand.
+
+    TODO: Remove once ``Expr.to_pyarrow()`` widens like Ray's row filter.
+    """
+    expr = expr._unalias()
+    if isinstance(expr, BinaryExpr):
+        if expr.op in _ARITHMETIC_OPERATIONS:
+            return bool(get_column_references(expr))
+        return has_column_arithmetic(expr=expr.left) or has_column_arithmetic(
+            expr=expr.right
+        )
+    if isinstance(expr, UnaryExpr):
+        return has_column_arithmetic(expr=expr.operand)
+    if isinstance(expr, PyArrowComputeUDFExpr):
+        # pyrefly: ignore[missing-attribute]  # PyArrow generates it at import time
+        if expr.pc_func is pc.power:
+            return bool(get_column_references(expr))
+        return any(has_column_arithmetic(expr=arg) for arg in expr.args)
+    return False
 
 
 @dataclass

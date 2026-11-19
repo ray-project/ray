@@ -13,6 +13,7 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicates,
     flatten_predicate_chain,
     float_column_names,
+    has_column_arithmetic,
     is_statistics_safe,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
@@ -54,12 +55,14 @@ class ParquetScanner(ArrowFileScanner):
 
     @override
     def push_filters(self, predicate: Expr) -> Tuple[ArrowFileScanner, Optional[Expr]]:
-        # Parquet statistics skip NaN, so some float filters run after the read.
+        # Filters PyArrow would evaluate differently from Ray run after the read.
         safe: List[Expr] = []
         unsafe: List[Expr] = []
         float_columns = float_column_names(self.schema)
         for conjunct in flatten_predicate_chain(predicate, Operation.AND):
-            if is_statistics_safe(predicate=conjunct, float_columns=float_columns):
+            if is_statistics_safe(
+                predicate=conjunct, float_columns=float_columns
+            ) and not has_column_arithmetic(expr=conjunct):
                 safe.append(conjunct)
             else:
                 unsafe.append(conjunct)
