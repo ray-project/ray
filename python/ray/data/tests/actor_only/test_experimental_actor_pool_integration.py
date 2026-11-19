@@ -189,6 +189,9 @@ def _build_pool(
     # pending_to_running derives a per-actor object-store budget from
     # node_capacity; the fake bank supplies a non-zero node capacity.
     pool.set_resource_bank(_FakeResourceBank())
+    # Known-fast tasks, so each actor takes all its in-flight slots; unknown
+    # durations count as slow and cap each actor at max_actor_concurrency.
+    pool.set_average_task_duration(0.0)
     return pool, created
 
 

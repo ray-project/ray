@@ -209,9 +209,9 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._status_counts: Counter[ActorStatus] = Counter()
         self._total_num_tasks_in_flight: int = 0
         # Whether the operator's tasks are slow enough (or of unknown duration)
-        # that queueing one behind a running task is worse than waiting for a
-        # pending actor. Set by the operator each refresh via
-        # ``set_average_task_duration``; read by ``_task_slot_limit``.
+        # that queueing one behind a running task is worse than waiting for
+        # another actor to free up or start. Set by the operator each refresh
+        # via ``set_average_task_duration``; read by ``_task_slot_limit``.
         self._tasks_are_slow: bool = True
 
         # Global fallback heap of all alive actors that may accept another
@@ -290,8 +290,18 @@ class _ExperimentalActorPool(AutoscalingActorPool):
     def _task_slot_limit(self, state: _ExperimentalActorState) -> int:
         """Adjust the max # of tasks that can be submitted per actor based
         on task completion time.
+
+        With slow tasks, an actor gets no more than it runs at once. A task
+        queued behind a running one waits the whole running task, while an
+        actor that frees up sooner, or a pending one that becomes ready, could
+        start it at once; with ~10s Write tasks and 2 in flight per actor,
+        whole actors sat idle while others held a second task. The queued
+        task also holds its inputs, which stay charged to their producer
+        (until it finishes, for one on another node) and fill that
+        producer's output budget. The extra slot only saves dispatch and
+        input-fetch latency, small next to a slow task.
         """
-        if self._pending_actors and self._tasks_are_slow:
+        if self._tasks_are_slow:
             return min(state.max_tasks_in_flight, self.max_actor_concurrency())
         return state.max_tasks_in_flight
 

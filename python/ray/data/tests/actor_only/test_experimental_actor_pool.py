@@ -256,7 +256,11 @@ class TestExperimentalActorPool(unittest.TestCase):
         max_num_output_bytes_per_actor: Optional[int] = 10_000_000,
         per_actor_resource_usage=None,
         node_resources=None,
+        task_duration_s: Optional[float] = ACTOR_ONLY_SLOW_TASK_THRESHOLD_S / 10,
     ) -> _ExperimentalActorPool:
+        """``task_duration_s`` defaults to fast tasks, so the pool uses every
+        in-flight slot; pass a slow duration, or None (unknown, counted as
+        slow), to test the slow-task cap."""
         config = AutoscalingActorConfig(
             min_size=min_size,
             max_size=max_size,
@@ -272,6 +276,7 @@ class TestExperimentalActorPool(unittest.TestCase):
             create_actor_fn=self._create_actor_fn, config=config
         )
         pool.set_resource_bank(_RecordingResourceBank(node_resources))
+        pool.set_average_task_duration(task_duration_s)
         return pool
 
     def _create_pool_with_metrics(
@@ -577,7 +582,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         slow), a busy actor's extra slot is held back, so the second task goes
         to the pending actor once it is ready rather than queueing behind the
         first task."""
-        pool = self._create_pool(max_tasks_in_flight=2)
+        pool = self._create_pool(max_tasks_in_flight=2, task_duration_s=None)
         actor1 = self._add_ready_actor(pool, node_id="node1")
         pending, ready_ref = self._add_pending_actor(pool, node_id="node2")
 
@@ -589,23 +594,44 @@ class TestExperimentalActorPool(unittest.TestCase):
         pool.pending_to_running(ready_ref)
         assert self._select_and_submit(pool, b2) == pending
 
-    def test_extra_slot_used_when_scaling_done_or_tasks_fast(self):
-        """The extra slot comes back once nothing is pending, or while actors
-        are pending if tasks are known to be fast."""
-        for case in ("no_pending", "fast_tasks"):
+    def test_extra_slot_used_when_tasks_fast(self):
+        """The extra slot is used once tasks are known to be fast, with or
+        without actors pending."""
+        for case in ("no_pending", "pending"):
             with self.subTest(case=case):
-                pool = self._create_pool(max_tasks_in_flight=2)
+                pool = self._create_pool(max_tasks_in_flight=2, task_duration_s=None)
                 actor = self._add_ready_actor(pool)
-                if case == "fast_tasks":
+                if case == "pending":
                     self._add_pending_actor(pool, node_id="node2")
-                    pool.set_average_task_duration(
-                        ACTOR_ONLY_SLOW_TASK_THRESHOLD_S / 10
-                    )
-                    pool.refresh_actor_state()
+                pool.set_average_task_duration(ACTOR_ONLY_SLOW_TASK_THRESHOLD_S / 10)
+                pool.refresh_actor_state()
 
                 assert self._select_and_submit(pool, _make_bundle(1000)) == actor
                 assert self._select_and_submit(pool, _make_bundle(1000)) == actor
                 assert pool.select_actors(bundle=_make_bundle(1000)) is None
+
+    def test_slow_tasks_go_to_an_idle_actor_instead_of_queueing(self):
+        """video_object_detection Write (~10s tasks, 2 in flight per actor):
+        with nothing pending, a busy actor's extra slot was used, so tasks
+        queued behind running ones while other actors sat idle. With slow
+        tasks each actor takes only what it runs at once, and the next task
+        goes to the actor that frees up."""
+        pool = self._create_pool(max_tasks_in_flight=2)
+        actor1 = self._add_ready_actor(pool, node_id="node1")
+        actor2 = self._add_ready_actor(pool, node_id="node2")
+        pool.set_average_task_duration(ACTOR_ONLY_SLOW_TASK_THRESHOLD_S * 2)
+        pool.refresh_actor_state()
+
+        b1, b2, b3 = (_make_bundle(1000) for _ in range(3))
+        first = self._select_and_submit(pool, b1)
+        second = self._select_and_submit(pool, b2)
+        assert {first, second} == {actor1, actor2}
+        # Both busy: the third task waits rather than queueing behind one.
+        assert pool.select_actors(bundle=b3) is None
+
+        assert first is not None
+        pool.on_task_completed(first, input_bundle=b1)
+        assert self._select_and_submit(pool, b3) == first
 
     def test_slow_tasks_still_hold_extra_slot_after_refresh(self):
         """A known duration at or above the threshold keeps the cap while an

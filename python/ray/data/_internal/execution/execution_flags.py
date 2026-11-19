@@ -80,12 +80,11 @@ PER_ACTOR_INPUT_BACKPRESSURE_LIMIT: int = env_integer(
     2,  # roughly 2 * 128MiB = 256 MiB
 )
 
-# Average task duration (seconds) at or above which an actor-only pool with
-# pending actors admits only ``max_concurrency`` tasks per actor. A task queued
-# behind a running one on a busy actor cannot move to an actor that becomes
-# ready later, so for slow tasks the extra pipelining slot is held back until
-# the pool stops scaling up. Before any task finishes the duration is unknown
-# and counts as slow.
+# Average task duration (seconds) at or above which an actor-only pool admits
+# only ``max_concurrency`` tasks per actor. A task queued behind a running one
+# waits the whole running task and cannot move to an actor that frees up or
+# becomes ready sooner, so for slow tasks the extra pipelining slot is held
+# back. Before any task finishes the duration is unknown and counts as slow.
 ACTOR_ONLY_SLOW_TASK_THRESHOLD_S: float = env_float(
     "RAY_DATA_ACTOR_ONLY_SLOW_TASK_THRESHOLD_S", 5.0
 )
