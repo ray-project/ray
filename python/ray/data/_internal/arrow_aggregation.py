@@ -207,9 +207,38 @@ def _narrow_ids(ids: np.ndarray, num_groups: int) -> np.ndarray:
     return ids
 
 
+# Arrow's ``sort_indices`` sorts integers whose values span a small range
+# with a counting sort: one linear pass, no comparisons. Measured on 20M ids,
+# it stays linear up to ~2K distinct values and is several times slower past
+# ~10K.
+_COUNTING_SORT_MAX_GROUPS = 2048
+# Wider ids are sorted one 11-bit digit (2048 values) at a time.
+_RADIX_DIGIT_BITS = 11
+
+
 def _group_order(ids: np.ndarray, num_groups: int) -> np.ndarray:
-    """Row indices ordered by group, keeping row order within a group."""
-    return np.argsort(_narrow_ids(ids, num_groups), kind="stable")
+    """Row indices ordered by group, keeping row order within a group.
+
+    A stable sort of the group ids, done as an LSD radix sort: Arrow's
+    counting sort orders the rows by the lowest 11 bits of their id, then
+    (stably) by the next 11 bits, and so on. Each pass is linear, so this is
+    O(rows * passes) with 1 pass for <= 2048 groups, 2 for <= 4M and 3
+    beyond. On 20M rows it's 1.3-8x faster than numpy's stable argsort,
+    which is a radix sort only for 8- and 16-bit ints and a merge sort
+    otherwise.
+    """
+    ids = _narrow_ids(ids, num_groups)
+    if num_groups <= _COUNTING_SORT_MAX_GROUPS:
+        return pc.sort_indices(pa.array(ids)).to_numpy()
+    digit_mask = (1 << _RADIX_DIGIT_BITS) - 1
+    order: Optional[np.ndarray] = None
+    for shift in range(0, int(num_groups - 1).bit_length(), _RADIX_DIGIT_BITS):
+        current = ids if order is None else ids[order]
+        digit = ((current >> shift) & digit_mask).astype(np.uint16)
+        step = pc.sort_indices(pa.array(digit)).to_numpy()
+        order = step if order is None else order[step]
+    assert order is not None
+    return order
 
 
 def lists_by_group(
@@ -227,15 +256,36 @@ def lists_by_group(
     ]
 
 
+def _list_lengths(column: Union["pa.Array", "pa.ChunkedArray"]) -> np.ndarray:
+    """Number of values in each list (0 for a null list)."""
+    lengths = pc.fill_null(pc.list_value_length(column), 0)
+    return _as_array(lengths).to_numpy(zero_copy_only=False).astype(np.int64)
+
+
 def flatten_lists(
     columns: List[Union["pa.Array", "pa.ChunkedArray"]], ids: np.ndarray
 ) -> Tuple[List["pa.Array"], np.ndarray]:
     """Inverse of ``lists_by_group`` for list columns with equal shapes: their
     flattened values, and the group of each value (``ids`` maps list rows to
-    groups)."""
-    lists = [_as_array(column) for column in columns]
-    parents = pc.list_parent_indices(lists[0]).to_numpy()
-    return [pc.list_flatten(column) for column in lists], ids[parents]
+    groups). A row's values are contiguous, so their groups are ``ids``
+    repeated by list length: a sequential pass, not a gather."""
+    flat = [_as_array(pc.list_flatten(column)) for column in columns]
+    return flat, np.repeat(ids, _list_lengths(columns[0]))
+
+
+def concat_lists_by_group(
+    column: Union["pa.Array", "pa.ChunkedArray"], ids: np.ndarray, num_groups: int
+) -> "pa.Array":
+    """One list per group: its rows' lists concatenated, in row order.
+
+    Orders the rows (lists), not the values: a reducer merging k shards sorts
+    about k rows per group, then copies every value once with ``take``.
+    """
+    order = pa.array(_group_order(ids, num_groups))
+    values = _as_array(pc.list_flatten(column.take(order)))
+    lengths = np.bincount(ids, weights=_list_lengths(column), minlength=num_groups)
+    offsets, list_cls = _list_offsets(lengths.astype(np.int64))
+    return list_cls.from_arrays(offsets, values)
 
 
 def _singleton_lists(
@@ -268,22 +318,35 @@ def _count_values_by_group(
     weights: Optional[Union["pa.Array", "pa.ChunkedArray"]] = None,
 ) -> List["pa.Array"]:
     """Per group, its distinct values and how often each occurs (summing
-    ``weights`` instead of counting rows when given), as two list columns."""
-    table = pa.table({"group": pa.array(ids), "value": values})
-    if weights is None:
-        counted = table.group_by(["group", "value"], use_threads=False).aggregate(
-            [([], "count_all")]
-        )
-        counts = counted["count_all"]
-    else:
-        table = table.append_column("weight", weights)
-        counted = table.group_by(["group", "value"], use_threads=False).aggregate(
-            [("weight", "sum")]
-        )
-        counts = counted["weight_sum"]
+    ``weights`` instead of counting rows when given), as two list columns.
+
+    Values are equal as in a ``group_by``: NaN equals NaN, -0.0 and 0.0
+    differ, and null is a value of its own. Rather than ``group_by`` on
+    (group, value), which is slow for floating-point values (5.7s for 500K
+    float64 rows), each value is replaced by a small integer code with
+    ``dictionary_encode`` (a hash table pass), and each (group, code) pair by
+    one int64, ``group * num_distinct + code``. Counting those pairs is a
+    second hash pass plus ``np.bincount``: ~25x faster.
+    """
+    values = _as_array(values)
+    encoded = pc.dictionary_encode(values, null_encoding="encode")
+    distinct = encoded.dictionary
+    codes = encoded.indices.to_numpy(zero_copy_only=False).astype(np.int64)
+    pairs = pc.dictionary_encode(pa.array(ids.astype(np.int64) * len(distinct) + codes))
+    pair_of_row = pairs.indices.to_numpy(zero_copy_only=False)
+    pair_keys = pairs.dictionary.to_numpy()
+    weight = (
+        None if weights is None else _as_array(weights).to_numpy(zero_copy_only=False)
+    )
+    # bincount's weighted sums are float64: exact for counts below 2**53.
+    counts = np.bincount(pair_of_row, weights=weight, minlength=len(pair_keys))
+    num_distinct = max(len(distinct), 1)
     return lists_by_group(
-        [counted["value"], pc.cast(counts, pa.int64())],
-        _as_array(counted["group"]).to_numpy(),
+        [
+            distinct.take(pa.array(pair_keys % num_distinct)),
+            pa.array(counts.astype(np.int64)),
+        ],
+        pair_keys // num_distinct,
         num_groups,
     )
 
@@ -616,8 +679,9 @@ def list_spec(ignore_nulls: bool) -> ArrowAggSpec:
         return lists_by_group([column], ids, groups.count)
 
     def _grouped_merge(table, groups, component_cols, options):
-        (values,), ids = flatten_lists([table[component_cols[0]]], groups.ids)
-        return lists_by_group([values], ids, groups.count)
+        return [
+            concat_lists_by_group(table[component_cols[0]], groups.ids, groups.count)
+        ]
 
     return ArrowAggSpec(
         components=("list",),
@@ -747,31 +811,86 @@ def topk_unique_spec(k: int, ignore_nulls: bool) -> ArrowAggSpec:
     )
 
 
+def _starts(sizes: np.ndarray) -> np.ndarray:
+    """Where each group begins when groups of ``sizes`` are laid end to end."""
+    starts = np.zeros(len(sizes), dtype=np.int64)
+    np.cumsum(sizes[:-1], out=starts[1:])
+    return starts
+
+
+# Groups at least this large pick their quantile with np.partition (linear
+# time) one group at a time; smaller ones are sorted together in one pass.
+# The per-group Python loop then runs at most rows / 1024 times.
+_PARTITION_MIN_GROUP_SIZE = 1024
+
+
+def _values_at_ranks(
+    values: np.ndarray,
+    sizes: np.ndarray,
+    lower: np.ndarray,
+    upper: np.ndarray,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """For each group g, its ``lower[g]``-th and ``upper[g]``-th smallest value
+    (0-based ranks within the group). ``values`` holds the groups' values back
+    to back, ``sizes[g]`` of them for group g. Empty groups get NaN.
+
+    Sorting every value costs O(n log n), but only two ranks per group are
+    needed. Each large group selects them with ``np.partition``, which is
+    linear. Small groups are sorted together by (group, value) in one Arrow
+    sort, so there's no Python loop over many groups.
+    """
+    num_groups = len(sizes)
+    starts = _starts(sizes)
+    low = np.full(num_groups, np.nan)
+    high = np.full(num_groups, np.nan)
+    large = sizes >= _PARTITION_MIN_GROUP_SIZE
+    for group in np.flatnonzero(large):
+        lo, hi = int(lower[group]), int(upper[group])
+        start = starts[group]
+        segment = np.partition(values[start : start + sizes[group]], [lo, hi])
+        low[group], high[group] = segment[lo], segment[hi]
+
+    small = (sizes > 0) & ~large
+    if small.any():
+        group_of_value = np.repeat(np.arange(num_groups), sizes)
+        if large.any():
+            keep = ~large[group_of_value]
+            small_values, small_groups = values[keep], group_of_value[keep]
+        else:
+            small_values, small_groups = values, group_of_value
+        order = pc.sort_indices(
+            pa.table(
+                {"group": _narrow_ids(small_groups, num_groups), "value": small_values}
+            ),
+            sort_keys=[("group", "ascending"), ("value", "ascending")],
+        ).to_numpy()
+        ordered = small_values[order]
+        small_starts = _starts(np.where(large, 0, sizes))
+        index = np.flatnonzero(small)
+        low[index] = ordered[small_starts[index] + lower[index]]
+        high[index] = ordered[small_starts[index] + upper[index]]
+    return low, high
+
+
 def _finalize_quantile(q: float, ignore_nulls: bool) -> Callable:
     def _finalize(merged: "pa.Table", component_cols: Tuple[str, ...]):
         values_col, nulls_col = component_cols
-        num_groups = merged.num_rows
-        (values,), parents = flatten_lists([merged[values_col]], np.arange(num_groups))
-        values = pc.cast(values, pa.float64()).to_numpy(zero_copy_only=False)
-        # Sort by value, then (stably) by group: sorted values per group.
-        # Much faster than np.lexsort.
-        by_value = np.argsort(values)
-        values = values[by_value[_group_order(parents[by_value], num_groups)]]
-
-        # Group g's values sit at [start[g], start[g] + size[g]) after sorting.
-        sizes = np.bincount(parents, minlength=num_groups)
-        starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int64)
+        # One list per group, so the flattened values are already grouped.
+        values = _as_array(pc.cast(pc.list_flatten(merged[values_col]), pa.float64()))
+        values = values.to_numpy(zero_copy_only=False)
+        sizes = _list_lengths(merged[values_col])
+        # Linear interpolation between the two ranks around q * (n - 1), as
+        # pc.quantile and numpy's default method do.
         position = q * np.maximum(sizes - 1, 0)
         lower, upper = np.floor(position), np.ceil(position)
-        last = max(len(values) - 1, 0)
-
-        def _value_at(rank: np.ndarray) -> np.ndarray:
-            if not len(values):
-                return np.full(num_groups, np.nan)
-            return values[np.minimum(starts + rank.astype(np.int64), last)]
-
-        low_value, high_value = _value_at(lower), _value_at(upper)
-        result = low_value + (high_value - low_value) * (position - lower)
+        low_value, high_value = _values_at_ranks(
+            values, sizes, lower.astype(np.int64), upper.astype(np.int64)
+        )
+        with np.errstate(invalid="ignore"):
+            result = low_value + (high_value - low_value) * (position - lower)
+        # Equal neighbors (including a rank that lands exactly on a value)
+        # need no interpolation; computing it would turn inf into NaN.
+        result = np.where(low_value == high_value, low_value, result)
         null = sizes == 0
         if not ignore_nulls:
             nulls = _as_array(merged[nulls_col]).to_numpy(zero_copy_only=False)
@@ -806,9 +925,8 @@ def quantile_spec(q: float, ignore_nulls: bool) -> ArrowAggSpec:
 
     def _grouped_merge(table, groups, component_cols, options):
         values_col, nulls_col = component_cols
-        (values,), ids = flatten_lists([table[values_col]], groups.ids)
         nulls = _as_array(table[nulls_col]).to_numpy(zero_copy_only=False)
-        return lists_by_group([values], ids, groups.count) + [
+        return [concat_lists_by_group(table[values_col], groups.ids, groups.count)] + [
             pa.array(
                 np.bincount(groups.ids, weights=nulls, minlength=groups.count).astype(
                     np.int64

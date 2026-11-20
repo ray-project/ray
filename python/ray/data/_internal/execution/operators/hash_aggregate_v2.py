@@ -14,8 +14,12 @@ Two engines:
     ships raw rows and the reducer aggregates them in one pass.
 
   A query mixing the two shapes runs on the Python engine. So do columns of
-  a type some spec can't aggregate (``supports_type``): the map ships their
-  rows raw and the reducer hands them to the Python engine.
+  a type some spec can't aggregate (``supports_type``, e.g. decimal for
+  Std): a map task that sees one pre-aggregates its block on the Python
+  engine and tags the output (``_PYTHON_PARTIALS_MARKER``), and the reducer
+  merges that partition on the Python engine too. An all-null block (Arrow
+  type ``null``) says nothing about the column's type, so it ships raw and
+  the reducer decides once it has seen the other shards.
 * Python: everything else (custom aggregations, keyless aggregations). The
   map sorts and accumulates each group; the reducer combines accumulators.
   Map tasks may skip that when every aggregation implements
@@ -520,6 +524,12 @@ def _make_vectorized_aggregating_transformer(
 
         return _prune_transform
 
+    # Blocks of a type some spec can't aggregate pre-aggregate on the Python
+    # engine, which skips partial aggregation only when every aggregation
+    # implements ``AggregateFnV2.raw_to_partial``.
+    python_transform = _fallback_aggregating_transformer(
+        key_columns, aggregation_fns, policy
+    )
     if any(spec.raw_to_partial is None for spec in specs):
         # The reducer can only merge raw rows by projecting them with
         # ``raw_to_partial``; without it, always pre-aggregate.
@@ -533,14 +543,18 @@ def _make_vectorized_aggregating_transformer(
         if block.num_rows == 0:
             return block
 
-        if not _supports_types(block, aggs, specs) or _has_null_typed_target(
-            block, aggs, specs
-        ):
-            # A column type some spec can't aggregate: ship raw rows, and the
-            # reducer aggregates them on the Python engine. An all-null block
-            # also ships raw: its column may have an unsupported type in
-            # other blocks, and the reducer decides once it has seen them.
+        if _has_null_typed_target(block, aggs, specs):
+            # All-null block: its column may have an unsupported type in other
+            # blocks, so ship it raw and let the reducer decide.
             return block.select(keep)
+
+        if not _supports_types(block, aggs, specs):
+            # A type some spec can't aggregate (e.g. decimal): pre-aggregate
+            # on the Python engine, as a query with such a column always did.
+            partials = python_transform(block)
+            return partials.append_column(
+                _PYTHON_PARTIALS_MARKER, pa.nulls(partials.num_rows, pa.null())
+            )
 
         if _should_skip_partial_aggregation(block, keys, policy):
             # Raw rows, pruned like a collection query's; the reducer detects
@@ -589,6 +603,9 @@ def _make_vectorized_aggregating_reduce_fn(
             return
 
         if not has_collection:
+            if any(_PYTHON_PARTIALS_MARKER in t.schema.names for t in tables):
+                yield from _python_reduce(tables)
+                return
             partials = [t for t in tables if partial_marker in t.schema.names]
             raws = [t for t in tables if partial_marker not in t.schema.names]
             raw = concat(raws, promote_types=True) if raws else None
@@ -628,8 +645,34 @@ def _make_vectorized_aggregating_reduce_fn(
         merged, collection_comps = _aggregate_raw_rows(combined, keys, aggs, specs)
         yield _finalize_aggregates(merged, keys, aggs, specs, collection_comps)
 
+    python_transform = _fallback_aggregating_transformer(key_columns, aggregation_fns)
+    python_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
+
+    def _python_reduce(tables: List[pa.Table]) -> Iterable[Block]:
+        """A partition where some map task pre-aggregated on the Python engine
+        (an unsupported column type): merge it all on the Python engine."""
+        shards = []
+        for table in tables:
+            if _PYTHON_PARTIALS_MARKER in table.schema.names:
+                shards.append(table.drop_columns([_PYTHON_PARTIALS_MARKER]))
+            elif partial_marker in table.schema.names:
+                # Vectorized partials can't be turned into Python accumulators.
+                raise ValueError(
+                    "Blocks have different types for an aggregated column: "
+                    f"{table.schema} vs Python-engine partials"
+                )
+            else:
+                # Raw rows: all-null blocks, or blocks a map task skipped.
+                shards.append(python_transform(table))
+        yield from python_reduce(0, [shards])
+
     return _arrow_reduce
 
+
+# Vectorized engine: marks map output pre-aggregated on the Python engine
+# because a column's type isn't supported by some spec. Null-typed, like
+# ``_RAW_ROWS_MARKER``.
+_PYTHON_PARTIALS_MARKER = "__ray_python_partials"
 
 # Python engine: marks shards of raw rows, shipped by map tasks that skipped
 # partial aggregation. Partial shards can't be told apart by their columns

@@ -2059,27 +2059,82 @@ def test_vectorized_std_is_numerically_stable():
         assert row["std(v)"] == pytest.approx(np.std(values, ddof=1), rel=1e-6)
 
 
-def test_unsupported_value_types_use_python_engine():
-    """Arrow can't group by list values, so TopKUnique over a list column
-    ships raw rows and the reducer runs the Python engine."""
+@pytest.mark.parametrize("mode", ["always", "estimate", "never"])
+def test_unsupported_value_types_use_python_engine(mode):
+    """Arrow can't group by list values, so a map task pre-aggregates a list
+    column for TopKUnique on the Python engine (one row per key, tagged), in
+    every mode, and the reducer merges on the Python engine."""
     table = pa.table({"k": [0, 0, 0, 1], "v": [[1, 2], [1, 2], [3], [4]]})
     aggs = (TopKUnique("v", k=1),)
     from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _PYTHON_PARTIALS_MARKER,
         PartialAggMode,
         PartialAggPolicy,
         _make_aggregating_transformer,
     )
 
     shard = _make_aggregating_transformer(
-        ("k",), aggs, policy=PartialAggPolicy(mode=PartialAggMode.ALWAYS)
+        ("k",), aggs, policy=PartialAggPolicy(mode=PartialAggMode(mode))
     )(table)
-    assert shard.column_names == ["k", "v"]  # raw rows
+    assert _PYTHON_PARTIALS_MARKER in shard.column_names
+    assert shard.num_rows == 2  # one partial row per key, not the raw rows
     expected = _aggregate_shards(aggs, [table], modes=None).to_pylist()
     assert _aggregate_shards(aggs, [table], ("always",)).to_pylist() == expected
     assert sorted(expected, key=lambda r: r["k"]) == [
         {"k": 0, "topk_unique(v)": [[1, 2]]},
         {"k": 1, "topk_unique(v)": [[4]]},
     ]
+
+
+@pytest.mark.parametrize("mode", ["always", "estimate", "never"])
+@pytest.mark.parametrize("agg_cls", [AbsMax, Quantile, Std])
+def test_decimal_pre_aggregates_on_python_engine(mode, agg_cls):
+    """Decimal isn't supported by these specs. Map tasks pre-aggregate it on
+    the Python engine, as master did, rather than shipping every row."""
+    import decimal
+
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+        PartialAggPolicy,
+        _make_aggregating_transformer,
+    )
+
+    values = [decimal.Decimal(i) / 4 for i in range(-20, 20)]
+    tables = [
+        pa.table(
+            {
+                "k": pa.array([i % 3 for i in range(40)]),
+                "v": pa.array(values, type=pa.decimal128(10, 2)),
+            }
+        )
+        for _ in range(2)
+    ]
+    agg = agg_cls("v")
+    shard = _make_aggregating_transformer(
+        ("k",), (agg,), policy=PartialAggPolicy(mode=PartialAggMode(mode))
+    )(tables[0])
+    assert shard.num_rows == 3
+    if agg_cls is Std:
+        # Python's Std can't combine float and Decimal accumulators (as on
+        # master).
+        with pytest.raises(TypeError):
+            _aggregate_shards((agg,), tables, (mode, mode))
+        return
+    expected = _rows_by_key(_aggregate_shards((agg,), tables, modes=None))
+    assert _rows_by_key(_aggregate_shards((agg,), tables, (mode, mode))) == expected
+
+
+def test_supported_and_unsupported_blocks_of_one_column():
+    """Vectorized partials (int64 blocks) can't be turned into Python-engine
+    accumulators to merge with decimal blocks' partials: a clear error."""
+    import decimal
+
+    ints = pa.table({"k": [0, 1], "v": [1, -5]})
+    decimals = pa.table(
+        {"k": [0, 1], "v": pa.array([decimal.Decimal("2.5")] * 2, pa.decimal128(5, 1))}
+    )
+    with pytest.raises(ValueError, match="different types"):
+        _aggregate_shards((AbsMax("v"),), [ints, decimals], ("always", "always"))
 
 
 @pytest.mark.parametrize("modes", [("always", "always"), ("never", "always")])
@@ -2149,6 +2204,69 @@ def test_null_typed_block(modes, second, expected):
         for r in rows
     }
     assert got == expected
+
+
+@pytest.mark.parametrize(
+    "num_groups", [1, 7, 2048, 2049, 70_000, 5_000_000], ids=lambda g: f"{g}_groups"
+)
+def test_group_order_is_a_stable_sort(num_groups):
+    from ray.data._internal.arrow_aggregation import _group_order
+
+    ids = np.random.default_rng(0).integers(0, num_groups, 200_000)
+    assert np.array_equal(_group_order(ids, num_groups), np.argsort(ids, kind="stable"))
+
+
+def _quantile_by_sorting(values, groups, num_groups, q):
+    """Per group, linear-interpolation quantile of its values, by sorting."""
+    out = np.full(num_groups, np.nan)
+    for g in range(num_groups):
+        xs = np.sort(values[groups == g])
+        if len(xs):
+            pos = q * (len(xs) - 1)
+            lo, hi = xs[int(np.floor(pos))], xs[int(np.ceil(pos))]
+            out[g] = lo if lo == hi else lo + (hi - lo) * (pos - np.floor(pos))
+    return out
+
+
+@pytest.mark.parametrize("q", [0.0, 0.3, 0.5, 1.0])
+@pytest.mark.parametrize(
+    "sizes",
+    [
+        [5000],  # one large group: np.partition
+        [3, 1, 0, 2],  # small groups only: one (group, value) sort
+        [1023, 1024, 1025, 1],  # either side of the partition threshold
+        [20_000] + [2] * 500,  # skewed: one huge group and many tiny ones
+    ],
+    ids=["one_large", "small", "threshold", "skewed"],
+)
+def test_quantile_finalize_matches_sorting(sizes, q):
+    from ray.data._internal.arrow_aggregation import quantile_spec
+
+    rng = np.random.default_rng(0)
+    groups = np.repeat(np.arange(len(sizes)), sizes)
+    rng.shuffle(groups)
+    values = rng.integers(0, 50, len(groups)).astype(float)  # with duplicates
+    order = np.argsort(groups, kind="stable")
+    offsets = np.concatenate([[0], np.cumsum(sizes)]).astype(np.int32)
+    merged = pa.table(
+        {
+            "values": pa.ListArray.from_arrays(offsets, values[order]),
+            "nulls": np.zeros(len(sizes), dtype=np.int64),
+        }
+    )
+    got = quantile_spec(q, ignore_nulls=True).finalize(merged, ("values", "nulls"))
+    expected = _quantile_by_sorting(values, groups, len(sizes), q)
+    got = np.array([np.nan if x is None else x for x in got.to_pylist()])
+    np.testing.assert_allclose(got, expected, equal_nan=True)
+
+
+def test_quantile_with_infinities():
+    """Interpolating between equal infinite neighbors must not give NaN."""
+    inf = float("inf")
+    table = pa.table({"k": [0, 0, 0, 1, 2, 2], "v": [-inf, -inf, 1.0, inf, -inf, inf]})
+    rows = _aggregate_shards((Quantile("v", q=0.3),), [table], ("always",))
+    got = {r["k"]: r["quantile(v)"] for r in rows.to_pylist()}
+    assert got[0] == -inf and got[1] == inf and np.isnan(got[2])
 
 
 @pytest.mark.parametrize("modes", [("always", "never"), ("never", "never")])
