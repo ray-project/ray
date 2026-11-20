@@ -19,7 +19,6 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.execution_flags import (
-    ACTOR_ONLY_SLOW_TASK_THRESHOLD_S,
     BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO,
     PER_ACTOR_INPUT_BACKPRESSURE_LIMIT,
 )
@@ -573,54 +572,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         # Both actors at the cap.
         assert pool.select_actors(bundle=_make_bundle(1000)) is None
 
-    def test_slow_tasks_wait_for_pending_actor_instead_of_queueing(self):
-        """While an actor is pending and task duration is unknown (counts as
-        slow), a busy actor's extra slot is held back, so the second task goes
-        to the pending actor once it is ready rather than queueing behind the
-        first task."""
-        pool = self._create_pool(max_tasks_in_flight=2)
-        actor1 = self._add_ready_actor(pool, node_id="node1")
-        pending, ready_ref = self._add_pending_actor(pool, node_id="node2")
-
-        b1, b2 = _make_bundle(1000), _make_bundle(1000)
-        assert self._select_and_submit(pool, b1) == actor1
-        assert pool.select_actors(bundle=b2) is None
-
-        ray.get(ready_ref)
-        pool.pending_to_running(ready_ref)
-        assert self._select_and_submit(pool, b2) == pending
-
-    def test_extra_slot_used_when_scaling_done_or_tasks_fast(self):
-        """The extra slot comes back once nothing is pending, or while actors
-        are pending if tasks are known to be fast."""
-        for case in ("no_pending", "fast_tasks"):
-            with self.subTest(case=case):
-                pool = self._create_pool(max_tasks_in_flight=2)
-                actor = self._add_ready_actor(pool)
-                if case == "fast_tasks":
-                    self._add_pending_actor(pool, node_id="node2")
-                    pool.set_average_task_duration(
-                        ACTOR_ONLY_SLOW_TASK_THRESHOLD_S / 10
-                    )
-                    pool.refresh_actor_state()
-
-                assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-                assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-                assert pool.select_actors(bundle=_make_bundle(1000)) is None
-
-    def test_slow_tasks_still_hold_extra_slot_after_refresh(self):
-        """A known duration at or above the threshold keeps the cap while an
-        actor is pending; the heaps rebuilt on refresh honor it."""
-        pool = self._create_pool(max_tasks_in_flight=2)
-        actor = self._add_ready_actor(pool)
-        self._add_pending_actor(pool, node_id="node2")
-        pool.set_average_task_duration(ACTOR_ONLY_SLOW_TASK_THRESHOLD_S)
-        pool.refresh_actor_state()
-
-        assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-        pool.refresh_actor_state()
-        assert pool.select_actors(bundle=_make_bundle(1000)) is None
-
     def test_output_backpressured_actor_capped_at_concurrency(self):
         """With the probe set, an actor whose output budget is used up is
         admitted at most ``max_actor_concurrency`` tasks; once its budget
@@ -709,10 +660,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         # node ids, so register it directly).
         pending, ready_ref, usage = pool._create_actor()
         pool._add_pending_actor(pending, ready_ref, usage, target_node_id="node1")
-        # Fast tasks: keep every slot open despite the pending actor, so two
-        # tasks can be admitted to one actor below.
-        pool.set_average_task_duration(0.0)
-        pool.refresh_actor_state()
 
         pool.on_task_submitted(one_task_many_outputs, _make_bundle(100))
         self._set_outstanding_outputs(pool, one_task_many_outputs, 5)

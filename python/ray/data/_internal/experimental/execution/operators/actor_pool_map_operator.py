@@ -1335,10 +1335,6 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         info = self.get_actor_info()
         if info.pending > 0:
             self.actor_pool.release_backpressure_deadlock_headroom()
-        # Before the base refresh, which rebuilds the scheduling heaps with it.
-        self.actor_pool.set_average_task_duration(
-            self._metrics.average_total_task_completion_time_s
-        )
         result = super().refresh_state()
         self._sync_draining_priorities()
         return result
