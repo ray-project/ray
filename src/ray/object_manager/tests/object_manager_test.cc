@@ -319,6 +319,7 @@ TEST_F(StaleMirrorPushTest, DropsPushWhenObjectIsDeleted) {
 /// two pulls keeps it, cancelling the last one drops it.
 TEST_F(ObjectManagerTest, MovePullRecordFollowsTheLastPull) {
   const ObjectID object_id = ObjectID::FromRandom();
+  const WorkerID worker_id = WorkerID::FromRandom();
   rpc::ObjectReference ref;
   ref.set_object_id(object_id.Binary());
   const uint64_t first =
@@ -327,14 +328,41 @@ TEST_F(ObjectManagerTest, MovePullRecordFollowsTheLastPull) {
       object_manager_->Pull({ref}, BundlePriority::GET_REQUEST, {"", false});
 
   EXPECT_FALSE(object_manager_->IsMovePull(object_id));
-  object_manager_->MarkMovePull(object_id);
-  object_manager_->MarkMovePull(object_id);
+  EXPECT_FALSE(object_manager_->GetMovePullRequester(object_id).has_value());
+  object_manager_->MarkMovePull(object_id, worker_id);
+  object_manager_->MarkMovePull(object_id, worker_id);
   EXPECT_TRUE(object_manager_->IsMovePull(object_id));
+  EXPECT_EQ(object_manager_->GetMovePullRequester(object_id), worker_id);
 
   object_manager_->CancelPull(first);
   EXPECT_TRUE(object_manager_->IsMovePull(object_id));
   object_manager_->CancelPull(second);
   EXPECT_FALSE(object_manager_->IsMovePull(object_id));
+}
+
+/// A record that no pull needs goes with its requesting worker; a record that a
+/// pull needs outlives the worker and goes with the pull.
+TEST_F(ObjectManagerTest, MovePullRecordFollowsItsRequesterWithoutAPull) {
+  const ObjectID unpulled = ObjectID::FromRandom();
+  const ObjectID pulled = ObjectID::FromRandom();
+  const ObjectID other_workers = ObjectID::FromRandom();
+  const WorkerID worker = WorkerID::FromRandom();
+  const WorkerID other_worker = WorkerID::FromRandom();
+  rpc::ObjectReference ref;
+  ref.set_object_id(pulled.Binary());
+  const uint64_t request_id =
+      object_manager_->Pull({ref}, BundlePriority::WAIT_REQUEST, {"", false});
+  object_manager_->MarkMovePull(unpulled, worker);
+  object_manager_->MarkMovePull(pulled, worker);
+  object_manager_->MarkMovePull(other_workers, other_worker);
+
+  object_manager_->EraseMovePullsRequestedBy(worker);
+  EXPECT_FALSE(object_manager_->IsMovePull(unpulled));
+  EXPECT_TRUE(object_manager_->IsMovePull(pulled));
+  EXPECT_EQ(object_manager_->GetMovePullRequester(other_workers), other_worker);
+
+  object_manager_->CancelPull(request_id);
+  EXPECT_FALSE(object_manager_->IsMovePull(pulled));
 }
 
 /// The sealing chunk of a received move keeps the create reference; it is
@@ -344,7 +372,7 @@ TEST_F(ObjectManagerTest, ReceivedMoveIsReleasedOnTheMainService) {
   const NodeID remote_node_id = NodeID::FromRandom();
   const std::string data(100, 'x');
   StartActivePull(object_id, remote_node_id, data.size());
-  object_manager_->MarkMovePull(object_id);
+  object_manager_->MarkMovePull(object_id, WorkerID::FromRandom());
   rpc::Address owner_address;
 
   ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
@@ -363,7 +391,7 @@ TEST_F(ObjectManagerTest, ReceivedMoveSurvivesPullCancelBeforeRelease) {
   const NodeID remote_node_id = NodeID::FromRandom();
   const std::string data(100, 'x');
   const uint64_t request_id = StartActivePull(object_id, remote_node_id, data.size());
-  object_manager_->MarkMovePull(object_id);
+  object_manager_->MarkMovePull(object_id, WorkerID::FromRandom());
   rpc::Address owner_address;
 
   ASSERT_TRUE(ReceiveChunk(remote_node_id, object_id, owner_address, data));
