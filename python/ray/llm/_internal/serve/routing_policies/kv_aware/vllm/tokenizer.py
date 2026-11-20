@@ -7,7 +7,7 @@ from vllm.entrypoints.anthropic.protocol import (
     AnthropicMessagesRequest,
 )
 from vllm.entrypoints.anthropic.serving import AnthropicServingMessages
-from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.common.cli_args import FrontendArgs
 from vllm.entrypoints.openai.chat_completion.protocol import ChatCompletionRequest
 from vllm.entrypoints.openai.completion.protocol import CompletionRequest
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse
@@ -114,6 +114,9 @@ class Tokenizer:
             tool_parser=frontend_args.tool_call_parser,
             tool_strict_level=frontend_args.tool_strict_level,
             default_chat_template_kwargs=frontend_args.default_chat_template_kwargs,
+            # Forwarded prompt tokens replace the engine's chat rendering, so
+            # apply the same effort rewrites the engine would.
+            reasoning_effort_map=frontend_args.reasoning_effort_map,
         )
         # Check the templates the renderer actually uses, including the model's
         # default when no chat-template override is configured.
@@ -172,12 +175,9 @@ class Tokenizer:
             # exceptions are real bugs and should surface, not degrade routing.
             raise TokenizeError(str(e), status_code=400, type="BadRequestError")
 
-        input_ids: List[int] = []
-        for rendered_input in rendered_inputs:
-            components = extract_prompt_components(self._model_config, rendered_input)
-            if components.token_ids is not None:
-                input_ids.extend(components.token_ids)
-        return input_ids
+        # Only single prompt is supported.
+        (rendered_input,) = rendered_inputs
+        return extract_prompt_components(self._model_config, rendered_input).token_ids
 
     async def _get_disabled_thinking_effort(self):
         """Resolve disabled thinking by rendering local prompts."""

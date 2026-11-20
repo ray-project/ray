@@ -1,6 +1,7 @@
 import functools
 import logging
 import typing
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Union
 
 import pyarrow as pa
@@ -17,12 +18,12 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
     TaskContext,
+    task_resource_dict,
 )
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     OpTask,
     TaskExecDriverStats,
-    estimate_total_num_of_blocks,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
     ShuffleMapOp,
@@ -33,7 +34,15 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
     _shuffle_reduce_task,
 )
-from ray.data.block import BlockAccessor, BlockStats, TaskExecWorkerStats, to_stats
+from ray.data._internal.execution.operators.shuffle_phase_metrics import (
+    PhaseSpec,
+    ShuffleOperatorMetrics,
+)
+from ray.data._internal.execution.util import merge_label_selector, merge_runtime_envs
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
+from ray.data._internal.stats import StatsDict
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
+from ray.data.block import BlockAccessor, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -43,15 +52,6 @@ logger = logging.getLogger(__name__)
 
 
 _SHUFFLE_REDUCE_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
-
-
-def _merged_reduce_runtime_env(user_runtime_env: Dict[str, Any]) -> Dict[str, Any]:
-    merged = {**_SHUFFLE_REDUCE_RUNTIME_ENV, **user_runtime_env}
-    merged["env_vars"] = {
-        **_SHUFFLE_REDUCE_RUNTIME_ENV["env_vars"],
-        **user_runtime_env.get("env_vars", {}),
-    }
-    return merged
 
 
 class ShuffleReduceOp(PhysicalOperator):
@@ -96,6 +96,7 @@ class ShuffleReduceOp(PhysicalOperator):
             its ``TaskContext``.
         fused_output_map_target_max_block_size_override: The fused map op's
             block-size override.
+        output_partitioning: See ``PhysicalOperator.output_partitioning``.
     """
 
     _DEFAULT_SHUFFLE_REDUCE_TASK_NUM_CPUS = 1.0
@@ -117,6 +118,7 @@ class ShuffleReduceOp(PhysicalOperator):
         fused_output_map_transformer: Optional["MapTransformer"] = None,
         fused_output_map_task_kwargs: Optional[Dict[str, Any]] = None,
         fused_output_map_target_max_block_size_override: Optional[int] = None,
+        output_partitioning: Optional[HashPartitioning] = None,
     ):
         input_ops: List[PhysicalOperator] = (
             [input_op] if isinstance(input_op, ShuffleMapOp) else list(input_op)
@@ -133,6 +135,7 @@ class ShuffleReduceOp(PhysicalOperator):
         self._reduce_fn: ReduceFn = reduce_fn
         self._disallow_block_splitting: bool = disallow_block_splitting
         self._preserve_partition_order: bool = preserve_partition_order
+        self._output_partitioning: Optional[HashPartitioning] = output_partitioning
         self._emit_empty_partitions: bool = should_emit_empty_partitions
         # False when reduce_fn (aggregation) or a fused map can change the row
         # count, so num_output_rows_total() can't borrow the map op's total.
@@ -145,6 +148,10 @@ class ShuffleReduceOp(PhysicalOperator):
         )
         self._shuffle_reduce_tasks: Dict[int, DataOpTask] = {}
         self._num_reduce_tasks_submitted: int = 0
+        # Partitions that skipped the reduce task (single input, no rows) and
+        # the bundles emitted for them; the task estimate covers the rest.
+        self._num_empty_partitions: int = 0
+        self._num_empty_partition_bundles: int = 0
 
         # -- Per-partition pairing across inputs -----------------------------
         # partition_id -> input_index -> the single bundle that input emitted
@@ -166,9 +173,31 @@ class ShuffleReduceOp(PhysicalOperator):
             if self._preserve_partition_order
             else FIFOBundleQueue()
         )
+        # See set_emit_whole_partitions.
+        self._emit_whole_partitions: bool = False
+        # Each partition's outputs, kept until its reduce task finishes.
+        self._held_partition_outputs: Dict[int, List[RefBundle]] = defaultdict(list)
 
         # -- Stats -----------------------------------------------------------
-        self._output_blocks_stats: List[BlockStats] = []
+        self._phase_metrics = ShuffleOperatorMetrics(
+            self,
+            self._metrics,
+            [
+                PhaseSpec(
+                    "reduce",
+                    "Reduce",
+                    is_output_phase=True,
+                    total_num_tasks=num_partitions,
+                )
+            ],
+        )
+        self._reduce_metrics = self._phase_metrics.phase_metrics["reduce"]
+
+    def set_emit_whole_partitions(self) -> None:
+        """Emit each partition as one bundle when its reduce task finishes, so a
+        downstream task-pool map, which never splits bundles, gets whole
+        partitions."""
+        self._emit_whole_partitions = True
 
     def _reduce_task_remote_args(self, memory_estimate: int) -> Dict[str, Any]:
         remote_args: Dict[str, Any] = {
@@ -178,13 +207,23 @@ class ShuffleReduceOp(PhysicalOperator):
         }
         if memory_estimate > 0:
             remote_args["memory"] = memory_estimate
-        user_args = dict(self._reduce_ray_remote_args)
+        # None means "unset" to ray.remote, so it must not override the defaults.
+        user_args = {
+            k: v for k, v in self._reduce_ray_remote_args.items() if v is not None
+        }
         user_runtime_env = user_args.pop("runtime_env", None)
         remote_args.update(user_args)
         if user_runtime_env is not None:
-            remote_args["runtime_env"] = _merged_reduce_runtime_env(user_runtime_env)
+            remote_args["runtime_env"] = merge_runtime_envs(
+                _SHUFFLE_REDUCE_RUNTIME_ENV, user_runtime_env
+            )
         remote_args["name"] = self.name
         remote_args["num_returns"] = "streaming"
+
+        remote_args = merge_label_selector(
+            remote_args, self.data_context.execution_options.label_selector
+        )
+
         return remote_args
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
@@ -218,10 +257,15 @@ class ShuffleReduceOp(PhysicalOperator):
             and isinstance(schema, pa.Schema)
             and not any((m.num_rows or 0) for m in refs.metadata)
         ):
+            self._on_empty_partition()
             if self._emit_empty_partitions:
                 self._emit_empty_partition(partition_id, refs, schema)
             else:
                 refs.destroy_if_owned()
+                # The key must still be finalized or the ordered queue would
+                # never advance past this partition.
+                if self._preserve_partition_order:
+                    self._output_queue.finalize(key=partition_id)
             return
 
         pending = self._pending_inputs.setdefault(partition_id, {})
@@ -312,6 +356,7 @@ class ShuffleReduceOp(PhysicalOperator):
                 self._handle_reduce_done, partition_id, bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(reduce_options),
+            task_resource_request=task_resource_dict(reduce_options),
             operator_name=self.name,
         )
 
@@ -321,9 +366,20 @@ class ShuffleReduceOp(PhysicalOperator):
         )
         self._shuffle_reduce_tasks[partition_id] = data_task
         self._num_reduce_tasks_submitted += 1
-        self._metrics.on_task_submitted(
+        self._reduce_metrics.on_task_submitted(
             partition_id, metrics_bundle, task_id=data_task.get_task_id()
         )
+
+    def _on_empty_partition(self) -> None:
+        self._num_empty_partitions += 1
+        # The per-task average only describes partitions that run a task.
+        self._reduce_metrics.total_num_tasks = (
+            self._num_partitions - self._num_empty_partitions
+        )
+        if self._phase_metrics.estimated_num_output_bundles is not None:
+            self._phase_metrics.update_output_estimates(
+                self._reduce_metrics, self._num_reduce_tasks_submitted
+            )
 
     def _emit_empty_partition(
         self, partition_id: int, refs: RefBundle, schema: pa.Schema
@@ -336,7 +392,7 @@ class ShuffleReduceOp(PhysicalOperator):
         reached for schema-preserving reduces (``should_emit_empty_partitions=True``);
         aggregation disables this path instead of emitting a partial-schema block.
         """
-        empty_block = schema.empty_table()
+        empty_block = _create_empty_table(schema)
         block_meta = BlockAccessor.for_block(empty_block).get_metadata()
         out_bundle = RefBundle(
             (
@@ -357,39 +413,29 @@ class ShuffleReduceOp(PhysicalOperator):
             self.id,
         )
         self._num_reduce_tasks_submitted += 1
+        self._num_empty_partition_bundles += 1
         self._record_partition_output(partition_id, out_bundle, partition_complete=True)
-        _, num_outputs, num_rows = estimate_total_num_of_blocks(
-            self._num_reduce_tasks_submitted,
-            self.upstream_op_num_outputs(),
-            self._metrics,
-            total_num_tasks=self._num_partitions,
-        )
-        self._estimated_num_output_bundles = num_outputs
-        self._estimated_output_num_rows = num_rows
 
     def has_next(self) -> bool:
         return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
         bundle = self._output_queue.get_next()
-        self._metrics.on_output_dequeued(bundle)
-        self._output_blocks_stats.extend(to_stats(bundle.metadata))
+        self._reduce_metrics.on_output_dequeued(bundle)
+        self._reduce_metrics.record_block_stats(*bundle.metadata)
         return bundle
 
     def get_active_tasks(self) -> List[OpTask]:
         return list(self._shuffle_reduce_tasks.values())
 
     def _handle_reduce_output_ready(self, partition_id: int, bundle: RefBundle) -> None:
-        self._record_partition_output(partition_id, bundle)
-        self._metrics.on_task_output_generated(task_index=partition_id, output=bundle)
-        _, num_outputs, num_rows = estimate_total_num_of_blocks(
-            self._num_reduce_tasks_submitted,
-            self.upstream_op_num_outputs(),
-            self._metrics,
-            total_num_tasks=self._num_partitions,
-        )
-        self._estimated_num_output_bundles = num_outputs
-        self._estimated_output_num_rows = num_rows
+        if self._emit_whole_partitions:
+            # Hold it until the task ends, but count it as queued for memory.
+            self._held_partition_outputs[partition_id].append(bundle)
+            self._reduce_metrics.on_output_queued(bundle)
+        else:
+            self._record_partition_output(partition_id, bundle)
+        self._reduce_metrics.on_task_output(partition_id, bundle)
 
     def _handle_reduce_done(
         self,
@@ -406,13 +452,23 @@ class ShuffleReduceOp(PhysicalOperator):
         if partition_id not in self._shuffle_reduce_tasks:
             return
         self._shuffle_reduce_tasks.pop(partition_id)
+        if self._emit_whole_partitions:
+            # Queue the finished partition as one bundle, or drop it on failure.
+            held = self._held_partition_outputs.pop(partition_id, [])
+            for bundle in held:
+                self._reduce_metrics.on_output_dequeued(bundle)
+            if held and exc is None:
+                self._record_partition_output(
+                    partition_id, RefBundle.merge_ref_bundles(held)
+                )
         if self._preserve_partition_order:
             self._output_queue.finalize(key=partition_id)
-        self._metrics.on_task_finished(
-            task_index=partition_id,
-            exception=exc,
-            task_exec_stats=task_exec_stats,
-            task_exec_driver_stats=task_exec_driver_stats,
+        self._reduce_metrics.on_task_finished(
+            partition_id, exc, task_exec_stats, task_exec_driver_stats
+        )
+        # The per-task output average only exists once a task has finished.
+        self._phase_metrics.update_output_estimates(
+            self._reduce_metrics, self._num_reduce_tasks_submitted
         )
         if exc:
             logger.error(
@@ -427,7 +483,7 @@ class ShuffleReduceOp(PhysicalOperator):
         partition_complete: bool = False,
     ) -> None:
         self._output_queue.add(bundle, key=partition_id)
-        self._metrics.on_output_queued(bundle)
+        self._reduce_metrics.on_output_queued(bundle)
         if self._preserve_partition_order and partition_complete:
             self._output_queue.finalize(key=partition_id)
 
@@ -452,34 +508,53 @@ class ShuffleReduceOp(PhysicalOperator):
         super()._do_shutdown(force)
         self._shuffle_reduce_tasks.clear()
         self._output_queue.clear()
+        self._held_partition_outputs.clear()
         for pending in self._pending_inputs.values():
             for bundle in pending.values():
                 bundle.destroy_if_owned()
         self._pending_inputs.clear()
 
-    def get_stats(self) -> Dict[str, List[BlockStats]]:
-        return {self._name: self._output_blocks_stats}
+    def _extra_metrics(self) -> Dict[str, Any]:
+        return self._phase_metrics.extra_metrics()
+
+    def get_stats(self) -> StatsDict:
+        return self._phase_metrics.stats()
+
+    def num_outputs_total(self) -> Optional[int]:
+        estimate = self._phase_metrics.estimated_num_output_bundles
+        if estimate is None:
+            # No reducer has finished; the total is only known once no
+            # partition is left that needs one.
+            if self._num_empty_partitions < self._num_partitions:
+                return None
+            return self._num_empty_partition_bundles
+        return estimate + self._num_empty_partition_bundles
 
     def num_output_rows_total(self) -> Optional[int]:
         # Multi-input reduces (e.g. join) and non-row-preserving reduces
         # (aggregation, fused map) can grow or shrink the row count, so it is
-        # unknown until the reducers run.
+        # estimated from finished reducers instead of borrowed from the map op.
         if self._num_inputs > 1 or not self._preserves_row_count:
-            return None
+            estimate = self._phase_metrics.estimated_output_num_rows
+            if estimate is None and self._num_empty_partitions == self._num_partitions:
+                return 0
+            return estimate
         upstream = self.input_dependencies[0]
         assert isinstance(upstream, ShuffleMapOp)
         return upstream.num_output_rows_total()
 
     def current_logical_usage(self) -> ExecutionResources:
         cpu: float = 0
+        gpu: float = 0
         memory: float = 0
         for task in self._shuffle_reduce_tasks.values():
             bundle = task.get_requested_resource_bundle()
             if bundle is None:
                 continue
             cpu += bundle.cpu
+            gpu += bundle.gpu
             memory += bundle.memory
-        return ExecutionResources(cpu=cpu, memory=memory)
+        return ExecutionResources(cpu=cpu, gpu=gpu, memory=memory)
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Per-task resource ask for the framework's budget allocator."""

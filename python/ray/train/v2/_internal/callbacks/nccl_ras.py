@@ -763,9 +763,13 @@ def dump_stack_trace(pyspy_timeout_s: float) -> str:
     import sys
     import traceback
 
+    # Threads not started through ``threading`` (for example C-created ones)
+    # have no name here.
+    thread_names = {t.ident: t.name for t in threading.enumerate()}
     lines = [f"[py-spy unavailable: {stderr}; Python-only traceback follows]"]
     for thread_id, frame in sys._current_frames().items():
-        lines.append(f"\n# Thread {thread_id}")
+        name = thread_names.get(thread_id, "unknown")
+        lines.append(f"\n# Thread {thread_id} ({name})")
         lines.append("".join(traceback.format_stack(frame)))
     return "\n".join(lines)
 

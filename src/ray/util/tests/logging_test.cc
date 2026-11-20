@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "absl/log/globals.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "gtest/gtest.h"
@@ -187,6 +188,15 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, num_iterations);
   EXPECT_GT(occurrences, 5);
   EXPECT_LT(occurrences, 15);
+}
+
+// gRPC logs through absl; without GRPC_VERBOSITY its INFO messages would reach
+// stderr. StartRayLog keeps absl at ERROR, as older gRPC did.
+TEST(PrintLogTest, TestAbslMinLogLevelDefaultsToError) {
+  ASSERT_EQ(std::getenv("GRPC_VERBOSITY"), nullptr);
+  RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, /*log_filepath=*/"");
+  EXPECT_EQ(absl::MinLogLevel(), absl::LogSeverityAtLeast::kError);
+  RayLog::ShutDownRayLog();
 }
 
 TEST(PrintLogTest, TestTextLogging) {

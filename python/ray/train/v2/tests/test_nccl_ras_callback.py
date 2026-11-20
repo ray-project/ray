@@ -5,6 +5,7 @@ import logging
 import re
 import subprocess
 import sys
+import threading
 import time
 import types
 from dataclasses import dataclass
@@ -1385,6 +1386,11 @@ def test_escalation_absent_in_observe_mode(monkeypatch, caplog, propagate_logs):
 # ---------------------------------------------------------------------------
 
 
+# Named like Ray Train's worker thread (``ThreadRunner``) so the test reads
+# like a real dump.
+TRAINING_THREAD_NAME = "TrainingThread(train_func)"
+
+
 def fake_subprocess_run(monkeypatch, **run_result):
     """Script ``subprocess.run`` for the worker-side tools, recording each call.
 
@@ -1615,6 +1621,25 @@ def test_dump_stack_trace_skips_sudo_when_the_budget_is_spent(monkeypatch):
 
     assert "py-spy unavailable: py-spy timed out; Python-only" in trace
     assert len(calls) == 1
+
+
+def test_python_fallback_names_each_thread(monkeypatch):
+    """py-spy is refused, so the Python-only dump is all the reader gets. Each
+    thread header carries the thread's name next to its ident."""
+    fake_subprocess_run(monkeypatch, returncode=1)
+    stop = threading.Event()
+    worker = threading.Thread(target=stop.wait, name=TRAINING_THREAD_NAME)
+    worker.start()
+
+    try:
+        trace = dump_stack_trace(25.0)
+    finally:
+        stop.set()
+        worker.join()
+
+    main = threading.main_thread()
+    assert f"# Thread {worker.ident} ({TRAINING_THREAD_NAME})" in trace
+    assert f"# Thread {main.ident} ({main.name})" in trace
 
 
 def test_nvidia_smi_returns_the_report(monkeypatch):

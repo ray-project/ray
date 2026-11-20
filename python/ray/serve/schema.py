@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
@@ -235,6 +236,13 @@ class TracingConfig(BaseModel):
 
             # Enable tracing with default exporter
             serve.start(tracing_config=TracingConfig(enabled=True))
+
+    Tracing configuration is fixed when Serve starts. To change it, shut down
+    and restart Serve with the new config.
+
+    Fields you don't set default from the ``RAY_SERVE_TRACING_*`` environment
+    variables of the Serve controller, which can be set through
+    ``controller_options.runtime_env.env_vars``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -248,11 +256,18 @@ class TracingConfig(BaseModel):
         ),
     )
     exporter_import_path: str = Field(
-        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        default_factory=lambda: (
+            RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
+            or DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        ),
         description=(
-            "Import path to a custom tracing exporter function. Defaults to the "
-            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
-            "If empty and tracing is enabled, the default file-based exporter is used."
+            "Import path to a tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable, or the "
+            "built-in file-based exporter if it isn't set. Must not be empty. "
+            "A custom exporter takes no arguments and returns a list of "
+            "SpanProcessors. When Serve starts, the controller calls it once to "
+            "validate it and then shuts the returned processors down, so it "
+            "must return promptly."
         ),
     )
     sampling_ratio: float = Field(
@@ -268,6 +283,13 @@ class TracingConfig(BaseModel):
     def validate_sampling_ratio(cls, v):
         if v < 0.0 or v > 1.0:
             raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
+        return v
+
+    @field_validator("exporter_import_path")
+    @classmethod
+    def validate_exporter_import_path(cls, v):
+        if not v:
+            raise ValueError("exporter_import_path must not be empty.")
         return v
 
 
@@ -375,11 +397,6 @@ class DeploymentSchema(BaseModel):
     """
 
     model_config = ConfigDict(populate_by_name=True)
-    """
-    Specifies options for one deployment within a Serve application. For each deployment
-    this can optionally be included in `ServeApplicationSchema` to override deployment
-    options specified in code.
-    """
 
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
@@ -1527,6 +1544,13 @@ class DeploymentDetails(BaseModel):
             "change over time for autoscaling deployments, but will remain a constant "
             "number for other deployments."
         )
+    )
+    num_running_replicas_at_target_version: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of RUNNING replicas at the current target version. "
+            "This field is unset when the value is unavailable."
+        ),
     )
     required_resources: Dict = Field(
         description="The resources required per replica of this deployment."

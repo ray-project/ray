@@ -25,7 +25,7 @@ ray_cc_library(
 
 ray_cc_test(
     name = "grpc_server_client_test",
-    size = "small",
+    size = "medium",
     srcs = [
         "grpc_server_client_test.cc",
     ],

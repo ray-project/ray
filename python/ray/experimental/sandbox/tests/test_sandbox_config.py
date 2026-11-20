@@ -20,8 +20,9 @@ def test_default_sandbox_config():
     assert config.ttl_seconds is None
     assert config.rootless is True
     assert config.network == "none"
-    assert config.readonly is True
     assert config.shell == "/bin/bash"
+    # The option is gone: every sandbox has a writable root filesystem.
+    assert not hasattr(config, "readonly")
     assert config._ignore_cgroups is False
 
     # SandboxConfig requires image
@@ -35,20 +36,26 @@ def test_default_sandbox_config():
         SandboxConfig(image=None)
 
 
+@pytest.mark.parametrize("workdir", ["sub", "./sub", "../sub"])
+def test_workdir_must_be_absolute(workdir):
+    """runsc refuses a relative cwd, but only when the container starts,
+    after the image pull."""
+    with pytest.raises(ValueError, match="workdir must be an absolute path"):
+        SandboxConfig(image="busybox:latest", workdir=workdir)
+
+
 def test_gvisor_sandbox_config():
     config = GVisorSandboxConfig(
         image="ubuntu:22.04",
         cpu=2.0,
         memory="4Gi",
         env={"TEST_VAR": "value"},
-        readonly=False,
         _ignore_cgroups=True,
     )
     assert config.image == "ubuntu:22.04"
     assert config.cpu == 2.0
     assert config.memory == "4Gi"
     assert config.env == {"TEST_VAR": "value"}
-    assert config.readonly is False
     assert config._ignore_cgroups is True
 
 
@@ -74,6 +81,25 @@ def test_capabilities_config():
 def test_mounts_require_absolute_paths(mounts: dict[str, str]) -> None:
     with pytest.raises(ValueError, match="mounts must map absolute paths"):
         SandboxConfig(image="busybox:latest", mounts=mounts)
+
+
+@pytest.mark.parametrize("value", [-1001, 1001, True, False, 0.0, "0"])
+def test_invalid_oom_score_adj_rejected(value):
+    with pytest.raises(ValueError, match="oom_score_adj"):
+        SandboxConfig(image="busybox:latest", oom_score_adj=value)
+
+
+@pytest.mark.parametrize("value", [None, -1000, 0, 1000])
+def test_oom_score_adj_with_mounts_and_gpus(value: int | None) -> None:
+    config = SandboxConfig(
+        image="busybox:latest",
+        mounts={"/data": "/srv/inbox"},
+        gpu_ids=[0],
+        oom_score_adj=value,
+    )
+    assert config.oom_score_adj == value
+    assert config.mounts == {"/data": "/srv/inbox"}
+    assert config.gpu_ids == ["0"]
 
 
 def test_invalid_network_mode_rejected():
@@ -198,20 +224,17 @@ def test_sandbox_network_requires_rootful():
     assert config.network == "sandbox"
 
 
-def test_disk_requires_a_writable_rootfs():
-    config = SandboxConfig(image="python:3.10-slim", readonly=False, disk="10Gi")
+def test_disk_config():
+    # Every sandbox has an overlay to cap, with or without a workdir.
+    config = SandboxConfig(image="python:3.10-slim", disk="10Gi")
     assert config.disk == "10Gi"
-    # A readonly rootfs with a workdir runs on a private writable overlay.
     config = SandboxConfig(image="python:3.10-slim", workdir="/workspace", disk="1Gi")
     assert config.disk == "1Gi"
-    # No cap is fine either way.
     assert SandboxConfig(image="python:3.10-slim").disk == 0
-    with pytest.raises(ValueError, match="readonly=False or a workdir"):
-        SandboxConfig(image="python:3.10-slim", disk="10Gi")
     with pytest.raises(ValueError, match="non-negative"):
-        SandboxConfig(image="python:3.10-slim", readonly=False, disk=-1)
+        SandboxConfig(image="python:3.10-slim", disk=-1)
     with pytest.raises(ValueError):
-        SandboxConfig(image="python:3.10-slim", readonly=False, disk="lots")
+        SandboxConfig(image="python:3.10-slim", disk="lots")
 
 
 def test_gpu_ids_config():
@@ -259,6 +282,25 @@ def test_parse_memory_bytes():
 
     with pytest.raises(ValueError):
         parse_memory_bytes("invalid_format")
+
+
+def test_default_public_dns_reads_the_node_override(monkeypatch):
+    from ray.experimental.sandbox.config import DEFAULT_PUBLIC_DNS, default_public_dns
+
+    monkeypatch.delenv("RAY_SANDBOX_DEFAULT_DNS", raising=False)
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "  ")
+    assert default_public_dns() == DEFAULT_PUBLIC_DNS
+    monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", "10.0.0.2, 10.0.0.3")
+    assert default_public_dns() == ("10.0.0.2", "10.0.0.3")
+    # A typo, or an IPv6 resolver that a public sandbox can't reach, fails
+    # every public create rather than leaving DNS broken.
+    # So does the node's own resolver stub: a sandbox has no route to the
+    # node's loopback.
+    for entry in ("dns.internal", "fd00::53", "127.0.0.53", "0.0.0.0"):
+        monkeypatch.setenv("RAY_SANDBOX_DEFAULT_DNS", f"10.0.0.2,{entry}")
+        with pytest.raises(ValueError, match=entry):
+            default_public_dns()
 
 
 if __name__ == "__main__":
