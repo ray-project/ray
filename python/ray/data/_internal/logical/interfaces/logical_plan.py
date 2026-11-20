@@ -48,6 +48,7 @@ class LogicalPlan(Plan):
             # follows input arrival order, so a seeded shuffle needs that order fixed.
             if (
                 isinstance(op, RandomShuffle)
+                and op.seed_config is not None
                 and op.seed_config.seed is not None
                 and self.context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
                 and self.context.use_disk_based_hash_shuffle
