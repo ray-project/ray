@@ -528,10 +528,18 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         A fully truncated episode must not be reported as terminated, otherwise the
         learner treats the last observations as terminal and does not bootstrap.
+        Likewise, an agent that is only truncated must not be marked terminated
+        when the episode terminates because another agent terminated.
         """
         obs = {"a0": 0, "a1": 0}
         actions = {"a0": 0, "a1": 0}
         rewards = {"a0": 1.0, "a1": 1.0}
+
+        def _agent_flags(episode):
+            return {
+                aid: (sa_episode.is_terminated, sa_episode.is_truncated)
+                for aid, sa_episode in episode.agent_episodes.items()
+            }
 
         def _run(terminateds, truncateds, prior_terminateds=None):
             episode = MultiAgentEpisode()
@@ -593,12 +601,16 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.is_truncated)
         self.assertFalse(episode.is_terminated)
 
-        # Mix of a terminated and a truncated agent -> episode is terminated.
+        # Mix of a terminated and a truncated agent -> episode is terminated, but the
+        # truncated agent stays truncated only, so it keeps its value bootstrap.
         episode = _run(
             terminateds={"a0": True, "__all__": False},
             truncateds={"a1": True, "__all__": False},
         )
         self.assertTrue(episode.is_terminated)
+        self.assertEqual(
+            _agent_flags(episode), {"a0": (True, False), "a1": (False, True)}
+        )
 
         # Agent terminated at a prior timestep, the other one truncated now.
         episode = _run(
@@ -607,6 +619,30 @@ class TestMultiAgentEpisode(unittest.TestCase):
             prior_terminateds={"a0": True, "a1": False},
         )
         self.assertTrue(episode.is_terminated)
+        self.assertEqual(
+            _agent_flags(episode), {"a0": (True, False), "a1": (False, True)}
+        )
+
+        # Agent terminated at a prior timestep, then the env's time limit truncates
+        # the remaining agent (per-agent flag plus `__all__`).
+        episode = _run(
+            terminateds={"__all__": False},
+            truncateds={"a1": True, "__all__": True},
+            prior_terminateds={"a0": True, "a1": False},
+        )
+        self.assertEqual(
+            _agent_flags(episode), {"a0": (True, False), "a1": (False, True)}
+        )
+
+        # The env's `__all__` terminates every agent, including a truncated one.
+        episode = _run(
+            terminateds={"__all__": True},
+            truncateds={"a1": True, "__all__": False},
+        )
+        self.assertTrue(episode.is_terminated)
+        self.assertEqual(
+            _agent_flags(episode), {"a0": (True, False), "a1": (True, True)}
+        )
 
         # All agents terminated through `__all__`.
         episode = _run(
