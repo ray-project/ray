@@ -1249,6 +1249,9 @@ redirects:
 - from: /core/compiled-graph/doc/*
   to: /core/api/doc/:splat
   type: page
+- from: /core/api/doc/ray.util.placement_group.html
+  to: /core/api/doc/ray.util.placement_group.placement_group.html
+  type: page
 - from: /cluster/running-applications/autoscaling/reference.html
   to: /core/api/autoscaler.html
   type: page
