@@ -175,10 +175,9 @@ def test_packer_preserves_unit_multiplicity_of_duplicated_files(
     assert sorted(pairs) == expected
 
 
-def test_bin_to_manifest_splits_at_fully_matched_transitions_in_unit_order() -> None:
-    # Runs of one copy that alternate ``fully_matched`` become one row per
-    # contiguous same-flag span in ascending unit order (even if fed out of
-    # order), while contiguous same-flag runs still merge.
+def test_bin_to_manifest_merges_runs_by_stub() -> None:
+    # A stubbed run gets its own row and the rest merge into one, so a copy is
+    # opened once no matter how many row groups alternate.
     packer = OnlineBinPacker(max_bin_bytes=1000)
     packer.add_input(
         _file(
@@ -200,40 +199,11 @@ def test_bin_to_manifest_splits_at_fully_matched_transitions_in_unit_order() -> 
     assert [
         (c.unit_ids, c.fully_matched, c.num_rows, c.size_bytes) for c in chunks
     ] == [
-        ((0,), False, 5, 10),
         ((1, 2), True, 35, 0),
-        ((4,), False, 7, 30),
+        ((0, 4), False, 12, 40),
     ]
 
-
-def test_matched_runs_with_real_bytes_merge_for_a_normal_read() -> None:
-    # Without the footer-only shortcut, matched runs are read like any other,
-    # so they must merge with the file's partial runs; splitting here would
-    # open the file once per row group.
-    packer = OnlineBinPacker(max_bin_bytes=1000)
-    packer.add_input(
-        _file(
-            "a",
-            400,
-            [
-                _run((0,), 10, rows=5, fully_matched=False),
-                _run((1,), 10, rows=15, fully_matched=True),
-                _run((2,), 10, rows=7, fully_matched=False),
-            ],
-        )
-    )
-    packer.finalize()
-
-    manifest = packer.next_partition()
-    chunks = [FileChunk.from_metadata(md) for md in manifest.file_chunk_metadatas]
-    assert [
-        (c.unit_ids, c.fully_matched, c.num_rows, c.size_bytes) for c in chunks
-    ] == [((0, 1, 2), False, 27, 30)]
-
-
-def test_duplicated_file_with_mixed_match_flags_splits_each_copy() -> None:
-    # A file listed twice where each copy mixes partial and matched units must
-    # emit the split row sequence once per copy without merging across copies.
+    # A duplicated copy splits the same way once per copy.
     packer = OnlineBinPacker(max_bin_bytes=1000)
     copy = _file(
         "a",
@@ -253,10 +223,10 @@ def test_duplicated_file_with_mixed_match_flags_splits_each_copy() -> None:
         (str(p), tuple(md["unit_ids"]), md["fully_matched"])
         for p, md in zip(manifest.paths, manifest.file_chunk_metadatas)
     ] == [
-        ("a", (0,), False),
         ("a", (1,), True),
         ("a", (0,), False),
         ("a", (1,), True),
+        ("a", (0,), False),
     ]
 
 

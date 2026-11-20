@@ -4,7 +4,6 @@ import bisect
 import logging
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
-from itertools import groupby
 from typing import Deque, Dict, List, Optional, Tuple
 
 import pyarrow as pa
@@ -335,27 +334,24 @@ def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
 
 
 def _is_stubbed(run: FileChunk) -> bool:
-    """Whether the reader will answer this run from listing metadata.
-
-    The listing prices a stubbed run at zero read bytes; a matched run with
-    real bytes is read like any other and must merge with its file's partial
-    runs, or a normal read would open the file once per row group.
-    """
+    """Whether the Parquet footer listing priced this matched run at zero
+    because ``ParquetFileReader`` answers it from ``num_rows``."""
     return run.fully_matched and run.size_bytes == 0
 
 
-def _merge_runs_by_match(disjoint_runs: List[FileChunk]) -> List[FileChunk]:
-    """Merge a copy's runs in unit order, starting a new chunk where the reader
-    switches from stubbing to reading.
+def _merge_runs_by_stub(disjoint_runs: List[FileChunk]) -> List[FileChunk]:
+    """Merge a copy's runs into at most one stubbed row and one read row.
 
-    Stubbed runs cost no read bytes, so they get their own row and the reader
-    answers them from metadata; every other run merges into one row, so a
-    normal read opens the file once.
+    Stubbed runs cost no read bytes and are answered from metadata; every
+    other run merges into one row, so each file is opened once. Only the
+    zero-column count path prices runs at zero, so row order does not matter.
     """
-    ordered = sorted(disjoint_runs, key=lambda run: min(run.unit_ids))
+    stubbed = [run for run in disjoint_runs if _is_stubbed(run)]
+    read = [run for run in disjoint_runs if not _is_stubbed(run)]
     merged: List[FileChunk] = []
-    for _, group in groupby(ordered, key=_is_stubbed):
-        span = list(group)
+    for span in (stubbed, read):
+        if not span:
+            continue
         merged.append(
             FileChunk(
                 unit_ids=tuple(sorted(i for run in span for i in run.unit_ids)),
@@ -510,10 +506,9 @@ class OnlineBinPacker(FilePartitioner):
         # copy. A file's runs are separated into groups of pairwise-disjoint
         # unit ids, one group for a file listed once and N groups for a path
         # listed N times, since the reader scans each row's unit set once.
-        # Each group's runs are then merged in unit order, starting a new row
-        # where the reader switches from stubbing to reading. Every row keeps
-        # the on-disk file size the listing gave it; a run's bytes live in its
-        # chunk metadata.
+        # Each group's runs are then merged into one stubbed row and one read
+        # row. Every row keeps the on-disk file size the listing gave it; a
+        # run's bytes live in its chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
         extra_columns: List[Optional[pa.Table]] = []
@@ -533,7 +528,7 @@ class OnlineBinPacker(FilePartitioner):
 
         for file, runs in runs_by_file.items():
             for disjoint_runs in _group_disjoint_runs(runs):
-                for merged in _merge_runs_by_match(disjoint_runs):
+                for merged in _merge_runs_by_stub(disjoint_runs):
                     files.append(file)
                     chunk_metadatas.append(merged.to_metadata())
                     extra_columns.append(extra_columns_by_file[file])

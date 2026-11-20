@@ -32,7 +32,6 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -331,7 +330,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             predicate=read_predicate,
             limit=limit,
             columns=projected_columns,
-            preserve_order=DataContext.get_current().execution_options.preserve_order,
         )
         actors: List[ActorProxy[FooterReader]] = [
             FooterReaderActor.options(scheduling_strategy="SPREAD").remote(

@@ -45,38 +45,25 @@ def test_file_chunk_round_trips_through_a_manifest():
     assert FileChunk.from_metadata(manifest.file_chunk_metadatas[0]) == run
 
 
-def test_split_fully_matched_rows_contract():
-    """The helper separates exact-counted rows from rows that must be read."""
+def test_split_stubbed_requires_a_zero_size():
+    """Only a run the listing priced at zero is skipped; the default flag is
+    not enough, or an indexer that never set it would be counted unfiltered."""
     from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
-        _split_fully_matched,
+        _split_stubbed,
     )
 
-    matched = FileChunk(unit_ids=(0,), num_rows=5, size_bytes=10, fully_matched=True)
-    partial = FileChunk(unit_ids=(1,), num_rows=3, size_bytes=10, fully_matched=False)
-
-    mixed = FileManifest.construct_manifest(
-        paths=["whole", "matched", "partial"],
-        sizes=[10, 10, 10],
-        chunk_metadatas=[None, matched.to_metadata(), partial.to_metadata()],
+    priced = FileChunk(unit_ids=(0,), num_rows=5, size_bytes=0, fully_matched=True)
+    real = FileChunk(unit_ids=(1,), num_rows=3, size_bytes=10, fully_matched=True)
+    manifest = FileManifest.construct_manifest(
+        paths=["priced", "real"],
+        sizes=[10, 10],
+        chunk_metadatas=[priced.to_metadata(), real.to_metadata()],
     )
-    stub_num_rows, to_read = _split_fully_matched(mixed)
-    assert stub_num_rows == [5]
-    assert to_read.paths.tolist() == ["whole", "partial"]
-    assert to_read.file_chunk_metadatas[0] is None
 
-    all_matched = FileManifest.construct_manifest(
-        paths=["matched"], sizes=[10], chunk_metadatas=[matched.to_metadata()]
-    )
-    stub_num_rows, to_read = _split_fully_matched(all_matched)
-    assert stub_num_rows == [5]
-    assert len(to_read) == 0
+    stub_rows, to_read = _split_stubbed(manifest)
 
-    only_partial = FileManifest.construct_manifest(
-        paths=["partial"], sizes=[10], chunk_metadatas=[partial.to_metadata()]
-    )
-    stub_num_rows, to_read = _split_fully_matched(only_partial)
-    assert stub_num_rows == []
-    assert to_read is only_partial
+    assert stub_rows == 5
+    assert to_read.paths.tolist() == ["real"]
 
 
 if __name__ == "__main__":

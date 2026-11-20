@@ -161,8 +161,8 @@ class FooterReader:
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        # Set by the indexer when a matched run is answered from its footer, so
-        # its read-byte size is zero; otherwise the size stays real.
+        # The bin packer reads a zero size on a matched run as "the reader will
+        # answer this from num_rows", so zero only the read-byte estimate.
         self._stub_fully_matched = stub_fully_matched
         self._partition_value_parser = (
             _PartitionValueParser(self.partitioning)
@@ -238,8 +238,6 @@ class FooterReader:
         return FileChunk(
             unit_ids=(rg_idx,),
             num_rows=row_group.num_rows,
-            # Only the bin packer's read-byte estimate is zeroed; ``num_rows``
-            # stays exact.
             size_bytes=0 if stubbed else uncompressed,
             fully_matched=fully_matched,
         )

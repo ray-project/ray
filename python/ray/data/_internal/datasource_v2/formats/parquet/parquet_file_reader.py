@@ -186,28 +186,26 @@ def _empty_projection_stub(num_rows: int) -> pa.Table:
     return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
 
 
-def _split_fully_matched(
-    manifest: FileManifest,
-) -> Tuple[List[int], FileManifest]:
-    """Split a manifest into the row counts of its fully matched runs and the
-    rows still to read."""
-    stub_num_rows: List[int] = []
+def _split_stubbed(manifest: FileManifest) -> Tuple[int, FileManifest]:
+    """Split a manifest into the row count of its stubbed runs and the rows
+    still to read."""
+    stub_rows = 0
     to_read: List[int] = []
     for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
         if chunk_metadata is None:
             to_read.append(idx)
             continue
         chunk = FileChunk.from_metadata(chunk_metadata)
-        if chunk.fully_matched:
-            stub_num_rows.append(chunk.num_rows)
+        if chunk.fully_matched and chunk.size_bytes == 0:
+            stub_rows += chunk.num_rows
         else:
             to_read.append(idx)
 
     if len(to_read) == len(manifest):
-        return stub_num_rows, manifest
+        return stub_rows, manifest
 
     read_mask = pa.array(to_read, type=pa.int64())
-    return stub_num_rows, FileManifest(manifest.as_block().take(read_mask))
+    return stub_rows, FileManifest(manifest.as_block().take(read_mask))
 
 
 def _estimate_batch_size_from_chunk_stats(
@@ -242,18 +240,14 @@ def _is_exact_count_read(
     predicate: Optional[Expr],
     limit: Optional[int],
     columns: Optional[Sequence[str]],
-    preserve_order: bool,
 ) -> bool:
     """Whether a scan needs only surviving row counts: a pushed predicate, no
-    limit, an empty projection, and unordered output, because stubs are emitted
-    before reads and would reorder a file split across manifest rows.
-    """
+    limit, and an empty projection."""
     return (
         predicate is not None
         and limit is None
         and columns is not None
         and len(columns) == 0
-        and not preserve_order
     )
 
 
@@ -806,17 +800,16 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Answer fully matched runs from their row counts on an exact-count
-        read; read everything else."""
+        """Answer zero-priced matched runs from their row counts on an
+        exact-count read; read everything else."""
         if _is_exact_count_read(
             predicate=self._predicate,
             limit=self._limit,
             columns=self._columns,
-            preserve_order=DataContext.get_current().execution_options.preserve_order,
         ):
-            stub_num_rows, input_split = _split_fully_matched(input_split)
-            if stub_num_rows:
-                yield _empty_projection_stub(sum(stub_num_rows))
+            stub_rows, input_split = _split_stubbed(input_split)
+            if stub_rows:
+                yield _empty_projection_stub(stub_rows)
         yield from super().read(input_split)
 
     @override
@@ -830,7 +823,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         from pyarrow.fs import LocalFileSystem
 
         from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
-        from ray.data.context import DataContext
 
         filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors

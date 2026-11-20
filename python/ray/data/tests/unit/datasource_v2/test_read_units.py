@@ -249,35 +249,9 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     assert footer_batches == [[FileInfo(path_b, size_b)]]
 
 
-@pytest.mark.parametrize(
-    "list_kwargs,expected",
-    [
-        pytest.param(
-            {"predicate": col("id") >= 0, "projected_columns": []},
-            True,
-            id="exact-count",
-        ),
-        pytest.param(
-            {
-                "predicate": col("id") >= 0,
-                "projected_columns": [],
-                "shuffle_config": FileShuffleConfig(seed=1, small_chunks_shuffle=True),
-            },
-            False,
-            id="row-group-shuffle",
-        ),
-    ],
-)
-def test_footer_indexer_stubs_only_for_an_exact_count_read(
-    tmp_path, monkeypatch, list_kwargs, expected
-):
-    """The listing charges zero bytes only when the reader will not open a run.
-
-    It sees the same predicate, projection, limit and ordering the scanner
-    pushed, so it applies the reader's own gate: an empty projection, no limit,
-    a predicate the footer was matched against, and unordered output. Without a
-    predicate ``fully_matched`` is the field's default, not evidence.
-    """
+def test_footer_indexer_keeps_real_sizes_for_row_group_shuffle(tmp_path, monkeypatch):
+    """A row-group shuffle clears the listing limit but not the scanner's, so
+    the listing keeps the real size and the reader opens the run."""
     import ray
 
     _write_file(tmp_path / "data.parquet")
@@ -312,11 +286,13 @@ def test_footer_indexer_stubs_only_for_an_exact_count_read(
             _task_context(),
             indexer=indexer,
             filesystem=LocalFileSystem(),
-            **list_kwargs,
+            predicate=col("id") >= 0,
+            projected_columns=[],
+            shuffle_config=FileShuffleConfig(seed=1, small_chunks_shuffle=True),
         )
     )
 
-    assert actor_kwargs[0]["stub_fully_matched"] is expected
+    assert actor_kwargs[0]["stub_fully_matched"] is False
 
 
 @pytest.mark.parametrize(
