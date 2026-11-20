@@ -1,0 +1,31 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+# Trainium3 capacity comes through an EC2 Capacity Block. The block, its zone,
+# the subnet in that zone and the instance type come from the environment of
+# the run:
+#   NEURON_TEST_ZONE, NEURON_TEST_CAPACITY_RESERVATION_ID,
+#   NEURON_TEST_TRN3_INSTANCE_TYPE
+#
+# AWS has not published the Trn3 instance type names. The default below is a
+# placeholder modeled on trn2.48xlarge; set NEURON_TEST_TRN3_INSTANCE_TYPE to
+# the type of the capacity block.
+zones:
+    - {{env["NEURON_TEST_ZONE"] | default("us-east-2b")}}
+enable_cross_zone_scaling: false
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    - instance_type: {{env["NEURON_TEST_TRN3_INSTANCE_TYPE"] | default("trn3.48xlarge")}}
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND
+      advanced_instance_config:
+          Placement:
+              AvailabilityZone: {{env["NEURON_TEST_ZONE"]}}
+          InstanceMarketOptions:
+              MarketType: capacity-block
+          CapacityReservationSpecification:
+              CapacityReservationTarget:
+                  CapacityReservationId: {{env["NEURON_TEST_CAPACITY_RESERVATION_ID"]}}
