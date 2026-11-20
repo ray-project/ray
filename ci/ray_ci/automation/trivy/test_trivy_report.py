@@ -49,6 +49,7 @@ LLM = (
     "x86_64",
     "ray-llm-py3.12-cu13.0.0-cudnn.json",
 )
+
 SCANNER = {
     "trivy": {"version": "0.76.1", "tarball_sha256": "c7cbe313"},
     "db": {
