@@ -2068,7 +2068,7 @@ class Reconciler:
                     if nt in replica_sizes
                     else 0
                 )
-                if gap > 0 and count > 0:
+                if nt not in reply.exact_launch_types and gap > 0 and count > 0:
                     size = replica_sizes[nt]
                     count = gap + (count - size) if count >= size else gap
                 if nt in node_type_configs:

@@ -6910,6 +6910,8 @@ def test_multihost_tpu_whole_replica_launch_and_termination(case):
         assert (
             ResourceDemandScheduler._pinned_locality_domains([excl], TPU_CONFIGS) == {}
         )
+    else:
+        raise AssertionError(f"Unhandled case: {case}")
 
 
 @pytest.mark.parametrize(
@@ -7269,6 +7271,8 @@ def test_multihost_tpu_slot_normalization_and_invariants(case):
             {"gcp": 1},
             [],
         )
+    else:
+        raise AssertionError(f"Unhandled case: {case}")
 
 
 GPU_LABELS = {_ACC: "GB200"}
@@ -7507,6 +7511,8 @@ def test_gang_locality_requirement_gpu_domains(case):
             idle_s=60.0,
         )
         assert {t.instance_id for t in c2.to_terminate} == {"t0", "t1"}
+    else:
+        raise AssertionError(f"Unhandled case: {case}")
 
 
 @pytest.mark.parametrize(
@@ -7655,7 +7661,7 @@ def test_generic_worker_replica_config_and_locality_invariants(case):
         ]
         assert _launch_and_terminate(_sched(_lws(mn=4), da[:2])) == ({}, [])
         assert _launch_and_terminate(_sched(_lws(mn=8), da)) == ({}, [])
-        assert _launch_and_terminate(_sched(_lws(mn=12), da)) == ({"lws": 4}, [])
+        assert _launch_and_terminate(_sched(_lws(mn=12), da)) == ({"lws": 6}, [])
 
         b1_i3 = [_lp("A"), _lp("B"), _lp("C", True), _lp("D")]
         assert _sched(_lws(2, 0, 8), b1_i3, idle_s=10.0).to_terminate == []
@@ -7743,6 +7749,8 @@ def test_generic_worker_replica_config_and_locality_invariants(case):
                 gangs=[_tpu_gang((0, 1, 2, 3))],
             )
         ) == ({}, [])
+    else:
+        raise AssertionError(f"Unhandled case: {case}")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="KubeRay config skipped on Windows")
@@ -14268,7 +14276,7 @@ def test_unlabeled_teardown_survivors_stay_schedulable_and_refill_at_max():
     for max_w in (4, 8):
         rep_g4 = _sched(_tpu_cfg(max_w), idle_hosts + [dead], gangs=[g4])
         assert rep_g4.infeasible_gang_resource_requests == []
-        assert _launch_and_terminate(rep_g4) == ({"tpu": 4}, [])
+        assert _launch_and_terminate(rep_g4) == ({"tpu": 1}, [])
 
     domless_idle = [
         _run_node("tpu", f"d{w}", {"CPU": 8, "TPU": 4}, {}, lid="L1") for w in range(3)
@@ -14279,7 +14287,7 @@ def test_unlabeled_teardown_survivors_stay_schedulable_and_refill_at_max():
         reqs=[_resource_request({"TPU": 4}, count=4)],
     )
     assert rep_domless.infeasible_resource_requests == []
-    assert _launch_and_terminate(rep_domless) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_domless) == ({"tpu": 1}, [])
 
     # 3 busy survivors at max_worker_nodes=4 refill 1 task, reject a 2nd task, and
     # reject a 4-host gang.
@@ -14297,7 +14305,7 @@ def test_unlabeled_teardown_survivors_stay_schedulable_and_refill_at_max():
     rep_refill = _sched(
         _tpu_cfg(4), busy_hosts + [dead], reqs=[_resource_request({"TPU": 4}, count=2)]
     )
-    assert _launch_and_terminate(rep_refill) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_refill) == ({"tpu": 1}, [])
     assert len(rep_refill.infeasible_resource_requests) == 1
     assert rep_refill.cluster_resources["TPU"] == 16.0
 
@@ -15339,7 +15347,7 @@ def test_missing_runtime_domain_label_suppresses_placeholders_and_protects_busy_
         for w in range(3)
     ]
     rep_launch = _sched(cfgs8, unlabeled_busy3, reqs=[_resource_request({"TPU": 4})])
-    assert _launch_and_terminate(rep_launch) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_launch) == ({"tpu": 5}, [])
 
 
 def test_cross_slice_launch_batch_boot_completes_slices_without_termination():
@@ -15572,7 +15580,7 @@ def test_multi_slice_refill_bounds_and_fresh_replica_co_launch():
         _excl_cfg(8), s0_idle + s1_idle + [dead_a, dead_b], gangs=[g4_a, g4_b]
     )
     assert rep_two_g4.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_two_g4) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_two_g4) == ({"tpu": 3}, [])
     assert rep_two_g4.cluster_resources["TPU"] == 32.0
     assert rep_two_g4.cluster_resources[head_res] == 2.0
 
@@ -15641,12 +15649,12 @@ def test_multi_slice_refill_bounds_and_fresh_replica_co_launch():
     ):
         rep_co = _sched(_excl_cfg(8), busy3 + [dead_a], reqs=[single_req])
         assert rep_co.infeasible_resource_requests == []
-        assert _launch_and_terminate(rep_co) == ({"tpu": 8}, [])
+        assert _launch_and_terminate(rep_co) == ({"tpu": 5}, [])
         assert rep_co.cluster_resources["TPU"] == 32.0
 
     rep_gang_co = _sched(_excl_cfg(8), busy3 + [dead_a], gangs=[g4_a])
     assert rep_gang_co.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_gang_co) == ({"tpu": 8}, [])
+    assert _launch_and_terminate(rep_gang_co) == ({"tpu": 5}, [])
 
     # (c) Shared-domain and domainless labelRefs 4-host STRICT_PACK gang refills 1 pod
     # at max_worker_nodes=4, and co-launches refill + fresh replica on rack NOT_IN at 8.
@@ -15675,7 +15683,7 @@ def test_multi_slice_refill_bounds_and_fresh_replica_co_launch():
         g_rack = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 4, "_pg_rk4"))
         rep_sh4 = _sched(sh_cfg4, sh_idle3 + [dead_g], gangs=[g_rack])
         assert rep_sh4.infeasible_gang_resource_requests == []
-        assert _launch_and_terminate(rep_sh4) == ({"gpu": 4}, [])
+        assert _launch_and_terminate(rep_sh4) == ({"gpu": 1}, [])
 
         sh_cfg8 = {
             "gpu": NodeTypeConfig(
@@ -15698,7 +15706,7 @@ def test_multi_slice_refill_bounds_and_fresh_replica_co_launch():
         )
         rep_sh8 = _sched(sh_cfg8, sh_idle3 + [dead_g], gangs=[g_not_r0])
         assert rep_sh8.infeasible_gang_resource_requests == []
-        assert _launch_and_terminate(rep_sh8) == ({"gpu": 8}, [])
+        assert _launch_and_terminate(rep_sh8) == ({"gpu": 5}, [])
 
 
 def test_inflight_unlabeled_refill_attaches_across_boot_ticks_and_torndown_boot_survivor():
@@ -15830,7 +15838,7 @@ def test_inflight_unlabeled_refill_attaches_across_boot_ticks_and_torndown_boot_
     a0.im_instance.cloud_instance_id = "cloud-a0"
     dead_td = _terminated_teardown_row("tpu", "dead-td", "L_td")
     rep_td_boot = _sched(_cfg(4, 4), [a0, dead_td])
-    assert _launch_and_terminate(rep_td_boot) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_td_boot) == ({"tpu": 3}, [])
 
 
 def test_duplicate_worker_indices_preserve_head_slot_and_cap_placeholders_and_max_workers():
@@ -16031,7 +16039,7 @@ def test_scale_from_zero_torndown_boot_survivor_and_refill_uuid_order():
         )
         rep_ok = _sched(cfgs, [a0, dead_td], gangs=[g4])
         assert rep_ok.infeasible_gang_resource_requests == []
-        assert _launch_and_terminate(rep_ok) == ({"acc": 4}, [])
+        assert _launch_and_terminate(rep_ok) == ({"acc": 3}, [])
         assert rep_ok.cluster_resources["TPU"] == 16.0
         assert rep_ok.cluster_resources[head_res] == 1.0
 
@@ -16222,7 +16230,7 @@ def test_multi_rack_refill_isolation_and_multi_slice_gang_headroom():
     )
     assert rep_cap8.infeasible_gang_resource_requests == []
     assert len(rep_cap8.infeasible_resource_requests) == 1
-    assert _launch_and_terminate(rep_cap8) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_cap8) == ({"tpu": 2}, [])
     assert rep_cap8.cluster_resources["TPU"] == 32.0
     assert rep_cap8.cluster_resources[head_res] == 2.0
 
@@ -16235,7 +16243,7 @@ def test_multi_rack_refill_isolation_and_multi_slice_gang_headroom():
     )
     assert rep_cap9.infeasible_gang_resource_requests == []
     assert rep_cap9.infeasible_resource_requests == []
-    assert _launch_and_terminate(rep_cap9) == ({"tpu": 4, "cpu_worker": 1}, [])
+    assert _launch_and_terminate(rep_cap9) == ({"tpu": 2, "cpu_worker": 1}, [])
 
     # R7-2 (Exclusive TPU slices with orthogonal "rack" runtime label at max_w=8):
     # 3/4 busy in rack-0 + 4/4 (3 busy, 1 free) in rack-1 rejects 2-host rack gang;
@@ -16374,7 +16382,7 @@ def test_multi_rack_refill_isolation_and_multi_slice_gang_headroom():
         )
         assert rep_6at12.infeasible_gang_resource_requests == []
         assert rep_6at12.infeasible_resource_requests == []
-        assert _launch_and_terminate(rep_6at12) == ({"gpu": 8}, [])
+        assert _launch_and_terminate(rep_6at12) == ({"gpu": 5}, [])
         assert rep_6at12.cluster_resources["GPU"] == 12.0
 
         g7_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 7, "_pg_g7rk"))
@@ -16416,7 +16424,7 @@ def test_multi_rack_refill_isolation_and_multi_slice_gang_headroom():
             gangs=[g4_rk],
         )
         assert rep_4ok.infeasible_gang_resource_requests == []
-        assert _launch_and_terminate(rep_4ok) == ({"gpu": 4}, [])
+        assert _launch_and_terminate(rep_4ok) == ({"gpu": 3}, [])
 
         g5_rk = _strict_pack_gang("rack", _spread_reqs({"GPU": 1}, 5, "_pg_g5rk2"))
         rep_5bad = _sched(
@@ -16467,7 +16475,7 @@ def test_torndown_doomed_requested_siblings_and_post_refill_fresh_batch():
     g4 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_r73a"))
     rep_73a = _sched(excl_cfg12, s0_busy2 + [dead_l0, doomed_r3], gangs=[g4])
     assert rep_73a.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_73a) == ({"tpu": 8}, [])
+    assert _launch_and_terminate(rep_73a) == ({"tpu": 6}, [])
     assert rep_73a.cluster_resources["TPU"] == 36.0
 
     # R7-3b: Multi-slice torn-down batch L_ms with 2 busy running + 1 ALLOCATED survivor
@@ -16508,7 +16516,7 @@ def test_torndown_doomed_requested_siblings_and_post_refill_fresh_batch():
     g2 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 2, "_pg_r73b"))
     rep_73b = _sched(excl_cfg8, ms_busy2 + [ms_alloc, doomed_r7] + ms_deads, gangs=[g2])
     assert rep_73b.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_73b) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_73b) == ({"tpu": 1}, [])
 
     # R7-4: Complete 4/4 refilled slice-0 carrying {L_old, L_refill} + two 2/4 busy
     # vanished-pod slices (total_nonprov_open == 4 == size) + fresh 4-pod ALLOCATED batch
@@ -16650,8 +16658,7 @@ def test_multi_slice_torndown_refill_non_modulo_and_queued_attachment():
     assert ctx_1_2.get_unbacked_refill_gap("tpu") == 5
     rep_refill_5 = _sched(cfgs8, base_1_2, gangs=two_gangs)
     assert rep_refill_5.infeasible_gang_resource_requests == []
-    # 5 refill pods pad to LaunchRequest(count=8) -> Reconciler creates 1 + (8 - 4) = 5.
-    assert _launch_and_terminate(rep_refill_5) == ({"tpu": 8}, [])
+    assert _launch_and_terminate(rep_refill_5) == ({"tpu": 5}, [])
 
 
 def test_shared_domain_sibling_adoption_and_heterogeneous_rack_launch():
@@ -16706,7 +16713,7 @@ def test_shared_domain_sibling_adoption_and_heterogeneous_rack_launch():
     g6 = _strict_pack_gang(rack, [_mk_req({"GPU": 1}) for _ in range(6)])
     rep_5 = _sched(_shared_cfgs(8), insts, gangs=[g5])
     assert rep_5.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_5) == ({"gpu": 4}, [])
+    assert _launch_and_terminate(rep_5) == ({"gpu": 3}, [])
     rep_6 = _sched(_shared_cfgs(8), insts, gangs=[g6])
     assert len(rep_6.infeasible_gang_resource_requests) == 1
     assert _launch_and_terminate(rep_6) == ({}, [])
@@ -16716,7 +16723,7 @@ def test_shared_domain_sibling_adoption_and_heterogeneous_rack_launch():
     g10 = _strict_pack_gang(rack, [_mk_req({"GPU": 1}) for _ in range(10)])
     rep_9 = _sched(_shared_cfgs(12), insts, gangs=[g9])
     assert rep_9.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_9) == ({"gpu": 8}, [])
+    assert _launch_and_terminate(rep_9) == ({"gpu": 7}, [])
     rep_10 = _sched(_shared_cfgs(12), insts, gangs=[g10])
     assert len(rep_10.infeasible_gang_resource_requests) == 1
 
@@ -16841,7 +16848,7 @@ def test_cross_slice_shared_lid_draining_isolation_and_pinned_refill():
     )
     rep_pin_ok = _sched(cfgs4, td_s0, gangs=[g_pin_s0])
     assert rep_pin_ok.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_pin_ok) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_pin_ok) == ({"tpu": 1}, [])
 
     g_pin_miss = _strict_pack_gang(
         _SLICE,
@@ -16901,7 +16908,7 @@ def test_cross_slice_shared_lid_draining_isolation_and_pinned_refill():
     assert _launch_and_terminate(rep_3tasks) == ({}, [])
     rep_refill_s1 = _sched(cfgs, batch_after_drain, gangs=[g4])
     assert rep_refill_s1.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_refill_s1) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_refill_s1) == ({"tpu": 1}, [])
 
     # Shared refill batch L_ref spanning two incomplete 3/4 slices with an unscoped
     # solicited TERMINATING sibling (ray_node=None) keeps all 6 running hosts schedulable,
@@ -17113,27 +17120,9 @@ def test_domainless_lidless_replacement_donation_and_remainder_idle_reclaim():
     assert van_view.vanished_cids_by_lid == {("gpu-lws", "L_van"): {"cloud-a3"}}
     assert van_view.unlabeled_backfill_gap("gpu-lws", 4) == 3
 
-    planned_counts: List[int] = []
-    orig_glr = ResourceDemandScheduler.ScheduleContext.get_launch_requests
-
-    def _capture_glr(self_ctx):
-        planned_counts.append(
-            sum(
-                1
-                for n in self_ctx._nodes
-                if n.node_type == "gpu-lws"
-                and n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
-        )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _capture_glr
-    ):
-        rep_van = _sched(cfgs_van8, insts_van, reqs=[_resource_request(res, 7)])
+    rep_van = _sched(cfgs_van8, insts_van, reqs=[_resource_request(res, 7)])
     assert rep_van.infeasible_resource_requests == []
-    assert planned_counts == [3]
-    assert _launch_and_terminate(rep_van) == ({"gpu-lws": 4}, [])
+    assert _launch_and_terminate(rep_van) == ({"gpu-lws": 3}, [])
 
     head_im = Instance(
         instance_id="head-0",
@@ -17205,7 +17194,7 @@ def test_domainless_lidless_replacement_donation_and_remainder_idle_reclaim():
     created_queued = sum(
         1 for v in store.get_instances()[0].values() if v.status == Instance.QUEUED
     )
-    assert created_queued == planned_counts[0] == 3
+    assert created_queued == sum(r.count for r in rep_van.to_launch) == 3
 
 
 def test_mutant_pinned_guards_single_host_replica_and_multi_type_isolation():
@@ -17566,10 +17555,10 @@ def test_capped_partial_refills_multi_slice_refill_attach_and_bundle_pin_orderin
         + [_terminated_teardown_row("tpu", "m1-dead", "Lm1")]
     )
     rep_min4 = _sched(_mk_cfgs(min_w=4, max_w=8), td_1_and_2)
-    assert _launch_and_terminate(rep_min4) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_min4) == ({"tpu": 1}, [])
 
     # 6 surviving pods across 3 torn-down slices at min=8, max=8 refill 2 slots
-    # (LaunchRequest(count=4)) with zero live-host terminations.
+    # (LaunchRequest(count=2)) with zero live-host terminations.
     td_6_pods = (
         td_1_and_2
         + [
@@ -17585,7 +17574,7 @@ def test_capped_partial_refills_multi_slice_refill_attach_and_bundle_pin_orderin
         + [_terminated_teardown_row("tpu", "m2-dead", "Lm2")]
     )
     rep_min8 = _sched(_mk_cfgs(min_w=8, max_w=8), td_6_pods)
-    assert _launch_and_terminate(rep_min8) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_min8) == ({"tpu": 2}, [])
 
     # 2. Multi-slice refill batch L_ref spanning 2/4 s0 and 2/4 s1 where 1 pod registered
     # on s0, 1 terminated, and 2 remain ALLOCATED attaches 1 pod each to s0 and s1.
@@ -17636,7 +17625,7 @@ def test_capped_partial_refills_multi_slice_refill_attach_and_bundle_pin_orderin
     ]
     rep_ms_ok = _sched(_mk_cfgs(0, 8), ms_ref_insts, gangs=two_gangs)
     assert rep_ms_ok.infeasible_gang_resource_requests == []
-    assert _launch_and_terminate(rep_ms_ok) == ({"tpu": 4}, [])
+    assert _launch_and_terminate(rep_ms_ok) == ({"tpu": 1}, [])
     three_gangs = two_gangs + [
         _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_ms_2"))
     ]
@@ -17777,34 +17766,17 @@ def test_shared_vanished_batch_counter_across_multi_slice_placeholders_and_refil
         [a.im_instance for a in all_insts], cloud_map, {"tpu": 4}
     )
     g3 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_g3"))
-    planned_g3: List[int] = []
-    orig_glr_g3 = ResourceDemandScheduler.ScheduleContext.get_launch_requests
-
-    def _cap_g3(self_ctx):
-        planned_g3.append(
-            sum(
-                1
-                for n in self_ctx._nodes
-                if n.node_type == "tpu" and n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_g3 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=cfgs12,
+            current_instances=all_insts,
+            gang_resource_requests=[g3],
+            disable_launch_config_check=True,
+            replica_view=view,
         )
-        return orig_glr_g3(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_g3
-    ):
-        rep_g3 = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=cfgs12,
-                current_instances=all_insts,
-                gang_resource_requests=[g3],
-                disable_launch_config_check=True,
-                replica_view=view,
-            )
-        )
+    )
     assert rep_g3.infeasible_gang_resource_requests == []
-    assert planned_g3 == [6]
-    assert [r.count for r in rep_g3.to_launch] == [8]
+    assert [r.count for r in rep_g3.to_launch] == [6]
 
     # Verify exact Reconciler._scale_cluster alignment (created QUEUED == planned == 6).
     store = InstanceStorage(cluster_id="van-seam", storage=InMemoryStorage())
@@ -17881,7 +17853,7 @@ def test_shared_vanished_batch_counter_across_multi_slice_placeholders_and_refil
     created = sum(
         1 for v in store.get_instances()[0].values() if v.status == Instance.QUEUED
     )
-    assert created == planned_g3[0] == 6
+    assert created == sum(r.count for r in rep_g3.to_launch) == 6
 
     # v6e-32 (size=8, max_worker_nodes=24): two 4-of-8 slices sharing L_van8 (1 REQUESTED +
     # 4 vanished) + one full 8-of-8 slice never mints a phantom 4th TPU-v6e-32-head.
@@ -18325,11 +18297,12 @@ def test_solicited_boot_teardown_post_crash_sibling_drain_and_rejected_stop_hist
     assert rep_4b.infeasible_gang_resource_requests == []
 
     # 6. R4a counter-case: slice-0 exited (3 solicited TERMINATING + 1 crash) and slice-1 has
-    # 3 RAY_RUNNING + 1 active RAY_STOPPING (solicited == 4, 4 % 4 == 0) -> slice-1 IS draining.
+    # 3 RAY_RUNNING + 1 active RAY_STOPPING with live DRAINING ray_node -> slice-1 IS draining.
     s1_stopping_im = Instance(
         instance_id="s1-stopping-3",
         instance_type="tpu",
         status=Instance.RAY_STOPPING,
+        node_id=b"s1st3".ljust(28, b"0").hex(),
         cloud_instance_id="cloud-s1-stopping-3",
         launch_request_id="L_8",
         node_kind=NodeKind.WORKER,
@@ -18344,7 +18317,15 @@ def test_solicited_boot_teardown_post_crash_sibling_drain_and_rejected_stop_hist
             s0_prior_crash,
             make_autoscaler_instance(
                 im_instance=s1_stopping_im,
-                ray_node=None,
+                ray_node=NodeState(
+                    node_id=b"s1st3".ljust(28, b"0"),
+                    instance_id=s1_stopping_im.cloud_instance_id,
+                    ray_node_type_name="tpu",
+                    status=NodeStatus.DRAINING,
+                    total_resources={"CPU": 8, "TPU": 4},
+                    available_resources={"CPU": 8, "TPU": 4},
+                    labels={_SLICE: "slice-1", _WID: "3"},
+                ),
                 cloud_instance_id=s1_stopping_im.cloud_instance_id,
             ),
         ]
@@ -18427,8 +18408,8 @@ def test_solicited_boot_teardown_post_crash_sibling_drain_and_rejected_stop_hist
     assert rep_split_co.infeasible_gang_resource_requests == []
 
 
-def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
-    """RAY_STOPPING and GCS-lagged RAY_RUNNING (ray_node=None) instances occupy capacity
+def test_omitted_stopping_pods_align_scheduler_and_reconciler():
+    """Reachable RAY_STOPPING instances (with live DRAINING ray_nodes) occupy capacity
     identically across ScheduleContext, _MultiHostReplicaView, and Reconciler._scale_cluster."""
 
     def _mk_cfgs(
@@ -18454,22 +18435,145 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
             )
         }
 
+    def _draining_stop(
+        iid: str,
+        cid: str,
+        slice_val: str,
+        wid: int,
+        lid: str = "",
+        rep: Optional[str] = None,
+    ):
+        nid = iid.encode().ljust(28, b"s")[:28]
+        im = Instance(
+            instance_id=iid,
+            instance_type="tpu",
+            status=Instance.RAY_STOPPING,
+            node_id=nid.hex(),
+            cloud_instance_id=cid,
+            launch_request_id=lid,
+            node_kind=NodeKind.WORKER,
+        )
+        im.status_history.add(instance_status=Instance.RAY_RUNNING)
+        im.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+        im.status_history.add(instance_status=Instance.RAY_STOPPING)
+        return AutoscalerInstance(
+            im_instance=im,
+            ray_node=NodeState(
+                node_id=nid,
+                instance_id=cid,
+                ray_node_type_name="tpu",
+                status=NodeStatus.DRAINING,
+                total_resources={"CPU": 8, "TPU": 4},
+                available_resources={"CPU": 8, "TPU": 4},
+                labels={_SLICE: slice_val, _WID: str(wid)},
+            ),
+            cloud_instance_id=cid,
+            cloud_instance_replica_id=rep,
+        )
+
+    def _run_seam(cfgs, insts, *, reqs=None, gangs=None, max_w_global=8):
+        store = InstanceStorage(cluster_id="seam", storage=InMemoryStorage())
+        im_mgr = InstanceManager(
+            instance_storage=store, instance_status_update_subscribers=[]
+        )
+        head_im = Instance(
+            instance_id="head-0",
+            instance_type="head",
+            status=Instance.RAY_RUNNING,
+            node_id=(b"u" * 28).hex(),
+            cloud_instance_id="c-head",
+            node_kind=NodeKind.HEAD,
+        )
+        head_rn = NodeState(
+            node_id=b"u" * 28,
+            instance_id="c-head",
+            ray_node_type_name="head",
+            status=NodeStatus.RUNNING,
+        )
+        im_copies = []
+        for a in insts:
+            im_cp = copy.deepcopy(a.im_instance)
+            if a.ray_node is not None and a.ray_node.node_id:
+                im_cp.node_id = a.ray_node.node_id.hex()
+            im_copies.append(im_cp)
+        store.batch_upsert_instances([head_im] + im_copies, expected_storage_version=0)
+        ant = {"head": {"node_config": {}, "resources": {"CPU": 0}}}
+        for nt, c in cfgs.items():
+            rc = c.replica_config
+            ant[nt] = {
+                "node_config": {},
+                "resources": dict(c.resources),
+                "labels": dict(c.labels),
+                "min_workers": c.min_worker_nodes,
+                "max_workers": c.max_worker_nodes,
+                "runtime_label_keys": list(c.runtime_label_keys),
+                "replica_config": {
+                    "workers_per_replica": rc.workers_per_replica,
+                    "domain_label_key": rc.domain_label_key,
+                    "domain_exclusive": rc.domain_exclusive,
+                    "worker_index_label_key": rc.worker_index_label_key,
+                    "head_resources": list(rc.head_resources),
+                },
+            }
+        acfg = AutoscalingConfig(
+            configs={
+                "cluster_name": "seam",
+                "max_workers": max_w_global,
+                "upscaling_speed": 100.0,
+                "provider": {"type": "aws", "disable_launch_config_check": True},
+                "head_node_type": "head",
+                "available_node_types": ant,
+            },
+            skip_content_hash=True,
+        )
+        cmap = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                a.im_instance.cloud_instance_id: CloudInstance(
+                    a.im_instance.cloud_instance_id,
+                    a.im_instance.instance_type,
+                    NodeKind.WORKER,
+                    True,
+                    replica_id=a.cloud_instance_replica_id,
+                )
+                for a in insts
+                if a.im_instance.cloud_instance_id
+                and a.im_instance.status
+                not in (Instance.TERMINATED, Instance.TERMINATING)
+            },
+        }
+        rs = {
+            nt: c.workers_per_replica
+            for nt, c in cfgs.items()
+            if c.is_multi_worker_replica
+        }
+        Reconciler._scale_cluster(
+            autoscaling_state=AutoscalingState(),
+            instance_manager=im_mgr,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(
+                node_states=[head_rn]
+                + [a.ray_node for a in insts if a.ray_node is not None],
+                pending_resource_requests=[
+                    ResourceRequestByCount(request=r, count=1) for r in (reqs or [])
+                ],
+                pending_gang_resource_requests=gangs or [],
+            ),
+            scheduler=ResourceDemandScheduler(),
+            autoscaling_config=acfg,
+            cloud_provider=None,
+            non_terminated_cloud_instances=cmap,
+            replica_sizes=rs,
+        )
+        return sum(
+            1 for v in store.get_instances()[0].values() if v.status == Instance.QUEUED
+        )
+
     g4 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_stop_align"))
 
     # 1. Provider-labeled: 4 RAY_STOPPING pods on R0 + 4 busy pods on R1 at max=8 rejects 2nd gang.
     r0_stop = [
-        AutoscalerInstance(
-            im_instance=Instance(
-                instance_id=f"r0-stop-{w}",
-                instance_type="tpu",
-                status=Instance.RAY_STOPPING,
-                cloud_instance_id=f"c-r0-{w}",
-                node_kind=NodeKind.WORKER,
-            ),
-            ray_node=None,
-            cloud_instance_id=f"c-r0-{w}",
-            cloud_instance_replica_id="R0",
-        )
+        _draining_stop(f"r0-stop-{w}", f"c-r0-{w}", "slice-0", w, rep="R0")
         for w in range(4)
     ]
     r1_busy = [
@@ -18494,49 +18598,26 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
         )
         for a in prov_all
     }
-    prov_view = _MultiHostReplicaView.build(
-        [a.im_instance for a in prov_all], prov_cmap, {"tpu": 4}
-    )
     rep_prov = ResourceDemandScheduler().schedule(
         SchedulingRequest(
             node_type_configs=_mk_cfgs(8),
             current_instances=prov_all,
             gang_resource_requests=[g4],
             disable_launch_config_check=True,
-            replica_view=prov_view,
+            replica_view=_MultiHostReplicaView.build(
+                [a.im_instance for a in prov_all], prov_cmap, {"tpu": 4}
+            ),
         )
     )
     assert len(rep_prov.infeasible_gang_resource_requests) == 1
     assert rep_prov.to_launch == []
 
-    # 2. Unlabeled: 2 RAY_STOPPING + 1 GCS-lagged RAY_RUNNING (ray_node=None) at max=4 launches 0;
-    # at max=8 launches 5 (1 alignment refill + 4 fresh slice) matching Reconciler._scale_cluster.
-    u_stop2 = [
-        make_autoscaler_instance(
-            im_instance=Instance(
-                instance_id=f"u-stop-{k}",
-                instance_type="tpu",
-                status=Instance.RAY_STOPPING,
-                cloud_instance_id=f"c-ustop-{k}",
-                node_kind=NodeKind.WORKER,
-            ),
-            cloud_instance_id=f"c-ustop-{k}",
-        )
-        for k in range(2)
+    # 2. Unlabeled: 3 RAY_STOPPING pods at max=4 launches 0; at max=8 launches 5
+    # (1 alignment refill + 4 fresh slice) matching Reconciler._scale_cluster.
+    u3 = [
+        _draining_stop(f"u-stop-{k}", f"c-ustop-{k}", "slice-0", k, lid="L_s3")
+        for k in range(3)
     ]
-    u_lag = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="u-lag-0",
-            instance_type="tpu",
-            status=Instance.RAY_RUNNING,
-            node_id=b"lag0".hex(),
-            cloud_instance_id="c-ulag-0",
-            node_kind=NodeKind.WORKER,
-        ),
-        ray_node=None,
-        cloud_instance_id="c-ulag-0",
-    )
-    u3 = u_stop2 + [u_lag]
     u3_cmap = {
         a.im_instance.cloud_instance_id: CloudInstance(
             a.im_instance.cloud_instance_id, "tpu", NodeKind.WORKER, True
@@ -18558,112 +18639,21 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
     assert len(rep_u4.infeasible_gang_resource_requests) == 1
     assert rep_u4.to_launch == []
 
-    planned_u8: List[int] = []
-    orig_glr = ResourceDemandScheduler.ScheduleContext.get_launch_requests
-
-    def _cap_u8(self_ctx):
-        planned_u8.append(
-            sum(
-                1
-                for n in self_ctx._nodes
-                if n.node_type == "tpu" and n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_u8 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=_mk_cfgs(8),
+            current_instances=u3,
+            gang_resource_requests=[g4],
+            disable_launch_config_check=True,
+            replica_view=u3_view,
         )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_u8
-    ):
-        rep_u8 = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=_mk_cfgs(8),
-                current_instances=u3,
-                gang_resource_requests=[g4],
-                disable_launch_config_check=True,
-                replica_view=u3_view,
-            )
-        )
+    )
     assert rep_u8.infeasible_gang_resource_requests == []
-    assert planned_u8 == [5]
-    assert [r.count for r in rep_u8.to_launch] == [8]
-
-    store_u8 = InstanceStorage(cluster_id="u8-seam", storage=InMemoryStorage())
-    im_u8 = InstanceManager(
-        instance_storage=store_u8, instance_status_update_subscribers=[]
-    )
-    head_u8 = Instance(
-        instance_id="head-u8",
-        instance_type="head",
-        status=Instance.RAY_RUNNING,
-        node_id=(b"u" * 28).hex(),
-        cloud_instance_id="c-head-u8",
-        node_kind=NodeKind.HEAD,
-    )
-    store_u8.batch_upsert_instances(
-        [head_u8] + [a.im_instance for a in u3], expected_storage_version=0
-    )
-    cfg_u8 = AutoscalingConfig(
-        configs={
-            "cluster_name": "u8-seam",
-            "max_workers": 8,
-            "upscaling_speed": 100.0,
-            "provider": {"type": "aws", "disable_launch_config_check": True},
-            "head_node_type": "head",
-            "available_node_types": {
-                "head": {"node_config": {}, "resources": {"CPU": 0}},
-                "tpu": {
-                    "node_config": {},
-                    "resources": {"CPU": 8, "TPU": 4},
-                    "min_workers": 0,
-                    "max_workers": 8,
-                    "runtime_label_keys": [_SLICE, _WID],
-                    "replica_config": {
-                        "workers_per_replica": 4,
-                        "domain_label_key": _SLICE,
-                        "domain_exclusive": True,
-                        "worker_index_label_key": _WID,
-                    },
-                },
-            },
-        },
-        skip_content_hash=True,
-    )
-
-    class _FixedU8(IResourceScheduler):
-        def schedule(self, request):
-            return rep_u8
-
-    Reconciler._scale_cluster(
-        autoscaling_state=AutoscalingState(),
-        instance_manager=im_u8,
-        cloud_resource_monitor=CloudResourceMonitor(),
-        ray_state=ClusterResourceState(
-            node_states=[
-                NodeState(
-                    node_id=b"u" * 28,
-                    instance_id="c-head-u8",
-                    ray_node_type_name="head",
-                    status=NodeStatus.RUNNING,
-                )
-            ]
-        ),
-        scheduler=_FixedU8(),
-        autoscaling_config=cfg_u8,
-        cloud_provider=None,
-        non_terminated_cloud_instances={
-            "c-head-u8": CloudInstance("c-head-u8", "head", NodeKind.HEAD, True),
-            **u3_cmap,
-        },
-        replica_sizes={"tpu": 4},
-    )
-    created_u8 = sum(
-        1 for v in store_u8.get_instances()[0].values() if v.status == Instance.QUEUED
-    )
-    assert created_u8 == planned_u8[0] == 5
+    assert [r.count for r in rep_u8.to_launch] == [5]
     assert rep_u8.cluster_resources.get("TPU-v6e-16-head", 0.0) == 1.0
+    assert _run_seam(_mk_cfgs(8), u3, gangs=[g4], max_w_global=8) == 5
 
-    # 3. R2a / R11-1: Mixed slice with 3 busy RAY_RUNNING + 1 GCS-lagged RAY_RUNNING (ray_node=None)
-    # on L0 at max_w=8 occupies 4 slots (not 8) and scales up a 2nd 4-host gang cleanly (planned=created=4).
+    # 3. 3 running + 1 RAY_STOPPING at min_w=4, max_w=4 (0 demand) launches 0 pods.
     mix_run3 = [
         _run_node(
             "tpu",
@@ -18675,90 +18665,7 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
         )
         for w in range(3)
     ]
-    mix_lag1 = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="mix-lag-3",
-            instance_type="tpu",
-            status=Instance.RAY_RUNNING,
-            node_id=b"mix3".hex(),
-            cloud_instance_id="c-mix-3",
-            launch_request_id="L0",
-            node_kind=NodeKind.WORKER,
-        ),
-        ray_node=None,
-        cloud_instance_id="c-mix-3",
-    )
-    mix4 = mix_run3 + [mix_lag1]
-    mix_cmap = {
-        a.im_instance.cloud_instance_id: CloudInstance(
-            a.im_instance.cloud_instance_id, "tpu", NodeKind.WORKER, True
-        )
-        for a in mix4
-    }
-    mix_view = _MultiHostReplicaView.build(
-        [a.im_instance for a in mix4], mix_cmap, {"tpu": 4}
-    )
-    rep_mix8 = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs=_mk_cfgs(8),
-            current_instances=mix4,
-            gang_resource_requests=[g4],
-            disable_launch_config_check=True,
-            replica_view=mix_view,
-        )
-    )
-    assert rep_mix8.infeasible_gang_resource_requests == []
-    assert [r.count for r in rep_mix8.to_launch] == [4]
-    assert rep_mix8.cluster_resources.get("TPU-v6e-16-head", 0.0) == 2.0
-
-    # 4. R2b / R11-1: 4 GCS-lagged pods at min_w=4, max_w=8 (0 demand) launch 0 duplicate pods;
-    # 3 running + 1 RAY_STOPPING at min_w=4, max_w=4 (0 demand) launches 0 pods.
-    lag4 = [
-        make_autoscaler_instance(
-            im_instance=Instance(
-                instance_id=f"lag4-{k}",
-                instance_type="tpu",
-                status=Instance.RAY_RUNNING,
-                node_id=f"lag4_{k}".encode().hex(),
-                cloud_instance_id=f"c-lag4-{k}",
-                launch_request_id="L_lag4",
-                node_kind=NodeKind.WORKER,
-            ),
-            ray_node=None,
-            cloud_instance_id=f"c-lag4-{k}",
-        )
-        for k in range(4)
-    ]
-    lag4_cmap = {
-        a.im_instance.cloud_instance_id: CloudInstance(
-            a.im_instance.cloud_instance_id, "tpu", NodeKind.WORKER, True
-        )
-        for a in lag4
-    }
-    rep_lag4_min = ResourceDemandScheduler().schedule(
-        SchedulingRequest(
-            node_type_configs=_mk_cfgs(8, min_w=4),
-            current_instances=lag4,
-            disable_launch_config_check=True,
-            replica_view=_MultiHostReplicaView.build(
-                [a.im_instance for a in lag4], lag4_cmap, {"tpu": 4}
-            ),
-        )
-    )
-    assert rep_lag4_min.to_launch == []
-
-    stop1_on_l0 = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="mix-stop-3",
-            instance_type="tpu",
-            status=Instance.RAY_STOPPING,
-            cloud_instance_id="c-mix-stop-3",
-            launch_request_id="L0",
-            node_kind=NodeKind.WORKER,
-        ),
-        ray_node=None,
-        cloud_instance_id="c-mix-stop-3",
-    )
+    stop1_on_l0 = _draining_stop("mix-stop-3", "c-mix-stop-3", "slice-0", 3, lid="L0")
     mix_stop4 = mix_run3 + [stop1_on_l0]
     mix_stop_cmap = {
         a.im_instance.cloud_instance_id: CloudInstance(
@@ -18778,7 +18685,7 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
     )
     assert rep_stop_min4.to_launch == []
 
-    # 5. C11-1a: 1 RAY_STOPPING pod alongside 3/4 and 2/4 torn-down slices at max_w=8 (6 cloud pods)
+    # 4. C11-1a: 1 RAY_STOPPING pod alongside 3/4 and 2/4 torn-down slices at max_w=8 (6 cloud pods)
     # refills 2 slots cleanly instead of over-reserving 4 slots for 1 RAY_STOPPING pod.
     td_s0 = [
         _run_node(
@@ -18806,7 +18713,11 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
         _terminated_teardown_row("tpu", "tda-dead", "L_td_a"),
         _terminated_teardown_row("tpu", "tdb-dead", "L_td_b"),
     ]
-    c11_live = td_s0 + td_s1 + [u_stop2[0]]
+    c11_live = (
+        td_s0
+        + td_s1
+        + [_draining_stop("u-stop-td", "c-ustop-td", "slice-old", 0, lid="L_old")]
+    )
     c11_all = c11_live + td_deads
     c11_cmap = {
         a.im_instance.cloud_instance_id: CloudInstance(
@@ -18826,9 +18737,9 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
         )
     )
     assert rep_c11_1a.infeasible_resource_requests == []
-    assert [r.count for r in rep_c11_1a.to_launch] == [4]
+    assert [r.count for r in rep_c11_1a.to_launch] == [2]
 
-    # 6. R11-2 & R11-3: 3 unlabeled RAY_STOP_REQUESTED + 1 TERMINATED pod at max_w=8 scaling up
+    # 5. R11-2 & R11-3: 3 unlabeled RAY_STOP_REQUESTED + 1 TERMINATED pod at max_w=8 scaling up
     # a fresh 4-host gang plans 5 launches (matching Reconciler._scale_cluster) and strips non-head head_resources.
     sr3 = []
     for w in range(3):
@@ -18848,36 +18759,21 @@ def test_omitted_stopping_and_gcs_lagged_pods_align_scheduler_and_reconciler():
         )
         for a in sr3
     }
-    planned_sr: List[int] = []
-
-    def _cap_sr(self_ctx):
-        planned_sr.append(
-            sum(
-                1
-                for n in self_ctx._nodes
-                if n.node_type == "tpu" and n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_sr8 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=_mk_cfgs(8),
+            current_instances=sr_all,
+            gang_resource_requests=[g4],
+            disable_launch_config_check=True,
+            replica_view=_MultiHostReplicaView.build(
+                [a.im_instance for a in sr_all], sr_cmap, {"tpu": 4}
+            ),
         )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_sr
-    ):
-        rep_sr8 = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=_mk_cfgs(8),
-                current_instances=sr_all,
-                gang_resource_requests=[g4],
-                disable_launch_config_check=True,
-                replica_view=_MultiHostReplicaView.build(
-                    [a.im_instance for a in sr_all], sr_cmap, {"tpu": 4}
-                ),
-            )
-        )
+    )
     assert rep_sr8.infeasible_gang_resource_requests == []
-    assert planned_sr == [5]
-    assert [r.count for r in rep_sr8.to_launch] == [8]
+    assert [r.count for r in rep_sr8.to_launch] == [5]
     assert rep_sr8.cluster_resources.get("TPU-v6e-16-head", 0.0) == 2.0
+    assert _run_seam(_mk_cfgs(8), sr_all, gangs=[g4], max_w_global=8) == 5
 
 
 def test_unattributed_unlabeled_partial_replicas_refill_up_to_max_workers():
@@ -18918,32 +18814,17 @@ def test_unattributed_unlabeled_partial_replicas_refill_up_to_max_workers():
         [_mk_req({"CPU": 8, "TPU": 4, head_res: 1}, [(_ANTI, "_pg_uh", "1")])]
         + _spread_reqs({"CPU": 8, "TPU": 4}, 4, "_pg_uh")[1:],
     )
-    planned_alloc: List[int] = []
-    orig_glr = ResourceDemandScheduler.ScheduleContext.get_launch_requests
-
-    def _cap_alloc(self_ctx):
-        planned_alloc.append(
-            sum(
-                1 for n in self_ctx._nodes if n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_alloc = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=tpu4,
+            current_instances=alloc2,
+            gang_resource_requests=[g4_head],
+            disable_launch_config_check=True,
+            replica_view=alloc_view,
         )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_alloc
-    ):
-        rep_alloc = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=tpu4,
-                current_instances=alloc2,
-                gang_resource_requests=[g4_head],
-                disable_launch_config_check=True,
-                replica_view=alloc_view,
-            )
-        )
+    )
     assert rep_alloc.infeasible_gang_resource_requests == []
-    assert planned_alloc == [2]
-    assert [r.count for r in rep_alloc.to_launch] == [4]
+    assert [r.count for r in rep_alloc.to_launch] == [2]
 
     # Tick 2 (C11-2a / R3b): alloc2 + 2 QUEUED refill pods attach onto the same replica
     # and satisfy g4_head with zero launches and zero sub-replica cancellations.
@@ -19014,7 +18895,7 @@ def test_unattributed_unlabeled_partial_replicas_refill_up_to_max_workers():
         )
     )
     assert rep_dom_run.infeasible_resource_requests == []
-    assert [r.count for r in rep_dom_run.to_launch] == [4]
+    assert [r.count for r in rep_dom_run.to_launch] == [2]
 
     # R5 (seed=246): domainless size=2, max_w=6 with 1 RAY_RUNNING (lid="") +
     # 1 RAY_STOP_REQUESTED (lid="L1") + 3 GPU tasks aligns planned == created == 4.
@@ -19037,34 +18918,18 @@ def test_unattributed_unlabeled_partial_replicas_refill_up_to_max_workers():
         )
         for a in r5_insts
     }
-    planned_r5: List[int] = []
-
-    def _cap_r5(self_ctx):
-        planned_r5.append(
-            sum(
-                1
-                for n in self_ctx._nodes
-                if n.node_type == "gpu" and n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_r5 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=gpu2_6,
+            current_instances=r5_insts,
+            resource_requests=[_resource_request({"GPU": 8}, 3)],
+            disable_launch_config_check=True,
+            replica_view=_MultiHostReplicaView.build(
+                [a.im_instance for a in r5_insts], r5_cmap, {"gpu": 2}
+            ),
         )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_r5
-    ):
-        rep_r5 = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=gpu2_6,
-                current_instances=r5_insts,
-                resource_requests=[_resource_request({"GPU": 8}, 3)],
-                disable_launch_config_check=True,
-                replica_view=_MultiHostReplicaView.build(
-                    [a.im_instance for a in r5_insts], r5_cmap, {"gpu": 2}
-                ),
-            )
-        )
+    )
     assert rep_r5.infeasible_resource_requests == []
-    assert planned_r5 == [4]
     assert [r.count for r in rep_r5.to_launch] == [4]
 
     gpu4 = {
@@ -19089,34 +18954,20 @@ def test_unattributed_unlabeled_partial_replicas_refill_up_to_max_workers():
     run_view = _MultiHostReplicaView.build(
         [a.im_instance for a in run2], run_cmap, {"gpu": 4}
     )
-    planned_gpu: List[int] = []
-
-    def _cap_gpu(self_ctx):
-        planned_gpu.append(
-            sum(
-                1 for n in self_ctx._nodes if n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_gpu = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=gpu4,
+            current_instances=run2,
+            resource_requests=[_resource_request({"GPU": 8}, 2)],
+            disable_launch_config_check=True,
+            replica_view=run_view,
         )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_gpu
-    ):
-        rep_gpu = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=gpu4,
-                current_instances=run2,
-                resource_requests=[_resource_request({"GPU": 8}, 2)],
-                disable_launch_config_check=True,
-                replica_view=run_view,
-            )
-        )
+    )
     assert rep_gpu.infeasible_resource_requests == []
-    assert planned_gpu == [2]
-    assert [r.count for r in rep_gpu.to_launch] == [4]
+    assert [r.count for r in rep_gpu.to_launch] == [2]
 
     # At max_worker_nodes=8, 2 busy domainless RAY_RUNNING pods (lid="") + 4-GPU gang
-    # co-launches 2 refill + 4 fresh = 6 TO_LAUNCH nodes (LaunchRequest(count=8)).
+    # co-launches 2 refill + 4 fresh = 6 TO_LAUNCH nodes (LaunchRequest(count=6)).
     gpu8 = {
         "gpu": NodeTypeConfig(
             name="gpu",
@@ -19127,38 +18978,23 @@ def test_unattributed_unlabeled_partial_replicas_refill_up_to_max_workers():
             replica_config=WorkerReplicaConfig(workers_per_replica=4),
         )
     }
-    planned_gpu8: List[int] = []
-
-    def _cap_gpu8(self_ctx):
-        planned_gpu8.append(
-            sum(
-                1 for n in self_ctx._nodes if n.status == SchedulingNodeStatus.TO_LAUNCH
-            )
+    rep_gpu8 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            node_type_configs=gpu8,
+            current_instances=run2,
+            gang_resource_requests=[_gpu_gang(4)],
+            disable_launch_config_check=True,
+            replica_view=run_view,
         )
-        return orig_glr(self_ctx)
-
-    with patch.object(
-        ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap_gpu8
-    ):
-        rep_gpu8 = ResourceDemandScheduler().schedule(
-            SchedulingRequest(
-                node_type_configs=gpu8,
-                current_instances=run2,
-                gang_resource_requests=[_gpu_gang(4)],
-                disable_launch_config_check=True,
-                replica_view=run_view,
-            )
-        )
+    )
     assert rep_gpu8.infeasible_gang_resource_requests == []
-    assert planned_gpu8 == [6]
-    assert [r.count for r in rep_gpu8.to_launch] == [8]
+    assert [r.count for r in rep_gpu8.to_launch] == [6]
 
 
 def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment():
-    """Verify Wave-12 fuzzer invariants across doomed REQUESTED max_workers caps,
-    leaving-node donor-pool isolation, unattributed GCS-lag min_workers alignment,
+    """Verify Wave-12 and Wave-13 fuzzer invariants across doomed REQUESTED max_workers caps,
+    leaving-node donor-pool isolation, omitted RAY_STOPPING min_workers alignment,
     and partial refill completion in materialize_unlabeled_launch_gaps."""
-    orig_glr = ResourceDemandScheduler.ScheduleContext.get_launch_requests
 
     def _sched_planned(cfgs, insts, *, reqs=None, gangs=None, max_nodes=None):
         for a in insts:
@@ -19181,33 +19017,18 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
             if c.is_multi_worker_replica
         }
         view = _MultiHostReplicaView.build([a.im_instance for a in insts], cmap, rs)
-        planned: List[int] = []
-
-        def _cap(self_ctx):
-            planned.append(
-                sum(
-                    1
-                    for n in self_ctx._nodes
-                    if n.status == SchedulingNodeStatus.TO_LAUNCH
-                )
+        rep = ResourceDemandScheduler().schedule(
+            SchedulingRequest(
+                node_type_configs=cfgs,
+                current_instances=insts,
+                resource_requests=reqs or [],
+                gang_resource_requests=gangs or [],
+                max_num_nodes=max_nodes,
+                disable_launch_config_check=True,
+                replica_view=view,
             )
-            return orig_glr(self_ctx)
-
-        with patch.object(
-            ResourceDemandScheduler.ScheduleContext, "get_launch_requests", _cap
-        ):
-            rep = ResourceDemandScheduler().schedule(
-                SchedulingRequest(
-                    node_type_configs=cfgs,
-                    current_instances=insts,
-                    resource_requests=reqs or [],
-                    gang_resource_requests=gangs or [],
-                    max_num_nodes=max_nodes,
-                    disable_launch_config_check=True,
-                    replica_view=view,
-                )
-            )
-        return rep, planned[0]
+        )
+        return rep, sum(r.count for r in rep.to_launch)
 
     # 1. seed=285: doomed REQUESTED rows on torn_down_lids do not inflate real_count
     # in _enforce_max_workers_per_type or _enforce_max_workers_global (no Tick-2 livelock),
@@ -19243,17 +19064,30 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
         ),
         cloud_instance_id="c-ib0",
     )
-    lag_td = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="lag-td",
-            instance_type="tpu",
-            status=Instance.RAY_RUNNING,
-            cloud_instance_id="c-lag-td",
-            launch_request_id="L_td",
-            node_kind=NodeKind.WORKER,
+    stop_td_im = Instance(
+        instance_id="stop-td",
+        instance_type="tpu",
+        status=Instance.RAY_STOPPING,
+        node_id=b"stoptd".ljust(28, b"0").hex(),
+        cloud_instance_id="c-stop-td",
+        launch_request_id="L_td",
+        node_kind=NodeKind.WORKER,
+    )
+    stop_td_im.status_history.add(instance_status=Instance.RAY_RUNNING)
+    stop_td_im.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+    stop_td_im.status_history.add(instance_status=Instance.RAY_STOPPING)
+    stop_td = make_autoscaler_instance(
+        im_instance=stop_td_im,
+        ray_node=NodeState(
+            node_id=b"stoptd".ljust(28, b"0"),
+            instance_id="c-stop-td",
+            ray_node_type_name="tpu",
+            status=NodeStatus.DRAINING,
+            total_resources={"CPU": 8, "TPU": 4},
+            available_resources={"CPU": 8, "TPU": 4},
+            labels={_SLICE: "s-td", _WID: "0"},
         ),
-        ray_node=None,
-        cloud_instance_id="c-lag-td",
+        cloud_instance_id="c-stop-td",
     )
     doomed_reqs = [
         _pending_node("tpu", f"dreq-{k}", Instance.REQUESTED, lid="L_td")
@@ -19273,7 +19107,7 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
     term_td.status_history.add(instance_status=Instance.TERMINATED)
     queued4 = [_pending_tpu(f"q-{k}", Instance.QUEUED, "tpu") for k in range(4)]
     insts_285 = (
-        [sr0, sr1, inst_boot, lag_td]
+        [sr0, sr1, inst_boot, stop_td]
         + doomed_reqs
         + [make_autoscaler_instance(im_instance=term_td, cloud_instance_id="c-term-td")]
         + queued4
@@ -19286,7 +19120,7 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
     )
     assert rep_285.to_terminate == []
     assert rep_285.to_launch == []
-    # Counter-case: at max_worker_nodes=4, the 3 real in ctx + 4 QUEUED = 7 > 4 cancels QUEUED.
+    # Counter-case: at max_worker_nodes=4, 3 real in ctx + 1 omitted + 4 QUEUED = 8 > 4 cancels QUEUED.
     rep_285_cap, _ = _sched_planned(_tpu_excl(0, 4), insts_285)
     assert {t.instance_id for t in rep_285_cap.to_terminate} == {
         f"q-{k}" for k in range(4)
@@ -19307,17 +19141,35 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
             )
         }
 
-    stop_l0 = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="st-l0",
+    def _gpu_stopping(iid: str, cid: str, lid: str = ""):
+        nid = iid.encode().ljust(28, b"g")[:28]
+        im = Instance(
+            instance_id=iid,
             instance_type="gpu",
             status=Instance.RAY_STOPPING,
-            cloud_instance_id="c-stl0",
-            launch_request_id="L0",
+            node_id=nid.hex(),
+            cloud_instance_id=cid,
+            launch_request_id=lid,
             node_kind=NodeKind.WORKER,
-        ),
-        cloud_instance_id="c-stl0",
-    )
+        )
+        im.status_history.add(instance_status=Instance.RAY_RUNNING)
+        im.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+        im.status_history.add(instance_status=Instance.RAY_STOPPING)
+        return make_autoscaler_instance(
+            im_instance=im,
+            ray_node=NodeState(
+                node_id=nid,
+                instance_id=cid,
+                ray_node_type_name="gpu",
+                status=NodeStatus.DRAINING,
+                total_resources={"CPU": 8, "GPU": 8},
+                available_resources={"CPU": 8, "GPU": 8},
+                labels=dict(GPU_LABELS),
+            ),
+            cloud_instance_id=cid,
+        )
+
+    stop_l0 = _gpu_stopping("st-l0", "c-stl0", lid="L0")
     req_l0 = _pending_node("gpu", "req-l0", Instance.REQUESTED, lid="L0")
     sr_l0 = [
         _run_node("gpu", f"srl0-{k}", {"CPU": 8, "GPU": 8}, dict(GPU_LABELS), lid="L0")
@@ -19325,16 +19177,7 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
     ]
     for x in sr_l0:
         x.im_instance.status = Instance.RAY_STOP_REQUESTED
-    stop_unattr = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="st-u",
-            instance_type="gpu",
-            status=Instance.RAY_STOPPING,
-            cloud_instance_id="c-stu",
-            node_kind=NodeKind.WORKER,
-        ),
-        cloud_instance_id="c-stu",
-    )
+    stop_unattr = _gpu_stopping("st-u", "c-stu")
     sr_unattr = _run_node("gpu", "sr-u", {"CPU": 8, "GPU": 8}, dict(GPU_LABELS))
     sr_unattr.im_instance.status = Instance.RAY_STOP_REQUESTED
     run_l2 = _run_node(
@@ -19353,25 +19196,15 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
     )
     assert rep_400_16.infeasible_gang_resource_requests == []
     assert pl_400_16 == 5
-    assert [r.count for r in rep_400_16.to_launch] == [8]
+    assert [r.count for r in rep_400_16.to_launch] == [5]
 
-    # 3. seed=4258 & seed=2551 & seed=1331: min_worker_nodes with unattributed GCS lag,
-    # unattributed open slots, and omitted RAY_STOPPING slots.
-    lag_u = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="lag-u",
-            instance_type="gpu",
-            status=Instance.RAY_RUNNING,
-            cloud_instance_id="c-lagu",
-            node_kind=NodeKind.WORKER,
-        ),
-        ray_node=None,
-        cloud_instance_id="c-lagu",
-    )
+    # 3. seed=4258 & seed=2551 & seed=1331: min_worker_nodes with unattributed open slots
+    # and reachable omitted RAY_STOPPING slots.
+    stop_u = _gpu_stopping("stop-u", "c-stopu")
     insts_4258 = [
         _run_node("gpu", f"ru-{k}", {"CPU": 8, "GPU": 8}, dict(GPU_LABELS))
         for k in range(3)
-    ] + [lag_u]
+    ] + [stop_u]
     rep_4258, pl_4258 = _sched_planned(_dom4(8, 8), insts_4258)
     assert pl_4258 == 4
     assert [r.count for r in rep_4258.to_launch] == [4]
@@ -19442,10 +19275,10 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
         shared4_8, insts_1331, reqs=[_resource_request({"GPU": 8}, 4)]
     )
     assert pl_1331 == 3
-    assert [r.count for r in rep_1331.to_launch] == [4]
+    assert [r.count for r in rep_1331.to_launch] == [3]
 
     # 4. seed=3022: partial refill TO_LAUNCH nodes from min_w + task demand complete
-    # remaining unlabeled launch gap up to nt_room (planned == 5, count == 8).
+    # remaining unlabeled launch gap up to nt_room (planned == count == 5).
     inst_l1 = make_autoscaler_instance(
         im_instance=Instance(
             instance_id="ib-l1",
@@ -19457,14 +19290,28 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
         ),
         cloud_instance_id="c-ibl1",
     )
+    stop_tpu_im = Instance(
+        instance_id="st-tpu",
+        instance_type="tpu",
+        status=Instance.RAY_STOPPING,
+        node_id=b"sttpu".ljust(28, b"0").hex(),
+        cloud_instance_id="c-sttpu",
+        launch_request_id="L0",
+        node_kind=NodeKind.WORKER,
+    )
+    stop_tpu_im.status_history.add(instance_status=Instance.RAY_RUNNING)
+    stop_tpu_im.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+    stop_tpu_im.status_history.add(instance_status=Instance.RAY_STOPPING)
     stop_tpu = make_autoscaler_instance(
-        im_instance=Instance(
-            instance_id="st-tpu",
-            instance_type="tpu",
-            status=Instance.RAY_STOPPING,
-            cloud_instance_id="c-sttpu",
-            launch_request_id="L0",
-            node_kind=NodeKind.WORKER,
+        im_instance=stop_tpu_im,
+        ray_node=NodeState(
+            node_id=b"sttpu".ljust(28, b"0"),
+            instance_id="c-sttpu",
+            ray_node_type_name="tpu",
+            status=NodeStatus.DRAINING,
+            total_resources={"CPU": 8, "TPU": 4},
+            available_resources={"CPU": 8, "TPU": 4},
+            labels={_SLICE: "s-l0", _WID: "0"},
         ),
         cloud_instance_id="c-sttpu",
     )
@@ -19478,7 +19325,602 @@ def test_fuzzer_doomed_requested_max_workers_leaving_donor_and_min_w_alignment()
         _tpu_excl(4, 8), insts_3022, reqs=[_resource_request({"TPU": 4}, 5)]
     )
     assert pl_3022 == 5
-    assert [r.count for r in rep_3022.to_launch] == [8]
+    assert [r.count for r in rep_3022.to_launch] == [5]
+
+
+def test_wave13_lidless_refills_queued_non_td_multitype_caps_and_mutants():
+    """Cover Round-12 findings and pin surviving Wave-12 mutants:
+    1. Lidless exclusive-domain slices heal via untagged teardown, remembered domain, or TTL,
+       and keep expired placeholder state across QUEUED-attach ticks without double waiting.
+    2. Unbacked healthy_raw deficits align planned == created through Reconciler._scale_cluster
+       for both lidless exclusive slices and cross-rack shared-domain batches.
+    3. Domain-labeled RAY_STOPPING / RAY_STOP_REQUESTED pods never poison sibling slices on
+       shared launch batches, _max_lid_slots_on_rep counts unattributed live members,
+       and domainless / runtime-unlabeled multi-slice drain checks kill M13 and M22.
+    4. Launchable QUEUED refills on non-torn-down slices attach cleanly (max=4 gang,
+       pending_idle_timeout_s=0, max=8 2nd gang) while doomed remainders still cancel.
+    5. Multi-type global headroom and per-type / global omitted-slot caps align with
+       Reconciler._scale_cluster (killing M06, M18, M21, M23)."""
+
+    def _tpu_cfg(name="tpu", min_w=0, max_w=4, size=4, exclusive=True, dom_key=_SLICE):
+        rt_keys = tuple(k for k in (dom_key, _WID if dom_key == _SLICE else None) if k)
+        return NodeTypeConfig(
+            name=name,
+            resources={"CPU": 8, "TPU": 4},
+            min_worker_nodes=min_w,
+            max_worker_nodes=max_w,
+            runtime_label_keys=rt_keys,
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=size,
+                domain_label_key=dom_key,
+                domain_exclusive=exclusive,
+                worker_index_label_key=_WID if dom_key == _SLICE else None,
+            ),
+        )
+
+    def _stopping(nt, iid, dom_key=None, dom_val=None, lid="", solic=True):
+        nid = iid.encode().ljust(28, b"z")[:28]
+        cid = f"c-{iid}"
+        im = Instance(
+            instance_id=iid,
+            instance_type=nt,
+            status=Instance.RAY_STOPPING,
+            node_id=nid.hex(),
+            cloud_instance_id=cid,
+            launch_request_id=lid,
+            node_kind=NodeKind.WORKER,
+        )
+        im.status_history.add(instance_status=Instance.RAY_RUNNING)
+        if solic:
+            im.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+        im.status_history.add(instance_status=Instance.RAY_STOPPING)
+        lbls = {dom_key: dom_val} if dom_key and dom_val else {}
+        return make_autoscaler_instance(
+            im_instance=im,
+            ray_node=NodeState(
+                node_id=nid,
+                instance_id=cid,
+                ray_node_type_name=nt,
+                status=NodeStatus.DRAINING,
+                total_resources={"CPU": 8, "TPU": 4},
+                available_resources={"CPU": 8, "TPU": 4},
+                labels=lbls,
+            ),
+            cloud_instance_id=cid,
+        )
+
+    def _term(nt, iid, lid="", with_td=True, solic=False, status=Instance.TERMINATED):
+        cid = f"c-{iid}"
+        im = Instance(
+            instance_id=iid,
+            instance_type=nt,
+            status=status,
+            cloud_instance_id=cid,
+            launch_request_id=lid,
+            node_kind=NodeKind.WORKER,
+        )
+        im.status_history.add(instance_status=Instance.RAY_RUNNING)
+        if solic:
+            im.status_history.add(instance_status=Instance.RAY_STOP_REQUESTED)
+            im.status_history.add(instance_status=Instance.TERMINATING)
+        elif with_td:
+            im.status_history.add(instance_status=Instance.RAY_STOPPED)
+            im.status_history.add(instance_status=Instance.TERMINATING)
+        if status == Instance.TERMINATED:
+            im.status_history.add(instance_status=Instance.TERMINATED)
+        return make_autoscaler_instance(im_instance=im, cloud_instance_id=cid)
+
+    def _reconciler_created(cfgs, insts, *, reqs=None, gangs=None, max_workers=8):
+        store = InstanceStorage(cluster_id="w13", storage=InMemoryStorage())
+        im_mgr = InstanceManager(
+            instance_storage=store, instance_status_update_subscribers=[]
+        )
+        head_im = Instance(
+            instance_id="head-0",
+            instance_type="head",
+            status=Instance.RAY_RUNNING,
+            node_id=(b"h" * 28).hex(),
+            cloud_instance_id="c-head",
+            node_kind=NodeKind.HEAD,
+        )
+        head_rn = NodeState(
+            node_id=b"h" * 28,
+            instance_id="c-head",
+            ray_node_type_name="head",
+            status=NodeStatus.RUNNING,
+        )
+        im_copies = []
+        for a in insts:
+            im_cp = copy.deepcopy(a.im_instance)
+            if a.ray_node is not None and a.ray_node.node_id:
+                im_cp.node_id = a.ray_node.node_id.hex()
+            im_copies.append(im_cp)
+        store.batch_upsert_instances([head_im] + im_copies, expected_storage_version=0)
+        ant = {"head": {"node_config": {}, "resources": {"CPU": 0}}}
+        for nt, c in cfgs.items():
+            rc = c.replica_config
+            ant[nt] = {
+                "node_config": {},
+                "resources": dict(c.resources),
+                "min_workers": c.min_worker_nodes,
+                "max_workers": c.max_worker_nodes,
+                "runtime_label_keys": list(c.runtime_label_keys),
+                "replica_config": {
+                    "workers_per_replica": rc.workers_per_replica,
+                    "domain_label_key": rc.domain_label_key,
+                    "domain_exclusive": rc.domain_exclusive,
+                    "worker_index_label_key": rc.worker_index_label_key,
+                },
+            }
+        acfg = AutoscalingConfig(
+            configs={
+                "cluster_name": "w13",
+                "max_workers": max_workers,
+                "upscaling_speed": 100.0,
+                "provider": {"type": "aws", "disable_launch_config_check": True},
+                "head_node_type": "head",
+                "available_node_types": ant,
+            },
+            skip_content_hash=True,
+        )
+        cmap = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            **{
+                a.im_instance.cloud_instance_id: CloudInstance(
+                    a.im_instance.cloud_instance_id,
+                    a.im_instance.instance_type,
+                    NodeKind.WORKER,
+                    True,
+                )
+                for a in insts
+                if a.im_instance.cloud_instance_id
+                and a.im_instance.status
+                not in (Instance.TERMINATED, Instance.TERMINATING)
+            },
+        }
+        rs = {
+            nt: c.workers_per_replica
+            for nt, c in cfgs.items()
+            if c.is_multi_worker_replica
+        }
+        Reconciler._scale_cluster(
+            autoscaling_state=AutoscalingState(),
+            instance_manager=im_mgr,
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_state=ClusterResourceState(
+                node_states=[head_rn]
+                + [a.ray_node for a in insts if a.ray_node is not None],
+                pending_resource_requests=reqs or [],
+                pending_gang_resource_requests=gangs or [],
+            ),
+            scheduler=ResourceDemandScheduler(),
+            autoscaling_config=acfg,
+            cloud_provider=None,
+            non_terminated_cloud_instances=cmap,
+            replica_sizes=rs,
+        )
+        out: Dict[str, int] = {}
+        for v in store.get_instances()[0].values():
+            if v.status == Instance.QUEUED:
+                out[v.instance_type] = out.get(v.instance_type, 0) + 1
+        return out
+
+    cfgs4 = {"tpu": _tpu_cfg(max_w=4)}
+    cfgs8 = {"tpu": _tpu_cfg(max_w=8)}
+    live3_lidless = [
+        _run_node(
+            "tpu",
+            f"lw-{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(w)},
+            used={"TPU": 4},
+        )
+        for w in range(3)
+    ]
+    dead_lidless = _term("tpu", "lw-3", lid="", with_td=True)
+
+    # 1a. Single-tick lid="" degraded slice with untagged teardown row refills 1 slot.
+    rep_single = _sched(
+        cfgs4, live3_lidless + [dead_lidless], reqs=[_resource_request({"TPU": 4})]
+    )
+    assert rep_single.infeasible_resource_requests == []
+    assert _launch_and_terminate(rep_single) == ({"tpu": 1}, [])
+
+    # 1b. Remembered domain on lid="" slice heals in 1 tick even when 2 slices exist.
+    sched_mem = ResourceDemandScheduler()
+    s1_lidless = [
+        _run_node(
+            "tpu",
+            f"s1-{w}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-1", _WID: str(w)},
+            used={"TPU": 4},
+        )
+        for w in range(4)
+    ]
+    w3_live = _run_node(
+        "tpu",
+        "lw-3",
+        {"CPU": 8, "TPU": 4},
+        {_SLICE: "slice-0", _WID: "3"},
+        used={"TPU": 4},
+    )
+    _sched(cfgs8, live3_lidless + [w3_live] + s1_lidless, sched=sched_mem)
+    rep_mem = _sched(
+        cfgs8,
+        live3_lidless + [dead_lidless] + s1_lidless,
+        reqs=[_resource_request({"TPU": 4})],
+        sched=sched_mem,
+    )
+    assert rep_mem.infeasible_resource_requests == []
+    assert _launch_and_terminate(rep_mem) == ({"tpu": 1}, [])
+
+    # 1c. Post-restart lid="" slice (no teardown row) waits before TTL, heals after TTL,
+    # and keeps expired state across QUEUED-attach ticks without resetting TTL (Seed 3).
+    sched_ttl = ResourceDemandScheduler()
+    t_clock = [100.0]
+    q_refill = _pending_node("tpu", "q-ttl-0", Instance.QUEUED)
+    with patch(
+        "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: t_clock[0]
+    ):
+        rep_pre = _sched(
+            cfgs4,
+            live3_lidless,
+            reqs=[_resource_request({"TPU": 4})],
+            placeholder_ttl_s=10.0,
+            sched=sched_ttl,
+        )
+        assert len(rep_pre.infeasible_resource_requests) == 1
+        assert rep_pre.to_launch == []
+
+        t_clock[0] = 115.0
+        rep_exp1 = _sched(
+            cfgs4,
+            live3_lidless,
+            reqs=[_resource_request({"TPU": 4})],
+            placeholder_ttl_s=10.0,
+            sched=sched_ttl,
+        )
+        assert rep_exp1.infeasible_resource_requests == []
+        assert _launch_and_terminate(rep_exp1) == ({"tpu": 1}, [])
+
+        # Attach 1 QUEUED refill pod on next tick, then simulate QUEUED disappearing:
+        # slice-0 must stay expired immediately without waiting another 10s window.
+        t_clock[0] = 116.0
+        rep_q_att = _sched(
+            cfgs4,
+            live3_lidless + [q_refill],
+            reqs=[_resource_request({"TPU": 4})],
+            placeholder_ttl_s=10.0,
+            sched=sched_ttl,
+        )
+        assert rep_q_att.infeasible_resource_requests == []
+        assert rep_q_att.to_launch == []
+
+        t_clock[0] = 117.0
+        rep_still_exp = _sched(
+            cfgs4,
+            live3_lidless,
+            reqs=[_resource_request({"TPU": 4})],
+            placeholder_ttl_s=10.0,
+            sched=sched_ttl,
+        )
+        assert rep_still_exp.infeasible_resource_requests == []
+        assert _launch_and_terminate(rep_still_exp) == ({"tpu": 1}, [])
+
+    # 2. C12-2 seam: unbacked healthy_raw aligns planned == created == 5 on both
+    # (a) lidless exclusive partial slice and (b) cross-rack shared-domain batch.
+    g4 = _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, "_pg_w13_c2"))
+    rep_c2a = _sched(cfgs8, live3_lidless, gangs=[g4])
+    assert _launch_and_terminate(rep_c2a) == ({"tpu": 5}, [])
+    assert _reconciler_created(cfgs8, live3_lidless, gangs=[g4], max_workers=8) == {
+        "tpu": 5
+    }
+
+    sh_cfgs8 = {"tpu": _tpu_cfg(max_w=8, exclusive=False, dom_key="rack")}
+    sh_split3 = [
+        _run_node(
+            "tpu",
+            f"sh-{k}",
+            {"CPU": 8, "TPU": 4},
+            {"rack": "r0" if k < 2 else "r1"},
+            used={"TPU": 4},
+            lid="L_sh",
+        )
+        for k in range(3)
+    ]
+    g4_rack = _strict_pack_gang("rack", _spread_reqs({"TPU": 4}, 4, "_pg_w13_sh"))
+    rep_c2b = _sched(sh_cfgs8, sh_split3, gangs=[g4_rack])
+    assert _launch_and_terminate(rep_c2b) == ({"tpu": 5}, [])
+    assert _reconciler_created(sh_cfgs8, sh_split3, gangs=[g4_rack], max_workers=8) == {
+        "tpu": 5
+    }
+
+    # 3a. C12-3a & R12-4: domain-labeled RAY_STOPPING and RAY_STOP_REQUESTED on slice-0
+    # never poison healthy sibling slice-1 on shared L_8.
+    g3_s1 = _strict_pack_gang(
+        _SLICE,
+        _spread_reqs({"TPU": 4}, 3, "_pg_s1_pin"),
+        loc_constraints=[(_SLICE, _IN, ["slice-1"])],
+    )
+    s0_term3 = [
+        _term("tpu", f"s0-t{k}", lid="L_8", solic=True, status=Instance.TERMINATING)
+        for k in range(3)
+    ]
+    s1_run3 = [
+        _run_node(
+            "tpu",
+            f"s1-r{k}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-1", _WID: str(k)},
+            lid="L_8",
+        )
+        for k in range(3)
+    ]
+    s1_crash1 = _term("tpu", "s1-cr3", lid="L_8", with_td=True, solic=False)
+    s0_stopping = _stopping(
+        "tpu", "s0-st3", dom_key=_SLICE, dom_val="slice-0", lid="L_8"
+    )
+    assert (
+        _sched(
+            cfgs8, s0_term3 + [s0_stopping] + s1_run3 + [s1_crash1], gangs=[g3_s1]
+        ).infeasible_gang_resource_requests
+        == []
+    )
+    s0_sr = _run_node(
+        "tpu", "s0-sr3", {"CPU": 8, "TPU": 4}, {_SLICE: "slice-0", _WID: "3"}, lid="L_8"
+    )
+    s0_sr.im_instance.status = Instance.RAY_STOP_REQUESTED
+    assert (
+        _sched(
+            cfgs8, s0_term3 + [s0_sr] + s1_run3 + [s1_crash1], gangs=[g3_s1]
+        ).infeasible_gang_resource_requests
+        == []
+    )
+
+    # 3b. C12-3b: _max_lid_slots_on_rep counts unattributed live members in other_live.
+    g3_s0 = _strict_pack_gang(
+        _SLICE,
+        _spread_reqs({"TPU": 4}, 3, "_pg_s0_pin"),
+        loc_constraints=[(_SLICE, _IN, ["slice-0"])],
+    )
+    s0_unattr2 = [
+        _run_node(
+            "tpu", f"s0-u{k}", {"CPU": 8, "TPU": 4}, {_SLICE: "slice-0", _WID: str(k)}
+        )
+        for k in range(2)
+    ]
+    s0_lco1 = _run_node(
+        "tpu",
+        "s0-lco2",
+        {"CPU": 8, "TPU": 4},
+        {_SLICE: "slice-0", _WID: "2"},
+        lid="L_co",
+    )
+    s0_lco_cr = _term("tpu", "s0-lco-cr", lid="L_co", with_td=True, solic=False)
+    s1_lco_solic2 = [
+        _term(
+            "tpu", f"s1-lco-t{k}", lid="L_co", solic=True, status=Instance.TERMINATING
+        )
+        for k in range(2)
+    ]
+    assert (
+        _sched(
+            cfgs8,
+            s0_unattr2 + [s0_lco1, s0_lco_cr] + s1_lco_solic2,
+            gangs=[g3_s0],
+        ).infeasible_gang_resource_requests
+        == []
+    )
+
+    # 3c. Kill M13 (domainless 2-replica L_8 drain check) & M22 (unlabeled running attach).
+    dl_cfgs8 = {"tpu": _tpu_cfg(max_w=8, exclusive=False, dom_key=None)}
+    dl_r3 = [
+        _run_node("tpu", f"dl-r{k}", {"CPU": 8, "TPU": 4}, {}, lid="L_8")
+        for k in range(3)
+    ]
+    dl_solic4 = [
+        _term("tpu", f"dl-s{k}", lid="L_8", solic=True, status=Instance.TERMINATING)
+        for k in range(4)
+    ]
+    dl_crash1 = _term("tpu", "dl-cr", lid="L_8", with_td=True, solic=False)
+    rep_m13 = _sched(
+        dl_cfgs8,
+        dl_r3 + dl_solic4 + [dl_crash1],
+        reqs=[_resource_request({"TPU": 4}, 3)],
+    )
+    assert rep_m13.infeasible_resource_requests == []
+    assert rep_m13.to_launch == []
+
+    cfgs12 = {"tpu": _tpu_cfg(max_w=12)}
+    m22_s0 = [
+        _run_node(
+            "tpu",
+            f"m22-s0-{k}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(k)},
+            lid="L_12",
+        )
+        for k in range(3)
+    ]
+    m22_s1_lbl = [
+        _run_node(
+            "tpu",
+            f"m22-s1-{k}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-1", _WID: str(k)},
+            lid="L_12",
+        )
+        for k in range(2)
+    ]
+    m22_s1_unlbl = _run_node("tpu", "m22-s1-u2", {"CPU": 8, "TPU": 4}, {}, lid="L_12")
+    m22_solic4 = [
+        _term("tpu", f"m22-t{k}", lid="L_12", solic=True, status=Instance.TERMINATING)
+        for k in range(4)
+    ]
+    m22_cr2 = [
+        _term("tpu", f"m22-cr{k}", lid="L_12", with_td=True, solic=False)
+        for k in range(2)
+    ]
+    rep_m22 = _sched(
+        cfgs12,
+        m22_s0 + m22_s1_lbl + [m22_s1_unlbl] + m22_solic4 + m22_cr2,
+        gangs=[g3_s1],
+    )
+    assert rep_m22.infeasible_gang_resource_requests == []
+
+    # 4. r2-pr4 R12-1: launchable QUEUED refills on non-torn-down K8s-deleted slice attach.
+    k_run2_idle = [
+        _run_node(
+            "tpu",
+            f"kr-{k}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(k)},
+            lid="L_k",
+        )
+        for k in range(2)
+    ]
+    k_del2 = [_term("tpu", f"kd-{k}", lid="L_k", with_td=False) for k in range(2)]
+    k_q2 = [_pending_node("tpu", f"kq-{k}", Instance.QUEUED) for k in range(2)]
+    rep_k4 = _sched(cfgs4, k_run2_idle + k_del2 + k_q2, gangs=[g4])
+    assert rep_k4.infeasible_gang_resource_requests == []
+    assert rep_k4.to_launch == []
+    assert rep_k4.to_terminate == []
+
+    rep_kp = _sched(
+        cfgs8,
+        k_run2_idle + k_del2 + k_q2,
+        pending_idle_s=0.0,
+        unneeded={"tpu": [0.0, 0.0]},
+    )
+    assert rep_kp.to_terminate == []
+
+    k_run2_busy = [
+        _run_node(
+            "tpu",
+            f"krb-{k}",
+            {"CPU": 8, "TPU": 4},
+            {_SLICE: "slice-0", _WID: str(k)},
+            used={"TPU": 4},
+            lid="L_k",
+        )
+        for k in range(2)
+    ]
+    rep_k8_2nd = _sched(cfgs8, k_run2_busy + k_del2 + k_q2, gangs=[g4])
+    assert rep_k8_2nd.infeasible_gang_resource_requests == []
+    assert _launch_and_terminate(rep_k8_2nd) == ({"tpu": 4}, [])
+
+    # 5. r2-pr4 R12-3 + M06, M18, M21, M23: multi-type headroom & omitted-slot max caps.
+    cfgs_ab = {
+        "tpu_a": _tpu_cfg("tpu_a", max_w=8),
+        "tpu_b": _tpu_cfg("tpu_b", max_w=8),
+    }
+    cfgs_ab["tpu_a"].resources["tok_a"] = 1
+    cfgs_ab["tpu_b"].resources["tok_b"] = 1
+    insts_ab = [
+        _stopping("tpu_a", "sa-0", dom_key=_SLICE, dom_val="sa-0", lid="La"),
+        _stopping("tpu_b", "sb-0", dom_key=_SLICE, dom_val="sb-0", lid="Lb"),
+    ]
+    reqs_ab = [
+        _resource_request({"TPU": 4, "tok_a": 1}, 4),
+        _resource_request({"TPU": 4, "tok_b": 1}, 4),
+    ]
+    rep_ab16 = _sched(cfgs_ab, insts_ab, reqs=reqs_ab, max_nodes=16)
+    assert _launch_and_terminate(rep_ab16) == ({"tpu_a": 7, "tpu_b": 7}, [])
+    assert _reconciler_created(cfgs_ab, insts_ab, reqs=reqs_ab, max_workers=16) == {
+        "tpu_a": 7,
+        "tpu_b": 7,
+    }
+    # Counter-case (M18): global max_nodes=13 caps tpu_b's alignment launch via nt_room.
+    rep_ab13 = _sched(cfgs_ab, insts_ab, reqs=reqs_ab, max_nodes=13)
+    assert sum(r.count for r in rep_ab13.to_launch) <= 11
+    assert _reconciler_created(cfgs_ab, insts_ab, reqs=reqs_ab, max_workers=13) == {
+        "tpu_a": 7
+    }
+
+    # M21: unreserved placeholder conversion (append_cnt > pad_res) decrements _headroom across types.
+    ph_a3 = [
+        _run_node(
+            "tpu_a",
+            f"pa-{k}",
+            {"CPU": 8, "TPU": 4, "tok_a": 1},
+            {_SLICE: "sa-0", _WID: str(k)},
+            used={"TPU": 4, "tok_a": 1},
+            lid="La_ph",
+        )
+        for k in range(3)
+    ]
+    # Include a non-placeholder gap on tpu_a where pad_res == 0 while rem_gap == 1 via vanished pod,
+    # and verify planned == created under tight global max_workers=11.
+    assert _reconciler_created(
+        cfgs_ab, ph_a3 + [insts_ab[1]], reqs=reqs_ab, max_workers=11
+    ) == {"tpu_a": 5}
+
+    # M06 (per-type omitted + QUEUED > max_worker_nodes) & M23 (global omitted + min_w > max_num_nodes).
+    insts_m06 = [
+        _stopping("tpu", f"m06-s{k}", dom_key=_SLICE, dom_val="s0") for k in range(4)
+    ] + [_pending_node("tpu", f"m06-q{k}", Instance.QUEUED) for k in range(4)]
+    rep_m06 = _sched(cfgs4, insts_m06)
+    assert {t.instance_id for t in rep_m06.to_terminate} == {
+        f"m06-q{k}" for k in range(4)
+    }
+
+    cfgs_m23 = {
+        "tpu_a": _tpu_cfg("tpu_a", min_w=4, max_w=8),
+        "tpu_b": _tpu_cfg("tpu_b", min_w=0, max_w=8),
+    }
+    insts_m23 = [
+        _stopping("tpu_b", f"m23-s{k}", dom_key=_SLICE, dom_val=f"sb-{k // 4}")
+        for k in range(5)
+    ]
+    rep_m23 = _sched(cfgs_m23, insts_m23, max_nodes=8)
+    assert rep_m23.to_launch == []
+    assert _reconciler_created(cfgs_m23, insts_m23, max_workers=8) == {}
+
+    # 6a. Unlaunched sibling type's alignment pad never blocks tpu_a at max_workers=9,
+    # whereas max_workers=8 (< 2 stopping + 7 tpu_a) rejects launching tpu_a.
+    rep_only_a9 = _sched(cfgs_ab, insts_ab, reqs=[reqs_ab[0]], max_nodes=9)
+    assert _launch_and_terminate(rep_only_a9) == ({"tpu_a": 7}, [])
+    assert _reconciler_created(cfgs_ab, insts_ab, reqs=[reqs_ab[0]], max_workers=9) == {
+        "tpu_a": 7
+    }
+    rep_only_a8 = _sched(cfgs_ab, insts_ab, reqs=[reqs_ab[0]], max_nodes=8)
+    assert rep_only_a8.to_launch == []
+    assert (
+        _reconciler_created(cfgs_ab, insts_ab, reqs=[reqs_ab[0]], max_workers=8) == {}
+    )
+
+    # 6b. Mixed [3 RAY_RUNNING + 1 QUEUED refill] + 1 RAY_STOPPING at max_w=4 cancels
+    # only the 1 unallocated QUEUED refill without killing the 3 live RAY_RUNNING hosts.
+    mixed_q_run = (
+        live3_lidless
+        + [dead_lidless]
+        + [_pending_node("tpu", "q-mix-0", Instance.QUEUED)]
+        + [_stopping("tpu", "s-mix-0", dom_key=_SLICE, dom_val="slice-1")]
+    )
+    rep_mix_cap = _sched(cfgs4, mixed_q_run)
+    assert [t.instance_id for t in rep_mix_cap.to_terminate] == ["q-mix-0"]
+
+    # 6c. Over-capacity non-provider placeholders are trimmed when sibling min_workers
+    # + alignment launches consume global headroom (seed=1888): only 1 gang fits.
+    cfgs_1888 = {
+        "tpu_a": _tpu_cfg("tpu_a", min_w=8, max_w=8),
+        "tpu_b": _tpu_cfg("tpu_b", min_w=0, max_w=4, exclusive=False),
+    }
+    req_b = _pending_node("tpu_b", "rb-0", Instance.REQUESTED, lid="Lb_req")
+    req_b.cloud_instance_id = ""
+    req_b.im_instance.cloud_instance_id = ""
+    insts_1888 = [insts_ab[0], req_b]
+    two_gangs_1888 = [
+        _strict_pack_gang(_SLICE, _spread_reqs({"TPU": 4}, 4, f"_pg_1888_{i}"))
+        for i in range(2)
+    ]
+    rep_1888 = _sched(cfgs_1888, insts_1888, gangs=two_gangs_1888, max_nodes=10)
+    assert len(rep_1888.infeasible_gang_resource_requests) == 1
+    assert _launch_and_terminate(rep_1888) == ({"tpu_a": 7}, [])
+    assert _reconciler_created(
+        cfgs_1888, insts_1888, gangs=two_gangs_1888, max_workers=10
+    ) == {"tpu_a": 7}
 
 
 if __name__ == "__main__":

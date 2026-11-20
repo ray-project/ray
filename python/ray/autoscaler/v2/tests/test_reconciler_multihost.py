@@ -11385,7 +11385,27 @@ class TestReconcilerMultiHost:
             gang_needs_head: bool = False,
             pinned_slice: Optional[str] = None,
             run_operator: bool = True,
+            reset_autoscaler: bool = False,
         ):
+            nonlocal store, im, sched
+            if reset_autoscaler:
+                head_rows = [
+                    copy.deepcopy(v)
+                    for v in store.get_instances()[0].values()
+                    if v.node_kind == NodeKind.HEAD
+                ]
+                store = InstanceStorage(
+                    cluster_id=cluster_id, storage=InMemoryStorage()
+                )
+                if head_rows:
+                    store.batch_upsert_instances(head_rows, expected_storage_version=0)
+                im = InstanceManager(
+                    instance_storage=store,
+                    instance_status_update_subscribers=list(
+                        im._status_update_subscribers
+                    ),
+                )
+                sched = ResourceDemandScheduler()
             states = list(head_state.node_states)
             for nm, busy in ray_busy.items():
                 idx = admitted.index(nm)
@@ -11967,11 +11987,12 @@ class TestReconcilerMultiHost:
         }
         assert all(st == Instance.RAY_RUNNING for st in inst_by_cid.values())
 
-    def test_unlabeled_stopping_gcs_lag_and_rejected_drain_multi_tick(self):
-        """Multi-tick KubeRay reconcile: unlabeled RAY_STOPPING or GCS-lagged pods never
-        churn QUEUED->TERMINATED remainders, and rejected drains do not poison later crashes."""
-        # 1. 2 busy RAY_RUNNING + 1 RAY_STOPPING at maxReplicas=2 scales cleanly to 2 replicas
-        # with zero QUEUED->TERMINATED sub-replica cancellations across consecutive ticks.
+    def test_unlabeled_stopping_and_rejected_drain_multi_tick(self):
+        """Multi-tick KubeRay reconcile: unlabeled RAY_STOPPING pods never churn
+        QUEUED->TERMINATED remainders, rejected drains do not poison later crashes,
+        and lidless operator-created or post-restart slices refill cleanly."""
+        # 1. 2 busy RAY_RUNNING + 1 reachable RAY_STOPPING at maxReplicas=2 scales cleanly
+        # to 2 replicas with zero QUEUED->TERMINATED sub-replica cancellations across ticks.
         (
             group,
             pods,
@@ -11990,20 +12011,13 @@ class TestReconcilerMultiHost:
         for nm in workers():
             ray_busy[nm] = True
         step_tick()
-        # Remove u-3 directly from Kubernetes, simulate GCS lag on u-1 (RAY_RUNNING
-        # with empty node_id and ray_node=None), and transition u-2 to DRAINING -> RAY_STOPPING.
+        # Remove u-3 directly from Kubernetes while u-0, u-1 stay busy RAY_RUNNING and
+        # u-2 transitions to DRAINING -> RAY_STOPPING.
         pods["items"] = [p for p in pods["items"] if p["metadata"]["name"] != "u-3"]
         pods["metadata"]["resourceVersion"] = str(
             int(pods["metadata"]["resourceVersion"]) + 1
         )
         ray_busy.pop("u-3")
-        ray_busy.pop("u-1")
-        insts_s, ver_s = store.get_instances()
-        for inst in insts_s.values():
-            if inst.cloud_instance_id == "u-1":
-                inst.node_id = ""
-                store.batch_upsert_instances([inst], expected_storage_version=ver_s)
-                break
         res_s1 = step_tick(gangs=1, draining="u-2", run_operator=False)
         assert len(res_s1.infeasible_gang_resource_requests) == 0
         res_s2 = step_tick(gangs=1, draining="u-2", run_operator=True)
@@ -12066,6 +12080,125 @@ class TestReconcilerMultiHost:
         assert res_rec.infeasible_resource_requests == []
         assert group_r.get("replicas") == 1
         assert workers_r() == ["r-0", "r-1", "r-2", "r-4"]
+
+        # 3. R12-1 F3: Operator-created initial replica (lid="") at maxReplicas=1 refills
+        # immediately in 3 ticks after one host's raylet dies while siblings stay busy.
+        (
+            group_op,
+            pods_op,
+            _,
+            ray_busy_op,
+            workers_op,
+            step_tick_op,
+        ) = self._make_unlabeled_kuberay_sim(
+            "operator-init-lidless",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"op-{i}" for i in range(8)],
+        )
+        group_op["replicas"] = 1
+        # Step once with 0 demand so operator creates op-0..op-3 without any LaunchRequest.
+        step_tick_op()
+        assert workers_op() == ["op-0", "op-1", "op-2", "op-3"]
+        for nm in workers_op():
+            ray_busy_op[nm] = True
+        step_tick_op()
+        # Kill op-3's raylet (autoscaler tears down op-3 and lowers replicas 1 -> 0).
+        step_tick_op(dead="op-3")
+        assert group_op.get("replicas") == 0
+        assert workers_op() == ["op-0", "op-1", "op-2"]
+        res_op = None
+        for _ in range(3):
+            res_op = step_tick_op(tasks=1)
+        assert res_op.infeasible_resource_requests == []
+        assert group_op.get("replicas") == 1
+        assert workers_op() == ["op-0", "op-1", "op-2", "op-4"]
+
+        # 4. R12-1 (K8s direct pod deletion at maxReplicas=1): 2 QUEUED refills attach on
+        # Tick 2 without failing a feasible 4-host STRICT_PACK gang.
+        (
+            group_kd,
+            pods_kd,
+            _,
+            ray_busy_kd,
+            workers_kd,
+            step_tick_kd,
+        ) = self._make_unlabeled_kuberay_sim(
+            "k8s-del-queued-attach",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"kd-{i}" for i in range(8)],
+        )
+        for _ in range(3):
+            step_tick_kd(gangs=1)
+        for nm in workers_kd():
+            ray_busy_kd[nm] = False
+        step_tick_kd()
+        pods_kd["items"] = [
+            p for p in pods_kd["items"] if p["metadata"]["name"] not in {"kd-2", "kd-3"}
+        ]
+        pods_kd["metadata"]["resourceVersion"] = str(
+            int(pods_kd["metadata"]["resourceVersion"]) + 1
+        )
+        ray_busy_kd.pop("kd-2")
+        ray_busy_kd.pop("kd-3")
+        t_kd = [2000.0]
+        with patch(
+            "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: t_kd[0]
+        ):
+            step_tick_kd(gangs=1, run_operator=False)
+            t_kd[0] = 2700.0
+            res_kd_t1 = step_tick_kd(gangs=1, run_operator=False)
+            assert len(res_kd_t1.infeasible_gang_resource_requests) == 0
+            # Tick 2 before operator runs: 2 QUEUED pods exist alongside 2 RAY_RUNNING pods.
+            t_kd[0] = 2701.0
+            res_kd_t2 = step_tick_kd(gangs=1, run_operator=False)
+            assert len(res_kd_t2.infeasible_gang_resource_requests) == 0
+            for _ in range(3):
+                t_kd[0] += 1.0
+                res_kd_fin = step_tick_kd(gangs=1, run_operator=True)
+            assert len(res_kd_fin.infeasible_gang_resource_requests) == 0
+            assert group_kd.get("replicas") == 1
+            assert len(workers_kd()) == 4
+
+        # 5. R12-1 F2: Autoscaler restart after one host died (re-adopted lid="" survivors,
+        # replicas=0) waits before TTL and refills the 1 missing host once TTL expires.
+        (
+            group_f2,
+            _,
+            _,
+            ray_busy_f2,
+            workers_f2,
+            step_tick_f2,
+        ) = self._make_unlabeled_kuberay_sim(
+            "restart-lidless-ttl",
+            size=4,
+            max_replicas=1,
+            pod_names=[f"f2-{i}" for i in range(8)],
+        )
+        for _ in range(3):
+            step_tick_f2(tasks=4)
+        for nm in workers_f2():
+            ray_busy_f2[nm] = True
+        step_tick_f2()
+        step_tick_f2(dead="f2-3")
+        assert group_f2.get("replicas") == 0
+        assert workers_f2() == ["f2-0", "f2-1", "f2-2"]
+        t_f2 = [5000.0]
+        with patch(
+            "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: t_f2[0]
+        ):
+            # Restart autoscaler with empty InMemoryStorage over surviving pods f2-0..f2-2.
+            res_f2_pre = step_tick_f2(tasks=1, reset_autoscaler=True)
+            assert len(res_f2_pre.infeasible_resource_requests) == 1
+            assert workers_f2() == ["f2-0", "f2-1", "f2-2"]
+            t_f2[0] = 5700.0
+            for _ in range(3):
+                t_f2[0] += 1.0
+                res_f2_post = step_tick_f2(tasks=1)
+            assert res_f2_post.infeasible_resource_requests == []
+            assert group_f2.get("replicas") == 1
+            assert workers_f2() == ["f2-0", "f2-1", "f2-2", "f2-4"]
 
 
 if __name__ == "__main__":
