@@ -922,6 +922,84 @@ def test_disk_regroup_emits_one_bundle_per_partition(
     assert [c.args[0] for c in submit.call_args_list] == [0, 2]
 
 
+def test_disk_regroup_op_owns_file_servers(ray_start_regular_shared_2_cpus):
+    """The regroup op, not the writer task, creates the per-node
+    ``ShuffleFileServer``: none exists after the writer ran, exactly one
+    (this node) exists once the regroup ingests the first handle, and it is
+    gone after the reduce op shuts down."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+        _SHUFFLE_FILE_SERVER_NAMESPACE,
+        _file_server_name,
+    )
+    from ray.data._internal.stats import Timer
+
+    ctx = DataContext.get_current()
+    writer = plan_disk_hash_shuffle_map(
+        InputDataBuffer(ctx, []), ctx, num_partitions=2, partition_fn=lambda t: {}
+    )
+    reduce_op = plan_disk_hash_shuffle_reduce(
+        writer, ctx, num_partitions=2, reduce_fn=lambda *args: []
+    )
+    regroup_op = reduce_op.input_dependencies[0]
+    writer.start(ExecutionOptions(), noop_counter())
+    regroup_op.start(ExecutionOptions(), noop_counter())
+    reduce_op.start(ExecutionOptions(), noop_counter())
+    for bundle in make_ref_bundles([[0], [1]]):
+        writer.add_input(bundle, 0)
+    writer.all_inputs_done()
+    run_op_tasks_sync(writer)
+
+    handle_bundles = []
+    while writer.has_next():
+        handle_bundles.append(writer.get_next())
+    handle = handle_from_block(ray.get(handle_bundles[0].block_refs[0]))
+    key = (handle["shuffle_id"], handle["node_id"])
+    assert key[1] == ray.get_runtime_context().get_node_id()
+
+    def _server_registered() -> bool:
+        try:
+            ray.get_actor(
+                _file_server_name(*key), namespace=_SHUFFLE_FILE_SERVER_NAMESPACE
+            )
+            return True
+        except ValueError:
+            return False
+
+    # Writer done, nothing ingested by the regroup yet: no server.
+    assert not _server_registered()
+    assert regroup_op._file_servers == {}
+
+    for bundle in handle_bundles:
+        regroup_op.add_input(bundle, 0)
+    assert list(regroup_op._file_servers) == [key]
+    assert _server_registered()
+
+    regroup_op.all_inputs_done()
+    reduce_op.shutdown(Timer(), force=True)
+    assert regroup_op._file_servers == {}
+    wait_for_condition(lambda: not _server_registered())
+
+
+def test_disk_shuffle_leaves_no_file_server_actors(
+    ray_start_regular_shared_2_cpus, data_context_shuffle_v2
+):
+    """File servers are owned by the regroup op and killed at executor
+    shutdown, so none survive a finished dataset execution."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.util.state import list_actors
+
+    DataContext.get_current().use_disk_based_hash_shuffle = True
+
+    def _alive_file_servers():
+        return list_actors(
+            filters=[("class_name", "=", "ShuffleFileServer"), ("state", "=", "ALIVE")]
+        )
+
+    assert ray.data.range(200).repartition(4, keys=["id"]).count() == 200
+    wait_for_condition(lambda: not _alive_file_servers())
+
+
 def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_cpus):
     """The regroup is a synchronization barrier, like ``ShuffleMapOp``: during
     the map phase the writer is the only operator eligible for resources, and
