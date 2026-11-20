@@ -249,8 +249,12 @@ class LLMEngine(abc.ABC):
     ##############################################################
 
     @abc.abstractmethod
-    async def reset_prefix_cache(self) -> None:
-        """Reset the prefix cache of the underlying engine"""
+    async def reset_prefix_cache(self) -> Optional[bool]:
+        """Reset the prefix cache of the underlying engine.
+
+        Returns False if the engine could not reset it (for example, blocks
+        still in use), or None if the engine does not report a result.
+        """
 
     async def sleep(self, **kwargs: Any) -> None:
         """Put the engine to sleep.

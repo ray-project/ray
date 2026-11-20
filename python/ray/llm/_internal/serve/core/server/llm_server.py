@@ -653,15 +653,18 @@ class LLMServer(LLMServerProtocol):
             logger.error("Engine is_sleeping failed in LLMServer.is_sleeping: %s", e)
             raise e
 
-    async def reset_prefix_cache(self) -> None:
+    async def reset_prefix_cache(self) -> Optional[bool]:
         """Reset the KV prefix cache on the engine.
 
         Clears cached key-value pairs from previous requests.
+
+        Returns:
+            The engine's result: False if it could not reset the cache.
         """
         if self.engine is None:
-            return
+            return None
         try:
-            await self.engine.reset_prefix_cache()
+            return await self.engine.reset_prefix_cache()
         except Exception as e:
             logger.error(
                 "Engine reset_prefix_cache failed in LLMServer.reset_prefix_cache: %s",

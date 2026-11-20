@@ -354,13 +354,14 @@ class TestLLMServer:
 
             async def reset_prefix_cache(self):
                 self.reset_prefix_cache_called = True
+                return False
 
         # Create a server with a mocked engine
         server = LLMServer.sync_init(mock_llm_config, engine_cls=LocalMockEngine)
         await server.start()
 
-        # Reset prefix cache, no exceptions should be raised
-        await server.reset_prefix_cache()
+        # The engine's result reaches the caller
+        assert await server.reset_prefix_cache() is False
 
         # Check that the reset prefix cache method was called
         assert server.engine.reset_prefix_cache_called

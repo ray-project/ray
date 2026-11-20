@@ -4,7 +4,7 @@ Provides HTTP endpoints for cache management control plane operations.
 """
 
 from pydantic import BaseModel
-from starlette.responses import Response
+from starlette.responses import JSONResponse
 
 from ray.llm._internal.serve.core.ingress.mixins.broadcastable import (
     ReplicaBroadcastable,
@@ -36,7 +36,7 @@ class CacheManagerIngressMixin(ReplicaBroadcastable):
         "reset_prefix_cache": lambda app: app.post("/reset_prefix_cache"),
     }
 
-    async def reset_prefix_cache(self, body: ResetPrefixCacheRequest) -> Response:
+    async def reset_prefix_cache(self, body: ResetPrefixCacheRequest) -> JSONResponse:
         """Reset the KV prefix cache on all replicas for the specified model.
 
         Clears cached key-value pairs from previous requests. Useful for
@@ -46,8 +46,9 @@ class CacheManagerIngressMixin(ReplicaBroadcastable):
             body: Request containing the model ID.
 
         Returns:
-            200 OK on success.
+            ``{"success": bool}``, false if any replica's engine could not
+            reset its cache. Engines that report no result count as success.
         """
         logger.info("Resetting prefix cache for model: %s", body.model)
-        await self._broadcast_to_replicas(body.model, "reset_prefix_cache")
-        return Response(status_code=200)
+        results = await self._broadcast_to_replicas(body.model, "reset_prefix_cache")
+        return JSONResponse({"success": all(r is not False for r in results)})
