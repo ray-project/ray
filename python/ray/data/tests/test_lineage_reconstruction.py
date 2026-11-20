@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray.data import ActorPoolStrategy, Dataset
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -16,6 +17,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.streaming_executor_state import (
     _reconstruct_lost_object,
 )
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.exceptions import LineageReconstructionError
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -810,6 +812,64 @@ def test_write_after_a_lost_block_writes_every_row_once(
     assert tracker._block_id_to_parent_output == {}
     rows = ray.data.read_parquet(str(tmp_path)).take_all()
     assert_every_row_once([row["id"] for row in rows])
+
+
+class _LoseAfterWriteSink(ParquetDatasink):
+    """Writes its file, then fails as if its node died before the task finished."""
+
+    def __init__(self, path: str, injector):
+        super().__init__(path)
+        self._injector = injector
+
+    def write(self, blocks, ctx):
+        blocks = list(blocks)
+        super().write(blocks, ctx)
+        ids = [
+            row_id
+            for block in blocks
+            for row_id in BlockAccessor.for_block(block).to_arrow()["id"].to_pylist()
+        ]
+        if ray.get(self._injector.should_lose.remote(ids)):
+            raise ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test")
+
+
+@reconstruction_enabled
+def test_re_run_write_overwrites_the_file_of_the_failed_attempt(
+    ray_start_regular_shared, raise_original_map_exception, tmp_path
+):
+    """The failed attempt's file already landed. The re-run writes under the same
+    task index, so it replaces that file instead of adding a second copy."""
+    injector = LossInjector.remote([45])  # pyrefly: ignore[missing-attribute]
+
+    ray.data.range(NUM_ROWS, override_num_blocks=10).write_datasink(
+        _LoseAfterWriteSink(str(tmp_path), injector)
+    )
+
+    assert ray.get(injector.fired.remote()) == [45]
+    rows = ray.data.read_parquet(str(tmp_path)).take_all()
+    assert_every_row_once([row["id"] for row in rows])
+
+
+@reconstruction_enabled
+def test_re_run_draws_the_same_seeded_random_sample(
+    ray_start_regular_shared, raise_original_map_exception
+):
+    """``random_sample(seed=...)`` seeds each task from its task index, so a re-run
+    must keep the index to pick the same rows."""
+
+    def sample(lost_rows: List[int]) -> List[int]:
+        injector = LossInjector.remote(lost_rows)  # pyrefly: ignore[missing-attribute]
+        ds = (
+            ray.data.range(NUM_ROWS, override_num_blocks=10)
+            .random_sample(0.5, seed=7)
+            .map_batches(lose_on(injector), batch_size=10, num_cpus=0.5)
+        )
+        ids = sorted(row["id"] for row in ds.take_all())
+        assert ray.get(injector.fired.remote()) == sorted(lost_rows)
+        return ids
+
+    expected = sample([])
+    assert sample([expected[len(expected) // 2]]) == expected
 
 
 @reconstruction_enabled

@@ -201,6 +201,59 @@ def test_reconstruction_stamp_survives_schema_divergence():
     assert rebuilt.reconstruction_stamp == stamp
 
 
+def test_reconstruction_task_context_reuses_the_original_task_index():
+    """Output file names, seeds and ``monotonically_increasing_id`` derive from
+    ``TaskContext.task_idx``. A reconstruction task must see the index of the task
+    it re-runs, or it writes a second file or draws different values. The operator
+    keeps its own counter for bookkeeping."""
+    from dataclasses import replace
+
+    from ray.data._internal.execution.interfaces import RefBundle
+    from ray.data._internal.execution.interfaces.ref_bundle import BlockEntry
+    from ray.data._internal.execution.operators.input_data_buffer import (
+        InputDataBuffer,
+    )
+    from ray.data._internal.execution.operators.map_operator import MapOperator
+    from ray.data._internal.execution.operators.map_transformer import (
+        BlockMapTransformFn,
+        MapTransformer,
+    )
+    from ray.data.block import BlockMetadata
+    from ray.data.context import DataContext
+
+    data_context = DataContext.get_current()
+    op = MapOperator.create(
+        MapTransformer([BlockMapTransformFn(lambda blocks, ctx: blocks)]),
+        InputDataBuffer(data_context, []),
+        data_context,
+        name="Op",
+    )
+    op._next_data_task_idx = 7
+    meta = BlockMetadata(num_rows=1, size_bytes=8, exec_stats=None, input_files=None)
+    fresh = RefBundle(
+        blocks=(
+            BlockEntry(
+                ray.ObjectRef.nil(),  # pyrefly: ignore[bad-argument-type]
+                meta,
+            ),
+        ),
+        schema=None,
+        owns_blocks=True,
+    )
+    rerun_of_task_2 = replace(
+        fresh,
+        reconstruction_stamp=ReconstructionStamp(
+            lineage_task_id=op._lineage_task_id_for(2),
+            reconstruction_plan_ids=frozenset({"plan_a"}),
+        ),
+    )
+
+    assert op._context_task_idx(fresh) == 7
+    assert op._context_task_idx(None) == 7
+    assert op._context_task_idx(rerun_of_task_2) == 2
+    assert op._next_data_task_idx == 7
+
+
 if __name__ == "__main__":
     import sys
 
