@@ -76,6 +76,20 @@ def test_main_loop_exits_cleanly_if_core_worker_was_already_dropped(worker):
     assert not hasattr(worker, "core_worker")
 
 
+def test_disconnect_after_main_loop_skips_released_core_worker(worker, monkeypatch):
+    """Run the real atexit teardown after the task loop, on every platform."""
+    monkeypatch.setattr(ray._private.worker, "global_worker", worker)
+    worker.set_is_connected(True)
+    worker.core_worker = _FakeCoreWorker()
+
+    with pytest.raises(SystemExit):
+        worker.main_loop()
+
+    # The atexit teardown: without the fix it reaches get_job_config().
+    ray._private.worker.disconnect(exiting_interpreter=True)
+    assert not worker.connected
+
+
 _ACTOR_POOL_WITH_RUNTIME_ENV = """
 import ray
 from ray.util.actor_pool import ActorPool
