@@ -260,6 +260,12 @@ METRICS_GAUGES = {
         "celsius",
         GPU_TAG_KEYS,
     ),
+    "node_gpu_energy_millijoules": Gauge(
+        "node_gpu_energy_millijoules",
+        "Total GPU energy used since the driver was last loaded, in millijoules",
+        "millijoules",
+        GPU_TAG_KEYS,
+    ),
     # Ascend NPU metrics
     "node_npus_available": Gauge(
         "node_npus_available",
@@ -1938,6 +1944,7 @@ class ReporterAgent(
                 gpu_uuid = gpu.get("uuid")
                 gpu_power_mw = gpu.get("power_mw")
                 gpu_temperature_c = gpu.get("temperature_c")
+                gpu_energy_mj = gpu.get("energy_mj")
 
                 gram_available = gram_total - gram_used
 
@@ -1975,7 +1982,8 @@ class ReporterAgent(
                         gram_used_record,
                         gram_available_record,
                     ]
-                    # Optional GPU power and temperature (e.g. NVIDIA, AMD)
+                    # Optional GPU power and temperature (e.g. NVIDIA, AMD),
+                    # and energy (NVIDIA only)
                     if gpu_power_mw is not None:
                         gpu_records_to_add.append(
                             Record(
@@ -1989,6 +1997,14 @@ class ReporterAgent(
                             Record(
                                 gauge=METRICS_GAUGES["node_gpu_temperature_celsius"],
                                 value=gpu_temperature_c,
+                                tags=gpu_tags,
+                            )
+                        )
+                    if gpu_energy_mj is not None:
+                        gpu_records_to_add.append(
+                            Record(
+                                gauge=METRICS_GAUGES["node_gpu_energy_millijoules"],
+                                value=gpu_energy_mj,
                                 tags=gpu_tags,
                             )
                         )
