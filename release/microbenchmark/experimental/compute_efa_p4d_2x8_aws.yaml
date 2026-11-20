@@ -1,0 +1,26 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+# Attach one EFA interface to every node type that supports it (the workers;
+# the head node type does not). Anyscale fills in the subnet and the security
+# group of the cluster. p4d has 4 network cards, but more than one EFA
+# interface per node needs a private-network cloud.
+flags:
+    efa_config:
+        device_count: 1
+
+# The cluster stays in one zone, which EFA needs. us-west-2a is left out: it
+# regularly has no on-demand p4d.24xlarge capacity.
+zones:
+    - us-west-2b
+    - us-west-2c
+    - us-west-2d
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # 8x A100 per node, EFA with RDMA (GPUDirect) support.
+    - instance_type: p4d.24xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
