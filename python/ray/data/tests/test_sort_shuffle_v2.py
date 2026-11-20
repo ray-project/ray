@@ -337,7 +337,7 @@ def _fetch_range(handle, sort_key, lower, upper):
 
 def test_disk_sort_run_writer_sorts_and_chunks(tmp_path):
     """The run is sorted across input blocks and written in chunks whose
-    index gives each chunk's first key; the key sample is every k-th key."""
+    index gives each chunk's first key; the key sample is a random subset."""
     sort_key = SortKey("k")
     blocks = [
         pa.table({"k": [42, 7, 19, 88], "v": [1, 2, 3, 4]}),
@@ -351,7 +351,12 @@ def test_disk_sort_run_writer_sorts_and_chunks(tmp_path):
     assert run.column("v").to_pylist() == [5, 2, 8, 3, 1, 6, 7, 4]
     assert handle["chunk_num_rows"].tolist() == [3, 3, 2]
     assert handle["chunk_first_keys"].column("k").to_pylist() == [3, 19, 61]
-    assert handle["key_sample"].column("k").to_pylist() == [3, 10, 42, 61]
+    sample = handle["key_sample"].column("k").to_pylist()
+    assert len(sample) == 4 and sample == sorted(sample)
+    assert set(sample) < set(run.column("k").to_pylist())
+    # Positions differ between map tasks, so pooled samples cover the key range.
+    other = _write_sort_run(blocks, sort_key, str(tmp_path), sample_rows=4, map_id=1)
+    assert other["key_sample"].column("k").to_pylist() != sample
     assert handle["run_num_rows"] == 8
     assert handle["total_bytes"] == int(handle["chunk_index"][-1].sum())
     assert handle["schema"] == blocks[0].schema

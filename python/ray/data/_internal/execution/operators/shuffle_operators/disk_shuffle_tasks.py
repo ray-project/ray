@@ -296,7 +296,7 @@ def _write_disk_sort_run(
     boundaries are not known when the task runs. The handle instead carries a
     chunk index with each chunk's first key, so a reducer can later fetch the
     chunks overlapping its key range (``_KeyRangeSources``), and a key sample
-    (every k-th key of the run, ``sample_rows`` of them at most) from which
+    (``sample_rows`` keys of the run at random positions) from which
     the regroup computes the boundaries.
 
     Args:
@@ -375,8 +375,13 @@ def _write_disk_sort_run(
 
     num_rows = run.num_rows if run is not None else 0
     if num_rows > 0:
-        step = max(1, -(-num_rows // max(1, sample_rows)))
-        key_sample = transform_pyarrow.take_table(keys, np.arange(0, num_rows, step))
+        # Random positions, not every k-th row: runs with the same distribution
+        # would sample the same quantiles, leaving only k distinct boundaries.
+        rng = np.random.default_rng(map_id)
+        positions = rng.choice(
+            num_rows, min(max(1, sample_rows), num_rows), replace=False
+        )
+        key_sample = transform_pyarrow.take_table(keys, np.sort(positions))
         chunk_first_keys = transform_pyarrow.take_table(keys, np.asarray(chunk_starts))
     else:
         key_sample = keys
