@@ -1009,6 +1009,28 @@ def test_with_columns_rejects_download_expr(ray_start_regular_shared):
         ds.with_columns({"contents": download("id")})
 
 
+def test_with_column_output_is_sliced_to_target_block_size(
+    ray_start_regular_shared, restore_data_context
+):
+    """A Project shapes its output to ``target_max_block_size`` like
+    ``map_batches``. Without a target it emitted one unsliced block per task,
+    so its blocks grew with its input bundles."""
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_max_block_size = 1024**2  # 1 MiB
+    # One ~8 MiB input block: well past the 1.5x slicing threshold.
+    num_rows = 1024**2
+    table = pa.table({"x": pa.array(range(num_rows), type=pa.int64())})
+
+    ds = ray.data.from_arrow(table).with_column("y", col("x") + 1)
+    bundles = list(ds.iter_internal_ref_bundles())
+    sizes = [meta.size_bytes for bundle in bundles for meta in bundle.metadata]
+
+    # ~16 MiB of output (two int64 columns) in blocks of about the target.
+    assert len(sizes) > 1
+    assert max(sizes) < 1.5 * ctx.target_max_block_size
+    assert sum(meta.num_rows for b in bundles for meta in b.metadata) == num_rows
+
+
 if __name__ == "__main__":
     import sys
 

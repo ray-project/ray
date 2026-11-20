@@ -9,6 +9,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
+from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 from unittest.mock import Mock
 
@@ -74,6 +75,16 @@ STORAGE_ACTOR_NAME = "storage"
 # Created by serve_instance_with_signal in ray/serve/tests/conftest.py.
 SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+def passthrough_decorator(func):
+    """A user decorator that wraps an async function with ``functools.wraps``."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
 
 
 def skip_if_haproxy(reason: str):

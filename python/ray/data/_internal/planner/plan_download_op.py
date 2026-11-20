@@ -37,9 +37,6 @@ from ray.data._internal.planner.download_partition_actor import (
     AsyncPartitionActor,
     PartitionActor,
 )
-from ray.data._internal.planner.plan_list_files_op import (
-    _list_files_ray_remote_args,
-)
 from ray.data._internal.util import (
     RetryingPyFileSystem,
     _arrow_batcher,
@@ -178,8 +175,11 @@ def plan_download_op(
             #       `ray_remote_args` since those only apply to the actual
             #       download tasks. Planning is a lightweight internal operation
             #       that doesn't need custom resource requirements.
-            ray_remote_args=_list_files_ray_remote_args(),
             compute_strategy=metadata_compute,
+            # NOTE: Let each metadata actor stream emitted download blocks without
+            #       generator-object backpressure. Downstream operator
+            #       backpressure still controls the end-to-end pipeline.
+            generator_backpressure_disabled=True,
         )
 
     if use_obstore_path:

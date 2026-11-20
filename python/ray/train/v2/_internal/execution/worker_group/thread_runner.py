@@ -8,6 +8,7 @@ from ray.train.v2._internal.util import (
     construct_user_exception_with_traceback,
     get_callable_name,
 )
+from ray.util import rpdb
 
 T = TypeVar("T")
 
@@ -39,6 +40,21 @@ class ThreadRunner:
                     self._ret = result
                 self._exc_queue.put(None)
             except BaseException as e:
+                # Ray only enters post-mortem debugging for exceptions that escape
+                # a task or actor method. The training function runs in this
+                # thread and its exception is reported to the controller instead,
+                # so enter the debugger here while the failing frames are alive.
+                # Like Ray core, skip control-flow exceptions such as SystemExit.
+                if rpdb._is_ray_debugger_post_mortem_enabled() and isinstance(
+                    e, Exception
+                ):
+                    try:
+                        rpdb._post_mortem()
+                    except BaseException:
+                        # Never let a debugger failure mask the user's exception,
+                        # or the controller would see the worker as succeeded.
+                        logger.exception("Failed to start the post-mortem debugger.")
+
                 # Exclude the first 3 frames from the traceback, which are
                 # the `ThreadRunner._run_target`, `construct_train_func`, and
                 # train_fn_with_final_checkpoint_flush calls.

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 import ray
@@ -1013,7 +1014,7 @@ def _make_multi_input_reduce_op(reduce_fn, num_inputs=2, num_partitions=2):
     )
 
 
-def _drain_reduce_op_bundles(op, feed):
+def _drain_reduce_op_bundles(op, feed) -> list[list[pa.Table]]:
     """Run `op` over `feed` (bundle, input_index) pairs and return each output
     bundle's tables."""
     op.start(ExecutionOptions(), noop_counter())
@@ -1021,7 +1022,7 @@ def _drain_reduce_op_bundles(op, feed):
         op.add_input(bundle, input_index)
     op.all_inputs_done()
     run_op_tasks_sync(op)
-    bundles = []
+    bundles: list[list[pa.Table]] = []
     while op.has_next():
         bundles.append([ray.get(ref) for ref in op.get_next().block_refs])
     return bundles
@@ -1173,6 +1174,60 @@ def test_reduce_num_output_rows_total_unknown_with_block_transformer(
     assert reduce_op.num_output_rows_total() is None
 
 
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp])
+def test_map_num_outputs_total_is_num_partitions(map_op_cls):
+    assert _make_map_op(map_op_cls).num_outputs_total() == 2
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp])
+def test_map_num_outputs_total_is_zero_without_input(
+    ray_start_regular_shared_2_cpus, map_op_cls
+):
+    """No map task ever ran, so no partition bundle is emitted."""
+    op = _make_map_op(map_op_cls)
+    op.start(ExecutionOptions(), noop_counter())
+    op.all_inputs_done()
+    assert not op.has_next()
+    assert op.num_outputs_total() == 0
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp])
+def test_map_op_records_task_metrics_and_stats(
+    ray_start_regular_shared_2_cpus, map_op_cls
+):
+    ctx = DataContext.get_current()
+    op = map_op_cls(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {0: table},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    op.add_input(make_ref_bundles([[1, 2, 3]])[0], 0)
+    # Inputs are batched per node; the final flush happens once inputs are done.
+    op.all_inputs_done()
+    assert op.metrics.num_tasks_submitted == 1
+    run_op_tasks_sync(op)
+
+    outputs = []
+    while op.has_next():
+        outputs.append(op.get_next())
+    assert len(outputs) == 2
+
+    d = op.metrics.as_dict()
+    assert d["num_tasks_finished"] == 1
+    assert d["num_tasks_running"] == 0
+    assert d["num_outputs_taken"] == 2
+    # The map task's own wall time reaches the operator (it used to be dropped).
+    assert op.metrics.task_worker_completion_time_s > 0
+
+    # One stats row per map task, under the phase name, stamped with its index.
+    stats = op.get_stats()
+    assert list(stats) == ["map"]
+    (block_stats,) = stats["map"]
+    assert block_stats.exec_stats.task_idx == 0
+
+
 @pytest.mark.parametrize("map_op_cls,reduce_op_cls", _V2_OP_CLASSES)
 def test_reduce_num_output_rows_total_borrows_map_total(map_op_cls, reduce_op_cls):
     map_op = _make_map_op(map_op_cls, upstream_total_rows=100)
@@ -1197,6 +1252,119 @@ def test_reduce_num_output_rows_total_unknown_when_row_count_not_preserved(
     )
 
     assert reduce_op.num_output_rows_total() is None
+
+
+def test_reduce_op_estimates_totals_from_finished_tasks(
+    ray_start_regular_shared_2_cpus,
+):
+    """With the row count not preserved, totals come from finished reducers."""
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, make_ref_bundles([[0]])),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda t: {},
+    )
+    op = ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=2,
+        reduce_fn=_concat_inputs_reduce_fn(),
+        disallow_block_splitting=True,
+        preserves_row_count=False,
+    )
+    assert op.num_outputs_total() is None
+    assert op.num_output_rows_total() is None
+
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"v": [1, 2]})), 0),
+        (_ipc_shard_bundle(1, pa.table({"v": [3, 4, 5, 6]})), 0),
+    ]
+    tables = _drain_reduce_op(op, feed)
+    assert sum(t.num_rows for t in tables) == 6
+
+    assert op.num_outputs_total() == 2
+    assert op.num_output_rows_total() == 6
+    d = op.metrics.as_dict()
+    assert d["num_tasks_submitted"] == d["num_tasks_finished"] == 2
+    assert d["num_tasks_running"] == 0
+    assert d["row_outputs_taken"] == 6
+    stats = op.get_stats()
+    assert list(stats) == ["reduce"]
+    assert len(stats["reduce"]) == 2
+
+
+def _make_single_input_reduce_op(num_partitions, **kwargs):
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, make_ref_bundles([[0]])),
+        ctx,
+        num_partitions=num_partitions,
+        partition_fn=lambda t: {},
+    )
+    return ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=num_partitions,
+        reduce_fn=_concat_inputs_reduce_fn(),
+        disallow_block_splitting=True,
+        preserves_row_count=False,
+        **kwargs,
+    )
+
+
+_EMPTY_TABLE = pa.table({"v": pa.array([], pa.int64())})
+
+
+@pytest.mark.parametrize("should_emit_empty_partitions", [True, False])
+def test_reduce_op_totals_converge_with_empty_partitions(
+    ray_start_regular_shared_2_cpus, should_emit_empty_partitions
+):
+    """Empty partitions skip the reduce task, so the finished-task average must
+    not be scaled over them."""
+    op = _make_single_input_reduce_op(
+        4, should_emit_empty_partitions=should_emit_empty_partitions
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    op.add_input(_ipc_shard_bundle(1, pa.table({"v": [1]})), 0)
+    run_op_tasks_sync(op)
+    # One reducer finished and nothing is known about the other three
+    # partitions yet, so the estimate assumes one bundle and one row each.
+    assert op.num_outputs_total() == 4
+    assert op.num_output_rows_total() == 4
+
+    for partition_id in (0, 2, 3):
+        op.add_input(_ipc_shard_bundle(partition_id, _EMPTY_TABLE), 0)
+    op.all_inputs_done()
+    num_empty_bundles = 3 if should_emit_empty_partitions else 0
+    assert op.num_outputs_total() == 1 + num_empty_bundles
+    assert op.num_output_rows_total() == 1
+    outputs = []
+    while op.has_next():
+        outputs.append(op.get_next())
+    assert len(outputs) == 1 + num_empty_bundles
+    assert op.metrics.num_tasks_submitted == op.metrics.num_tasks_finished == 1
+
+
+@pytest.mark.parametrize("should_emit_empty_partitions", [True, False])
+def test_reduce_op_totals_resolve_when_every_partition_is_empty(
+    ray_start_regular_shared_2_cpus, should_emit_empty_partitions
+):
+    op = _make_single_input_reduce_op(
+        2, should_emit_empty_partitions=should_emit_empty_partitions
+    )
+    tables = _drain_reduce_op(
+        op,
+        [
+            (_ipc_shard_bundle(0, _EMPTY_TABLE), 0),
+            (_ipc_shard_bundle(1, _EMPTY_TABLE), 0),
+        ],
+    )
+    expected = 2 if should_emit_empty_partitions else 0
+    assert len(tables) == expected
+    assert op.num_outputs_total() == expected
+    assert op.num_output_rows_total() == 0
+    assert op.metrics.num_tasks_submitted == 0
 
 
 def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
@@ -1257,6 +1425,389 @@ def test_shuffle_ops_report_per_task_exec_stats(
             sum(bs.exec_stats.end_time_s - bs.exec_stats.start_time_s for bs in blocks)
             > 0
         ), phase
+
+
+# --- Adaptive map-side partial aggregation -----------------------
+
+
+def _partial_agg_test_aggs():
+    from ray.data.aggregate import (
+        Count,
+        Max,
+        Mean,
+        Min,
+        MissingValuePercentage,
+        Sum,
+        ZeroPercentage,
+    )
+
+    return (
+        Sum("v"),
+        Sum("v", ignore_nulls=False, alias_name="sum_v_nulls"),
+        Count(),
+        Count("v", ignore_nulls=True, alias_name="count_v_valid"),
+        Count("v", alias_name="count_v_all"),
+        Mean("f"),
+        Mean("f", ignore_nulls=False, alias_name="mean_f_nulls"),
+        Min("v"),
+        Max("f"),
+        Max("b"),
+        ZeroPercentage("v"),
+        ZeroPercentage("v", ignore_nulls=False, alias_name="zero_v_all"),
+        MissingValuePercentage("f"),
+    )
+
+
+def _partial_agg_test_table(num_rows: int, num_keys: int) -> pa.Table:
+    rng = np.random.default_rng(42)
+    v = rng.integers(-3, 4, num_rows).astype(np.int32)
+    f = rng.normal(size=num_rows)
+    f[::7] = np.nan
+    return pa.table(
+        {
+            "k": pa.array(np.arange(num_rows) % num_keys),
+            # int32 values exercise casting raw state to the int64 partial sums.
+            "v": pa.array(v, mask=(np.arange(num_rows) % 11 == 0)),
+            "f": pa.array(f, mask=(np.arange(num_rows) % 13 == 0)),
+            "b": pa.array(v > 0),
+            "unused": pa.array(np.zeros(num_rows)),
+        }
+    )
+
+
+def _make_partial_agg_transformer(mode, sample_rows=100, threshold=0.8):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggPolicy,
+        _make_aggregating_transformer,
+    )
+
+    return _make_aggregating_transformer(
+        ("k",),
+        _partial_agg_test_aggs(),
+        policy=PartialAggPolicy(
+            mode=mode, sample_rows=sample_rows, unique_ratio_threshold=threshold
+        ),
+    )
+
+
+def _is_partial(table: pa.Table) -> bool:
+    return any(name.startswith("__agg") for name in table.schema.names)
+
+
+def test_partial_agg_estimate_skips_high_cardinality():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=1000)
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE)(table)
+
+    assert not _is_partial(out)
+    # Pruned to keys + the columns the aggregations read.
+    assert out.schema.names == ["k", "v", "f", "b"]
+    assert out.num_rows == 1000
+
+
+def test_partial_agg_estimate_keeps_low_cardinality():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=10)
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE)(table)
+
+    assert _is_partial(out)
+    assert out.num_rows == 10
+
+
+def test_partial_agg_estimate_skips_sampling_small_blocks():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=50, num_keys=50)
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE, sample_rows=100)(table)
+
+    assert _is_partial(out)
+
+
+def test_partial_agg_estimate_samples_whole_block():
+    """Unique keys up front, then a few repeated keys: the first rows alone
+    look unique, but the block as a whole collapses well, so it aggregates."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    head = _partial_agg_test_table(num_rows=100, num_keys=100)
+    tail = _partial_agg_test_table(num_rows=5000, num_keys=10)
+    table = pa.concat_tables([head, tail])
+    out = _make_partial_agg_transformer(PartialAggMode.ESTIMATE, sample_rows=100)(table)
+
+    assert _is_partial(out)
+
+
+@pytest.mark.parametrize(
+    "rows_per_key,expected",
+    [(1, 100_000), (2, 50_000), (5, 20_000), (20_000, 5)],
+)
+def test_estimate_distinct_keys(rows_per_key, expected):
+    """A sample of a block with a few rows per key sees most keys once; the
+    estimate should still recover the block's distinct count."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _estimate_distinct_keys,
+    )
+
+    table = pa.table({"k": np.arange(100_000) // rows_per_key})
+    estimate = _estimate_distinct_keys(table, ["k"], sample_rows=5_000)
+
+    assert estimate == pytest.approx(expected, rel=0.1)
+
+
+@pytest.mark.parametrize("heavy_keys", [1, 10, 100])
+def test_estimate_distinct_keys_unique_plus_heavy_keys(heavy_keys):
+    """90% unique keys plus 10% of rows over a few heavy keys (e.g. null):
+    the heavy keys must not drag the estimate for the unique ones down. Each
+    heavy key holds at least 200 rows, so it shows up several times in the
+    sample."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _estimate_distinct_keys,
+    )
+
+    num_rows = 200_000
+    keys = np.arange(num_rows)
+    heavy = np.random.default_rng(0).random(num_rows) < 0.1
+    keys[heavy] = -1 - (np.arange(heavy.sum()) % heavy_keys)
+    table = pa.table({"k": keys})
+    expected = len(np.unique(keys))
+
+    estimate = _estimate_distinct_keys(table, ["k"], sample_rows=10_000)
+
+    assert estimate == pytest.approx(expected, rel=0.1)
+
+
+def test_estimate_distinct_keys_key_named_count_all():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _estimate_distinct_keys,
+    )
+
+    table = pa.table({"count_all": pa.array([str(i) for i in range(1_000)])})
+
+    estimate = _estimate_distinct_keys(table, ["count_all"], sample_rows=100)
+
+    assert estimate == pytest.approx(1_000, rel=0.1)
+
+
+@pytest.mark.parametrize("mode,expect_partial", [("always", True), ("never", False)])
+def test_partial_agg_forced_modes(mode, expect_partial):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=10)
+    out = _make_partial_agg_transformer(PartialAggMode(mode))(table)
+
+    assert _is_partial(out) == expect_partial
+
+
+def test_partial_agg_never_skips_without_raw_to_partial():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+    from ray.data.aggregate import Sum
+
+    original = Sum._arrow_agg_spec
+
+    def _spec_without_raw_to_partial(self):
+        return original(self)._replace(raw_to_partial=None)
+
+    table = _partial_agg_test_table(num_rows=1000, num_keys=1000)
+    with patch.object(Sum, "_arrow_agg_spec", _spec_without_raw_to_partial):
+        out = _make_partial_agg_transformer(PartialAggMode.NEVER)(table)
+
+    assert _is_partial(out)
+
+
+def _reduce_shards_table(shards) -> pa.Table:
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        _make_aggregating_reduce_fn,
+    )
+
+    reduce_fn = _make_aggregating_reduce_fn(("k",), _partial_agg_test_aggs())
+    (out,) = list(reduce_fn(0, [shards]))
+    return out
+
+
+def _reduce_shards(shards):
+    out = _reduce_shards_table(shards)
+    return out.to_pandas().sort_values("k").reset_index(drop=True)
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [
+        ("never", "never", "never"),
+        ("always", "never", "never"),
+        ("never", "always", "never"),
+        ("always", "always", "never"),
+    ],
+)
+def test_partial_agg_reduce_merges_raw_and_partial_shards(layout):
+    """Any mix of raw and pre-aggregated shards reduces to the same result as
+    the classic all-partial plan."""
+    import pandas as pd
+
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=900, num_keys=40)
+    chunks = [table.slice(i * 300, 300) for i in range(3)]
+
+    def shards_for(modes):
+        return [
+            _make_partial_agg_transformer(PartialAggMode(mode))(chunk)
+            for mode, chunk in zip(modes, chunks)
+        ]
+
+    expected = _reduce_shards(shards_for(("always", "always", "always")))
+    actual = _reduce_shards(shards_for(layout))
+
+    pd.testing.assert_frame_equal(actual, expected, check_exact=False)
+
+
+def test_partial_agg_reduce_mixed_shards_dictionary_keys():
+    """Raw and pre-aggregated shards with dictionary-encoded keys still
+    concatenate and group together in the reducer."""
+    import pandas as pd
+
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+
+    table = _partial_agg_test_table(num_rows=900, num_keys=40)
+    keys = pc.cast(table["k"], pa.string()).combine_chunks().dictionary_encode()
+    table = table.set_column(0, "k", keys)
+    chunks = [table.slice(i * 300, 300) for i in range(3)]
+
+    def reduce_layout(modes):
+        shards = [
+            _make_partial_agg_transformer(PartialAggMode(mode))(chunk)
+            for mode, chunk in zip(modes, chunks)
+        ]
+        out = _reduce_shards_table(shards)
+        assert pa.types.is_dictionary(out.schema.field("k").type)
+        df = out.to_pandas()
+        df["k"] = df["k"].astype(str)
+        return df.sort_values("k").reset_index(drop=True)
+
+    expected = reduce_layout(("always", "always", "always"))
+    actual = reduce_layout(("always", "never", "never"))
+    pd.testing.assert_frame_equal(actual, expected, check_exact=False)
+
+
+def test_choose_partial_agg_policy(restore_data_context):
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+    )
+    from ray.data._internal.planner.plan_all_to_all_op import (
+        _choose_partial_agg_policy,
+    )
+
+    ctx = restore_data_context
+
+    # Estimating is the default.
+    assert ctx.partial_aggregation_mode == "estimate"
+    ctx.adaptive_partial_aggregation_sample_rows = 123
+    ctx.adaptive_partial_aggregation_unique_ratio_threshold = 0.5
+    policy = _choose_partial_agg_policy(ctx)
+    assert policy.mode == PartialAggMode.ESTIMATE
+    assert policy.sample_rows == 123
+    assert policy.unique_ratio_threshold == 0.5
+
+    ctx.partial_aggregation_mode = "never"
+    assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.NEVER
+
+    ctx.partial_aggregation_mode = "always"
+    assert _choose_partial_agg_policy(ctx).mode == PartialAggMode.ALWAYS
+
+    ctx.partial_aggregation_mode = "bogus"
+    with pytest.raises(ValueError, match="partial_aggregation_mode"):
+        _choose_partial_agg_policy(ctx)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    [
+        ("adaptive_partial_aggregation_sample_rows", 0),
+        ("adaptive_partial_aggregation_sample_rows", -1),
+        ("adaptive_partial_aggregation_sample_rows", 1.5),
+        ("adaptive_partial_aggregation_sample_rows", True),
+        ("adaptive_partial_aggregation_unique_ratio_threshold", -0.1),
+        ("adaptive_partial_aggregation_unique_ratio_threshold", 1.5),
+        ("adaptive_partial_aggregation_unique_ratio_threshold", "0.8"),
+    ],
+)
+def test_choose_partial_agg_policy_rejects_invalid_settings(
+    restore_data_context, field, value
+):
+    from ray.data._internal.planner.plan_all_to_all_op import (
+        _choose_partial_agg_policy,
+    )
+
+    ctx = restore_data_context
+    ctx.partial_aggregation_mode = "estimate"
+    setattr(ctx, field, value)
+    with pytest.raises(ValueError, match=field):
+        _choose_partial_agg_policy(ctx)
+
+
+@pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
+@pytest.mark.parametrize("mode", ["estimate", "always", "never"])
+def test_adaptive_partial_agg_e2e(
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk, mode
+):
+    """One map task sees unique keys (skips), the other few keys (aggregates);
+    the result matches pandas either way."""
+    import pandas as pd
+
+    from ray.data.aggregate import Count, Max, Mean, Min, Sum
+
+    ctx = restore_data_context
+    ctx.use_disk_based_hash_shuffle = use_disk
+    ctx.shuffle_input_batch_bytes = 0  # one map task per input block
+    ctx.partial_aggregation_mode = mode
+    ctx.adaptive_partial_aggregation_sample_rows = 10
+
+    high = pd.DataFrame({"k": np.arange(200), "v": np.arange(200) % 7})
+    low = pd.DataFrame({"k": np.arange(200) % 5, "v": np.arange(200) % 3})
+    ds = ray.data.from_pandas([high, low])
+
+    actual = (
+        ds.groupby("k", num_partitions=4)
+        .aggregate(Sum("v"), Count(), Mean("v"), Min("v"), Max("v"))
+        .to_pandas()
+        .sort_values("k")
+        .reset_index(drop=True)
+    )
+
+    df = pd.concat([high, low])
+    expected = (
+        df.groupby("k")["v"]
+        .agg(["sum", "count", "mean", "min", "max"])
+        .reset_index()
+        .rename(
+            columns={
+                "sum": "sum(v)",
+                "count": "count()",
+                "mean": "mean(v)",
+                "min": "min(v)",
+                "max": "max(v)",
+            }
+        )
+    )
+    pd.testing.assert_frame_equal(
+        actual, expected, check_exact=False, check_dtype=False
+    )
 
 
 if __name__ == "__main__":
