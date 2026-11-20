@@ -247,6 +247,12 @@ _ECR = get_global_config()["byod_ecr"]
             "ray-project/ray-llm:a-py312-cu130",
             "anyscalellmbuild--gpucu1300cudnn-python312",
         ),
+        # ray-llm built on vllm/vllm-openai, under a "vllm-" tag prefix
+        (
+            "ray-project/ray-llm:a-c",
+            "ray-project/ray-llm:a-py312-vllm-cu130",
+            "anyscalellmvllmbuild--gpucu1300cudnn-python312",
+        ),
         # ECR-prefixed base_image (production format)
         (
             f"{_ECR}/anyscale/ray:bid-py310-cpu-hash",
@@ -277,6 +283,7 @@ _ECR = get_global_config()["byod_ecr"]
         "ray-cuda-cu130",
         "ray-llm-cu128",
         "ray-llm-cu130",
+        "ray-llm-vllm-cu130",
         "ecr-prefix",
         "dashed-build-id",
         "unknown-platform",

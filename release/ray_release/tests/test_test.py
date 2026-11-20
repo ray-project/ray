@@ -20,6 +20,7 @@ from ray_release.configs.global_config import (
 )
 from ray_release.github_client import GitHubClient
 from ray_release.test import (
+    DATAPLANE_ECR_LLM_REPO,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_TORCH_REPO,
     LINUX_TEST_PREFIX,
@@ -140,6 +141,33 @@ def test_get_anyscale_byod_image():
     ).get_anyscale_byod_image() == (
         f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py311-cu128"
     )
+
+
+@pytest.mark.parametrize(
+    ("byod_type", "llm_image", "expected_type", "expected_tag"),
+    [
+        ("llm-cu130", None, "llm-cu130", "a1b2c3d4-py312-cu130"),
+        ("llm-cu130", "vllm", "llm-vllm-cu130", "a1b2c3d4-py312-vllm-cu130"),
+        ("llm-vllm-cu130", None, "llm-vllm-cu130", "a1b2c3d4-py312-vllm-cu130"),
+        # Only LLM tests move to the vllm-openai based image.
+        ("gpu-cu130", "vllm", "gpu-cu130", None),
+    ],
+)
+def test_ray_release_llm_image(
+    monkeypatch, byod_type, llm_image, expected_type, expected_tag
+):
+    monkeypatch.setenv("RAYCI_BUILD_ID", "a1b2c3d4")
+    if llm_image is None:
+        monkeypatch.delenv("RAY_RELEASE_LLM_IMAGE", raising=False)
+    else:
+        monkeypatch.setenv("RAY_RELEASE_LLM_IMAGE", llm_image)
+    test = _stub_test({"python": "3.12", "cluster": {"byod": {"type": byod_type}}})
+
+    assert test.get_byod_type() == expected_type
+    if expected_tag:
+        assert test.get_anyscale_byod_image() == (
+            f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_LLM_REPO}:{expected_tag}"
+        )
 
 
 def test_get_anyscale_byod_image_ray_version():

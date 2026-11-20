@@ -265,6 +265,20 @@ class TestDestinationTags:
         assert "abc123-extra-py312-cpu" in tags
         assert "abc123-extra-py312" in tags
 
+    def test_ray_llm_vllm_shares_ray_llm_repo(self):
+        """ray-llm-vllm pushes to anyscale/ray-llm under -vllm- tags."""
+        ctx = make_ctx(
+            python_version="3.12", platform="cu13.0.0-cudnn", image_type="ray-llm-vllm"
+        )
+
+        assert ctx.wanda_image_name() == "ray-llm-vllm-anyscale-py3.12-cu13.0.0-cudnn"
+        assert ctx.destination_repo() == "ray-llm"
+        assert ctx.destination_tags() == [
+            "abc123-py312-vllm-cu130",
+            "build-123-py312-vllm-cu130",
+        ]
+        assert make_ctx(image_type="ray-llm").destination_repo() == "ray-llm"
+
 
 class TestAnnotatePushedImage:
     @pytest.fixture

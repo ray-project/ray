@@ -106,8 +106,11 @@ AWSCLI_TMP="$(mktemp -d)"
 )
 rm -rf "${AWSCLI_TMP}"
 
-# Cleanup unused packages and caches.
-$HOME/anaconda3/bin/conda clean -y -all
+# Cleanup unused packages and caches. Images built on vllm/vllm-openai
+# (docker/ray-llm-vllm) have no conda.
+if [[ -x "$HOME/anaconda3/bin/conda" ]]; then
+    $HOME/anaconda3/bin/conda clean -y -all
+fi
 
 # Work around for https://bugs.launchpad.net/ubuntu/+source/openssh/+bug/45234
 sudo mkdir -p /var/run/sshd
@@ -184,8 +187,8 @@ else
 fi
 
 # Remove apt sources so that it won't run into apt update issues when running
-# the image.
-sudo rm -rf /etc/apt/sources.list.d/*
+# the image. Ubuntu 24.04 keeps its own archive in sources.list.d/ubuntu.sources.
+sudo find /etc/apt/sources.list.d -mindepth 1 ! -name ubuntu.sources -delete
 sudo rm -rf /var/lib/apt/lists/*
 
 EOF

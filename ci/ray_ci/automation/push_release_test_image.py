@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 
 _runfiles = runfiles.Create()
 
+# The ray-llm image built on vllm/vllm-openai shares the ray-llm repo, with
+# "-vllm" before the platform: anyscale/ray-llm:<version>-py312-vllm-cu130,
+# which ray_release resolves for byod type llm-vllm-cu130.
+_RAY_LLM_VLLM = "ray-llm-vllm"
+
 
 class PushReleaseTestImageError(Exception):
     """Error raised when pushing release test images fails."""
@@ -216,7 +221,16 @@ class ReleaseTestImagePushContext:
 
     def _platform_suffixes(self) -> List[str]:
         """Get platform suffixes (includes aliases like -gpu for GPU_PLATFORM)."""
-        return get_platform_suffixes(self.platform, self.image_type)
+        suffixes = get_platform_suffixes(self.platform, self.image_type)
+        if self.image_type == _RAY_LLM_VLLM:
+            return [f"-vllm{suffix}" for suffix in suffixes]
+        return suffixes
+
+    def destination_repo(self) -> str:
+        """Get the repo under anyscale/ to push to."""
+        if self.image_type == _RAY_LLM_VLLM:
+            return "ray-llm"
+        return self.image_type
 
 
 @click.command()
@@ -326,7 +340,7 @@ def main(
     if dry_run:
         for tag in tags:
             for registry, name in registries:
-                dest_image = f"{registry}/anyscale/{image_type}:{tag}"
+                dest_image = f"{registry}/anyscale/{ctx.destination_repo()}:{tag}"
                 logger.info(f"Would push to {name}: {dest_image}")
         return
 
@@ -352,7 +366,7 @@ def main(
     try:
         for tag in tags:
             for registry, name in registries:
-                dest_image = f"{registry}/anyscale/{image_type}:{tag}"
+                dest_image = f"{registry}/anyscale/{ctx.destination_repo()}:{tag}"
                 logger.info(f"Pushing to {name}: {dest_image}")
                 copy_image(source_tag, dest_image, dry_run=False)
                 _annotate_pushed_image(dest_image, image_type)

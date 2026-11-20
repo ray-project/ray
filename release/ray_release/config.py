@@ -54,6 +54,7 @@ ALLOWED_BYOD_TYPES = [
     "cpu",
     "cu123",
     "llm-cu130",
+    "llm-vllm-cu130",
     "torch-cu128",
     "torch-cu133",
 ]
@@ -312,7 +313,7 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
 def validate_byod_type(byod_type: str, python_version: str) -> None:
     if byod_type not in ALLOWED_BYOD_TYPES:
         raise Exception(f"Invalid BYOD type: {byod_type}")
-    if byod_type == "llm-cu130" and python_version != "3.12":
+    if byod_type in ["llm-cu130", "llm-vllm-cu130"] and python_version != "3.12":
         raise Exception("LLM cu130 BYOD tests must use Python 3.12")
     if byod_type in ["torch-cu128", "torch-cu133"] and python_version not in [
         "3.11",

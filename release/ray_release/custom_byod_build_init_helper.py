@@ -226,6 +226,12 @@ def get_prerequisite_step(
     python_raw = tag_parts[py_index][2:]  # e.g., "310"
     tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
 
+    if image_name == "ray-llm" and tag_suffix.startswith("vllm-"):
+        # The ray-llm image built on vllm/vllm-openai shares the ray-llm repo
+        # under a "vllm-" tag prefix (byod type llm-vllm-cu130).
+        bare_key = config["release_image_step_ray_llm_vllm"]
+        tag_suffix = tag_suffix[len("vllm-") :]
+
     if tag_suffix == "cpu":
         # anyscalecpubuild has only a python dimension
         return f"{bare_key}--python{python_raw}"
