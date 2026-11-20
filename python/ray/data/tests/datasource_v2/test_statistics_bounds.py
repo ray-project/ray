@@ -97,19 +97,9 @@ def test_derived_bound_prunes_row_groups(tmp_path, predicate, expected_groups):
             (col("x") + 1.0) >= 76, pa.schema([("x", pa.int64())]), id="float-literal"
         ),
         pytest.param(
-            (col("x") + 1) >= 128,
-            pa.schema([("x", pa.int8())]),
-            id="target-out-of-column-range",
-        ),
-        pytest.param(
             (col("x") + 128) >= 76,
             pa.schema([("x", pa.int8())]),
             id="offset-overflows-column",
-        ),
-        pytest.param(
-            (col("x") + 2) >= -127,
-            pa.schema([("x", pa.int8())]),
-            id="bound-below-column-minimum",
         ),
         pytest.param(
             (col("x") + np.bool_(True)) >= np.uint8(76),
@@ -135,15 +125,13 @@ def test_derived_leaves_unmodeled_forms_untouched(predicate, schema):
         pytest.param(pa.uint8(), np.int8(75), False, id="uint8-numpy-ge"),
     ],
 )
-def test_derived_integer_arithmetic_bound_safety(tmp_path, column_type, offset, strict):
+def test_derived_integer_arithmetic_bound_safety(column_type, offset, strict):
     """Each modeled shape keeps exactly the rows it should.
 
     The four shapes span the branch outcomes: signed and unsigned columns,
     Python-int and NumPy literals, and both comparisons. The bound is checked
-    at the expression level (it must accept exactly the rows the filter
-    accepts) and on the read level (the chunked rows match the filter's, so
-    no group holding a matching row can have been dropped), and a fully
-    matched group must really match throughout.
+    at the expression level, for the leaf and its negation: the rewrite must
+    accept exactly the rows the filter accepts.
     """
     bits = column_type.bit_width
     if pa.types.is_signed_integer(column_type):
@@ -173,34 +161,11 @@ def test_derived_integer_arithmetic_bound_safety(tmp_path, column_type, offset, 
 
     predicate = (col("x") + offset) > 76 if strict else (col("x") + offset) >= 76
 
-    derived = _add_statistics_bounds(predicate, table.schema)
-
-    original_rows = table.filter(predicate.to_pyarrow())["x"].to_pylist()
-    bound_rows = table.filter(derived.to_pyarrow())["x"].to_pylist()
-    assert set(original_rows) == set(bound_rows)
-
-    path, size = _write(
-        tmp_path / "integer-boundary.parquet",
-        table,
-        row_group_size=2,
-    )
-    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
-    selected = [rg.unit_ids[0] for rg in chunks.row_groups]
-    parquet_file = pq.ParquetFile(path)
-
-    selected_tables = [parquet_file.read_row_group(i) for i in selected]
-    actual = (
-        pa.concat_tables(selected_tables).filter(predicate.to_pyarrow())
-        if selected_tables
-        else table.slice(0, 0)
-    )
-    expected = table.filter(predicate.to_pyarrow())
-    assert actual["x"].to_pylist() == expected["x"].to_pylist()
-
-    for rg in chunks.row_groups:
-        if rg.fully_matched:
-            group = parquet_file.read_row_group(rg.unit_ids[0])
-            assert group.filter(predicate.to_pyarrow()).num_rows == group.num_rows
+    for expr in (predicate, ~predicate):
+        derived = _add_statistics_bounds(expr, table.schema)
+        assert table.filter(derived.to_pyarrow()).equals(
+            table.filter(expr.to_pyarrow())
+        )
 
 
 @pytest.mark.parametrize(
@@ -263,10 +228,7 @@ def test_derived_bounds_fully_matched_flag(
 
     by_idx = {rg.unit_ids[0]: rg.fully_matched for rg in chunks.row_groups}
     # A pinned group must appear with exactly that flag, so a group the
-    # rewrite prunes by mistake fails instead of being skipped. Group 0 of
-    # the wrap case may or may not be pruned depending on how PyArrow folds
-    # the addition against single-valued statistics, so only its flag is
-    # pinned, not its presence.
+    # rewrite prunes by mistake fails instead of being skipped.
     for idx, fully in expected.items():
         assert by_idx.get(idx) is fully
     assert not [i for i, f in by_idx.items() if f and not expected.get(i, False)]

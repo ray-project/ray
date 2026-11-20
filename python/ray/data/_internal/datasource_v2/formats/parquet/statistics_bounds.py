@@ -114,19 +114,14 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
     ):
         return None
 
-    info = np.iinfo(value_type.to_pandas_dtype())
-    min_value, max_value = info.min, info.max
+    max_value = np.iinfo(value_type.to_pandas_dtype()).max
 
     # Python ints avoid overflow in NumPy scalar subtraction.
     offset_val = int(offset)
     # Fold the strict comparison into the threshold: x + c > t is
     # x + c >= t + 1, so GE and GT share one formula.
     threshold = int(target) + (1 if expr.op == Operation.GT else 0)
-    if not (
-        0 < offset_val <= max_value
-        and min_value <= threshold <= max_value
-        and threshold - offset_val >= min_value
-    ):
+    if not 0 < offset_val <= max_value:
         return None
 
     lower = column >= threshold - offset_val

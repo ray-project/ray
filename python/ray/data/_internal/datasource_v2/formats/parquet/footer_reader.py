@@ -340,15 +340,20 @@ class FooterReader:
                 physical = safe.data_predicate
                 complete = False
         if physical is None:
-            return _FileFilter(None, None, set(), complete)
+            return _FileFilter(
+                file_filter=None,
+                prune_filter=None,
+                filter_columns=set(),
+                complete_filter=complete,
+            )
         expression = (
             self.filter if physical is self._predicate else physical.to_pyarrow()
         )
         return _FileFilter(
-            expression,
-            self._prune_expression(physical, expression, schema),
-            set(get_column_references(physical)),
-            complete,
+            file_filter=expression,
+            prune_filter=self._prune_expression(physical, expression, schema),
+            filter_columns=set(get_column_references(physical)),
+            complete_filter=complete,
         )
 
     def _prune_expression(
