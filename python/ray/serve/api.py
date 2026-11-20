@@ -43,6 +43,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import (
     AutoscalingConfig,
+    AutoscalingMetricsConfig,
     BackpressureConfig,
     ControllerOptions,
     DeploymentActorConfig,
@@ -553,6 +554,7 @@ class _DeploymentOptions(TypedDict, total=False):
     max_ongoing_requests: Default[int]
     max_queued_requests: Default[int]
     backpressure_config: Default[Union[Dict, BackpressureConfig, None]]
+    autoscaling_metrics_config: Default[Union[Dict, AutoscalingMetricsConfig, None]]
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]]
     graceful_shutdown_wait_loop_s: Default[float]
     graceful_shutdown_timeout_s: Default[float]
@@ -616,6 +618,9 @@ def deployment(
     ] = DEFAULT.VALUE,
     rolling_update_percentage: Default[float] = DEFAULT.VALUE,
     max_surge_percent: Default[int] = DEFAULT.VALUE,
+    autoscaling_metrics_config: Default[
+        Union[Dict, AutoscalingMetricsConfig, None]
+    ] = DEFAULT.VALUE,
 ) -> Union[Deployment, Callable[[Callable], Deployment]]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -716,6 +721,7 @@ def deployment(
             or above ``world_size``. Ranks are reassigned after the deployment
             becomes healthy. Defaults to ``0``, which stops old replicas before
             starting replacements.
+        autoscaling_metrics_config: Configure custom replica metrics for application policies.
 
     Returns:
         `Deployment`
@@ -788,6 +794,7 @@ def deployment(
         max_ongoing_requests=max_ongoing_requests,
         max_queued_requests=max_queued_requests,
         backpressure_config=backpressure_config,
+        autoscaling_metrics_config=autoscaling_metrics_config,
         autoscaling_config=autoscaling_config,
         graceful_shutdown_wait_loop_s=graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=graceful_shutdown_timeout_s,

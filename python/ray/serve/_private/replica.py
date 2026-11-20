@@ -190,6 +190,7 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import (
     AutoscalingConfig,
+    AutoscalingMetricsConfig,
     HTTPOptions,
     ProxyLocation,
     gRPCOptions,
@@ -400,6 +401,7 @@ class ReplicaMetricsManager:
         autoscaling_config: Optional[AutoscalingConfig],
         ingress: bool,
         max_ongoing_requests: int,
+        autoscaling_metrics_config: Optional[AutoscalingMetricsConfig] = None,
     ):
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
@@ -535,7 +537,7 @@ class ReplicaMetricsManager:
         )
         self._event_loop.create_task(self._report_utilization_forever())
 
-        self.set_autoscaling_config(autoscaling_config)
+        self.set_autoscaling_config(autoscaling_config, autoscaling_metrics_config)
 
         # Only populated if direct ingress is enabled.
         self._ingress_metrics: Dict[RequestProtocol, RequestIngressMetrics] = {}
@@ -691,8 +693,8 @@ class ReplicaMetricsManager:
     def start_metrics_pusher(self):
         # Invariant: only called when an autoscaling config is set (checked at
         # every call site), so narrow the Optional for the type checkers.
-        assert self._autoscaling_config is not None
-        autoscaling_config = self._autoscaling_config
+        assert self._reporting_config is not None
+        autoscaling_config = self._reporting_config
         self._metrics_pusher.start()
 
         # Push autoscaling metrics to the controller periodically.
@@ -756,13 +758,23 @@ class ReplicaMetricsManager:
             return True
         return not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
 
-    def set_autoscaling_config(self, autoscaling_config: Optional[AutoscalingConfig]):
+    def set_autoscaling_config(
+        self,
+        autoscaling_config: Optional[AutoscalingConfig],
+        autoscaling_metrics_config: Optional[AutoscalingMetricsConfig] = None,
+    ):
         """Dynamically update autoscaling config."""
 
         self._autoscaling_config = autoscaling_config
 
-        if self._autoscaling_config and self.should_collect_ongoing_requests():
+        self._reporting_config = autoscaling_metrics_config or autoscaling_config
+        if self._reporting_config and (
+            self._custom_metrics_enabled
+            or (autoscaling_config and self.should_collect_ongoing_requests())
+        ):
             self.start_metrics_pusher()
+        elif self._reporting_config is None:
+            self._metrics_pusher.stop_tasks()
 
     def enable_custom_autoscaling_metrics(
         self,
@@ -773,7 +785,7 @@ class ReplicaMetricsManager:
         if custom_metrics_enabled:
             self._custom_metrics_enabled = custom_metrics_enabled
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
-            if self._autoscaling_config:
+            if self._reporting_config:
                 self.start_metrics_pusher()
 
     def _change_num_ongoing_requests(
@@ -978,8 +990,9 @@ class ReplicaMetricsManager:
     def _push_autoscaling_metrics(self) -> None:
         # Invariant: this task is only registered (`start_metrics_pusher`) when an
         # autoscaling config is set.
-        assert self._autoscaling_config is not None
-        look_back_period = self._autoscaling_config.look_back_period_s
+        if self._reporting_config is None:
+            return
+        look_back_period = self._reporting_config.look_back_period_s
         self._metrics_store.prune_keys_and_compact_data(time.time() - look_back_period)
 
         # The store keys are `Hashable`; this replica only ever records `str` keys.
@@ -1158,6 +1171,7 @@ class Replica:
             replica_id=replica_id,
             event_loop=self._event_loop,
             autoscaling_config=self._deployment_config.autoscaling_config,
+            autoscaling_metrics_config=self._deployment_config.autoscaling_metrics_config,
             ingress=ingress,
             max_ongoing_requests=self._deployment_config.max_ongoing_requests,
         )
@@ -1951,7 +1965,8 @@ class Replica:
             )
 
             self._metrics_manager.set_autoscaling_config(
-                deployment_config.autoscaling_config
+                deployment_config.autoscaling_config,
+                deployment_config.autoscaling_metrics_config,
             )
             self._metrics_manager.set_max_ongoing_requests(
                 deployment_config.max_ongoing_requests

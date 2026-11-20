@@ -42,6 +42,7 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT, validate_ssl_config
 from ray.serve.config import (
     AutoscalingConfig,
+    AutoscalingMetricsConfig,
     AutoscalingPolicy,
     BackpressureConfig,
     ControllerOptions,
@@ -424,6 +425,9 @@ class DeploymentSchema(BaseModel):
             "reconfigure method. This can be updated dynamically "
             "without restarting replicas"
         ),
+    )
+    autoscaling_metrics_config: Optional[AutoscalingMetricsConfig] = Field(
+        default=DEFAULT.VALUE
     )
     autoscaling_config: Optional[Union[Dict, AutoscalingConfig]] = Field(
         default=DEFAULT.VALUE,

@@ -1,3 +1,4 @@
+import functools
 import inspect
 import logging
 import math
@@ -54,7 +55,7 @@ from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
 
 if TYPE_CHECKING:
-    from ray.serve.config import AutoscalingConfig
+    from ray.serve.config import AutoscalingConfig, AutoscalingMetricsConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -1046,6 +1047,11 @@ class ApplicationAutoscalingState:
         app_name: ApplicationName,
     ):
         self._app_name = app_name
+        self._metric_sources: Dict[DeploymentID, AutoscalingMetricsConfig] = {}
+        self._source_reports: Dict[
+            DeploymentID, Dict[ReplicaID, ReplicaMetricReport]
+        ] = defaultdict(dict)
+        self._source_running: Dict[DeploymentID, Set[ReplicaID]] = {}
         self._deployment_autoscaling_states: Dict[
             DeploymentID, DeploymentAutoscalingState
         ] = {}
@@ -1179,6 +1185,49 @@ class ApplicationAutoscalingState:
                 for deployment_id, state in self._deployment_autoscaling_states.items()
                 if deployment_id in deployment_to_target_num_replicas
             }
+
+            @functools.lru_cache(maxsize=1)
+            def raw_metrics():
+                result = {
+                    dep: ctx.raw_metrics or {}
+                    for dep, ctx in autoscaling_contexts.items()
+                }
+                now = time.time()
+                for dep, config in self._metric_sources.items():
+                    metrics = defaultdict(dict)
+                    for replica in self._source_running.get(dep, ()):
+                        report = self._source_reports[dep].get(replica)
+                        if report and now - report.timestamp <= max(
+                            config.look_back_period_s, 2 * config.metrics_interval_s
+                        ):
+                            for key, series in report.metrics.items():
+                                if series:
+                                    metrics[key][replica] = series
+                    result[dep] = dict(metrics)
+                return result
+
+            @functools.lru_cache(maxsize=1)
+            def aggregated_metrics():
+                result = {
+                    dep: ctx.aggregated_metrics
+                    for dep, ctx in autoscaling_contexts.items()
+                }
+                for dep, config in self._metric_sources.items():
+                    result[dep] = {
+                        key: {
+                            rid: aggregate_timeseries(
+                                series, config.aggregation_function
+                            )
+                            or 0.0
+                            for rid, series in replicas.items()
+                        }
+                        for key, replicas in raw_metrics()[dep].items()
+                    }
+                return result
+
+            for ctx in autoscaling_contexts.values():
+                ctx._application_metrics = raw_metrics
+                ctx._application_aggregates = aggregated_metrics
             # Time the policy execution
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
@@ -1241,6 +1290,13 @@ class ApplicationAutoscalingState:
     def update_running_replica_ids(
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
     ):
+        if deployment_id in self._metric_sources:
+            self._source_running[deployment_id] = set(running_replicas)
+            reports = self._source_reports[deployment_id]
+            for stopped in reports.keys() - self._source_running[deployment_id]:
+                del reports[stopped]
+        if deployment_id not in self._deployment_autoscaling_states:
+            return
         self._deployment_autoscaling_states[deployment_id].update_running_replica_ids(
             running_replicas
         )
@@ -1288,6 +1344,11 @@ class ApplicationAutoscalingState:
         self, replica_metric_report: ReplicaMetricReport
     ):
         dep_id = replica_metric_report.replica_id.deployment_id
+        if dep_id in self._metric_sources:
+            reports = self._source_reports[dep_id]
+            previous = reports.get(replica_metric_report.replica_id)
+            if previous is None or previous.timestamp < replica_metric_report.timestamp:
+                reports[replica_metric_report.replica_id] = replica_metric_report
         # Defensively guard against delayed replica metrics arriving
         # after the deployment's been deleted
         if dep_id in self._deployment_autoscaling_states:
@@ -1353,6 +1414,7 @@ class AutoscalingStateManager:
 
     def deregister_deployment(self, deployment_id: DeploymentID):
         """Remove deployment from tracking."""
+        self.configure_metrics_source(deployment_id, None)
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
             logger.info(
@@ -1376,6 +1438,18 @@ class AutoscalingStateManager:
         if app_name in self._app_autoscaling_states:
             logger.info(f"Deregistering autoscaling state for application {app_name}")
             self._app_autoscaling_states.pop(app_name, None)
+
+    def configure_metrics_source(self, deployment_id, config):
+        app = self._app_autoscaling_states.get(deployment_id.app_name)
+        if config is not None:
+            if app is None:
+                app = ApplicationAutoscalingState(deployment_id.app_name)
+                self._app_autoscaling_states[deployment_id.app_name] = app
+            app._metric_sources[deployment_id] = config
+        elif app is not None:
+            app._metric_sources.pop(deployment_id, None)
+            app._source_reports.pop(deployment_id, None)
+            app._source_running.pop(deployment_id, None)
 
     def _application_has_policy(self, app_name: ApplicationName) -> bool:
         return (

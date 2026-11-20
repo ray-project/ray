@@ -331,5 +331,21 @@ class TestCustomServeMetrics:
         assert response == "ok"
 
 
+def test_metric_source_configuration_round_trip():
+    from ray.serve._private.config import DeploymentConfig
+    from ray.serve.config import AutoscalingMetricsConfig
+
+    config = DeploymentConfig(
+        num_replicas=2,
+        autoscaling_metrics_config={"metrics_interval_s": 1, "look_back_period_s": 10},
+    )
+    restored = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert restored.autoscaling_config is None
+    assert restored.num_replicas == 2
+    assert restored.autoscaling_metrics_config == AutoscalingMetricsConfig(
+        metrics_interval_s=1, look_back_period_s=10
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -34,6 +34,7 @@ from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
+    AutoscalingMetricsConfig,
     BackpressureConfig,
     DeploymentActorConfig,
     GangPlacementStrategy,
@@ -212,6 +213,10 @@ class DeploymentConfig(BaseModel):
     health_check_timeout_s: PositiveFloat = Field(
         default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+
+    autoscaling_metrics_config: Optional[AutoscalingMetricsConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
     autoscaling_config: Optional[AutoscalingConfig] = Field(
