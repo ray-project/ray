@@ -42,7 +42,8 @@ class HttpRequestProcessorConfig(ProcessorConfig):
     qps: Optional[int] = Field(
         default=None,
         description="The maximum number of requests per second to avoid rate limit. "
-        "If None, the request will be sent sequentially.",
+        "If None, the requests in a batch are sent concurrently, limited by the "
+        "session's connection pool.",
     )
     max_retries: int = Field(
         default=0,
