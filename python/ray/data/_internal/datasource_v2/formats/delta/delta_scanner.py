@@ -5,6 +5,7 @@ import pyarrow as pa
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
+    NUM_RECORDS_COLUMN,
     PARTITION_VALUES_COLUMN,
     DeltaPartitionPruner,
     PartitionValues,
@@ -57,6 +58,34 @@ class DeltaFileReader(ParquetFileReader):
 
     @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield each file's row count, from the log where it has one.
+
+        The whole-file listing puts the log's counts in ``NUM_RECORDS_COLUMN``.
+        Only the files without one have their Parquet footer read. Tables with
+        deletion vectors, whose log counts include deleted rows, aren't read
+        with this reader.
+        """
+        extra_columns = file_manifest.extra_columns
+        if (
+            extra_columns is not None
+            and NUM_RECORDS_COLUMN in extra_columns.column_names
+        ):
+            num_records = extra_columns[NUM_RECORDS_COLUMN].to_pylist()
+            for count in num_records:
+                if count is not None:
+                    yield BlockMetadata(
+                        num_rows=count,
+                        size_bytes=None,
+                        exec_stats=None,
+                        input_files=None,
+                    )
+            unknown = [count is None for count in num_records]
+            if not any(unknown):
+                return
+            block = file_manifest.as_block()
+            # Listing manifests are always built as Arrow tables.
+            assert isinstance(block, pa.Table)
+            file_manifest = FileManifest(block.filter(pa.array(unknown)))
         self._add_known_file_sizes(file_manifest)
         yield from super().read_metadata(file_manifest)
 

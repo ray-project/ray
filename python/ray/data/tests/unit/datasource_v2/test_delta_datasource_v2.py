@@ -14,6 +14,7 @@ from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     DeltaFileIndexer,
+    DeltaTableSnapshot,
     resolve_data_file_path,
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
@@ -125,15 +126,17 @@ def test_datasource_rejects_unknown_columns(partitioned_table):
         _datasource(partitioned_table, columns=["id", "path"])
 
 
+@pytest.mark.parametrize("log_has_row_counts", [True, False])
 def test_indexer_and_scanner_survive_worker_serialization(
-    partitioned_table, monkeypatch
+    partitioned_table, monkeypatch, log_has_row_counts
 ):
     """Listing and read tasks receive the indexer and the scanner pickled, and
     a read task creates its reader from the scanner. The reader opens each data
     file with its size from the log: ``deltalake``'s storage asks for the size
-    of a file it wasn't told, a HEAD request per open on S3."""
+    of a file it wasn't told, a HEAD request per open on S3. ``count()`` takes
+    the row counts from the log, and reads a file's footer only without one."""
     deltalake_fs = pytest.importorskip("deltalake.fs")
-    unsized_opens = []
+    opens, unsized_opens = [], []
 
     class _RecordingStorage(deltalake_fs.DeltaStorageHandler):
         def __init__(self, table_uri, options=None, known_sizes=None):
@@ -141,11 +144,19 @@ def test_indexer_and_scanner_survive_worker_serialization(
             self.known_paths = set(known_sizes or ())
 
         def open_input_file(self, path):
+            opens.append(path)
             if path not in self.known_paths:
                 unsized_opens.append(path)
             return super().open_input_file(path)
 
     monkeypatch.setattr(deltalake_fs, "DeltaStorageHandler", _RecordingStorage)
+    if not log_has_row_counts:
+        add_actions = DeltaTableSnapshot.add_actions
+        monkeypatch.setattr(
+            DeltaTableSnapshot,
+            "add_actions",
+            lambda self: add_actions(self).drop_columns(["num_records"]),
+        )
     datasource = _datasource(partitioned_table)
     scanner = datasource.create_scanner(schema=datasource.infer_schema(None))
 
@@ -153,8 +164,8 @@ def test_indexer_and_scanner_survive_worker_serialization(
     reader = cloudpickle.loads(cloudpickle.dumps(scanner)).create_reader()
 
     assert _listed_paths(indexer) == _log_paths(partitioned_table)
-    manifests = indexer.as_whole_file_indexer().list_files(
-        pa.array(["label"]), filesystem=None
+    manifests = list(
+        indexer.as_whole_file_indexer().list_files(pa.array(["label"]), filesystem=None)
     )
     rows = [
         (row["id"], row["grp"])
@@ -163,6 +174,11 @@ def test_indexer_and_scanner_survive_worker_serialization(
         for row in t.to_pylist()
     ]
     assert sorted(rows) == [(1, "a b"), (2, "e=f"), (3, None), (4, "a b")]
+
+    opens.clear()
+    counts = [meta.num_rows for m in manifests for meta in reader.read_metadata(m)]
+    assert sum(counts) == 4
+    assert len(opens) == (0 if log_has_row_counts else 3)
     assert unsized_opens == []
 
 
