@@ -68,7 +68,7 @@ from ray.serve._private.common import (
     gRPCRequest,
     gRPCStreamingRequest,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import AutoscalingMetricsConfig, DeploymentConfig
 from ray.serve._private.constants import (
     DRAIN_WAITING_LOG_INTERVAL_S,
     GRPC_CONTEXT_ARG_NAME,
@@ -190,7 +190,6 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import (
     AutoscalingConfig,
-    AutoscalingMetricsConfig,
     HTTPOptions,
     ProxyLocation,
     gRPCOptions,

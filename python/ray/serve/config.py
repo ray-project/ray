@@ -738,15 +738,6 @@ class BackpressureConfig(BaseModel):
 
 
 @PublicAPI(stability="stable")
-class AutoscalingMetricsConfig(BaseModel):
-    """Configure replica metric reporting for application autoscaling policies."""
-
-    metrics_interval_s: PositiveFloat = DEFAULT_METRICS_INTERVAL_S
-    look_back_period_s: PositiveFloat = 30.0
-    aggregation_function: AggregationFunction = AggregationFunction.MEAN
-
-
-@PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler.
 

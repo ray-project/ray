@@ -55,7 +55,8 @@ from ray.serve.config import AutoscalingContext, AutoscalingPolicy
 from ray.util import metrics
 
 if TYPE_CHECKING:
-    from ray.serve.config import AutoscalingConfig, AutoscalingMetricsConfig
+    from ray.serve._private.config import AutoscalingMetricsConfig
+    from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
