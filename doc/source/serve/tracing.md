@@ -29,19 +29,9 @@ Spans carry attributes such as `request_id`, `app`, `deployment`, `replica_id`, 
 
 An exporter decides where spans go. Serve's built-in exporter writes them to files on each node, which is enough to try tracing out and to debug locally. To collect traces from a cluster, write a short exporter function that sends spans to a backend, such as an OpenTelemetry Collector or the Datadog Agent. Serve doesn't include a trace viewer, so use your backend's UI to explore traces.
 
-## Install OpenTelemetry
-
-Tracing needs the OpenTelemetry API and SDK packages:
-
-```bash
-pip install -U opentelemetry-api opentelemetry-sdk
-```
-
-Install them, and any exporter packages you use, in the Python environment of every node in the cluster. The Serve controller, proxies, and replicas all import them.
-
 ## Quick start
 
-The following example starts Serve with tracing on, deploys an application, and sends it a request:
+`ray[serve]` includes the OpenTelemetry API and SDK that tracing needs. Exporters for specific backends, such as OTLP, are separate packages. The following example starts Serve with tracing on, deploys an application, and sends it a request:
 
 ```{literalinclude} doc_code/tracing/quickstart.py
 :start-after: __quickstart_start__
@@ -81,7 +71,7 @@ Spans with the same `trace_id` belong to the same request, and `parent_id` links
 
 ## Configure tracing
 
-You can configure tracing in Python, in a Serve config file, or with environment variables. All three set the same options.
+You can configure tracing in Python or in a Serve config file. Both set the same options.
 
 ### Tracing options
 
@@ -89,9 +79,11 @@ You can configure tracing in Python, in a Serve config file, or with environment
 
 | Field | Default | Description |
 |---|---|---|
-| `enabled` | `True` if `RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH` is set, otherwise `False` | Whether Serve records spans. |
-| `exporter_import_path` | `RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH` if set, otherwise the built-in file exporter | The exporter function, as `module:function`. It can't be empty. |
-| `sampling_ratio` | `RAY_SERVE_TRACING_SAMPLING_RATIO` if set, otherwise `0.01` | The fraction of requests to trace, from `0.0` to `1.0`. |
+| `enabled` | `False` | Whether Serve records spans. |
+| `exporter_import_path` | The built-in file exporter | The exporter function, as `module:function`. It can't be empty. |
+| `sampling_ratio` | `0.01` | The fraction of requests to trace, from `0.0` to `1.0`. |
+
+Serve fills in the fields you leave unset when it starts, and the cluster's environment can change those defaults, so set the fields you rely on explicitly.
 
 Serve samples with a parent-based sampler. When a request arrives with a `traceparent` header from a sampled trace, Serve follows the caller's decision. Otherwise, it samples by `sampling_ratio`. See the {class}`~ray.serve.schema.TracingConfig` API reference for details.
 
@@ -117,32 +109,7 @@ The config deploys the application in `tracing_app.py`:
 :language: python
 ```
 
-From the directory that holds both files, run `serve run tracing_config.yaml`, or deploy the file to a running Ray cluster with `serve deploy tracing_config.yaml`. `serve run` also accepts an import path, such as `serve run tracing_app:app`, but in that case there's no tracing option to pass, so use a config file or environment variables.
-
-### Configure tracing with environment variables
-
-Serve reads two environment variables:
-
-- `RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH`: the exporter function. Setting it also turns tracing on.
-- `RAY_SERVE_TRACING_SAMPLING_RATIO`: the sampling ratio.
-
-Fields that you set explicitly in `TracingConfig` or `tracing_config` always win. Serve fills in the fields you don't set from these variables as the Serve controller sees them, not as the process that calls `serve.start()` sees them. To set them for the controller, use `controller_options`. In the following example, tracing is on and the sampling ratio comes from the controller's environment:
-
-```python
-from ray import serve
-from ray.serve.schema import TracingConfig
-
-serve.start(
-    tracing_config=TracingConfig(enabled=True),
-    controller_options={
-        "runtime_env": {
-            "env_vars": {"RAY_SERVE_TRACING_SAMPLING_RATIO": "0.1"},
-        }
-    },
-)
-```
-
-A config file accepts the same `controller_options` field. Proxies and replicas inherit the controller's environment variables, following the {ref}`runtime environment inheritance rules <runtime-environments-inheritance>`, so this is also the place to set variables that your exporter reads.
+From the directory that holds both files, run `serve run tracing_config.yaml`, or deploy the file to a running Ray cluster with `serve deploy tracing_config.yaml`. `serve run` also accepts an import path, such as `serve run tracing_app:app`, but that form doesn't let you configure tracing. To enable tracing, run `serve run tracing_config.yaml` instead.
 
 ### Change the tracing configuration
 
@@ -219,7 +186,7 @@ The exporter reads its settings from the standard [OpenTelemetry environment var
 - `OTEL_EXPORTER_OTLP_HEADERS` adds headers, such as an API key, to each export.
 - `OTEL_SERVICE_NAME` sets the service name that your backend shows for Serve's spans.
 
-Set them for every Serve process through `controller_options`. The following config file uses `otlp_exporter` from `exporters.py`:
+Set them for every Serve process through `controller_options`. Proxies and replicas inherit the controller's environment variables, following the {ref}`runtime environment inheritance rules <runtime-environments-inheritance>`. The following config file uses `otlp_exporter` from `exporters.py`:
 
 ```{literalinclude} doc_code/tracing/otlp_config.yaml
 :start-after: __otlp_config_start__
@@ -287,7 +254,7 @@ The following table lists common problems and how to fix them:
 
 | Symptom | Cause and fix |
 |---|---|
-| An `ImportError` that asks you to install `opentelemetry-api` and `opentelemetry-sdk` | OpenTelemetry isn't installed where Serve runs. Install it on every node. |
+| An `ImportError` that asks you to install `opentelemetry-api` and `opentelemetry-sdk` | OpenTelemetry isn't installed where Serve runs, for example because a node has `ray` without the `serve` extra. Install `ray[serve]` on every node. |
 | `InvalidTracingConfigError: Invalid tracing config: exporter '...' is unusable (ModuleNotFoundError: ...)` | The controller can't import the exporter. Check `exporter_import_path`, and make the module and its packages available on the head node. |
 | `... is unusable (TypeError: Tracing exporter cannot take any arguments.)` or `(TypeError: Tracing exporter must be a function.)` | The exporter isn't a function that takes no arguments. |
 | `... is unusable (TypeError: Output of tracing exporter needs to be of type List[SpanProcessor] ...)` | The exporter returned something other than a list of `SpanProcessor` objects. Return a list, even for one processor. |
