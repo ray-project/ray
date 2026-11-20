@@ -52,6 +52,59 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
         assert sample["b"].decode("utf-8") == str(i**2)
 
 
+def test_webdataset_fileselect_skips_unselected_payloads(tmp_path, monkeypatch):
+    from ray.data._internal.datasource.webdataset_datasource import (
+        _tar_file_iterator,
+    )
+
+    path = tmp_path / "filter.tar"
+
+    with TarWriter(path) as tar:
+        tar.write("000000.big", b"x" * 1024)
+        tar.write("000001.raw", b"selected-renamed")
+        tar.write("000002.txt", b"filtered-after-rename")
+        tar.write("000003.txt", b"selected-original")
+
+    def renamer(name):
+        return {
+            "000001.raw": "000001.txt",
+            "000002.txt": "000002.drop",
+        }.get(name, name)
+
+    extracted_members = []
+    original_extractfile = tarfile.TarFile.extractfile
+
+    def track_extractfile(self, member):
+        extracted_members.append(member.name)
+        return original_extractfile(self, member)
+
+    monkeypatch.setattr(
+        tarfile.TarFile,
+        "extractfile",
+        track_extractfile,
+    )
+
+    with open(path, "rb") as stream:
+        rows = list(
+            _tar_file_iterator(
+                stream,
+                filerename=renamer,
+                fileselect=["*.txt"],
+            )
+        )
+
+    assert rows == [
+        {"fname": "000001.txt", "data": b"selected-renamed"},
+        {"fname": "000003.txt", "data": b"selected-original"},
+    ]
+
+    # Only selected members should have their payload extracted.
+    assert extracted_members == [
+        "000001.raw",
+        "000003.txt",
+    ]
+
+
 @pytest.fixture
 def allow_unsafe_deserialization(monkeypatch):
     monkeypatch.setenv("RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION", "1")
