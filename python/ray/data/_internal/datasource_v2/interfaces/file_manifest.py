@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -244,7 +244,7 @@ class FileManifest:
         cls,
         *,
         paths: List[str],
-        sizes: List[Optional[int]],
+        sizes: Sequence[Optional[int]],
         chunk_metadatas: List[Optional[ChunkMetadata]],
         extra_columns: Optional[pa.Table] = None,
     ) -> "FileManifest":
