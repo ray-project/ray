@@ -227,7 +227,7 @@ class Counter(Metric):
             return (
                 deserializer,
                 serialized_data,
-                {"default_tags": self._default_tags.copy()},
+                {"default_tags": self._default_tags},
             )
         return deserializer, serialized_data
 
@@ -320,7 +320,7 @@ class Histogram(Metric):
             return (
                 deserializer,
                 serialized_data,
-                {"default_tags": self._default_tags.copy()},
+                {"default_tags": self._default_tags},
             )
         return deserializer, serialized_data
 
@@ -387,7 +387,7 @@ class Gauge(Metric):
             return (
                 deserializer,
                 serialized_data,
-                {"default_tags": self._default_tags.copy()},
+                {"default_tags": self._default_tags},
             )
         return deserializer, serialized_data
 
