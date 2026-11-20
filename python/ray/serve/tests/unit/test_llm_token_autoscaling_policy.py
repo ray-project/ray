@@ -8,6 +8,34 @@ from ray.llm._internal.serve.routing_policies.kv_aware.autoscaling_policy import
     LLMTokenAutoscalingPolicy,
 )
 from ray.serve._private.common import DeploymentID, TimeStampedValue
+from ray.serve.autoscaling_policy import _apply_app_level_autoscaling_config
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingContext,
+    AutoscalingMetricsContext,
+)
+
+
+def _server_context(dep, now, requests):
+    return AutoscalingContext(
+        deployment_id=dep,
+        deployment_name=dep.name,
+        app_name=dep.app_name,
+        current_time=now,
+        total_num_requests=requests,
+        total_queued_requests=0,
+        target_num_replicas=0,
+        current_num_replicas=0,
+        running_replicas=[],
+        capacity_adjusted_min_replicas=0,
+        capacity_adjusted_max_replicas=8,
+        config=AutoscalingConfig(min_replicas=0, max_replicas=8),
+        policy_state={},
+        last_scale_up_time=None,
+        last_scale_down_time=None,
+        raw_metrics={},
+        aggregated_metrics={},
+    )
 
 
 @pytest.mark.asyncio
@@ -38,15 +66,9 @@ async def test_router_report_reaches_app_policy():
         )
     )
     app = manager._app_autoscaling_states["app"]
-    app._policy = LLMTokenAutoscalingPolicy(10)
+    app._policy = _apply_app_level_autoscaling_config(LLMTokenAutoscalingPolicy(10))
     server = Mock()
-    server.get_autoscaling_context.return_value = SimpleNamespace(
-        app_name="app",
-        current_time=now,
-        total_num_requests=0,
-        config=SimpleNamespace(look_back_period_s=30),
-        raw_metrics={},
-    )
+    server.get_autoscaling_context.return_value = _server_context(target, now, 0)
     app._deployment_autoscaling_states[target] = server
     assert app.get_decision_num_replicas(
         {source: 1, target: 0}, _skip_bound_check=True
@@ -54,8 +76,6 @@ async def test_router_report_reaches_app_policy():
     assert not manager.should_autoscale_deployment(source)
     manager.update_running_replica_ids(source, [])
     assert app.get_decision_num_replicas({source: 1, target: 3}) == {}
-
-    from ray.serve.autoscaling_policy import _apply_app_level_autoscaling_config
 
     app._policy = _apply_app_level_autoscaling_config(
         lambda contexts: ({source: 2}, {})
@@ -71,14 +91,12 @@ def test_replicated_router_reports(requests, load, expected):
     points = [TimeStampedValue(10, load)]
     key = "outstanding_effective_prefill_tokens:decode"
     metrics = {key: {"router1": points, "router2": points}}
-    ctx = SimpleNamespace(
-        app_name="app",
-        config=SimpleNamespace(look_back_period_s=10),
-        current_time=20,
-        total_num_requests=requests,
-        raw_metrics={},
-    )
-    contexts = {server: ctx, router: SimpleNamespace(config=None, raw_metrics=metrics)}
+    contexts = {
+        server: _server_context(server, 20, requests),
+        router: AutoscalingMetricsContext(
+            router, router.name, router.app_name, 2, [], 20, {}, metrics
+        ),
+    }
     policy = LLMTokenAutoscalingPolicy(10)
     assert policy(contexts) == ({server: expected}, {})
     metrics["outstanding_effective_prefill_tokens:another"] = metrics[key]

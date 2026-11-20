@@ -6,6 +6,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 from ray.serve._private.common import DeploymentID, TimeStampedValue
 from ray.serve._private.metrics_utils import time_weighted_average
+from ray.serve.config import AutoscalingContext
 
 
 def _get_target_and_reports(contexts):
@@ -20,7 +21,7 @@ def _get_target_and_reports(contexts):
         return None
     key = keys[0]
     target = DeploymentID(name=key[len(prefix) :], app_name=source.app_name)
-    if target not in contexts or contexts[target].config is None or target == source:
+    if target == source or not isinstance(contexts.get(target), AutoscalingContext):
         return None
     return target, metrics[key]
 
