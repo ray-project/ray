@@ -83,6 +83,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_FREEZE_GC_ON_STARTUP,
     RAY_SERVE_HAPROXY_METRICS_ENABLED,
+    RAY_SERVE_MAX_PUSH_IN_FLIGHT_S,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
@@ -390,6 +391,7 @@ class ReplicaMetricsManager:
     """
 
     PUSH_METRICS_TO_CONTROLLER_TASK_NAME = "push_metrics_to_controller"
+    PUSH_SELF_HEALTH_TASK_NAME = "push_self_health"
     RECORD_METRICS_TASK_NAME = "record_metrics"
     SET_REPLICA_REQUEST_METRIC_GAUGE_TASK_NAME = "set_replica_request_metric_gauge"
 
@@ -425,6 +427,15 @@ class ReplicaMetricsManager:
         # Tracks in-flight metrics push to controller. Skip if new one is sent.
         self._pending_metrics_push_ref: Optional[ObjectRef] = None
         self._metrics_push_lock = threading.Lock()
+
+        # Latest local health-check result, pushed to the controller so it does not
+        # have to probe for it.
+        self._eval_self_health_fn: Optional[Callable] = None
+        self._health_check_period_s: float = 0.0
+        self._consecutive_failures = 0
+        self._last_counted_failure_at: float = 0.0
+        self._pending_health_push_ref: Optional[ObjectRef] = None
+        self._pending_health_push_started_at: float = 0.0
 
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
@@ -687,6 +698,85 @@ class ReplicaMetricsManager:
         """Stop periodic background tasks."""
 
         await self._metrics_pusher.graceful_shutdown()
+
+    def _push_blocked(self, ref, started_s: float) -> bool:
+        """True while the previous push is still in flight and not yet overdue.
+
+        Past the bound the ref is abandoned, because a receiver that never completes
+        would otherwise mean no further push is ever attempted.
+        """
+        if ref is None or check_obj_ref_ready_nowait(ref):
+            return False
+        return time.time() - started_s < RAY_SERVE_MAX_PUSH_IN_FLIGHT_S
+
+    def start_self_health_pusher(self, eval_fn: Callable, period_s: float):
+        """Periodically run the local health check and push the result.
+
+        eval_fn raises when unhealthy.
+        """
+        self._eval_self_health_fn = eval_fn
+        self._metrics_pusher.start()
+        self._schedule_self_health(period_s)
+
+    def _schedule_self_health(self, period_s: float) -> None:
+        """Run the check every half period so every replica is checked well within
+        it despite scheduling jitter. Start to start, so a slow check does not leave
+        its push stale by the time the controller looks."""
+        self._health_check_period_s = period_s
+        self._metrics_pusher.register_or_update_task(
+            self.PUSH_SELF_HEALTH_TASK_NAME,
+            self._eval_and_push_self_health,
+            period_s * 0.5,
+            fixed_rate=True,
+        )
+
+    def clear_self_health_failures(self) -> None:
+        """A check passed, so the failures counted before it are over."""
+        self._consecutive_failures = 0
+
+    async def _eval_and_push_self_health(self):
+        # Invariant: the pusher registers this task only after setting the callable,
+        # so narrow the Optional for the type checkers.
+        eval_fn = self._eval_self_health_fn
+        assert eval_fn is not None
+        healthy = True
+        try:
+            await eval_fn()
+        except (Exception, asyncio.CancelledError):
+            # CancelledError is not an Exception, and MetricsPusher only catches
+            # Exception, so letting it out would retire the heartbeat for good.
+            healthy = False
+        counted_at = time.time()
+        if healthy:
+            self.clear_self_health_failures()
+        if not healthy and (
+            self._consecutive_failures == 0
+            or counted_at - self._last_counted_failure_at >= self._health_check_period_s
+        ):
+            # Evals run twice per period for freshness, but the controller weighs
+            # this count against a threshold calibrated to the period. Counting
+            # every eval would replace a replica in half the configured time.
+            self._consecutive_failures += 1
+            self._last_counted_failure_at = counted_at
+        checked_at = time.time()
+
+        with self._metrics_push_lock:
+            in_flight = self._push_blocked(
+                self._pending_health_push_ref,
+                self._pending_health_push_started_at,
+            )
+            if in_flight:
+                return
+            self._pending_health_push_ref = (
+                # Actor methods are resolved dynamically on the actor handle.
+                self._controller_handle.record_replica_health.remote(  # type: ignore[attr-defined]
+                    self._replica_id,
+                    checked_at,
+                    healthy,
+                    self._consecutive_failures,
+                )
+            )
+            self._pending_health_push_started_at = time.time()
 
     def start_metrics_pusher(self):
         # Invariant: only called when an autoscaling config is set (checked at
