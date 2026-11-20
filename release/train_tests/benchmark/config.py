@@ -58,6 +58,13 @@ class RayDataConfig(DataLoaderConfig):
     # Use the push-based streaming split (PushBasedDataConfig)
     # instead of the default pull-based streaming_split.
     ray_data_push_based_split: bool = False
+    # Turn on mid-epoch resumption for the train dataset, with either split.
+    # The data iterator records the row IDs of each batch it yields, and each
+    # checkpoint saves the iterator state. On restore, Ray Data skips the rows
+    # that were already yielded, and the runner doesn't skip batches. With
+    # limit_training_rows, a resumed epoch can read up to that many rows past
+    # the restore point, since the limit applies after the restore filter.
+    ray_data_mid_epoch_resume: bool = False
 
 
 class TorchConfig(DataLoaderConfig):

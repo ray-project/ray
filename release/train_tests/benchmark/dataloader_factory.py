@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Iterator, Tuple
+from typing import Any, Dict, Iterator, Optional, Tuple
 import logging
 
 import torch
@@ -29,3 +29,19 @@ class BaseDataLoaderFactory(ABC):
     def get_metrics(self) -> Dict[str, Any]:
         """Return metrics about dataloader performance."""
         return {}
+
+    def supports_mid_epoch_resume(self) -> bool:
+        """Whether checkpoints save and restore the train data iterator state."""
+        return False
+
+    def get_train_data_state(self) -> Optional[Dict[str, Any]]:
+        """Return the train data iterator state to save in a checkpoint.
+
+        Call it on every rank at the same step, since each rank saves its
+        own part of the state.
+        """
+        return None
+
+    def set_train_data_state(self, state_dict: Dict[str, Any]) -> None:
+        """Set the train data iterator state to restore from."""
+        raise NotImplementedError

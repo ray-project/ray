@@ -1892,6 +1892,14 @@
         timeout: 2600
         script: RAY_TRAIN_V2_ENABLED=1 python compare_pull_push_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet
 
+    # Same comparison with mid-epoch resumption on for both the pull and the
+    # push split: each checkpoint also saves the data iterator state.
+    - __suffix__: skip_training.parquet.pull_vs_push.mid_epoch_resume
+      frequency: manual
+      run:
+        timeout: 2600
+        script: RAY_TRAIN_V2_ENABLED=1 python compare_pull_push_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --ray_data_mid_epoch_resume=True --checkpoint_every_n_steps=500
+
     - __suffix__: skip_training.parquet.torch_dataloader
       frequency: manual
       run:

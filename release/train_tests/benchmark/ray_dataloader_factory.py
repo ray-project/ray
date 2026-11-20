@@ -16,6 +16,9 @@ from dataloader_factory import BaseDataLoaderFactory
 
 logger = logging.getLogger(__name__)
 
+# Row ID column that Ray Data generates for mid-epoch resumption.
+MID_EPOCH_RESUME_ID_COLUMN = "generated_id"
+
 SPILL_MONITOR_ACTOR_NAME = "spill_metrics_monitor"
 SPILL_MONITOR_ACTOR_NAMESPACE = "_spill_metrics_monitor"
 
@@ -107,6 +110,9 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         super().__init__(benchmark_config)
         self._ray_ds_iterators = {}
         self._spill_monitor: Optional[ray.actor.ActorHandle] = None
+        # The train data iterator state restored from a checkpoint. Passed to
+        # the first get_dataset_shard call only.
+        self._train_data_state_to_restore: Optional[Dict[str, Any]] = None
 
         dataloader_config = self.get_dataloader_config()
         assert isinstance(dataloader_config, RayDataConfig), type(dataloader_config)
@@ -140,6 +146,16 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
 
     def get_ray_data_config(self) -> ray.train.DataConfig:
         dataloader_config = self.get_dataloader_config()
+        data_config_kwargs = {
+            "enable_shard_locality": dataloader_config.enable_shard_locality,
+        }
+        if dataloader_config.ray_data_mid_epoch_resume:
+            data_config_kwargs["dataset_checkpoint_configs"] = {
+                DatasetKey.TRAIN: ray.train.DatasetCheckpointConfig(
+                    id_column=MID_EPOCH_RESUME_ID_COLUMN,
+                    generate_id_column=True,
+                )
+            }
         if dataloader_config.ray_data_push_based_split:
             # Push-based streaming split (coordinator pushes
             # blocks to train workers instead of workers pulling).
@@ -147,12 +163,21 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                 PushBasedDataConfig,
             )
 
-            return PushBasedDataConfig(
-                enable_shard_locality=dataloader_config.enable_shard_locality,
-            )
-        return ray.train.DataConfig(
-            enable_shard_locality=dataloader_config.enable_shard_locality,
-        )
+            return PushBasedDataConfig(**data_config_kwargs)
+        return ray.train.DataConfig(**data_config_kwargs)
+
+    def supports_mid_epoch_resume(self) -> bool:
+        return self.get_dataloader_config().ray_data_mid_epoch_resume
+
+    def get_train_data_state(self) -> Optional[Dict[str, Any]]:
+        ds_iterator = self._ray_ds_iterators.get(DatasetKey.TRAIN)
+        if not self.supports_mid_epoch_resume() or ds_iterator is None:
+            return None
+        return ds_iterator.state_dict()
+
+    def set_train_data_state(self, state_dict: Dict[str, Any]) -> None:
+        assert self.supports_mid_epoch_resume()
+        self._train_data_state_to_restore = state_dict
 
     def get_train_dataloader(self):
         """Get the training dataloader.
@@ -164,7 +189,12 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
         if self._spill_monitor is None:
             self._spill_monitor = get_or_create_spill_metrics_monitor()
 
-        ds_iterator = ray.train.get_dataset_shard(DatasetKey.TRAIN)
+        # Ray Train accepts a state dict on the first call only.
+        state_dict = self._train_data_state_to_restore
+        self._train_data_state_to_restore = None
+        ds_iterator = ray.train.get_dataset_shard(
+            DatasetKey.TRAIN, state_dict=state_dict
+        )
         self._ray_ds_iterators[DatasetKey.TRAIN] = ds_iterator
 
         dataloader_config = self.get_dataloader_config()
