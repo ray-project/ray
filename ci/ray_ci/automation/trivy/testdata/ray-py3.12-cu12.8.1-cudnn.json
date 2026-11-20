@@ -1,0 +1,298 @@
+{
+ "ArtifactName": "/image",
+ "ArtifactType": "container_image",
+ "Metadata": {
+  "ImageID": "sha256:729b4961f5d50e735d28344fb27326a105e6916127746e4445c2c7be10731044",
+  "OS": {
+   "Family": "ubuntu",
+   "Name": "22.04"
+  }
+ },
+ "Results": [
+  {
+   "Class": "os-pkgs",
+   "Packages": [
+    {
+     "Name": "adduser",
+     "Version": "3.118ubuntu5"
+    },
+    {
+     "Name": "apt",
+     "Version": "2.4.15ubuntu0.1"
+    }
+   ],
+   "Target": "/image (ubuntu 22.04)",
+   "Type": "ubuntu",
+   "Vulnerabilities": [
+    {
+     "InstalledVersion": "5.15.0-203.213",
+     "PkgName": "linux-libc-dev",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2023-53867",
+     "Severity": "CRITICAL",
+     "Status": "affected",
+     "Title": "kernel: ceph: fix potential use-after-free bug when trimming caps",
+     "VulnerabilityID": "CVE-2023-53867"
+    },
+    {
+     "InstalledVersion": "5.15.0-203.213",
+     "PkgName": "linux-libc-dev",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-50286",
+     "Severity": "CRITICAL",
+     "Status": "affected",
+     "Title": "kernel: ksmbd: fix slab-use-after-free in ksmbd_smb2_session_create",
+     "VulnerabilityID": "CVE-2024-50286"
+    },
+    {
+     "InstalledVersion": "5.15.0-203.213",
+     "PkgName": "linux-libc-dev",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-37777",
+     "Severity": "CRITICAL",
+     "Status": "affected",
+     "Title": "kernel: ksmbd: fix use-after-free in __smb2_lease_break_noti()",
+     "VulnerabilityID": "CVE-2025-37777"
+    }
+   ]
+  },
+  {
+   "Class": "lang-pkgs",
+   "Packages": [
+    {
+     "Name": "com.fasterxml.jackson.core:jackson-annotations",
+     "Version": "2.18.8"
+    },
+    {
+     "Name": "com.fasterxml.jackson.core:jackson-core",
+     "Version": "2.18.8"
+    }
+   ],
+   "Target": "Java",
+   "Type": "jar",
+   "Vulnerabilities": [
+    {
+     "FixedVersion": "33.7.2",
+     "InstalledVersion": "32.0.1-jre",
+     "PkgName": "com.google.guava:guava",
+     "PkgPath": "home/ray/anaconda3/lib/python3.12/site-packages/ray/jars/ray_dist.jar",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-102554",
+     "Severity": "HIGH",
+     "Status": "fixed",
+     "Title": "com.google.guava/guava: Google Guava: Denial of Service via unthrottled memory allocation during deserialization",
+     "VulnerabilityID": "CVE-2026-102554"
+    },
+    {
+     "FixedVersion": "2.18.10, 2.21.6, 2.22.2",
+     "InstalledVersion": "2.18.8",
+     "PkgName": "com.fasterxml.jackson.core:jackson-databind",
+     "PkgPath": "home/ray/anaconda3/lib/python3.12/site-packages/ray/jars/ray_dist.jar",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-68497",
+     "Severity": "HIGH",
+     "Status": "fixed",
+     "Title": "com.fasterxml.jackson.core/jackson-databind: tools.jackson.core/jackson-databind: jackson-databind: CPU Denial of Service via unbounded numeric parsing",
+     "VulnerabilityID": "CVE-2026-68497"
+    },
+    {
+     "FixedVersion": "2.18.11, 2.21.7, 2.22.3",
+     "InstalledVersion": "2.18.8",
+     "PkgName": "com.fasterxml.jackson.core:jackson-core",
+     "PkgPath": "home/ray/anaconda3/lib/python3.12/site-packages/ray/jars/ray_dist.jar",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-89407",
+     "Severity": "HIGH",
+     "Status": "fixed",
+     "Title": "com.fasterxml.jackson/jackson-core: tools.jackson.core/jackson-core: Jackson-core: Denial of Service via regular expression backtracking",
+     "VulnerabilityID": "CVE-2026-89407"
+    }
+   ]
+  },
+  {
+   "Class": "lang-pkgs",
+   "Packages": [
+    {
+     "Name": "Brotli",
+     "Version": "1.2.1"
+    },
+    {
+     "Name": "CacheControl",
+     "Version": "0.14.4"
+    }
+   ],
+   "Target": "Python",
+   "Type": "python-pkg",
+   "Vulnerabilities": [
+    {
+     "FixedVersion": "2.14.0",
+     "InstalledVersion": "2.12.1",
+     "PkgName": "PyJWT",
+     "PkgPath": "home/ray/anaconda3/lib/python3.12/site-packages/pyjwt-2.12.1.dist-info/METADATA",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-102268",
+     "Severity": "CRITICAL",
+     "Status": "fixed",
+     "Title": "pyjwt: PyJWT: Authentication bypass via improper public key validation",
+     "VulnerabilityID": "CVE-2026-102268"
+    },
+    {
+     "FixedVersion": "4.14.2",
+     "InstalledVersion": "4.13.0",
+     "PkgName": "anyio",
+     "PkgPath": "home/ray/anaconda3/lib/python3.12/site-packages/anyio-4.13.0.dist-info/METADATA",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2026-63374",
+     "Severity": "CRITICAL",
+     "Status": "fixed",
+     "Title": "anyio: AnyIO: TLS certificate spoofing via improper internationalized domain name encoding",
+     "VulnerabilityID": "CVE-2026-63374"
+    },
+    {
+     "FixedVersion": "78.1.1",
+     "InstalledVersion": "75.8.0",
+     "PkgName": "setuptools",
+     "PkgPath": "home/ray/anaconda3/pkgs/setuptools-75.8.0-pyhff2d567_0/site-packages/setuptools-75.8.0-py3.9.egg-info/PKG-INFO",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-47273",
+     "Severity": "HIGH",
+     "Status": "fixed",
+     "Title": "setuptools: Path Traversal Vulnerability in setuptools PackageIndex",
+     "VulnerabilityID": "CVE-2025-47273"
+    }
+   ]
+  },
+  {
+   "Class": "lang-pkgs",
+   "Packages": [
+    {
+     "Name": "stdlib",
+     "Version": "v1.22.3"
+    },
+    {
+     "Name": "../nvtx_go"
+    }
+   ],
+   "Target": "opt/nvidia/nsight-compute/2025.1.1/host/target-linux-x64/plugins/efa_metrics/nic_sampler",
+   "Type": "gobinary",
+   "Vulnerabilities": [
+    {
+     "FixedVersion": "1.21.11, 1.22.4",
+     "InstalledVersion": "v1.22.3",
+     "PkgName": "stdlib",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-24790",
+     "Severity": "CRITICAL",
+     "Status": "fixed",
+     "Title": "golang: net/netip: Unexpected behavior from Is methods for IPv4-mapped IPv6 addresses",
+     "VulnerabilityID": "CVE-2024-24790"
+    },
+    {
+     "FixedVersion": "1.24.13, 1.25.7, 1.26.0-rc.3",
+     "InstalledVersion": "v1.22.3",
+     "PkgName": "stdlib",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2025-68121",
+     "Severity": "CRITICAL",
+     "Status": "fixed",
+     "Title": "crypto/tls: crypto/tls: Incorrect certificate validation during TLS session resumption",
+     "VulnerabilityID": "CVE-2025-68121"
+    },
+    {
+     "FixedVersion": "1.22.7, 1.23.1",
+     "InstalledVersion": "v1.22.3",
+     "PkgName": "stdlib",
+     "PrimaryURL": "https://avd.aquasec.com/nvd/cve-2024-34156",
+     "Severity": "HIGH",
+     "Status": "fixed",
+     "Title": "encoding/gob: golang: Calling Decoder.Decode on a message which contains deeply nested structures can cause a panic due to stack exhaustion",
+     "VulnerabilityID": "CVE-2024-34156"
+    }
+   ]
+  },
+  {
+   "Class": "lang-pkgs",
+   "Packages": [
+    {
+     "Name": "uv",
+     "Version": "0.13.4"
+    },
+    {
+     "Name": "adler2",
+     "Version": "2.0.1"
+    }
+   ],
+   "Target": "usr/local/bin/uv",
+   "Type": "rustbinary",
+   "Vulnerabilities": [
+    {
+     "FixedVersion": "0.23.46, 0.24.0-dev.2",
+     "InstalledVersion": "0.23.45",
+     "PkgName": "rustls",
+     "PrimaryURL": "https://github.com/advisories/GHSA-c8m5-c952-6cm4",
+     "Severity": "MEDIUM",
+     "Status": "fixed",
+     "Title": "Rustls: Session Debug formatting exposes TLS master secrets and resumption PSKs",
+     "VulnerabilityID": "GHSA-c8m5-c952-6cm4"
+    },
+    {
+     "FixedVersion": "0.23.46, 0.24.0-dev.2",
+     "InstalledVersion": "0.23.45",
+     "PkgName": "rustls",
+     "PrimaryURL": "https://github.com/advisories/GHSA-h2v8-394m-p7vv",
+     "Severity": "LOW",
+     "Status": "fixed",
+     "Title": "Rustls: Brotli certificate decompression can allocate an attacker-controlled amount of memory up to 1 GiB before authentication.",
+     "VulnerabilityID": "GHSA-h2v8-394m-p7vv"
+    },
+    {
+     "FixedVersion": "0.23.46, 0.24.0-dev.2",
+     "InstalledVersion": "0.23.45",
+     "PkgName": "rustls",
+     "PrimaryURL": "https://github.com/advisories/GHSA-vp88-798v-h67f",
+     "Severity": "LOW",
+     "Status": "fixed",
+     "Title": "rustls: ECH rejection can expose buffered application data to authenticated outer server before `ech_required` alert",
+     "VulnerabilityID": "GHSA-vp88-798v-h67f"
+    }
+   ]
+  },
+  {
+   "Class": "lang-pkgs",
+   "Packages": [
+    {
+     "Name": "uv",
+     "Version": "0.13.4"
+    },
+    {
+     "Name": "adler2",
+     "Version": "2.0.1"
+    }
+   ],
+   "Target": "usr/local/bin/uvx",
+   "Type": "rustbinary",
+   "Vulnerabilities": [
+    {
+     "FixedVersion": "0.23.46, 0.24.0-dev.2",
+     "InstalledVersion": "0.23.45",
+     "PkgName": "rustls",
+     "PrimaryURL": "https://github.com/advisories/GHSA-c8m5-c952-6cm4",
+     "Severity": "MEDIUM",
+     "Status": "fixed",
+     "Title": "Rustls: Session Debug formatting exposes TLS master secrets and resumption PSKs",
+     "VulnerabilityID": "GHSA-c8m5-c952-6cm4"
+    },
+    {
+     "FixedVersion": "0.23.46, 0.24.0-dev.2",
+     "InstalledVersion": "0.23.45",
+     "PkgName": "rustls",
+     "PrimaryURL": "https://github.com/advisories/GHSA-h2v8-394m-p7vv",
+     "Severity": "LOW",
+     "Status": "fixed",
+     "Title": "Rustls: Brotli certificate decompression can allocate an attacker-controlled amount of memory up to 1 GiB before authentication.",
+     "VulnerabilityID": "GHSA-h2v8-394m-p7vv"
+    },
+    {
+     "FixedVersion": "0.23.46, 0.24.0-dev.2",
+     "InstalledVersion": "0.23.45",
+     "PkgName": "rustls",
+     "PrimaryURL": "https://github.com/advisories/GHSA-vp88-798v-h67f",
+     "Severity": "LOW",
+     "Status": "fixed",
+     "Title": "rustls: ECH rejection can expose buffered application data to authenticated outer server before `ech_required` alert",
+     "VulnerabilityID": "GHSA-vp88-798v-h67f"
+    }
+   ]
+  }
+ ],
+ "SchemaVersion": 2
+}
