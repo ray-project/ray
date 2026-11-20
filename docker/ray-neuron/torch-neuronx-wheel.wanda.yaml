@@ -1,0 +1,10 @@
+# The TorchNeuron (torch-neuronx) wheel, built from source on Ubuntu 22.04.
+# The image is FROM scratch and holds only the wheel, at /.
+name: "torch-neuronx-wheel-py$PYTHON_VERSION"
+froms: ["ubuntu:22.04"]
+dockerfile: docker/ray-neuron/torch-neuronx-wheel.Dockerfile
+build_args:
+  - PYTHON_VERSION
+  - BASE_IMAGE=ubuntu:22.04
+tags:
+  - cr.ray.io/rayproject/torch-neuronx-wheel-py$PYTHON_VERSION

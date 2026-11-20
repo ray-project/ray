@@ -27,6 +27,7 @@ def format_platform_tag(platform: str) -> str:
     Examples:
         cpu -> -cpu
         tpu -> -tpu
+        neuron -> -neuron
         cu12.1.1-cudnn8 -> -cu121
         cu12.3.2-cudnn9 -> -cu123
     """
@@ -34,6 +35,8 @@ def format_platform_tag(platform: str) -> str:
         return "-cpu"
     if platform == "tpu":
         return "-tpu"
+    if platform == "neuron":
+        return "-neuron"
     # cu12.3.2-cudnn9 -> -cu123
     platform_base = platform.split("-", 1)[0]
     parts = platform_base.split(".")
