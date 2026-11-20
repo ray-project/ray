@@ -438,7 +438,7 @@ def test_create_workers_multi_slice_reorder_and_replace(monkeypatch):
 
     workers = wg._create_workers(
         num_workers=4,
-        placement_group=[pg0, pg1],
+        placement_groups=[pg0, pg1],
         resources_per_worker={"TPU": 4},
         replica_group_size=1,
     )
@@ -457,7 +457,7 @@ def test_create_workers_multi_slice_reorder_and_replace(monkeypatch):
     metas[:] = [metas[2]]
     replacement_workers = wg._create_workers(
         num_workers=1,
-        placement_group=[pg0, pg1],
+        placement_groups=[pg0, pg1],
         resources_per_worker={"TPU": 4},
         placement_group_bundle_indices=[workers[0].placement_group_bundle_index],
         starting_world_rank=0,
@@ -1694,6 +1694,7 @@ def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_e
         num_slices=1,
         resources_per_bundle={"CPU": 1, "TPU": 8},
         bundle_label_selector=[{"market-type": "spot"}],
+        chips_per_vm=None,
     )
 
     # Also verify callback-provided label_selector is forwarded when
@@ -1718,6 +1719,7 @@ def test_create_placement_group_tpu_forwards_label_selector_and_reraises_value_e
         num_slices=1,
         resources_per_bundle={"CPU": 1, "TPU": 8},
         bundle_label_selector=[{"subcluster": "mine"}],
+        chips_per_vm=None,
     )
 
     # ValueErrors from SlicePlacementGroup must propagate directly (not wrapped in
@@ -1784,6 +1786,7 @@ def test_create_placement_group_tpu_multi_slice_label_selector(monkeypatch):
         num_slices=2,
         resources_per_bundle={"CPU": 1, "TPU": 4},
         bundle_label_selector=[{"pool": "a"}] * 8,
+        chips_per_vm=None,
     )
 
     # 2. Unmocked SlicePlacementGroup seam (patch only ray.util.tpu.placement_group)

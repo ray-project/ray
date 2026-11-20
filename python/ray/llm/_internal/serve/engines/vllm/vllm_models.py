@@ -23,7 +23,6 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUAccelerator,
     TPUConfig,
     format_ray_accelerator_resource,
-    normalize_bundle_label_selector,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -98,11 +97,6 @@ class VLLMEngineConfig(BaseModelExtended):
             "group creation (for example, TPU SlicePlacementGroup)."
         ),
     )
-
-    @field_validator("placement_group_bundle_label_selector", mode="before")
-    @classmethod
-    def validate_placement_group_bundle_label_selector(cls, value):
-        return normalize_bundle_label_selector(value)
 
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}

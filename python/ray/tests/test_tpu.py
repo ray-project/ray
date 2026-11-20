@@ -370,27 +370,49 @@ def test_slice_placement_group(ray_tpu_cluster):
 
 
 def test_multi_slice_placement_group(ray_tpu_cluster):
-    """Test that multiple whole TPU slices create one placement group per slice."""
+    """Test that multiple whole TPU slices create one placement group per slice on distinct slices."""
     multi_slice_placement_group = ray.util.tpu.slice_placement_group(
         topology="2x2x2",
         accelerator_version="v4",
         num_slices=2,
     )
-    assert multi_slice_placement_group.num_hosts == 4
-    assert multi_slice_placement_group.hosts_per_slice == 2
-    assert multi_slice_placement_group.bundles_per_slice == 2
-    assert len(multi_slice_placement_group.slice_placement_groups) == 2
-    for pg in multi_slice_placement_group.slice_placement_groups:
-        assert pg.bundle_count == 2
-        assert pg.bundle_specs == [
-            {"TPU": 4, "CPU": 1.0},
-            {"TPU": 4, "CPU": 1.0},
-        ]
-    with pytest.raises(
-        ValueError,
-        match="num_slices > 1, use `slice_placement_groups` instead.",
-    ):
-        _ = multi_slice_placement_group.slice_placement_group
+    try:
+        assert multi_slice_placement_group.num_hosts == 4
+        assert multi_slice_placement_group.hosts_per_slice == 2
+        assert multi_slice_placement_group.bundles_per_slice == 2
+        assert len(multi_slice_placement_group.slice_placement_groups) == 2
+        for pg in multi_slice_placement_group.slice_placement_groups:
+            assert pg.bundle_count == 2
+            assert pg.bundle_specs == [
+                {"TPU": 4, "CPU": 1.0},
+                {"TPU": 4, "CPU": 1.0},
+            ]
+        ray.get(
+            [pg.ready() for pg in multi_slice_placement_group.slice_placement_groups],
+            timeout=10,
+        )
+        node_labels = {
+            n["NodeID"]: n.get("Labels", {}) for n in ray.nodes() if n.get("Alive")
+        }
+        seen_slices = []
+        for pg in multi_slice_placement_group.slice_placement_groups:
+            b2n = ray.util.placement_group_table(pg)["bundles_to_node_id"]
+            pg_slices = {
+                node_labels[nid]["ray.io/tpu-slice-name"] for nid in b2n.values()
+            }
+            assert len(pg_slices) == 1
+            seen_slices.append(next(iter(pg_slices)))
+            for bundle_idx, nid in sorted(b2n.items()):
+                assert node_labels[nid]["ray.io/tpu-worker-id"] == str(bundle_idx)
+        assert len(set(seen_slices)) == 2
+
+        with pytest.raises(
+            ValueError,
+            match="num_slices > 1, use `slice_placement_groups` instead.",
+        ):
+            _ = multi_slice_placement_group.slice_placement_group
+    finally:
+        multi_slice_placement_group.shutdown()
 
 
 def test_single_host_slice_placement_group(ray_tpu_cluster):
@@ -2836,6 +2858,10 @@ def test_discover_skips_fan_out_when_kv_already_populated(mock_4x4_pgs):
     # coordinate discovery fan-out.
     assert mock_ray_get.call_count == 1
     assert mock_pg.call_count == 1
+    assert {
+        s["ray.io/tpu-slice-name"]
+        for s in mock_pg.call_args.kwargs["bundle_label_selector"]
+    } == {slice_name}
 
 
 def test_discover_single_host_topology_completeness_check(mock_4x4_pgs):
@@ -3423,6 +3449,27 @@ def test_wait_for_slice_resources_freed_ignores_dead_nodes():
         )
 
     mock_sleep.assert_not_called()
+
+
+def test_wait_for_slice_resources_freed_ignores_other_slices():
+    """A busy neighbor slice must not delay the wait for the target slice."""
+    free_nodes = _slice_nodes("slice-free", "4x4")
+    busy_nodes = _slice_nodes("slice-busy", "4x4")
+    avail = {n["NodeID"]: {"TPU": 4} for n in free_nodes}
+    avail.update({n["NodeID"]: {"TPU": 0} for n in busy_nodes})
+
+    with (
+        patch("ray.nodes", return_value=free_nodes + busy_nodes),
+        patch("ray._private.state.available_resources_per_node", return_value=avail),
+        patch(
+            "ray.util.tpu._get_nodes_with_placed_tpu_bundles",
+            return_value={n["NodeID"] for n in busy_nodes},
+        ),
+        patch("ray.util.tpu.time.sleep", side_effect=AssertionError("polled")),
+    ):
+        ray.util.tpu._wait_for_slice_resources_freed(
+            "slice-free", timeout_s=10.0, poll_interval_s=0
+        )
 
 
 def test_subslice_waits_for_discovery_reservation_to_free():
@@ -4233,6 +4280,9 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
     s1_addrs = spg.get_worker_addrs(1)
     assert len(s0_addrs) == 2 and None not in s0_addrs
     assert len(s1_addrs) == 2 and None not in s1_addrs
+    assert len({addr.split(".")[2] for addr in s0_addrs}) == 1
+    assert len({addr.split(".")[2] for addr in s1_addrs}) == 1
+    assert s0_addrs[0].split(".")[2] != s1_addrs[0].split(".")[2]
     assert s0_addrs[0] != s1_addrs[0]
     assert [addr.split(".")[-1] for addr in s0_addrs] == ["1", "2"]
     assert [addr.split(".")[-1] for addr in s1_addrs] == ["1", "2"]
@@ -4589,122 +4639,11 @@ def test_v7x_3d_topology_disambiguation():
     }
 
 
-def test_two_vm_2x4_auto_inference_and_head_pg_deprecation_shims():
-    """Verify R1 (two-VM 2x4 host auto-inference from live cluster nodes when
-    chips_per_vm is omitted, including mixed busy 8-chip + idle 2x4-chip clusters)
-    and R2 (deprecated release_head_pgs and head_placement_groups shims on
-    SlicePlacementGroup and SubslicePlacementGroup).
-    """
-    import warnings
+def test_head_placement_group_deprecation_shims():
+    """Verify deprecated head_placement_groups and release_head_pgs shims warn cleanly."""
+    with patch("ray.util.tpu.placement_group", return_value=MagicMock(name="pg")):
+        spg = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
 
-    from ray.util.annotations import RayDeprecationWarning
-    from ray.util.tpu import SubslicePlacementGroup
-
-    two_vm_nodes = [
-        {
-            "NodeID": f"node-sE-{wid}",
-            "Alive": True,
-            "Resources": {"TPU": 4, "CPU": 4},
-            "Labels": {
-                "ray.io/tpu-slice-name": "sE",
-                "ray.io/tpu-worker-id": str(wid),
-                "ray.io/tpu-topology": "2x4",
-                "ray.io/accelerator-type": "TPU-V6E",
-            },
-        }
-        for wid in (0, 1)
-    ]
-    captured_kwargs = []
-
-    def _capture_pg(**kwargs):
-        captured_kwargs.append(kwargs)
-        pg = MagicMock(name="pg")
-        pg.bundle_count = len(kwargs["bundles"])
-        return pg
-
-    # 1. Two 4-chip VMs only: SlicePlacementGroup without chips_per_vm infers 4 chips/VM (2 hosts).
-    with (
-        patch("ray.is_initialized", return_value=True),
-        patch("ray.nodes", return_value=two_vm_nodes),
-        patch("ray.util.tpu.placement_group", side_effect=_capture_pg),
-    ):
-        spg = SlicePlacementGroup(
-            topology="2x4",
-            accelerator_version="v6e",
-            resources_per_bundle={"TPU": 4, "CPU": 1},
-        )
-    assert spg.chips_per_host == 4
-    assert spg.hosts_per_slice == 2
-    assert len(captured_kwargs) == 1
-    assert captured_kwargs[0]["topology_strategy"] == {
-        "ray.io/tpu-slice-name": "STRICT_PACK"
-    }
-    assert [
-        s["ray.io/tpu-worker-id"] for s in captured_kwargs[0]["bundle_label_selector"]
-    ] == [
-        "0",
-        "1",
-    ]
-
-    # 2. Mixed cluster with busy 8-chip VM (sD) and idle two-VM 4-chip slice (sE)
-    # infers 4 chips/VM from the idle slice; when sD is also idle, keeps default 8.
-    busy_8chip = {
-        "NodeID": "node-sD-0",
-        "Alive": True,
-        "Resources": {"TPU": 8, "CPU": 4},
-        "Labels": {
-            "ray.io/tpu-slice-name": "sD",
-            "ray.io/tpu-worker-id": "0",
-            "ray.io/tpu-topology": "2x4",
-            "ray.io/accelerator-type": "TPU-V6E",
-        },
-    }
-    captured_kwargs.clear()
-    with (
-        patch("ray.is_initialized", return_value=True),
-        patch("ray.nodes", return_value=[busy_8chip, *two_vm_nodes]),
-        patch(
-            "ray._private.state.available_resources_per_node",
-            return_value={
-                "node-sD-0": {"CPU": 4},
-                "node-sE-0": {"TPU": 4, "CPU": 4},
-                "node-sE-1": {"TPU": 4, "CPU": 4},
-            },
-        ),
-        patch("ray.util.tpu.placement_group_table", return_value={}),
-        patch("ray.util.tpu.placement_group", side_effect=_capture_pg),
-    ):
-        spg_mixed_busy = SlicePlacementGroup(
-            topology="2x4",
-            accelerator_version="v6e",
-            resources_per_bundle={"TPU": 4, "CPU": 1},
-        )
-        assert spg_mixed_busy.chips_per_host == 4
-        assert spg_mixed_busy.hosts_per_slice == 2
-
-    with (
-        patch("ray.is_initialized", return_value=True),
-        patch("ray.nodes", return_value=[busy_8chip, *two_vm_nodes]),
-        patch(
-            "ray._private.state.available_resources_per_node",
-            return_value={
-                "node-sD-0": {"TPU": 8, "CPU": 4},
-                "node-sE-0": {"TPU": 4, "CPU": 4},
-                "node-sE-1": {"TPU": 4, "CPU": 4},
-            },
-        ),
-        patch("ray.util.tpu.placement_group_table", return_value={}),
-        patch("ray.util.tpu.placement_group", side_effect=_capture_pg),
-    ):
-        spg_mixed_idle = SlicePlacementGroup(
-            topology="2x4",
-            accelerator_version="v6e",
-            resources_per_bundle={"TPU": 4, "CPU": 1},
-        )
-        assert spg_mixed_idle.chips_per_host == 8
-        assert spg_mixed_idle.hosts_per_slice == 1
-
-    # 3. R2: Deprecated release_head_pgs() and head_placement_groups on both classes.
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         assert spg.head_placement_groups == []
@@ -4730,17 +4669,44 @@ def test_two_vm_2x4_auto_inference_and_head_pg_deprecation_shims():
     assert len(sub_caught) == 2
     assert all(issubclass(w.category, RayDeprecationWarning) for w in sub_caught)
 
+    # Positional 9th parameter and keyword head_placement_groups on SubslicePlacementGroup.__init__.
+    with warnings.catch_warnings(record=True) as init_pos_caught:
+        warnings.simplefilter("always")
+        sub_pos = SubslicePlacementGroup(
+            _mock_worker_pg(),
+            "4x4",
+            "2x4",
+            0,
+            "s0",
+            2,
+            4,
+            {"CPU": 1, "TPU": 4},
+            [],
+            [{"ray.io/tpu-worker-id": "0"}],
+        )
+    assert len(init_pos_caught) == 1
+    assert issubclass(init_pos_caught[0].category, RayDeprecationWarning)
+    assert sub_pos.bundle_label_selector == [{"ray.io/tpu-worker-id": "0"}]
 
-def test_tpu_mutant_pinning_label_only_slices_subslice_kv_and_spec_naming():
-    """Pin G1 (label-only intact slices and mixed TPU generations on 2x4),
-    G2 (dead node absent from ray.nodes() in cached subslice lookup, unmocked
-    _refresh_cache_from_kv seam, and O(1) single-PG _wait_for_slice_resources_freed),
-    and G3 (cross-version invalid topology, single-slice name preservation,
-    empty-name multi-slice preservation, and num_slices <= 0).
-    """
-    import json
+    with warnings.catch_warnings(record=True) as init_kw_caught:
+        warnings.simplefilter("always")
+        SubslicePlacementGroup(
+            placement_group=_mock_worker_pg(),
+            parent_topology="4x4",
+            subslice_topology="2x4",
+            subslice_index=0,
+            slice_name="s0",
+            num_hosts=2,
+            chips_per_host=4,
+            bundle_resources={"CPU": 1, "TPU": 4},
+            head_placement_groups=[],
+        )
+    assert len(init_kw_caught) == 1
+    assert issubclass(init_kw_caught[0].category, RayDeprecationWarning)
 
-    # G1: Label-only nodes (no ray.io/tpu-pod-type) + mixed v5e/v6e 2x4 slices.
+
+def test_get_num_tpu_slices_matches_label_only_and_mixed_generation_nodes():
+    """Intact slice counting matches label-only nodes and separates generations sharing 2x4."""
     v6e_label_only = {
         "NodeID": "v6e-0",
         "Alive": True,
@@ -4760,16 +4726,32 @@ def test_tpu_mutant_pinning_label_only_slices_subslice_kv_and_spec_naming():
             "ray.io/accelerator-type": "TPU-V5LITEPOD",
         },
     }
+    oversized_slice = [
+        {
+            "NodeID": f"oversized-{wid}",
+            "Alive": True,
+            "Resources": {"TPU": 4},
+            "Labels": {
+                "ray.io/tpu-slice-name": "s-oversized",
+                "ray.io/tpu-worker-id": str(wid),
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/accelerator-type": "TPU-V6E",
+            },
+        }
+        for wid in range(3)
+    ]
     with (
         patch("ray.is_initialized", return_value=True),
-        patch("ray.nodes", return_value=[v6e_label_only, v5e_pod_node]),
+        patch(
+            "ray.nodes", return_value=[v6e_label_only, v5e_pod_node, *oversized_slice]
+        ),
     ):
         assert ray.util.tpu.get_num_tpu_slices("2x4", "TPU-V6E") == 1
         assert ray.util.tpu.get_num_tpu_slices("2x4", "TPU-V5LITEPOD") == 1
 
-    # G2a: Cached subslice has all 4 physical worker IDs in cache, but worker 2
-    # (part of subslice 0: workers "0" and "2") vanished from ray.nodes().
-    # Subslice 0 must be skipped in favor of intact subslice 1 (workers "1" and "3").
+
+def test_subslice_skips_missing_host_and_loads_kv_cache_without_discovery():
+    """Cached subslice lookup skips subslices with missing hosts and loads KV data without discovery."""
     alive_subset = [
         n for n in _slice_nodes("s-dead-w", "4x4") if n["NodeID"] != "s-dead-w-w2"
     ]
@@ -4784,8 +4766,6 @@ def test_tpu_mutant_pinning_label_only_slices_subslice_kv_and_spec_naming():
         sw_map,
     ) == (["1", "3"], 1)
 
-    # G2b: Unmocked _refresh_cache_from_kv seam inside subslice_placement_group
-    # loads KV-persisted physical IDs without triggering fresh discovery.
     ray.util.tpu._tpu_subslice_cache.clear()
     kv_nodes = _slice_nodes("slice-kv-seam", "4x4")
     kv_avail = {f"slice-kv-seam-w{i}": {"TPU": 4} for i in range(4)}
@@ -4818,11 +4798,69 @@ def test_tpu_mutant_pinning_label_only_slices_subslice_kv_and_spec_naming():
     finally:
         ray.util.tpu._tpu_subslice_cache.clear()
 
-    # G3: Cross-version invalid topology, PG naming invariants, and num_slices <= 0.
+
+def test_subslice_placement_group_skips_hosts_with_placed_tpu_bundles():
+    """subslice_placement_group treats hosts with placed TPU bundles in placement_group_table as busy."""
+    ray.util.tpu._tpu_subslice_cache.clear()
+    nodes = _slice_nodes("slice-pg-used", "4x4")
+    avail = {f"slice-pg-used-w{i}": {"TPU": 4} for i in range(4)}
+    pg_table = {
+        "pg-active": {
+            "state": "CREATED",
+            "bundles": {0: {"TPU": 4}},
+            "bundles_to_node_id": {0: "slice-pg-used-w0"},
+        }
+    }
+    with ray.util.tpu._tpu_subslice_cache_lock:
+        ray.util.tpu._tpu_subslice_cache["slice-pg-used"] = dict(
+            _SUBSLICE_4X4_PHYSICAL_IDS
+        )
+    try:
+        with (
+            patch("ray._private.client_mode_hook.auto_init_ray", lambda: None),
+            patch("ray.nodes", return_value=nodes),
+            patch(
+                "ray._private.state.available_resources_per_node",
+                return_value=avail,
+            ),
+            patch("ray.util.tpu.placement_group_table", return_value=pg_table),
+            patch("ray.util.tpu._refresh_cache_from_kv", lambda *_: None),
+            patch(
+                "ray.util.tpu.placement_group", return_value=_mock_worker_pg()
+            ) as mock_pg,
+        ):
+            sub_pg = ray.util.tpu.subslice_placement_group(
+                subslice_topology="2x4",
+                accelerator_version="v6e",
+                chips_per_vm=4,
+            )
+        assert sub_pg.subslice_index == 1
+        assert [
+            s["ray.io/tpu-worker-id"]
+            for s in mock_pg.call_args.kwargs["bundle_label_selector"]
+        ] == ["1", "3"]
+    finally:
+        ray.util.tpu._tpu_subslice_cache.clear()
+
+
+def test_prepare_slice_pg_specs_validation_naming_and_selector_broadcast():
+    """Verify topology validation, PG naming, label validation, and multi-slice handle properties."""
     with pytest.raises(ValueError, match="Invalid accelerator topology: '2x2x2'"):
         ray.util.tpu._prepare_slice_pg_specs(
             topology="2x2x2", accelerator_version="v6e"
         )
+    with pytest.raises(ValueError, match="Invalid label selector"):
+        ray.util.tpu._prepare_slice_pg_specs(
+            topology="4x4",
+            accelerator_version="v6e",
+            bundle_label_selector=[{"-bad-key": "a"}],
+        )
+    broadcast = ray.util.tpu.normalize_bundle_label_selector(
+        [{"pool": "a"}], num_bundles=2
+    )
+    assert broadcast == [{"pool": "a"}, {"pool": "a"}]
+    assert broadcast[0] is not broadcast[1]
+
     spec_single_named = ray.util.tpu._prepare_slice_pg_specs(
         topology="4x4", accelerator_version="v6e", name="my_pg", num_slices=1
     )
@@ -4840,42 +4878,293 @@ def test_tpu_mutant_pinning_label_only_slices_subslice_kv_and_spec_naming():
             topology="4x4", accelerator_type="TPU-V6E", num_slices=-1
         )
 
-    # T3: _wait_for_slice_resources_freed with discovery_pg queries only that PG handle in O(1).
-    from ray.util.placement_group import PlacementGroup
-
-    pg_calls = []
-    fake_disc_pg = PlacementGroup(ray._raylet.PlacementGroupID.from_random())
-    pg_states = [
-        {
-            "state": "CREATED",
-            "bundles": {0: {"TPU": 4}},
-            "bundles_to_node_id": {0: "slice-o1-w0"},
-        },
-        {
-            "state": "REMOVED",
-            "bundles": {0: {"TPU": 4}},
-            "bundles_to_node_id": {0: "slice-o1-w0"},
-        },
+    pg0 = MagicMock(name="pg0", bundle_count=2)
+    pg1 = MagicMock(name="pg1", bundle_count=2)
+    fake_nodes = [
+        {"NodeID": "n00", "Alive": True, "NodeManagerAddress": "10.0.0.1"},
+        {"NodeID": "n01", "Alive": True, "NodeManagerAddress": "10.0.0.2"},
+        {"NodeID": "n10", "Alive": True, "NodeManagerAddress": "10.0.1.1"},
+        {"NodeID": "n11", "Alive": True, "NodeManagerAddress": "10.0.1.2"},
     ]
-
-    def _fake_pg_table(pg=None):
-        pg_calls.append(pg)
-        assert pg is fake_disc_pg
-        return pg_states.pop(0)
-
-    o1_nodes = _slice_nodes("slice-o1", "4x4")
-    o1_avail = {f"slice-o1-w{i}": {"TPU": 4} for i in range(4)}
+    fake_tables = {
+        pg0: {"bundles_to_node_id": {0: "n00", 1: "n01"}},
+        pg1: {"bundles_to_node_id": {0: "n10", 1: "n11"}},
+    }
     with (
-        patch("ray.nodes", return_value=o1_nodes),
-        patch("ray._private.state.available_resources_per_node", return_value=o1_avail),
-        patch("ray.util.tpu.placement_group_table", side_effect=_fake_pg_table),
-        patch("ray.util.tpu.time.sleep", return_value=None) as mock_o1_sleep,
+        patch("ray.util.tpu.placement_group", side_effect=[pg0, pg1]),
+        patch("ray.nodes", return_value=fake_nodes),
+        patch("ray.util.tpu.placement_group_table", side_effect=fake_tables.get),
     ):
-        ray.util.tpu._wait_for_slice_resources_freed(
-            "slice-o1", timeout_s=5.0, discovery_pg=fake_disc_pg
+        multi_spg = SlicePlacementGroup(
+            topology="2x2x2", accelerator_version="v4", num_slices=2
         )
-    assert pg_calls == [fake_disc_pg, fake_disc_pg]
-    assert mock_o1_sleep.call_count == 1
+        with pytest.raises(ValueError, match="num_slices > 1"):
+            _ = multi_spg.slice_placement_group
+        assert multi_spg.get_worker_addrs(0) == ["10.0.0.1", "10.0.0.2"]
+        assert multi_spg.get_worker_addrs(1) == ["10.0.1.1", "10.0.1.2"]
+
+
+def test_slice_placement_group_live_multi_slice_locality_and_fragmented_hosts(
+    monkeypatch,
+):
+    """Live cluster verification that each slice PG lands on one whole slice and fragmented hosts stay pending."""
+    from ray.cluster_utils import Cluster
+    from ray.util.placement_group import (
+        placement_group,
+        placement_group_table,
+        remove_placement_group,
+    )
+
+    monkeypatch.delenv("RAY_ADDRESS", raising=False)
+    monkeypatch.setenv("RAY_AUTH_MODE", "disabled")
+    ray.shutdown()
+    slice_key = "ray.io/tpu-slice-name"
+    wid_key = "ray.io/tpu-worker-id"
+
+    cluster = Cluster(
+        initialize_head=True,
+        head_node_args={"num_cpus": 1, "include_dashboard": False},
+        enable_token_auth=False,
+    )
+    try:
+        for s in range(3):
+            for w in range(2):
+                cluster.add_node(
+                    num_cpus=2,
+                    resources={"TPU": 4},
+                    labels={
+                        slice_key: f"slice-{s}",
+                        wid_key: str(w),
+                        "ray.io/tpu-pod-type": "v4-16",
+                        "ray.io/tpu-topology": "2x2x2",
+                        "ray.io/accelerator-type": "TPU-V4",
+                    },
+                )
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+
+        node_slices = {}
+        node_wids = {}
+        for n in ray.nodes():
+            if n.get("Alive"):
+                node_slices[n["NodeID"]] = n["Labels"].get(slice_key)
+                node_wids[n["NodeID"]] = n["Labels"].get(wid_key)
+
+        # 1. Three-slice request places every PG inside one slice across 3 distinct slices.
+        spg_three = SlicePlacementGroup(
+            topology="2x2x2", accelerator_version="v4", num_slices=3
+        )
+        assert all(pg.wait(30) for pg in spg_three.slice_placement_groups)
+        seen_slices = []
+        for pg in spg_three.slice_placement_groups:
+            info = placement_group_table(pg)
+            assert info["state"] == "CREATED"
+            b2n = info["bundles_to_node_id"]
+            pg_slices = {node_slices[nid] for nid in b2n.values()}
+            assert len(pg_slices) == 1
+            seen_slices.append(next(iter(pg_slices)))
+            for idx, nid in sorted(b2n.items()):
+                assert node_wids[nid] == str(idx)
+        assert sorted(seen_slices) == ["slice-0", "slice-1", "slice-2"]
+        spg_three.shutdown()
+
+        # 2. Fragmented free hosts (slice-0/w0, slice-1/w1, slice-2/w1) have both worker IDs 0
+        #    and 1 free cluster-wide, but never inside one slice: a 1-slice PG stays pending
+        #    until one slice becomes whole.
+        hogs = [
+            placement_group(
+                [{"TPU": 4}],
+                bundle_label_selector=[{slice_key: sname, wid_key: wid}],
+            )
+            for sname, wid in (("slice-0", "1"), ("slice-1", "0"), ("slice-2", "0"))
+        ]
+        assert all(h.wait(30) for h in hogs)
+
+        spg_frag = SlicePlacementGroup(topology="2x2x2", accelerator_version="v4")
+        assert not spg_frag.placement_group.wait(3)
+        assert placement_group_table(spg_frag.placement_group)["state"] != "CREATED"
+
+        remove_placement_group(hogs[1])
+        assert spg_frag.placement_group.wait(30)
+        frag_b2n = placement_group_table(spg_frag.placement_group)["bundles_to_node_id"]
+        assert {node_slices[nid] for nid in frag_b2n.values()} == {"slice-1"}
+
+        spg_frag.shutdown()
+        remove_placement_group(hogs[0])
+        remove_placement_group(hogs[2])
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "topology,version,num_slices,chips_per_vm,expected_launch",
+    [
+        ("4x4", "v6e", 1, None, {"v6e-16": 4}),
+        ("4x4", "v6e", 2, None, {"v6e-16": 8}),
+        ("2x2x4", "v5p", 1, None, {"v5p-16": 4}),
+        ("4x4", "v5litepod", 1, None, {"v5e-16": 4}),
+        ("2x4", "v6e", 1, 4, {"v6e-8-2vm": 2}),
+        ("2x4", "v6e", 1, None, {"v6e-8-1vm": 1}),
+        ("2x2x2", "v7x", 1, None, {"tpu7x-8": 2}),
+        ("2x2", "v6e", 1, None, {"v6e-4": 1}),
+    ],
+)
+def test_slice_placement_group_specs_autoscale_through_v2_scheduler(
+    topology, version, num_slices, chips_per_vm, expected_launch
+):
+    """Real _prepare_slice_pg_specs outputs schedule cleanly through KubeRay config and V2 ResourceDemandScheduler."""
+    import copy
+    import logging
+    import uuid
+
+    from ray.autoscaler._private.kuberay.autoscaling_config import (
+        _derive_autoscaling_config_from_ray_cr,
+    )
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+    from ray.autoscaler.v2.scheduler import ResourceDemandScheduler, SchedulingRequest
+    from ray.autoscaler.v2.utils import ResourceRequestUtil
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        GangResourceRequest,
+        LocalityConstraint,
+        LocalityRequirement,
+    )
+    from ray.core.generated.common_pb2 import LabelSelectorOperator, PlacementStrategy
+    from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
+    from ray.util.placement_group import NODE_ID_LABEL_KEY
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    cr["spec"]["headGroupSpec"]["rayStartParams"] = {"num-cpus": "0"}
+    base_wg = cr["spec"]["workerGroupSpecs"][0]
+    worker_groups = [
+        ("v6e-16", 4, 3, 4, "tpu-v6e-slice", "4x4"),
+        ("v6e-8-2vm", 2, 2, 4, "tpu-v6e-slice", "2x4"),
+        ("v6e-8-1vm", 1, 2, 8, "tpu-v6e-slice", "2x4"),
+        ("v6e-4", 1, 2, 4, "tpu-v6e-slice", "2x2"),
+        ("v5p-16", 4, 2, 4, "tpu-v5p-slice", "2x2x4"),
+        ("v5e-16", 4, 2, 4, "tpu-v5-lite-podslice", "4x4"),
+        ("tpu7x-8", 2, 2, 4, "tpu7x", "2x2x2"),
+    ]
+    wgs = []
+    for name, hosts, max_replicas, tpu_count, gke_acc, gke_topo in worker_groups:
+        wg = copy.deepcopy(base_wg)
+        wg.update(
+            groupName=name,
+            replicas=0,
+            minReplicas=0,
+            maxReplicas=max_replicas,
+            numOfHosts=hosts,
+            rayStartParams={},
+        )
+        wg["template"].setdefault("metadata", {})["annotations"] = {}
+        wg["template"]["spec"]["nodeSelector"] = {
+            "cloud.google.com/gke-tpu-accelerator": gke_acc,
+            "cloud.google.com/gke-tpu-topology": gke_topo,
+        }
+        limits = {"cpu": "8", "memory": "16Gi", "google.com/tpu": str(tpu_count)}
+        wg["template"]["spec"]["containers"][0]["resources"] = {
+            "limits": limits,
+            "requests": limits,
+        }
+        wgs.append(wg)
+    cr["spec"]["workerGroupSpecs"] = wgs
+
+    cfgs = AutoscalingConfig(
+        configs=_derive_autoscaling_config_from_ray_cr(cr),
+        skip_content_hash=True,
+    ).get_node_type_configs()
+
+    spec = ray.util.tpu._prepare_slice_pg_specs(
+        topology=topology,
+        accelerator_version=version,
+        num_slices=num_slices,
+        chips_per_vm=chips_per_vm,
+        tpu_resource_per_chip=1,
+    )
+
+    gangs = []
+    for pg_kwargs in spec.slice_pg_kwargs:
+        pg_id = uuid.uuid4().hex[:16]
+        topo_strategy = pg_kwargs.get("topology_strategy")
+        if topo_strategy is not None:
+            node_level = topo_strategy.get(NODE_ID_LABEL_KEY, "PACK")
+            stripped_topo = {
+                k: v for k, v in topo_strategy.items() if k != NODE_ID_LABEL_KEY
+            }
+        else:
+            node_level = pg_kwargs.get("strategy") or "PACK"
+            stripped_topo = {}
+        constraints = None
+        if node_level == "STRICT_PACK":
+            constraints = [
+                (
+                    ResourceRequestUtil.PlacementConstraintType.AFFINITY,
+                    f"_PG_{pg_id}",
+                    "",
+                )
+            ]
+        elif node_level == "STRICT_SPREAD":
+            constraints = [
+                (
+                    ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY,
+                    f"_PG_{pg_id}",
+                    "",
+                )
+            ]
+        reqs = [
+            ResourceRequestUtil.make(
+                bundle,
+                constraints,
+                [
+                    [
+                        (k, LabelSelectorOperator.LABEL_OPERATOR_IN, [v])
+                        for k, v in sel.items()
+                    ]
+                ]
+                if sel
+                else None,
+            )
+            for bundle, sel in zip(
+                pg_kwargs["bundles"], pg_kwargs["bundle_label_selector"]
+            )
+        ]
+        bundle_selector = BundleSelector(resource_requests=reqs)
+        if stripped_topo:
+            locality_key = next(iter(stripped_topo))
+            bundle_selector.locality_requirement.CopyFrom(
+                LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name=locality_key,
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                )
+            )
+        gangs.append(
+            GangResourceRequest(
+                requests=reqs,
+                details=f"pg {pg_id}",
+                bundle_selectors=[bundle_selector],
+            )
+        )
+
+    reply = ResourceDemandScheduler(logging.getLogger(__name__)).schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=cfgs,
+            current_instances=[],
+            gang_resource_requests=gangs,
+            resource_requests=[],
+        )
+    )
+    actual_launch = {}
+    for req in reply.to_launch:
+        actual_launch[req.instance_type] = (
+            actual_launch.get(req.instance_type, 0) + req.count
+        )
+    assert actual_launch == expected_launch
+    assert len(reply.infeasible_gang_resource_requests) == 0
 
 
 if __name__ == "__main__":

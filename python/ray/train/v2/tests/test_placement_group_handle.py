@@ -103,15 +103,12 @@ def test_slice_handle_wait():
     assert handle.wait(timeout_seconds=0.5)
     mock_pg.wait.assert_called_once_with(1)
 
-    # Infinite timeout clamps cleanly to a positive finite integer instead of raising OverflowError.
-    mock_pg.reset_mock()
-    assert handle.wait(timeout_seconds=float("inf")) is True
-    mock_pg.wait.assert_called_once_with(2**31 - 1)
-
-    # NaN timeout returns False immediately without calling pg.wait.
-    mock_pg.reset_mock()
-    assert handle.wait(timeout_seconds=float("nan")) is False
-    mock_pg.wait.assert_not_called()
+    # Infinite and NaN timeouts return False via the exception handler, matching
+    # DefaultPlacementGroupHandle.wait.
+    for non_finite in (float("inf"), float("nan")):
+        mock_pg.reset_mock()
+        assert handle.wait(timeout_seconds=non_finite) is False
+        mock_pg.wait.assert_not_called()
 
 
 def test_slice_handle_multi_slice_wait():

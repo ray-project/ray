@@ -955,6 +955,36 @@ def test_scaling_config_validation():
         )
 
 
+def test_jax_backend_multislice_uses_scaling_config_workers_per_slice(monkeypatch):
+    """_JaxBackend.on_start assigns slice_id via ScalingConfig._workers_per_slice when the last slice is partial."""
+    from unittest.mock import MagicMock
+
+    from ray.train.v2.jax.config import JaxConfig, _JaxBackend
+
+    scaling_config = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=8,
+    )
+    assert scaling_config._workers_per_slice == 2
+
+    worker_group = MagicMock()
+    worker_group.__len__.return_value = 3
+    worker_group.execute_single.return_value = ("10.0.0.1", 12345)
+    worker_group.get_worker_group_context.return_value = MagicMock(num_slices=2)
+    worker_group._train_run_context = MagicMock(scaling_config=scaling_config)
+
+    monkeypatch.setattr(ray, "get", lambda futures: None)
+    _JaxBackend().on_start(worker_group, JaxConfig(use_tpu=True))
+
+    assert [
+        call.kwargs["jax_env_vars"]["MEGASCALE_SLICE_ID"]
+        for call in worker_group.execute_single_async.call_args_list
+    ] == ["0", "0", "1"]
+
+
 def train_func_with_collate_fn(config):
     import numpy as np
 

@@ -107,8 +107,9 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
             },
             scaling_config=ray.train.ScalingConfig(
                 use_tpu=True,
-                accelerator_type="TPU-V4",
-                topology="2x2x2",
+                accelerator_type="TPU-V6E",
+                topology="2x4",
+                chips_per_vm=4,
                 resources_per_worker={"TPU": 4, "CPU": 1},
                 num_workers=(2, 6),  # Scale between 1 and 3 slices.
                 elastic_resize_monitor_interval_s=elastic_resize_monitor_interval_s,
@@ -139,8 +140,8 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
         print(f"{'-' * 80}\n")
 
     def provision_tpu_node(slice_name: str, worker_id: int):
-        pod_type = "v4-16"
-        topology = "2x2x2"
+        pod_type = "v6e-8"
+        topology = "2x4"
 
         node_env = {
             "PATH": os.environ.get("PATH", ""),
@@ -157,7 +158,7 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
             "ray.io/tpu-worker-id": str(worker_id),
             "ray.io/tpu-pod-type": pod_type,
             "ray.io/tpu-topology": topology,
-            "ray.io/accelerator-type": "TPU-V4",
+            "ray.io/accelerator-type": "TPU-V6E",
         }
 
         resources = {"TPU": 4}

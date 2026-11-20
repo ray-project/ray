@@ -583,5 +583,24 @@ def test_count_possible_workers_tpu_slice_rounding(
     assert policy._count_possible_workers(reserved_resources) == expected_workers
 
 
+@patch("ray.util.tpu.get_num_tpu_slices", return_value=2)
+def test_count_possible_workers_tpu_chips_per_vm_override(mock_get_intact_slices):
+    """Elastic slice alignment honors ScalingConfig._workers_per_slice with chips_per_vm overrides."""
+    scaling_config = ScalingConfig(
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        topology="4x4",
+        chips_per_vm=8,
+        num_workers=(2, 6),
+    )
+    assert scaling_config._workers_per_slice == 2
+    policy = ElasticScalingPolicy(scaling_config)
+    reserved_resources = _make_reserved({"TPU": 8, "CPU": 1}, 5)
+    assert policy._count_possible_workers(reserved_resources) == 4
+    mock_get_intact_slices.assert_called_once_with(
+        topology="4x4", accelerator_type="TPU-V6E"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

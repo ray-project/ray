@@ -103,7 +103,7 @@ class ScalingConfig(ScalingConfigV1):
             when `use_tpu` is True and `num_workers` is greater than 1.
         chips_per_vm: [Experimental] Optional override for the number of physical TPU
             chips per VM when ``use_tpu=True`` (for example, ``chips_per_vm=4`` for a
-            two-VM ``2x4`` TPU v6e slice when scaling from zero).
+            two-VM ``2x4`` TPU v6e slice).
     """
 
     num_workers: Union[int, Tuple[int, int]] = 1
@@ -301,6 +301,7 @@ class ScalingConfig(ScalingConfigV1):
 
     def _validate_tpu_config(self):
         """Validates configuration specifically for TPU usage."""
+        self._workers_per_slice: Optional[int] = None
         max_workers = self.max_workers
 
         if self.use_gpu and self.use_tpu:
@@ -321,9 +322,7 @@ class ScalingConfig(ScalingConfigV1):
             return
 
         if self.chips_per_vm is not None and (
-            isinstance(self.chips_per_vm, bool)
-            or not isinstance(self.chips_per_vm, int)
-            or self.chips_per_vm <= 0
+            type(self.chips_per_vm) is not int or self.chips_per_vm <= 0
         ):
             raise ValueError("`chips_per_vm` must be a positive integer.")
 
@@ -389,6 +388,7 @@ class ScalingConfig(ScalingConfigV1):
                     "across all slices to function correctly."
                 )
 
+            self._workers_per_slice = workers_per_slice
             self.resources_per_worker = tpu_resources
         elif self.accelerator_type:
             get_tpu_version_from_type(self.accelerator_type)

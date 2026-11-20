@@ -86,23 +86,17 @@ class SlicePlacementGroupHandle(PlacementGroupHandle):
     def wait(self, timeout_seconds: Union[float, int] = 30) -> bool:
         try:
             pgs = self.placement_groups
-            if not pgs or math.isnan(timeout_seconds):
+            if not pgs:
                 return False
-            max_wait_s = 2**31 - 1
             deadline = time.monotonic() + timeout_seconds
             for pg in pgs:
                 remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    if placement_group_table(pg).get("state") != "CREATED":
-                        return False
+                if remaining > 0:
+                    ready = pg.wait(math.ceil(remaining))
                 else:
-                    wait_s = (
-                        max_wait_s
-                        if math.isinf(remaining)
-                        else min(math.ceil(remaining), max_wait_s)
-                    )
-                    if not pg.wait(wait_s):
-                        return False
+                    ready = placement_group_table(pg).get("state") == "CREATED"
+                if not ready:
+                    return False
             return True
         except Exception:
             logger.warning(

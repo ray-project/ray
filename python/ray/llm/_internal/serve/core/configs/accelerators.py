@@ -9,15 +9,12 @@ from typing_extensions import Annotated
 import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.accelerators.tpu import _is_positive_number
+from ray._private.accelerators.tpu import get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import (
-    _infer_chips_per_vm_from_cluster,
-    _normalize_bundle_label_selector as normalize_bundle_label_selector,
-    _prepare_slice_pg_specs,
-    _resolve_chips_per_vm,
     get_tpu_version_from_type,
+    normalize_bundle_label_selector,
     slice_placement_group,
 )
 
@@ -31,6 +28,16 @@ TPU_ACCELERATOR_VALUES = {
     for name, member in AcceleratorType.__members__.items()
     if name.startswith("GOOGLE_TPU")
 }
+
+
+def _is_positive_number(val: Any) -> bool:
+    """Return True if val is a finite positive non-boolean int or float."""
+    return (
+        not isinstance(val, bool)
+        and isinstance(val, (int, float))
+        and (isinstance(val, int) or math.isfinite(val))
+        and val > 0
+    )
 
 
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
@@ -96,22 +103,11 @@ def _resolve_bundle_label_selector(
     A single-element user selector broadcasts to all num_bundles. User keys take
     precedence over base_selectors keys on conflict.
     """
-    if num_bundles < 0:
-        raise ValueError(f"num_bundles must be non-negative, got {num_bundles}.")
-    if base_selectors is not None and len(base_selectors) != num_bundles:
-        raise ValueError(
-            f"base_selectors length ({len(base_selectors)}) must match "
-            f"num_bundles ({num_bundles})."
-        )
     expanded_user = normalize_bundle_label_selector(
         user_selectors, num_bundles=num_bundles, selector_name=selector_name
     )
     if expanded_user is None:
-        return (
-            [dict(sel) for sel in base_selectors]
-            if base_selectors is not None
-            else None
-        )
+        return base_selectors
     if base_selectors is None:
         return expanded_user
     return [
@@ -275,16 +271,10 @@ class TPUAccelerator(AcceleratorBackend):
                 "in order to compute TPU resource requirements."
             )
         version = get_tpu_version_from_type(accelerator_type_str)
-        effective_chips_per_vm = (
+        chips_per_host = (
             self._config.chips_per_vm
             if self._config.chips_per_vm is not None
-            else _infer_chips_per_vm_from_cluster(
-                topology=self._config.topology,
-                accelerator_version=version,
-            )
-        )
-        chips_per_host = _resolve_chips_per_vm(
-            effective_chips_per_vm, self._config.topology, version
+            else get_chips_per_host(self._config.topology, version)
         )
 
         if num_devices > chips_per_host and num_devices % chips_per_host != 0:
@@ -348,9 +338,7 @@ class TPUAccelerator(AcceleratorBackend):
                         raise ValueError(
                             f"TPU resource count must be a finite number, got {tpu_val!r}."
                         )
-            tpu_bundles = [
-                b for b in clean_bundles if _is_positive_number(b.get("TPU", 0))
-            ]
+            tpu_bundles = [b for b in clean_bundles if b.get("TPU", 0) > 0]
 
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}
@@ -369,14 +357,6 @@ class TPUAccelerator(AcceleratorBackend):
             worker_bundle = {"TPU": 1}
 
         if self._slice_pg_wrapper is not None:
-            _prepare_slice_pg_specs(
-                topology=self._config.topology,
-                accelerator_version=version,
-                resources_per_bundle=worker_bundle,
-                name=name,
-                chips_per_vm=self._config.chips_per_vm,
-                bundle_label_selector=bundle_label_selector,
-            )
             logger.debug(
                 "Existing TPU slice PG found. Shutting it down before creating a new one."
             )

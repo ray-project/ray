@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import os
 import uuid
 from dataclasses import dataclass
@@ -89,8 +90,6 @@ from ray.train.v2.api.validation_config import ValidationConfig
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
-
-from ray.util.tpu import get_tpu_num_slices_for_workers
 
 logger = logging.getLogger(__name__)
 
@@ -488,15 +487,12 @@ class TrainController:
         )
 
         # Calculate num_slices for the worker group if using TPU.
-        num_slices = 1
-        if scaling_config.use_tpu:
-            num_slices = get_tpu_num_slices_for_workers(
-                topology=scaling_config.topology,
-                accelerator_type=scaling_config.accelerator_type,
-                num_workers=num_workers,
-                resources_per_worker=resources_per_worker,
-                chips_per_vm=scaling_config.chips_per_vm,
-            )
+        workers_per_slice = scaling_config._workers_per_slice
+        num_slices = (
+            max(1, math.ceil(num_workers / workers_per_slice))
+            if workers_per_slice
+            else 1
+        )
 
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),

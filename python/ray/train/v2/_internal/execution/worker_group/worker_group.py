@@ -481,7 +481,7 @@ class WorkerGroup(ExecutionGroup):
     def _create_workers(
         self,
         num_workers: int,
-        placement_group: List[PlacementGroup],
+        placement_groups: List[PlacementGroup],
         resources_per_worker: Dict[str, float],
         placement_group_bundle_indices: Optional[List[int]] = None,
         starting_world_rank: int = 0,
@@ -492,7 +492,7 @@ class WorkerGroup(ExecutionGroup):
 
         Args:
             num_workers: Number of workers to create.
-            placement_group: List of placement groups (multiple for multi-slice
+            placement_groups: List of placement groups (multiple for multi-slice
                 TPU topologies) to schedule workers in.
             resources_per_worker: Resources per worker.
             placement_group_bundle_indices: Optional explicit bundle indices to use.
@@ -518,8 +518,7 @@ class WorkerGroup(ExecutionGroup):
             if placement_group_bundle_indices is not None
             else list(range(num_workers))
         )
-        pgs = placement_group
-        bundles_per_pg = pgs[0].bundle_count
+        bundles_per_pg = placement_groups[0].bundle_count
 
         runtime_env = self._get_worker_runtime_env(
             custom_runtime_env=self._train_run_context.run_config.worker_runtime_env
@@ -532,7 +531,7 @@ class WorkerGroup(ExecutionGroup):
         actors = [
             worker_actor_cls.options(
                 scheduling_strategy=PlacementGroupSchedulingStrategy(
-                    placement_group=pgs[i // bundles_per_pg],
+                    placement_group=placement_groups[i // bundles_per_pg],
                     placement_group_bundle_index=i % bundles_per_pg,
                 ),
             ).remote()
@@ -645,20 +644,19 @@ class WorkerGroup(ExecutionGroup):
                 accelerator_version = get_tpu_version_from_type(
                     scaling_config.accelerator_type
                 )
-                spg_kwargs: Dict[str, Any] = {
-                    "topology": scaling_config.topology,
-                    "accelerator_version": accelerator_version,
-                    "num_slices": worker_group_context.num_slices,
-                    "resources_per_bundle": worker_group_context.resources_per_worker,
-                    "bundle_label_selector": worker_group_context.label_selector,
-                }
-                if scaling_config.chips_per_vm is not None:
-                    spg_kwargs["chips_per_vm"] = scaling_config.chips_per_vm
-                spg = SlicePlacementGroup(**spg_kwargs)
+                spg = SlicePlacementGroup(
+                    topology=scaling_config.topology,
+                    accelerator_version=accelerator_version,
+                    num_slices=worker_group_context.num_slices,
+                    resources_per_bundle=worker_group_context.resources_per_worker,
+                    bundle_label_selector=worker_group_context.label_selector,
+                    chips_per_vm=scaling_config.chips_per_vm,
+                )
 
                 return SlicePlacementGroupHandle(spg)
 
             except ValueError:
+                # Configuration errors must fail immediately without controller retries.
                 raise
             except Exception as e:
                 raise WorkerGroupStartupFailedError(
@@ -1064,7 +1062,7 @@ class WorkerGroup(ExecutionGroup):
         pg_handle = self._worker_group_state.placement_group_handle
         new_workers = self._create_workers(
             num_workers=len(old_workers),
-            placement_group=pg_handle.placement_groups,
+            placement_groups=pg_handle.placement_groups,
             resources_per_worker=self._worker_group_context.resources_per_worker,
             placement_group_bundle_indices=old_placement_group_bundle_indices,
             # TODO: change after we support replica groups of size > 1.

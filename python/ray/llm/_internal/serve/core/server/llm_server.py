@@ -31,7 +31,6 @@ from ray.llm._internal.serve.constants import (
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
     _resolve_bundle_label_selector,
-    normalize_bundle_label_selector,
     prepare_tpu_bundles_and_label_selector,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -829,21 +828,6 @@ class LLMServer(LLMServerProtocol):
             }
             if "memory" in ray_actor_options:
                 replica_actor_resources["memory"] = ray_actor_options["memory"]
-
-            # Normalize placement_group_bundle_label_selector on non-deferred paths:
-            # pop None/[]/() so DeploymentSchema and ReplicaConfig do not reject
-            # empty/null selectors, convert tuples to lists, and shallow-copy dicts
-            # so aliased caller entries (for example [d, d]) remain independent.
-            if "placement_group_bundle_label_selector" in deployment_options:
-                normalized_selectors = normalize_bundle_label_selector(
-                    deployment_options["placement_group_bundle_label_selector"]
-                )
-                if normalized_selectors is None:
-                    deployment_options.pop("placement_group_bundle_label_selector")
-                else:
-                    deployment_options[
-                        "placement_group_bundle_label_selector"
-                    ] = normalized_selectors
 
             # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
             # more generic place.

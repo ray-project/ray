@@ -283,14 +283,36 @@ def test_scaling_config_resolve_worker_group_label_selector(caplog, propagate_lo
         accelerator_type="TPU-V6E",
         label_selector={"pool": "base"},
     )
+    topo_only_tpu_cfg = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+    )
+    list_override_tpu_cfg = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+        label_selector=[{"ray.io/tpu-topology": "4x4", "pool": "custom"}],
+    )
     cpu_cfg = ScalingConfig(num_workers=2, use_tpu=False)
 
     assert slice_cfg._uses_slice_placement_group is True
     assert non_slice_tpu_cfg._uses_slice_placement_group is False
+    assert topo_only_tpu_cfg._uses_slice_placement_group is False
+    assert topo_only_tpu_cfg._workers_per_slice is None
     assert cpu_cfg._uses_slice_placement_group is False
 
     # SlicePlacementGroup path delegates TPU hardware labels to SlicePlacementGroup.
     assert slice_cfg._resolve_worker_group_label_selector(4) == [{"pool": "base"}] * 4
+    assert topo_only_tpu_cfg._resolve_worker_group_label_selector(1) == [
+        {"ray.io/tpu-topology": "2x4"}
+    ]
+    assert list_override_tpu_cfg._label_selector_per_worker(1) == [
+        {"ray.io/tpu-topology": "4x4", "pool": "custom"}
+    ]
+    assert list_override_tpu_cfg._resolve_worker_group_label_selector(1) == [
+        {"ray.io/tpu-topology": "4x4", "pool": "custom"}
+    ]
     assert cpu_cfg._resolve_worker_group_label_selector(2) is None
 
     # Empty/None callback selectors are ignored; non-empty callback overrides prior selector.
@@ -354,15 +376,8 @@ def test_scaling_config_default_workers():
     assert config_gpu.total_resources == {"GPU": 1}
 
 
-def test_scaling_config_tpu_chips_per_vm_topology_validation_and_gpu_isolation():
-    """Verify R1 (chips_per_vm=4 on two-VM 2x4 TPU slices), T2 (eager topology
-    table validation in ScalingConfig.__post_init__), and G4 (GPU accelerator_type
-    isolation, non-TPU topology/accelerator_type handling, and zero-valued resource
-    stripping).
-    """
-    from ray.util.tpu import get_tpu_num_slices_for_workers
-
-    # 1. R1: Two-VM v6e 2x4 config with chips_per_vm=4 reserves 2 x 4-TPU workers = 1 slice.
+def test_scaling_config_chips_per_vm_validation():
+    """Verify chips_per_vm shapes _workers_per_slice and rejects non-int or non-positive values."""
     two_vm_cfg = ScalingConfig(
         num_workers=2,
         use_tpu=True,
@@ -371,29 +386,34 @@ def test_scaling_config_tpu_chips_per_vm_topology_validation_and_gpu_isolation()
         chips_per_vm=4,
     )
     assert two_vm_cfg._resources_per_worker_not_none == {"CPU": 1, "TPU": 4}
-    assert (
-        get_tpu_num_slices_for_workers(
-            topology=two_vm_cfg.topology,
-            accelerator_type=two_vm_cfg.accelerator_type,
-            num_workers=2,
-            resources_per_worker=two_vm_cfg._resources_per_worker_not_none,
-            chips_per_vm=two_vm_cfg.chips_per_vm,
-        )
-        == 1
+    assert two_vm_cfg._workers_per_slice == 2
+
+    eight_chip_host_cfg = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=8,
     )
+    assert eight_chip_host_cfg._resources_per_worker_not_none == {"CPU": 1, "TPU": 8}
+    assert eight_chip_host_cfg._workers_per_slice == 2
+
+    assert ScalingConfig(num_workers=2, use_tpu=False)._workers_per_slice is None
 
     with pytest.raises(ValueError, match="chips_per_vm"):
         ScalingConfig(num_workers=2, use_tpu=False, chips_per_vm=4)
-    with pytest.raises(ValueError, match="chips_per_vm"):
-        ScalingConfig(
-            num_workers=2,
-            use_tpu=True,
-            topology="4x4",
-            accelerator_type="TPU-V6E",
-            chips_per_vm=0,
-        )
 
-    # 2. T2: Invalid topology for generation fails eagerly at config construction.
+    for bad_chips_per_vm in (True, False, 4.0, 0, -4):
+        with pytest.raises(ValueError, match="chips_per_vm"):
+            ScalingConfig(
+                num_workers=1,
+                use_tpu=True,
+                chips_per_vm=bad_chips_per_vm,
+            )
+
+
+def test_scaling_config_rejects_topology_outside_generation_table():
+    """Invalid TPU topologies for a generation fail eagerly in ScalingConfig.__post_init__."""
     with pytest.raises(ValueError, match="Invalid accelerator topology"):
         ScalingConfig(
             num_workers=768,
@@ -409,8 +429,9 @@ def test_scaling_config_tpu_chips_per_vm_topology_validation_and_gpu_isolation()
             accelerator_type="TPU-V6E",
         )
 
-    # 3. G4: GPU accelerator_type and use_tpu=False with topology/accelerator_type
-    # never invoke TPU label generation, and CPU=0 is stripped cleanly.
+
+def test_scaling_config_non_tpu_accelerator_isolation_and_zero_resource_filtering():
+    """GPU and non-TPU configs never emit TPU labels, and zero-valued CPU entries are stripped."""
     gpu_a100 = ScalingConfig(
         num_workers=2,
         use_gpu=True,

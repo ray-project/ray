@@ -1367,6 +1367,19 @@ def test_start_worker_group_label_selector_callback_matrix(
         assert contexts[-1].num_slices == 2
         assert contexts[-1].label_selector == expected_list
 
+    # 8. chips_per_vm override (8 chips/VM on v6e 4x4 -> 2 workers/slice, 4 workers -> 2 slices).
+    ctrl_chips_override = _make_controller(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=8,
+    )
+    ctrl_chips_override._start_worker_group(
+        num_workers=4, resources_per_worker={"CPU": 1, "TPU": 8}
+    )
+    assert contexts[-1].num_slices == 2
+
 
 if __name__ == "__main__":
     import sys
