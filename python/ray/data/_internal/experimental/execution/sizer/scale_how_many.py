@@ -1,19 +1,22 @@
-"""Phase 2 policy: how many actors one operator wants, from its own signals."""
+"""Per-op how_many: what one operator wants from its own state alone.
+
+Growth from feedback is the bottleneck policy's (``policy``). What is left
+per op: the equal share an op grows toward before the bottleneck model has
+data for it (warmup, and ops the model has not seen yet), shedding actors
+once an op has gone idle, and the actors its remaining work can use once
+every upstream op has completed."""
 
 from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
-    SIZER_BOTTLENECK_MODEL,
     SIZER_DOWNSCALE_FACTOR,
     SIZER_DOWNSCALE_HYSTERESIS,
-    SIZER_OUTQUEUE_FULL_FRACTION,
     SIZER_RESERVATION_RATIO,
-    SIZER_UPSCALE_FACTOR,
     SIZER_UTIL_THRESHOLD,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
@@ -41,12 +44,8 @@ logger = logging.getLogger(__name__)
 
 
 class OpSizingPolicy:
-    """The per-operator greedy scaling decision.
-
-    Two regimes. Before any output exists there is no feedback to act on, so
-    warmup hands every operator an equal share of the allocation. Once the
-    pipeline flows, sizing follows backpressure: grow what has work and is not
-    backpressured, drain what has gone idle, and leave everything else alone.
+    """The per-operator wants: equal-share growth before the model has data,
+    and idle shedding.
 
     These deltas are what the operator *wants*; the sizer's grant pass clamps
     them to what the cluster can actually place.
@@ -68,15 +67,10 @@ class OpSizingPolicy:
         self._pg_bundles = pg_bundles or PlacementGroupBundles()
         self._unknown_pg_cap_by_op = dict(unknown_pg_cap_by_op or {})
         self.reservation_ratio = SIZER_RESERVATION_RATIO
-        # Bottleneck model: warmup shares also respect memory (see
-        # ``warmup_target``).
-        self.memory_aware_warmup = SIZER_BOTTLENECK_MODEL
-        self.upscale_factor = SIZER_UPSCALE_FACTOR
         self.downscale_factor = SIZER_DOWNSCALE_FACTOR
         self.downscale_hysteresis = SIZER_DOWNSCALE_HYSTERESIS
-        self.outqueue_full_fraction = SIZER_OUTQUEUE_FULL_FRACTION
         self.util_upscaling_threshold = SIZER_UTIL_THRESHOLD
-        # Divisor in the upscale target; mirrors the actor autoscaler's guard.
+        # Divisor in the backlog target; mirrors the actor autoscaler's guard.
         if self.util_upscaling_threshold <= 0:
             raise ValueError(
                 "RAY_DATA_SIZER_UTIL_THRESHOLD must be positive, got "
@@ -84,52 +78,6 @@ class OpSizingPolicy:
             )
         # Consecutive idle ticks per op, for the hysteretic drain arm.
         self._idle_streaks: Dict["PhysicalOperator", BoolStreak] = {}
-
-    def is_output_backpressured(
-        self, op: "ExperimentalActorPoolMapOperator"
-    ) -> Tuple[bool, int, int]:
-        """Is this op's output backpressured? -> (backpressured, blocked, running).
-
-        Denominated in RUNNING actors, so idle actors count as unblocked
-        capacity instead of vanishing from the denominator -- a
-        task-denominated fraction reads 1.0 whenever every busy actor is
-        blocked, however idle the pool is.
-
-        Both the warm loop and the optimizer's signal observer read this, so
-        they judge backpressure by the same number.
-        """
-        blocked, running = op.output_backpressured_actors()
-        if running == 0:
-            return False, blocked, running
-        return (blocked / running) >= self.outqueue_full_fraction, blocked, running
-
-    def max_growth_step(self, op: "ExperimentalActorPoolMapOperator") -> int:
-        """The most this op may grow in one tick."""
-        pool = op.actor_pool
-        return max(1, math.ceil(self.upscale_factor * pool.serving_size()))
-
-    def growth_delta(self, op: "ExperimentalActorPoolMapOperator") -> int:
-        """How many actors the optimizer's silent bottleneck rule adds to
-        ``op`` in one tick: one growth step, capped at its max size.
-
-        Unlike the warm loop's growth, this is not capped at backlog demand.
-        The rule only fires once it has shown ``op`` is the pipeline's
-        bottleneck, and upstream backpressure keeps a bottleneck's input
-        backlog shallow, so a backlog-derived cap would block the growth."""
-        return self._step_toward(op, demand=self._profiles.pool_cap(op))
-
-    def _step_toward(
-        self, op: "ExperimentalActorPoolMapOperator", *, demand: int
-    ) -> int:
-        current = op.actor_pool.serving_size()
-        return max(
-            0,
-            min(
-                self.max_growth_step(op),
-                demand - current,
-                self._profiles.pool_cap(op) - current,
-            ),
-        )
 
     # --- warmup: feedforward equal share --------------------------------------
 
@@ -174,8 +122,7 @@ class OpSizingPolicy:
         (see ``warmup_delta``). Also what an op held at zero or min reserves
         (``SizingTicker``).
 
-        With ``memory_aware_warmup``, a CPU op's share is also capped by
-        memory: GPU ops take their GPU share (and its memory) first, and the
+        A CPU op's share is also capped by memory: GPU ops take their GPU share (and its memory) first, and the
         CPU ops whose actors request memory split what is left equally. A
         CPU-only share alone can pack memory-heavy CPU stages so tightly that
         the GPU stage cannot place its actors.
@@ -184,10 +131,9 @@ class OpSizingPolicy:
         share = self._share_by_resource_type(op, cluster_capacity)
         if share is None:
             return None
-        if self.memory_aware_warmup:
-            memory_share = self._memory_share(op, cluster_capacity)
-            if memory_share is not None:
-                share = min(share, memory_share)
+        memory_share = self._memory_share(op, cluster_capacity)
+        if memory_share is not None:
+            share = min(share, memory_share)
         # FIT_EPS: float division can land just under a whole actor
         # (0.3 / 0.1 == 2.999...), which int() would truncate away.
         target = int(min(max(share + FIT_EPS, pool.min_size()), pool.max_size()))
@@ -335,86 +281,16 @@ class OpSizingPolicy:
             and self._profiles.resource_type(op) == resource_type
         ]
 
-    # --- warm: backpressure-driven --------------------------------------------
-
-    def warm_delta(
-        self,
-        op: "ExperimentalActorPoolMapOperator",
-        op_state: "OpState",
-        backpressured_with_demand: Set["ExperimentalActorPoolMapOperator"],
-    ) -> Optional[ActorPoolScalingRequest]:
-        """Size one operator from its queues. States are checked in this order,
-        first match wins:
-
-        | pendings | has work | output backpressured | and              | action    |
-        |----------|----------|----------------------|------------------|-----------|
-        | yes      |    -     |          -           |                  | hold      |
-        | no       |   no     |          -           | idle for N ticks | downscale |
-        | no       |   no     |          -           | idle < N ticks   | hold      |
-        | no       |   yes    |         yes          |                  | hold      |
-        | no       |   yes    |         no           | below demand     | upscale   |
-        | no       |   yes    |         no           | at demand or max | hold      |
-
-        "Has work" means a non-empty input queue OR tasks in flight: a steady
-        pool can have an empty queue and still be busy, and draining it
-        mid-flight would be wrong. Upscales are bounded by demand, which is
-        load-bearing -- at cold start the output queue is empty, so unbounded
-        growth would fill the cluster before any backpressure appeared.
-        Downscales are hysteretic, never breach min_size, and take only
-        pending/idle actors; busy ones leave by attrition.
-
-        An op backpressured while below its demand is reported through
-        ``backpressured_with_demand``: neither satisfied nor ungranted, which
-        the optimizer treats as no evidence either way.
-        """
-        pool = op.actor_pool
-        cur = pool.serving_size()
-        pending = pool.num_pending_actors()
-        enqueued = op_state.total_enqueued_input_blocks()
-        has_work = enqueued > 0 or pool.num_tasks_in_flight() > 0
-        backpressured, blocked, running = self.is_output_backpressured(op)
-        demand = self.backlog_actor_target(op, op_state)
-        streak = self._idle_streak(op)
-
-        if pending > 0:
-            # Mid-resize: don't undo an upscale on the tick its actors land.
-            request, decision = None, f"hold (sizing in flight: {pending} pending)"
-        elif not has_work:
-            streak.record(True)
-            request, decision = self._drain_if_idle(pool, streak)
-        elif backpressured:
-            # Growing an op its consumers cannot drain just buffers memory.
-            # A busy op whose consumers ARE keeping up is the optimizer's
-            # silent-bottleneck case, not ours.
-            streak.reset()
-            request, decision = None, "hold (output backpressured)"
-            if demand > cur:
-                backpressured_with_demand.add(op)
-        else:
-            streak.reset()
-            request, decision = self._grow_toward_demand(op, demand=demand)
-
-        logger.debug(
-            "OperatorSizer: warm %s in_q=%d out_blocked=%d/%d demand=%d "
-            "current=%d -> %s",
-            op.name,
-            enqueued,
-            blocked,
-            running,
-            demand,
-            cur,
-            decision,
-        )
-        return request
+    # --- after warmup: idle shedding ------------------------------------------
 
     def shrink_idle_delta(
         self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
     ) -> Optional[ActorPoolScalingRequest]:
-        """Under the bottleneck model, the only per-op decision in the warm
-        phase: shed idle actors once the op has had no work (empty input
-        queue, nothing in flight) for the full hysteresis, which is starved
-        for the whole window in the model's terms. Holds while actors pend.
-        Growth comes only from the bottleneck rule."""
+        """Once the model decides an op's growth, the only per-op decision:
+        shed idle actors once the op has had no work (empty input queue,
+        nothing in flight) for the full hysteresis, which is starved for the
+        whole window in the model's terms. Holds while actors pend. Growth
+        comes only from the bottleneck policy."""
         pool = op.actor_pool
         pending = pool.num_pending_actors()
         has_work = (
@@ -425,12 +301,15 @@ class OpSizingPolicy:
             request, decision = None, f"hold (sizing in flight: {pending} pending)"
         elif has_work:
             streak.reset()
-            request, decision = None, "hold (has work; growth is the bottleneck rule's)"
+            request, decision = (
+                None,
+                "hold (has work; growth is the bottleneck policy's)",
+            )
         else:
             streak.record(True)
             request, decision = self._drain_if_idle(pool, streak)
         logger.debug(
-            "OperatorSizer: warm %s current=%d -> %s",
+            "OperatorSizer: how_many %s current=%d -> %s",
             op.name,
             pool.serving_size(),
             decision,
@@ -442,9 +321,9 @@ class OpSizingPolicy:
     ) -> Tuple[Optional[ActorPoolScalingRequest], str]:
         """Shed idle actors once the pool has been idle for the full streak.
 
-        Over-provisioned pools that are still working are the optimizer's
-        problem (it can move that capacity to an op that needs it); here we
-        only reclaim actors with nothing to do.
+        Over-provisioned pools that are still working are the bottleneck
+        policy's problem (it can move that capacity to an op that needs it);
+        here we only reclaim actors with nothing to do.
         """
         if streak.is_streak() and pool.serving_size() > pool.min_size():
             streak.reset()
@@ -457,22 +336,6 @@ class OpSizingPolicy:
         return None, (
             f"hold (idle, streak {streak.run_length}/{self.downscale_hysteresis})"
         )
-
-    def _grow_toward_demand(
-        self, op: "ExperimentalActorPoolMapOperator", *, demand: int
-    ) -> Tuple[Optional[ActorPoolScalingRequest], str]:
-        """Has work and is not backpressured: grow toward demand."""
-        step = self._step_toward(op, demand=demand)
-        if step > 0:
-            return (
-                ActorPoolScalingRequest.upscale(
-                    delta=step, reason="has work, output not backpressured"
-                ),
-                f"want +{step} (demand={demand})",
-            )
-        if demand <= op.actor_pool.serving_size():
-            return None, f"hold (at demand={demand})"
-        return None, "hold (at max size)"
 
     def remaining_work_cap(
         self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"

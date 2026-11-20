@@ -1,9 +1,15 @@
-"""Move actors from operators with provable surplus to ones short on capacity."""
+"""Transfer mechanics: move actors from donors to a recipient.
+
+A transfer fires by draining victims on the recipient's nodes and holding
+those nodes' capacity for the recipient's owed actors; it places them as the
+victims free their slots, and closes once they run (or times out). Who
+receives and who donates is the bottleneck policy's call
+(``bottleneck_policy``); this module only plans and carries out the move.
+"""
 
 from __future__ import annotations
 
 import logging
-import math
 from collections import Counter, defaultdict, deque
 from dataclasses import dataclass, field
 from typing import (
@@ -19,11 +25,8 @@ from typing import (
     Tuple,
 )
 
-from typing_extensions import override
-
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
-    SIZER_CLUSTER_SETTLE_S,
     SIZER_TRANSFER_THRASH_WINDOW_TICKS,
     SIZER_TRANSFER_TIMEOUT_S,
 )
@@ -44,26 +47,23 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     OpPlacementView,
     max_placeable_actors,
 )
+from ray.data._internal.experimental.execution.sizer.lifecycle import OpLifecycles
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
 )
 from ray.data._internal.experimental.execution.sizer.models import (
     PlacedSizingRequest,
 )
-from ray.data._internal.experimental.execution.sizer.optimizer.context import (
-    OptimizationContext,
+from ray.data._internal.experimental.execution.sizer.policy.context import (
+    DecisionContext,
 )
-from ray.data._internal.experimental.execution.sizer.optimizer.rule import (
-    OptimizationRule,
-)
-from ray.data._internal.experimental.execution.sizer.optimizer.silent_bottleneck import (  # noqa: E501
-    SilentBottleneckGrant,
-)
-from ray.data._internal.experimental.execution.sizer.optimizer.utils import (
+from ray.data._internal.experimental.execution.sizer.policy.growth import (
     free_schedulable_nodes,
     pending_actor_ids,
 )
-from ray.data._internal.experimental.execution.sizer.scaling_guard import OpScalingGuard
+from ray.data._internal.experimental.execution.sizer.policy.states import (
+    TransferPhase,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
@@ -113,7 +113,7 @@ class TransferInFlight:
     The donors are downscaled when it fires; the recipient's actors are only
     created as the donors' capacity actually frees up, so the dataset never
     asks for more than its slice of a node. Until then the transfer holds that
-    node's free capacity (see ``CapacityTransfer._hold_owed_capacity``) so
+    node's free capacity (see ``TransferBook._hold_owed_capacity``) so
     nothing else in the sizer takes it.
     """
 
@@ -138,8 +138,8 @@ class TransferInFlight:
     # The recipient's actors (pending and running) when the transfer fired.
     preexisting_ids: FrozenSet[ActorId] = frozenset()
     # The recipient's actors created since, accumulated as they are placed:
-    # the transfer's (the guard blocks every other decision on the recipient
-    # while it is in flight).
+    # the transfer's (the recipient is RECEIVING, so no other decision
+    # resizes it while it is in flight).
     claimed_ids: Tuple[ActorId, ...] = ()
     # This transfer's entry in ``TransferState.recent_transfers``, stamped
     # with the close time when it closes.
@@ -159,7 +159,7 @@ class TransferInFlight:
 
 @dataclass
 class TransferState:
-    """What CapacityTransfer carries between ticks; owned by the optimizer."""
+    """What the transfer book carries between ticks."""
 
     in_flight: Dict["ExperimentalActorPoolMapOperator", TransferInFlight] = field(
         default_factory=dict
@@ -169,10 +169,6 @@ class TransferState:
     recent_transfers: Deque[RecentTransfer] = field(
         default_factory=lambda: deque(maxlen=8)
     )
-    # Donors blocked until their signal window refills (see _close_transfer).
-    cooling_donors: Set["ExperimentalActorPoolMapOperator"] = field(default_factory=set)
-    # Edge-triggered so "no donor surplus" logs once per episode, not per tick.
-    logged_no_donors: bool = False
     # Recipients whose thrashing refusal was logged since they last received.
     logged_thrashing: Set["ExperimentalActorPoolMapOperator"] = field(
         default_factory=set
@@ -181,68 +177,13 @@ class TransferState:
 
 @dataclass
 class DonorCapacity:
-    """How much an operator can give up without losing throughput.
-
-        work_floor = ceil(peak productive slots / max_actor_concurrency)
-        protected  = max(min_size, work_floor)
-        removable  = serving_size - protected
-
-    Productive slots are tasks actually running (in-flight capped at each
-    actor's concurrency) on actors that are not output-blocked, taken at
-    their windowed peak: queued tasks and blocked actors are not producing,
-    so they are not protected. Whether
-    the op wants to grow is deliberately ignored -- a backpressured feeder's
-    demand is phantom exactly when its consumer is the bottleneck.
-    """
+    """An operator a transfer may take actors from: its placement view (the
+    victims on each node) and how many actors it can give up."""
 
     op: "ExperimentalActorPoolMapOperator"
     view: OpPlacementView
     per_actor: ExecutionResources
     removable: int
-
-
-def assess_donor(
-    op: "ExperimentalActorPoolMapOperator", ctx: OptimizationContext
-) -> Optional[DonorCapacity]:
-    """How many actors ``op`` can give up without losing throughput, or None
-    if it has none to give."""
-    pool = op.actor_pool
-    cur = pool.serving_size()
-    conc = max(1, pool.max_actor_concurrency())
-    signal = ctx.productive_tasks_signal.get(op)
-    peak = signal.peak() if signal is not None else None
-    if peak is None:
-        protected = cur
-    else:
-        # Starting actors have not had a chance to work yet, so the productive
-        # window cannot vouch for them: an op that just grew is not a donor.
-        protected = (
-            max(pool.min_size(), math.ceil(peak / conc)) + pool.num_pending_actors()
-        )
-    removable = cur - protected
-    # The no_donor_surplus refusal counter says a transfer was blocked but not
-    # why. ``protected`` is a MAX over the productive window, so one early
-    # burst can hold a whole pool protected long after it stops producing;
-    # without these inputs that is indistinguishable from a busy donor.
-    logger.debug(
-        "PipelineOptimizer donor %s: cur=%d peak=%s protected=%d removable=%d "
-        "(conc=%d min_size=%d)",
-        op.name,
-        cur,
-        "none" if peak is None else f"{peak:g}",
-        protected,
-        removable,
-        conc,
-        pool.min_size(),
-    )
-    if removable <= 0:
-        return None
-    return DonorCapacity(
-        op=op,
-        view=placement_view.build_op_placement_view(op, rank_victims=True),
-        per_actor=pool.per_actor_resource_usage(),
-        removable=removable,
-    )
 
 
 # --- planning -----------------------------------------------------------------
@@ -520,7 +461,7 @@ def _log_closest_miss(
         return
     closest = min(misses, key=lambda p: sum(p.resource_shortfall.values()))
     logger.debug(
-        "PipelineOptimizer transfer refused: %s needs %s; best node %s "
+        "BottleneckPolicy: transfer refused: %s needs %s; best node %s "
         "still short by %s after all eligible victims.",
         recipient.name,
         {dim: getattr(recipient_per_actor, dim) for dim in PLACEMENT_RESOURCE_DIMS},
@@ -593,57 +534,71 @@ def _consume_plan_from_donors(
             _consume_victims_from_view(donor.view, node_plan.node, count)
 
 
-# --- the rule -----------------------------------------------------------------
+# --- the transfer book --------------------------------------------------------
 
 
-class CapacityTransfer(OptimizationRule[TransferState]):
+class TransferBook:
     """Claim, evict, land -- per node and in one request: the recipient's
-    targeted pendings are created alongside the victims' eviction, so
-    committed accounting reserves the space and nothing else can take it in
-    between."""
+    actors are owed when a transfer fires and created once the victims'
+    capacity is free, with that capacity held for them meanwhile, so nothing
+    else can take it in between.
 
-    name = "capacity_transfer"
+    Owns every open transfer (``TransferState``) and moves each through its
+    life: fired, placing as donors free capacity, then closed as landed,
+    lost or timed out. Recipient and donors are held in ``OpLifecycles``
+    from firing until close; donors then cool down there.
+    """
 
     def __init__(
         self,
+        name: str,
         metrics: OptimizerMetrics,
         placement: "ActorPlacementStrategy",
-        guard: OpScalingGuard,
-        reset_signals: Callable[["ExperimentalActorPoolMapOperator"], None],
+        lifecycles: OpLifecycles,
     ):
+        self._name = name
         self._metrics = metrics
         self._placement = placement
-        self._guard = guard
-        self._reset_signals = reset_signals
+        self._lifecycles = lifecycles
+        self.state = TransferState()
 
-    @override
-    def new_state(self) -> TransferState:
-        return TransferState()
+    @property
+    def phase(self) -> TransferPhase:
+        return TransferPhase.IN_FLIGHT if self.state.in_flight else TransferPhase.IDLE
+
+    def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
+        """Capacity open transfers hold for their recipients' still-owed
+        actors, per node."""
+        held: Dict[NodeIdStr, ExecutionResources] = {}
+        for transfer in self.state.in_flight.values():
+            per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
+            for node, owed in transfer.owed_by_node.items():
+                if owed > 0:
+                    held[node] = held.get(node, ExecutionResources.zero()).add(
+                        per_actor.scale(owed)
+                    )
+        return held
 
     # --- transfers already fired ----------------------------------------------
 
-    @override
-    def advance(self, ctx: OptimizationContext, state: TransferState) -> None:
+    def advance(self, ctx: DecisionContext) -> None:
         """Move earlier transfers along: note which new pendings belong to each
         one, close it once every owed actor is placed and running (or cancel it
-        after the timeout), hold the capacity the open ones are still owed,
-        and release donors whose cooldown is over.
+        after the timeout), and hold the capacity the open ones are still owed.
 
         Recording the pendings here rather than right after the requests were
-        applied is safe: the guard blocks the recipient for the whole life of
+        applied is safe: the recipient is ``RECEIVING`` for the whole life of
         the transfer, so no other decision can add pendings to it in between.
         """
-        self._record_transfer_pendings(state)
-        self._close_finished_transfers(ctx, state)
-        self._hold_owed_capacity(ctx, state)
-        self._release_cooled_donors(ctx, state)
+        self._record_transfer_pendings()
+        self._close_finished_transfers(ctx)
+        self._hold_owed_capacity(ctx)
 
-    @staticmethod
-    def _record_transfer_pendings(state: TransferState) -> None:
+    def _record_transfer_pendings(self) -> None:
         """The recipient's actors created since the transfer fired are the
         transfer's (see ``claimed_ids``), whether still pending or already
         running."""
-        for transfer in state.in_flight.values():
+        for transfer in self.state.in_flight.values():
             new_ids = (
                 set(transfer.recipient.actor_pool.get_logical_ids())
                 - transfer.preexisting_ids
@@ -651,21 +606,21 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             )
             transfer.claimed_ids += tuple(sorted(new_ids))
 
-    @staticmethod
-    def _hold_owed_capacity(ctx: OptimizationContext, state: TransferState) -> None:
+    def _hold_owed_capacity(self, ctx: DecisionContext) -> None:
         """Debit what each open transfer is still owed off ``ctx.free``.
 
-        Every rule advances before any rule applies, and the optimizer runs
-        before the per-op passes, so this hold comes before anything else this
+        The book advances before the policy decides, and the policy runs
+        before the how-many pass, so this hold comes before anything else this
         tick can spend the capacity. As many owed actors as the node's free
-        capacity fits are brought up by ``apply``; the rest of the hold keeps
-        the node's partial free capacity for the recipient while donors drain.
+        capacity fits are brought up by ``bring_up_held_actors``; the rest of
+        the hold keeps the node's partial free capacity for the recipient
+        while donors drain.
 
         ``ctx.free`` is rebuilt every tick, so a hold lasts one tick and is
         re-taken here while the transfer is open: closing a transfer (landed,
         lost or timed out) releases it.
         """
-        for transfer in state.in_flight.values():
+        for transfer in self.state.in_flight.values():
             per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
             transfer.to_bring_up_by_node = {}
             for node, owed in transfer.owed_by_node.items():
@@ -687,13 +642,11 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                     transfer.owed_by_node[node] = owed - num_to_bring_up
                     transfer.last_progress_t = ctx.now
 
-    def _close_finished_transfers(
-        self, ctx: OptimizationContext, state: TransferState
-    ) -> None:
+    def _close_finished_transfers(self, ctx: DecisionContext) -> None:
         """Close transfers with no claimed actor still pending (landed if all
         of them are running, lost otherwise); cancel the ones that timed
         out."""
-        for recipient, transfer in list(state.in_flight.items()):
+        for recipient, transfer in list(self.state.in_flight.items()):
             pool = recipient.actor_pool
             pending = pending_actor_ids(pool)
             still_pending = [a for a in transfer.claimed_ids if a in pending]
@@ -707,19 +660,19 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                     pool.has_actor(a) for a in transfer.claimed_ids
                 )
                 logger.debug(
-                    "PipelineOptimizer: transfer to %s closed %s (%.0fs after claim)",
+                    "BottleneckPolicy: transfer to %s closed %s (%.0fs after claim)",
                     recipient.name,
                     "landed" if landed else "lost",
                     ctx.now - transfer.started_t,
                 )
-                self._close_transfer(state, transfer, ctx.now)
+                self._close_transfer(transfer, ctx.now)
                 self._metrics.record_outcome(
-                    self.name, recipient.name, "landed" if landed else "lost"
+                    self._name, recipient.name, "landed" if landed else "lost"
                 )
                 continue
             if transfer.seconds_without_progress(ctx.now) > transfer.timeout_s:
                 # Cancel the claim node by node. The pool cancels pendings
-                # first, and every pending on a guarded recipient is ours
+                # first, and every pending on a receiving recipient is ours
                 # (see ``TransferInFlight.claimed_ids``), so a per-node count
                 # is exact.
                 claimed = set(still_pending)
@@ -741,7 +694,7 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                     )
                 reclaimed = self._reclaim_unused_victims(transfer)
                 logger.warning(
-                    "PipelineOptimizer: transfer to %s made no progress for %.0fs "
+                    "BottleneckPolicy: transfer to %s made no progress for %.0fs "
                     "with %d actor(s) never placed; claim cancelled, %d donor "
                     "actor(s) still draining for it given back.",
                     recipient.name,
@@ -751,8 +704,8 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 )
                 # Closing also drops its capacity hold: holds are re-taken
                 # each tick only for open transfers.
-                self._close_transfer(state, transfer, ctx.now)
-                self._metrics.record_outcome(self.name, recipient.name, "timeout")
+                self._close_transfer(transfer, ctx.now)
+                self._metrics.record_outcome(self._name, recipient.name, "timeout")
 
     @staticmethod
     def _reclaim_unused_victims(transfer: TransferInFlight) -> int:
@@ -774,77 +727,39 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 )
         return reclaimed
 
-    def _release_cooled_donors(
-        self, ctx: OptimizationContext, state: TransferState
-    ) -> None:
-        for donor in list(state.cooling_donors):
-            window = ctx.productive_tasks_signal.get(donor)
-            if window is not None and window.covered():
-                self._guard.release(donor)
-                state.cooling_donors.discard(donor)
+    def _close_transfer(self, transfer: TransferInFlight, now: float) -> None:
+        """Free the recipient; start each donor's cooldown and record the
+        close time to block thrashing.
 
-    def _close_transfer(
-        self, state: TransferState, transfer: TransferInFlight, now: float
-    ) -> None:
-        """Free the recipient; start each donor's cooldown and record completion time to block thrashing.
-
-        A donor with surplus to spare can fund several recipients in one pass,
-        so a donation closing does not mean the donor is done: it keeps its
-        in-flight block until its LAST donation closes, and only then starts
-        the cooldown. Otherwise the cooldown could end while another transfer
-        is still draining it.
+        A donor can fund several recipients, so a donation closing does not
+        mean the donor is done: it stays ``DONATING`` until its LAST donation
+        closes, and only then cools down. Otherwise the cooldown could end
+        while another transfer is still draining it.
         """
-        del state.in_flight[transfer.recipient]
-        self._guard.release(transfer.recipient)
+        del self.state.in_flight[transfer.recipient]
+        self._lifecycles.activate(transfer.recipient)
         if transfer.record is not None:
             transfer.record.closed_t = now
         still_donating_to = {
             donor: other.recipient
-            for other in state.in_flight.values()
+            for other in self.state.in_flight.values()
             for donor in other.donors
         }
         for donor in transfer.donors:
             if donor in still_donating_to:
-                self._guard.block(donor, f"donating to {still_donating_to[donor].name}")
+                self._lifecycles.start_donating(donor, still_donating_to[donor])
                 continue
-            # Wait until the donor's signal window is full of samples taken at
-            # its smaller size (SIZER_SIGNAL_WINDOW_SAMPLES scheduling-loop
-            # steps). Until then its signals still describe the old pool.
-            self._reset_signals(donor)
-            self._guard.block(donor, "post-donation cooldown")
-            state.cooling_donors.add(donor)
+            # Wait until the donor's signals describe its smaller size
+            # (SIZER_DONOR_COOLDOWN_STEPS scheduling-loop steps).
+            self._lifecycles.start_cooling(donor)
 
     # --- new transfers --------------------------------------------------------
 
-    @override
-    def apply(
-        self, ctx: OptimizationContext, state: TransferState
-    ) -> List[PlacedSizingRequest]:
-        # Open transfers place first, into the capacity ``advance`` held.
-        requests = self._bring_up_held_actors(state)
-        refusal = self._precondition_refusal(ctx)
-        if refusal is not None:
-            self._metrics.record_refusal(self.name, refusal)
-            return requests
-        recipients = self._pick_recipients(ctx)
-        if not recipients:
-            return requests
-        donors = self._collect_donors(ctx, recipients, state)
-        if not donors:
-            return requests
-        donors_by_op = {donor.op: donor for donor in donors}
-        for recipient in recipients:
-            requests.extend(
-                self._try_transfer(recipient, donors, donors_by_op, ctx, state)
-            )
-        return requests
-
-    @staticmethod
-    def _bring_up_held_actors(state: TransferState) -> List[PlacedSizingRequest]:
+    def bring_up_held_actors(self) -> List[PlacedSizingRequest]:
         """Targeted upscales for the recipient actors whose capacity
         ``_hold_owed_capacity`` found free this tick."""
         requests: List[PlacedSizingRequest] = []
-        for transfer in state.in_flight.values():
+        for transfer in self.state.in_flight.values():
             nodes = [
                 node
                 for node, count in sorted(transfer.to_bring_up_by_node.items())
@@ -867,108 +782,10 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 )
         return requests
 
-    @staticmethod
-    def _precondition_refusal(ctx: OptimizationContext) -> Optional[str]:
-        if ctx.warmup:
-            return "warmup"
-        # Transfers correct a settled allocation; while the cluster is still
-        # resizing, growth is the autoscaler's move.
-        if ctx.seconds_since_allocation_change < SIZER_CLUSTER_SETTLE_S:
-            return "cluster_settling"
-        return None
-
-    def _pick_recipients(
-        self, ctx: OptimizationContext
-    ) -> List["ExperimentalActorPoolMapOperator"]:
-        """Non-PG ops whose ask has gone ungranted for a full streak. Real asks
-        come before silent ones: an op that asked and was clamped is
-        evidence; a silent want is an inference, so when donors are scarce
-        the real asks get the budget."""
-        non_pg = set(ctx.non_pg_ops)
-        recipients = []
-        for op, streak in ctx.shortfall_streak.items():
-            if (
-                op not in non_pg
-                or not streak.is_streak()
-                or not self._guard.can_scale(op)
-            ):
-                continue
-            if any(c in ctx.shortfalls for c in ctx.next_ops.get(op, ())):
-                # The op's own consumer is short, so this op's demand is
-                # phantom: growing it would pile output onto a consumer that
-                # cannot keep up. Serve the consumer first -- this op is donor
-                # material, not a recipient.
-                continue
-            if op.actor_pool.num_pending_actors() > 0:
-                # Sizing already in flight; judge again once it lands.
-                continue
-            recipients.append(op)
-        recipients.sort(
-            key=lambda op: ctx.shortfalls[op].silent if op in ctx.shortfalls else False
-        )
-        return recipients
-
-    def _collect_donors(
-        self,
-        ctx: OptimizationContext,
-        recipients: List["ExperimentalActorPoolMapOperator"],
-        state: TransferState,
-    ) -> List[DonorCapacity]:
-        donors: List[DonorCapacity] = []
-        for op in ctx.non_pg_ops:
-            # A blocked op's signals predate whatever blocked it, so its
-            # removable count cannot be trusted; it sits out this round.
-            if op in recipients or not self._guard.can_scale(op):
-                continue
-            # A silent bottleneck's output-blocked actors look like surplus,
-            # but it is what limits the pipeline: grow it, never drain it.
-            if SilentBottleneckGrant.is_silent_bottleneck(op, ctx):
-                continue
-            donor = assess_donor(op, ctx)
-            if donor is not None:
-                donors.append(donor)
-        if donors:
-            state.logged_no_donors = False
-            return donors
-        # Every non-PG op is short, blocked, or has no provable surplus: there
-        # is nothing to move. Normal while demand exceeds the cluster (e.g.
-        # during an autoscaling ramp) -- adding capacity is the autoscaler's
-        # job, not this rule's.
-        self._metrics.record_refusal(self.name, "no_donor_surplus")
-        if not state.logged_no_donors:
-            logger.debug(
-                "PipelineOptimizer: %d capacity-short op(s) but no donor has surplus; "
-                "nothing to move.",
-                len(recipients),
-            )
-            state.logged_no_donors = True
-        return []
-
-    def _try_transfer(
+    def transfer_nodes(
         self,
         recipient: "ExperimentalActorPoolMapOperator",
-        donors: List[DonorCapacity],
-        donors_by_op: Dict["ExperimentalActorPoolMapOperator", DonorCapacity],
-        ctx: OptimizationContext,
-        state: TransferState,
-    ) -> List[PlacedSizingRequest]:
-        """Plan and fire one transfer to ``recipient``; [] if it is refused."""
-        nodes = self._transfer_nodes(recipient, ctx, state)
-        if not nodes:
-            return []
-        shortfall = ctx.shortfalls.get(recipient)
-        want = max(1, shortfall.num_actors if shortfall else 1)
-        plan, refusal = self._plan(recipient, want, nodes, donors, ctx)
-        if plan is None:
-            self._metrics.record_refusal(self.name, refusal or "unknown")
-            return []
-        return self._fire(recipient, plan, donors_by_op, ctx, state)
-
-    @staticmethod
-    def _transfer_nodes(
-        recipient: "ExperimentalActorPoolMapOperator",
-        ctx: OptimizationContext,
-        state: TransferState,
+        ctx: DecisionContext,
     ) -> List[NodeIdStr]:
         """The recipient's schedulable nodes no open transfer still owes on.
 
@@ -978,7 +795,7 @@ class CapacityTransfer(OptimizationRule[TransferState]):
         """
         busy_nodes = {
             node
-            for transfer in state.in_flight.values()
+            for transfer in self.state.in_flight.values()
             for node, owed in transfer.owed_by_node.items()
             if owed > 0
         }
@@ -986,13 +803,13 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             n for n in free_schedulable_nodes(ctx, recipient) if n not in busy_nodes
         ]
 
-    def _plan(
+    def plan(
         self,
         recipient: "ExperimentalActorPoolMapOperator",
         want: int,
         nodes: List[NodeIdStr],
         donors: List[DonorCapacity],
-        ctx: OptimizationContext,
+        ctx: DecisionContext,
         victim_key: Optional[VictimKey] = None,
     ) -> Tuple[Optional[List["NodePlan"]], Optional[str]]:
         """``plan_transfer`` on ``nodes``, ranked by the recipient's locality."""
@@ -1011,26 +828,26 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             victim_key,
         )
 
-    def _fire(
+    def fire(
         self,
         recipient: "ExperimentalActorPoolMapOperator",
         plan: List["NodePlan"],
         donors_by_op: Dict["ExperimentalActorPoolMapOperator", DonorCapacity],
-        ctx: OptimizationContext,
-        state: TransferState,
+        ctx: DecisionContext,
         *,
         timeout_s: float = SIZER_TRANSFER_TIMEOUT_S,
     ) -> List[PlacedSizingRequest]:
         """Fire a planned transfer: drain its victims, hold the recipient's
         capacity, open it in flight. [] if it would thrash."""
+        state = self.state
         pool = recipient.actor_pool
         donor_ops = frozenset(op for p in plan for op in p.victims_by_donor())
-        if self._is_thrashing(state, recipient, donor_ops, ctx.now):
-            self._metrics.record_refusal(self.name, "thrashing")
+        if self._is_thrashing(recipient, donor_ops, ctx.now):
+            self._metrics.record_refusal(self._name, "thrashing")
             if recipient not in state.logged_thrashing:
                 state.logged_thrashing.add(recipient)
                 logger.debug(
-                    "PipelineOptimizer: transfer to %s from %s refused: it would "
+                    "BottleneckPolicy: transfer to %s from %s refused: it would "
                     "undo a transfer still open or closed under %.0fs ago.",
                     recipient.name,
                     "/".join(sorted(d.name for d in donor_ops)),
@@ -1077,16 +894,16 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             record=record,
             timeout_s=timeout_s,
         )
-        # The recipient and its donors are ours until the transfer closes, so
+        # The recipient and its donors are the transfer's until it closes, so
         # nothing else resizes them mid-move.
-        self._guard.block(recipient, "receiving a capacity transfer")
+        self._lifecycles.start_receiving(recipient)
         for donor in donor_ops:
-            self._guard.block(donor, f"donating to {recipient.name}")
+            self._lifecycles.start_donating(donor, recipient)
         state.recent_transfers.append(record)
         state.logged_thrashing.discard(recipient)
-        self._metrics.record_outcome(self.name, recipient.name, "fired")
+        self._metrics.record_outcome(self._name, recipient.name, "fired")
         logger.debug(
-            "PipelineOptimizer: transfer +%d %s across %d node(s) from %s",
+            "BottleneckPolicy: transfer +%d %s across %d node(s) from %s",
             sum(p.num_recipient_actors for p in plan),
             recipient.name,
             len(plan),
@@ -1094,9 +911,8 @@ class CapacityTransfer(OptimizationRule[TransferState]):
         )
         return requests
 
-    @staticmethod
     def _is_thrashing(
-        state: TransferState,
+        self,
         recipient: "ExperimentalActorPoolMapOperator",
         donors: FrozenSet["ExperimentalActorPoolMapOperator"],
         now: float,
@@ -1104,5 +920,6 @@ class CapacityTransfer(OptimizationRule[TransferState]):
         """True if this transfer would undo a recent one (A->B then B->A)
         that is still open or closed within ``THRASH_WINDOW_S``."""
         return any(
-            past.inverted_by(recipient, donors, now) for past in state.recent_transfers
+            past.inverted_by(recipient, donors, now)
+            for past in self.state.recent_transfers
         )

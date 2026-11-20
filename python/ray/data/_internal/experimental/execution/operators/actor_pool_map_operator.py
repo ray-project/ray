@@ -76,7 +76,6 @@ from ray.data._internal.execution.execution_flags import (
     PER_ACTOR_INPUT_BACKPRESSURE_LIMIT,
     PER_ACTOR_OUTPUT_BACKPRESSURE_LIMIT,
     PER_ACTOR_OUTPUT_BYTES_BACKPRESSURE_LIMIT,
-    SIZER_BOTTLENECK_MODEL,
     WITHHELD_DEADLOCK_WAIT_MAX_S,
 )
 from ray.data._internal.execution.interfaces import (
@@ -332,12 +331,9 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         self._withheld_wait_started: Dict[ActorId, float] = {}
         # Parsed once on first use: constraints are fixed for the op's lifetime.
         self._placement_constraint: Optional[PlacementConstraint] = None
-        if SIZER_BOTTLENECK_MODEL:
-            # Cap an output-backpressured actor at its concurrency: queued
-            # tasks it cannot start only lengthen its drain as a victim.
-            self.actor_pool.set_output_backpressured_probe(
-                self._is_output_backpressured
-            )
+        # Cap an output-backpressured actor at its concurrency: queued tasks
+        # it cannot start only lengthen its drain as a victim.
+        self.actor_pool.set_output_backpressured_probe(self._is_output_backpressured)
 
     def set_actor_only_metrics(self, metrics: _ActorOnlyOpMetrics, op_tag: str) -> None:
         self._actor_only_metrics = metrics

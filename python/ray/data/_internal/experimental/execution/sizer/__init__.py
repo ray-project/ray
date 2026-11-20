@@ -33,59 +33,58 @@ PG-managed
     not choose their nodes. Non-PG ops are placed directly by the sizer.
 
 
-Per-op sizing (``scale_how_many``)
-----------------------------------
+State machine (``operator_sizer``, ``policy``)
+----------------------------------------------
 tick
     One sizing evaluation, performed every ``SIZER_CADENCE_S``.
 
-warmup
-    The initial phase of a run. Until every critical op has produced output,
-    there is no backpressure signal to react to, so each op is sized to an
-    equal share of the allocation.
+phase (``SizerPhase``)
+    WARMUP until every critical op has produced output: there is no feedback
+    yet, so each op is sized to an equal share of the allocation.
+    MODEL_WARMING until the bottleneck model has seen a full window of every
+    unfinished op (the ones it has not seen keep their equal share). STEADY
+    after that.
+
+decision (``DecisionKind``)
+    The one primary action a tick takes from the bottleneck model: grow a
+    bottleneck into free capacity, grow balanced stages, fund the recipient
+    from donors, shrink blocked surplus, or hold.
+
+lifecycle (``OpLifecycle``)
+    Whether an op may be resized now: awaiting its on_start, active,
+    receiving or donating in a transfer, cooling down after donating, or
+    completed.
+
+how_many
+    Per-op wants that need no model: warmup equal shares, idle shedding,
+    min-size refill, releasing completed pools.
 
 has work
     The op has queued input or tasks in flight.
 
-backpressured
-    The op's output is blocked: enough of its actors have exhausted their
-    output budget (``SIZER_OUTQUEUE_FULL_FRACTION``).
-
-demand
-    The number of actors the op needs for its current backlog: queued input
-    plus tasks in flight.
-
-want
-    The actor-count delta requested by the op based on its own signals,
-    before capacity constraints are applied.
-
 ledger
-    The free capacity available during one sizing tick, debited as growth
+    The free capacity available during one sizing tick, debited as how_many
     requests are granted.
 
-shortfall
-    The number of requested actors that could not be granted.
 
-ungranted
-    An op that requested growth but was granted zero actors.
+Bottleneck model (``bottleneck_observer``)
+------------------------------------------
+busy / obp / starved
+    Shares of an op's slot time spent running, output-backpressured, or idle
+    with nothing queued.
 
+bottleneck
+    An op no edge's arrow points away from, with enough severity (how much
+    its neighbours wait on it). Stable once named for a full window.
 
-Cross-op optimization (``optimizer``)
---------------------------------------
-guard
-    A lock over ops. While one optimization rule is resizing an op, no other
-    rule may modify it.
+recipient
+    The most severe stable bottleneck that can use more capacity.
 
-keeping up
-    A consumer that processes its producer's output as fast as it arrives,
-    so the consumer is not what limits the pipeline.
-
-silent bottleneck
-    An op that limits the pipeline without asking to grow: its actors are busy
-    and its output is backpressured, while its consumers are keeping up.
+slack
+    Actors an op could give up and keep up after the recipient grows.
 
 capacity transfer
-    Moving capacity from ops with spare actors (donors) to an op whose growth
-    requests repeatedly go ungranted (the recipient).
+    Moving capacity from ops with slack (donors) to the recipient.
 
 victim
     A donor actor evicted to make room for the recipient.
