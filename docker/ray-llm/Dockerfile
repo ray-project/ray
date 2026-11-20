@@ -145,9 +145,16 @@ export UV_OVERRIDE="$(pwd)/nccl_overrides.txt"
 # EP kernels + DeepGEMM require Hopper+ features (matches vLLM Dockerfile)
 export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 
+# The EP script patches DeepEP from a patches/ dir beside it, which piping it
+# into bash doesn't provide, so fetch the patch from the same ref.
+EP_PATCHES_DIR=/home/ray/llm_ep_support/patches
+mkdir -p "${EP_PATCHES_DIR}"
+curl -fsSL "${VLLM_RAW}/tools/ep_kernels/patches/deepep-gin-barrier-data-visibility.patch" \
+    -o "${EP_PATCHES_DIR}/deepep-gin-barrier-data-visibility.patch"
+
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
-    bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
+    PATCHES_DIR="${EP_PATCHES_DIR}" bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
 
 # DeepEP V2 links against NCCL's GIN API, so a downgrade slipped in by one of the
 # scripts above breaks it at runtime even when the build succeeded. Fail here
