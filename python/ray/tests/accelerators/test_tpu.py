@@ -1249,16 +1249,196 @@ def test_get_physical_worker_id_out_of_bounds(coords, parent_topology):
 
 
 def test_query_local_tpu_chip_coordinates(monkeypatch):
-    """Returns one coordinate list per local JAX TPU device."""
+    """Returns one coordinate list per local JAX TPU device and waits for VFIO."""
     monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4")
+    monkeypatch.delenv(tpu.TPU_CHIP_COORDINATES_ENV_VAR, raising=False)
     devices = [mock.MagicMock(coords=(2, 0, 0)), mock.MagicMock(coords=(3, 0, 0))]
     monkeypatch.setitem(
         sys.modules, "jax", mock.MagicMock(local_devices=lambda backend: devices)
     )
-    assert tpu._query_local_tpu_chip_coordinates(num_hosts=4) == [
-        [2, 0, 0],
-        [3, 0, 0],
+    with patch.object(tpu, "wait_for_tpu_vfio_ready") as mock_vfio_wait:
+        assert tpu._query_local_tpu_chip_coordinates(num_hosts=4) == [
+            [2, 0, 0],
+            [3, 0, 0],
+        ]
+        mock_vfio_wait.assert_called_once_with()
+
+
+def test_query_local_tpu_chip_coordinates_single_host_no_jax_no_vfio(monkeypatch):
+    """Single-host slices avoid importing JAX and avoid opening VFIO."""
+    monkeypatch.delenv(tpu.TPU_CHIP_COORDINATES_ENV_VAR, raising=False)
+    monkeypatch.setitem(sys.modules, "jax", None)
+    monkeypatch.setitem(sys.modules, "torch_tpu", None)
+    monkeypatch.setenv(tpu.GKE_TPU_TOPOLOGY_ENV_VAR, "2x2")
+    with patch.object(tpu, "wait_for_tpu_vfio_ready") as mock_vfio_wait:
+        coords = tpu._query_local_tpu_chip_coordinates(num_hosts=1)
+        assert coords == [[0, 0, 0], [0, 1, 0], [1, 0, 0], [1, 1, 0]]
+        assert tpu._get_physical_worker_id_from_coords(coords, "2x2") == 0
+        mock_vfio_wait.assert_not_called()
+
+    monkeypatch.delenv(tpu.GKE_TPU_TOPOLOGY_ENV_VAR, raising=False)
+    with (
+        patch.object(
+            TPUAcceleratorManager, "get_current_node_tpu_topology", return_value=None
+        ),
+        patch.object(tpu, "wait_for_tpu_vfio_ready") as mock_vfio_wait,
+    ):
+        assert tpu._query_local_tpu_chip_coordinates(num_hosts=1) == [[0, 0, 0]]
+        mock_vfio_wait.assert_not_called()
+
+    # Malformed single-host topology falls back to [[0, 0, 0]].
+    for bad_topology in ("0x0", "4"):
+        monkeypatch.setenv(tpu.GKE_TPU_TOPOLOGY_ENV_VAR, bad_topology)
+        with patch.object(tpu, "wait_for_tpu_vfio_ready") as mock_vfio_wait:
+            assert tpu._query_local_tpu_chip_coordinates(num_hosts=1) == [[0, 0, 0]]
+            mock_vfio_wait.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "raw_env, num_hosts, expected",
+    [
+        ("[[2, 0, 0], [3, 0, 0]]", 4, [[2, 0, 0], [3, 0, 0]]),
+        ("0,2,0;1,2,0", 4, [[0, 2, 0], [1, 2, 0]]),
+        ("[[0, 0, 0]]", 1, [[0, 0, 0]]),
+    ],
+)
+def test_query_local_tpu_chip_coordinates_env_override(
+    monkeypatch, raw_env, num_hosts, expected
+):
+    """Explicit TPU_CHIP_COORDINATES avoids JAX and VFIO for single and multi-host."""
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4")
+    monkeypatch.setenv(tpu.TPU_CHIP_COORDINATES_ENV_VAR, raw_env)
+    monkeypatch.setitem(sys.modules, "jax", None)
+    with patch.object(tpu, "wait_for_tpu_vfio_ready") as mock_vfio_wait:
+        assert tpu._query_local_tpu_chip_coordinates(num_hosts=num_hosts) == expected
+        mock_vfio_wait.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "bad_raw",
+    [
+        "[not valid json",
+        "[[true, false, false]]",
+        "[[0]]",
+        "[[0, 1, 2, 3]]",
+        "0",
+        "0,1,2,3",
+        "0,a,0",
+    ],
+)
+def test_parse_tpu_chip_coordinates_env_invalid(bad_raw):
+    """Invalid TPU_CHIP_COORDINATES formats raise ValueError."""
+    with pytest.raises(ValueError):
+        tpu._parse_tpu_chip_coordinates_env(bad_raw)
+
+
+@pytest.mark.parametrize(
+    "topology, worker_id, num_hosts",
+    [
+        ("4x4", 0, 0),
+        ("0x0", 0, 1),
+        ("-2x2", 0, 1),
+        ("4", 0, 1),
+        ("4x4", 4, 4),
+        ("4x4", -1, 4),
+        ("4x4", 0, 8),
+    ],
+)
+def test_compute_tpu_chip_coordinates_from_topology_invalid(
+    topology, worker_id, num_hosts
+):
+    """Invalid topology, worker_id, or num_hosts mismatch raises ValueError."""
+    with pytest.raises(ValueError):
+        tpu._compute_tpu_chip_coordinates_from_topology(
+            topology, worker_id=worker_id, num_hosts=num_hosts
+        )
+
+
+def test_query_local_tpu_chip_coordinates_torch_tpu_fallback(monkeypatch):
+    """Falls back to torch_tpu when JAX and topology metadata are absent,
+    waiting for VFIO before importing torch_tpu and returning pure ints."""
+    monkeypatch.setenv("TPU_WORKER_HOSTNAMES", "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4")
+    monkeypatch.delenv(tpu.TPU_CHIP_COORDINATES_ENV_VAR, raising=False)
+    monkeypatch.delenv(tpu.GKE_TPU_TOPOLOGY_ENV_VAR, raising=False)
+    monkeypatch.delenv(tpu.GKE_TPU_WORKER_ID_ENV_VAR, raising=False)
+    monkeypatch.setitem(sys.modules, "jax", None)
+    monkeypatch.delitem(sys.modules, "torch_tpu", raising=False)
+
+    events = []
+
+    class _IntLike:
+        def __init__(self, v):
+            self._v = v
+
+        def __int__(self):
+            return self._v
+
+    fake_torch_tpu = mock.MagicMock()
+    fake_torch_tpu.tpu.get_chip_coordinates.return_value = [
+        (_IntLike(0), _IntLike(2), _IntLike(0)),
+        (_IntLike(1), _IntLike(2), _IntLike(0)),
     ]
+
+    real_import = __import__
+
+    def _tracking_import(name, *args, **kwargs):
+        if name == "torch_tpu":
+            events.append("import_torch_tpu")
+            return fake_torch_tpu
+        return real_import(name, *args, **kwargs)
+
+    with (
+        patch.object(
+            TPUAcceleratorManager, "get_current_node_tpu_topology", return_value=None
+        ),
+        patch.object(
+            TPUAcceleratorManager, "get_current_node_tpu_worker_id", return_value=None
+        ),
+        patch.object(tpu.importlib.util, "find_spec", return_value=mock.MagicMock()),
+        patch.object(
+            tpu,
+            "wait_for_tpu_vfio_ready",
+            side_effect=lambda: events.append("wait_vfio"),
+        ),
+        patch("builtins.__import__", side_effect=_tracking_import),
+    ):
+        coords = tpu._query_local_tpu_chip_coordinates(num_hosts=4)
+        assert coords == [[0, 2, 0], [1, 2, 0]]
+        assert all(type(v) is int for c in coords for v in c)
+        assert events == ["wait_vfio", "import_torch_tpu"]
+
+
+@pytest.mark.parametrize(
+    "topology, num_hosts, worker_id",
+    [
+        ("4x4", 4, 0),
+        ("4x4", 4, 1),
+        ("4x4", 4, 2),
+        ("4x4", 4, 3),
+        ("4x8", 8, 1),
+        ("4x8", 8, 5),
+        ("4x4x4", 16, 8),
+    ],
+)
+def test_query_local_tpu_chip_coordinates_topology_math_fallback(
+    monkeypatch, topology, num_hosts, worker_id
+):
+    """Derives chip coordinates from TPU_TOPOLOGY + TPU_WORKER_ID without JAX/VFIO."""
+    monkeypatch.setenv(
+        "TPU_WORKER_HOSTNAMES",
+        ",".join(f"10.0.0.{i + 1}" for i in range(num_hosts)),
+    )
+    monkeypatch.delenv(tpu.TPU_CHIP_COORDINATES_ENV_VAR, raising=False)
+    monkeypatch.setenv(tpu.GKE_TPU_TOPOLOGY_ENV_VAR, topology)
+    monkeypatch.setenv(tpu.GKE_TPU_WORKER_ID_ENV_VAR, str(worker_id))
+    monkeypatch.setitem(sys.modules, "jax", None)
+    monkeypatch.setitem(sys.modules, "torch_tpu", None)
+
+    with patch.object(tpu, "wait_for_tpu_vfio_ready") as mock_vfio_wait:
+        coords = tpu._query_local_tpu_chip_coordinates(num_hosts=num_hosts)
+        assert len(coords) == 4
+        assert tpu._get_physical_worker_id_from_coords(coords, topology) == worker_id
+        mock_vfio_wait.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -1270,19 +1450,35 @@ def test_query_local_tpu_chip_coordinates(monkeypatch):
             mock.MagicMock(local_devices=lambda backend: []),
             "requires all worker hostnames",
         ),
-        # A None entry in sys.modules makes `import jax` raise ImportError.
-        ("10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4", None, "JAX is required"),
+        # When JAX, torch_tpu, and topology metadata are all unavailable.
+        (
+            "10.0.0.1,10.0.0.2,10.0.0.3,10.0.0.4",
+            None,
+            "Unable to discover TPU chip coordinates",
+        ),
     ],
 )
 def test_query_local_tpu_chip_coordinates_raises(
     monkeypatch, hostnames, jax_module, match
 ):
     """Coordinate discovery raises RuntimeError when peer hostnames are missing
-    or JAX is not installed."""
+    or all coordinate backends are unavailable."""
     monkeypatch.setenv("TPU_WORKER_HOSTNAMES", hostnames)
+    monkeypatch.delenv(tpu.TPU_CHIP_COORDINATES_ENV_VAR, raising=False)
+    monkeypatch.delenv(tpu.GKE_TPU_TOPOLOGY_ENV_VAR, raising=False)
+    monkeypatch.delenv(tpu.GKE_TPU_WORKER_ID_ENV_VAR, raising=False)
     monkeypatch.setitem(sys.modules, "jax", jax_module)
-    with pytest.raises(RuntimeError, match=match):
-        tpu._query_local_tpu_chip_coordinates(num_hosts=4)
+    monkeypatch.setitem(sys.modules, "torch_tpu", None)
+    with (
+        patch.object(
+            TPUAcceleratorManager, "get_current_node_tpu_topology", return_value=None
+        ),
+        patch.object(
+            TPUAcceleratorManager, "get_current_node_tpu_worker_id", return_value=None
+        ),
+    ):
+        with pytest.raises(RuntimeError, match=match):
+            tpu._query_local_tpu_chip_coordinates(num_hosts=4)
 
 
 if __name__ == "__main__":
