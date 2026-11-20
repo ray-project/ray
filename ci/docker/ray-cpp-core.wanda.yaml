@@ -1,5 +1,7 @@
 name: "ray-cpp-core$ARCH_SUFFIX"
-froms: ["rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"]
+froms:
+  - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
+  - "cr.ray.io/rayproject/bazel-glibc217-$HOSTTYPE"
 dockerfile: ci/docker/ray-cpp-core.Dockerfile
 srcs:
   - .bazelversion

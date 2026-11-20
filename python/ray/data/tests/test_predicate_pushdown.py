@@ -13,6 +13,10 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Dataset
+from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+    ParquetScanner,
+)
+from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Filter,
     Limit,
@@ -23,8 +27,11 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data._internal.util import rows_same
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.datatype import DataType
 from ray.data.expressions import col, lit, udf
@@ -47,6 +54,70 @@ from ray.tests.conftest import *  # noqa
 READ_OPERATOR_PATTERN = (
     r"^(Read\[Read\w+\]" r"|ListFiles\[ListFiles\] -> ReadFiles\[ReadFiles\w*\])"
 )
+
+
+@pytest.mark.parametrize(
+    "partitioning",
+    [None, Partitioning(PartitionStyle.HIVE, field_names=["path"])],
+    ids=["none", "hive"],
+)
+@pytest.mark.parametrize("match_path", [True, False], ids=["path", "directory"])
+def test_synthesized_path_filters_use_output_values(
+    ray_start_regular_shared, tmp_path, monkeypatch, partitioning, match_path
+):
+    directory = tmp_path / "path=foo"
+    directory.mkdir()
+    file = directory / "data with spaces.parquet"
+    pq.write_table(pa.table({"id": [1, 2]}), file)
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    ds = ray.data.read_parquet(
+        str(tmp_path), include_paths=True, partitioning=partitioning
+    )
+    rows = ds.filter(
+        expr=col("path") == (str(file) if match_path else "foo")
+    ).take_all()
+    expected = [{"id": i, "path": str(file)} for i in [1, 2]] if match_path else []
+    assert sorted(rows, key=lambda row: row["id"]) == expected
+
+
+def test_synthesized_path_residual_preserves_read_constraints(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    first = tmp_path / "first.parquet"
+    matching = tmp_path / "matching.parquet"
+    for file in (first, matching):
+        pq.write_table(pa.table({"id": [2]}), file)
+    ctx = ray.data.DataContext.get_current()
+    monkeypatch.setattr(ctx, "use_datasource_v2", True)
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+    ds = ray.data.read_parquet(
+        [str(first), str(matching)],
+        include_paths=True,
+        partitioning=None,
+        merge_schema=True,
+        override_num_blocks=1,
+    )
+    selected = (
+        ds.rename_columns({"path": "source_file"})
+        .filter(expr=col("source_file") == str(matching))
+        .filter(expr=col("id") == 2)
+        .select_columns(["id"])
+    )
+    limited = selected.limit(1)
+    plan = LogicalOptimizer().optimize(limited._logical_plan)
+    assert isinstance(plan, LogicalPlan)
+    (residual,) = get_operators_of_type(plan, Filter)
+    (read,) = get_operators_of_type(plan, ReadFiles)
+
+    assert isinstance(residual, Filter)
+    assert isinstance(read, ReadFiles)
+    assert residual.predicate_expr is not None
+    assert isinstance(read.scanner, ParquetScanner)
+    assert read.scanner.predicate is not None
+    assert set(get_column_references(residual.predicate_expr)) == {"path"}
+    assert set(get_column_references(read.scanner.predicate)) == {"id"}
+    assert selected.count() == 1
+    assert limited.take_all() == [{"id": 2}]
 
 
 def _check_plan_with_flexible_read(

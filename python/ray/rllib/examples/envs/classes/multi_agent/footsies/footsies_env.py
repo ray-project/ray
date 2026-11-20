@@ -3,11 +3,6 @@ from typing import Any, Optional
 
 import numpy as np
 from gymnasium import spaces
-from pettingzoo.utils.env import (
-    ActionType,
-    AgentID,
-    ObsType,
-)
 
 from ray.rllib.env import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -19,6 +14,7 @@ from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_binary i
 from ray.rllib.examples.envs.classes.multi_agent.footsies.game.footsies_game import (
     FootsiesGame,
 )
+from ray.rllib.utils.typing import AgentID, EnvActionType, EnvObsType
 
 import psutil
 
@@ -152,7 +148,7 @@ class FootsiesEnv(MultiAgentEnv):
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
-    ) -> tuple[dict[AgentID, ObsType], dict[AgentID, Any]]:
+    ) -> tuple[dict[AgentID, EnvObsType], dict[AgentID, Any]]:
         """Resets the environment to the starting state
         and returns the initial observations for all agents.
 
@@ -175,9 +171,9 @@ class FootsiesEnv(MultiAgentEnv):
         return observations, {agent: {} for agent in self.agents}
 
     def step(
-        self, actions: dict[AgentID, ActionType]
+        self, actions: dict[AgentID, EnvActionType]
     ) -> tuple[
-        dict[AgentID, ObsType],
+        dict[AgentID, EnvObsType],
         dict[AgentID, float],
         dict[AgentID, bool],
         dict[AgentID, bool],
