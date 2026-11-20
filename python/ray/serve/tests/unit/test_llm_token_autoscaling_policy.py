@@ -47,12 +47,6 @@ async def test_router_report_reaches_app_policy():
         config=SimpleNamespace(look_back_period_s=30),
         raw_metrics={},
     )
-    # Use the actual metrics properties on the target context.
-    from ray.serve.config import AutoscalingContext
-
-    ctx = object.__new__(AutoscalingContext)
-    ctx.__dict__.update(vars(server.get_autoscaling_context.return_value))
-    server.get_autoscaling_context.return_value = ctx
     app._deployment_autoscaling_states[target] = server
     assert app.get_decision_num_replicas(
         {source: 1, target: 0}, _skip_bound_check=True
@@ -60,6 +54,14 @@ async def test_router_report_reaches_app_policy():
     assert not manager.should_autoscale_deployment(source)
     manager.update_running_replica_ids(source, [])
     assert app.get_decision_num_replicas({source: 1, target: 3}) == {}
+
+    from ray.serve.autoscaling_policy import _apply_app_level_autoscaling_config
+
+    app._policy = _apply_app_level_autoscaling_config(
+        lambda contexts: ({source: 2}, {})
+    )
+    with pytest.raises(ValueError, match="Cannot scale metrics-only deployment"):
+        app.get_decision_num_replicas({source: 1})
 
 
 @pytest.mark.parametrize("requests,load,expected", [(0, 20, 2), (1, 0, 1), (0, 0, 0)])
@@ -74,11 +76,12 @@ def test_replicated_router_reports(requests, load, expected):
         config=SimpleNamespace(look_back_period_s=10),
         current_time=20,
         total_num_requests=requests,
-        application_raw_metrics={router: metrics},
+        raw_metrics={},
     )
+    contexts = {server: ctx, router: SimpleNamespace(config=None, raw_metrics=metrics)}
     policy = LLMTokenAutoscalingPolicy(10)
-    assert policy({server: ctx}) == ({server: expected}, {})
+    assert policy(contexts) == ({server: expected}, {})
     metrics["outstanding_effective_prefill_tokens:another"] = metrics[key]
-    assert policy({server: ctx}) == ({}, {})
-    ctx.application_raw_metrics.clear()
-    assert policy({server: ctx}) == ({}, {})
+    assert policy(contexts) == ({}, {})
+    del contexts[router]
+    assert policy(contexts) == ({}, {})

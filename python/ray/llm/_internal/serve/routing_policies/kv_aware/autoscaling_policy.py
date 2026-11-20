@@ -22,18 +22,21 @@ class LLMTokenAutoscalingPolicy:
         self.target_prefill_tokens_per_replica = target_prefill_tokens_per_replica
 
     def __call__(self, contexts):
-        if not contexts:
+        source = next((dep for dep in contexts if dep.name == "LLMRouter"), None)
+        if source is None:
             return {}, {}
-        ctx = next(iter(contexts.values()))
-        source = DeploymentID(name="LLMRouter", app_name=ctx.app_name)
-        metrics = ctx.application_raw_metrics.get(source, {})
+        metrics = contexts[source].raw_metrics or {}
         prefix = OUTSTANDING_EFFECTIVE_PREFILL_TOKENS + ":"
         keys = [key for key in metrics if key.startswith(prefix)]
         if len(keys) != 1:
             return {}, {}
         key = keys[0]
-        target = DeploymentID(name=key[len(prefix) :], app_name=ctx.app_name)
-        if target not in contexts or target == source:
+        target = DeploymentID(name=key[len(prefix) :], app_name=source.app_name)
+        if (
+            target not in contexts
+            or contexts[target].config is None
+            or target == source
+        ):
             return {}, {}
         server = contexts[target]
         events = sorted(
