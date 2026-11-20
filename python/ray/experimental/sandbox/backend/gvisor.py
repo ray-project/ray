@@ -30,7 +30,12 @@ from typing import (
 )
 
 import ray
-from ray.experimental.sandbox._internal import cdi, egress_guard, overlayfs
+from ray.experimental.sandbox._internal import (
+    cdi,
+    egress_guard,
+    orphan_reaper,
+    overlayfs,
+)
 from ray.experimental.sandbox._internal.cgroup import (
     SandboxCgroup,
     SandboxCgroupManager,
@@ -573,6 +578,10 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         # The node's default resolvers (RAY_SANDBOX_DEFAULT_DNS) that a
         # sandbox of this backend has reached.
         self._reachable_node_dns: Set[Tuple[str, ...]] = set()
+        # runsc's fd-parking helper and gofer can outlive runsc and be
+        # orphaned. Adopt and reap those here, since the pod's PID 1 often
+        # doesn't.
+        orphan_reaper.start()
 
     def create_sandbox(self, config: SandboxConfig) -> str:
         """Create a local directory structure and initialize a gVisor sandbox instance."""
@@ -1100,6 +1109,20 @@ class GVisorSandboxBackend(BaseSandboxBackend):
 
     def delete_sandbox(self, sandbox_id: str) -> None:
         """Terminate the sandbox and remove its local directory structure."""
+        if self._delete_sandbox(sandbox_id):
+            # The sandbox's runsc helpers have exited by now. Reap them
+            # before this worker can exit, which would hand them to PID 1.
+            orphan_reaper.reap_now()
+
+    def _delete_sandbox(self, sandbox_id: str) -> bool:
+        """Delete the sandbox, without reaping its runsc helpers.
+
+        Args:
+            sandbox_id: The sandbox to delete.
+
+        Returns:
+            Whether there was a sandbox to delete.
+        """
         meta = self._sandbox_metadata.pop(sandbox_id, None)
         if meta:
             root_dir = meta["root_dir"]
@@ -1139,6 +1162,7 @@ class GVisorSandboxBackend(BaseSandboxBackend):
             # being deleted.
             if meta.get("owner_file"):
                 meta["owner_file"].close()
+        return bool(meta)
 
     def set_egress_allowlist(self, sandbox_id: str, cidrs: List[str]) -> None:
         """Replace the egress allowlist of a running network="public" sandbox.
@@ -1918,8 +1942,11 @@ class GVisorSandboxBackend(BaseSandboxBackend):
                     f"but couldn't resume it afterwards, so it has stopped: {err}"
                 ) from err
         else:
-            # Fully clean up the stopped source sandbox.
-            self.delete_sandbox(sandbox_id)
+            # Fully clean up the stopped source sandbox. Checkpoints are on
+            # the hot path of RL loops, so only wake the reaper thread rather
+            # than scanning for the helpers here.
+            self._delete_sandbox(sandbox_id)
+            orphan_reaper.reap_soon()
 
         ckpt_path_obj = CheckpointPath(
             checkpoint_path,
