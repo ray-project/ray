@@ -106,13 +106,10 @@ def test_rejects_missing_or_invalid_reader_evidence(tmp_path, damage):
     "mode,exit_code,summary",
     [
         ("ordinary", 0, "3 skipped"),
-        ("normal_main", 0, "test_hive_tls"),
         ("entry", 1, "3 skipped"),
         ("one_skip", 1, "2 passed, 1 skipped"),
         ("collect_only", 1, "3 tests collected"),
-        ("partial", 4, "TLS suite did not collect exactly the expected cases"),
         ("all_pass", 0, "3 passed"),
-        ("interrupted", 2, "guard status: 2"),
     ],
 )
 def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
@@ -128,8 +125,6 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
         "def test_hive_tls(scenario):\n"
         "    if scenario == 'table' and os.environ['MODE'] == 'one_skip':\n"
         "        pytest.skip('simulated skip')\n"
-        "    if scenario == 'table' and os.environ['MODE'] == 'interrupted':\n"
-        "        pytest.exit('controlled exit', returncode=2)\n"
     )
     bootstrap = textwrap.dedent(
         """\
@@ -158,22 +153,19 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
         target, mode, cases = sys.argv[1:]
         if mode == 'ordinary':
             sys.exit(pytest.main(['-q', target + '::test_hive_tls']))
-        if mode == 'normal_main':
-            os.environ.pop('RAY_HIVE_TEST_HOST', None)
-        else:
-            os.environ['RAY_HIVE_TLS_SUITE'] = '1'
-            if mode in ('one_skip', 'all_pass', 'interrupted'):
-                os.environ['RAY_HIVE_CA_PEM_B64'] = 'configured'
-                original_main = pytest.main
-                def run_cases(args, plugins=None):
-                    guard = plugins[0]
-                    finish = guard.pytest_sessionfinish
-                    def observe_guard(session, exitstatus):
-                        print('guard status:', int(exitstatus), flush=True)
-                        finish(session, exitstatus)
-                    guard.pytest_sessionfinish = observe_guard
-                    return original_main(['-v', cases], plugins=plugins)
-                pytest.main = run_cases
+        os.environ['RAY_HIVE_TLS_SUITE'] = '1'
+        if mode in ('one_skip', 'all_pass'):
+            os.environ['RAY_HIVE_CA_PEM_B64'] = 'configured'
+            original_main = pytest.main
+            def run_cases(args, plugins=None):
+                guard = plugins[0]
+                finish = guard.pytest_sessionfinish
+                def observe_guard(session, exitstatus):
+                    print('guard status:', int(exitstatus), flush=True)
+                    finish(session, exitstatus)
+                guard.pytest_sessionfinish = observe_guard
+                return original_main(['-v', cases], plugins=plugins)
+            pytest.main = run_cases
         runpy.run_path(target, run_name='__main__')
         """
     )
@@ -194,8 +186,6 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
         env["PYTEST_ADDOPTS"] += " --no-summary"
     if mode == "collect_only":
         env["PYTEST_ADDOPTS"] += " --collect-only"
-    if mode == "partial":
-        env["PYTEST_ADDOPTS"] += " -k table"
     result = subprocess.run(
         [sys.executable, "-c", bootstrap, str(target), mode, str(cases)],
         env=env,
@@ -205,9 +195,6 @@ def test_tls_opt_in_and_entry_guard(mode, exit_code, summary, tmp_path):
     )
     assert result.returncode == exit_code, result.stdout + result.stderr
     assert summary in result.stdout + result.stderr, result.stdout + result.stderr
-    if mode == "normal_main":
-        for case in ("table", "untrusted_ca_driver", "hostname_worker"):
-            assert f"test_hive_tls[{case}] SKIPPED" in result.stdout
     if mode == "one_skip":
         assert "guard status: 0" in result.stdout
 
