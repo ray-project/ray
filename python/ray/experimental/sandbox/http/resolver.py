@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from ray.experimental.sandbox.http.host import SandboxHost
 from ray.experimental.sandbox.http.schemas import SandboxAPISettings
+from ray.experimental.sandbox.placement import image_scheduling_strategy
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -131,6 +132,18 @@ class RayActorHandleResolver:
         Returns:
             The actor handle.
         """
+        image = (ctor_kwargs.get("spec") or {}).get("image")
+        options = dict(actor_options)
+        # A placement that the caller set wins, and Ray takes only one of the
+        # two.
+        if image and not {"scheduling_strategy", "placement_group"} & options.keys():
+            options["scheduling_strategy"] = image_scheduling_strategy(
+                image,
+                num_cpus=options.get("num_cpus"),
+                num_gpus=options.get("num_gpus"),
+                memory=options.get("memory"),
+                resources=options.get("resources"),
+            )
         handle = (
             self._actor_class()
             .options(
@@ -138,7 +151,7 @@ class RayActorHandleResolver:
                 namespace=self._settings.namespace,
                 lifetime="detached",
                 get_if_exists=get_if_exists,
-                **actor_options,
+                **options,
             )
             .remote(**ctor_kwargs)
         )

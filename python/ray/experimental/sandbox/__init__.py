@@ -32,6 +32,7 @@ from ray.experimental.sandbox.image_manager import (
     ImageManager,
     get_default_oci_spec,
 )
+from ray.experimental.sandbox.placement import image_scheduling_strategy
 from ray.experimental.sandbox.runtime import SandboxRuntime
 from ray.experimental.sandbox.sandbox import Sandbox
 from ray.util.annotations import PublicAPI
@@ -62,7 +63,10 @@ def create(
     Spawns a :class:`~ray.experimental.sandbox.Sandbox` actor on the Ray cluster to manage
     the sandbox lifecycle and returns an :class:`~ray.actor.ActorHandle`. For low-level local
     sandbox management on the current node (e.g., inside custom worker actors), use
-    :class:`~ray.experimental.sandbox.runtime.SandboxRuntime` instead.
+    :class:`~ray.experimental.sandbox.runtime.SandboxRuntime` instead. The actor
+    prefers the node that ``image`` maps to, so sandboxes of one image share that
+    node's image cache; see
+    :func:`~ray.experimental.sandbox.image_scheduling_strategy`.
 
     The sandbox writes to a private copy-on-write overlay over its image.
     Sandboxes that share an image don't see each other's writes, the cached
@@ -131,6 +135,15 @@ def create(
         actor_opts["num_gpus"] = num_gpus
     if resources:
         actor_opts["resources"] = resources
+    # A caller's own placement wins, and Ray takes only one of the two.
+    if "scheduling_strategy" not in actor_opts and "placement_group" not in actor_opts:
+        actor_opts["scheduling_strategy"] = image_scheduling_strategy(
+            image,
+            num_cpus=actor_opts.get("num_cpus"),
+            num_gpus=actor_opts.get("num_gpus"),
+            memory=actor_opts.get("memory"),
+            resources=resources,
+        )
 
     return Sandbox.options(**actor_opts).remote(
         image=image,
@@ -257,6 +270,7 @@ __all__ = [
     "BaseImageManager",
     "ImageManager",
     "get_default_oci_spec",
+    "image_scheduling_strategy",
     "BaseSandboxBackend",
     "GVisorSandboxBackend",
     "ExecResult",
