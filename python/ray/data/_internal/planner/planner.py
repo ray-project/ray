@@ -38,6 +38,7 @@ from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractFrom,
     AbstractUDFMap,
+    AlignToSchema,
     Count,
     Download,
     Filter,
@@ -74,6 +75,7 @@ from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_shuffle_batches_op import plan_shuffle_batches_op
 from ray.data._internal.planner.plan_udf_map_op import (
+    plan_align_to_schema_op,
     plan_filter_op,
     plan_project_op,
     plan_streaming_repartition_op,
@@ -330,6 +332,7 @@ class Planner:
         Mix: plan_mix_op,
         Union: plan_union_op,
         Zip: plan_zip_op,
+        AlignToSchema: plan_align_to_schema_op,
         Limit: plan_limit_op,
         Count: plan_count_op,
         Project: plan_project_op,
