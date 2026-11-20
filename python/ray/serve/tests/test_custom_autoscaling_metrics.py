@@ -331,5 +331,65 @@ class TestCustomServeMetrics:
         assert response == "ok"
 
 
+def test_metric_source_observed_replica_count():
+    from ray.serve._private.autoscaling_state import AutoscalingStateManager
+    from ray.serve._private.common import ReplicaID
+    from ray.serve._private.config import AutoscalingMetricsConfig
+    from ray.serve.config import AutoscalingMetricsContext
+
+    manager = AutoscalingStateManager()
+    dep = DeploymentID(name="Reporter", app_name="app")
+    replica = ReplicaID("a", dep)
+    manager.configure_metrics_source(dep, AutoscalingMetricsConfig())
+    manager.update_running_replica_ids(dep, [replica])
+    ctx = manager._app_autoscaling_states["app"]._metrics_source_context(dep)
+    assert ctx.running_replicas == [replica]
+    assert ctx.current_num_replicas == 1
+    assert type(ctx) is AutoscalingMetricsContext
+    assert not hasattr(ctx, "config")
+    assert not hasattr(ctx, "target_num_replicas")
+
+
+def test_metric_source_weights_last_sample_until_now():
+    import time
+
+    from ray.serve._private.autoscaling_state import AutoscalingStateManager
+    from ray.serve._private.common import (
+        ReplicaID,
+        ReplicaMetricReport,
+        TimeStampedValue,
+    )
+    from ray.serve._private.config import AutoscalingMetricsConfig
+
+    manager = AutoscalingStateManager()
+    dep = DeploymentID(name="Reporter", app_name="app")
+    replica = ReplicaID("a", dep)
+    manager.configure_metrics_source(dep, AutoscalingMetricsConfig())
+    manager.update_running_replica_ids(dep, [replica])
+    now = time.time()
+    series = [TimeStampedValue(now - 10, 0.0), TimeStampedValue(now - 5, 100.0)]
+    manager.record_request_metrics_for_replica(
+        ReplicaMetricReport(replica_id=replica, timestamp=now, metrics={"m": series})
+    )
+    ctx = manager._app_autoscaling_states["app"]._metrics_source_context(dep)
+    # The last sample holds until now, the same as for an autoscaled deployment.
+    assert ctx.aggregated_metrics["m"][replica] == pytest.approx(50, abs=2)
+
+
+def test_metric_source_configuration_round_trip():
+    from ray.serve._private.config import AutoscalingMetricsConfig, DeploymentConfig
+
+    config = DeploymentConfig(
+        num_replicas=2,
+        autoscaling_metrics_config={"metrics_interval_s": 1, "look_back_period_s": 10},
+    )
+    restored = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert restored.autoscaling_config is None
+    assert restored.num_replicas == 2
+    assert restored.autoscaling_metrics_config == AutoscalingMetricsConfig(
+        metrics_interval_s=1, look_back_period_s=10
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

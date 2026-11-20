@@ -50,10 +50,16 @@ from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
 )
-from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.serve.config import (
+    AggregationFunction,
+    AutoscalingContext,
+    AutoscalingMetricsContext,
+    AutoscalingPolicy,
+)
 from ray.util import metrics
 
 if TYPE_CHECKING:
+    from ray.serve._private.config import AutoscalingMetricsConfig
     from ray.serve.config import AutoscalingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -280,6 +286,81 @@ def _log_dropped_handle(
             f"because no update was received for {timeout_s:.1f}s. "
             f"Peak ongoing requests was: {peak_requests}."
         )
+
+
+def merge_and_aggregate_timeseries(
+    timeseries_list: List[TimeSeries],
+    aggregation_function: AggregationFunction,
+) -> float:
+    """Aggregate and average a metric from timeseries data using instantaneous merge.
+
+    Args:
+        timeseries_list: A list of TimeSeries (TimeSeries), where each
+            TimeSeries represents measurements from a single source (replica, handle, etc.).
+            Each list is sorted by timestamp ascending.
+
+        aggregation_function: How to aggregate the merged series.
+
+    Returns:
+        The aggregated value of the metric
+
+    Example:
+        If the timeseries_list is:
+        [
+            [
+                TimeStampedValue(timestamp=0.1, value=5.0),
+                TimeStampedValue(timestamp=0.2, value=7.0),
+            ],
+            [
+                TimeStampedValue(timestamp=0.2, value=3.0),
+                TimeStampedValue(timestamp=0.3, value=1.0),
+            ]
+        ]
+        Then the returned value will be:
+        (5.0*0.1 + 7.0*0.2 + 3.0*0.2 + 1.0*0.3) / (0.1 + 0.2 + 0.2 + 0.3) = 4.5 / 0.8 = 5.625
+    """
+
+    if not timeseries_list:
+        return 0.0
+
+    # Use instantaneous merge approach - no arbitrary windowing needed
+    merged_timeseries = merge_instantaneous_total(timeseries_list)
+    if merged_timeseries:
+        # assume that the last recorded metric is valid for last_window_s seconds
+        last_metric_time = merged_timeseries[-1].timestamp
+        # we dont want to make any assumption about how long the last metric will be valid
+        # only conclude that the last metric is valid for last_window_s seconds that is the
+        # difference between the current time and the last metric recorded time
+        last_window_s = time.time() - last_metric_time
+        # adding a check to negative values caused by clock skew
+        # between replicas and controller. Also add a small epsilon to avoid division by zero
+        if last_window_s <= 0:
+            last_window_s = 1e-3
+
+        # Exclude early "partial" period: when series have misaligned start times,
+        # late-starting series are implicitly 0 before their first data point, which
+        # undercounts the total and biases aggregations. Start the window at the
+        # timestamp when all series have contributed at least one point.
+        # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+        # to 10ms; if aligned_start is before the first merged point, the gap would
+        # be treated as 0 and bias the average downward.
+        window_start = None
+        non_empty_series = [ts for ts in timeseries_list if ts]
+        if len(non_empty_series) > 1:
+            aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+            if aligned_start <= merged_timeseries[-1].timestamp:
+                window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
+        # Calculate the aggregated metric value
+        value = aggregate_timeseries(
+            merged_timeseries,
+            aggregation_function=aggregation_function,
+            last_window_s=last_window_s,
+            window_start=window_start,
+        )
+        return value if value is not None else 0.0
+
+    return 0.0
 
 
 class DeploymentAutoscalingState:
@@ -796,75 +877,12 @@ class DeploymentAutoscalingState:
         self,
         timeseries_list: List[TimeSeries],
     ) -> float:
-        """Aggregate and average a metric from timeseries data using instantaneous merge.
-
-        Args:
-            timeseries_list: A list of TimeSeries (TimeSeries), where each
-                TimeSeries represents measurements from a single source (replica, handle, etc.).
-                Each list is sorted by timestamp ascending.
-
-        Returns:
-            The time-weighted average of the metric
-
-        Example:
-            If the timeseries_list is:
-            [
-                [
-                    TimeStampedValue(timestamp=0.1, value=5.0),
-                    TimeStampedValue(timestamp=0.2, value=7.0),
-                ],
-                [
-                    TimeStampedValue(timestamp=0.2, value=3.0),
-                    TimeStampedValue(timestamp=0.3, value=1.0),
-                ]
-            ]
-            Then the returned value will be:
-            (5.0*0.1 + 7.0*0.2 + 3.0*0.2 + 1.0*0.3) / (0.1 + 0.2 + 0.2 + 0.3) = 4.5 / 0.8 = 5.625
-        """
-
-        if not timeseries_list:
-            return 0.0
-
-        # Use instantaneous merge approach - no arbitrary windowing needed
-        merged_timeseries = merge_instantaneous_total(timeseries_list)
-        if merged_timeseries:
-            # assume that the last recorded metric is valid for last_window_s seconds
-            last_metric_time = merged_timeseries[-1].timestamp
-            # we dont want to make any assumption about how long the last metric will be valid
-            # only conclude that the last metric is valid for last_window_s seconds that is the
-            # difference between the current time and the last metric recorded time
-            last_window_s = time.time() - last_metric_time
-            # adding a check to negative values caused by clock skew
-            # between replicas and controller. Also add a small epsilon to avoid division by zero
-            if last_window_s <= 0:
-                last_window_s = 1e-3
-
-            # Exclude early "partial" period: when series have misaligned start times,
-            # late-starting series are implicitly 0 before their first data point, which
-            # undercounts the total and biases aggregations. Start the window at the
-            # timestamp when all series have contributed at least one point.
-            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
-            # to 10ms; if aligned_start is before the first merged point, the gap would
-            # be treated as 0 and bias the average downward.
-            window_start = None
-            non_empty_series = [ts for ts in timeseries_list if ts]
-            if len(non_empty_series) > 1:
-                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
-                if aligned_start <= merged_timeseries[-1].timestamp:
-                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
-
-            # Calculate the aggregated metric value
-            value = aggregate_timeseries(
-                merged_timeseries,
-                # The field is declared `Union[str, AggregationFunction]`, but a
-                # pydantic validator coerces it to `AggregationFunction`.
-                aggregation_function=self._config.aggregation_function,  # type: ignore[arg-type]
-                last_window_s=last_window_s,
-                window_start=window_start,
-            )
-            return value if value is not None else 0.0
-
-        return 0.0
+        return merge_and_aggregate_timeseries(
+            timeseries_list,
+            # The field is declared `Union[str, AggregationFunction]`, but a
+            # pydantic validator coerces it to `AggregationFunction`.
+            self._config.aggregation_function,  # type: ignore[arg-type]
+        )
 
     def get_total_num_requests(self) -> float:
         """Total ongoing requests, aggregated at the controller from raw timeseries.
@@ -1046,12 +1064,17 @@ class ApplicationAutoscalingState:
         app_name: ApplicationName,
     ):
         self._app_name = app_name
+        self._metric_sources: Dict[DeploymentID, AutoscalingMetricsConfig] = {}
+        self._source_reports: Dict[
+            DeploymentID, Dict[ReplicaID, ReplicaMetricReport]
+        ] = defaultdict(dict)
+        self._source_running: Dict[DeploymentID, Set[ReplicaID]] = {}
         self._deployment_autoscaling_states: Dict[
             DeploymentID, DeploymentAutoscalingState
         ] = {}
         self._policy: Optional[
             Callable[
-                [Dict[DeploymentID, AutoscalingContext]],
+                [Dict[DeploymentID, AutoscalingMetricsContext]],
                 Tuple[
                     Dict[DeploymentID, Union[int, float]],
                     Optional[Dict[DeploymentID, Dict]],
@@ -1139,6 +1162,39 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
+    def _metrics_source_context(self, dep: DeploymentID) -> AutoscalingMetricsContext:
+        settings = self._metric_sources[dep]
+        now = time.time()
+        running = list(self._source_running.get(dep, ()))
+        metrics: Dict[str, Dict[ReplicaID, TimeSeries]] = defaultdict(dict)
+        for replica in running:
+            report = self._source_reports[dep].get(replica)
+            if report and now - report.timestamp <= max(
+                settings.look_back_period_s, 2 * settings.metrics_interval_s
+            ):
+                for key, series in report.metrics.items():
+                    if series:
+                        metrics[key][replica] = series
+
+        return AutoscalingMetricsContext(
+            deployment_id=dep,
+            deployment_name=dep.name,
+            app_name=dep.app_name,
+            current_num_replicas=len(running),
+            running_replicas=running,
+            raw_metrics=dict(metrics),
+            aggregated_metrics=lambda: {
+                key: {
+                    rid: merge_and_aggregate_timeseries(
+                        [series], settings.aggregation_function
+                    )
+                    for rid, series in replicas.items()
+                }
+                for key, replicas in metrics.items()
+            },
+            current_time=now,
+        )
+
     def _validate_policy_state(
         self, policy_state: Optional[Dict[DeploymentID, Dict[str, Any]]]
     ):
@@ -1169,7 +1225,7 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
-            autoscaling_contexts = {
+            target_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
                     self._policy_state.get(deployment_id, {})
@@ -1179,6 +1235,15 @@ class ApplicationAutoscalingState:
                 for deployment_id, state in self._deployment_autoscaling_states.items()
                 if deployment_id in deployment_to_target_num_replicas
             }
+
+            autoscaling_contexts: Dict[DeploymentID, AutoscalingMetricsContext] = dict(
+                target_contexts
+            )
+            for dep in (
+                self._metric_sources.keys() & deployment_to_target_num_replicas.keys()
+            ):
+                if dep not in autoscaling_contexts:
+                    autoscaling_contexts[dep] = self._metrics_source_context(dep)
             # Time the policy execution
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
@@ -1213,7 +1278,7 @@ class ApplicationAutoscalingState:
                 ]
                 deployment_autoscaling_state.record_autoscaling_metrics(
                     num_replicas,  # type: ignore[arg-type]
-                    autoscaling_contexts[deployment_id].total_num_requests,
+                    target_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
                 )
@@ -1241,6 +1306,13 @@ class ApplicationAutoscalingState:
     def update_running_replica_ids(
         self, deployment_id: DeploymentID, running_replicas: List[ReplicaID]
     ):
+        if deployment_id in self._metric_sources:
+            self._source_running[deployment_id] = set(running_replicas)
+            reports = self._source_reports[deployment_id]
+            for stopped in reports.keys() - self._source_running[deployment_id]:
+                del reports[stopped]
+        if deployment_id not in self._deployment_autoscaling_states:
+            return
         self._deployment_autoscaling_states[deployment_id].update_running_replica_ids(
             running_replicas
         )
@@ -1288,6 +1360,11 @@ class ApplicationAutoscalingState:
         self, replica_metric_report: ReplicaMetricReport
     ):
         dep_id = replica_metric_report.replica_id.deployment_id
+        if dep_id in self._metric_sources:
+            reports = self._source_reports[dep_id]
+            previous = reports.get(replica_metric_report.replica_id)
+            if previous is None or previous.timestamp < replica_metric_report.timestamp:
+                reports[replica_metric_report.replica_id] = replica_metric_report
         # Defensively guard against delayed replica metrics arriving
         # after the deployment's been deleted
         if dep_id in self._deployment_autoscaling_states:
@@ -1353,6 +1430,7 @@ class AutoscalingStateManager:
 
     def deregister_deployment(self, deployment_id: DeploymentID):
         """Remove deployment from tracking."""
+        self.configure_metrics_source(deployment_id, None)
         app_state = self._app_autoscaling_states.get(deployment_id.app_name)
         if app_state:
             logger.info(
@@ -1376,6 +1454,18 @@ class AutoscalingStateManager:
         if app_name in self._app_autoscaling_states:
             logger.info(f"Deregistering autoscaling state for application {app_name}")
             self._app_autoscaling_states.pop(app_name, None)
+
+    def configure_metrics_source(self, deployment_id, config):
+        app = self._app_autoscaling_states.get(deployment_id.app_name)
+        if config is not None:
+            if app is None:
+                app = ApplicationAutoscalingState(deployment_id.app_name)
+                self._app_autoscaling_states[deployment_id.app_name] = app
+            app._metric_sources[deployment_id] = config
+        elif app is not None:
+            app._metric_sources.pop(deployment_id, None)
+            app._source_reports.pop(deployment_id, None)
+            app._source_running.pop(deployment_id, None)
 
     def _application_has_policy(self, app_name: ApplicationName) -> bool:
         return (

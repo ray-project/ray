@@ -259,6 +259,13 @@ message DeploymentConfig {
   // Extra replicas allowed during a rolling restart, as a percentage of the
   // target count. Defaults to 0, which stops old replicas before starting new ones.
   int32 max_surge_percent = 25;
+  AutoscalingMetricsConfig autoscaling_metrics_config = 26;
+}
+
+message AutoscalingMetricsConfig {
+  double metrics_interval_s = 1;
+  double look_back_period_s = 2;
+  string aggregation_function = 3;
 }
 
 // Configuration of the HTTP response returned when a request is rejected due

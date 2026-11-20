@@ -18,7 +18,11 @@ from ray.serve._private.constants import (
     SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
     SERVE_LOGGER_NAME,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingContext
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingContext,
+    AutoscalingMetricsContext,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -261,14 +265,14 @@ def _apply_autoscaling_config(
 
 def _apply_app_level_autoscaling_config(
     policy_func: Callable[
-        [Dict[DeploymentID, AutoscalingContext]],
+        [Dict[DeploymentID, AutoscalingMetricsContext]],
         Tuple[
             Dict[DeploymentID, Union[int, float]],
             Optional[Dict[DeploymentID, Dict]],
         ],
     ]
 ) -> Callable[
-    [Dict[DeploymentID, AutoscalingContext]],
+    [Dict[DeploymentID, AutoscalingMetricsContext]],
     Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
 ]:
     """Wraps an application-level custom policy function to automatically apply per-deployment:
@@ -279,13 +283,14 @@ def _apply_app_level_autoscaling_config(
 
     @functools.wraps(policy_func)
     def wrapped_policy(
-        contexts: Dict[DeploymentID, AutoscalingContext]
+        contexts: Dict[DeploymentID, AutoscalingMetricsContext]
     ) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]]:
 
         # Store the policy state per deployment
         state_per_deployment = {}
         for dep_id, ctx in contexts.items():
-            state_per_deployment[dep_id] = ctx.policy_state.copy()
+            if isinstance(ctx, AutoscalingContext):
+                state_per_deployment[dep_id] = ctx.policy_state.copy()
 
         # Send to the actual policy
         desired_num_replicas_dict, updated_custom_policy_state = policy_func(contexts)
@@ -295,6 +300,10 @@ def _apply_app_level_autoscaling_config(
         final_decisions: Dict[DeploymentID, int] = {}
         final_state: Dict[DeploymentID, Dict] = {}
         for dep_id, ctx in contexts.items():
+            if not isinstance(ctx, AutoscalingContext):
+                if dep_id in desired_num_replicas_dict:
+                    raise ValueError(f"Cannot scale metrics-only deployment {dep_id}")
+                continue
             custom_policy_state_per_deployment = (
                 updated_custom_policy_state.get(dep_id) or {}
             ).copy()
