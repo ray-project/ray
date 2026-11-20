@@ -76,66 +76,176 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Reader features the V2 reader handles. Tables that need others (deletion
-# vectors, column mapping, ...) are read with the V1 reader.
-_SUPPORTED_READER_FEATURES = frozenset({"timestampNtz"})
+# Reader features this reader handles. ``columnMapping`` only with the mapping
+# mode ``none``, which ``check_delta_table_is_readable`` checks.
+_SUPPORTED_READER_FEATURES = frozenset({"timestampNtz", "columnMapping"})
+
+# PyArrow scan options that only tune how the V1 reader read; the V2 reader
+# sets its own batch size, readahead and threads, so it ignores them.
+_IGNORED_SCAN_OPTIONS = frozenset(
+    {
+        "batch_size",
+        "batch_readahead",
+        "fragment_readahead",
+        "use_threads",
+        "cache_metadata",
+        "memory_pool",
+    }
+)
 
 _INT32_MAX = 2**31 - 1
 
 
-def delta_datasource_v2_unsupported_reason(
-    table: "DeltaTable", *, include_paths: bool
-) -> Optional[str]:
-    """Why ``table`` can't be read with :class:`DeltaDatasourceV2`, if it can't.
+def column_mapping_error(mode: str) -> NotImplementedError:
+    """The error for a table that uses column mapping.
 
-    ``read_delta`` reads the tables this rejects with the V1 reader, as it
-    does reads that pass PyArrow scan options. V1 can read some of them:
-    partition columns of types V2 doesn't parse, a table's own ``path`` column
-    with ``include_paths``, and reader features the installed ``deltalake``
-    reads through PyArrow (``variantType`` in 1.6). V2 needs to support these
-    before V1 is removed. V1 rejects the rest, such as column mapping and
-    deletion vectors, with the same error as before.
+    Args:
+        mode: The table's ``delta.columnMapping.mode``.
+
+    Returns:
+        The error to raise.
+    """
+    return NotImplementedError(
+        "This Delta table uses column mapping (`delta.columnMapping.mode` is "
+        f"{mode!r}), which `ray.data.read_delta` doesn't support yet. Its data "
+        "files store columns under physical names that only the Delta log maps "
+        "to the table's column names, so reading them would return nulls or "
+        "wrong columns. Follow https://github.com/ray-project/ray/issues/64854 "
+        "for support."
+    )
+
+
+def deletion_vectors_error(cause: str) -> RuntimeError:
+    """The error for a table that declares deletion vectors.
+
+    Args:
+        cause: What found the feature, kept for anyone debugging deeper.
+
+    Returns:
+        The error to raise.
+    """
+    # The restriction is in reading the data files with pyarrow, which can't
+    # apply the deletion-vector bitmaps, so honouring them is impossible on
+    # that path, and reading would return deleted rows. Tables are rejected on
+    # the *declared* reader feature, so a table with deletion vectors enabled
+    # but none written is rejected too. Don't suggest upgrading: it won't help.
+    return RuntimeError(
+        "This Delta table declares the `deletionVectors` reader feature, which "
+        "`ray.data.read_delta` cannot honour: it reads the data files with "
+        "pyarrow, which can't apply deletion vectors. Upgrading deltalake will "
+        "not change this, and note the table is rejected for *declaring* the "
+        "feature, whether or not any deletion vectors have actually been "
+        "written.\n"
+        "\n"
+        "Reading it with Ray Data needs the `delta.enableDeletionVectors"
+        "` table property turned off and the feature dropped from the "
+        "table's protocol. That rewrites data files and changes what "
+        "other readers and writers see, so it is worth reading your "
+        "Delta engine's documentation on removing the feature before "
+        "doing it -- some engines, Databricks included, enable deletion "
+        "vectors by default. If the property is already off, the "
+        "declaration can linger until existing deletion vectors are "
+        "purged and the feature is dropped.\n"
+        "\n"
+        "If reading deletion-vector tables directly matters to you, "
+        "please open or comment on a Ray issue -- it would need a read "
+        "path that can apply them, and knowing there is demand helps us "
+        "prioritise it.\n"
+        "\n"
+        f"Underlying error: {cause}"
+    )
+
+
+def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -> None:
+    """Raise if :class:`DeltaDatasourceV2` can't read ``table``.
+
+    Column mapping and deletion vectors get the errors the V1 reader raised.
 
     Args:
         table: The table, opened at the version to read.
         include_paths: The read's ``include_paths`` argument.
 
-    Returns:
-        A short reason for the V1 fallback, or ``None`` if V2 can read it.
+    Raises:
+        NotImplementedError: If the table needs a feature this reader doesn't
+            support yet: column mapping, a reader version or feature it
+            doesn't know, or a partition column type it doesn't parse.
+        RuntimeError: If the table declares deletion vectors.
+        ValueError: If ``include_paths`` would replace the table's own
+            ``path`` column.
     """
-    try:
-        protocol = table.protocol()
-        # Reader version 2 adds only column mapping, which this reader doesn't
-        # support yet. Version 3 lists the features it needs, checked below.
-        if protocol.min_reader_version == 2:
-            return "the table needs reader version 2 (column mapping)"
-        if protocol.min_reader_version not in (1, 3):
-            return f"the table needs reader version {protocol.min_reader_version}"
-        unsupported_features = (
-            set(protocol.reader_features or []) - _SUPPORTED_READER_FEATURES
+    protocol = table.protocol()
+    metadata = table.metadata()
+    mode = (metadata.configuration or {}).get("delta.columnMapping.mode") or "none"
+    # Reader version 2 and the ``columnMapping`` feature only allow column
+    # mapping. With the mode ``none``, the data files use the column names.
+    if mode.lower() != "none":
+        raise column_mapping_error(mode)
+    features = set(protocol.reader_features or [])
+    if "deletionVectors" in features:
+        raise deletion_vectors_error(
+            "the table's protocol lists the `deletionVectors` reader feature."
         )
-        if unsupported_features:
-            return f"the table needs the reader features {sorted(unsupported_features)}"
-        metadata = table.metadata()
-        configuration = metadata.configuration or {}
-        if configuration.get("delta.columnMapping.mode", "none") != "none":
-            return "the table uses column mapping"
-        schema = pa.schema(table.schema().to_arrow())
-        unsupported_partitions = {
-            name: str(schema.field(name).type)
-            for name in metadata.partition_columns
-            if not is_supported_partition_type(schema.field(name).type)
-        }
-        if unsupported_partitions:
-            return (
-                "the partition columns have types the V2 reader doesn't "
-                f"support: {unsupported_partitions}"
-            )
-        if include_paths and "path" in schema.names:
-            return "the table has its own `path` column and include_paths is set"
-    except Exception as e:  # Fail closed: when in doubt, read with V1.
-        return f"the table couldn't be inspected ({type(e).__name__}: {e})"
-    return None
+    if protocol.min_reader_version not in (1, 2, 3):
+        raise NotImplementedError(
+            f"This Delta table needs reader version {protocol.min_reader_version}, "
+            "which `ray.data.read_delta` doesn't support."
+        )
+    unsupported_features = features - _SUPPORTED_READER_FEATURES
+    if unsupported_features:
+        raise NotImplementedError(
+            f"This Delta table needs the reader features "
+            f"{sorted(unsupported_features)}, which `ray.data.read_delta` "
+            "doesn't support yet."
+        )
+    schema = pa.schema(table.schema().to_arrow())
+    unsupported_partitions = {
+        name: str(schema.field(name).type)
+        for name in metadata.partition_columns
+        if not is_supported_partition_type(schema.field(name).type)
+    }
+    if unsupported_partitions:
+        raise NotImplementedError(
+            "`ray.data.read_delta` doesn't support the types of the partition "
+            f"columns {unsupported_partitions} yet."
+        )
+    if include_paths and "path" in schema.names:
+        raise ValueError(
+            "The Delta table has its own `path` column, which "
+            "`include_paths=True` would replace with the data file paths. Read "
+            "it without `include_paths`."
+        )
+
+
+def check_delta_scan_options(arrow_parquet_args: Dict[str, Any]) -> None:
+    """Check ``read_delta``'s PyArrow scan options.
+
+    The V2 reader sets its own batch size, readahead and threads, so the
+    options that tuned those are ignored, with a warning. Any other option
+    would change what is read, so it is rejected rather than dropped.
+
+    Args:
+        arrow_parquet_args: ``read_delta``'s ``**arrow_parquet_args``.
+
+    Raises:
+        ValueError: If an option other than the ignored ones is passed.
+    """
+    if "filter" in arrow_parquet_args:
+        raise ValueError(
+            "`filter=` on `read_delta` is not supported. Use "
+            "`ray.data.read_delta(path).filter(expr=expr)` instead."
+        )
+    unsupported = sorted(set(arrow_parquet_args) - _IGNORED_SCAN_OPTIONS)
+    if unsupported:
+        raise ValueError(
+            f"`read_delta` doesn't take the PyArrow scan options {unsupported}. "
+            f"It accepts only {sorted(_IGNORED_SCAN_OPTIONS)}, and ignores them."
+        )
+    if arrow_parquet_args:
+        logger.warning(
+            "`read_delta` ignores the PyArrow scan options %s: the reader sets "
+            "its own batch size, readahead and threads.",
+            sorted(arrow_parquet_args),
+        )
 
 
 @dataclass(frozen=True)
@@ -148,16 +258,12 @@ class DeltaTableInfo:
     Attributes:
         table_uri: The table URI, as ``DeltaTable.table_uri`` reports it.
         version: The version the table was opened at.
-        unsupported_reason: Why the V2 reader can't read the table, or
-            ``None`` if it can.
-        schema: The table schema. Empty if ``unsupported_reason`` is set.
-        partition_columns: The partition columns. Empty if
-            ``unsupported_reason`` is set.
+        schema: The table schema.
+        partition_columns: The partition columns.
     """
 
     table_uri: str
     version: int
-    unsupported_reason: Optional[str]
     schema: pa.Schema
     partition_columns: Tuple[str, ...]
 
@@ -169,26 +275,20 @@ class DeltaTableInfo:
 
         Args:
             table: The table.
-            include_paths: The read's ``include_paths`` argument, which the V2
-                check takes.
+            include_paths: The read's ``include_paths`` argument.
 
         Returns:
             The table's description.
+
+        Raises:
+            Exception: What ``check_delta_table_is_readable`` raises.
         """
-        reason = delta_datasource_v2_unsupported_reason(
-            table, include_paths=include_paths
-        )
+        check_delta_table_is_readable(table, include_paths=include_paths)
         return cls(
             table_uri=table.table_uri,
             version=table.version(),
-            unsupported_reason=reason,
-            # The check reads both; they're needed only if it passed.
-            schema=pa.schema(table.schema().to_arrow())
-            if reason is None
-            else pa.schema([]),
-            partition_columns=(
-                tuple(table.metadata().partition_columns) if reason is None else ()
-            ),
+            schema=pa.schema(table.schema().to_arrow()),
+            partition_columns=tuple(table.metadata().partition_columns),
         )
 
 
@@ -198,16 +298,14 @@ def _open_and_load_table(
     storage_options: Optional[Dict[str, Any]],
     partition_filters: Optional[List[Any]],
     include_paths: bool,
-) -> Tuple[DeltaTableInfo, Optional[pa.Table]]:
-    """Open the table and, if V2 can read it, load its ``add`` actions."""
+) -> Tuple[DeltaTableInfo, pa.Table]:
+    """Open and check the table, and load its ``add`` actions."""
     from deltalake import DeltaTable
 
     from ray.data.read_api import _delta_partition_filter_kwargs
 
     table = DeltaTable(table_uri, version=version, storage_options=storage_options)
     info = DeltaTableInfo.from_table(table, include_paths=include_paths)
-    if info.unsupported_reason is not None:
-        return info, None
     if partition_filters is not None:
         # Rejects what the V1 reader rejects.
         _delta_partition_filter_kwargs(table, partition_filters)
@@ -227,7 +325,7 @@ def open_delta_table(
     partition_filters: Optional[List[Any]],
     include_paths: bool,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-) -> Tuple[DeltaTableInfo, "ObjectRef[Optional[pa.Table]]"]:
+) -> Tuple[DeltaTableInfo, "ObjectRef[pa.Table]"]:
     """Open a Delta table once, in a Ray task, for :class:`DeltaDatasourceV2`.
 
     ``deltalake`` has no metadata-only load
@@ -247,12 +345,12 @@ def open_delta_table(
         ray_remote_args: Options for the task, such as its ``runtime_env``.
 
     Returns:
-        The table's description, and a reference to its ``add`` actions, which
-        are ``None`` if the V2 reader can't read the table.
+        The table's description, and a reference to its ``add`` actions.
 
     Raises:
         Exception: What opening or checking the table raised, such as
-            ``deltalake``'s ``TableNotFoundError`` or a ``ValueError`` for
+            ``deltalake``'s ``TableNotFoundError``, what
+            ``check_delta_table_is_readable`` raises, or a ``ValueError`` for
             invalid ``partition_filters``.
     """
     import ray
@@ -330,11 +428,6 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             if isinstance(table, DeltaTableInfo)
             else DeltaTableInfo.from_table(table, include_paths=include_paths)
         )
-        if info.unsupported_reason is not None:
-            raise ValueError(
-                f"The V2 reader can't read the Delta table {info.table_uri!r}: "
-                f"{info.unsupported_reason}."
-            )
         # Pinned here so every listing task, retry and re-execution reads the
         # same version, even if the table changes in the meantime.
         self._snapshot = DeltaTableSnapshot(
