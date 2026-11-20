@@ -685,7 +685,7 @@ def _per_image_table(scans: Sequence[ImageScan], max_rows: Optional[int]) -> lis
             rows.append(f"| `{scan.image.name}` | | | not scanned | | |")
             continue
         fixable, no_fix = _split_by_fixable(scan)
-        suppressed = len(scan.gated(suppressed=True))
+        suppressed = len(scan.gated_by_key(suppressed=True))
         rows.append(
             f"| `{scan.image.name}` | `{scan.image.digest[:19]}` | {scan.packages} "
             f"| {_critical_high(fixable)} | {_critical_high(no_fix)} | {suppressed} |"
@@ -969,8 +969,10 @@ def write_report(
     """Write report.md, vulns.csv and summary.json; return the exit code."""
     output_dir.mkdir(parents=True, exist_ok=True)
     report = render_markdown(scans, scanner, issues=issues, files_note=files_note)
-    (output_dir / "report.md").write_text(report)
+    (output_dir / "report.md").write_text(report, encoding="utf-8")
     write_csv(output_dir / "vulns.csv", scans, build)
     summary = build_summary(scans, scanner, build, issues)
-    (output_dir / "summary.json").write_text(json.dumps(summary, indent=2) + "\n")
+    (output_dir / "summary.json").write_text(
+        json.dumps(summary, indent=2) + "\n", encoding="utf-8"
+    )
     return exit_code(scans, issues)
