@@ -295,6 +295,10 @@ def _apply_app_level_autoscaling_config(
         final_decisions: Dict[DeploymentID, int] = {}
         final_state: Dict[DeploymentID, Dict] = {}
         for dep_id, ctx in contexts.items():
+            if ctx.config is None:
+                if dep_id in desired_num_replicas_dict:
+                    raise ValueError(f"Cannot scale metrics-only deployment {dep_id}")
+                continue
             custom_policy_state_per_deployment = (
                 updated_custom_policy_state.get(dep_id) or {}
             ).copy()

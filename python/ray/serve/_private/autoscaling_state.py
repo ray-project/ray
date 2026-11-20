@@ -1,4 +1,3 @@
-import functools
 import inspect
 import logging
 import math
@@ -1146,6 +1145,49 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
+    def _metrics_source_context(
+        self, dep: DeploymentID, target: int
+    ) -> AutoscalingContext:
+        settings = self._metric_sources[dep]
+        now = time.time()
+        running = list(self._source_running.get(dep, ()))
+        metrics: Dict[str, Dict[ReplicaID, TimeSeries]] = defaultdict(dict)
+        for replica in running:
+            report = self._source_reports[dep].get(replica)
+            if report and now - report.timestamp <= max(
+                settings.look_back_period_s, 2 * settings.metrics_interval_s
+            ):
+                for key, series in report.metrics.items():
+                    if series:
+                        metrics[key][replica] = series
+
+        return AutoscalingContext(
+            deployment_id=dep,
+            deployment_name=dep.name,
+            app_name=dep.app_name,
+            current_num_replicas=len(running),
+            target_num_replicas=target,
+            running_replicas=running,
+            total_num_requests=0,
+            total_queued_requests=None,
+            raw_metrics=dict(metrics),
+            aggregated_metrics=lambda: {
+                key: {
+                    rid: aggregate_timeseries(series, settings.aggregation_function)
+                    or 0.0
+                    for rid, series in replicas.items()
+                }
+                for key, replicas in metrics.items()
+            },
+            capacity_adjusted_min_replicas=target,
+            capacity_adjusted_max_replicas=target,
+            policy_state={},
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+            current_time=now,
+            config=None,
+        )
+
     def _validate_policy_state(
         self, policy_state: Optional[Dict[DeploymentID, Dict[str, Any]]]
     ):
@@ -1187,48 +1229,13 @@ class ApplicationAutoscalingState:
                 if deployment_id in deployment_to_target_num_replicas
             }
 
-            @functools.lru_cache(maxsize=1)
-            def raw_metrics():
-                result = {
-                    dep: ctx.raw_metrics or {}
-                    for dep, ctx in autoscaling_contexts.items()
-                }
-                now = time.time()
-                for dep, config in self._metric_sources.items():
-                    metrics = defaultdict(dict)
-                    for replica in self._source_running.get(dep, ()):
-                        report = self._source_reports[dep].get(replica)
-                        if report and now - report.timestamp <= max(
-                            config.look_back_period_s, 2 * config.metrics_interval_s
-                        ):
-                            for key, series in report.metrics.items():
-                                if series:
-                                    metrics[key][replica] = series
-                    result[dep] = dict(metrics)
-                return result
-
-            @functools.lru_cache(maxsize=1)
-            def aggregated_metrics():
-                result = {
-                    dep: ctx.aggregated_metrics
-                    for dep, ctx in autoscaling_contexts.items()
-                }
-                for dep, config in self._metric_sources.items():
-                    result[dep] = {
-                        key: {
-                            rid: aggregate_timeseries(
-                                series, config.aggregation_function
-                            )
-                            or 0.0
-                            for rid, series in replicas.items()
-                        }
-                        for key, replicas in raw_metrics()[dep].items()
-                    }
-                return result
-
-            for ctx in autoscaling_contexts.values():
-                ctx._application_metrics = raw_metrics
-                ctx._application_aggregates = aggregated_metrics
+            for dep in (
+                self._metric_sources.keys() & deployment_to_target_num_replicas.keys()
+            ):
+                if dep not in autoscaling_contexts:
+                    autoscaling_contexts[dep] = self._metrics_source_context(
+                        dep, deployment_to_target_num_replicas[dep]
+                    )
             # Time the policy execution
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
