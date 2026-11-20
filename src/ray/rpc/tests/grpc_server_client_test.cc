@@ -260,7 +260,7 @@ TEST_F(TestGrpcServerClientFixture, TestChannelIdleTimeoutMultipleCycles) {
     PingRequest request;
     std::atomic<bool> done(false);
     Ping(request, [&done](const Status &status, const PingReply &reply) {
-      ASSERT_TRUE(status.ok()) << status.ToString();
+      EXPECT_TRUE(status.ok()) << status.ToString();
       done = true;
     });
     while (!done) {

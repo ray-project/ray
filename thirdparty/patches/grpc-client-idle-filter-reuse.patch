@@ -1,3 +1,4 @@
+diff --git src/core/ext/filters/channel_idle/idle_filter_state.h src/core/ext/filters/channel_idle/idle_filter_state.h
 --- src/core/ext/filters/channel_idle/idle_filter_state.h
 +++ src/core/ext/filters/channel_idle/idle_filter_state.h
 @@ -47,6 +47,9 @@
@@ -10,6 +11,7 @@
   private:
    // Bit in state_ indicating that the timer has been started.
    static constexpr uintptr_t kTimerStarted = 1;
+diff --git src/core/ext/filters/channel_idle/idle_filter_state.cc src/core/ext/filters/channel_idle/idle_filter_state.cc
 --- src/core/ext/filters/channel_idle/idle_filter_state.cc
 +++ src/core/ext/filters/channel_idle/idle_filter_state.cc
 @@ -92,4 +92,8 @@
@@ -21,6 +23,7 @@
 +}
 +
  }  // namespace grpc_core
+diff --git src/core/ext/filters/channel_idle/legacy_channel_idle_filter.h src/core/ext/filters/channel_idle/legacy_channel_idle_filter.h
 --- src/core/ext/filters/channel_idle/legacy_channel_idle_filter.h
 +++ src/core/ext/filters/channel_idle/legacy_channel_idle_filter.h
 @@ -43,11 +43,9 @@
@@ -68,6 +71,7 @@
  };
  
  class LegacyMaxAgeFilter final : public LegacyChannelIdleFilter {
+diff --git src/core/ext/filters/channel_idle/legacy_channel_idle_filter.cc src/core/ext/filters/channel_idle/legacy_channel_idle_filter.cc
 --- src/core/ext/filters/channel_idle/legacy_channel_idle_filter.cc
 +++ src/core/ext/filters/channel_idle/legacy_channel_idle_filter.cc
 @@ -19,6 +19,7 @@
