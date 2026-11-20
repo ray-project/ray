@@ -1093,6 +1093,7 @@ def test_parse_topology_dims():
 
 def test_get_worker_dims_2d():
     """Test worker dimension lookup for 2D topologies."""
+    assert tpu._get_worker_dims_for_topology("1x1") == (1, 1)
     assert tpu._get_worker_dims_for_topology("2x2") == (1, 1)
     assert tpu._get_worker_dims_for_topology("2x4") == (1, 2)
     assert tpu._get_worker_dims_for_topology("4x4") == (2, 2)
@@ -1114,7 +1115,7 @@ def test_get_worker_dims_3d():
 @pytest.mark.parametrize(
     "topology, match",
     [
-        ("1x1", "Unknown 2D topology"),
+        ("1x2", "Unknown 2D topology"),
         ("2x8", "Unknown 2D topology"),
         ("99x99", "Unknown 2D topology"),
         ("3x3x3", "Unknown 3D topology"),
@@ -1146,6 +1147,8 @@ def test_get_default_chips_per_vm():
         # 2x2 chips. Worker (x, y): 0=(0,0), 1=(1,0), 2=(0,1), 3=(1,1).
         # A 2x4 chip subslice is 2 chips in x by 4 in y, i.e. one worker in x
         # and two in y, so it groups workers by their x position.
+        (0, "4x4", "1x1", 0),
+        (3, "4x4", "1x1", 3),
         (0, "4x4", "2x2", 0),
         (1, "4x4", "2x2", 1),
         (2, "4x4", "2x2", 2),

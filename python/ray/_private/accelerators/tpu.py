@@ -163,7 +163,7 @@ def _parse_topology_dims(topology: str) -> Tuple[int, ...]:
 # Worker grid dimensions for each valid TPU topology.
 # Maps topology -> (worker_x, worker_y) for 2D, (worker_x, worker_y, worker_z) for 3D.
 # Assumes DEFAULT_TPU_NUM_CHIPS_PER_HOST (4) chips per worker for most types
-# (2x2 in 2D, 2x2x1 in 3D); single-chip "1x1" has no multi-chip worker grid.
+# (2x2 in 2D, 2x2x1 in 3D); single-chip "1x1" fits on a single worker (1, 1).
 # For v5e/v6e single-host topologies with 8 chips, the worker count is 1.
 @lru_cache(maxsize=None)
 def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
@@ -175,13 +175,13 @@ def _get_worker_dims_for_topology(topology: str) -> Tuple[int, ...]:
     dims = _parse_topology_dims(topology_norm)
     if len(dims) not in (2, 3):
         raise ValueError(f"Unsupported topology dimensionality for '{topology}'.")
-    if (
-        dims[0] < 2
-        or dims[1] < 2
-        or not any(
-            topology_norm in topologies for topologies in VALID_TPU_TOPOLOGY.values()
-        )
+    if not any(
+        topology_norm in topologies for topologies in VALID_TPU_TOPOLOGY.values()
     ):
+        raise ValueError(f"Unknown {len(dims)}D topology: '{topology}'.")
+    if topology_norm == "1x1":
+        return (1, 1)
+    if dims[0] < 2 or dims[1] < 2:
         raise ValueError(f"Unknown {len(dims)}D topology: '{topology}'.")
     return (dims[0] // 2, dims[1] // 2, *dims[2:])
 
