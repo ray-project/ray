@@ -11,6 +11,15 @@ from benchmark import (
     collect_dataset_stats,
     benchmark_py_modules,
 )
+from chaos import (
+    add_chaos_args,
+    chaos_init_kwargs,
+    check_chaos_results,
+    install_lineage_reconstruction_counter,
+    record_chaos_results,
+    start_chaos,
+    stop_chaos,
+)
 from torchvision.models import ResNet50_Weights, resnet50
 
 import ray
@@ -37,11 +46,7 @@ def parse_args():
         action="store_true",
         default=False,
     )
-    parser.add_argument(
-        "--chaos-test",
-        action="store_true",
-        default=False,
-    )
+    add_chaos_args(parser)
     return parser.parse_args()
 
 
@@ -49,7 +54,6 @@ def main(args):
     data_directory: str = args.data_directory
     data_format: str = args.data_format
     smoke_test: bool = args.smoke_test
-    chaos_test: bool = args.chaos_test
     data_url = f"s3://anonymous@air-example-data-2/{data_directory}"
 
     print(f"Running GPU batch prediction with data from {data_url}")
@@ -58,6 +62,8 @@ def main(args):
     INFERENCE_BATCH_SIZE = 900
 
     device = "cpu" if smoke_test else "cuda"
+
+    reconstruction_counter = install_lineage_reconstruction_counter(args)
 
     weights = ResNet50_Weights.DEFAULT
     model = resnet50(weights=weights)
@@ -130,6 +136,9 @@ def main(args):
         holder["total_time_s_wo_metadata_fetch"] = (
             time.time() - start_time_without_metadata_fetching
         )
+        stop_chaos(resource_killer)
+
+    resource_killer = start_chaos(args)
 
     benchmark = Benchmark()
     benchmark.run_fn("batch-inference", benchmark_fn)
@@ -151,11 +160,6 @@ def main(args):
         "Throughput w/o metadata fetching (img/sec): ",
         throughput_without_metadata_fetch,
     )
-    if chaos_test:
-        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
-        assert dead_nodes
-        print(f"Total chaos killed: {dead_nodes}")
-
     # For structured output integration with internal tooling
     results = collect_dataset_stats(holder["ds"])
     results.update(
@@ -169,10 +173,16 @@ def main(args):
         }
     )
     benchmark.result["batch-inference"].update(results)
+    record_chaos_results(
+        benchmark.result["batch-inference"], resource_killer, reconstruction_counter
+    )
     benchmark.write_result()
+    check_chaos_results(args, resource_killer, reconstruction_counter)
 
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules()}, **chaos_init_kwargs(args)
+    )
     main(args)
