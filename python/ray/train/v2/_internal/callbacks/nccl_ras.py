@@ -919,8 +919,9 @@ class NCCLRASCallback(WorkerGroupCallback, ControllerCallback):
     """Detects NCCL hangs via the RAS subsystem (see module docstring for the
     topology and the hard/soft model).
 
-    Default-off: the trainer only registers this callback when
-    ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` is set on the driver.
+    Not registered: ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1`` runs the same
+    detector as a ``ray.train.health`` check, ``ray.train.health.nccl_ras``.
+    This callback stays until it's deleted.
 
     To confirm that a NCCL anomaly isn't a single-snapshot blip, a communicator
     must stay frozen for consecutive polls, tracked as a per-communicator
