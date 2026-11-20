@@ -1,7 +1,7 @@
 ---
 myst:
   html_meta:
-    description: "Trace Ray Serve requests across proxies, deployments, and replicas with OpenTelemetry, using the built-in file exporter or your own exporter for OTLP backends and the Datadog Agent."
+    description: "Trace Ray Serve requests across proxies, deployments, and replicas with OpenTelemetry, using the built-in file exporter or your own exporter for OTLP backends, the Datadog Agent, and Honeycomb."
 ---
 
 (serve-tracing)=
@@ -93,7 +93,7 @@ You can configure tracing in Python, in a Serve config file, or with environment
 | `exporter_import_path` | `RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH` if set, otherwise the built-in file exporter | The exporter function, as `module:function`. It can't be empty. |
 | `sampling_ratio` | `RAY_SERVE_TRACING_SAMPLING_RATIO` if set, otherwise `0.01` | The fraction of requests to trace, from `0.0` to `1.0`. |
 
-Serve samples with a parent-based sampler. When a request arrives with a `traceparent` header from a sampled trace, Serve follows the caller's decision. Otherwise, it samples by `sampling_ratio`. See the [`TracingConfig` API reference](../serve/api/doc/ray.serve.schema.TracingConfig.rst) for details.
+Serve samples with a parent-based sampler. When a request arrives with a `traceparent` header from a sampled trace, Serve follows the caller's decision. Otherwise, it samples by `sampling_ratio`. See the {class}`~ray.serve.schema.TracingConfig` API reference for details.
 
 ### Configure tracing in Python
 
@@ -187,11 +187,11 @@ With this function in `exporters.py`, set `exporter_import_path` to `exporters:c
 
 Serve calls the function in several places:
 
-- When Serve first starts, the controller calls it once to check that it imports, takes no arguments, and returns a list of `SpanProcessor` objects. Then the controller shuts those processors down. If the check fails, Serve doesn't start, and `serve.start()` raises an `InvalidTracingConfigError` that names the exporter and the cause. `serve deploy` returns the same error. Fix the exporter and start again; you don't need to shut Serve down first.
+- When Serve first starts, the controller calls it once to check that it imports, takes no arguments, and returns a list of `SpanProcessor` objects. Then the controller shuts those processors down. If the check fails, Serve doesn't start, and `serve.start()` raises an `InvalidTracingConfigError` that names the exporter and the cause. `serve deploy` returns the same error. Fix the exporter and start again. You don't need to shut Serve down first.
 - Each proxy and replica calls it once when it sets up tracing.
 - If the controller restarts after a failure, it doesn't call the function again.
 
-Because Serve calls the function in several processes, and because Serve waits for the controller's call while it starts, keep the function fast and free of one-time side effects, such as registering a service. For production, prefer `BatchSpanProcessor`, which exports spans in the background. `SimpleSpanProcessor` exports each span as it ends, and the built-in exporter uses it because it's meant for local debugging.
+Because Serve calls the function in several processes, and because Serve waits for the controller's call while it starts, keep the function fast and free of one-time side effects, such as registering a service. For production, use `BatchSpanProcessor`, which exports spans in the background. `SimpleSpanProcessor` exports each span as it ends, and the built-in exporter uses it because it's meant for local debugging.
 
 ### Make the exporter available to Serve
 
@@ -245,6 +245,29 @@ To send traces to Datadog, do the following:
 The `0.0.0.0` address accepts connections on every network interface. For better security, especially in local deployments, Datadog suggests `localhost` instead.
 
 Serve samples requests before it exports them, so Datadog receives only the requests that `sampling_ratio` selects. Datadog's Ingestion Rules don't apply to data from the OpenTelemetry SDKs, so use `sampling_ratio` to control how much trace data Serve sends.
+
+(serve-tracing-honeycomb)=
+### Send traces to Honeycomb
+
+Honeycomb accepts OTLP directly, so you can send Serve's spans to Honeycomb with the exporter from [Send traces with OTLP](#send-traces-with-otlp), without a collector or an agent. Honeycomb documents its OTLP settings in [Send Data from Applications](https://docs.honeycomb.io/send-data/opentelemetry/).
+
+To send traces to Honeycomb, do the following:
+
+1. Install `opentelemetry-exporter-otlp-proto-grpc` on every node, and set `exporter_import_path` to an OTLP exporter function, such as `exporters:otlp_exporter`.
+1. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to Honeycomb's gRPC endpoint. Use `https://api.honeycomb.io:443` for the US instance or `https://api.eu1.honeycomb.io:443` for the EU instance.
+1. Set `OTEL_EXPORTER_OTLP_HEADERS` to `x-honeycomb-team=<api-key>`, where `<api-key>` is a Honeycomb API key. If you use Honeycomb Classic, also name the dataset with `x-honeycomb-team=<api-key>,x-honeycomb-dataset=<dataset>`.
+1. Set `OTEL_SERVICE_NAME` so that you can find Serve's traces under a recognizable service name.
+1. Send some requests, then look in Honeycomb for traces from that service with Serve's span names, such as `proxy_http_request`.
+
+The following config file sets these variables for every Serve process through `controller_options`:
+
+```{literalinclude} doc_code/tracing/honeycomb_config.yaml
+:start-after: __honeycomb_config_start__
+:end-before: __honeycomb_config_end__
+:language: yaml
+```
+
+The config file holds your API key, so keep it out of version control.
 
 ## Propagate trace context to other services
 

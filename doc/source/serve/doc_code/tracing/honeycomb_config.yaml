@@ -1,0 +1,19 @@
+# __honeycomb_config_start__
+tracing_config:
+  enabled: true
+  sampling_ratio: 0.1
+  exporter_import_path: exporters:otlp_exporter
+
+controller_options:
+  runtime_env:
+    env_vars:
+      # Use https://api.eu1.honeycomb.io:443 for Honeycomb's EU instance.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "https://api.honeycomb.io:443"
+      OTEL_EXPORTER_OTLP_HEADERS: "x-honeycomb-team=<api-key>"
+      OTEL_SERVICE_NAME: "my-serve-app"
+
+applications:
+  - name: default
+    route_prefix: /
+    import_path: tracing_app:app
+# __honeycomb_config_end__

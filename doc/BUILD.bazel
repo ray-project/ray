@@ -342,6 +342,7 @@ py_test(
     srcs = ["source/serve/doc_code/tracing/quickstart.py"],
     data = [
         "source/serve/doc_code/tracing/exporters.py",
+        "source/serve/doc_code/tracing/honeycomb_config.yaml",
         "source/serve/doc_code/tracing/otlp_config.yaml",
         "source/serve/doc_code/tracing/tracing_app.py",
         "source/serve/doc_code/tracing/tracing_config.yaml",

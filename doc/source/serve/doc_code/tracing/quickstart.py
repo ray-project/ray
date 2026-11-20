@@ -70,7 +70,7 @@ wait_for_condition(request_traced)
 
 # The config-file examples in the guide are valid Serve configs, and their
 # import paths point at the example modules next to them.
-for file_name in ("tracing_config.yaml", "otlp_config.yaml"):
+for file_name in ("tracing_config.yaml", "otlp_config.yaml", "honeycomb_config.yaml"):
     with open(os.path.join(os.path.dirname(__file__), file_name)) as f:
         config = ServeDeploySchema.model_validate(yaml.safe_load(f))
     assert config.tracing_config.enabled
