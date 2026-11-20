@@ -97,8 +97,6 @@ To create a custom aggregation, implement the {class}`~ray.data.aggregate.Aggreg
 
 You can also override `finalize`, which transforms the final accumulated result into the desired output format. By default, `finalize` returns the accumulator unchanged, which suits aggregations such as sum, count, min, and max.
 
-Optionally, implement `raw_to_partial`, which turns each row of a block into its own accumulator. With the default `SHUFFLE_V2` shuffle strategy, map tasks run `aggregate_block` on every group before shuffling. When most group keys are unique, that work shrinks nothing, so if every aggregation in the query implements `raw_to_partial`, map tasks can skip it and ship rows as they are. The reducer then converts them with `raw_to_partial` and merges them with `combine`.
-
 Ray Data runs an aggregation in the following steps:
 
 1. **Initialization**: Ray Data creates an initial accumulator with `zero_factory` for each group, or for the entire dataset when you don't group.
@@ -162,11 +160,6 @@ class Mean(AggregateFnV2):
             return np.nan
 
         return accumulator[0] / accumulator[1]
-
-    def raw_to_partial(self, block: Block) -> List[Optional[List]]:
-        # What `aggregate_block` returns for a block holding only that row.
-        values = BlockAccessor.for_block(block).to_arrow()[self._target_col_name]
-        return [None if v is None else [v, 1] for v in values.to_pylist()]
 ```
 
 :::{note}
