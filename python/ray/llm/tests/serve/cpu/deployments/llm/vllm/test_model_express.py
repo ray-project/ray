@@ -11,6 +11,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from vllm.ray.ray_env import get_env_vars_to_copy
 
 from ray.llm._internal.serve.engines.vllm import model_express
 from ray.llm._internal.serve.serving_patterns.model_express import envs as mx_envs
@@ -123,8 +124,6 @@ def test_setup_sets_client_env():
     # Peers load the transferred compile cache on other GPU indices.
     assert env["VLLM_COMPILE_ON_ONE_RANK"] == "1"
     # vLLM copies its own env vars into its Ray workers.
-    from vllm.ray.ray_env import get_env_vars_to_copy
-
     assert "VLLM_COMPILE_ON_ONE_RANK" in get_env_vars_to_copy()
 
 
