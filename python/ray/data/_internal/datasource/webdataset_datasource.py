@@ -149,8 +149,6 @@ def _tar_file_iterator(
             continue
 
         data = stream.extractfile(tarinfo).read()
-        if not _check_suffix(fname, fileselect):
-            continue
         result = dict(fname=fname, data=data)
         yield result
     if verbose_open:
