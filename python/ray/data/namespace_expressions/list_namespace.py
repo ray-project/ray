@@ -236,6 +236,17 @@ class _ListNamespace:
             values = pc.list_flatten(sort_arr)
             if len(values):
                 row_indices = pc.list_parent_indices(sort_arr)
+                # A null list slot can still span child values (e.g. when it was
+                # extracted from a null struct row). `list_flatten` skips those
+                # child values while `list_parent_indices` still reports them, so
+                # drop the parent indices under null rows to keep the two aligned.
+                # The length check skips the filtering entirely in the common
+                # case where the lengths already agree.
+                if len(row_indices) != len(values):
+                    slot_is_under_null_row = pc.take(sort_arr.is_null(), row_indices)
+                    row_indices = pc.filter(
+                        row_indices, pc.invert(slot_is_under_null_row)
+                    )
                 struct = pyarrow.StructArray.from_arrays(
                     [row_indices, values],
                     ["row", "value"],
@@ -295,10 +306,27 @@ class _ListNamespace:
                 # inner_lists = [[1,2],[3],[4],None], all_scalars = [1,2,3,4]
                 # parent(arr)=[0,0,1,1], parent(inner)=[0,0,1,2] -> row_indices=[0,0,0,1]
                 # counts=[3,1,0] -> offsets=[0,3,4,4]
-                row_indices: pyarrow.Array = pc.take(
-                    pc.list_parent_indices(arr),
-                    pc.list_parent_indices(inner_lists),
-                )
+                arr_parents: pyarrow.Array = pc.list_parent_indices(arr)
+                inner_parents: pyarrow.Array = pc.list_parent_indices(inner_lists)
+                # A null list slot can still span child values (e.g. when it was
+                # extracted from a null struct row). `list_flatten` skips those
+                # child values while `list_parent_indices` still reports them, so
+                # drop the parent indices under null slots to keep the take below
+                # aligned with `all_scalars`. The length checks skip the filtering
+                # entirely in the common case where the lengths already agree.
+                if len(arr_parents) != len(inner_lists):
+                    slot_is_under_null_row = pc.take(arr.is_null(), arr_parents)
+                    arr_parents = pc.filter(
+                        arr_parents, pc.invert(slot_is_under_null_row)
+                    )
+                if len(inner_parents) != len(all_scalars):
+                    slot_is_under_null_row = pc.take(
+                        inner_lists.is_null(), inner_parents
+                    )
+                    inner_parents = pc.filter(
+                        inner_parents, pc.invert(slot_is_under_null_row)
+                    )
+                row_indices: pyarrow.Array = pc.take(arr_parents, inner_parents)
 
                 vc: pyarrow.StructArray = pc.value_counts(row_indices)
                 rows_with_scalars: pyarrow.Array = pc.struct_field(vc, "values")
