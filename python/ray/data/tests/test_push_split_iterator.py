@@ -284,27 +284,28 @@ def test_push_split_materialize_not_supported(ray_start_regular_shared):
         iterators[0].materialize()
 
 
-class _RecordingCheckpointer:
-    """Stands in for ``RowIDBasedDataIteratorCheckpointer``. It records the
-    calls that ``CheckpointingBatchIterator`` makes, in the consumer actor."""
-
-    def __init__(self):
-        self._id_column = "id"
-        self._checkpoint_config = SimpleNamespace(generate_id_column=False)
-        self.events: List[str] = []
-        self.recorded_ids: List[int] = []
-
-    def start_epoch(self) -> None:
-        self.events.append("start_epoch")
-
-    def end_epoch(self) -> None:
-        self.events.append("end_epoch")
-
-    def record_yielded_batch(self, batch) -> None:
-        self.recorded_ids.extend(batch.metadata.row_ids.column("id").to_pylist())
-
-
 def test_push_split_checkpointing_records_yielded_row_ids(ray_start_regular_shared):
+    # Define the class in the test so cloudpickle sends it by value. The
+    # consumer actor can't import this test module.
+    class _RecordingCheckpointer:
+        """Stands in for ``RowIDBasedDataIteratorCheckpointer``. It records the
+        calls that ``CheckpointingBatchIterator`` makes, in the consumer actor."""
+
+        def __init__(self):
+            self._id_column = "id"
+            self._checkpoint_config = SimpleNamespace(generate_id_column=False)
+            self.events: List[str] = []
+            self.recorded_ids: List[int] = []
+
+        def start_epoch(self) -> None:
+            self.events.append("start_epoch")
+
+        def end_epoch(self) -> None:
+            self.events.append("end_epoch")
+
+        def record_yielded_batch(self, batch) -> None:
+            self.recorded_ids.extend(batch.metadata.row_ids.column("id").to_pylist())
+
     ds = ray.data.range(1000, override_num_blocks=20)
     iterators = streaming_split_push_based(ds, 2, equal=True)
     for it in iterators:
