@@ -1011,6 +1011,33 @@ _token_distribution_panels = [
     ),
 ]
 
+_kv_router_panels = [
+    Panel(
+        id=61,
+        title="KV Router: Uncached Prefill Tokens",
+        description=(
+            "Largest time-weighted mean of outstanding effective prefill tokens "
+            "across router replicas for each bound server. This is the workload "
+            "used by the token-based autoscaling policy."
+        ),
+        unit="tokens",
+        targets=[
+            Target(
+                expr=(
+                    "max by (application, target_deployment) (label_replace("
+                    'ray_serve_autoscaling_replica_metric{{deployment="LLMRouter", '
+                    'metric=~"outstanding_effective_prefill_tokens:($deployment)", {global_filters}}}, '
+                    '"target_deployment", "$1", "metric", "outstanding_effective_prefill_tokens:(.+)"))'
+                ),
+                legend="{{application}}#{{target_deployment}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(0, 128, 12, 8),
+    ),
+]
+
 # ===================================================================
 # Assemble rows and config
 # ===================================================================
@@ -1027,6 +1054,7 @@ _ALL_ROWS = [
         panels=_kv_offload_panels,
         collapsed=True,
     ),
+    Row(title="KV Router", id=509, panels=_kv_router_panels, collapsed=True),
     Row(
         title="Token Distribution",
         id=507,
