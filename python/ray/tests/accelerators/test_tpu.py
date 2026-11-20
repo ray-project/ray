@@ -743,6 +743,182 @@ def test_set_tpu_visible_ids_preserves_explicit_bounds(
 
 
 @pytest.mark.parametrize(
+    (
+        "num_devices, tpu_chips, initial_env, expected_visible_devices, "
+        "expected_visible_chips, expected_chip_bounds, expected_host_bounds"
+    ),
+    [
+        # TorchTPU 1-chip actor with TORCH_TPU_TOPOLOGY + MASTER_ADDR sets
+        # TPU_VISIBLE_DEVICES without injecting TPU_VISIBLE_CHIPS or 1,1,1 bounds.
+        (
+            4,
+            ["2"],
+            {
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "4,4,1",
+                "MASTER_ADDR": "10.0.0.1",
+            },
+            "2",
+            None,
+            None,
+            None,
+        ),
+        # TorchTPU 1-chip actor on a multi-host container preserves existing
+        # bounds and avoids setting TPU_VISIBLE_CHIPS.
+        (
+            4,
+            ["1"],
+            {
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "4,4,1",
+                tpu.TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR: (
+                    "10.0.0.1:8471,10.0.0.2:8471"
+                ),
+                "WORLD_SIZE": "16",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "1",
+            None,
+            "2,2,1",
+            "2,2,1",
+        ),
+        # TorchTPU 2-chip actor with TORCH_TPU_SLICEBUILDER_ADDRESSES + RANK
+        # still sets TPU_VISIBLE_DEVICES without clobbering bounds.
+        (
+            4,
+            ["0", "1"],
+            {
+                tpu.TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR: (
+                    "10.0.0.1:8471,10.0.0.1:8472"
+                ),
+                "RANK": "0",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,1,1",
+            },
+            "0,1",
+            None,
+            None,
+            "2,1,1",
+        ),
+        # TorchTPU dual-device (v7x) 1-device actor sets logical TPU_VISIBLE_DEVICES
+        # without injecting TPU_VISIBLE_CHIPS or 1,1,1 bounds.
+        (
+            8,
+            ["5"],
+            {
+                tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR: "2",
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "2,2,2,2",
+                "MASTER_ADDR": "10.0.0.1",
+            },
+            "5",
+            None,
+            None,
+            None,
+        ),
+        # TorchTPU 1-chip actor with TORCH_TPU_TOPOLOGY + LOCAL_RANK preserves
+        # bounds and avoids setting TPU_VISIBLE_CHIPS.
+        (
+            4,
+            ["2"],
+            {
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "4,4,1",
+                "LOCAL_RANK": "2",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "2",
+            None,
+            "2,2,1",
+            "2,2,1",
+        ),
+        # TorchTPU 4-chip allocation on an 8-device node clears stale sub-host
+        # bounds left over from an earlier 1- or 2-chip task.
+        (
+            8,
+            ["0", "1", "2", "3"],
+            {
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "4,4,1",
+                "MASTER_ADDR": "10.0.0.1",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "1,1,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "1,1,1",
+            },
+            "0,1,2,3",
+            None,
+            None,
+            None,
+        ),
+        # Standalone 1-chip actor in a GKE/kuberay-tpu-webhook container with
+        # ambient TORCH_TPU_TOPOLOGY (no MASTER_ADDR/WORLD_SIZE/RANK/LOCAL_RANK)
+        # still gets JAX sub-host bounds and TPU_VISIBLE_CHIPS.
+        (
+            4,
+            ["1"],
+            {
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "4,4,1",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "1",
+            "1",
+            "1,1,1",
+            "1,1,1",
+        ),
+        # Empty or whitespace-only torch.distributed env vars do not trigger
+        # TorchTPU early return; JAX sub-host fallback still runs.
+        (
+            4,
+            ["1"],
+            {
+                tpu.TORCH_TPU_TOPOLOGY_ENV_VAR: "4,4,1",
+                "MASTER_ADDR": "",
+                "RANK": "   ",
+                tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR: "2,2,1",
+                tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1",
+            },
+            "1",
+            "1",
+            "1,1,1",
+            "1,1,1",
+        ),
+        # Explicit multi-host TPU_HOST_BOUNDS without container chip bounds
+        # is preserved rather than clobbered to "1,1,1".
+        (
+            4,
+            ["3"],
+            {tpu.TPU_HOST_BOUNDS_ENV_VAR: "2,2,1"},
+            "3",
+            "3",
+            "1,1,1",
+            "2,2,1",
+        ),
+    ],
+)
+@patch("glob.glob")
+def test_set_tpu_visible_ids_preserves_torchtpu_and_multihost_bounds(
+    mock_glob,
+    num_devices,
+    tpu_chips,
+    initial_env,
+    expected_visible_devices,
+    expected_visible_chips,
+    expected_chip_bounds,
+    expected_host_bounds,
+):
+    """TorchTPU actors get TPU_VISIBLE_DEVICES without clobbering multi-host bounds."""
+    mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
+    with patch.dict("os.environ", initial_env, clear=True):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+        TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
+        assert (
+            os.environ.get(tpu.TPU_VISIBLE_DEVICES_ENV_VAR) == expected_visible_devices
+        )
+        assert os.environ.get(tpu.TPU_VISIBLE_CHIPS_ENV_VAR) == expected_visible_chips
+        assert (
+            os.environ.get(tpu.TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
+            == expected_chip_bounds
+        )
+        assert os.environ.get(tpu.TPU_HOST_BOUNDS_ENV_VAR) == expected_host_bounds
+
+
+@pytest.mark.parametrize(
     "num_devices, expected_visible_chips",
     [
         (4, None),

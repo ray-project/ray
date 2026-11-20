@@ -957,11 +957,36 @@ class TPUAcceleratorManager(AcceleratorManager):
                 os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
             return
 
-        os.environ[TPU_VISIBLE_CHIPS_ENV_VAR] = ",".join(
-            str(chip) for chip in physical_chips
-        )
         os.environ[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(
             sorted(visible_tpu_chips, key=int)
+        )
+
+        # TorchTPU distributed workloads configure topology via
+        # TORCH_TPU_TOPOLOGY / TORCH_TPU_SLICEBUILDER_ADDRESSES together with
+        # torch.distributed env vars (MASTER_ADDR / WORLD_SIZE / RANK /
+        # LOCAL_RANK) and bind per process via TPU_VISIBLE_DEVICES. Note that
+        # GKE/kuberay-tpu-webhook may inject TORCH_TPU_TOPOLOGY into worker
+        # containers by default even for standalone JAX tasks, so require a
+        # torch.distributed indicator before skipping JAX sub-host bounds.
+        has_torchtpu_env = any(
+            os.environ.get(var, "").strip()
+            for var in (
+                TORCH_TPU_TOPOLOGY_ENV_VAR,
+                TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR,
+            )
+        )
+        has_torch_dist_env = any(
+            os.environ.get(var, "").strip()
+            for var in ("MASTER_ADDR", "WORLD_SIZE", "RANK", "LOCAL_RANK")
+        )
+        if has_torchtpu_env and has_torch_dist_env:
+            if stale_subhost_bounds:
+                os.environ.pop(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR, None)
+                os.environ.pop(TPU_HOST_BOUNDS_ENV_VAR, None)
+            return
+
+        os.environ[TPU_VISIBLE_CHIPS_ENV_VAR] = ",".join(
+            str(chip) for chip in physical_chips
         )
         if len(physical_chips) in (1, 2):
             expected_chip_bounds = (
@@ -969,10 +994,11 @@ class TPUAcceleratorManager(AcceleratorManager):
                 if len(physical_chips) == 1
                 else TPU_CHIPS_PER_HOST_BOUNDS_2_CHIP_CONFIG
             )
-            if (
-                os.environ.get(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
-                != expected_chip_bounds
-            ):
+            current_chip_bounds = os.environ.get(TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR)
+            if current_chip_bounds is None:
+                os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = expected_chip_bounds
+                os.environ.setdefault(TPU_HOST_BOUNDS_ENV_VAR, TPU_SINGLE_HOST_BOUNDS)
+            elif current_chip_bounds != expected_chip_bounds:
                 os.environ[TPU_CHIPS_PER_HOST_BOUNDS_ENV_VAR] = expected_chip_bounds
                 if os.environ.get(TPU_HOST_BOUNDS_ENV_VAR) != TPU_SINGLE_HOST_BOUNDS:
                     os.environ[TPU_HOST_BOUNDS_ENV_VAR] = TPU_SINGLE_HOST_BOUNDS
