@@ -262,7 +262,9 @@ class RuntimeEnv(dict):
             ``.tar.xz``.
         py_executable: Path or command to the Python executable that Ray uses to
             launch worker processes. By default, Ray uses the same interpreter
-            that is running the driver.
+            that is running the driver. On Linux and macOS, if the value is the
+            path of an existing file, Ray uses it as one path, even when it
+            contains spaces. Otherwise, Ray runs the value as a shell command.
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
             Supported formats for local paths and remote URIs: ``.zip``,
