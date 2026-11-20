@@ -16,7 +16,7 @@ that ``datasource_v2`` doesn't depend on the legacy package; the legacy
 datasource and datasink import them from here instead.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Callable, Dict
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
@@ -57,7 +57,10 @@ try:
         literal,
     )
 
-    RAY_DATA_OPERATION_TO_ICEBERG = {
+    # Typed as a callable: the classes take different arguments.
+    RAY_DATA_OPERATION_TO_ICEBERG: Dict[
+        Operation, Callable[..., "BooleanExpression"]
+    ] = {
         Operation.EQ: EqualTo,
         Operation.NE: NotEqualTo,
         Operation.GT: GreaterThan,
@@ -113,6 +116,7 @@ def _get_empty_projection_schema() -> "Schema":
         NestedField(
             field_id=_STUB_FIELD_ID,
             name=_BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+            # pyrefly: ignore[missing-argument]  # pydantic fills ``root``.
             field_type=BooleanType(),
             required=False,
         )
@@ -221,7 +225,7 @@ class _IcebergExpressionVisitor(
 
     def visit_random(
         self, expr: "RandomExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """Random expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "Random expressions cannot be converted to Iceberg filter expressions."
@@ -229,7 +233,7 @@ class _IcebergExpressionVisitor(
 
     def visit_uuid(
         self, expr: "UUIDExpr"
-    ) -> "BooleanExpression | UnboundTerm[Any] | Literal[Any]":
+    ) -> "BooleanExpression | UnboundTerm | Literal":
         """UUID expressions cannot be converted to Iceberg expressions."""
         raise TypeError(
             "UUID expressions cannot be converted to Iceberg filter expressions."
