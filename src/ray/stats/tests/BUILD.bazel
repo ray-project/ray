@@ -32,5 +32,21 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/stats:percentile_tracker",
+        "//src/ray/stats:quadratic_bucket_scheme",
+    ],
+)
+
+ray_cc_test(
+    name = "bucket_histogram_metric_test",
+    size = "small",
+    srcs = ["bucket_histogram_metric_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:ray_config",
+        "//src/ray/observability:open_telemetry_metric_recorder",
+        "//src/ray/stats:bucket_histogram_metric",
+        "//src/ray/stats:quadratic_bucket_scheme",
+        "//src/ray/stats:stats_metric",
+        "@io_opentelemetry_cpp//sdk/src/metrics",
     ],
 )
