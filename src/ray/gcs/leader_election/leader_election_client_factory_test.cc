@@ -80,6 +80,16 @@ TEST_F(LeaderLeaseClientFactoryTest, EmptyLeaseKeyCrashes) {
                "gcs_leader_election_lease_name must be set");
 }
 
+TEST_F(LeaderLeaseClientFactoryTest, WhitespaceLeaseKeyCrashes) {
+  EXPECT_DEATH(LeaderLeaseClientFactory::Create("ray-system", " \t\n"),
+               "gcs_leader_election_lease_name must be set");
+}
+
+TEST_F(LeaderLeaseClientFactoryTest, CreatesClientForPaddedLeaseKey) {
+  EXPECT_NE(LeaderLeaseClientFactory::Create("ray-system", "  gcs-leader-lock\n"),
+            nullptr);
+}
+
 TEST_F(LeaderLeaseClientFactoryTest, FallsBackToPodNamespace) {
   SetEnv("POD_NAMESPACE", "pod-ns");
   EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace(""), "pod-ns");

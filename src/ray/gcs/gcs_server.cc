@@ -323,6 +323,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       std::move(observability_inner_publisher));
 
   if (config_.enable_gcs_leader_election) {
+    RAY_CHECK(storage_type_ != StorageType::IN_MEMORY)
+        << "GCS leader election requires shared external storage; in-memory storage "
+           "cannot be shared across heads.";
     // Runs on the elector's thread, but promotion must run on the default io context.
     auto on_started_leading = [this]() {
       io_context_provider_.GetDefaultIOContext().post([this]() { PromoteToLeader(); },
@@ -715,6 +718,8 @@ void GcsServer::RegisterRpcServices() {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
+    is_stopped_ = true;
+    is_leader_ = false;
 
     // Stop the io_context monitor before tearing down the io_contexts it probes.
     if (io_context_monitor_thread_) {
@@ -736,11 +741,11 @@ void GcsServer::Stop() {
       ray_event_recorder_->StopExportingEvents();
     }
 
+    rpc_server_.Shutdown();
     io_context_provider_.StopAllDedicatedIOContexts();
     ray_syncer_.reset();
     observability_pubsub_handler_.reset();
     pubsub_handler_.reset();
-    rpc_server_.Shutdown();
     kv_manager_.reset();
 
     // Released only after this GCS stops serving, so the next leader never overlaps it.
@@ -748,7 +753,6 @@ void GcsServer::Stop() {
       leader_elector_->Stop();
     }
 
-    is_stopped_ = true;
     RAY_LOG(INFO) << "GCS server stopped.";
   }
 }
