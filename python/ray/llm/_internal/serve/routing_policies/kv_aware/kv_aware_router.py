@@ -53,6 +53,7 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
     def initialize_state(
         self,
         session_affinity_ttl_s: float = DEFAULT_SESSION_AFFINITY_TTL_S,
+        prefill_decay_tokens_per_second: float = 0.0,
     ):
         """Bind to the ``KVTokenTracker`` the LLMRouter registered in this
         process. When absent (e.g. the proxy's fallback router), KV-aware
@@ -62,6 +63,11 @@ class KVAwareRouter(MultiplexMixin, RequestRouter):
             session_affinity_ttl_s: How long to keep an idle session on the same
                 replica, in seconds. Defaults to 1800 (30 minutes).
                 ``0`` disables session pinning.
+            prefill_decay_tokens_per_second: Uncached prefill tokens each
+                replica is assumed to process per second. When set, the
+                outstanding prefill tokens reported for autoscaling decay at
+                this rate between prefill lifecycle events; routing is
+                unaffected. Defaults to ``0`` (no decay).
         """
         self._kv_token_tracker = get_kv_token_tracker()
         if self._kv_token_tracker is None:
