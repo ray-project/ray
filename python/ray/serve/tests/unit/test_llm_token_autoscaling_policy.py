@@ -88,13 +88,19 @@ async def test_router_report_reaches_app_policy():
 def test_replicated_router_reports(requests, load, expected):
     server = DeploymentID(name="decode", app_name="app")
     router = DeploymentID(name="LLMRouter", app_name="app")
-    points = [TimeStampedValue(10, load)]
     key = "outstanding_effective_prefill_tokens:decode"
-    metrics = {key: {"router1": points, "router2": points}}
+    metrics = {key: {"router1": load, "router2": load}}
     contexts = {
         server: _server_context(server, 20, requests),
         router: AutoscalingMetricsContext(
-            router, router.name, router.app_name, 2, [], 20, {}, metrics
+            router,
+            router.name,
+            router.app_name,
+            2,
+            [],
+            20,
+            aggregated_metrics=metrics,
+            raw_metrics={},
         ),
     }
     policy = LLMTokenAutoscalingPolicy(10)
