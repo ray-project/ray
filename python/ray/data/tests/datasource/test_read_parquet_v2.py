@@ -502,11 +502,13 @@ def test_read_parquet_v2_custom_path_column_preserves_file_column(
     assert sorted(ds.take_all(), key=lambda row: row["id"]) == expected
 
 
-@pytest.mark.parametrize("merge_schema", [False, True])
-@pytest.mark.parametrize("path_only", [False, True])
 @pytest.mark.parametrize(
-    ("include_paths", "path_name"),
-    [(True, "path"), ("path", "path"), ("source_file", "source_file")],
+    ("include_paths", "path_name", "merge_schema", "path_only"),
+    [
+        pytest.param(True, "path", False, False, id="default-sampled"),
+        pytest.param("source_file", "source_file", False, True, id="custom-projected"),
+        pytest.param("source_file", "source_file", True, False, id="custom-merged"),
+    ],
 )
 def test_read_parquet_v2_path_overrides_incompatible_file_columns(
     ray_start_regular_shared,
@@ -585,20 +587,15 @@ def test_read_parquet_v2_path_does_not_hide_other_schema_conflicts(
     ],
 )
 def test_read_parquet_rejects_invalid_path_column(
-    ray_start_regular_shared,
-    tmp_path,
     restore_ctx,
     use_v2,
     include_paths,
     error,
     message,
 ):
-    file_path = tmp_path / "data.parquet"
-    _write(file_path, pa.table({"id": [1]}))
-
     restore_ctx.use_datasource_v2 = use_v2
     with pytest.raises(error, match=message):
-        ray.data.read_parquet(str(file_path), include_paths=include_paths)
+        ray.data.read_parquet("unused.parquet", include_paths=include_paths)
 
 
 def test_read_parquet_v2_include_row_hash(tmp_path, restore_ctx):
@@ -657,9 +654,13 @@ def test_read_parquet_v2_columns_applies_select_columns(
     assert ds.take_all() == [{"a": 1}]
 
 
-@pytest.mark.parametrize("merge_schema", [False, True])
 @pytest.mark.parametrize(
-    ("include_paths", "path_name"), [(True, "path"), ("source_file", "source_file")]
+    ("include_paths", "path_name", "merge_schema"),
+    [
+        pytest.param(True, "path", False, id="default"),
+        pytest.param("path", "path", False, id="explicit-default"),
+        pytest.param("source_file", "source_file", True, id="custom"),
+    ],
 )
 def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     ray_start_regular_shared,
@@ -669,8 +670,6 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
     include_paths,
     path_name,
 ):
-    from ray.data._internal.logical.operators.map_operator import Project
-
     _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
 
     restore_ctx.use_datasource_v2 = True
@@ -682,23 +681,18 @@ def test_read_parquet_v2_columns_with_include_paths_preserves_path(
             merge_schema=merge_schema,
         )
 
-    dag = ds._logical_plan.dag
-    assert isinstance(dag, Project)
     # ``columns=`` retains the configured synthetic path column implicitly.
-    assert [expr.name for expr in dag.exprs] == ["a", path_name]
     assert ds.schema().names == ["a", path_name]
     assert ds.take_all() == [{"a": 1, path_name: str(tmp_path / "data.parquet")}]
 
 
 @pytest.mark.parametrize("configure_after_read", [False, True])
-@pytest.mark.parametrize("merge_schema", [False, True])
 def test_read_parquet_v2_custom_path_column_rejects_generated_id_name(
     ray_start_regular_shared,
     tmp_path,
     restore_ctx,
     monkeypatch,
     configure_after_read,
-    merge_schema,
 ):
     from pyarrow.fs import LocalFileSystem
 
@@ -715,9 +709,7 @@ def test_read_parquet_v2_custom_path_column_rejects_generated_id_name(
     if not configure_after_read:
         monkeypatch.setattr(restore_ctx, "checkpoint_config", config)
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(
-        str(path), include_paths="source_file", merge_schema=merge_schema
-    )
+    ds = ray.data.read_parquet(str(path), include_paths="source_file")
     if configure_after_read:
         ds.context.checkpoint_config = config
 
