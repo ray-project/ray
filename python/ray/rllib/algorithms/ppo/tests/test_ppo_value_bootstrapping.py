@@ -5,6 +5,7 @@ Exercises the connector pipeline (``AddOneTsToEpisodesAndTruncate`` +
 ``compute_value_targets``. Targets are pinned to closed-form GAE answers so a
 regression in either the connector layout or the GAE recursion is caught.
 """
+import gymnasium as gym
 import numpy as np
 import pytest
 
@@ -14,18 +15,121 @@ from ray.rllib.connectors.learner import (
     AddColumnsFromEpisodesToTrainBatch,
     AddOneTsToEpisodesAndTruncate,
     BatchIndividualItems,
+    GeneralAdvantageEstimation,
     LearnerConnectorPipeline,
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
+
+
+def test_gae_chunked_values_do_not_record_gradients():
+    """GAE must not retain chunk graphs; PPO's subsequent loss still needs them."""
+    learner = (
+        PPOConfig()
+        .training(gamma=0.99, lambda_=0.95)
+        .build_learner(env=gym.make("CartPole-v1"))
+    )
+    module = learner.module[DEFAULT_MODULE_ID]
+    original_compute_values = module.compute_values
+    chunk_graphs = []
+    loss_graphs = []
+
+    def chunked_values(batch, embeddings=None):
+        if embeddings is not None:
+            value = original_compute_values(batch, embeddings=embeddings)
+            loss_graphs.append(value.grad_fn)
+            return value
+        chunks = []
+        for obs in batch[Columns.OBS].split(2):
+            value = original_compute_values({Columns.OBS: obs})
+            chunk_graphs.append(value.grad_fn)
+            chunks.append(value)
+        return torch.cat(chunks)
+
+    module.compute_values = chunked_values
+    observations = np.arange(20, dtype=np.float32).reshape(5, 4) / 20
+    episode = SingleAgentEpisode(
+        observations=list(observations) + [observations[-1]],
+        actions=[0] * 5,
+        rewards=[1.0] * 5,
+        terminated=True,
+        len_lookback_buffer=0,
+    )
+    batch = {
+        DEFAULT_MODULE_ID: {
+            Columns.OBS: torch.tensor(observations),
+            Columns.REWARDS: torch.tensor([1.0, 1.0, 1.0, 1.0, 0.0]),
+            Columns.TERMINATEDS: torch.tensor([False, False, False, True, False]),
+            Columns.TRUNCATEDS: torch.zeros(5, dtype=torch.bool),
+        }
+    }
+    with torch.enable_grad():
+        values = (
+            torch.cat(
+                [
+                    original_compute_values({Columns.OBS: obs})
+                    for obs in batch[DEFAULT_MODULE_ID][Columns.OBS].split(2)
+                ]
+            )
+            .detach()
+            .numpy()
+        )
+    expected_targets = compute_value_targets(
+        values=values,
+        rewards=batch[DEFAULT_MODULE_ID][Columns.REWARDS].numpy(),
+        terminateds=batch[DEFAULT_MODULE_ID][Columns.TERMINATEDS].numpy(),
+        truncateds=batch[DEFAULT_MODULE_ID][Columns.TRUNCATEDS].numpy(),
+        gamma=0.99,
+        lambda_=0.95,
+    )
+    with torch.enable_grad():
+        gae = next(
+            connector
+            for connector in learner._learner_connector.connectors
+            if isinstance(connector, GeneralAdvantageEstimation)
+        )
+        gae(rl_module=learner.module, episodes=[episode], batch=batch)
+        assert len(chunk_graphs) == 3
+        assert all(graph is None for graph in chunk_graphs)
+        assert torch.is_grad_enabled()
+
+        module_batch = batch[DEFAULT_MODULE_ID]
+        np.testing.assert_allclose(
+            module_batch[Postprocessing.VALUE_TARGETS].numpy(), expected_targets
+        )
+        advantages = expected_targets - values
+        advantages = (advantages - advantages.mean()) / max(1e-4, advantages.std())
+        np.testing.assert_allclose(
+            module_batch[Postprocessing.ADVANTAGES].numpy(), advantages, atol=1e-6
+        )
+        module_batch.update(
+            {
+                Columns.ACTIONS: torch.zeros(5, dtype=torch.long),
+                Columns.ACTION_DIST_INPUTS: torch.zeros(5, 2),
+                Columns.ACTION_LOGP: torch.full((5,), -np.log(2)),
+            }
+        )
+        fwd_out = module.forward_train(module_batch)
+        loss = learner.compute_loss_for_module(
+            module_id=DEFAULT_MODULE_ID,
+            config=learner.config,
+            batch=module_batch,
+            fwd_out=fwd_out,
+        )
+        loss.backward()
+        assert len(loss_graphs) == 1 and loss_graphs[0] is not None
+        assert any(
+            p.grad is not None and p.grad.abs().sum() > 0 for p in module.parameters()
+        )
 
 
 def _targets(per_ep_values, per_ep_rewards, terminated, truncated, gamma, lambda_):
