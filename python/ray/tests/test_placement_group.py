@@ -809,8 +809,10 @@ def test_placement_group_module_not_shadowed():
     import ray.util
     import ray.util.placement_group as ray_pg
     from ray.util import placement_group as util_pg
-    from ray.util.placement_group import PlacementGroup as DirectPlacementGroup
-    from ray.util.placement_group import placement_group as pg_fn
+    from ray.util.placement_group import (
+        PlacementGroup as DirectPlacementGroup,
+        placement_group as pg_fn,
+    )
 
     # Submodule identity and attribute access work without shadowing.
     assert isinstance(ray.util.placement_group, types.ModuleType)
