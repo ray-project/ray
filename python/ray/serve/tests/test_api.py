@@ -13,6 +13,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     DEFAULT_MAX_ONGOING_REQUESTS,
@@ -28,8 +29,13 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
-from ray.serve._private.test_utils import SharedCounter, get_application_url
+from ray.serve._private.test_utils import (
+    TEST_HTTP_PORT,
+    SharedCounter,
+    get_application_url,
+)
 from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
+from ray.serve.context import _set_global_client
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -553,7 +559,7 @@ def test_delete_application(serve_instance):
     assert httpx.get(url).text == "got f"
 
     serve.delete("app_f")
-    url = "http://localhost:8000/app_f"
+    url = f"http://localhost:{TEST_HTTP_PORT}/app_f"
     assert "Path '/app_f' not found" in httpx.get(url).text
 
     # delete again, no exception & crash expected.
@@ -1125,7 +1131,7 @@ def test_status_constructor_error(serve_instance):
     # return a 503 error to reflect the failed deployment state.
     # The timeout is there to prevent the test from hanging and blocking
     # the test suite if it does fail.
-    r = httpx.post("http://localhost:8000/", timeout=10)
+    r = httpx.post(f"http://localhost:{TEST_HTTP_PORT}/", timeout=10)
     assert r.status_code == 503 and "unavailable" in r.text.lower()
 
     @serve.deployment
@@ -1263,6 +1269,166 @@ def test_get_deployment_handle_basic(serve_instance):
     app_handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
     assert isinstance(app_handle, DeploymentHandle)
     assert app_handle.remote().result() == "hello world!!"
+
+
+async def test_get_handle_async_basic(serve_instance_async):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, handle):
+            self._h = handle
+
+        async def __call__(self):
+            return f"{await self._h.remote()}!!"
+
+    serve.run(MyDriver.bind(f.bind()), name="app")
+
+    handle = await serve.get_deployment_handle_async("f", app_name="app")
+    assert await handle.remote() == "hello world"
+
+    app_handle = await serve.get_app_handle_async("app")
+    assert await app_handle.remote() == "hello world!!"
+
+
+async def test_get_handle_async_does_not_call_ray_get(
+    serve_instance_async, monkeypatch
+):
+    """The async getters must await the controller rather than block on it."""
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    def fail_on_ray_get(*args, **kwargs):
+        raise AssertionError("ray.get must not be called by the async getters.")
+
+    monkeypatch.setattr(ray, "get", fail_on_ray_get)
+
+    assert isinstance(await serve.get_app_handle_async("app"), DeploymentHandle)
+    assert isinstance(
+        await serve.get_deployment_handle_async("f", app_name="app"),
+        DeploymentHandle,
+    )
+
+
+class _ShutdownInterrupted(Exception):
+    """Raised partway through a shutdown, standing in for a cancel or Ctrl-C."""
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+async def test_shutdown_failing_partway_does_not_block_later_handles(
+    serve_instance_async, monkeypatch, use_async
+):
+    """A shutdown that fails partway must not leave Serve refusing handles.
+
+    The interrupted client stays refusing handles, so `serve.shutdown*` has to
+    drop it as the global client for the next call to reconnect.
+    """
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    # Interrupt a client of our own: later tests reuse the session's shared one.
+    client = ServeControllerClient.from_controller(serve_instance_async._controller)
+
+    def interrupt():
+        raise _ShutdownInterrupted()
+
+    async def interrupt_async():
+        raise _ShutdownInterrupted()
+
+    monkeypatch.setattr(client, "shutdown_cached_handles", interrupt)
+    monkeypatch.setattr(client, "shutdown_cached_handles_async", interrupt_async)
+    _set_global_client(client)
+    try:
+        with pytest.raises(_ShutdownInterrupted):
+            if use_async:
+                await serve.shutdown_async()
+            else:
+                serve.shutdown()
+
+        handle = await serve.get_app_handle_async("app")
+        assert await handle.remote() == "hello world"
+        await handle.shutdown_async()
+    finally:
+        _set_global_client(serve_instance_async)
+
+
+async def test_get_deployment_handle_async_concurrent_calls_share_handle(
+    serve_instance_async,
+):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    first, second = await asyncio.gather(
+        serve.get_deployment_handle_async("f", app_name="app"),
+        serve.get_deployment_handle_async("f", app_name="app"),
+    )
+    assert first is second
+
+
+async def test_get_app_handle_async_dne(serve_instance_async):
+    with pytest.raises(RayServeException, match="Application 'random' does not exist"):
+        await serve.get_app_handle_async("random")
+
+
+async def test_get_deployment_handle_async_dne(serve_instance_async):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
+
+    serve.run(f.bind(), name="app")
+
+    with pytest.raises(KeyError, match="does not exist"):
+        await serve.get_deployment_handle_async("random", app_name="app")
+
+
+async def test_get_deployment_handle_async_requires_app_name_outside_replica(
+    serve_instance_async,
+):
+    with pytest.raises(RayServeException, match="Please specify an application name"):
+        await serve.get_deployment_handle_async("f")
+
+
+def test_get_handle_async_within_deployment(serve_instance):
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class Adder:
+        def __call__(self, val: int) -> int:
+            return val + 2
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class Multiplier:
+        def __call__(self, val: int) -> int:
+            return val * 3
+
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class Caller:
+        def __init__(self, unused_multiplier: DeploymentHandle):
+            # Bound only so `Multiplier` is deployed in this application; the
+            # call below must look it up by name instead.
+            pass
+
+        async def __call__(self, val: int) -> int:
+            adder = await serve.get_app_handle_async("adder")
+            # No app_name: defaults to this replica's application.
+            multiplier = await serve.get_deployment_handle_async("Multiplier")
+            return await multiplier.remote(await adder.remote(val))
+
+    serve.run(Adder.bind(), name="adder", route_prefix="/adder")
+    handle = serve.run(Caller.bind(Multiplier.bind()), name="caller")
+
+    assert handle.remote(5).result() == 21
 
 
 def test_deployment_handle_nested_in_obj(serve_instance):
