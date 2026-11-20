@@ -16,6 +16,9 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class DeploymentVersion:
+    topology_spread: Optional[List[Dict[str, Any]]] = None
+    topology_spread_hash: int = crc32(b"")
+
     def __init__(
         self,
         code_version: Optional[str],

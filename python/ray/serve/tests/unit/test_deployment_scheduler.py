@@ -4428,6 +4428,25 @@ class TestRolloutFloors:
 
         assert _downscale(scheduler, d_id, 1) == {ReplicaID("old", d_id)}
 
+    def test_downscale_keeps_the_new_version_spread(self):
+        n1, n2, n3 = _hex(1), _hex(2), _hex(3)
+        scheduler, d_id = _rules_scheduler(
+            {n1: (8, {}), n2: (8, {}), n3: (8, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 3)],
+        )
+        for name, node_id in (
+            ("new_1", n1),
+            ("old_1", n1),
+            ("old_2", n1),
+            ("new_2", n2),
+            ("new_3", n3),
+        ):
+            scheduler.on_replica_running(ReplicaID(name, d_id), node_id)
+        outdated = {ReplicaID("old_1", d_id), ReplicaID("old_2", d_id)}
+        scheduler.on_replicas_outdated(d_id, outdated)
+
+        assert _downscale(scheduler, d_id, 2) == outdated
+
     def test_outdated_set_clears(self):
         d_id = DeploymentID(name="deployment1")
         scheduler = _compaction_scheduler(MockClusterNodeInfoCache())

@@ -287,6 +287,19 @@ def test_topology_spread():
     assert DeploymentVersion.from_proto(unset.to_proto()).topology_spread is None
 
 
+def test_version_from_an_older_checkpoint_has_no_topology_spread():
+    current = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
+    old = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
+    del old.__dict__["topology_spread"]
+    del old.__dict__["topology_spread_hash"]
+
+    assert old.topology_spread is None
+    assert not old.requires_actor_restart(current)
+    assert not current.requires_actor_restart(old)
+    assert DeploymentVersion.from_proto(old.to_proto()).topology_spread is None
+    assert DeploymentVersion.from_deployment_version(old, DeploymentConfig()) == current
+
+
 def test_placement_group_options():
     v1 = DeploymentVersion("1", DeploymentConfig(), {"num_cpus": 0.1})
     v2 = DeploymentVersion(
