@@ -2292,6 +2292,26 @@ void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
   }
 }
 
+void NodeManager::HandleUpdateRayletLabels(rpc::UpdateRayletLabelsRequest request,
+                                           rpc::UpdateRayletLabelsReply *reply,
+                                           rpc::SendReplyCallback send_reply_callback) {
+  absl::flat_hash_map<std::string, std::string> labels(request.labels().begin(),
+                                                       request.labels().end());
+  RAY_LOG(INFO) << "UpdateRayletLabels RPC received with " << labels.size()
+                << " user label(s).";
+  // The local resource manager is the source of truth for this node's labels.
+  // Applying the new set bumps the resource-view version so it is broadcast to GCS
+  // and other raylets on the next sync, affecting future scheduling decisions.
+  auto merged_labels =
+      cluster_resource_scheduler_.GetLocalResourceManager().SetLocalNodeLabels(labels);
+  // Return the resulting label set (including preserved reserved labels) so GCS can
+  // refresh its GcsNodeInfo record.
+  for (const auto &[key, value] : merged_labels) {
+    (*reply->mutable_labels())[key] = value;
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                                        rpc::ShutdownRayletReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {

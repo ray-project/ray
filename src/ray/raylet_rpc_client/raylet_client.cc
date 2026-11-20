@@ -385,6 +385,20 @@ void RayletClient::DrainRaylet(
                             /*method_timeout_ms*/ -1);
 }
 
+void RayletClient::UpdateRayletLabels(
+    google::protobuf::Map<std::string, std::string> labels,
+    const rpc::ClientCallback<rpc::UpdateRayletLabelsReply> &callback) {
+  rpc::UpdateRayletLabelsRequest request;
+  *request.mutable_labels() = std::move(labels);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            UpdateRayletLabels,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
 void RayletClient::ResizeLocalResourceInstances(
     google::protobuf::Map<std::string, double> resources,
     const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) {
