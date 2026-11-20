@@ -39,6 +39,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
 )
+from ray.data._internal.datasource_v2.formats.delta.delta_file_pruning import (
+    statistics_keep_mask,
+)
 from ray.data._internal.datasource_v2.formats.delta.delta_filesystem import (
     add_known_file_sizes,
 )
@@ -304,13 +307,35 @@ class _DeltaLogListing:
         """Yield the table's data files at the pinned version.
 
         ``paths`` holds the table label from ``DeltaDatasourceV2.paths`` and is
-        not read. Paths are relative to the table root and sorted, so a seeded
-        shuffle and ``preserve_order`` don't depend on the log's order.
-        Zero-size files are skipped and ``pruners`` applied, as the directory
-        listing does; a ``DeltaPartitionPruner`` gets each file's partition
-        values from the log.
+        not read.
+        """
+        yield from self._log_file_infos(pruners or [], predicate=None)
+
+    def _log_file_infos(
+        self, pruners: List["FilePruner"], predicate: Optional["Expr"]
+    ) -> Iterator[FileInfo]:
+        """The data files of the pinned version that may hold matching rows.
+
+        Files whose log statistics rule out ``predicate`` are left out. Paths
+        are relative to the table root and sorted, so a seeded shuffle and
+        ``preserve_order`` don't depend on the log's order. Zero-size files are
+        skipped and ``pruners`` applied, as the directory listing does; a
+        ``DeltaPartitionPruner`` gets each file's partition values from the log.
         """
         add_actions = self._snapshot.add_actions()
+        num_files = add_actions.num_rows
+        if predicate is not None:
+            keep = statistics_keep_mask(add_actions, predicate)
+            if keep is not None:
+                add_actions = add_actions.filter(keep)
+        logger.debug(
+            "Delta table %s version %d: %d of %d data files may match %s",
+            self._snapshot.table_uri,
+            self._snapshot.version,
+            add_actions.num_rows,
+            num_files,
+            predicate,
+        )
         file_paths = [
             resolve_data_file_path(path)
             for path in add_actions[ADD_ACTION_PATH_COLUMN].to_pylist()
@@ -339,13 +364,7 @@ class _DeltaLogListing:
             ),
             key=lambda info: info.path,
         )
-        logger.debug(
-            "Delta table %s version %d has %d data files",
-            self._snapshot.table_uri,
-            self._snapshot.version,
-            len(file_infos),
-        )
-        yield from self._filter_file_infos(file_infos, pruners or [])
+        yield from self._filter_file_infos(file_infos, pruners)
 
     def _filter_file_infos(
         self, file_infos: Iterable[FileInfo], pruners: List["FilePruner"]
@@ -370,15 +389,19 @@ class _DeltaLogListing:
         paths: "BlockColumn",
         *,
         filesystem: Optional["FileSystem"] = None,
+        pruners: Optional[List["FilePruner"]] = None,
+        predicate: Optional["Expr"] = None,
         **kwargs: Any,
     ) -> Iterator[FileManifest]:
-        """List manifests through the base class, from ``list_file_infos``.
+        """List manifests from the log, through the base class.
 
         For a partitioned table, each manifest row also carries its file's
         partition values from the log, in ``PARTITION_VALUES_COLUMN``.
         """
         self._default_shuffle(kwargs)
-        file_infos = list(self.list_file_infos(paths, pruners=kwargs.get("pruners")))
+        # The base class's ``list_files`` would list through
+        # ``list_file_infos``, which doesn't see the predicate.
+        file_infos = list(self._log_file_infos(pruners or [], predicate))
         # Before the footer reads start, so they open the files without asking
         # the storage for their sizes.
         add_known_file_sizes(
@@ -386,7 +409,10 @@ class _DeltaLogListing:
         )
         # pyrefly: ignore[missing-attribute]
         manifests = super().list_files_from_file_infos(
-            file_infos, filesystem=self._filesystem, **kwargs
+            file_infos,
+            filesystem=self._filesystem,
+            predicate=predicate,
+            **kwargs,
         )
         yield from self._with_partition_values(manifests)
 
