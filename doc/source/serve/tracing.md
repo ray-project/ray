@@ -111,7 +111,15 @@ Set the top-level `tracing_config` field in a {ref}`Serve config file <serve-in-
 :language: yaml
 ```
 
-Then deploy the file with `serve run config.yaml` or `serve deploy config.yaml`. `serve run` also accepts an import path, such as `serve run my_app:app`, but in that case there's no tracing option to pass, so use a config file or environment variables.
+The config deploys the application in `tracing_app.py`:
+
+```{literalinclude} doc_code/tracing/tracing_app.py
+:start-after: __tracing_app_start__
+:end-before: __tracing_app_end__
+:language: python
+```
+
+From the directory that holds both files, run `serve run tracing_config.yaml`, or deploy the file to a running Ray cluster with `serve deploy tracing_config.yaml`. `serve run` also accepts an import path, such as `serve run tracing_app:app`, but in that case there's no tracing option to pass, so use a config file or environment variables.
 
 ### Configure tracing with environment variables
 
@@ -177,7 +185,7 @@ An exporter function takes no arguments and returns a list of OpenTelemetry `Spa
 :language: python
 ```
 
-If this function is in `my_exporters.py`, set `exporter_import_path` to `my_exporters:console_exporter`.
+With this function in `exporters.py`, set `exporter_import_path` to `exporters:console_exporter`.
 
 Serve calls the function in several places:
 
@@ -213,7 +221,7 @@ The exporter reads its settings from the standard [OpenTelemetry environment var
 - `OTEL_EXPORTER_OTLP_HEADERS` adds headers, such as an API key, to each export.
 - `OTEL_SERVICE_NAME` sets the service name that your backend shows for Serve's spans.
 
-Set them for every Serve process through `controller_options`, for example in a config file:
+Set them for every Serve process through `controller_options`. The following config file uses `otlp_exporter` from `exporters.py`:
 
 ```{literalinclude} doc_code/tracing/otlp_config.yaml
 :start-after: __otlp_config_start__
@@ -230,7 +238,7 @@ Datadog supports this setup only with an Agent on every host that generates Open
 
 To send traces to Datadog, do the following:
 
-1. Install `opentelemetry-exporter-otlp-proto-grpc` on every node, and set `exporter_import_path` to an OTLP exporter function, such as `my_exporters:otlp_exporter`.
+1. Install `opentelemetry-exporter-otlp-proto-grpc` on every node, and set `exporter_import_path` to an OTLP exporter function, such as `exporters:otlp_exporter`.
 1. Turn on the Agent's OTLP gRPC receiver, which is off by default. In `datadog.yaml`, set `otlp_config.receiver.protocols.grpc.endpoint` to `0.0.0.0:4317`. Or set the `DD_OTLP_CONFIG_RECEIVER_PROTOCOLS_GRPC_ENDPOINT` environment variable to `0.0.0.0:4317` for both the core Agent and the trace Agent processes. If the Agent runs in a container, also expose port 4317. With the Datadog Operator or Helm chart, enable `otlp.receiver.protocols.grpc` instead.
 1. Point Serve's exporter at the Agent on the same node by setting `OTEL_EXPORTER_OTLP_ENDPOINT` to `http://localhost:4317` in `controller_options`. If the Agent runs in its own container, use the address of that container instead. On Kubernetes, where the Agent's address is the node's IP, set the variable in the Ray container's environment instead, with the host IP from `status.hostIP`, as Datadog's Kubernetes instructions show.
 1. Set `OTEL_SERVICE_NAME` so that you can find Serve's traces under a recognizable service name.

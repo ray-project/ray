@@ -18,7 +18,6 @@ def console_exporter() -> List[SpanProcessor]:
 # __otlp_exporter_start__
 from typing import List
 
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.trace import SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
@@ -30,6 +29,11 @@ def otlp_exporter() -> List[SpanProcessor]:
     OTEL_EXPORTER_OTLP_* environment variables. It doesn't connect until it
     exports spans.
     """
+    # Import here, so the module loads without the OTLP package installed.
+    from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+        OTLPSpanExporter,
+    )
+
     return [BatchSpanProcessor(OTLPSpanExporter())]
 
 
@@ -44,6 +48,8 @@ if __name__ == "__main__":
     from ray.serve.schema import TracingConfig
 
     # Both factories return what Serve expects; shut the processors down after.
+    # The OTLP one needs opentelemetry-exporter-otlp-proto-grpc, so this fails
+    # if the package is missing.
     for factory in (console_exporter, otlp_exporter):
         processors = factory()
         assert isinstance(processors, list)

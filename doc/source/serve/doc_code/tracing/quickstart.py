@@ -27,6 +27,7 @@ import os
 import yaml
 
 from ray._common.test_utils import wait_for_condition
+from ray._common.utils import import_attr
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve.schema import ServeDeploySchema
 
@@ -35,6 +36,8 @@ spans_dir = os.path.join(get_serve_logs_dir(), "spans")
 
 def read_spans(prefix: str):
     """Return the spans in this session's span files for one component."""
+    if not os.path.isdir(spans_dir):
+        return []
     spans = []
     decoder = json.JSONDecoder()
     for file_name in os.listdir(spans_dir):
@@ -65,10 +68,14 @@ def request_traced() -> bool:
 
 wait_for_condition(request_traced)
 
-# The config-file examples in the guide are valid Serve configs.
+# The config-file examples in the guide are valid Serve configs, and their
+# import paths point at the example modules next to them.
 for file_name in ("tracing_config.yaml", "otlp_config.yaml"):
     with open(os.path.join(os.path.dirname(__file__), file_name)) as f:
         config = ServeDeploySchema.model_validate(yaml.safe_load(f))
     assert config.tracing_config.enabled
+    for application in config.applications:
+        import_attr(application.import_path)
+    import_attr(config.tracing_config.exporter_import_path)
 
 serve.shutdown()

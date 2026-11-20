@@ -2,7 +2,7 @@
 tracing_config:
   enabled: true
   sampling_ratio: 0.1
-  exporter_import_path: my_exporters:otlp_exporter
+  exporter_import_path: exporters:otlp_exporter
 
 controller_options:
   runtime_env:
@@ -14,5 +14,5 @@ controller_options:
 applications:
   - name: default
     route_prefix: /
-    import_path: my_app:app
+    import_path: tracing_app:app
 # __otlp_config_end__

@@ -49,6 +49,8 @@ spans_dir = os.path.join(get_serve_logs_dir(), "spans")
 
 def read_spans():
     """Return all spans in this session's span files."""
+    if not os.path.isdir(spans_dir):
+        return []
     spans = []
     decoder = json.JSONDecoder()
     for file_name in os.listdir(spans_dir):
