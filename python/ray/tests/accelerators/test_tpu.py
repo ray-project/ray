@@ -972,6 +972,45 @@ def test_get_tpu_resource_per_chip(monkeypatch):
 
 
 @pytest.mark.parametrize(
+    "pod_type, expected_workers",
+    [
+        ("tpu7x-8", 1),
+        ("tpu7x-16", 2),
+        ("tpu7x-32", 4),
+    ],
+)
+def test_get_num_workers_in_current_tpu_pod_v7x_vfio(
+    vfio_sysfs, monkeypatch, pod_type, expected_workers
+):
+    """v7x hosts expose 8 VFIO groups for 4 physical chips; worker count must not double-count
+    and must remain unaffected by RAY_TPU_RESOURCE_PER_CHIP overrides.
+    """
+    monkeypatch.delenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, raising=False)
+    monkeypatch.setenv(tpu.GKE_TPU_ACCELERATOR_TYPE_ENV_VAR, pod_type)
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
+    with patch("glob.glob", return_value=[]):
+        assert TPUAcceleratorManager.get_current_node_num_accelerators() == 8
+        assert (
+            TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
+            == expected_workers
+        )
+        monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "1")
+        assert (
+            TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
+            == expected_workers
+        )
+
+    # /dev/accel* path also ignores RAY_TPU_RESOURCE_PER_CHIP overrides.
+    with patch("glob.glob", return_value=[f"/dev/accel{i}" for i in range(8)]):
+        with patch("os.path.isdir", return_value=False):
+            monkeypatch.setenv(tpu.RAY_TPU_RESOURCE_PER_CHIP_ENV_VAR, "1")
+            assert (
+                TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
+                == expected_workers
+            )
+
+
+@pytest.mark.parametrize(
     "accelerator_type, expected",
     [
         ("TPU-V6E", "v6e"),
