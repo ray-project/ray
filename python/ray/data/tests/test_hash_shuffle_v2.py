@@ -56,6 +56,17 @@ from ray.data._internal.planner.plan_all_to_all_op import (
     plan_disk_hash_shuffle_map,
     plan_disk_hash_shuffle_reduce,
 )
+from ray.data.aggregate import (
+    AbsMax,
+    AggregateFnV2,
+    AsList,
+    Mean,
+    Quantile,
+    Std,
+    Sum,
+    TopKUnique,
+    ValueCounter,
+)
 from ray.data.block import BlockAccessor, BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -1808,6 +1819,412 @@ def test_adaptive_partial_agg_e2e(
     pd.testing.assert_frame_equal(
         actual, expected, check_exact=False, check_dtype=False
     )
+
+
+@pytest.mark.parametrize("use_disk", [False, True], ids=["object_store", "disk"])
+@pytest.mark.parametrize("mode", ["estimate", "always", "never"])
+def test_adaptive_partial_agg_e2e_more_aggs(
+    ray_start_regular_shared_2_cpus, restore_data_context, use_disk, mode
+):
+    """Std, AbsMax, Quantile and a Python aggregation with ``raw_to_partial``,
+    with one map task skipping and one aggregating, match pandas."""
+    import pandas as pd
+
+    ctx = restore_data_context
+    ctx.use_disk_based_hash_shuffle = use_disk
+    ctx.shuffle_input_batch_bytes = 0  # one map task per input block
+    ctx.partial_aggregation_mode = mode
+    ctx.adaptive_partial_aggregation_sample_rows = 10
+
+    # Defined here so workers unpickle it by value (the test module isn't
+    # importable on them).
+    class SumOfSquares(AggregateFnV2):
+        def __init__(self, on: str):
+            super().__init__(f"sum_sq({on})", lambda: 0, on=on, ignore_nulls=True)
+
+        def aggregate_block(self, block):
+            column = BlockAccessor.for_block(block).to_arrow()[self._target_col_name]
+            return pc.sum(pc.multiply(column, column)).as_py()
+
+        def combine(self, current_accumulator, new):
+            return current_accumulator + new
+
+        def raw_to_partial(self, block):
+            column = block[self._target_col_name]
+            return pc.multiply(column, column)
+
+    high = pd.DataFrame({"k": np.arange(200), "v": (np.arange(200) % 7) - 3})
+    low = pd.DataFrame({"k": np.arange(200) % 5, "v": (np.arange(200) % 3) - 1})
+    actual = (
+        ray.data.from_pandas([high, low])
+        .groupby("k", num_partitions=4)
+        .aggregate(
+            Std("v"),
+            AbsMax("v"),
+            Quantile("v", q=0.25),
+            SumOfSquares("v"),
+        )
+        .to_pandas()
+        .sort_values("k")
+        .reset_index(drop=True)
+    )
+
+    grouped = pd.concat([high, low]).groupby("k")["v"]
+    expected = pd.DataFrame(
+        {
+            "k": sorted(grouped.groups),
+            "std(v)": grouped.std().values,
+            "abs_max(v)": grouped.apply(lambda s: s.abs().max()).values,
+            "quantile(v)": grouped.quantile(0.25).values,
+            "sum_sq(v)": grouped.apply(lambda s: (s * s).sum()).values,
+        }
+    )
+    pd.testing.assert_frame_equal(
+        actual, expected, check_exact=False, check_dtype=False
+    )
+
+
+# --- Aggregations vectorized with list / value-count / Std state -------------
+
+
+def _vectorized_vs_python_table(kind: str, seed: int, num_keys: int) -> pa.Table:
+    rng = np.random.default_rng(seed)
+    n = 300
+    null = rng.random(n) < 0.1
+    if kind == "float":
+        values = pa.array(rng.normal(size=n) * 100 + 1e6, mask=null)
+    elif kind == "int32":
+        values = pa.array(rng.integers(-5, 6, n).astype(np.int32), mask=null)
+    elif kind == "bool":
+        values = pa.array(rng.random(n) < 0.3, mask=null)
+    elif kind == "string":
+        values = pa.array([f"s{x}" for x in rng.integers(0, 6, n)], mask=null)
+    else:
+        assert kind == "dictionary"
+        values = pa.array([f"s{x}" for x in rng.integers(0, 6, n)]).dictionary_encode()
+    keys = pa.array(rng.integers(0, num_keys, n), mask=rng.random(n) < 0.05)
+    return pa.table({"k": keys, "v": values})
+
+
+def _aggregate_shards(aggs, tables, modes):
+    """Map each table with the given partial-agg mode, then reduce them all;
+    ``modes=None`` runs the Python engine instead."""
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+        PartialAggPolicy,
+        _fallback_aggregating_reduce_fn,
+        _fallback_aggregating_transformer,
+        _make_aggregating_reduce_fn,
+        _make_aggregating_transformer,
+    )
+
+    if modes is None:
+        transform = _fallback_aggregating_transformer(("k",), aggs)
+        reduce_fn = _fallback_aggregating_reduce_fn(("k",), aggs)
+        shards = [transform(t) for t in tables]
+    else:
+        reduce_fn = _make_aggregating_reduce_fn(("k",), aggs)
+        shards = [
+            _make_aggregating_transformer(
+                ("k",), aggs, policy=PartialAggPolicy(mode=PartialAggMode(mode))
+            )(t)
+            for t, mode in zip(tables, modes)
+        ]
+    return pa.concat_tables(list(reduce_fn(0, [shards])))
+
+
+def _comparable(value, sort_lists: bool):
+    if isinstance(value, float):
+        return None if np.isnan(value) else pytest.approx(value, rel=1e-9)
+    if isinstance(value, dict):  # ValueCounter: order of values is unspecified
+        return sorted(zip(map(repr, value["values"]), value["counts"]))
+    if isinstance(value, list) and sort_lists:  # AsList: order is unspecified
+        return sorted(map(repr, value))
+    return value
+
+
+def _rows_by_key(table: pa.Table, sort_lists: bool = False) -> dict:
+    return {
+        repr(row.pop("k")): {
+            name: _comparable(value, sort_lists) for name, value in row.items()
+        }
+        for row in table.to_pylist()
+    }
+
+
+_VECTORIZED_CASES = {
+    "float": lambda ignore_nulls: (
+        Std("v", ignore_nulls=ignore_nulls),
+        Std("v", ddof=0, ignore_nulls=ignore_nulls, alias_name="std0"),
+        AbsMax("v", ignore_nulls=ignore_nulls),
+        Quantile("v", q=0.3, ignore_nulls=ignore_nulls),
+        Mean("v", ignore_nulls=ignore_nulls),
+    ),
+    "int32": lambda ignore_nulls: (
+        Std("v", ignore_nulls=ignore_nulls),
+        AbsMax("v", ignore_nulls=ignore_nulls),
+        Quantile("v", q=0.75, ignore_nulls=ignore_nulls),
+        TopKUnique("v", k=3, ignore_nulls=ignore_nulls),
+        ValueCounter("v"),
+        Sum("v", ignore_nulls=ignore_nulls),
+    ),
+    "bool": lambda ignore_nulls: (Std("v", ddof=0, ignore_nulls=ignore_nulls),),
+    "string": lambda ignore_nulls: (
+        TopKUnique("v", k=2, ignore_nulls=ignore_nulls),
+        ValueCounter("v"),
+    ),
+    "dictionary": lambda ignore_nulls: (
+        TopKUnique("v", k=2, ignore_nulls=ignore_nulls),
+        ValueCounter("v"),
+    ),
+}
+
+
+@pytest.mark.parametrize("kind", list(_VECTORIZED_CASES))
+@pytest.mark.parametrize("ignore_nulls", [True, False])
+@pytest.mark.parametrize("num_keys", [3, 300])
+@pytest.mark.parametrize(
+    "modes",
+    [("always",) * 3, ("never",) * 3, ("always", "never", "never")],
+)
+def test_vectorized_aggs_match_python_engine(kind, ignore_nulls, num_keys, modes):
+    """Std, AbsMax, Quantile, TopKUnique and ValueCounter give the Python
+    engine's results for any mix of pre-aggregated and raw shards."""
+    tables = [_vectorized_vs_python_table(kind, seed, num_keys) for seed in range(3)]
+    aggs = _VECTORIZED_CASES[kind](ignore_nulls)
+    expected = _rows_by_key(_aggregate_shards(aggs, tables, modes=None))
+    assert _rows_by_key(_aggregate_shards(aggs, tables, modes)) == expected
+
+
+@pytest.mark.parametrize("kind", ["int32", "string"])
+@pytest.mark.parametrize("ignore_nulls", [True, False])
+@pytest.mark.parametrize(
+    "modes",
+    [("always",) * 3, ("never",) * 3, ("always", "never", "never")],
+)
+def test_vectorized_as_list_matches_python_engine(kind, ignore_nulls, modes):
+    tables = [_vectorized_vs_python_table(kind, seed, 20) for seed in range(3)]
+    aggs = (AsList("v", ignore_nulls=ignore_nulls),)
+    expected = _rows_by_key(_aggregate_shards(aggs, tables, None), sort_lists=True)
+    actual = _rows_by_key(_aggregate_shards(aggs, tables, modes), sort_lists=True)
+    assert actual == expected
+
+
+def test_vectorized_aggs_nan_semantics():
+    """NaN is a value: it makes Std NaN, as with Mean; Quantile skips it;
+    TopKUnique counts it as null; ValueCounter counts it on its own. AbsMax
+    skips it unless a group is all NaN, as with Max."""
+    from ray.data.aggregate import Max
+
+    nan = float("nan")
+    table = pa.table({"k": [0, 0, 0, 0, 1], "v": [1.0, nan, -3.0, None, nan]})
+    aggs = (
+        AbsMax("v"),
+        Max("v"),
+        Std("v"),
+        Mean("v"),
+        Quantile("v"),
+        TopKUnique("v", k=3),
+        ValueCounter("v"),
+    )
+    for modes in [("always",), ("never",)]:
+        row, all_nan = sorted(
+            _aggregate_shards(aggs, [table], modes).to_pylist(), key=lambda r: r["k"]
+        )
+        assert row["abs_max(v)"] == 3.0 and row["max(v)"] == 1.0
+        assert np.isnan(all_nan["abs_max(v)"]) and np.isnan(all_nan["max(v)"])
+        assert np.isnan(row["std(v)"]) and np.isnan(row["mean(v)"])
+        assert row["quantile(v)"] == -1.0
+        assert row["topk_unique(v)"] == [None, -3.0, 1.0]
+        counts = row["value_counter(v)"]
+        assert sorted(zip(map(repr, counts["values"]), counts["counts"])) == [
+            ("-3.0", 1),
+            ("1.0", 1),
+            ("None", 1),
+            ("nan", 1),
+        ]
+
+
+def test_vectorized_std_is_numerically_stable():
+    """Chan's merge keeps precision when the mean dwarfs the spread, where
+    sum / sum-of-squares would cancel catastrophically."""
+    rng = np.random.default_rng(0)
+    values = 1e9 + rng.normal(size=3000)
+    tables = [
+        pa.table({"k": np.zeros(1000, dtype=np.int64), "v": values[i::3]})
+        for i in range(3)
+    ]
+    for modes in [("always",) * 3, ("always", "never", "never")]:
+        (row,) = _aggregate_shards((Std("v"),), tables, modes).to_pylist()
+        assert row["std(v)"] == pytest.approx(np.std(values, ddof=1), rel=1e-6)
+
+
+def test_unsupported_value_types_use_python_engine():
+    """Arrow can't group by list values, so TopKUnique over a list column
+    ships raw rows and the reducer runs the Python engine."""
+    table = pa.table({"k": [0, 0, 0, 1], "v": [[1, 2], [1, 2], [3], [4]]})
+    aggs = (TopKUnique("v", k=1),)
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+        PartialAggPolicy,
+        _make_aggregating_transformer,
+    )
+
+    shard = _make_aggregating_transformer(
+        ("k",), aggs, policy=PartialAggPolicy(mode=PartialAggMode.ALWAYS)
+    )(table)
+    assert shard.column_names == ["k", "v"]  # raw rows
+    expected = _aggregate_shards(aggs, [table], modes=None).to_pylist()
+    assert _aggregate_shards(aggs, [table], ("always",)).to_pylist() == expected
+    assert sorted(expected, key=lambda r: r["k"]) == [
+        {"k": 0, "topk_unique(v)": [[1, 2]]},
+        {"k": 1, "topk_unique(v)": [[4]]},
+    ]
+
+
+@pytest.mark.parametrize("modes", [("always", "always"), ("never", "always")])
+def test_all_null_block_with_unsupported_type(modes):
+    """An all-null block has Arrow type null, which says nothing about the
+    column's real type; another block's list values need the Python engine,
+    so the null block must not be pre-aggregated either."""
+    tables = [
+        pa.table({"k": [0, 1], "v": pa.nulls(2)}),
+        pa.table({"k": [0, 0], "v": [[1, 2], [1, 2]]}),
+    ]
+    aggs = (TopKUnique("v", k=1),)
+    expected = _aggregate_shards(aggs, tables, modes=None).to_pylist()
+    got = _aggregate_shards(aggs, tables, modes).to_pylist()
+    assert sorted(got, key=lambda r: r["k"]) == sorted(expected, key=lambda r: r["k"])
+
+
+@pytest.mark.parametrize(
+    "modes",
+    [
+        ("always", "always"),
+        ("never", "always"),
+        ("always", "never"),
+        ("never", "never"),
+    ],
+)
+@pytest.mark.parametrize(
+    "second,expected",
+    [
+        (
+            {"k": [0, 0], "v": [-3, 2]},
+            {
+                0: (3, 3.5355339059327378, -0.5, [-3, 2, None], [-3, 2]),
+                1: (None, None, None, [None], [None]),
+            },
+        ),
+        (
+            {"k": [0], "v": pa.nulls(1)},
+            {
+                0: (None, None, None, [None, None], [None]),
+                1: (None, None, None, [None], [None]),
+            },
+        ),
+    ],
+    ids=["with_numeric_block", "all_null"],
+)
+def test_null_typed_block(modes, second, expected):
+    """A block whose aggregated column is all null has Arrow type null. Each
+    aggregation must handle it alone and next to numeric shards."""
+    tables = [pa.table({"k": [0, 1], "v": pa.nulls(2)}), pa.table(second)]
+    aggs = (
+        AbsMax("v"),
+        Std("v"),
+        Quantile("v"),
+        AsList("v"),
+        TopKUnique("v", k=2),
+    )
+    rows = _aggregate_shards(aggs, tables, modes).to_pylist()
+    got = {
+        r["k"]: (
+            r["abs_max(v)"],
+            r["std(v)"],
+            r["quantile(v)"],
+            sorted(r["list(v)"], key=lambda x: (x is None, x)),
+            r["topk_unique(v)"],
+        )
+        for r in rows
+    }
+    assert got == expected
+
+
+@pytest.mark.parametrize("modes", [("always", "never"), ("never", "never")])
+def test_large_list_state(modes):
+    """List state past int32 offsets is a LargeList; raw rows' state must not
+    be cast down to a regular list when merged with it."""
+    import ray.data._internal.arrow_aggregation as arrow_aggregation
+
+    def _large_offsets(lengths):
+        offsets = np.zeros(len(lengths) + 1, dtype=np.int64)
+        np.cumsum(lengths, out=offsets[1:])
+        return pa.array(offsets), pa.LargeListArray
+
+    tables = [_vectorized_vs_python_table("int32", seed, 5) for seed in range(2)]
+    aggs = (AsList("v"), Quantile("v"), TopKUnique("v", k=2), ValueCounter("v"))
+    expected = _rows_by_key(_aggregate_shards(aggs, tables, modes), sort_lists=True)
+    with patch.object(arrow_aggregation, "_list_offsets", _large_offsets):
+        large = _aggregate_shards(aggs, tables, modes)
+    assert pa.types.is_large_list(large.schema.field("list(v)").type)
+    assert _rows_by_key(large, sort_lists=True) == expected
+
+
+class _SumOfSquares(AggregateFnV2):
+    """A Python-engine aggregation."""
+
+    def __init__(self, on: str):
+        super().__init__(f"sum_sq({on})", lambda: 0, on=on, ignore_nulls=True)
+
+    def aggregate_block(self, block):
+        column = BlockAccessor.for_block(block).to_arrow()[self._target_col_name]
+        return pc.sum(pc.multiply(column, column)).as_py()
+
+    def combine(self, current_accumulator, new):
+        return current_accumulator + new
+
+
+class _SumOfSquaresWithRawToPartial(_SumOfSquares):
+    def raw_to_partial(self, block):
+        column = block[self._target_col_name]
+        return pc.multiply(column, column)
+
+
+@pytest.mark.parametrize(
+    "modes",
+    [("never",) * 3, ("always", "never", "never"), ("always",) * 3],
+)
+def test_python_raw_to_partial_hook(modes):
+    """A Python-engine aggregation implementing ``raw_to_partial`` lets map
+    tasks skip partial aggregation, with the same result."""
+    rng = np.random.default_rng(0)
+    tables = [
+        pa.table({"k": rng.integers(0, 50, 200), "v": rng.integers(-5, 5, 200)})
+        for _ in range(3)
+    ]
+    expected = _rows_by_key(
+        _aggregate_shards((_SumOfSquares("v"),), tables, ("always",) * 3)
+    )
+    result = _aggregate_shards((_SumOfSquaresWithRawToPartial("v"),), tables, modes)
+    assert "__ray_raw_rows" not in result.column_names
+    assert _rows_by_key(result) == expected
+
+
+def test_python_engine_without_raw_to_partial_always_pre_aggregates():
+    from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+        PartialAggMode,
+        PartialAggPolicy,
+        _make_aggregating_transformer,
+    )
+
+    table = pa.table({"k": np.arange(100), "v": np.arange(100)})
+    shard = _make_aggregating_transformer(
+        ("k",),
+        (_SumOfSquares("v"),),
+        policy=PartialAggPolicy(mode=PartialAggMode.NEVER),
+    )(table)
+    assert shard.column_names == ["k", "sum_sq(v)"]
 
 
 if __name__ == "__main__":
