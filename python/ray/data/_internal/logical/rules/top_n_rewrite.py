@@ -11,10 +11,6 @@ from ray.data._internal.logical.rules.combine_shuffles import CombineShuffles
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data.context import ShuffleStrategy
 
-TOP_N_REWRITE_ENABLED_CONFIG_KEY = "top_n_rewrite_enabled"
-TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY = "top_n_rewrite_max_limit"
-DEFAULT_TOP_N_REWRITE_MAX_LIMIT = 10_000
-
 
 class TopNRewriteRule(Rule):
     """Rewrite eligible Sort + Limit and TopN + Limit plans into one TopN."""
@@ -28,17 +24,14 @@ class TopNRewriteRule(Rule):
         assert isinstance(plan, LogicalPlan)
         if plan.context.shuffle_strategy != ShuffleStrategy.SHUFFLE_V2:
             return plan
-        if not plan.context.get_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, False):
+        if not plan.context.enable_top_n_rewrite:
             return plan
 
-        max_limit = plan.context.get_config(
-            TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY,
-            DEFAULT_TOP_N_REWRITE_MAX_LIMIT,
-        )
+        max_limit = plan.context.top_n_rewrite_max_limit
         if type(max_limit) is not int or max_limit <= 0:
             raise ValueError(
-                f"TopN config {TOP_N_REWRITE_MAX_LIMIT_CONFIG_KEY!r} must be a "
-                f"positive integer, got {max_limit!r}."
+                "DataContext.top_n_rewrite_max_limit must be a positive integer, "
+                f"got {max_limit!r}."
             )
 
         def rewrite(operator: LogicalOperator) -> LogicalOperator:

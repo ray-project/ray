@@ -54,6 +54,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # tasks, such as the push-based split's deliveries. No operator owns those
         # child tasks, so there is no queued reconstruction task to join.
         self._has_external_consumer = False
+        # Reconstruction tasks that finished successfully.
+        self._num_reconstruction_tasks_finished = 0
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod

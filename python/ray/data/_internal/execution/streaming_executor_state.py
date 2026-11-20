@@ -28,7 +28,6 @@ from ray.data._internal.execution.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
 )
-from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -585,8 +584,7 @@ class OpState:
                     with self._output_lock:
                         self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                         self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                        if actor_only_backend_enabled():
-                            assert self.op._resource_bank is not None
+                        if self.op._resource_bank is not None:
                             for br in ref.block_refs:
                                 self.op._resource_bank.on_block_consumed(input_ref=br)
                     return ref
@@ -1493,5 +1491,10 @@ def format_op_state_summary(
     suffix = op_state.op.progress_str()
     if suffix:
         desc += f"; {suffix}"
+
+    # Lineage reconstruction status; empty unless reconstruction is enabled.
+    reconstruction = op_state.op.lineage_reconstruction_progress_str()
+    if reconstruction:
+        desc += f"; {reconstruction}"
 
     return desc
