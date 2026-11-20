@@ -298,8 +298,8 @@ def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
 # --- Disk sort: sorted runs cut by the reducers (late-cut) --------------------
 
 
-def _write_sort_run(blocks, sort_key, out_dir, **kwargs):
-    """``_write_disk_sort_run`` without a cluster: no file server is created."""
+def _write_sort_run(blocks, sort_key, out_dir, node_id="n", **kwargs):
+    """``_write_disk_sort_run`` without a cluster."""
     params = dict(
         num_partitions=2,
         sample_rows=100,
@@ -309,7 +309,8 @@ def _write_sort_run(blocks, sort_key, out_dir, **kwargs):
         compression="lz4",
     )
     params.update(kwargs)
-    with mock.patch.object(disk_shuffle_tasks, "_ensure_file_server", return_value="n"):
+    with mock.patch.object(disk_shuffle_tasks.ray, "get_runtime_context") as ctx:
+        ctx.return_value.get_node_id.return_value = node_id
         return _write_disk_sort_run(
             blocks, sort_key=sort_key, out_dir=out_dir, **params
         )
@@ -508,9 +509,15 @@ def test_disk_range_regroup_computes_boundaries_from_handles(
     estimates, and hands each reduce task its key range."""
     ctx = DataContext.get_current()
     sort_key = SortKey("k")
+    # The regroup pins a file server to each handle's node, so use a real one.
+    node_id = ray.get_runtime_context().get_node_id()
     handles = [
         _write_sort_run(
-            [pa.table({"k": list(range(i, 40, 2))})], sort_key, str(tmp_path), map_id=i
+            [pa.table({"k": list(range(i, 40, 2))})],
+            sort_key,
+            str(tmp_path),
+            node_id=node_id,
+            map_id=i,
         )
         for i in range(2)
     ]

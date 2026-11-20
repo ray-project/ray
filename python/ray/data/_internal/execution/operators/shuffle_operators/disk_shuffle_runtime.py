@@ -22,7 +22,6 @@ from typing import (
     Literal,
     NamedTuple,
     Optional,
-    Set,
     Tuple,
     TypedDict,
     Union,
@@ -36,11 +35,7 @@ import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.util import MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.exceptions import (
-    ActorDiedError,
-    ActorUnavailableError,
-    ActorUnschedulableError,
-)
+from ray.exceptions import ActorDiedError, ActorUnschedulableError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -50,12 +45,6 @@ logger = logging.getLogger(__name__)
 
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
 _SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_disk"
-
-# Endpoint resolution polls while the actor restarts (Ray raises
-# ActorUnavailableError): the poll interval, and the warn cadence (in polls) so
-# a stuck fetch stays visible.
-_ENDPOINT_POLL_INTERVAL_S = 2.0
-_ENDPOINT_POLL_WARN_EVERY = 15  # ~30s at the interval above
 
 # Materialized handle metadata per reduce resolve batch.
 _DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB
@@ -219,13 +208,16 @@ def _is_disk_exhausted(exc: BaseException) -> bool:
 class ShuffleFileServerAnomalyError(RuntimeError):
     """Terminal shuffle file-server failure: a driver-level retry cannot fix it.
 
-    We run with ``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
-    the actor on any mid-life crash and surfaces ``ActorUnavailableError``
-    during the restart window. So the anomalous states we key off of are:
+    The server is a named actor owned by the driver-side regroup operator,
+    created with ``max_restarts=-1``, ``max_task_retries=-1`` and
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``. Ray auto-restarts
+    it on any mid-life crash and holds ``endpoint()`` calls until the restart
+    completes, so a transient ``ActorUnavailableError`` never reaches us. The
+    anomalous states we key off of are:
 
-    - ``ActorDiedError``          -> ``__init__`` raised, or external
-                                    ``ray.kill(actor, no_restart=True)``.
+    - ``ActorDiedError``          -> ``__init__`` raised, the owning driver
+                                    exited, or ``ray.kill(actor, no_restart=True)``
+                                    (the regroup operator's teardown).
     - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
                                     relocation. Terminal at the shuffle layer;
                                     an upstream lineage layer must re-execute
@@ -425,11 +417,15 @@ def _make_flight_server(host: str, base_dir: str):
     return _ShuffleFlightServer(_grpc_location(host, 0))
 
 
-@ray.remote(num_cpus=0, max_restarts=-1)
+@ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
-    byte-ranges of local shuffle files to remote reducers. Survives individual
-    map/reduce workers; in a real cluster, one per node (NodeAffinity)."""
+    byte-ranges of local shuffle files to remote reducers.
+
+    One per (shuffle, node), pinned with NodeAffinity. Created and owned by
+    the driver-side ``DiskHashShuffleRegroupOp`` when the first mapper handle
+    from that node arrives, and killed in its teardown; survives individual
+    map/reduce workers but not the driver."""
 
     def __init__(
         self,
@@ -459,21 +455,15 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
     shutil.rmtree(reduce_dir, ignore_errors=True)
 
 
-def teardown_disk_shuffle(file_servers: Set[Tuple[str, str]]) -> None:
-    """Kill every ``ShuffleFileServer`` in ``file_servers`` and remove the
-    shuffle directories on its node. Called once by the reduce operator at
-    shutdown, when no reducer can still need the files.
+def teardown_disk_shuffle(shuffle_nodes: Iterable[Tuple[str, str]]) -> None:
+    """Remove the shuffle directories of every ``(shuffle_id, node_id)`` in
+    ``shuffle_nodes`` on that node. Called once from the regroup operator's
+    teardown, when no reducer can still need the files. The node's
+    ``ShuffleFileServer`` is owned by the regroup operator and killed there;
+    serving a removed directory is harmless, so the two need no ordering.
     """
     cleanup_refs = []
-    for shuffle_id, node_id in file_servers:
-        try:
-            server = ray.get_actor(
-                _file_server_name(shuffle_id, node_id),
-                namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-            )
-            ray.kill(server, no_restart=True)
-        except Exception:
-            pass
+    for shuffle_id, node_id in shuffle_nodes:
         try:
             map_dir, reduce_dir = disk_shuffle_dirs(shuffle_id)
             cleanup_refs.append(
@@ -634,7 +624,7 @@ def _fetch_from_file_server(
     restart can rebind the port). A changed incarnation means the server restarted:
     reset the sink and retry in place. An unchanged incarnation means the process
     stayed up but the fetch still failed: retry once (a blip ``_resolve`` may have
-    polled through), then escalate to a terminal ``ShuffleFileServerAnomalyError``
+    waited through), then escalate to a terminal ``ShuffleFileServerAnomalyError``
     (likely a network block on the Flight port). Flight error classes / gRPC codes:
     https://arrow.apache.org/docs/python/api/flight.html
     https://grpc.io/docs/guides/status-codes/
@@ -660,36 +650,20 @@ def _fetch_from_file_server(
             raise ShuffleFileServerAnomalyError(
                 f"ShuffleFileServer on node {node_id} not found in namespace: {e}"
             ) from e
-        poll_count = 0
-        while True:
-            try:
-                ep = cast(_Endpoint, ray.get(server.endpoint.remote()))
-                break
-            except ActorUnavailableError:
-                poll_count += 1
-                if poll_count % _ENDPOINT_POLL_WARN_EVERY == 0:
-                    logger.warning(
-                        f"ShuffleFileServer on node {node_id} unavailable "
-                        f"(~{poll_count * _ENDPOINT_POLL_INTERVAL_S:.0f}s), "
-                        f"still polling..."
-                    )
-                time.sleep(_ENDPOINT_POLL_INTERVAL_S)
-            except ActorDiedError as e:
-                # With max_restarts=-1, Ray auto-restarts on mid-life death and
-                # surfaces ActorUnavailableError during the restart. So an
-                # ActorDiedError reaching us means init failure or external
-                # ray.kill
-                raise ShuffleFileServerAnomalyError(
-                    f"ShuffleFileServer on node {node_id} is dead: {e}"
-                ) from e
-            except ActorUnschedulableError as e:
-                # Pinned node is gone; soft=False can't relocate the actor.
-                # Ray transitions from ActorUnavailableError to this ~10s after
-                # heartbeat loss.
-                raise ShuffleFileServerAnomalyError(
-                    f"ShuffleFileServer on node {node_id} is unschedulable "
-                    f"(node likely dead): {e}"
-                ) from e
+        try:
+            ep = cast(_Endpoint, ray.get(server.endpoint.remote()))
+        except ActorDiedError as e:
+            # Ray restarts the actor on mid-life death, so an ActorDiedError
+            # reaching us means init failure or external ray.kill.
+            raise ShuffleFileServerAnomalyError(
+                f"ShuffleFileServer on node {node_id} is dead: {e}"
+            ) from e
+        except ActorUnschedulableError as e:
+            # Pinned node is gone; soft=False can't relocate the actor.
+            raise ShuffleFileServerAnomalyError(
+                f"ShuffleFileServer on node {node_id} is unschedulable "
+                f"(node likely dead): {e}"
+            ) from e
         with _ENDPOINT_CACHE_LOCK:
             _ENDPOINT_CACHE[key] = ep
         return ep

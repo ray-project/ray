@@ -28,16 +28,13 @@ from ray._raylet import (
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E402,E501
-    _SHUFFLE_FILE_SERVER_NAMESPACE,
     ShuffleDiskError,
-    ShuffleFileServer,
     ShuffleHandle,
     _build_range_index,
     _compute_prefetch_layout,
     _counts_to_array,
     _encode_shard,
     _fetch_from_file_server,
-    _file_server_name,
     _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
@@ -78,7 +75,6 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -149,7 +145,7 @@ def _write_disk_shuffle_file(
         if arrow_inputs:
             combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
             blocks = (block_transformer(combined_input),)
-    node_id = _ensure_file_server(shuffle_id, out_dir)
+    node_id = ray.get_runtime_context().get_node_id()
     output_schema: Optional[pa.Schema] = None
     writer: Optional[_PartitionWriter] = None
 
@@ -183,9 +179,6 @@ def _write_disk_shuffle_file(
         # Dense per-partition range index (see _build_range_index): row ``p`` is
         # ``(offset, length)`` of partition ``p``'s frame.
         "index_ranges": _idx_ranges,
-        # ShuffleFileServer identity: reducers rebuild the actor name from
-        # (shuffle_id, node_id) and call ``ray.get_actor`` when they need
-        # the handle.
         "shuffle_id": shuffle_id,
         "node_id": node_id,
         "map_id": map_id,
@@ -210,24 +203,6 @@ def _to_arrow(block: Block) -> pa.Table:
     if isinstance(block, pa.Table):
         return block
     return BlockAccessor.for_block(block).to_arrow()
-
-
-def _ensure_file_server(shuffle_id: str, out_dir: str) -> str:
-    """Create this node's file-server actor if it does not exist yet
-    (``get_if_exists=True`` reuses it across mappers on the node) and return
-    the node id. The handle is not kept: reducers look the server up by name
-    via ``ray.get_actor``."""
-    node_id = ray.get_runtime_context().get_node_id()
-    ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
-        name=_file_server_name(shuffle_id, node_id),
-        namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-        get_if_exists=True,
-        lifetime="detached",
-        max_restarts=-1,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-        num_cpus=0,
-    ).remote(out_dir)
-    return node_id
 
 
 def _publish_shuffle_file(
@@ -314,7 +289,7 @@ def _write_disk_sort_run(
     Returns:
         ShuffleHandle describing the on-disk run for reducers to fetch.
     """
-    node_id = _ensure_file_server(shuffle_id, out_dir)
+    node_id = ray.get_runtime_context().get_node_id()
     output_schema: Optional[pa.Schema] = None
     tables: List[pa.Table] = []
     for block in blocks:

@@ -2,7 +2,7 @@ import functools
 import logging
 import typing
 from collections import defaultdict, deque
-from typing import Any, Dict, List, Mapping, Optional, Set, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow as pa
@@ -27,8 +27,12 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskExecDriverStats,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+    _SHUFFLE_FILE_SERVER_NAMESPACE,
+    ShuffleFileServer,
+    _file_server_name,
     _KeyRangeSources,
     _PartitionSources,
+    disk_shuffle_dirs,
     handle_from_block,
     teardown_disk_shuffle,
 )
@@ -63,6 +67,7 @@ from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockAccessor, BlockMetadata, BlockStats, TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.execution.operators.map_transformer import MapTransformer
@@ -82,9 +87,15 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
 
     A partition's bundle holds one block entry per input: a ref to that
     input's list of handle refs (shared by all partitions), with the
-    partition's rows and decoded bytes from that input as its metadata. It
-    records every mapper's file server for ``teardown``, which the reduce calls
-    once no reducer can still need the files.
+    partition's rows and decoded bytes from that input as its metadata.
+
+    The op also owns the per-node ``ShuffleFileServer`` actors: it creates one
+    per (shuffle_id, node_id) the first time a mapper handle from that node
+    arrives, and kills them, along with the on-disk directories, in
+    ``teardown``, which the reduce calls once no reducer can still need the
+    files. Owning them here (not as detached actors created by map tasks) ties
+    their lifetime to the driver, so they cannot outlive the job, and no server
+    is created for a node whose mappers never reported a handle.
     """
 
     def __init__(
@@ -112,8 +123,9 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
             np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
         ]
         self._schema_by_input: List[Optional[pa.Schema]] = [None] * len(input_ops)
-        # (shuffle_id, node_id) of every file server the mappers created.
-        self._file_servers: Set[Tuple[str, str]] = set()
+        # (shuffle_id, node_id) -> owned ShuffleFileServer handle, created on
+        # the first handle from that node and killed in teardown.
+        self._file_servers: Dict[Tuple[str, str], "ray.actor.ActorHandle"] = {}
         self._output_queue: deque = deque()
         self._estimated_num_output_bundles = num_partitions
 
@@ -175,8 +187,29 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
             self._schema_by_input[input_index] = handle.get("schema")
         shuffle_id = handle.get("shuffle_id")
         node_id = handle.get("node_id")
-        if shuffle_id and node_id:
-            self._file_servers.add((shuffle_id, node_id))
+        if shuffle_id and node_id and (shuffle_id, node_id) not in self._file_servers:
+            self._file_servers[(shuffle_id, node_id)] = self._create_file_server(
+                shuffle_id, node_id
+            )
+
+    @staticmethod
+    def _create_file_server(shuffle_id: str, node_id: str) -> "ray.actor.ActorHandle":
+        """Start the owned, node-pinned ``ShuffleFileServer`` for one mapper node.
+
+        Named-actor creation registers the name with GCS synchronously, so a
+        reducer's ``ray.get_actor`` can never run ahead of it; the actor's
+        startup overlaps the rest of the map phase. The served directory is
+        the one the planner handed the mappers for this shuffle.
+        """
+        map_dir, _ = disk_shuffle_dirs(shuffle_id)
+        return ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
+            name=_file_server_name(shuffle_id, node_id),
+            namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
+            max_restarts=-1,
+            max_task_retries=-1,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
+            num_cpus=0,
+        ).remote(map_dir)
 
     def _finalize_partitions(self) -> None:
         """Called once every handle is in, before the partition bundles are built."""
@@ -250,8 +283,12 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         self._output_queue.clear()
 
     def teardown(self) -> None:
-        """Kill the mappers' file servers and remove their shuffle files."""
-        teardown_disk_shuffle(self._file_servers)
+        """Kill the owned file servers and remove the mappers' shuffle files."""
+        # ``no_restart=True`` goes through GCS DestroyActor, overriding
+        # ``max_restarts=-1``.
+        for server in self._file_servers.values():
+            ray.kill(server, no_restart=True)
+        teardown_disk_shuffle(self._file_servers.keys())
         self._file_servers.clear()
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
