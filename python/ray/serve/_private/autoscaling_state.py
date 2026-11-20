@@ -51,6 +51,7 @@ from ray.serve.autoscaling_policy import (
     _apply_autoscaling_config,
 )
 from ray.serve.config import (
+    AggregationFunction,
     AutoscalingContext,
     AutoscalingMetricsContext,
     AutoscalingPolicy,
@@ -285,6 +286,81 @@ def _log_dropped_handle(
             f"because no update was received for {timeout_s:.1f}s. "
             f"Peak ongoing requests was: {peak_requests}."
         )
+
+
+def merge_and_aggregate_timeseries(
+    timeseries_list: List[TimeSeries],
+    aggregation_function: AggregationFunction,
+) -> float:
+    """Aggregate and average a metric from timeseries data using instantaneous merge.
+
+    Args:
+        timeseries_list: A list of TimeSeries (TimeSeries), where each
+            TimeSeries represents measurements from a single source (replica, handle, etc.).
+            Each list is sorted by timestamp ascending.
+
+        aggregation_function: How to aggregate the merged series.
+
+    Returns:
+        The aggregated value of the metric
+
+    Example:
+        If the timeseries_list is:
+        [
+            [
+                TimeStampedValue(timestamp=0.1, value=5.0),
+                TimeStampedValue(timestamp=0.2, value=7.0),
+            ],
+            [
+                TimeStampedValue(timestamp=0.2, value=3.0),
+                TimeStampedValue(timestamp=0.3, value=1.0),
+            ]
+        ]
+        Then the returned value will be:
+        (5.0*0.1 + 7.0*0.2 + 3.0*0.2 + 1.0*0.3) / (0.1 + 0.2 + 0.2 + 0.3) = 4.5 / 0.8 = 5.625
+    """
+
+    if not timeseries_list:
+        return 0.0
+
+    # Use instantaneous merge approach - no arbitrary windowing needed
+    merged_timeseries = merge_instantaneous_total(timeseries_list)
+    if merged_timeseries:
+        # assume that the last recorded metric is valid for last_window_s seconds
+        last_metric_time = merged_timeseries[-1].timestamp
+        # we dont want to make any assumption about how long the last metric will be valid
+        # only conclude that the last metric is valid for last_window_s seconds that is the
+        # difference between the current time and the last metric recorded time
+        last_window_s = time.time() - last_metric_time
+        # adding a check to negative values caused by clock skew
+        # between replicas and controller. Also add a small epsilon to avoid division by zero
+        if last_window_s <= 0:
+            last_window_s = 1e-3
+
+        # Exclude early "partial" period: when series have misaligned start times,
+        # late-starting series are implicitly 0 before their first data point, which
+        # undercounts the total and biases aggregations. Start the window at the
+        # timestamp when all series have contributed at least one point.
+        # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+        # to 10ms; if aligned_start is before the first merged point, the gap would
+        # be treated as 0 and bias the average downward.
+        window_start = None
+        non_empty_series = [ts for ts in timeseries_list if ts]
+        if len(non_empty_series) > 1:
+            aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+            if aligned_start <= merged_timeseries[-1].timestamp:
+                window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
+        # Calculate the aggregated metric value
+        value = aggregate_timeseries(
+            merged_timeseries,
+            aggregation_function=aggregation_function,
+            last_window_s=last_window_s,
+            window_start=window_start,
+        )
+        return value if value is not None else 0.0
+
+    return 0.0
 
 
 class DeploymentAutoscalingState:
@@ -801,75 +877,12 @@ class DeploymentAutoscalingState:
         self,
         timeseries_list: List[TimeSeries],
     ) -> float:
-        """Aggregate and average a metric from timeseries data using instantaneous merge.
-
-        Args:
-            timeseries_list: A list of TimeSeries (TimeSeries), where each
-                TimeSeries represents measurements from a single source (replica, handle, etc.).
-                Each list is sorted by timestamp ascending.
-
-        Returns:
-            The time-weighted average of the metric
-
-        Example:
-            If the timeseries_list is:
-            [
-                [
-                    TimeStampedValue(timestamp=0.1, value=5.0),
-                    TimeStampedValue(timestamp=0.2, value=7.0),
-                ],
-                [
-                    TimeStampedValue(timestamp=0.2, value=3.0),
-                    TimeStampedValue(timestamp=0.3, value=1.0),
-                ]
-            ]
-            Then the returned value will be:
-            (5.0*0.1 + 7.0*0.2 + 3.0*0.2 + 1.0*0.3) / (0.1 + 0.2 + 0.2 + 0.3) = 4.5 / 0.8 = 5.625
-        """
-
-        if not timeseries_list:
-            return 0.0
-
-        # Use instantaneous merge approach - no arbitrary windowing needed
-        merged_timeseries = merge_instantaneous_total(timeseries_list)
-        if merged_timeseries:
-            # assume that the last recorded metric is valid for last_window_s seconds
-            last_metric_time = merged_timeseries[-1].timestamp
-            # we dont want to make any assumption about how long the last metric will be valid
-            # only conclude that the last metric is valid for last_window_s seconds that is the
-            # difference between the current time and the last metric recorded time
-            last_window_s = time.time() - last_metric_time
-            # adding a check to negative values caused by clock skew
-            # between replicas and controller. Also add a small epsilon to avoid division by zero
-            if last_window_s <= 0:
-                last_window_s = 1e-3
-
-            # Exclude early "partial" period: when series have misaligned start times,
-            # late-starting series are implicitly 0 before their first data point, which
-            # undercounts the total and biases aggregations. Start the window at the
-            # timestamp when all series have contributed at least one point.
-            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
-            # to 10ms; if aligned_start is before the first merged point, the gap would
-            # be treated as 0 and bias the average downward.
-            window_start = None
-            non_empty_series = [ts for ts in timeseries_list if ts]
-            if len(non_empty_series) > 1:
-                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
-                if aligned_start <= merged_timeseries[-1].timestamp:
-                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
-
-            # Calculate the aggregated metric value
-            value = aggregate_timeseries(
-                merged_timeseries,
-                # The field is declared `Union[str, AggregationFunction]`, but a
-                # pydantic validator coerces it to `AggregationFunction`.
-                aggregation_function=self._config.aggregation_function,  # type: ignore[arg-type]
-                last_window_s=last_window_s,
-                window_start=window_start,
-            )
-            return value if value is not None else 0.0
-
-        return 0.0
+        return merge_and_aggregate_timeseries(
+            timeseries_list,
+            # The field is declared `Union[str, AggregationFunction]`, but a
+            # pydantic validator coerces it to `AggregationFunction`.
+            self._config.aggregation_function,  # type: ignore[arg-type]
+        )
 
     def get_total_num_requests(self) -> float:
         """Total ongoing requests, aggregated at the controller from raw timeseries.
@@ -1172,8 +1185,9 @@ class ApplicationAutoscalingState:
             raw_metrics=dict(metrics),
             aggregated_metrics=lambda: {
                 key: {
-                    rid: aggregate_timeseries(series, settings.aggregation_function)
-                    or 0.0
+                    rid: merge_and_aggregate_timeseries(
+                        [series], settings.aggregation_function
+                    )
                     for rid, series in replicas.items()
                 }
                 for key, replicas in metrics.items()

@@ -350,6 +350,32 @@ def test_metric_source_observed_replica_count():
     assert not hasattr(ctx, "target_num_replicas")
 
 
+def test_metric_source_weights_last_sample_until_now():
+    import time
+
+    from ray.serve._private.autoscaling_state import AutoscalingStateManager
+    from ray.serve._private.common import (
+        ReplicaID,
+        ReplicaMetricReport,
+        TimeStampedValue,
+    )
+    from ray.serve._private.config import AutoscalingMetricsConfig
+
+    manager = AutoscalingStateManager()
+    dep = DeploymentID(name="Reporter", app_name="app")
+    replica = ReplicaID("a", dep)
+    manager.configure_metrics_source(dep, AutoscalingMetricsConfig())
+    manager.update_running_replica_ids(dep, [replica])
+    now = time.time()
+    series = [TimeStampedValue(now - 10, 0.0), TimeStampedValue(now - 5, 100.0)]
+    manager.record_request_metrics_for_replica(
+        ReplicaMetricReport(replica_id=replica, timestamp=now, metrics={"m": series})
+    )
+    ctx = manager._app_autoscaling_states["app"]._metrics_source_context(dep)
+    # The last sample holds until now, the same as for an autoscaled deployment.
+    assert ctx.aggregated_metrics["m"][replica] == pytest.approx(50, abs=2)
+
+
 def test_metric_source_configuration_round_trip():
     from ray.serve._private.config import AutoscalingMetricsConfig, DeploymentConfig
 
