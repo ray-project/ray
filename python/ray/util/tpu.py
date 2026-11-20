@@ -67,7 +67,7 @@ DEFAULT_TORCH_MASTER_PORT: int = 29500
 class RoleActorSpec:
     """Specification for one MPMD role launched by ``create_role_actors``.
 
-    Attributes:
+    Args:
         actor_cls: A ``@ray.remote``-decorated actor class.
         count: Number of actor replicas (TPU ranks) assigned to this role.
         args: Positional arguments passed to ``actor_cls.remote(*args, **kwargs)``.
@@ -89,9 +89,9 @@ class RoleActorSpec:
 @PublicAPI(stability="alpha")
 @dataclass
 class RoleActorsResult:
-    """Result returned by :meth:`SlicePlacementGroup.create_role_actors`.
+    """Result returned by :meth:`~ray.util.tpu.SlicePlacementGroup.create_role_actors`.
 
-    Attributes:
+    Args:
         actors: Mapping of ``role_name -> List[ActorHandle]`` in ascending rank order.
         role_ranks: Mapping of ``role_name -> List[int]`` of global ranks assigned
             to each role.
@@ -1613,12 +1613,11 @@ class SlicePlacementGroup:
                     resources = dict(actor_opts.get("resources") or {})
                     resources.setdefault("TPU", tpus_per_actor)
                     actor_opts["resources"] = resources
-                    actor_opts["scheduling_strategy"] = (
-                        PlacementGroupSchedulingStrategy(
-                            placement_group=pg,
-                            placement_group_bundle_index=bundle_idx,
-                        )
+                    scheduling_strategy = PlacementGroupSchedulingStrategy(
+                        placement_group=pg,
+                        placement_group_bundle_index=bundle_idx,
                     )
+                    actor_opts["scheduling_strategy"] = scheduling_strategy
                     actor_opts["runtime_env"] = runtime_env
 
                     handle = spec.actor_cls.options(**actor_opts).remote(
