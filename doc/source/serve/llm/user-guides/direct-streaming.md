@@ -50,7 +50,7 @@ serve run config.yaml
 :::
 ::::
 
-The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`.
+The deployed application exposes the engine's native routes. For vLLM those include the OpenAI-compatible `/v1/chat/completions`, `/v1/completions`, and `/v1/models`. They also include the Anthropic `/v1/messages` and `/v1/messages/count_tokens`. See {doc}`Use Ray Serve LLM with Claude Code <claude-code>`.
 
 To confirm direct streaming is active, check that the application runs two deployments: your model deployment (`LLMServer:<model_id>`) and an `LLMRouter` deployment. `LLMRouter` is the ingress request router. It replaces the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app.
 
@@ -120,6 +120,10 @@ Direct streaming works with the single-model builders for the OpenAI, data paral
 - **Standard serving** (`build_openai_app`): the `LLMServer` deployment serves the engine app directly.
 - **Data parallel attention** (`build_dp_openai_app`): the `DPServer` deployment serves the engine app directly. Use this for wide expert parallelism. See {doc}`data-parallel-attention`.
 - **Prefill/decode disaggregation** (`build_pd_openai_app`): the decode server serves the engine app directly. See {doc}`prefill-decode`.
+
+## Use Anthropic clients
+
+Clients such as Claude Code call the Anthropic Messages API. Ray Serve LLM serves that API only when direct streaming is on. See {doc}`Use Ray Serve LLM with Claude Code <claude-code>`.
 
 (direct-streaming-customize)=
 ## Customize replica selection
