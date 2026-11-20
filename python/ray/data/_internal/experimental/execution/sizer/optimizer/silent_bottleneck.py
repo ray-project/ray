@@ -30,8 +30,8 @@ from ray.data._internal.experimental.execution.sizer.optimizer.rule import (
 )
 from ray.data._internal.experimental.execution.sizer.optimizer.utils import (
     fill_free_nodes,
-    fill_pg_bundles,
     free_schedulable_nodes,
+    grow_pg_op,
     upscale_request,
 )
 from ray.data._internal.experimental.execution.sizer.scaling_guard import OpScalingGuard
@@ -93,7 +93,7 @@ class SilentBottleneckGrant(OptimizationRule[None]):
                 continue
             delta = ctx.growth_delta[op]
             if ctx.is_pg_managed(op):
-                request = self._grow_pg_op(op, delta, ctx)
+                request = grow_pg_op(op, delta, ctx, _REASON)
             else:
                 request = self._grow_on_free_nodes(op, delta, ctx)
             if request is None:
@@ -208,22 +208,5 @@ class SilentBottleneckGrant(OptimizationRule[None]):
             op,
             ScaleUpRequest.on_nodes(
                 targets, num_to_reclaim=num_to_reclaim, reason=_REASON
-            ),
-        )
-
-    @staticmethod
-    def _grow_pg_op(
-        op: "ExperimentalActorPoolMapOperator", delta: int, ctx: OptimizationContext
-    ) -> Optional[PlacedSizingRequest]:
-        # The PG places the actors. Reclaimed actors stay in the bundles they
-        # still hold; only new ones need room in the PG.
-        num_to_reclaim = min(delta, op.actor_pool.num_reclaimable_draining_actors())
-        num_new = fill_pg_bundles(ctx, op, delta - num_to_reclaim)
-        if num_to_reclaim + num_new <= 0:
-            return None
-        return upscale_request(
-            op,
-            ScaleUpRequest.untargeted(
-                num_to_reclaim + num_new, num_to_reclaim=num_to_reclaim, reason=_REASON
             ),
         )

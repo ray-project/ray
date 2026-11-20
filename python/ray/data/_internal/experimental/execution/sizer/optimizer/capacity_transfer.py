@@ -144,6 +144,8 @@ class TransferInFlight:
     # This transfer's entry in ``TransferState.recent_transfers``, stamped
     # with the close time when it closes.
     record: Optional[RecentTransfer] = None
+    # Seconds without progress before the claim is cancelled.
+    timeout_s: float = SIZER_TRANSFER_TIMEOUT_S
 
     def __post_init__(self) -> None:
         if self.last_progress_t is None:
@@ -293,11 +295,16 @@ class NodePlan:
         return dict(Counter(victim.donor.op for victim in self.victims))
 
 
+# Orders victim candidates; a key of None excludes the candidate.
+VictimKey = Callable[["VictimCandidate"], Optional[Tuple]]
+
+
 def _victim_candidates(
     node: NodeIdStr,
     donors: List[DonorCapacity],
     recipient_constrained: bool,
     num_removable_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int],
+    victim_key: Optional[VictimKey] = None,
 ) -> List[VictimCandidate]:
     candidates: List[VictimCandidate] = []
     for donor in donors:
@@ -328,7 +335,15 @@ def _victim_candidates(
                     recipient_constrained=recipient_constrained,
                 )
             )
-    return sorted(candidates)
+    if victim_key is None:
+        return sorted(candidates)
+    keyed = [(victim_key(c), c) for c in candidates]
+    return [
+        c
+        for key, c in sorted(
+            ((key, c) for key, c in keyed if key is not None), key=lambda kc: kc[0]
+        )
+    ]
 
 
 def _plan_node(
@@ -421,6 +436,7 @@ def plan_transfer(
     free: Dict[NodeIdStr, ExecutionResources],
     donors: List[DonorCapacity],
     node_rank: Dict[NodeIdStr, Tuple],
+    victim_key: Optional[VictimKey] = None,
 ) -> Tuple[Optional[List[NodePlan]], Optional[str]]:
     """Plan how to give ``recipient`` up to ``want`` more actors by evicting
     victims from donors.
@@ -441,7 +457,14 @@ def plan_transfer(
         cpu_only = [donor for donor in donors if donor.per_actor.gpu == 0]
         if cpu_only:
             cpu_only_plan, refusal = plan_transfer(
-                recipient, recipient_per_actor, want, nodes, free, cpu_only, node_rank
+                recipient,
+                recipient_per_actor,
+                want,
+                nodes,
+                free,
+                cpu_only,
+                node_rank,
+                victim_key,
             )
             if cpu_only_plan is not None:
                 return cpu_only_plan, refusal
@@ -450,7 +473,7 @@ def plan_transfer(
 
     def plan_node(node: NodeIdStr, max_actors: int) -> NodePlan:
         candidates = _victim_candidates(
-            node, donors, recipient_constrained, num_removable_actors_by_op
+            node, donors, recipient_constrained, num_removable_actors_by_op, victim_key
         )
         return _plan_node(
             node,
@@ -694,7 +717,7 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                     self.name, recipient.name, "landed" if landed else "lost"
                 )
                 continue
-            if transfer.seconds_without_progress(ctx.now) > SIZER_TRANSFER_TIMEOUT_S:
+            if transfer.seconds_without_progress(ctx.now) > transfer.timeout_s:
                 # Cancel the claim node by node. The pool cancels pendings
                 # first, and every pending on a guarded recipient is ours
                 # (see ``TransferInFlight.claimed_ids``), so a per-node count
@@ -722,7 +745,7 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                     "with %d actor(s) never placed; claim cancelled, %d donor "
                     "actor(s) still draining for it given back.",
                     recipient.name,
-                    SIZER_TRANSFER_TIMEOUT_S,
+                    transfer.timeout_s,
                     still_owed,
                     reclaimed,
                 )
@@ -930,39 +953,77 @@ class CapacityTransfer(OptimizationRule[TransferState]):
         state: TransferState,
     ) -> List[PlacedSizingRequest]:
         """Plan and fire one transfer to ``recipient``; [] if it is refused."""
-        # One open transfer per node: holds come out of the shared free pool in
-        # in-flight order, so a second transfer on a node that still owes
-        # actors could lose its donors' freed slots to the first one.
+        nodes = self._transfer_nodes(recipient, ctx, state)
+        if not nodes:
+            return []
+        shortfall = ctx.shortfalls.get(recipient)
+        want = max(1, shortfall.num_actors if shortfall else 1)
+        plan, refusal = self._plan(recipient, want, nodes, donors, ctx)
+        if plan is None:
+            self._metrics.record_refusal(self.name, refusal or "unknown")
+            return []
+        return self._fire(recipient, plan, donors_by_op, ctx, state)
+
+    @staticmethod
+    def _transfer_nodes(
+        recipient: "ExperimentalActorPoolMapOperator",
+        ctx: OptimizationContext,
+        state: TransferState,
+    ) -> List[NodeIdStr]:
+        """The recipient's schedulable nodes no open transfer still owes on.
+
+        One open transfer per node: holds come out of the shared free pool in
+        in-flight order, so a second transfer on a node that still owes
+        actors could lose its donors' freed slots to the first one.
+        """
         busy_nodes = {
             node
             for transfer in state.in_flight.values()
             for node, owed in transfer.owed_by_node.items()
             if owed > 0
         }
-        nodes = [
+        return [
             n for n in free_schedulable_nodes(ctx, recipient) if n not in busy_nodes
         ]
-        if not nodes:
-            return []
-        pool = recipient.actor_pool
-        shortfall = ctx.shortfalls.get(recipient)
-        want = max(1, shortfall.num_actors if shortfall else 1)
+
+    def _plan(
+        self,
+        recipient: "ExperimentalActorPoolMapOperator",
+        want: int,
+        nodes: List[NodeIdStr],
+        donors: List[DonorCapacity],
+        ctx: OptimizationContext,
+        victim_key: Optional[VictimKey] = None,
+    ) -> Tuple[Optional[List["NodePlan"]], Optional[str]]:
+        """``plan_transfer`` on ``nodes``, ranked by the recipient's locality."""
         recipient_view = placement_view.build_op_placement_view(
             recipient, rank_victims=False
         )
         node_rank = {n: self._placement.rank_node(recipient_view, n) for n in nodes}
-        plan, refusal = plan_transfer(
+        return plan_transfer(
             recipient,
-            pool.per_actor_resource_usage(),
+            recipient.actor_pool.per_actor_resource_usage(),
             want,
             nodes,
             ctx.free,
             [d for d in donors if d.op is not recipient],
             node_rank,
+            victim_key,
         )
-        if plan is None:
-            self._metrics.record_refusal(self.name, refusal or "unknown")
-            return []
+
+    def _fire(
+        self,
+        recipient: "ExperimentalActorPoolMapOperator",
+        plan: List["NodePlan"],
+        donors_by_op: Dict["ExperimentalActorPoolMapOperator", DonorCapacity],
+        ctx: OptimizationContext,
+        state: TransferState,
+        *,
+        timeout_s: float = SIZER_TRANSFER_TIMEOUT_S,
+    ) -> List[PlacedSizingRequest]:
+        """Fire a planned transfer: drain its victims, hold the recipient's
+        capacity, open it in flight. [] if it would thrash."""
+        pool = recipient.actor_pool
         donor_ops = frozenset(op for p in plan for op in p.victims_by_donor())
         if self._is_thrashing(state, recipient, donor_ops, ctx.now):
             self._metrics.record_refusal(self.name, "thrashing")
@@ -1014,6 +1075,7 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             victims_by_node=victims_by_node,
             preexisting_ids=frozenset(pool.get_logical_ids()),
             record=record,
+            timeout_s=timeout_s,
         )
         # The recipient and its donors are ours until the transfer closes, so
         # nothing else resizes them mid-move.

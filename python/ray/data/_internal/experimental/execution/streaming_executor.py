@@ -172,6 +172,9 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         self._resource_bank.drain_consumed_blocks()
         self._release_drained_actors_of_completed_ops(topology)
         self._launch_tasks()
+        # After the launch: a slot freed this step and refilled by it is busy,
+        # not idle (see ``OperatorSizer.observe_after_launch``).
+        self._sizer.observe_after_launch()
         self._sample_output_backpressure(topology)
 
         self._actor_only_metrics.maybe_update(

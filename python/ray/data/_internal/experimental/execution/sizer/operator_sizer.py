@@ -21,7 +21,10 @@ from collections import Counter
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
-from ray.data._internal.execution.execution_flags import SIZER_CADENCE_S
+from ray.data._internal.execution.execution_flags import (
+    SIZER_BOTTLENECK_MODEL,
+    SIZER_CADENCE_S,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
 )
@@ -31,6 +34,10 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
 )
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     ActorPlacementStrategy,
+)
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    BottleneckObserver,
+    BottleneckTick,
 )
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
@@ -148,9 +155,13 @@ class OperatorSizer:
         }
         for op in self._awaiting_on_start:
             self._guard.block(op, _AWAITING_ON_START_REASON)
-        # Actors last held for each op awaiting on_start, and the one-time
-        # grant to that count queued when its on_start runs.
+        # Actors held last tick for each held op (see SizingTicker), and the
+        # one-time grant to that count queued when its hold releases.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        # RAY_DATA_SIZER_BOTTLENECK_MODEL: the bottleneck rule drives growth.
+        self._bottleneck_model = SIZER_BOTTLENECK_MODEL
+        # This tick's bottleneck model (set each tick before the optimizer).
+        self._bottleneck: Optional[BottleneckTick] = None
         self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
@@ -170,12 +181,17 @@ class OperatorSizer:
             self._policy.is_output_backpressured,
             self._guard,
         )
+        # Observation only: logs the bottleneck model each tick and decides
+        # nothing.
+        self._bottleneck_observer = BottleneckObserver(self._profiles, clock=clock)
         self._ticker = SizingTicker(
             self._profiles,
             cadence_s=SIZER_CADENCE_S,
             clock=clock,
             pg_bundles=pg_bundles,
             unknown_pg_cap_by_op=unknown_pg_cap_by_op,
+            # Held ops reserve their warmup share whether or not the bottleneck
+            # model is on; only its memory-aware share is behind the flag.
             hold_target=self._policy.warmup_target,
         )
 
@@ -217,7 +233,13 @@ class OperatorSizer:
         t1 = time.perf_counter()
         if ctx is None:
             return
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._note_held_ops(ctx)
+        # The bottleneck model, once per tick, before any rule debits free
+        # capacity: the optimizer acts on it and the log line shows it.
+        self._bottleneck = self._bottleneck_observer.tick(
+            ctx.capacity, self._optimizer.held_capacity_by_node()
+        )
+        self._bottleneck_observer.log_tick(self._bottleneck)
         # Picks up placement groups a ray_remote_args_fn created since the
         # last tick, so later views take their bundles out of the slice.
         self._register_placement_groups()
@@ -242,19 +264,40 @@ class OperatorSizer:
             e2e_s=t5 - t0,
         )
 
+    def _note_held_ops(self, ctx: TickContext) -> None:
+        """Queue a one-time grant up to the held count for every op whose
+        hold released since last tick, then remember this tick's holds."""
+        held_now = ctx.capacity.held_actors_by_op
+        for op, held in self._held_actors_by_op.items():
+            if op not in held_now and not op.has_completed():
+                self._grow_to_held[op] = held
+        self._held_actors_by_op = dict(held_now)
+
     def _release_started_ops(self) -> None:
         """Let ops whose ``on_start`` has now run (on their first input) scale."""
         started = {op for op in self._awaiting_on_start if not op.awaiting_on_start()}
         for op in started:
             self._guard.release(op)
-            held = self._held_actors_by_op.pop(op, 0)
-            if held > 0:
-                self._grow_to_held[op] = held
         self._awaiting_on_start -= started
 
     def _observe(self) -> None:
         """Sample the signals the optimizer decides on."""
         self._optimizer.observe(self._profiles.actor_pool_ops)
+
+    def observe_after_launch(self) -> None:
+        """Sample the bottleneck observer's slot shares. Called by the
+        scheduling loop once per step after it launches tasks, not with the
+        other signals at the start of ``perform_sizing_decision``.
+
+        The observer reads each op's slots at one instant. Before the launch,
+        every slot a task freed this step is still empty, though the launch
+        refills it moments later: a consumer looks like it has an idle slot,
+        and its producer's output-blocked time counts as self-limited instead
+        of blocked by the consumer. Consumers whose tasks finish every few
+        seconds would almost always look that way. After the launch, a slot
+        is empty only if the consumer had no work for it.
+        """
+        self._bottleneck_observer.observe(self._topology)
 
     def _cross_op_optimize(
         self, ctx: TickContext, seconds_since_allocation_change: float
@@ -278,6 +321,7 @@ class OperatorSizer:
                 for op in self._profiles.actor_pool_ops
             },
             seconds_since_allocation_change=seconds_since_allocation_change,
+            bottleneck=self._bottleneck,
         ):
             self._apply(placed)
 
@@ -351,18 +395,22 @@ class OperatorSizer:
                 pass  # fixed pool: only ever replenished to min
             elif ctx.warmup:
                 want = self._policy.warmup_delta(op, ctx.capacity.get_global_limits())
+            elif self._bottleneck_model:
+                # Growth comes only from the bottleneck rule; per op, only
+                # idle actors are shed.
+                want = self._policy.shrink_idle_delta(op, self._topology[op])
             else:
                 want = self._policy.warm_delta(
                     op, self._topology[op], backpressured_with_demand
                 )
-            # Released from its on_start hold: grow straight into the room
-            # held for it while it waited (its warmup share), once. Capped
-            # below, like any want, at the work left once upstream is done.
+            # Released from a hold: grow straight into the room held for it
+            # while it waited (its warmup share), once. Capped below, like any
+            # want, at the work left once upstream is done.
             held = self._grow_to_held.pop(op, 0)
             to_held = held - pool.serving_size()
             if to_held > 0 and (want is None or want.delta < to_held):
                 want = ActorPoolScalingRequest.upscale(
-                    delta=to_held, reason="held share (on_start ran)"
+                    delta=to_held, reason="held share (hold released)"
                 )
             want = self._cap_at_remaining_work(op, want)
             below_min = pool.min_size() - pool.serving_size()

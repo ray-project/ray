@@ -1,7 +1,11 @@
 """Unit tests for the pipeline optimizer's rules (``CapacityTransfer``,
-``SilentBottleneckGrant``), the signal bookkeeping they decide on, and the
-``OpScalingGuard`` they share. Duck-typed doubles; no cluster."""
+``SilentBottleneckGrant``, ``BottleneckTransfer``), the signal bookkeeping
+they decide on, and the ``OpScalingGuard`` they share. Duck-typed doubles; no
+cluster."""
+import logging
+import math
 import sys
+from types import SimpleNamespace
 from typing import Any, Dict, cast
 
 import pytest
@@ -14,11 +18,21 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
     PlacementConstraint,
 )
-from ray.data._internal.experimental.execution.sizer import placement_view
+from ray.data._internal.experimental.execution.sizer import (
+    bottleneck_observer,
+    placement_view,
+)
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     OpPlacementView,
 )
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    PG_ELIGIBLE,
+)
 from ray.data._internal.experimental.execution.sizer.models import OpShortfall
+from ray.data._internal.experimental.execution.sizer.optimizer.bottleneck_transfer import (  # noqa: E501
+    BottleneckTransfer,
+    transfer_timeout_s,
+)
 from ray.data._internal.experimental.execution.sizer.optimizer.capacity_transfer import (  # noqa: E501
     THRASH_WINDOW_S,
     CapacityTransfer,
@@ -122,6 +136,9 @@ class _Pool:
     def min_size(self):
         return self._min_size
 
+    def max_size(self):
+        return getattr(self, "_max_size", 100)
+
     def num_pending_actors(self):
         return self._pending
 
@@ -139,6 +156,9 @@ class _Pool:
 
     def num_reclaimable_draining_actors(self):
         return self._reclaimable
+
+    def num_draining_actors(self):
+        return getattr(self, "draining", 0)
 
     def has_actor(self, actor_id):
         return actor_id not in self.lost_ids
@@ -172,6 +192,9 @@ class _Op:
 
     def placement_constraint(self):
         return PlacementConstraint()
+
+    def has_completed(self):
+        return False
 
     @property
     def actor_pool(self):
@@ -1288,3 +1311,656 @@ def test_guard_blocks_expire_on_the_clock():
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
+
+
+# --- BottleneckTransfer (RAY_DATA_SIZER_BOTTLENECK_MODEL) ----------------------
+
+
+def _bottleneck_rule(metrics=None, guard=None) -> BottleneckTransfer:
+    return BottleneckTransfer(
+        cast(Any, metrics or _Metrics()),
+        cast(Any, _Placement()),
+        guard or _guard(),
+        reset_signals=lambda _op: None,
+    )
+
+
+def _tick(
+    *,
+    recipient=None,
+    named=(),
+    stable=(),
+    eligibility=None,
+    shares=None,
+    slack=None,
+    ttf=None,
+    target=None,
+) -> Any:
+    """A BottleneckTick double: ``named`` [(op, severity)] this tick,
+    ``stable`` the stable set, ``slack`` donor -> slack at any b', ``ttf``
+    donor -> each victim's time-to-free."""
+    return SimpleNamespace(
+        snapshot=SimpleNamespace(
+            bottlenecks=tuple(named),
+            shares=shares if shares is not None else {},
+            edges=(),
+        ),
+        stable=frozenset(stable),
+        assessment=SimpleNamespace(
+            recipient=recipient,
+            eligibility=eligibility or {},
+            stable=tuple((op, sev) for op, sev in named if op in set(stable)),
+        ),
+        victim_ttf=lambda donor, tasks, unconsumed: (ttf or {}).get(donor, 0.0),
+        slack_for=lambda r, b_prime: dict(slack or {}),
+        # op -> b'; unset ops are unbounded, so the step cap decides.
+        growth_target=lambda op: (target or {}).get(op, 10**6),
+    )
+
+
+def _idle_victims_op(name, node, ids, *, current, cpu=1):
+    """An op with idle, zero-cost actors ``ids`` on ``node``."""
+    return _op(
+        name,
+        pool=_Pool(current=current, cpu=cpu),
+        view=_view(
+            victim_ids_by_node={node: list(ids)},
+            victim_drain_cost_by_node={node: [(0, 0)] * len(ids)},
+        ),
+    )
+
+
+def _apply_bottleneck(
+    rule, tick, ops, *, free_cpu=0.0, growth=None, state=None, settle=999.0
+):
+    state = state or rule.new_state()
+    ctx = _ctx(
+        free={"node": ExecutionResources(cpu=free_cpu)},
+        non_pg_ops=list(ops),
+        growth_delta=dict(growth or {}),
+        bottleneck=tick,
+        seconds_since_allocation_change=settle,
+    )
+    return ctx, state, rule.apply(ctx, state)
+
+
+def test_bottleneck_transfer_funds_labeled_stage_from_genstage_slack():
+    """autoscale_contention (the design doc's example): LabeledStage (4 CPU)
+    is the stable bottleneck at 2 actors with no free room; GenStage's idle
+    1-CPU actors are slack. b' = 3 (step cap 1.5 x 2) takes 4 of them."""
+    labeled = _op("Labeled", pool=_Pool(current=2, cpu=4))
+    gen = _idle_victims_op("Gen", "node", [f"g{i}" for i in range(6)], current=15)
+    tick = _tick(
+        recipient=labeled,
+        named=[(labeled, 1.0)],
+        stable=[labeled],
+        eligibility={labeled: "yes: victims"},
+        shares={labeled: None, gen: None},
+        slack={gen: 11},
+        ttf={gen: 30.0},
+    )
+    rule = _bottleneck_rule()
+    _, state, requests = _apply_bottleneck(rule, tick, [labeled, gen])
+
+    assert _donors(requests) == {gen}
+    (placed,) = requests
+    assert placed.request[gen].nodes == ("node",) * 4
+    assert _owed(state) == {labeled: 1}
+    # 1.5 x 30s is under the 60s floor.
+    assert state.in_flight[labeled].timeout_s == 60.0
+
+
+def test_bottleneck_transfer_never_moves_predictor_capacity():
+    """image_classification: Predictor, the bottleneck, is at max size, so
+    there is no recipient; ReadFiles and Preprocess are never recipients and
+    nothing moves."""
+    predictor = _op("Predictor", pool=_Pool(current=10, gpu=1))
+    preprocess = _idle_victims_op("Preprocess", "node", ["p0", "p1"], current=31)
+    tick = _tick(
+        recipient=None,
+        named=[(predictor, 0.85)],
+        stable=[predictor],
+        eligibility={predictor: "no: at max size"},
+        shares={predictor: None, preprocess: None},
+        slack={preprocess: 20},
+    )
+    _, state, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [predictor, preprocess]
+    )
+    assert requests == [] and not state.in_flight
+
+
+def test_stable_bottleneck_is_never_a_donor():
+    # Predictor is stable (a bottleneck within the last window), so its idle
+    # actor is not taken even though Preprocess, the recipient, needs one.
+    preprocess = _op("Preprocess", pool=_Pool(current=21))
+    predictor = _idle_victims_op("Predictor", "node", ["d0"], current=10)
+    tick = _tick(
+        recipient=preprocess,
+        named=[(preprocess, 0.4), (predictor, 0.3)],
+        stable=[preprocess, predictor],
+        eligibility={preprocess: "yes: victims"},
+        shares={preprocess: None, predictor: None},
+        slack={predictor: 5},
+    )
+    metrics = _Metrics()
+    _, _, requests = _apply_bottleneck(
+        _bottleneck_rule(metrics), tick, [preprocess, predictor]
+    )
+    assert requests == []
+
+
+def test_victims_are_taken_fastest_to_free_and_timeout_follows_them():
+    """video_object_detection: Write needs one 1-CPU slot. ReadVideo's victim
+    would take 900s to drain, ExtractImageFeatures' 50s: the faster one is
+    taken, and the timeout is 1.5 x 50s."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _idle_victims_op("ReadVideo", "node", ["r0"], current=7)
+    features = _idle_victims_op("ExtractImageFeatures", "node", ["f0"], current=5)
+    tick = _tick(
+        recipient=write,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None, features: None},
+        slack={read: 5, features: 4},
+        ttf={read: 900.0, features: 50.0},
+    )
+    _, state, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [write, read, features]
+    )
+    assert _donors(requests) == {features}
+    assert state.in_flight[write].timeout_s == pytest.approx(75.0)
+
+
+def _busy_victims_op(name, node, ids, *, current):
+    """An op whose actors on ``node`` each have a task in flight and three
+    unconsumed outputs: they free only after a drain."""
+    return _op(
+        name,
+        pool=_Pool(current=current),
+        view=_view(
+            victim_ids_by_node={node: list(ids)},
+            victim_drain_cost_by_node={node: [(1, 3)] * len(ids)},
+        ),
+    )
+
+
+def _surplus_tick(write, read, *, recipient=True):
+    return _tick(
+        recipient=write if recipient else None,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None},
+        slack={read: 2},
+        ttf={read: 265.0},
+    )
+
+
+def test_busy_surplus_drains_passively_without_a_transfer():
+    """video at 0:13:31: ReadVideo has slack 2 toward Write, but its actors
+    are busy (outputs behind resize), so freeing one takes minutes. No
+    transfer is opened (it would block every other one); after the surplus
+    holds for a streak, one ReadVideo actor drains on a node where a Write
+    actor fits once it frees."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _busy_victims_op("ReadVideo", "node", ["r0", "r1"], current=3)
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    drained = []
+    for _ in range(3):
+        _, state, requests = _apply_bottleneck(
+            rule, _surplus_tick(write, read), [write, read], state=state
+        )
+        assert not state.in_flight and _granted(requests) == []
+        drained.append(_donors(requests))
+    assert drained == [set(), set(), {read}]
+    (placed,) = requests
+    assert placed.request[read].nodes == ("node",)
+
+
+def _blocked_tick(read, resize, *, blocked, self_limited=0.01, n=10):
+    """No recipient (the GPU stage is named but cannot grow); ReadVideo's
+    output edge to resize has ``blocked`` / ``self_limited`` shares."""
+    tick = _tick(
+        named=[],
+        shares={
+            read: SimpleNamespace(busy=0.01, starved=0.0, actors=n),
+            resize: SimpleNamespace(busy=0.23, starved=0.0, actors=4),
+        },
+    )
+    tick.snapshot.edges = (
+        bottleneck_observer.Edge(
+            producer=read,
+            consumer=resize,
+            producer_blocked=blocked,
+            producer_self_limited=self_limited,
+            consumer_starved=0.0,
+            arrow=bottleneck_observer.Arrow.DOWNSTREAM,
+        ),
+    )
+    return tick
+
+
+@pytest.mark.parametrize(
+    "blocked, self_limited, n, drains",
+    [
+        # video on g4dn.2xlarge: 10 ReadVideo actors, blocked 0.98 behind
+        # resize, 1% busy. Keep is max(2, ceil(10 x 0.02 x 1.2)) = 2.
+        (0.98, 0.01, 10, True),
+        # Not blocked enough: idle time may be its own (or starved).
+        (0.5, 0.01, 10, False),
+        # Already at the floor.
+        (0.98, 0.01, 2, False),
+        # Self-limited: its budget is the limit, keep = ceil(10 x 0.99 x 1.2).
+        (0.0, 0.98, 10, False),
+    ],
+    ids=["blocked-surplus", "partly-blocked", "at-floor", "self-limited"],
+)
+def test_blocked_surplus_drains_without_a_recipient(blocked, self_limited, n, drains):
+    read = _busy_victims_op("ReadVideo", "node", ["r0"], current=n)
+    resize = _op("resize", pool=_Pool(current=4))
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    seen = []
+    for _ in range(3):
+        _, state, requests = _apply_bottleneck(
+            rule,
+            _blocked_tick(
+                read, resize, blocked=blocked, self_limited=self_limited, n=n
+            ),
+            [read, resize],
+            state=state,
+        )
+        assert not state.in_flight and _granted(requests) == []
+        seen.append(_donors(requests))
+    assert seen == [set(), set(), {read} if drains else set()]
+
+
+@pytest.mark.parametrize("starved, drains", [(0.04, True), (0.07, False)])
+@pytest.mark.parametrize("rule_kind", ["blocked-surplus", "surplus-to-recipient"])
+def test_shrink_stops_while_the_op_it_feeds_starves(rule_kind, starved, drains):
+    """video_object_detection: resize_frame (busy 0.04, blocked behind the
+    GPU op) had a keep of 2, but its output budgets are the GPU op's supply:
+    at 4 actors the GPU op starved past 0.1. Neither shrink drains an op
+    while an op it feeds starves at least 0.05 of the time."""
+    consumer = _op("Gpu", pool=_Pool(current=8))
+    donor = _busy_victims_op("Resize", "node", ["r0"], current=10)
+    donor.output_dependencies = [consumer]
+    consumer_shares = SimpleNamespace(busy=0.6, starved=starved, actors=8)
+    if rule_kind == "blocked-surplus":
+        tick = _blocked_tick(donor, consumer, blocked=0.98)
+        tick.snapshot.shares[consumer] = consumer_shares
+    else:
+        tick = _surplus_tick(consumer, donor)
+        tick.snapshot.shares[consumer] = consumer_shares
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    seen = []
+    for _ in range(3):
+        _, state, requests = _apply_bottleneck(
+            rule, tick, [consumer, donor], state=state
+        )
+        seen.append(_donors(requests))
+    assert seen == [set(), set(), {donor} if drains else set()]
+
+
+@pytest.mark.parametrize("case", ["no-recipient", "already-draining"])
+def test_surplus_is_not_drained(case):
+    """No shrink without a recipient that wants the capacity, and one drain at
+    a time per donor."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _busy_victims_op("ReadVideo", "node", ["r0", "r1"], current=3)
+    if case == "already-draining":
+        read.actor_pool.draining = 1
+    rule = _bottleneck_rule()
+    state = rule.new_state()
+    for _ in range(4):
+        _, state, requests = _apply_bottleneck(
+            rule,
+            _surplus_tick(write, read, recipient=case != "no-recipient"),
+            [write, read],
+            state=state,
+        )
+        assert _donors(requests) == set()
+
+
+@pytest.mark.parametrize(
+    "victims, expected_b_prime",
+    [(4, 6), (1, 5)],
+    ids=["step-cap", "slack-limited"],
+)
+def test_b_prime_is_the_largest_feasible_step(victims, expected_b_prime):
+    # b = 4: the step cap allows b' up to 6. With 4 idle victims b' = 6 (2
+    # actors); with 1, only b' = 5 is feasible.
+    recipient = _op("B", pool=_Pool(current=4))
+    donor = _idle_victims_op("A", "node", [f"a{i}" for i in range(victims)], current=10)
+    tick = _tick(
+        recipient=recipient,
+        named=[(recipient, 1.0)],
+        stable=[recipient],
+        eligibility={recipient: "yes: victims"},
+        shares={recipient: None, donor: None},
+        slack={donor: 8},
+    )
+    _, state, _ = _apply_bottleneck(_bottleneck_rule(), tick, [recipient, donor])
+    assert _owed(state) == {recipient: expected_b_prime - 4}
+
+
+def test_free_growth_runs_while_the_cluster_resizes_but_transfers_wait():
+    # Unsaturated and still resizing (allocation changed 2s ago): the named
+    # bottleneck grows into free room, but no transfer fires until settled.
+    write = _op("Write", pool=_Pool(current=2))
+    read = _idle_victims_op("ReadVideo", "node", ["r0"], current=7)
+    free_tick = _tick(
+        named=[(write, 0.6)], eligibility={write: "yes: free"}, shares={write: None}
+    )
+    _, _, grown = _apply_bottleneck(
+        _bottleneck_rule(),
+        free_tick,
+        [write],
+        free_cpu=3.0,
+        settle=2.0,
+    )
+    assert _granted(grown) == [write]
+
+    full_tick = _tick(
+        recipient=write,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None},
+        slack={read: 5},
+    )
+    _, state, moved = _apply_bottleneck(
+        _bottleneck_rule(), full_tick, [write, read], settle=2.0
+    )
+    assert moved == [] and not state.in_flight
+
+
+def test_named_bottleneck_grows_into_free_capacity_before_it_is_stable():
+    # Growing into free capacity drains nothing, so it needs no stability:
+    # Write is named this tick only, with room on its node, and grows toward
+    # its growth target (2 -> 4) without a transfer.
+    write = _op("Write", pool=_Pool(current=2))
+    tick = _tick(
+        recipient=None,
+        named=[(write, 0.6)],
+        eligibility={write: "yes: free"},
+        shares={write: None},
+        target={write: 4},
+    )
+    _, state, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [write], free_cpu=3.0
+    )
+    assert _granted(requests) == [write]
+    (placed,) = requests
+    assert placed.request[write].nodes == ("node", "node")
+    assert not state.in_flight
+
+
+def test_balanced_stages_each_grow_one_step_into_free_capacity():
+    # No bottleneck named and every stage nearly always busy: each busy op
+    # grows one actor into free capacity. An idle op, an op at its max size
+    # and an op with pending actors stay put.
+    read = _op("Read", pool=_Pool(current=2))
+    infer = _op("Infer", pool=_Pool(current=4))
+    idle = _op("Idle", pool=_Pool(current=2))
+    full = _op("Full", pool=_Pool(current=3))
+    full.actor_pool._max_size = 3
+    pending = _op("Pending", pool=_Pool(current=2, pending=1))
+    busy = SimpleNamespace(busy=0.95)
+    tick = _tick(
+        named=[],
+        shares={
+            read: busy,
+            infer: busy,
+            idle: SimpleNamespace(busy=0.5),
+            full: busy,
+            pending: busy,
+        },
+    )
+    ctx, state, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [read, infer, idle, full, pending], free_cpu=5.0
+    )
+    assert sorted(op.name for op in _granted(requests)) == ["Infer", "Read"]
+    for placed in requests:
+        (op,) = placed.request
+        assert len(placed.request[op].nodes) == 1
+    assert ctx.free["node"].cpu == pytest.approx(3.0)
+    assert not state.in_flight
+
+
+def test_balanced_growth_waits_while_a_bottleneck_is_named():
+    # A named bottleneck (even one that cannot grow) means the stages are
+    # not balanced, so busy non-bottlenecks are not grown.
+    read = _op("Read", pool=_Pool(current=2))
+    write = _op("Write", pool=_Pool(current=2))
+    tick = _tick(
+        named=[(write, 0.05)],
+        eligibility={write: "no: below severity floor"},
+        shares={read: SimpleNamespace(busy=0.95), write: SimpleNamespace(busy=1.0)},
+    )
+    _, _, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [read, write], free_cpu=5.0
+    )
+    assert _granted(requests) == []
+
+
+def test_refused_bottleneck_transfer_is_logged_as_refused(monkeypatch, caplog):
+    """A transfer the thrash guard refuses is logged as not fired, never as a
+    decision with donors."""
+    write = _op("Write", pool=_Pool(current=1))
+    read = _idle_victims_op("ReadVideo", "node", ["r0", "r1"], current=7)
+    tick = _tick(
+        recipient=write,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None},
+        slack={read: 5},
+    )
+    rule = _bottleneck_rule()
+    monkeypatch.setattr(rule, "_fire", lambda *args, **kwargs: [])
+    with caplog.at_level(logging.DEBUG):
+        _, state, requests = _apply_bottleneck(rule, tick, [write, read])
+    assert requests == [] and not state.in_flight
+    assert "not fired" in caplog.text
+    assert " from ReadVideo" not in caplog.text
+
+
+def test_one_bottleneck_transfer_at_a_time():
+    write = _op("Write", pool=_Pool(current=1))
+    read = _idle_victims_op("ReadVideo", "node", ["r0", "r1"], current=7)
+    tick = _tick(
+        recipient=write,
+        named=[(write, 1.0)],
+        stable=[write],
+        eligibility={write: "yes: victims"},
+        shares={write: None, read: None},
+        slack={read: 5},
+    )
+    rule = _bottleneck_rule()
+    _, state, first = _apply_bottleneck(rule, tick, [write, read])
+    assert _donors(first) == {read}
+    _, _, second = _apply_bottleneck(rule, tick, [write, read], state=state)
+    assert _donors(second) == set()
+
+
+@pytest.mark.parametrize(
+    "ttfs, expected",
+    [
+        ([], 60.0),
+        ([10.0, 30.0], 60.0),
+        ([100.0], 150.0),
+        ([500.0], 300.0),
+        ([math.inf], 300.0),
+    ],
+)
+def test_transfer_timeout_from_victim_ttf(ttfs, expected):
+    assert transfer_timeout_s(ttfs) == pytest.approx(expected)
+
+
+def _apply_pg_bottleneck(rule, tick, pg_op, *, bundle_free_cpu, others=()):
+    """Apply ``rule`` with ``pg_op`` placed by a one-bundle placement group
+    and no free node capacity."""
+    bundle = ("pg", 0)
+    ctx = _ctx(
+        non_pg_ops=list(others),
+        actor_pool_ops=[pg_op, *others],
+        schedulable_bundles={pg_op: (bundle,)},
+        pg_free={bundle: ExecutionResources(cpu=bundle_free_cpu)},
+        bottleneck=tick,
+    )
+    state = rule.new_state()
+    return ctx, state, rule.apply(ctx, state), bundle
+
+
+@pytest.mark.parametrize(
+    "bundle_free_cpu, reclaimable, expected_delta",
+    [(2, 0, 2), (2, 1, 3), (0, 0, None)],
+    ids=["new-actors-capped-by-bundles", "reclaims-first", "pg-full"],
+)
+def test_named_pg_bottleneck_grows_into_its_placement_group(
+    bundle_free_cpu, reclaimable, expected_delta
+):
+    """dataset_constraint_pg_scheduling: FakeGPUInfer (PG-scheduled) is the
+    named bottleneck at 4 actors with no free node room. It grows toward its
+    growth target (8), but only as far as its PG has room: untargeted (the PG
+    picks the bundle), draining actors reclaimed first, and no transfer."""
+    infer = _op("Infer", pool=_Pool(current=4), reclaimable=reclaimable)
+    gen = _idle_victims_op("Gen", "node", ["g0", "g1"], current=11)
+    tick = _tick(
+        named=[(infer, 1.7)],
+        stable=[infer],
+        eligibility={infer: PG_ELIGIBLE},
+        shares={infer: None, gen: None},
+        target={infer: 8},
+    )
+    ctx, state, requests, bundle = _apply_pg_bottleneck(
+        _bottleneck_rule(), tick, infer, bundle_free_cpu=bundle_free_cpu, others=[gen]
+    )
+
+    assert not state.in_flight
+    if expected_delta is None:
+        assert requests == []
+        return
+    (placed,) = requests
+    req = placed.request[infer]
+    assert isinstance(req, ScaleUpRequest)
+    assert req.delta == expected_delta
+    assert req.num_to_reclaim == reclaimable
+    assert req.nodes == ()
+    assert ctx.pg_free[bundle].cpu == 0
+
+
+def test_balanced_pg_op_grows_one_step_into_its_placement_group():
+    # No bottleneck named and the PG op nearly always busy: it grows one
+    # actor into its PG, not into (absent) free node capacity.
+    infer = _op("Infer", pool=_Pool(current=4))
+    tick = _tick(named=[], shares={infer: SimpleNamespace(busy=0.95)})
+    ctx, _, requests, bundle = _apply_pg_bottleneck(
+        _bottleneck_rule(), tick, infer, bundle_free_cpu=2
+    )
+    (placed,) = requests
+    assert placed.request[infer].delta == 1
+    assert placed.request[infer].nodes == ()
+    assert ctx.pg_free[bundle].cpu == 1
+
+
+@pytest.mark.parametrize(
+    "free_cpu, expected", [(54, 12), (42, 14), (28, 9), (2, 1), (0, 0)]
+)
+def test_bottleneck_free_growth_is_capped_by_competing_share(free_cpu, expected):
+    current = {54: 24, 42: 36, 28: 50}.get(free_cpu, 24)
+    download = _op("Download", pool=_Pool(current=current))
+    peers = [_op("Decode"), _op("Plan")]
+    tick = _tick(
+        named=[(download, 0.43)],
+        eligibility={download: "yes: free"},
+        target={download: int(current * 1.5)},
+    )
+    ctx, _, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [download, *peers], free_cpu=free_cpu
+    )
+    added = sum(p.request[download].delta for p in requests)
+    assert added == expected
+    assert ctx.free["node"].cpu == free_cpu - expected
+
+
+@pytest.mark.parametrize("excluded", ["completed", "at-cap", "gpu", "other-node", "pg"])
+def test_bottleneck_free_share_excludes_noncompeting_ops(excluded):
+    recipient = _op("Download", pool=_Pool(current=24))
+    peer = _op("Peer")
+    ctx = _ctx(non_pg_ops=[recipient, peer], free={"node": ExecutionResources(cpu=12)})
+    if excluded == "completed":
+        peer.has_completed = lambda: True
+    elif excluded == "at-cap":
+        peer.actor_pool._max_size = peer.actor_pool.serving_size()
+    elif excluded == "gpu":
+        peer.actor_pool._per_actor = ExecutionResources(cpu=1, gpu=1)
+    elif excluded == "other-node":
+        ctx.schedulable_nodes[peer] = frozenset({"other"})
+    else:
+        ctx.non_pg_ops = [recipient]
+    assert BottleneckTransfer._free_growth_share(recipient, ctx) == 12
+
+
+def test_bottleneck_free_share_counts_pending_peers_and_node_fragmentation():
+    recipient = _op("B", pool=_Pool(current=24, cpu=2, gpu=1))
+    recipient.actor_pool._per_actor = ExecutionResources(cpu=2, gpu=1, memory=4)
+    peer = _op("Pending", pool=_Pool(pending=2, cpu=2, gpu=1))
+    ctx = _ctx(
+        non_pg_ops=[recipient, peer],
+        free={
+            "a": ExecutionResources(cpu=20, gpu=4, memory=8),  # 2 actors
+            "b": ExecutionResources(cpu=1, gpu=8, memory=100),  # 0 actors
+            "c": ExecutionResources(cpu=8, gpu=8, memory=8),  # 2 actors
+        },
+    )
+    assert BottleneckTransfer._free_growth_share(recipient, ctx) == 2
+
+
+def test_bottleneck_free_share_does_not_charge_reclaimed_actors():
+    recipient = _op("B", pool=_Pool(current=24), reclaimable=4)
+    peer = _op("Peer")
+    tick = _tick(
+        named=[(recipient, 0.5)],
+        eligibility={recipient: "yes: free"},
+        target={recipient: 36},
+    )
+    ctx, _, requests = _apply_bottleneck(
+        _bottleneck_rule(), tick, [recipient, peer], free_cpu=6
+    )
+    request = requests[0].request[recipient]
+    assert request.num_to_reclaim == 4
+    assert len(request.nodes) == 3
+    assert request.delta == 7
+    assert ctx.free["node"].cpu == 3
+
+
+def test_bottleneck_pg_free_share_counts_only_shared_bundles():
+    recipient, shared, separate, ordinary = [
+        _op(n) for n in ["B", "Shared", "Separate", "Ordinary"]
+    ]
+    bundle, other = ("pg", 0), ("other", 0)
+    ctx = _ctx(
+        actor_pool_ops=[recipient, shared, separate, ordinary],
+        non_pg_ops=[ordinary],
+        schedulable_bundles={
+            recipient: (bundle,),
+            shared: (bundle,),
+            separate: (other,),
+        },
+        pg_free={
+            bundle: ExecutionResources(cpu=12),
+            other: ExecutionResources(cpu=100),
+        },
+    )
+    assert BottleneckTransfer._free_growth_share(recipient, ctx) == 6
+    requests = _bottleneck_rule()._grow_into_pg(recipient, 20, ctx, "bottleneck")
+    assert requests is not None
+    assert requests.request[recipient].delta == 6
+    assert ctx.pg_free[bundle].cpu == 6
+    assert ctx.pg_free[other].cpu == 100

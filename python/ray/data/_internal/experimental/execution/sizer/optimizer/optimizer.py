@@ -3,8 +3,20 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, AbstractSet, Any, Callable, Dict, List, Sequence
+from typing import (
+    TYPE_CHECKING,
+    AbstractSet,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Sequence,
+)
 
+from ray.data._internal.execution.execution_flags import SIZER_BOTTLENECK_MODEL
+from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
 )
@@ -12,6 +24,9 @@ from ray.data._internal.experimental.execution.sizer.models import (
     OpShortfall,
     PlacedSizingRequest,
     TickCapacitySnapshot,
+)
+from ray.data._internal.experimental.execution.sizer.optimizer.bottleneck_transfer import (  # noqa: E501
+    BottleneckTransfer,
 )
 from ray.data._internal.experimental.execution.sizer.optimizer.capacity_transfer import (  # noqa: E501
     CapacityTransfer,
@@ -67,16 +82,39 @@ class PipelineOptimizer:
         self._rules: List[OptimizationRule] = []
         # Each rule's own state type; the optimizer only carries it.
         self._rule_state: Dict[str, Any] = {}
-        self.register(
-            CapacityTransfer(
-                self._metrics, placement, guard, reset_signals=self._signals.reset
+        if SIZER_BOTTLENECK_MODEL:
+            # The bottleneck model replaces the per-op recipient and donor
+            # policy and the silent-bottleneck grant.
+            self.register(
+                BottleneckTransfer(
+                    self._metrics, placement, guard, reset_signals=self._signals.reset
+                )
             )
-        )
-        self.register(SilentBottleneckGrant(self._metrics, guard, placement))
+        else:
+            self.register(
+                CapacityTransfer(
+                    self._metrics, placement, guard, reset_signals=self._signals.reset
+                )
+            )
+            self.register(SilentBottleneckGrant(self._metrics, guard, placement))
 
     def register(self, rule: OptimizationRule) -> None:
         self._rules.append(rule)
         self._rule_state[rule.name] = rule.new_state()
+
+    def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
+        """Capacity open capacity transfers hold for their recipients'
+        still-owed actors, per node."""
+        held: Dict[NodeIdStr, ExecutionResources] = {}
+        for state in self._rule_state.values():
+            for transfer in getattr(state, "in_flight", {}).values():
+                per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
+                for node, owed in transfer.owed_by_node.items():
+                    if owed > 0:
+                        held[node] = held.get(node, ExecutionResources.zero()).add(
+                            per_actor.scale(owed)
+                        )
+        return held
 
     # --- observation ------------------------------------------------------
 
@@ -109,6 +147,7 @@ class PipelineOptimizer:
         profiles: "OpProfiles",
         growth_delta: Dict["ExperimentalActorPoolMapOperator", int],
         seconds_since_allocation_change: float,
+        bottleneck: Optional[Any] = None,
     ) -> List[PlacedSizingRequest]:
         """Advance in-flight work, then collect this tick's proposals.
 
@@ -133,6 +172,7 @@ class PipelineOptimizer:
             next_ops=profiles.next_ops,
             seconds_since_allocation_change=seconds_since_allocation_change,
             now=self._clock(),
+            bottleneck=bottleneck,
             **self._signals.signal_dict(),  # type: ignore[arg-type]
         )
         for rule in self._rules:

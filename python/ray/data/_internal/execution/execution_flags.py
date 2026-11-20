@@ -142,6 +142,40 @@ SIZER_SIGNAL_WINDOW_SAMPLES: int = env_integer(
     "RAY_DATA_SIZER_SIGNAL_WINDOW_SAMPLES", 20
 )
 
+# Bottleneck observer (observation only; drives no sizing decision yet).
+# Seconds of history behind each operator's busy / output-backpressured /
+# starved fractions.
+SIZER_BOTTLENECK_WINDOW_S: float = env_float("RAY_DATA_SIZER_BOTTLENECK_WINDOW_S", 30.0)
+# How far output-backpressured(producer) and starved(consumer) must differ
+# before an edge's arrow picks a side; closer than this, the edge is a tie.
+SIZER_BOTTLENECK_ARROW_MARGIN: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_ARROW_MARGIN", 0.1
+)
+# Drive cross-op sizing from the bottleneck model (bottleneck_observer.py):
+# grow the stable bottleneck, fund it from donors' slack, and size warmup
+# shares memory-aware (held ops reserve their share with or without it). Off
+# keeps the per-op rules (SilentBottleneckGrant, CapacityTransfer's
+# recipient/donor policy, the warm table's growth rows).
+SIZER_BOTTLENECK_MODEL: bool = env_bool("RAY_DATA_SIZER_BOTTLENECK_MODEL", False)
+# Most a bottleneck transfer may grow the recipient in one step: b'/b.
+SIZER_BOTTLENECK_MAX_STEP_RATIO: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MAX_STEP_RATIO", 1.5
+)
+# Upper bound on a bottleneck transfer's timeout, which is otherwise derived
+# from its victims' estimated time-to-free.
+SIZER_BOTTLENECK_MAX_TIMEOUT_S: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MAX_TIMEOUT_S", 300.0
+)
+# Least severity for an op to be named a bottleneck: below it, the arrows'
+# noise (e.g. a near-tie edge during ramp-up) rather than neighbours waiting.
+SIZER_BOTTLENECK_MIN_SEVERITY: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MIN_SEVERITY", 0.1
+)
+# Headroom on a donor's floor: needed = cur * busy * growth * (1 + margin).
+SIZER_BOTTLENECK_SLACK_MARGIN: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_SLACK_MARGIN", 0.2
+)
+
 # Seconds the dataset's allocation must stay unchanged before the sizer treats
 # the cluster as settled. Capacity transfers wait for this: while the cluster
 # is still growing, the autoscaler gives starved ops capacity.
