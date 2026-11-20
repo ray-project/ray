@@ -1484,6 +1484,72 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
   AssertNoLeaks();
 }
 
+TEST_F(LocalObjectManagerTest, TestProducerWorkerIdLastsUntilTheObjectIsDeleted) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(WorkerID::FromRandom().Binary());
+  const WorkerID producer_worker_id = WorkerID::FromRandom();
+  const ObjectID in_memory_id = ObjectID::FromRandom();
+  const ObjectID spilled_id = ObjectID::FromRandom();
+  const ObjectID late_producer_id = ObjectID::FromRandom();
+  auto make_objects = [this](const std::vector<ObjectID> &object_ids) {
+    std::vector<std::unique_ptr<RayObject>> objects;
+    for (const ObjectID &object_id : object_ids) {
+      std::string meta =
+          std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA));
+      auto metadata =
+          const_cast<uint8_t *>(reinterpret_cast<const uint8_t *>(meta.data()));
+      auto meta_buffer = std::make_shared<LocalMemoryBuffer>(metadata, meta.size());
+      auto data_buffer = std::make_shared<FakeObjectBuffer>(0, object_id, unpins);
+      objects.push_back(std::make_unique<RayObject>(
+          data_buffer, meta_buffer, std::vector<rpc::ObjectReference>()));
+    }
+    return objects;
+  };
+
+  manager.PinObjectsAndWaitForFree({in_memory_id, spilled_id},
+                                   make_objects({in_memory_id, spilled_id}),
+                                   owner_address,
+                                   /*generator_id=*/ObjectID::Nil(),
+                                   producer_worker_id);
+  manager.PinObjectsAndWaitForFree(
+      {late_producer_id}, make_objects({late_producer_id}), owner_address);
+  ASSERT_EQ(manager.GetProducerWorkerId(in_memory_id), producer_worker_id);
+  ASSERT_EQ(manager.GetProducerWorkerId(spilled_id), producer_worker_id);
+  ASSERT_TRUE(manager.GetProducerWorkerId(late_producer_id).IsNil());
+  ASSERT_TRUE(manager.GetProducerWorkerId(ObjectID::FromRandom()).IsNil());
+
+  // A second pin of a pinned object keeps the first pin's producer, unless the first
+  // pin recorded none.
+  manager.PinObjectsAndWaitForFree({in_memory_id},
+                                   make_objects({in_memory_id}),
+                                   owner_address,
+                                   /*generator_id=*/ObjectID::Nil(),
+                                   WorkerID::FromRandom());
+  ASSERT_EQ(manager.GetProducerWorkerId(in_memory_id), producer_worker_id);
+  manager.PinObjectsAndWaitForFree({late_producer_id},
+                                   make_objects({late_producer_id}),
+                                   owner_address,
+                                   /*generator_id=*/ObjectID::Nil(),
+                                   producer_worker_id);
+  ASSERT_EQ(manager.GetProducerWorkerId(late_producer_id), producer_worker_id);
+
+  manager.SpillObjects({spilled_id},
+                       [](const Status &status) { ASSERT_TRUE(status.ok()); });
+  AssertIOWorkersDoSpill(/*num_objects=*/1, /*num_batches=*/1);
+  ASSERT_EQ(manager.GetProducerWorkerId(spilled_id), producer_worker_id);
+
+  // Freeing deletes the in-memory object at once, but the spilled one only when its
+  // spilled copy is deleted.
+  manager.ReleaseFreedLocalObject(in_memory_id);
+  manager.ReleaseFreedLocalObject(spilled_id);
+  ASSERT_TRUE(manager.GetProducerWorkerId(in_memory_id).IsNil());
+  ASSERT_EQ(manager.GetProducerWorkerId(spilled_id), producer_worker_id);
+
+  manager.ProcessSpilledObjectsDeleteQueue(/*max_batch_size=*/30);
+  ASSERT_EQ(worker_pool.io_worker_client->ReplyDeleteSpilledObjects(), 1);
+  ASSERT_TRUE(manager.GetProducerWorkerId(spilled_id).IsNil());
+}
+
 TEST_F(LocalObjectManagerTest, TestRetryDeleteSpilledObjects) {
   std::vector<std::string> urls_to_delete{{"url1"}};
   manager.DeleteSpilledObjects(urls_to_delete, /*num_retries*/ 1);

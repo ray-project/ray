@@ -303,6 +303,7 @@ Status ObjectBufferPool::EnsureBufferExists(const ObjectID &object_id,
   Status s = store_client_->CreateAndSpillIfNeeded(
       object_id,
       owner_address,
+      /*producer_worker_id=*/WorkerID::Nil(),
       /*is_mutable=*/false,
       static_cast<int64_t>(object_size),
       nullptr,
