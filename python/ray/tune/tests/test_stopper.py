@@ -79,8 +79,13 @@ def test_timeout_stopper_validation(invalid_timeout):
 
 def test_timeout_stopper_backward_clock_and_epoch_zero(monkeypatch):
     """Ensure epoch 0.0 is tracked and backward clock steps do not refund budget."""
+    import types
+
     times = iter([0.0, 40.0, 20.0, 45.0])
-    monkeypatch.setattr("ray.tune.stopper.timeout.time.time", lambda: next(times))
+    monkeypatch.setattr(
+        "ray.tune.stopper.timeout.time",
+        types.SimpleNamespace(time=lambda: next(times)),
+    )
     stopper = TimeoutStopper(timeout=60)
     # First check at t=0.0 sets _last_check = 0.0 (budget = 60)
     assert not stopper.stop_all()
