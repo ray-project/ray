@@ -272,9 +272,9 @@ class SGLangServer:
         return
 
     async def check_health(self) -> None:
-        # RayEngine.check_health raises when a scheduler actor died or stopped
-        # answering a probe. SGLang versions before sgl-project/sglang#51367 do
-        # not have it; keep the check a no-op for them.
+        # SGLang versions whose RayEngine has check_health run it here; it raises
+        # when a scheduler actor died or stopped answering a probe. Older versions
+        # do not have it, so the check stays a no-op for them.
         engine_check_health = getattr(self.engine, "check_health", None)
         if engine_check_health is None:
             return
