@@ -254,10 +254,10 @@ The Ray autoscaler scales TPU worker groups the same way it scales any KubeRay w
 
 ### Multi-host autoscaling
 
-A multi-host TPU worker group sets `google.com/tpu` container limits or requests and `numOfHosts` greater than `1`. Ray treats each replica of the worker group as one TPU Pod slice and scales it atomically. Scaling up creates `numOfHosts` Ray nodes per replica, and scaling down removes `numOfHosts` Ray nodes per replica. When Ray schedules the deletion of a single node in a multi-host worker group, KubeRay terminates the whole replica that the node belongs to.
+A multi-host TPU worker group sets `google.com/tpu` container limits or requests and `numOfHosts` greater than `1`. Ray treats each replica of the worker group as one TPU Pod slice and scales it atomically. Scaling up creates `numOfHosts` Ray nodes per replica, and scaling down removes `numOfHosts` Ray nodes per replica once every host in the slice stays idle for longer than `idleTimeoutSeconds`.
 
 :::{caution}
-Run tasks or actors on every host of a multi-host replica. Ray considers a host with no running work idle, and removing an idle host also removes the other hosts in its slice.
+If you set `autoscalerOptions.version: v1`, run tasks or actors on every host of a multi-host replica. Autoscaler V1 evaluates idle timeouts per host, and removing an idle host causes KubeRay to terminate the remaining hosts in its slice.
 :::
 
 (kuberay-tpu-pod-config)=
