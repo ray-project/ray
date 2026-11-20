@@ -7,6 +7,7 @@ import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.logical.operators import ReadFiles
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -200,13 +201,21 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path, text_reader_version)
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]
 
 
-def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
-    # HTTP reads keep the V1 reader whatever ``use_datasource_v2`` says.
-    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
-    assert ds.count() > 0
-    # Test auto-resolve of HTTP file system when it is not provided.
-    ds = ray.data.read_text(http_file)
-    assert ds.count() > 0
+@pytest.mark.parametrize("filesystem", [HTTPFileSystem(), None], ids=["fsspec", "auto"])
+@pytest.mark.parametrize("num_paths", [1, 2])
+def test_fsspec_http_file_system(
+    ray_start_regular_shared,
+    http_server,
+    http_file,
+    text_reader_version,
+    filesystem,
+    num_paths,
+):
+    # The test server sends no ``Content-Length``, so the filesystem reports
+    # no size for the file. V2 must still read it, not skip it.
+    ds = ray.data.read_text([http_file] * num_paths, filesystem=filesystem)
+    assert isinstance(ds._logical_plan.dag, ReadFiles) == text_reader_version
+    assert _to_lines(ds.take_all()) == ["some test data"] * 1000 * num_paths
 
 
 if __name__ == "__main__":
