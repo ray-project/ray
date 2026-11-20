@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for RLlibCallback: hooks RLlib runs in the Algorithm and in EnvRunner actors, callables for config.callbacks(), and built-in callbacks.
+
 .. _rllib-callback-reference-docs:
 
 Callback APIs
