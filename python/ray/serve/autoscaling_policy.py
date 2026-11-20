@@ -168,6 +168,7 @@ def _apply_default_params(
 
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
+    assert ctx.target_num_replicas is not None
     final_num_replicas, updated_state = _apply_delay_logic(
         max(0, desired_num_replicas), ctx.target_num_replicas, ctx.config, policy_state
     )
@@ -222,6 +223,7 @@ def _merge_user_state_with_internal_state(
 def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     """Returns the desired number of replicas if the cold start fast path applies, otherwise returns None."""
     if ctx.current_num_replicas == 0 and ctx.total_num_requests > 0:
+        assert ctx.target_num_replicas is not None
         return max(
             math.ceil(1 * ctx.config.get_upscaling_factor()),
             ctx.target_num_replicas,
@@ -337,6 +339,7 @@ def _core_replica_queue_length_policy(
     num_running_replicas = ctx.current_num_replicas
     config = ctx.config
     if num_running_replicas == 0:
+        assert ctx.target_num_replicas is not None
         return ctx.target_num_replicas, {}
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
     error_ratio = ctx.total_num_requests / target_num_requests

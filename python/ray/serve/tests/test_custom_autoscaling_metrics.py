@@ -331,6 +331,24 @@ class TestCustomServeMetrics:
         assert response == "ok"
 
 
+def test_metric_source_observed_replica_count():
+    from ray.serve._private.autoscaling_state import AutoscalingStateManager
+    from ray.serve._private.common import ReplicaID
+    from ray.serve._private.config import AutoscalingMetricsConfig
+
+    manager = AutoscalingStateManager()
+    dep = DeploymentID(name="Reporter", app_name="app")
+    replica = ReplicaID("a", dep)
+    manager.configure_metrics_source(dep, AutoscalingMetricsConfig())
+    manager.update_running_replica_ids(dep, [replica])
+    ctx = manager._app_autoscaling_states["app"]._metrics_source_context(dep)
+    assert ctx.running_replicas == [replica]
+    assert ctx.current_num_replicas == 1
+    assert ctx.target_num_replicas is None
+    assert ctx.capacity_adjusted_min_replicas is None
+    assert ctx.capacity_adjusted_max_replicas is None
+
+
 def test_metric_source_configuration_round_trip():
     from ray.serve._private.config import AutoscalingMetricsConfig, DeploymentConfig
 

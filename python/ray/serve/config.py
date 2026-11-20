@@ -74,7 +74,8 @@ class AutoscalingContext:
         deployment_name: Name of the deployment.
         app_name: Name of the application that contains the deployment.
         current_num_replicas: Number of replicas currently running.
-        target_num_replicas: Number of replicas the autoscaler currently targets.
+        target_num_replicas: Number of replicas the autoscaler currently targets,
+            or None for a metrics-only deployment.
         running_replicas: IDs of the replicas currently running.
         total_num_requests: Ongoing requests, running plus queued, across the
             deployment, or a callable that returns that value on first access.
@@ -105,7 +106,7 @@ class AutoscalingContext:
         deployment_name: str,
         app_name: Optional[str],
         current_num_replicas: int,
-        target_num_replicas: int,
+        target_num_replicas: Optional[int],
         running_replicas: List[ReplicaID],
         total_num_requests: Union[float, Callable[[], float]],
         total_queued_requests: Optional[Union[float, Callable[[], float]]],
@@ -121,8 +122,8 @@ class AutoscalingContext:
                 Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
             ]
         ],
-        capacity_adjusted_min_replicas: int,
-        capacity_adjusted_max_replicas: int,
+        capacity_adjusted_min_replicas: Optional[int],
+        capacity_adjusted_max_replicas: Optional[int],
         policy_state: Dict[str, Any],
         last_scale_up_time: Optional[float],
         last_scale_down_time: Optional[float],
