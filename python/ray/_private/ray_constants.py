@@ -6,13 +6,9 @@ import os
 import sys
 from typing import Optional
 
-from ray._common.utils import env_bool, env_float, env_integer  # noqa: F401
+from ray._common.utils import env_bool, env_float, env_integer
 
 logger = logging.getLogger(__name__)
-
-
-def env_set_by_user(key):
-    return key in os.environ
 
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
