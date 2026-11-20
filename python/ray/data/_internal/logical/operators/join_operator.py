@@ -431,7 +431,9 @@ class Join(
             JoinType.RIGHT_SEMI,
             JoinType.RIGHT_ANTI,
         ):
-            collisions = left_columns & (right_columns - set(self.right_key_columns))
+            collisions = (left_columns - set(self.left_key_columns)) & (
+                right_columns - set(self.right_key_columns)
+            )
             kept_collisions = collisions & (left_required | right_required)
             left_required |= kept_collisions
             right_required |= kept_collisions

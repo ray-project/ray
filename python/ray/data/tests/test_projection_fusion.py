@@ -13,6 +13,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalPlan,
 )
 from ray.data._internal.logical.operators import (
+    Aggregate,
     Join,
     Repartition,
     Sort,
@@ -26,9 +27,9 @@ from ray.data._internal.logical.rules import (
     ProjectionPushdown,
 )
 from ray.data._internal.util import rows_same
-from ray.data.aggregate import Mean, Sum
+from ray.data.aggregate import Mean, Sum, Unique
 from ray.data.context import DataContext
-from ray.data.expressions import DataType, StarExpr, col, star, udf
+from ray.data.expressions import DataType, StarExpr, col, lit, star, udf
 from ray.exceptions import RayTaskError
 
 
@@ -2017,6 +2018,148 @@ class TestProjectionDerivation:
         assert "Left and right columns suffixes cannot be both None" in str(
             exc_info.value.cause
         )
+
+    @pytest.mark.parametrize(
+        "selected, right_scan, expected",
+        [
+            pytest.param(
+                ["a", "b"],
+                {"rid", "b"},
+                [{"a": 10, "b": 100}, {"a": 20, "b": 200}, {"a": 30, "b": 300}],
+                id="unused",
+            ),
+            pytest.param(
+                ["a", "k_r"],
+                {"rid", "k"},
+                [{"a": 10, "k_r": 7}, {"a": 20, "k_r": 8}, {"a": 30, "k_r": 9}],
+                id="selected",
+            ),
+        ],
+    )
+    def test_right_column_named_like_a_left_key(
+        self, tmp_path, selected, right_scan, expected, ray_start_regular_shared
+    ):
+        left = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "left.parquet"),
+                {"k": [1, 2, 3], "a": [10, 20, 30], "unused_left": ["x"] * 3},
+            )
+        )
+        right = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "right.parquet"),
+                {"rid": [1, 2, 3], "k": [7, 8, 9], "b": [100, 200, 300]},
+            )
+        )
+        ds = left.join(
+            right,
+            join_type="inner",
+            num_partitions=2,
+            on=("k",),
+            right_on=("rid",),
+            right_suffix="_r",
+            aggregator_ray_remote_args={"num_cpus": 0.01},
+        ).select_columns(selected)
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"k", "a"},
+            right_scan,
+        ]
+        assert sorted(ds.take_all(), key=lambda row: row["a"]) == expected
+
+    def test_project_read_only_for_its_rows_keeps_its_inputs(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        ds = (
+            self._join(
+                ray.data.read_parquet(left_path),
+                ray.data.read_parquet(right_path),
+                "inner",
+            )
+            .select_columns(["a", "b"])
+            .with_column("ab", col("a") * col("b"))
+            .random_shuffle()
+            .with_column("one", lit(1))
+            .select_columns(["one"])
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+        assert ds.take_all() == [{"one": 1}] * 5
+
+    def test_aggregate_over_sort_prunes_below_the_aggregate(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = ray.data.read_parquet(wide_parquet).sort("b").groupby("k").sum("a")
+
+        plan = _optimize(ds)
+        (aggregate,) = [
+            op for op in plan.dag.post_order_iter() if isinstance(op, Aggregate)
+        ]
+        assert _column_names(aggregate.input_dependencies[0]) == {"k", "a"}
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a", "b"}
+        assert sorted(ds.take_all(), key=lambda row: row["k"]) == [
+            {"k": k, "sum(a)": float(sum(range(k, 60, 3)))} for k in range(3)
+        ]
+
+    def test_filter_between_two_sorts_keeps_them_combinable(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = (
+            ray.data.read_parquet(wide_parquet)
+            .sort("a")
+            .filter(expr=col("b") > 0)
+            .sort("k")
+            .select_columns(["a", "k"])
+        )
+
+        plan = _optimize(ds)
+        sorts = [op for op in plan.dag.post_order_iter() if isinstance(op, Sort)]
+        assert len(sorts) == 1
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a"}
+        expected = pq.read_table(wide_parquet).to_pandas().query("b > 0")[["a", "k"]]
+        assert rows_same(ds.to_pandas(), expected)
+
+    def test_aggregate_of_unknown_output_type_still_prunes_its_input(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = ray.data.read_parquet(wide_parquet).groupby("k").aggregate(Unique("a"))
+
+        plan = _optimize(ds)
+        assert plan.dag.infer_schema() is None
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a"}
+        assert {row["k"]: sorted(row["unique(a)"]) for row in ds.take_all()} == {
+            k: [float(i) for i in range(k, 60, 3)] for k in range(3)
+        }
+
+    def test_pruning_below_a_udf_map_survives_a_narrowing_consumer(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        ds = (
+            self._join(
+                ray.data.read_parquet(left_path),
+                ray.data.read_parquet(right_path),
+                "inner",
+            )
+            .select_columns(["a", "b"])
+            .map_batches(lambda batch: batch)
+            .select_columns(["a"])
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+        assert sorted(row["a"] for row in ds.take_all()) == [
+            i * 10 for i in range(5, 10)
+        ]
 
     # The pool's actor holds its CPU share from the start, and the tasks that
     # list and read the parquet files each need a whole CPU on top of it, so

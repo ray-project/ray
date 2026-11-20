@@ -10,11 +10,11 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
+    Filter,
     Join,
     Project,
-    Repartition,
-    StreamingRepartition,
 )
+from ray.data._internal.logical.rules.combine_shuffles import CombineShuffles
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
@@ -381,14 +381,17 @@ class ProjectionPushdown(Rule):
         if not inputs:
             return op
 
+        op_required = required
         if isinstance(op, Project) and required is not None and not op.has_star_expr():
             kept = [expr for expr in op.exprs if expr.name in required]
-            if kept and len(kept) < len(op.exprs):
+            if not kept:
+                op_required = None
+            elif len(kept) < len(op.exprs):
                 op = replace(op, exprs=kept)
 
         per_input: Optional[List[Optional[Set[str]]]] = None
         if isinstance(op, LogicalOperatorSupportsProjectionPassThrough):
-            per_input = op.required_input_columns(required)
+            per_input = op.required_input_columns(op_required)
         if per_input is None:
             per_input = [None] * len(inputs)
 
@@ -402,11 +405,28 @@ class ProjectionPushdown(Rule):
             return op
 
         new_op = op._with_new_input_dependencies(new_inputs)
-        if required is not None and op.infer_schema() is not None:
-            new_schema = new_op.infer_schema()
-            if new_schema is None or not required <= set(new_schema.names):
+        if cls._column_names(op) is None:
+            for old_input, new_input, input_required in zip(
+                inputs, new_inputs, per_input
+            ):
+                if input_required is None or cls._column_names(old_input) is None:
+                    continue
+                new_names = cls._column_names(new_input)
+                if new_names is None or not input_required <= new_names:
+                    return op
+        elif required is not None:
+            new_names = cls._column_names(new_op)
+            if new_names is None or not required <= new_names:
                 return op
         return new_op
+
+    @staticmethod
+    def _column_names(op: LogicalOperator) -> Optional[Set[str]]:
+        """``op``'s output column names, or ``None`` when its schema is unknown."""
+        schema = op.infer_schema()
+        if schema is None or not hasattr(schema, "names"):
+            return None
+        return set(schema.names)
 
     @staticmethod
     def _should_prune_below(op: LogicalOperator, input_op: LogicalOperator) -> bool:
@@ -416,11 +436,12 @@ class ProjectionPushdown(Rule):
         if isinstance(op, Project):
             return False
         if isinstance(op, (AbstractAllToAll, Join)):
-            combinable = isinstance(input_op, AbstractAllToAll) or (
-                isinstance(op, Repartition)
-                and isinstance(input_op, StreamingRepartition)
-            )
-            return not combinable
+            # ``PredicatePushdown`` moves an expression filter below the
+            # shuffle under it, which leaves ``op`` right on top of that one.
+            below = input_op
+            while isinstance(below, Filter) and below.is_expression_based():
+                below = below.input_dependencies[0]
+            return not CombineShuffles.combines(op, below)
         return (
             isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
             and input_op.supports_projection_pushdown()
