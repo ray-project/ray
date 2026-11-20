@@ -286,7 +286,7 @@ def publish_report(store: ScanStore, output_dir: Path, workdir: Path) -> str:
 def write_annotation(annotation_dir: Path, body: str, style: str) -> Path:
     annotation_dir.mkdir(parents=True, exist_ok=True)
     path = annotation_dir / f"{trivy_report.ANNOTATION_CONTEXT}.{style}.md"
-    path.write_text(body)
+    path.write_text(body, encoding="utf-8")
     return path
 
 
