@@ -1737,7 +1737,7 @@ class ZeroPercentage(VectorizedAggregateFnV2[List[int], float]):
         ... ])
         >>> result = ds.groupby("group").aggregate(ZeroPercentage(on="value")).take_all()
         >>> # result: [{'group': 'A', 'zero_pct(value)': 50.0},
-        ... #          {'group': 'B', 'zero_pct(value)': 100.0}]
+        >>> #          {'group': 'B', 'zero_pct(value)': 100.0}]
 
     Args:
         on: The name of the column to calculate zero value percentage on.
