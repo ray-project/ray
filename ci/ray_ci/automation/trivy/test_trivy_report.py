@@ -54,6 +54,7 @@ LLM = (
 )
 
 NOTE = "Files: in this test's folder."
+
 SCANNER = {
     "trivy": {"version": "0.76.1", "tarball_sha256": "c7cbe313"},
     "db": {
