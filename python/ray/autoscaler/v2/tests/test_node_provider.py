@@ -2494,6 +2494,81 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert prov_min._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 2
         assert prov_min._ray_cluster["spec"]["workerGroupSpecs"][1]["replicas"] == 3
 
+    def test_bounded_request_and_pre_step_lid_history(self):
+        """Request IDs and pre-step launch IDs stay FIFO-bounded and prune retired entries."""
+        prov, client = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "cpu",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 20,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "tpu",
+                    "replicas": 4,
+                    "minReplicas": 0,
+                    "maxReplicas": 20,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[
+                self._make_multihost_pod(f"cpu-pod-{i}", group="cpu") for i in range(2)
+            ],
+        )
+        prov._max_tracked_request_entries = 3
+        known = set(prov.get_non_terminated())
+
+        # 1. Below cap (2 <= 3): zero evictions.
+        prov.launch(shape={"cpu": 1}, request_id="req-0")
+        prov.launch(shape={"cpu": 1}, request_id="req-1")
+        assert list(prov._requests) == ["req-0", "req-1"]
+        assert list(prov._accepted_launch_workers) == ["req-0", "req-1"]
+
+        # 2. Exceeding cap across launch + terminate: FIFO evicts oldest entries.
+        prov.launch(shape={"cpu": 1}, request_id="req-2")
+        prov.launch(shape={"cpu": 1}, request_id="req-3")
+        prov.terminate(ids=["cpu-pod-0"], request_id="term-4")
+        assert len(prov._requests) == 3
+        assert list(prov._requests) == ["req-2", "req-3", "term-4"]
+        assert len(prov._accepted_launch_workers) <= 3
+        assert "req-0" not in prov._requests
+        assert "req-1" not in prov._requests
+
+        # 3. Pre-step claimed lids: no double subtraction in-step, FIFO cap on burst,
+        # and immediate pruning once lids leave in-flight maps on the next step.
+        assert prov._external_unmaterialized["tpu"] == 16
+        step_ctx = ReconcileStepContext(
+            known_cloud_instance_ids=known,
+            unclaimed_replicas_by_lid={
+                "tpu": {"lid-a": 1, "lid-b": 1, "lid-c": 1, "lid-d": 1}
+            },
+        )
+        with prov.reconcile_step(step_ctx):
+            assert prov._external_unmaterialized["tpu"] == 0
+            assert len(prov._claimed_pre_step_lids) == 3
+            assert ("tpu", "lid-a") not in prov._claimed_pre_step_lids
+            assert ("tpu", "lid-d") in prov._claimed_pre_step_lids
+            prov.update_reconcile_step(
+                ReconcileStepContext(
+                    known_cloud_instance_ids=known,
+                    unclaimed_replicas_by_lid={
+                        "tpu": {"lid-b": 1, "lid-c": 1, "lid-d": 1}
+                    },
+                )
+            )
+            assert prov._external_unmaterialized["tpu"] == 0
+
+        with prov.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known,
+                unclaimed_replicas_by_lid={"tpu": {}},
+            )
+        ):
+            assert len(prov._claimed_pre_step_lids) == 0
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

@@ -87,10 +87,10 @@ class KubeRayProvider(ICloudInstanceProvider):
         )
         self._gcs_client = gcs_client
 
-        # Below are states that are cached locally.
-        self._requests = set()
+        # Below are states that are cached locally (FIFO-bounded via insertion-ordered dicts).
+        self._requests: Dict[str, None] = {}
         self._accepted_launch_workers: Dict[str, Dict[NodeType, int]] = {}
-        self._claimed_pre_step_lids: Set[Tuple[NodeType, str]] = set()
+        self._claimed_pre_step_lids: Dict[Tuple[NodeType, str], None] = {}
         self._max_tracked_request_entries = 4096
         self._launch_errors_queue = []
         self._terminate_errors_queue = []
@@ -170,6 +170,14 @@ class KubeRayProvider(ICloudInstanceProvider):
     def _in_reconcile_step(self) -> bool:
         return self._active_step is not None
 
+    def _record_bounded_entry(
+        self, store: Dict[Any, Any], key: Any, value: Any = None
+    ) -> None:
+        store.pop(key, None)
+        store[key] = value
+        while len(store) > self._max_tracked_request_entries:
+            del store[next(iter(store))]
+
     def _claim_untracked_pre_step_in_flight(self) -> None:
         step = self._active_step
         if (
@@ -184,11 +192,18 @@ class KubeRayProvider(ICloudInstanceProvider):
                 self._ray_cluster.get("spec", {}).get("workerGroupSpecs", [])
             )
         }
+        active_pre_lids = {
+            (nt, lid)
+            for src in (step.pre_sh_in_flight, step.pre_mh_in_flight)
+            for nt, counts in src.items()
+            for lid, cnt in counts.items()
+            if cnt > 0
+        }
         if self._claimed_pre_step_lids:
             self._claimed_pre_step_lids = {
-                (nt, lid)
+                (nt, lid): None
                 for nt, lid in self._claimed_pre_step_lids
-                if lid not in self._requests
+                if lid not in self._requests and (nt, lid) in active_pre_lids
             }
         for nt, counts in step.pre_sh_in_flight.items():
             for lid, cnt in counts.items():
@@ -197,7 +212,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                     and lid not in self._requests
                     and (nt, lid) not in self._claimed_pre_step_lids
                 ):
-                    self._claimed_pre_step_lids.add((nt, lid))
+                    self._record_bounded_entry(self._claimed_pre_step_lids, (nt, lid))
                     self._external_unmaterialized[nt] = max(
                         0, self._external_unmaterialized.get(nt, 0) - cnt
                     )
@@ -209,7 +224,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                     and lid not in self._requests
                     and (nt, lid) not in self._claimed_pre_step_lids
                 ):
-                    self._claimed_pre_step_lids.add((nt, lid))
+                    self._record_bounded_entry(self._claimed_pre_step_lids, (nt, lid))
                     self._external_unmaterialized[nt] = max(
                         0, self._external_unmaterialized.get(nt, 0) - reps * hosts
                     )
@@ -308,7 +323,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             # Only add to processed requests if at least one group was handled or no
             # invalid numOfHosts errors occurred.
             if not scale_request.invalid_delete_ids or scale_request.workers_to_delete:
-                self._requests.add(request_id)
+                self._record_bounded_entry(self._requests, request_id)
 
         except Exception as e:
             if self._active_step is not None:
@@ -360,18 +375,16 @@ class KubeRayProvider(ICloudInstanceProvider):
             # This request_id has been handled (full, partial, or no-op). Cache its
             # accepted worker counts so a replay does not add to_launch again or
             # discard prior cap/alignment rejections.
-            self._requests.add(request_id)
-            self._accepted_launch_workers.pop(request_id, None)
-            self._accepted_launch_workers[request_id] = {
-                nt: max(0, req_w - min(req_w, rejected_nodes.get(nt, 0)))
-                for nt, req_w in shape.items()
-                if req_w > 0
-            }
-            while (
-                len(self._accepted_launch_workers) > self._max_tracked_request_entries
-            ):
-                oldest_req = next(iter(self._accepted_launch_workers))
-                del self._accepted_launch_workers[oldest_req]
+            self._record_bounded_entry(self._requests, request_id)
+            self._record_bounded_entry(
+                self._accepted_launch_workers,
+                request_id,
+                {
+                    nt: max(0, req_w - min(req_w, rejected_nodes.get(nt, 0)))
+                    for nt, req_w in shape.items()
+                    if req_w > 0
+                },
+            )
 
             if self._active_step is not None:
                 self._record_step_launch(shape, request_id, rejected_nodes)
