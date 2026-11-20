@@ -432,7 +432,6 @@ def test_seed_re_execution_is_stamped_only_with_plans_that_traced_to_it(
     re-execute for the first plan only.
     """
     from ray.data._internal.execution.interfaces import ExecutionOptions
-    from ray.data._internal.execution.util import make_ref_bundles
 
     producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
     # x and y are two tasks of an operator downstream of the child.
@@ -476,7 +475,7 @@ def test_seed_re_execution_is_stamped_only_with_plans_that_traced_to_it(
     seed_task_id = producer._lineage_task_id_for(0)
     child_task_id = consumer._lineage_task_id_for(0)
     x, y = (grandchild_op._lineage_task_id_for(index) for index in range(2))
-    seed_block_id = make_ref_bundles([[1]])[0].block_refs[0].hex()
+    seed_block_id = "seed/0"
     tracker.register_task_submission(seed_task_id, [])
     tracker.register_seed_input(seed_task_id, seed_input)
     tracker.register_block_output(seed_task_id, seed_block_id, 0)
@@ -508,6 +507,7 @@ def test_seed_re_execution_is_stamped_only_with_plans_that_traced_to_it(
     # Both leaves are lost. P2 joins P1's queued seed re-execution.
     p1, p2 = "leaf:0", "leaf:1"
     first_copy = lose(p1, [])
+    assert first_copy is not None
     assert lose(p2, []) is None
     assert producer._batched_plans == {seed_task_id: {p2}}
 
@@ -527,6 +527,7 @@ def test_seed_re_execution_is_stamped_only_with_plans_that_traced_to_it(
     # y loses its input. The seed re-executes for P2 and queues the child's input,
     # which waits in the child's queue.
     y_copy = lose(y, [p2])
+    assert y_copy is not None
     assert y_copy.reconstruction_stamp == ReconstructionStamp(
         seed_task_id, frozenset({p2})
     )
@@ -540,6 +541,7 @@ def test_seed_re_execution_is_stamped_only_with_plans_that_traced_to_it(
     # x loses its input while the child's input for P2 is queued. Only P1 traced to
     # the seed, so the seed re-executes for P1 only.
     x_copy = lose(x, [p1, p2])
+    assert x_copy is not None
     producer._submit_data_task(MagicMock(), x_copy)
     assert x_copy.reconstruction_stamp == ReconstructionStamp(
         seed_task_id, frozenset({p1})
