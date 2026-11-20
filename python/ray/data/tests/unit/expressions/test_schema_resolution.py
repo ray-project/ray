@@ -18,6 +18,7 @@ from ray.data.expressions import (
     UUIDExpr,
     col,
     expand_star_exprs,
+    explode,
     exprlist_to_fields,
     lit,
     star,
@@ -310,6 +311,51 @@ class TestExpandStarExprs:
         assert_exprs_equal(
             result, [col("a"), col("b"), col("name"), col("flag"), rename]
         )
+
+
+class TestExplodeExpr:
+    @pytest.fixture
+    def list_schema(self):
+        return pa.schema(
+            [
+                pa.field("items", pa.list_(pa.int64())),
+                pa.field("big", pa.large_list(pa.string())),
+                pa.field("fixed", pa.list_(pa.float64(), 2)),
+                pa.field("nested", pa.list_(pa.list_(pa.int32()))),
+                pa.field("scalar", pa.int64()),
+                pa.field("all_null", pa.null()),
+            ]
+        )
+
+    @pytest.mark.parametrize(
+        "column,expected",
+        [
+            ("items", pa.int64()),
+            ("big", pa.string()),
+            ("fixed", pa.float64()),
+            ("nested", pa.list_(pa.int32())),
+            ("all_null", pa.null()),
+        ],
+    )
+    def test_get_type_returns_element_type(self, list_schema, column, expected):
+        assert explode(col(column)).get_type(list_schema) == expected
+
+    def test_get_type_non_list_raises(self, list_schema):
+        with pytest.raises(TypeError, match="list, large_list, or fixed_size_list"):
+            explode(col("scalar")).get_type(list_schema)
+
+    def test_get_type_unresolvable_returns_none(self, list_schema):
+        assert explode(col("missing")).get_type(list_schema) is None
+        assert explode(col("items")).get_type(None) is None
+
+    def test_nullable_is_true_even_for_non_nullable_elements(self):
+        # A null list explodes to a null row regardless of element
+        # nullability.
+        schema = pa.schema(
+            [pa.field("items", pa.list_(pa.field("item", pa.int64(), nullable=False)))]
+        )
+        expr = explode(col("items"))
+        assert expr.nullable(schema)
 
 
 if __name__ == "__main__":

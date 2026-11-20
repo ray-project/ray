@@ -44,6 +44,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators import (
     AbstractUDFMap,
+    Explode,
     Filter,
     FlatMap,
     MapBatches,
@@ -53,6 +54,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.numpy_support import _is_valid_column_values
 from ray.data._internal.output_buffer import OutputBlockSizeOption
+from ray.data._internal.planner.explode import explode_block
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
@@ -328,6 +330,45 @@ def plan_filter_op(
         ray_remote_args_fn=op.ray_remote_args_fn,
         # A filter only drops rows, so its input's partitioning still holds.
         output_partitioning=input_physical_dag.output_partitioning,
+    )
+
+
+def plan_explode_op(
+    op: Explode,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    # Extract the column before defining the closure so cloudpickle doesn't
+    # serialize the entire op object.
+    columns = op.columns
+    compute = get_compute(op.compute)
+
+    def explode_block_fn(blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            yield explode_block(block, columns)
+
+    transform_fn = BlockMapTransformFn(
+        explode_block_fn,
+        # Exploded output can be much larger than the input, so re-shape
+        # output blocks to the target size.
+        output_block_size_option=OutputBlockSizeOption.of(
+            target_max_block_size=data_context.target_max_block_size,
+        ),
+    )
+    map_transformer = MapTransformer([transform_fn])
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op.ray_remote_args,
+        ray_remote_args_fn=op.ray_remote_args_fn,
+        per_block_limit=op.per_block_limit,
     )
 
 

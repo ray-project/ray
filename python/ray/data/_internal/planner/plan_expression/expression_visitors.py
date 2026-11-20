@@ -7,6 +7,7 @@ from ray.data.expressions import (
     BinaryExpr,
     ColumnExpr,
     DownloadExpr,
+    ExplodeExpr,
     Expr,
     LiteralExpr,
     MonotonicallyIncreasingIdExpr,
@@ -195,6 +196,11 @@ class _IdempotencyVisitor(_ExprVisitor[bool]):
 
     def visit_unnest(self, expr: UnnestExpr) -> bool:
         # Unnesting only reshapes the wrapped value into columns, so the
+        # wrapped expression alone decides idempotency.
+        return expr.expr.is_idempotent()
+
+    def visit_explode(self, expr: "ExplodeExpr") -> bool:
+        # Exploding only reshapes the wrapped value into rows, so the
         # wrapped expression alone decides idempotency.
         return expr.expr.is_idempotent()
 
@@ -559,6 +565,13 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_unnest(self, expr: "UnnestExpr") -> str:
         return self._make_tree_lines(
             "UNNEST",
+            children=[("", expr.expr)],
+            expr=expr,
+        )
+
+    def visit_explode(self, expr: "ExplodeExpr") -> str:
+        return self._make_tree_lines(
+            "EXPLODE",
             children=[("", expr.expr)],
             expr=expr,
         )

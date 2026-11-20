@@ -39,11 +39,13 @@ from ray.data.expressions import (
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
+
     from ray.data.block import Schema
 
 __all__ = [
     "AbstractMap",
     "AbstractUDFMap",
+    "Explode",
     "Filter",
     "FlatMap",
     "MapBatches",
@@ -591,6 +593,96 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             temp_names = {expr.name for expr in self.get_common_sub_exprs()}
             fields = [field for field in fields if field.name not in temp_names]
         return pa.schema(fields)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class Explode(AbstractMap):
+    """Logical operator that expands each element of one or more list columns
+    into its own row, replicating all other columns.
+
+    Semantics: a null list produces one row with a null value; an empty list
+    produces no rows. Exploding a ``list<list<T>>`` removes exactly one level
+    of nesting. Several columns explode in lockstep: a row produces as many
+    rows as its longest list, and shorter lists pad with nulls.
+
+    ``Dataset.explode`` builds this directly; ``Dataset.with_columns`` lowers
+    each ``ExplodeExpr`` into a ``Project`` (computing the list-typed
+    expressions) followed by this operator.
+    """
+
+    columns: Tuple[str, ...]
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    compute: Optional[ComputeStrategy] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    can_modify_num_rows: bool = field(init=False, default=True)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    # ``LimitPushdown`` stops at this row-count-changing operator and applies
+    # the limit as a ``dataclasses.replace(op, per_block_limit=...)``, so the
+    # field must be a real init field.
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        import pyarrow as pa
+
+        from ray.data.namespace_expressions.list_namespace import _is_list_like
+
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        assert self.columns, "Explode requires at least one column"
+        # Exploding a column twice would make the block kernel drop it from
+        # the schema twice -- taking an unrelated column with it -- so reject
+        # it here, where every construction path passes.
+        duplicates = {c for c in self.columns if self.columns.count(c) > 1}
+        if duplicates:
+            raise ValueError(
+                f"explode() got duplicate columns: {sorted(duplicates)}. "
+                "Each column can only be exploded once."
+            )
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(self, "columns", tuple(self.columns))
+        object.__setattr__(self, "_name", f"Explode({', '.join(self.columns)})")
+
+        # Validate eagerly when the input schema is known; otherwise the
+        # block-level kernel raises the same errors at runtime.
+        input_schema = self.input_dependencies[0].infer_schema()
+        if isinstance(input_schema, pa.Schema):
+            for column in self.columns:
+                if column not in input_schema.names:
+                    raise ValueError(
+                        f"explode() column {column!r} not found in input "
+                        f"columns {input_schema.names}."
+                    )
+                column_type = input_schema.field(column).type
+                # A ``null``-typed column is a column of null lists: each row
+                # explodes to one null row.
+                if not (_is_list_like(column_type) or pa.types.is_null(column_type)):
+                    raise ValueError(
+                        f"explode() requires a list, large_list, or "
+                        f"fixed_size_list column, but column {column!r} has "
+                        f"type {column_type}."
+                    )
+
+    def infer_schema(self) -> Optional["Schema"]:
+        import pyarrow as pa
+
+        schema = self.input_dependencies[0].infer_schema()
+        if not isinstance(schema, pa.Schema):
+            return None
+        for column in self.columns:
+            column_type = schema.field(column).type
+            if pa.types.is_null(column_type):
+                # All-null lists explode to all-null rows: type is unchanged.
+                continue
+            exploded = (
+                column_type.value_field.with_name(column)
+                # A null list produces a null row even if elements are
+                # non-nullable, and a zipped column pads short rows with
+                # nulls.
+                .with_nullable(True)
+            )
+            schema = schema.set(schema.get_field_index(column), exploded)
+        return schema
 
 
 @dataclass(frozen=True, repr=False, eq=False)

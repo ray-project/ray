@@ -22,6 +22,7 @@ Public API
 
     star
     unnest
+    explode
     col
     lit
     udf
@@ -49,6 +50,7 @@ instantiate them directly, but you may encounter them when working with expressi
     UDFExpr
     StarExpr
     UnnestExpr
+    ExplodeExpr
     DownloadExpr
     MonotonicallyIncreasingIdExpr
     RandomExpr

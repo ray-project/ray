@@ -18,6 +18,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
+    Explode,
     Filter,
     Limit,
     ListFiles,
@@ -661,6 +662,59 @@ def test_filter_does_not_push_through_limit(
     assert filtered.take_all() == [{"value": i} for i in expected_ids]
     optimized_plan = LogicalOptimizer().optimize(filtered._logical_plan)
     assert plan_operator_comes_before(optimized_plan, Limit, Filter)
+
+
+@pytest.mark.parametrize(
+    "predicate,expected",
+    [
+        pytest.param(
+            col("items") > 1,
+            [{"id": 1, "items": 2}, {"id": 3, "items": 3}],
+            id="predicate-on-exploded-column",
+        ),
+        pytest.param(
+            col("id") > 1,
+            [{"id": 3, "items": 3}],
+            id="predicate-on-replicated-column",
+        ),
+    ],
+)
+def test_filter_does_not_push_through_explode(
+    ray_start_regular_shared, predicate, expected
+):
+    """``Explode`` changes the row count, so a filter above it must stay
+    above it -- including one on a column the explode only replicates, whose
+    rows are duplicated by the explode."""
+    ds = ray.data.from_items(
+        [{"id": 1, "items": [1, 2]}, {"id": 2, "items": []}, {"id": 3, "items": [3]}]
+    )
+    filtered = ds.explode("items").filter(expr=predicate)
+
+    assert filtered.take_all() == expected
+    optimized_plan = LogicalOptimizer().optimize(filtered._logical_plan)
+    assert plan_operator_comes_before(optimized_plan, Explode, Filter)
+
+
+def test_filters_around_explode_do_not_fuse(ray_start_regular_shared, tmp_path):
+    """A filter below an explode still pushes into the read; one above stays
+    put, so the two never fuse into a single predicate."""
+    path = tmp_path / "data.parquet"
+    pq.write_table(
+        pa.table({"id": [1, 2, 3], "items": [[1, 2], [], [3]]}),
+        path,
+    )
+    ds = ray.data.read_parquet(str(path))
+    filtered = (
+        ds.filter(expr=col("id") > 1).explode("items").filter(expr=col("items") > 2)
+    )
+
+    assert filtered.take_all() == [{"id": 3, "items": 3}]
+    optimized_plan = LogicalOptimizer().optimize(filtered._logical_plan)
+    # The lower filter is pushed into the read, leaving only the upper one,
+    # which remains above the explode.
+    filters = get_operators_of_type(optimized_plan, Filter)
+    assert len(filters) == 1
+    assert plan_operator_comes_before(optimized_plan, Explode, Filter)
 
 
 class TestPassthroughBehavior:
