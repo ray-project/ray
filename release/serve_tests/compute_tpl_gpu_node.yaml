@@ -15,9 +15,9 @@ head_node:
       CPU: 16
       GPU: 1
 
-# One optional 16-CPU / 64 GiB x86 worker. Anyscale launches the first group
-# in `group_order` and moves to the next group in the same zone when a launch
-# fails for lack of capacity.
+# One optional 16-CPU / 64 GiB x86 worker. Anyscale tries the groups in
+# `group_order`, so a later group is used only when the ones before it can't
+# be launched. It may try an earlier group in another zone first.
 worker_nodes:
     # 16 cpus, x86 (Intel Sapphire Rapids), 64G mem. Preferred type.
     - name: worker-m7i

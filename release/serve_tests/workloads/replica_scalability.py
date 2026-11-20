@@ -60,9 +60,9 @@ def main(
     compute_config = ComputeConfig(
         cloud=CLOUD,
         head_node=HeadNodeConfig(instance_type="m7i.8xlarge"),
-        # One logical pool of 4-CPU workers. Anyscale launches the first group
-        # in `group_order` and moves to the next group in the same zone when a
-        # launch fails for lack of capacity.
+        # One logical pool of 4-CPU workers. Anyscale tries the groups in
+        # `group_order`, so a later group is used only when the ones before it
+        # can't be launched. It may try an earlier group in another zone first.
         worker_nodes=[
             WorkerNodeGroupConfig(
                 name=f"worker-{family}",

@@ -12,9 +12,10 @@ head_node:
     instance_type: m7i.8xlarge
 
 # Workers come from one logical pool of 32-CPU / 128 GiB x86 nodes. Anyscale
-# launches the first group in `group_order` and moves to the next group in
-# the same zone when a launch fails for lack of capacity. Every group has the
-# same `resources`, so Ray treats them as interchangeable.
+# tries the groups in `group_order`, so a later group is used only when the
+# ones before it can't be launched. It may try an earlier group in another
+# zone first. Every group has the same `resources`, so Ray treats them as
+# interchangeable.
 #
 # The pool is a fixed 32 workers. The size is set by `min_resources` and
 # `max_resources` on the custom `worker` resource rather than by a per-group
