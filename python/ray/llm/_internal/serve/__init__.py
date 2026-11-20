@@ -19,10 +19,6 @@ def _worker_process_setup_hook():
     sizes its thread pool when it is first imported: every vLLM worker would then
     run as many threads as the host has cores.
     """
-    # vLLM's Ray executor runs a replica's rank 0 on its physical GPU, while the
-    # compile cache is keyed by rank, and Inductor bakes the device index into the
-    # cached code. A replica reusing a cache built on another GPU index then crashes
-    # with "CUDA driver error: invalid argument". This vLLM flag (off by default)
-    # makes the compiled code device-neutral and is part of vLLM's cache key. A
-    # user's own setting wins.
+    # Make vLLM's compile cache device-neutral. Otherwise a replica reusing a cache
+    # compiled on another GPU index crashes with "CUDA driver error: invalid argument".
     os.environ.setdefault("VLLM_COMPILE_ON_ONE_RANK", "1")

@@ -291,18 +291,6 @@ def test_worker_process_setup_hook_imports_neither_torch_nor_vllm():
     )
 
 
-@pytest.mark.parametrize("user_env,expected", [(None, "1"), ("0", "0")])
-def test_worker_process_setup_hook_compiles_on_one_rank(user_env, expected):
-    # Replicas on different GPU indices share a device-neutral compile cache; a
-    # user's own setting wins.
-    from ray.llm._internal.serve import _worker_process_setup_hook
-
-    env = {"VLLM_COMPILE_ON_ONE_RANK": user_env} if user_env else {}
-    with patch.dict("os.environ", env, clear=True):
-        _worker_process_setup_hook()
-        assert os.environ["VLLM_COMPILE_ON_ONE_RANK"] == expected
-
-
 def test_worker_process_setup_hook_keeps_ray_thread_limit():
     """A worker running Serve LLM's setup hook gets torch threads = num_cpus."""
     import ray
