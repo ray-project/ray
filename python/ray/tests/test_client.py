@@ -6,6 +6,7 @@ import re
 import sys
 import threading
 import time
+from functools import partial
 from unittest.mock import Mock, patch
 
 import numpy as np
@@ -22,6 +23,7 @@ from ray._private.client_mode_hook import (
     disable_client_hook,
     enable_client_mode,
 )
+from ray.core.generated import ray_client_pb2
 from ray.job_config import JobConfig
 from ray.tests.client_test_utils import (
     create_remote_signal_actor,
@@ -30,10 +32,14 @@ from ray.tests.client_test_utils import (
 from ray.tests.conftest import call_ray_start_context
 from ray.util.client import _apply_uv_hook_for_client
 from ray.util.client.common import OBJECT_TRANSFER_CHUNK_SIZE, ClientObjectRef
+from ray.util.client.dataclient import DataClient
 from ray.util.client.ray_client_helpers import (
     ray_start_client_server,
     ray_start_client_server_for_address,
 )
+from ray.util.client.worker import Worker
+
+import psutil
 
 # Note on the structure of tests in this file:
 # All of the tests in this file reuse the same instance of Ray, which is
@@ -853,6 +859,44 @@ def test_large_remote_call(call_ray_start_shared):
 
         a = SomeActor.remote(large_obj)
         assert ray.get(a.some_method.remote(large_obj))
+
+
+# Building the requests holds several copies of the 2 GiB payload (peak RSS ~6.4 GiB).
+requires_8gib_available = pytest.mark.skipif(
+    psutil.virtual_memory().available < 8 * 2**30,
+    reason="needs 8 GiB of available memory for a 2 GiB payload",
+)
+
+
+@requires_8gib_available
+def test_put_object_over_2gib():
+    data_client = Mock()
+    try:
+        DataClient.PutObject(
+            data_client, ray_client_pb2.PutRequest(data=b"\0" * 2**31)
+        )
+    except Exception as e:
+        # A traceback would repr the 2 GiB request, which takes minutes.
+        pytest.fail(str(e), pytrace=False)
+    (sent,) = data_client._blocking_send.call_args.args
+    assert len(sent.put.data) == 2**31
+
+
+@requires_8gib_available
+def test_schedule_over_2gib():
+    data_client = Mock()
+    data_client.Schedule = partial(DataClient.Schedule, data_client)
+    worker = Mock(
+        _client_id="", data_client=data_client, total_outbound_message_size_bytes=0
+    )
+    try:
+        Worker._call_schedule_for_task(
+            worker, ray_client_pb2.ClientTask(data=b"\0" * 2**31), num_returns=1
+        )
+    except Exception as e:
+        pytest.fail(str(e), pytrace=False)
+    sent, _ = data_client._async_send.call_args.args
+    assert len(sent.task.data) == 2**31
 
 
 def test_ignore_reinit(call_ray_start_shared, shutdown_only):
