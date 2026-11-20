@@ -18,7 +18,11 @@ from ray.serve._private.constants import (
     SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
     SERVE_LOGGER_NAME,
 )
-from ray.serve.config import AutoscalingConfig, AutoscalingContext
+from ray.serve.config import (
+    AutoscalingConfig,
+    AutoscalingContext,
+    AutoscalingMetricsContext,
+)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -168,7 +172,6 @@ def _apply_default_params(
 
     # Apply delay logic
     # Only send the internal state here to avoid overwriting the custom policy state.
-    assert ctx.target_num_replicas is not None
     final_num_replicas, updated_state = _apply_delay_logic(
         max(0, desired_num_replicas), ctx.target_num_replicas, ctx.config, policy_state
     )
@@ -222,12 +225,7 @@ def _merge_user_state_with_internal_state(
 
 def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     """Returns the desired number of replicas if the cold start fast path applies, otherwise returns None."""
-    if (
-        ctx.current_num_replicas == 0
-        and ctx.total_num_requests is not None
-        and ctx.total_num_requests > 0
-    ):
-        assert ctx.target_num_replicas is not None
+    if ctx.current_num_replicas == 0 and ctx.total_num_requests > 0:
         return max(
             math.ceil(1 * ctx.config.get_upscaling_factor()),
             ctx.target_num_replicas,
@@ -267,14 +265,14 @@ def _apply_autoscaling_config(
 
 def _apply_app_level_autoscaling_config(
     policy_func: Callable[
-        [Dict[DeploymentID, AutoscalingContext]],
+        [Dict[DeploymentID, AutoscalingMetricsContext]],
         Tuple[
             Dict[DeploymentID, Union[int, float]],
             Optional[Dict[DeploymentID, Dict]],
         ],
     ]
 ) -> Callable[
-    [Dict[DeploymentID, AutoscalingContext]],
+    [Dict[DeploymentID, AutoscalingMetricsContext]],
     Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]],
 ]:
     """Wraps an application-level custom policy function to automatically apply per-deployment:
@@ -285,13 +283,14 @@ def _apply_app_level_autoscaling_config(
 
     @functools.wraps(policy_func)
     def wrapped_policy(
-        contexts: Dict[DeploymentID, AutoscalingContext]
+        contexts: Dict[DeploymentID, AutoscalingMetricsContext]
     ) -> Tuple[Dict[DeploymentID, int], Dict[DeploymentID, Dict]]:
 
         # Store the policy state per deployment
         state_per_deployment = {}
         for dep_id, ctx in contexts.items():
-            state_per_deployment[dep_id] = ctx.policy_state.copy()
+            if isinstance(ctx, AutoscalingContext):
+                state_per_deployment[dep_id] = ctx.policy_state.copy()
 
         # Send to the actual policy
         desired_num_replicas_dict, updated_custom_policy_state = policy_func(contexts)
@@ -301,7 +300,7 @@ def _apply_app_level_autoscaling_config(
         final_decisions: Dict[DeploymentID, int] = {}
         final_state: Dict[DeploymentID, Dict] = {}
         for dep_id, ctx in contexts.items():
-            if ctx.config is None:
+            if not isinstance(ctx, AutoscalingContext):
                 if dep_id in desired_num_replicas_dict:
                     raise ValueError(f"Cannot scale metrics-only deployment {dep_id}")
                 continue
@@ -343,10 +342,8 @@ def _core_replica_queue_length_policy(
     num_running_replicas = ctx.current_num_replicas
     config = ctx.config
     if num_running_replicas == 0:
-        assert ctx.target_num_replicas is not None
         return ctx.target_num_replicas, {}
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
-    assert ctx.total_num_requests is not None
     error_ratio = ctx.total_num_requests / target_num_requests
     desired_num_replicas = num_running_replicas * error_ratio
     return desired_num_replicas, {}
