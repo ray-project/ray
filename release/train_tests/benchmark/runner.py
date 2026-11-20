@@ -16,6 +16,10 @@ from benchmark_factory import BenchmarkFactory
 
 logger = ContextLoggerAdapter(logging.getLogger(__name__))
 
+# Checkpoint file that holds the train data iterator state, for mid-epoch
+# resumption.
+DATA_STATE_FILE = "data_state.json"
+
 
 class TrainLoopRunner:
     """Generic runner that sets up the training loop scaffolding.
@@ -141,9 +145,12 @@ class TrainLoopRunner:
         train_dataloader = self.factory.get_train_dataloader()
         train_dataloader = self._wrap_dataloader(train_dataloader, train=True)
 
-        # Skip through batches if we restored to a middle of the epoch.
-        # TODO: Compare this baseline to the data checkpointing approach once we have it.
-        if self._num_batches_to_skip:
+        # Skip through batches if we restored to a middle of the epoch. With
+        # mid-epoch resumption, Ray Data skips the yielded rows instead.
+        if (
+            self._num_batches_to_skip
+            and not self.factory.dataloader_factory.supports_mid_epoch_resume()
+        ):
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(f"Skipping {self._num_batches_to_skip} batches...")
 
@@ -271,6 +278,14 @@ class TrainLoopRunner:
             "global_rows_processed_this_epoch"
         ]
 
+        data_state_path = os.path.join(local_dir, DATA_STATE_FILE)
+        if (
+            self.factory.dataloader_factory.supports_mid_epoch_resume()
+            and os.path.exists(data_state_path)
+        ):
+            with open(data_state_path, "r") as f:
+                self.factory.dataloader_factory.set_train_data_state(json.load(f))
+
         with open(os.path.join(local_dir, "metrics.json"), "r") as f:
             metrics_json = json.load(f)
 
@@ -292,7 +307,14 @@ class TrainLoopRunner:
 
         self._save_training_state(local_dir)
 
+        # Every rank saves its part of the data iterator state.
+        data_state = self.factory.dataloader_factory.get_train_data_state()
+
         if ray.train.get_context().get_world_rank() == 0:
+            if data_state is not None:
+                with open(os.path.join(local_dir, DATA_STATE_FILE), "w") as f:
+                    json.dump(data_state, f)
+
             run_state = {
                 "epoch": self._train_epoch_idx,
                 "batch_idx": self._train_batch_idx,
