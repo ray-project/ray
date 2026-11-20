@@ -452,6 +452,13 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             or self.data_context.target_max_block_size
         )
 
+    def awaiting_on_start(self) -> bool:
+        """Whether an ``on_start`` callback is registered but has not run yet.
+        Needed because icerberg requires an on_start callback to start before
+        launching any tasks.
+        """
+        return self._on_start is not None and not self._on_start_called
+
     @override
     def start(
         self,

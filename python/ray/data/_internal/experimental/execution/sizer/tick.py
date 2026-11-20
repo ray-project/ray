@@ -30,6 +30,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.operators.placement_constraints import (  # noqa: E501
     is_constrained,
 )
+from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
+    pack_actors,
+)
 from ray.data._internal.experimental.execution.sizer.models import (
     TickCapacitySnapshot,
     TickContext,
@@ -111,8 +114,16 @@ class SizingTicker:
             Dict["ExperimentalActorPoolMapOperator", int]
         ] = None,
         warmup_timeout_s: float = SIZER_WARMUP_TIMEOUT_S,
+        hold_target: Optional[
+            Callable[
+                ["ExperimentalActorPoolMapOperator", ExecutionResources], Optional[int]
+            ]
+        ] = None,
     ):
         self._profiles = profiles
+        # Actors to hold for an op waiting on its on_start: its warmup equal
+        # share (``OpSizingPolicy.warmup_target``); its min size without one.
+        self._hold_target = hold_target
         self.cadence_s = cadence_s
         self.clock = clock
         self.warmup: bool = True
@@ -252,19 +263,79 @@ class SizingTicker:
                 view_for_match, per_actor
             )
 
+        constrained_op_count_by_node = self._constrained_op_count_by_node(
+            schedulable_nodes_by_op
+        )
+        global_limits = ExecutionResources.zero()
+        for resources in reserved.values():
+            global_limits = global_limits.add(resources)
+        held_actors_by_op = self._hold_share_for_ops_awaiting_on_start(
+            free,
+            schedulable_nodes_by_op,
+            per_actor_resources_by_op,
+            constrained_op_count_by_node,
+            global_limits,
+        )
+
         return TickCapacitySnapshot(
             free_by_node=free,
             reserved_by_node=reserved,
             nodes_to_reclaim=nodes_to_reclaim,
             schedulable_nodes_by_op=schedulable_nodes_by_op,
             per_actor_resources_by_op=per_actor_resources_by_op,
-            constrained_op_count_by_node=self._constrained_op_count_by_node(
-                schedulable_nodes_by_op
-            ),
+            constrained_op_count_by_node=constrained_op_count_by_node,
             pg_free_by_bundle=self._pg_bundles.free_by_bundle(),
             schedulable_bundles_by_op=dict(self._pg_bundles.bundles_by_op),
             unknown_pg_headroom_by_op=self._unknown_pg_headroom(),
+            held_actors_by_op=held_actors_by_op,
         )
+
+    def _hold_share_for_ops_awaiting_on_start(
+        self,
+        free: Dict[NodeIdStr, ExecutionResources],
+        schedulable_nodes_by_op: Dict[
+            "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
+        ],
+        per_actor_resources_by_op: Dict[
+            "ExperimentalActorPoolMapOperator", ExecutionResources
+        ],
+        constrained_op_count_by_node: Dict[NodeIdStr, int],
+        global_limits: ExecutionResources,
+    ) -> Dict["ExperimentalActorPoolMapOperator", int]:
+        """During warmup we want to prestart all the actors. However,
+        we cannot do that for iceberg write operators because they require
+        schema metadata on their first available input. This method reserves
+        headroom for those types of operators during warmup, without actually
+        scaling them up. This ensures fair share during warmup."""
+        held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = {}
+        for op in self._profiles.non_pg_ops:
+            if not op.awaiting_on_start() or op.has_completed():
+                continue
+            pool = op.actor_pool
+            target = (
+                self._hold_target(op, global_limits)
+                if self._hold_target is not None
+                else None
+            )
+            if target is None:
+                target = pool.min_size()
+            num_to_hold = target - pool.serving_size()
+            if num_to_hold <= 0:
+                continue
+            nodes = sorted(
+                (n for n in free if n in schedulable_nodes_by_op[op]),
+                key=lambda n: (constrained_op_count_by_node.get(n, 0), n),
+            )
+            held = pack_actors(free, nodes, per_actor_resources_by_op[op], num_to_hold)
+            held_actors_by_op[op] = len(held)
+            logger.debug(
+                "OperatorSizer: holding %d/%d actor(s) (warmup share) for %s "
+                "until its on_start runs",
+                len(held),
+                num_to_hold,
+                op.name,
+            )
+        return held_actors_by_op
 
     def _constrained_op_count_by_node(
         self,
