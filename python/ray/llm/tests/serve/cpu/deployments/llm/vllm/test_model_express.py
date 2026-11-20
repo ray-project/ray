@@ -120,6 +120,12 @@ def test_setup_sets_client_env():
     # vLLM only copies listed env prefixes into its Ray workers.
     prefixes = env["VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY"].split(",")
     assert {"MX_", "MODEL_EXPRESS_"} <= set(prefixes)
+    # Peers load the transferred compile cache on other GPU indices.
+    assert env["VLLM_COMPILE_ON_ONE_RANK"] == "1"
+    # vLLM copies its own env vars into its Ray workers.
+    from vllm.ray.ray_env import get_env_vars_to_copy
+
+    assert "VLLM_COMPILE_ON_ONE_RANK" in get_env_vars_to_copy()
 
 
 def test_setup_uses_configured_env():
@@ -154,11 +160,13 @@ def test_setup_keeps_user_env():
             "MX_SERVER_ADDRESS": "mx:9000",
             "MX_METADATA_PORT": "40000",
             "VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY": "FOO_",
+            "VLLM_COMPILE_ON_ONE_RANK": "0",
         },
     )
     assert looked_up == []
     assert env["MX_SERVER_ADDRESS"] == "mx:9000"
     assert env["MX_METADATA_PORT"] == "40000"
+    assert env["VLLM_COMPILE_ON_ONE_RANK"] == "0"
     assert env["VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY"].split(",") == [
         "FOO_",
         "MX_",

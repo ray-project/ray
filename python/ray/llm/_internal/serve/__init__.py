@@ -1,5 +1,3 @@
-import os
-
 from ray.llm._internal.common.observability.logging_utils import (
     disable_vllm_custom_ops_logger_on_cpu_nodes,
 )
@@ -19,6 +17,3 @@ def _worker_process_setup_hook():
     sizes its thread pool when it is first imported: every vLLM worker would then
     run as many threads as the host has cores.
     """
-    # Make vLLM's compile cache device-neutral. Otherwise a replica reusing a cache
-    # compiled on another GPU index crashes with "CUDA driver error: invalid argument".
-    os.environ.setdefault("VLLM_COMPILE_ON_ONE_RANK", "1")
