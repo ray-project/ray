@@ -13,6 +13,7 @@ from typing import (
 )
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.dataset as pds
 import pyarrow.fs as pafs
 from pyarrow.parquet import ColumnSchema, ParquetSchema, RowGroupMetaData
@@ -23,6 +24,7 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 )
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
+    _partition_table,
     _PartitionValueParser,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
@@ -47,9 +49,16 @@ from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.datasource.partitioning import Partitioning
 
 if TYPE_CHECKING:
-    import pyarrow.compute as pc
-
     from ray.data.expressions import Expr
+
+
+class ResidualPruning(NamedTuple):
+    """Reader context for optional pruning by a retained residual filter."""
+
+    predicate: Expr
+    partitioning: Partitioning
+    schema: pa.Schema
+
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +86,21 @@ def _get_prefix_matches(path: str, names: set[str]) -> set[str]:
 def _leaf_matches(leaf_path: str, names: set[str]) -> bool:
     """Whether a Parquet leaf belongs to any of ``names``."""
     return bool(_get_prefix_matches(leaf_path, names))
+
+
+def _get_unsafe_filter_columns(
+    physical_schema: pa.Schema, logical_schema: pa.Schema, columns: Iterable[str]
+) -> set[str]:
+    """Columns whose physical types do not match the reader's output types."""
+    return {
+        name
+        for name in columns
+        if physical_schema.get_field_index(name) != -1
+        and (
+            logical_schema.get_field_index(name) == -1
+            or physical_schema.field(name).type != logical_schema.field(name).type
+        )
+    }
 
 
 # Half floats are the odd one out: they ride on FIXED_LEN_BYTE_ARRAY, which
@@ -130,6 +154,8 @@ class FooterReader:
         partitioning: Partitioning | None = None,
         partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
+        *,
+        residual_pruning: ResidualPruning | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -165,6 +191,26 @@ class FooterReader:
             if self.partitioning is not None and self._predicate is not None
             else None
         )
+        self.residual_pruning = residual_pruning
+        self._residual_partition_value_parser = None
+        self._residual_filter = None
+        self._residual_filter_columns: set[str] = set()
+        if residual_pruning is not None:
+            try:
+                self._residual_filter = residual_pruning.predicate.to_pyarrow()
+                self._residual_filter_columns = set(
+                    get_column_references(residual_pruning.predicate)
+                )
+                self._residual_partition_value_parser = _PartitionValueParser(
+                    residual_pruning.partitioning
+                )
+            except Exception as e:
+                logger.debug(
+                    "Disabling residual pruning during initialization: %s",
+                    e,
+                    exc_info=True,
+                )
+                self.residual_pruning = None
         filter_expr = self._predicate
         self.pool = ThreadPoolExecutor(max_workers=io_concurrency)
         # Match Arrow's process-wide pools to the actor's IO concurrency so
@@ -295,17 +341,11 @@ class FooterReader:
         physical = split.data_predicate
         logical_schema = self.logical_schema
         if physical is not None and logical_schema is not None:
-            physical_schema = schema.to_arrow_schema()
-            unsafe = {
-                name
-                for name in get_column_references(physical)
-                if physical_schema.get_field_index(name) != -1
-                and (
-                    logical_schema.get_field_index(name) == -1
-                    or physical_schema.field(name).type
-                    != logical_schema.field(name).type
-                )
-            }
+            unsafe = _get_unsafe_filter_columns(
+                schema.to_arrow_schema(),
+                logical_schema,
+                get_column_references(physical),
+            )
             if unsafe:
                 safe = _split_predicate_by_columns(physical, unsafe)
                 physical = safe.data_predicate
@@ -359,7 +399,11 @@ class FooterReader:
         return not self._has_filter_nulls(row_group, filter_leaves.indices)
 
     def _try_split_by_row_group(
-        self, fragment, expr: "pc.Expression", path: str
+        self,
+        fragment,
+        expr: "pc.Expression",
+        path: str,
+        schema: pa.Schema | None = None,
     ) -> list[int] | None:
         """Row-group ids that statistics say may match ``expr``, or None on failure.
 
@@ -368,7 +412,10 @@ class FooterReader:
         exception so one mismatched file cannot abort a ``read_footers`` batch.
         """
         try:
-            return [sub.row_groups[0].id for sub in fragment.split_by_row_group(expr)]
+            return [
+                sub.row_groups[0].id
+                for sub in fragment.split_by_row_group(expr, schema=schema)
+            ]
         except Exception as e:
             logger.debug(
                 "Error splitting by row group: %s for file %s",
@@ -378,13 +425,96 @@ class FooterReader:
             )
             return None
 
+    def _residual_partition_facts(
+        self, path: str
+    ) -> tuple[pc.Expression, set[str]] | None:
+        """Folder values for the columns the residual filter reads, as an Arrow
+        expression, plus those column names. None if the path can't be parsed.
+        """
+        parser = self._residual_partition_value_parser
+        if self.residual_pruning is None or parser is None:
+            return None
+        try:
+            pruning = self.residual_pruning
+            # Missing keys may be physical columns; never infer NULL from absence.
+            values = {
+                k: v
+                for k, v in parser(path).items()
+                if k in self._residual_filter_columns
+            }
+            table = _partition_table(values, pruning.schema)
+            partition_expression = pds.scalar(True)
+            for name in values:
+                scalar = table[name][0]
+                fact = (
+                    pds.field(name) == pds.scalar(scalar)
+                    if scalar.is_valid
+                    else pds.field(name).is_null()
+                )
+                partition_expression = partition_expression & fact
+            return partition_expression, set(values)
+        except Exception as e:
+            logger.debug(
+                "Cannot bind residual partition facts for file %s: %s",
+                path,
+                e,
+                exc_info=True,
+            )
+            return None
+
+    def _residual_row_groups(
+        self,
+        fragment,
+        schema: ParquetSchema,
+        candidates: Iterable[int],
+        facts: tuple[pc.Expression, set[str]] | None,
+    ) -> list[int] | None:
+        """Row groups the residual filter may match, or None to keep all candidates.
+
+        Never marks a group fully matched.
+        """
+        if self.residual_pruning is None or facts is None:
+            return None
+        candidates = list(candidates)
+        if not candidates:
+            return None
+        try:
+            pruning = self.residual_pruning
+            _, partition_columns = facts
+            # Like the pushed filter, use bounds only for unchanged field types.
+            # Partition values come from the path and override physical columns.
+            if _get_unsafe_filter_columns(
+                schema.to_arrow_schema(),
+                pruning.schema,
+                self._residual_filter_columns - partition_columns,
+            ):
+                return None
+            # Share the already-read metadata, but give the residual filter its
+            # own statistics cache when binding against the reader's logical schema.
+            fragment = fragment.subset(row_group_ids=candidates)
+        except Exception as e:
+            logger.debug(
+                "Cannot apply residual statistics pruning for file %s: %s",
+                fragment.path,
+                e,
+                exc_info=True,
+            )
+            return None
+        return self._try_split_by_row_group(
+            fragment, self._residual_filter, fragment.path, pruning.schema
+        )
+
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
+        residual_facts = self._residual_partition_facts(path)
         # The listing's size spares the open a request for it (a HEAD on S3).
         fragment = self.file_format.make_fragment(
             path,
             filesystem=filesystem_for_sized_opens(self.filesystem),
             file_size=file.size,
+            partition_expression=residual_facts[0]
+            if residual_facts is not None
+            else None,
         )
         # ``make_fragment`` is lazy, so this property is the footer read itself
         # (and caches it on the fragment). It raises on a truncated, non-Parquet,
@@ -468,6 +598,13 @@ class FooterReader:
             rg_indices = unprocessed_rg_ids
             # No physical predicate does not prove a missing path condition.
             fully_by_idx = dict.fromkeys(rg_indices, complete_filter)
+
+        selected = self._residual_row_groups(
+            fragment, metadata.schema, rg_indices, residual_facts
+        )
+        if selected is not None:
+            possible = set(selected)
+            rg_indices = [i for i in rg_indices if i in possible]
 
         per_rg = [
             self._row_group_run(
