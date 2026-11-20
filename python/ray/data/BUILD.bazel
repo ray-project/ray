@@ -34,7 +34,25 @@ py_library(
 
 py_test_module_list(
     size = "small",
-    files = glob(["tests/unit/**/test_*.py"]),
+    files = glob(
+        ["tests/unit/**/test_*.py"],
+        exclude = ["tests/unit/datasource_v2/test_orc_statistics.py"],
+    ),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        ":datasource_v2_unit_conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "small",
+    data = ["tests/unit/datasource_v2/fixtures/orc_java_strings.orc"],
+    files = ["tests/unit/datasource_v2/test_orc_statistics.py"],
     tags = [
         "exclusive",
         "team:data",
