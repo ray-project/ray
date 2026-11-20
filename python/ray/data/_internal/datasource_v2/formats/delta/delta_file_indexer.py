@@ -64,6 +64,7 @@ if TYPE_CHECKING:
     from deltalake import DeltaTable
     from pyarrow.fs import FileSystem
 
+    from ray import ObjectRef
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.expressions import Expr
@@ -94,8 +95,9 @@ class DeltaTableSnapshot:
     """One version of a Delta table, by reference.
 
     A ``deltalake.DeltaTable`` wraps a Rust handle that can't be pickled, so
-    listing tasks receive this instead and open the table themselves, at the
-    version the driver pinned.
+    listing tasks receive this instead. ``read_delta`` opens the table once, in
+    a Ray task, and keeps its ``add`` actions in the object store
+    (``loaded_add_actions``), so the listing needn't load the log again.
 
     Attributes:
         table_uri: The table URI, as ``DeltaTable.table_uri`` reports it.
@@ -104,6 +106,8 @@ class DeltaTableSnapshot:
             out of the ``repr``.
         partition_filters: ``read_delta``'s ``partition_filters``, already
             checked: only the data files they select are read.
+        loaded_add_actions: The ``add`` actions ``load_add_actions`` returned
+            when the table was opened, or ``None`` to load them in the listing.
     """
 
     table_uri: str
@@ -112,6 +116,7 @@ class DeltaTableSnapshot:
         default=None, repr=False
     )
     partition_filters: Optional[List[Any]] = None
+    loaded_add_actions: Optional["ObjectRef[pa.Table]"] = None
 
     def open(self) -> "DeltaTable":
         """Open the table at the pinned version."""
@@ -126,28 +131,74 @@ class DeltaTableSnapshot:
     def add_actions(self) -> pa.Table:
         """The ``add`` actions of the pinned version, one row per data file.
 
-        Sorted by path. ``deltalake`` lists them in the order it replays the
-        log, which follows the layout of the latest checkpoint, so one version
-        could otherwise list its files in another order once a checkpoint is
-        written with its rows in another order. With ``partition_filters``,
-        only the files they select.
+        Sorted by path, as ``load_add_actions`` returns them. With
+        ``partition_filters``, only the files they select. The table is
+        loaded again only if the ``add`` actions loaded with it are lost, or
+        if Ray rebuilt them by reopening the table, which then may have read a
+        later version.
         """
-        table = self.open()
-        # ``deltalake`` returns an arro3-core table, not a PyArrow one;
-        # ``pa.table`` converts it through the Arrow C stream interface.
-        add_actions = pa.table(table.get_add_actions(flatten=True)).sort_by(
-            ADD_ACTION_PATH_COLUMN
-        )
-        if self.partition_filters is None:
-            return add_actions
+        if self.loaded_add_actions is not None:
+            import ray
+            from ray.exceptions import ObjectLostError
+
+            try:
+                add_actions = ray.get(self.loaded_add_actions)
+            except ObjectLostError:
+                add_actions = None
+            if (
+                add_actions is not None
+                and _version_of_add_actions(add_actions) == self.version
+            ):
+                return add_actions
+        return load_add_actions(self.open(), self.partition_filters)
+
+
+# Schema metadata key of the table version ``load_add_actions`` read.
+_ADD_ACTIONS_VERSION_KEY = b"ray.data.delta.version"
+
+
+def load_add_actions(
+    table: "DeltaTable", partition_filters: Optional[List[Any]] = None
+) -> pa.Table:
+    """The ``add`` actions of ``table``'s version, one row per data file.
+
+    Args:
+        table: The table, opened at the version to read.
+        partition_filters: ``read_delta``'s ``partition_filters``, already
+            checked. Only the files they select are returned.
+
+    Returns:
+        The ``add`` actions, as ``DeltaTable.get_add_actions(flatten=True)``
+        gives them, with the version in the schema metadata. Sorted by path:
+        ``deltalake`` lists them in the order it replays the log, which follows
+        the layout of the latest checkpoint, so a version reloaded after a
+        checkpoint written with its rows in another order would otherwise list
+        its files in another order.
+    """
+    # ``deltalake`` returns an arro3-core table, not a PyArrow one; ``pa.table``
+    # converts it through the Arrow C stream interface.
+    add_actions = pa.table(table.get_add_actions(flatten=True)).sort_by(
+        ADD_ACTION_PATH_COLUMN
+    )
+    if partition_filters is not None:
         file_paths = [
             resolve_data_file_path(path)
             for path in add_actions[ADD_ACTION_PATH_COLUMN].to_pylist()
         ]
         selected = _files_selected_by_partition_filters(
-            table, self.partition_filters, file_paths
+            table, partition_filters, file_paths
         )
-        return add_actions.filter(pa.array([path in selected for path in file_paths]))
+        add_actions = add_actions.filter(
+            pa.array([path in selected for path in file_paths])
+        )
+    return add_actions.replace_schema_metadata(
+        {_ADD_ACTIONS_VERSION_KEY: str(table.version()).encode()}
+    )
+
+
+def _version_of_add_actions(add_actions: pa.Table) -> Optional[int]:
+    version = (add_actions.schema.metadata or {}).get(_ADD_ACTIONS_VERSION_KEY)
+    return None if version is None else int(version)
 
 
 def _files_selected_by_partition_filters(
