@@ -402,21 +402,18 @@ class ReadFiles(
         )
         return combine_predicates(predicate, partition_predicate)
 
-    def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
-        if self.block_udf is not None:
-            if self.block_udf_modified_columns is None:
-                # The transform's effects are unknown; keep every predicate
-                # above it, including callers that skip the capability check.
-                return self
+    def can_push_predicate_before_block_udf(self, predicate_expr: Expr) -> bool:
+        """Whether the block UDF preserves all columns used by the predicate."""
+        return self.block_udf is None or (
+            self.block_udf_modified_columns is not None
+            and self.block_udf_modified_columns.isdisjoint(
+                get_column_references(predicate_expr)
+            )
+        )
 
-            if (
-                set(get_column_references(predicate_expr))
-                & self.block_udf_modified_columns
-            ):
-                # Predicates on transformed fields must observe post-UDF values.
-                # Keep mixed predicates intact too; splitting them could change
-                # the result when the expression contains OR or other nesting.
-                return self
+    def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
+        if not self.can_push_predicate_before_block_udf(predicate_expr):
+            return self
 
         pushes_filters = isinstance(self.scanner, SupportsFilterPushdown)
         partition_cols: Set[str] = (
