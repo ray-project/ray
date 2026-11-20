@@ -650,7 +650,10 @@ TEST_F(RedisAsyncContextTest, TestNoAuthRepliesDoNotSpendRetries) {
 
   // Require a password the client does not have, then drop its connection:
   // it reconnects without AUTH and every command comes back -NOAUTH.
+  // Redis 5 (the Windows build) drops the admin's authentication at once, so
+  // it authenticates before the kill; newer servers accept the AUTH as well.
   admin_command("CONFIG SET requirepass noauth_test_pw");
+  admin_command("AUTH noauth_test_pw");
   admin_command("CLIENT KILL TYPE normal");
 
   std::promise<bool> done;
