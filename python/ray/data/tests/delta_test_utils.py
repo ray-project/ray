@@ -7,6 +7,54 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 
+def write_deletion_vector_table(path: str) -> None:
+    """Write a one-file Delta table that declares the deletion vectors feature.
+
+    deltalake can't write such a table, so the log is written by hand. No
+    deletion vector is written: readers reject the table for declaring the
+    feature.
+
+    Args:
+        path: Directory to create the table in. Must not exist yet.
+    """
+    os.makedirs(os.path.join(path, "_delta_log"))
+    data_file = os.path.join(path, "part-0.parquet")
+    pq.write_table(pa.table({"id": pa.array([1, 2, 3], pa.int64())}), data_file)
+
+    field = {"name": "id", "type": "long", "nullable": True, "metadata": {}}
+    actions = [
+        {
+            "protocol": {
+                "minReaderVersion": 3,
+                "minWriterVersion": 7,
+                "readerFeatures": ["deletionVectors"],
+                "writerFeatures": ["deletionVectors"],
+            }
+        },
+        {
+            "metaData": {
+                "id": "3c3a3d8e-0000-4000-8000-000000000001",
+                "format": {"provider": "parquet", "options": {}},
+                "schemaString": json.dumps({"type": "struct", "fields": [field]}),
+                "partitionColumns": [],
+                "configuration": {"delta.enableDeletionVectors": "true"},
+                "createdTime": 0,
+            }
+        },
+        {
+            "add": {
+                "path": "part-0.parquet",
+                "partitionValues": {},
+                "size": os.path.getsize(data_file),
+                "modificationTime": 0,
+                "dataChange": True,
+            }
+        },
+    ]
+    with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
+        f.write("\n".join(json.dumps(action) for action in actions) + "\n")
+
+
 def write_column_mapped_table(path: str, mode: str) -> None:
     """Write a one-file reader 2 / writer 5 Delta table with column mapping.
 
