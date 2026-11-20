@@ -367,7 +367,7 @@ def test_gang_surge_rolling_update_and_rollback(serve_instance_with_signal):
     }
     healthy = {
         "name": "FailOnFlag",
-        "num_replicas": 4,
+        "num_replicas": 2,
         "max_ongoing_requests": 1,
         "max_surge_percent": 25,
         "gang_scheduling_config": {"gang_size": 2},

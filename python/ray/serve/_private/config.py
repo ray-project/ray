@@ -317,23 +317,6 @@ class DeploymentConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_gang_scheduling_config(self):
-        if self.gang_scheduling_config is None:
-            return self
-        # Skip the num_replicas alignment check when autoscaling is enabled
-        if (
-            self.autoscaling_config is None
-            and self.num_replicas is not None
-            and self.num_replicas % self.gang_scheduling_config.gang_size != 0
-        ):
-            raise ValueError(
-                f"num_replicas ({self.num_replicas}) must be a multiple of "
-                f"gang_size ({self.gang_scheduling_config.gang_size})."
-            )
-
-        return self
-
-    @model_validator(mode="after")
     def validate_deployment_actors_unique_names(self):
         if self.deployment_actors is None:
             return self
@@ -669,6 +652,12 @@ def handle_num_replicas_auto(
         autoscaling_config = AutoscalingConfig(**default_config)
 
     return max_ongoing_requests, autoscaling_config
+
+
+def get_gang_size(deployment_config: "DeploymentConfig") -> int:
+    """Return the deployment's gang size, or 1 if gang scheduling is disabled."""
+    gang_config = deployment_config.gang_scheduling_config
+    return 1 if gang_config is None else gang_config.gang_size
 
 
 class ReplicaConfig:

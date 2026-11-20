@@ -250,7 +250,7 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
     """
 
     @serve.deployment(
-        num_replicas=2,
+        num_replicas=1,
         ray_actor_options={"num_cpus": 0.1},
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         health_check_period_s=1,
@@ -260,7 +260,7 @@ def test_leaked_gang_pg_removed_on_controller_recovery(serve_instance):
             return "survivor_ok"
 
     @serve.deployment(
-        num_replicas=2,
+        num_replicas=1,
         ray_actor_options={"num_cpus": 0.1},
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         health_check_period_s=1,

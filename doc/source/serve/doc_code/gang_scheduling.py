@@ -6,7 +6,7 @@ from ray.serve.config import GangSchedulingConfig
 
 
 @serve.deployment(
-    num_replicas=8,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=4),
 )
@@ -20,7 +20,7 @@ app = Gang.bind()
 
 # __gang_context_start__
 @serve.deployment(
-    num_replicas=4,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=2),
 )
@@ -50,7 +50,7 @@ from ray.serve.config import GangPlacementStrategy, GangSchedulingConfig
 
 
 @serve.deployment(
-    num_replicas=4,
+    num_replicas=1,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(
         gang_size=4,
@@ -67,7 +67,7 @@ packed_app = PackedGang.bind()
 
 # __spread_strategy_start__
 @serve.deployment(
-    num_replicas=4,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(
         gang_size=2,
@@ -90,7 +90,7 @@ class BaseGang:
 
 
 app_with_gang = BaseGang.options(
-    num_replicas=8,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(gang_size=4),
 ).bind()
@@ -99,9 +99,9 @@ app_with_gang = BaseGang.options(
 # __autoscaling_start__
 @serve.deployment(
     autoscaling_config={
-        "min_replicas": 4,
-        "max_replicas": 16,
-        "initial_replicas": 8,
+        "min_replicas": 1,
+        "max_replicas": 4,
+        "initial_replicas": 2,
         "target_ongoing_requests": 5,
     },
     ray_actor_options={"num_cpus": 0.25},
@@ -121,7 +121,7 @@ from ray.serve.config import GangRuntimeFailurePolicy, GangSchedulingConfig
 
 
 @serve.deployment(
-    num_replicas=8,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0.25},
     gang_scheduling_config=GangSchedulingConfig(
         gang_size=4,
@@ -138,7 +138,7 @@ fault_tolerant_app = FaultTolerantGang.bind()
 
 # __placement_group_bundles_start__
 @serve.deployment(
-    num_replicas=4,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0},
     placement_group_bundles=[{"CPU": 1, "GPU": 1}],
     gang_scheduling_config=GangSchedulingConfig(gang_size=2),
@@ -153,7 +153,7 @@ gang_single_bundle_replica_app = GangWithSingleBundleReplica.bind()
 
 # __multi_placement_group_bundles_start__
 @serve.deployment(
-    num_replicas=4,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 1},
     placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"GPU": 1}],
     gang_scheduling_config=GangSchedulingConfig(gang_size=2),
@@ -168,7 +168,7 @@ gang_multi_bundles_replica_app = GangWithMultiBundlesReplica.bind()
 
 # __label_selector_start__
 @serve.deployment(
-    num_replicas=4,
+    num_replicas=2,
     ray_actor_options={"num_cpus": 0},
     placement_group_bundles=[{"CPU": 1, "GPU": 1}],
     placement_group_bundle_label_selector=[{"ray.io/accelerator-type": "A100"}],

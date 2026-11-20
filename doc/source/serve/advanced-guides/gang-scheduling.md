@@ -28,7 +28,7 @@ Configure gang scheduling by passing a `GangSchedulingConfig` to the `@serve.dep
 :language: python
 ```
 
-This creates 2 gangs of 4 replicas each resulting in a total of 8 replicas. Partial gang isn't allowed, and therefore `num_replicas` must be a multiple of `gang_size`.
+This creates 2 gangs of 4 replicas each resulting in a total of 8 replicas. When `gang_scheduling_config` is set, `num_replicas` refers to the number of gangs rather than the number of replicas, so the total number of replicas is `num_replicas * gang_size`. Partial gangs aren't allowed.
 
 ### How resources are reserved within a gang
 
@@ -53,7 +53,7 @@ applications:
   import_path: my_module:app
   deployments:
   - name: MyModel
-    num_replicas: 8
+    num_replicas: 2
     ray_actor_options:
       num_cpus: 0.25
     gang_scheduling_config:
@@ -150,7 +150,7 @@ Gang scheduling works with Ray Serve autoscaling (`num_replicas="auto"`). When a
 :language: python
 ```
 
-When using autoscaling with gang scheduling, `min_replicas`, `max_replicas`, and `initial_replicas` must all be multiples of `gang_size`.
+When using autoscaling with gang scheduling, `min_replicas`, `max_replicas`, and `initial_replicas` refer to the number of gangs as well, and the total number of replicas is the number of gangs multiplied by `gang_size`. The bounds don't need to be multiples of `gang_size`.
 
 Scale-to-zero is supported: set `min_replicas=0`. The deployment scales up and down in complete gangs.
 

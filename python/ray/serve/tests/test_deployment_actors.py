@@ -1390,7 +1390,7 @@ def test_gang_scheduling_with_deployment_actors(serve_instance):
     """Gang scheduling and deployment actors work together."""
 
     @serve.deployment(
-        num_replicas=2,
+        num_replicas=1,
         gang_scheduling_config=GangSchedulingConfig(gang_size=2),
         deployment_actors=[
             DeploymentActorConfig(
