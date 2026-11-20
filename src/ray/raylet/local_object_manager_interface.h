@@ -84,6 +84,9 @@ class LocalObjectManagerInterface {
   /// isn't pinned here or was pinned without one.
   virtual WorkerID GetProducerWorkerId(const ObjectID &object_id) const = 0;
 
+  /// Whether the object is spilled to disk or being spilled.
+  virtual bool HasDiskCopy(const ObjectID &object_id) const = 0;
+
   virtual std::string DebugString() const = 0;
 };
 
