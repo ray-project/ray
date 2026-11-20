@@ -177,18 +177,6 @@ class AutoscalingContext:
 
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
-        self._application_metrics = lambda: {}
-        self._application_aggregates = lambda: {}
-
-    @property
-    def application_raw_metrics(self):
-        """Per-replica series grouped by reporting deployment in this application."""
-        return self._application_metrics()
-
-    @property
-    def application_aggregated_metrics(self):
-        """Per-replica aggregates grouped by reporting deployment."""
-        return self._application_aggregates()
 
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
