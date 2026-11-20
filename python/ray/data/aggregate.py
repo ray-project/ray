@@ -1591,6 +1591,27 @@ def _null_safe_combine(
     return _safe_combine
 
 
+def _combine_two_element_accumulator_column(
+    accumulator_col: BlockColumn,
+    combine_fn: Callable[[List[int], List[int]], List[int]],
+) -> List[int]:
+    if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
+        non_null = pc.drop_null(accumulator_col)
+        if len(non_null) == 0:
+            return [0, 0]
+        flat = pc.list_flatten(non_null).to_numpy(zero_copy_only=False)
+        if len(flat) == 0:
+            return [0, 0]
+        totals = flat.reshape(-1, 2).sum(axis=0)
+        return [int(totals[0]), int(totals[1])]
+
+    merged_accumulator = [0, 0]
+    for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+        if accumulator is not None:
+            merged_accumulator = combine_fn(merged_accumulator, accumulator)
+    return merged_accumulator
+
+
 @PublicAPI(stability="alpha")
 class MissingValuePercentage(VectorizedAggregateFnV2[List[int], float]):
     """Calculates the percentage of null values in a column.
@@ -1667,21 +1688,7 @@ class MissingValuePercentage(VectorizedAggregateFnV2[List[int], float]):
         ]
 
     def _combine_column(self, accumulator_col: BlockColumn) -> List[int]:
-        if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
-            non_null = pc.drop_null(accumulator_col)
-            if len(non_null) == 0:
-                return [0, 0]
-            flat = pc.list_flatten(non_null).to_numpy(zero_copy_only=False)
-            if len(flat) == 0:
-                return [0, 0]
-            totals = flat.reshape(-1, 2).sum(axis=0)
-            return [int(totals[0]), int(totals[1])]
-
-        merged_accumulator = [0, 0]
-        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
-            if accumulator is not None:
-                merged_accumulator = self.combine(merged_accumulator, accumulator)
-        return merged_accumulator
+        return _combine_two_element_accumulator_column(accumulator_col, self.combine)
 
     def finalize(self, accumulator: List[int]) -> Optional[float]:
         # Calculate the final percentage
@@ -1794,21 +1801,7 @@ class ZeroPercentage(VectorizedAggregateFnV2[List[int], float]):
         ]
 
     def _combine_column(self, accumulator_col: BlockColumn) -> List[int]:
-        if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
-            non_null = pc.drop_null(accumulator_col)
-            if len(non_null) == 0:
-                return [0, 0]
-            flat = pc.list_flatten(non_null).to_numpy(zero_copy_only=False)
-            if len(flat) == 0:
-                return [0, 0]
-            totals = flat.reshape(-1, 2).sum(axis=0)
-            return [int(totals[0]), int(totals[1])]
-
-        merged_accumulator = [0, 0]
-        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
-            if accumulator is not None:
-                merged_accumulator = self.combine(merged_accumulator, accumulator)
-        return merged_accumulator
+        return _combine_two_element_accumulator_column(accumulator_col, self.combine)
 
     def finalize(self, accumulator: List[int]) -> Optional[float]:
         if accumulator[1] == 0:
