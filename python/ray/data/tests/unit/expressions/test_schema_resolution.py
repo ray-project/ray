@@ -178,6 +178,57 @@ class TestSelfContainedExprs:
         )
 
 
+class TestPyArrowComputeUDFExpr:
+    """The static type follows the PyArrow kernel, not a fixed return dtype."""
+
+    @pytest.fixture
+    def typed_schema(self):
+        return pa.schema(
+            [
+                pa.field("ts", pa.timestamp("us")),
+                pa.field("ls", pa.large_string()),
+                pa.field("f32", pa.float32()),
+                pa.field("ll", pa.large_list(pa.int64())),
+                pa.field("i", pa.int64()),
+            ]
+        )
+
+    @pytest.mark.parametrize(
+        "expr, expected",
+        [
+            (col("ts").dt.year(), pa.int64()),
+            (col("ts").dt.second(), pa.int64()),
+            (col("ls").str.len(), pa.int64()),
+            (col("ls").str.find("a"), pa.int64()),
+            (col("ls").str.upper(), pa.large_string()),
+            (
+                col("ls").str.extract(r"(?P<word>[a-z]+)"),
+                pa.struct([pa.field("word", pa.large_string())]),
+            ),
+            (col("f32").ln(), pa.float32()),
+            (col("f32").sin(), pa.float32()),
+            (col("ll").list.len(), pa.int64()),
+        ],
+    )
+    def test_type_matches_kernel_output(self, typed_schema, expr, expected):
+        assert expr.get_type(typed_schema) == expected
+
+    def test_matches_evaluated_column(self, typed_schema):
+        table = pa.table(
+            {"ls": pa.array(["ab1", "cd22"], pa.large_string())},
+        )
+        expr = col("ls").str.len()
+        assert expr.get_type(table.schema) == expr.fn(table["ls"]).type
+
+    def test_falls_back_to_declared_dtype_when_input_unknown(self, typed_schema):
+        # Missing column: keep the construction-time hint.
+        assert col("missing").dt.year().get_type(typed_schema) == pa.int32()
+
+    def test_falls_back_to_declared_dtype_when_kernel_rejects_input(self, typed_schema):
+        # utf8_length has no int64 kernel; the declared dtype is kept.
+        assert col("i").str.len().get_type(typed_schema) == pa.int32()
+
+
 class TestStarExpr:
     def test_to_field_returns_none(self, schema):
         # ``StarExpr`` represents many columns; ``exprlist_to_fields``

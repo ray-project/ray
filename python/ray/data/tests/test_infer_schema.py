@@ -11,6 +11,8 @@ through the public API: this disables the ``limit(1)`` fallback in
 materializing any blocks.
 """
 
+import datetime
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -424,6 +426,39 @@ class TestEagerStarExpansion:
         project = ds._logical_plan.dag
         assert isinstance(project, Project)
         assert_exprs_equal(project.exprs, [star(), (col("a") + lit(10)).alias("new")])
+
+
+def test_namespace_expression_schema_matches_data(ray_start_regular_shared_2_cpus):
+    """Plan-time types of namespace expressions match the materialized data."""
+    ds = ray.data.from_arrow(
+        pa.table(
+            {
+                "ts": pa.array([datetime.datetime(2024, 3, 5)], pa.timestamp("us")),
+                "s": pa.array(["ab12"], pa.large_string()),
+                "f": pa.array([1.0], pa.float32()),
+            }
+        )
+    )
+    ds = (
+        ds.with_column("year", col("ts").dt.year())
+        .with_column("ext", col("s").str.extract(r"(?P<a>[a-z]+)"))
+        .with_column("slen", col("s").str.len())
+        .with_column("ln", col("f").ln())
+    )
+    static = _static_schema(ds)
+    assert static is not None
+    assert static == ds.materialize().schema().base_schema
+
+    # A join key derived with dt.year() now passes schema validation.
+    totals = ray.data.from_items([{"year": 2024, "total": 100}])
+    rows = totals.join(
+        ds.select_columns(["year"]),
+        join_type="inner",
+        on=("year",),
+        num_partitions=2,
+        validate_schemas=True,
+    ).take_all()
+    assert rows == [{"year": 2024, "total": 100}]
 
 
 if __name__ == "__main__":
