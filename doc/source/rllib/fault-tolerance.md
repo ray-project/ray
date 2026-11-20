@@ -55,5 +55,7 @@ By default, RLlib runs health checks during initial worker construction. The who
 
 If no healthy workers remain for training, RLlib waits a number of iterations for some workers to recover before the entire training job fails. Configure the number of iterations with the `num_consecutive_env_runner_failures_tolerance` config.
 
+When `min_sample_timesteps_per_iteration` is positive and `sample_timeout_s` is finite, RLlib also guards against repeated training-step decisions that produce no sampled-timestep progress. The default `num_consecutive_sample_no_progress_tolerance` is 100; configure it independently via `AlgorithmConfig.fault_tolerance(...)` when the sampling timeout and expected episode duration require a different retry budget. This safeguard is separate from EnvRunner failure tolerance.
+
 <!-- TODO(jungong) : move fault tolerance related options into a separate AlgorithmConfig
 group and update the doc here. -->
