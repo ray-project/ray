@@ -456,6 +456,22 @@ class WorkerPool : public WorkerPoolInterface {
       const ProcessEnvironment &env,
       const WorkerID &worker_id);
 
+  /// Try starting a Python worker process by requesting a fork from a running
+  /// ForkServer over its Unix domain socket. Returns nullptr if disabled, not
+  /// applicable, or on failure, in which case StartWorkerProcess falls back to
+  /// StartProcess (execvpe). Sets *attempted_socket to true once a socket connect
+  /// is attempted so callers can mint a fresh WorkerID before falling back.
+  std::unique_ptr<ProcessInterface> TryStartProcessViaForkServer(
+      const Language &language,
+      rpc::WorkerType worker_type,
+      const std::vector<std::string> &worker_command_args,
+      const ProcessEnvironment &env,
+      const WorkerID &worker_id,
+      const std::vector<std::string> &dynamic_options,
+      const std::string &serialized_runtime_env_context,
+      const rpc::RuntimeEnvInfo &runtime_env_info,
+      bool *attempted_socket = nullptr);
+
   /// Push a warning message to user if worker pool is getting too big.
   virtual void WarnAboutSize();
 
@@ -497,6 +513,8 @@ class WorkerPool : public WorkerPoolInterface {
     std::vector<std::string> dynamic_options;
     /// The duration to keep the newly created worker alive before it's assigned a lease.
     std::optional<absl::Duration> worker_startup_keep_alive_duration;
+    /// True if this worker process was spawned via fork_server.py rather than execvpe.
+    bool started_via_fork_server = false;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -677,7 +695,8 @@ class WorkerPool : public WorkerPoolInterface {
       SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
-      std::optional<absl::Duration> worker_startup_keep_alive_duration);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration,
+      bool started_via_fork_server = false);
 
   void RemoveWorkerProcess(State &state, const WorkerID &worker_id);
 
@@ -755,6 +774,19 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
+
+  struct UnhealthyForkServerSocket {
+    int64_t until_ms = 0;
+    uint64_t st_dev = 0;
+    uint64_t st_ino = 0;
+    int consecutive_timeouts = 0;
+  };
+
+  /// Map of fork server socket paths that failed or timed out to the steady-clock
+  /// cooldown deadline and socket inode at failure time. Atomically replacing a socket
+  /// via os.replace() changes its inode and immediately clears the cooldown.
+  absl::flat_hash_map<std::string, UnhealthyForkServerSocket>
+      unhealthy_fork_server_sockets_;
 
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>

@@ -17,15 +17,24 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <iostream>
 #include <list>
 #include <memory>
 #include <random>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <sys/uio.h>
+#include <sys/un.h>
+#include <unistd.h>
+#endif
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/time.h"
@@ -721,20 +730,29 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkersWithRuntimeEnv) {
   LeaseSpecification lease_spec = ExampleLeaseSpec();
+  const std::string serialized_env = "{\"env_vars\": {\"FOO\": \"bar\"}}";
   lease_spec.GetMutableMessage().mutable_runtime_env_info()->set_serialized_runtime_env(
-      "{\"env_vars\": {\"FOO\": \"bar\"}}");
+      serialized_env);
   // Prestarts 2 workers.
   worker_pool_->PrestartWorkers(lease_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
+  ASSERT_EQ(GetReferenceCount(serialized_env), 2);
   // Prestarts 1 more worker.
   worker_pool_->PrestartWorkers(lease_spec, 3);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
+  ASSERT_EQ(GetReferenceCount(serialized_env), 3);
   // No more needed.
   worker_pool_->PrestartWorkers(lease_spec, 1);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // Capped by soft limit.
   worker_pool_->PrestartWorkers(lease_spec, 20);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
+  ASSERT_EQ(GetReferenceCount(serialized_env), POOL_SIZE_SOFT_LIMIT);
+  // Rate-limited prestarts exceeding MAXIMUM_STARTUP_CONCURRENCY must release their
+  // runtime_env references instead of leaking pins in RuntimeEnvAgent.
+  worker_pool_->PrestartWorkersInternal(lease_spec, MAXIMUM_STARTUP_CONCURRENCY + 3);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), MAXIMUM_STARTUP_CONCURRENCY);
+  ASSERT_EQ(GetReferenceCount(serialized_env), MAXIMUM_STARTUP_CONCURRENCY);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
@@ -2751,5 +2769,430 @@ TEST_F(WorkerPoolPortRangeTest, AssignsUniquePortsFromTheConfiguredRange) {
         << "Port " << port << " was assigned to two workers.";
   }
 }
+
+#if !defined(_WIN32)
+namespace {
+
+int SendForkReplyWithLifetimePipe(int conn_fd, pid_t pid) {
+  int life_pipe[2] = {-1, -1};
+  EXPECT_EQ(pipe(life_pipe), 0);
+  fcntl(life_pipe[1], F_SETFD, FD_CLOEXEC);
+  std::string reply = "{\"pid\": " + std::to_string(pid) + "}\n";
+  struct iovec iov = {reply.data(), reply.size()};
+  alignas(struct cmsghdr) char cmsg_buf[CMSG_SPACE(sizeof(int))] = {};
+  struct msghdr msg = {};
+  msg.msg_iov = &iov;
+  msg.msg_iovlen = 1;
+  msg.msg_control = cmsg_buf;
+  msg.msg_controllen = sizeof(cmsg_buf);
+  struct cmsghdr *cmsg = CMSG_FIRSTHDR(&msg);
+  cmsg->cmsg_level = SOL_SOCKET;
+  cmsg->cmsg_type = SCM_RIGHTS;
+  cmsg->cmsg_len = CMSG_LEN(sizeof(int));
+  std::memcpy(CMSG_DATA(cmsg), &life_pipe[0], sizeof(int));
+  ssize_t sent = sendmsg(conn_fd, &msg, 0);
+  EXPECT_EQ(sent, static_cast<ssize_t>(reply.size()));
+  close(life_pipe[0]);
+  return life_pipe[1];
+}
+
+std::string ReadForkRequestLine(int conn_fd) {
+  std::string req;
+  char buf[1024];
+  while (req.find('\n') == std::string::npos) {
+    ssize_t n = read(conn_fd, buf, sizeof(buf));
+    if (n <= 0) {
+      break;
+    }
+    req.append(buf, static_cast<size_t>(n));
+  }
+  return req;
+}
+
+struct MockForkServer {
+  std::string path;
+  int listen_fd = -1;
+
+  explicit MockForkServer(std::string sock_path) : path(std::move(sock_path)) {
+    unlink(path.c_str());
+    listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    RAY_CHECK_GE(listen_fd, 0);
+    struct sockaddr_un addr = {};
+    addr.sun_family = AF_UNIX;
+    std::memcpy(addr.sun_path, path.data(), path.size());
+    RAY_CHECK_EQ(
+        bind(listen_fd, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)), 0);
+    RAY_CHECK_EQ(listen(listen_fd, 8), 0);
+  }
+
+  ~MockForkServer() {
+    if (listen_fd >= 0) {
+      close(listen_fd);
+    }
+    unlink(path.c_str());
+  }
+
+  std::thread ServeOnce(pid_t reply_pid,
+                        int *out_life_w = nullptr,
+                        std::string *received_req = nullptr,
+                        bool omit_scm_rights = false) const {
+    return std::thread(
+        [fd = listen_fd, reply_pid, out_life_w, received_req, omit_scm_rights]() {
+          int conn_fd = accept(fd, nullptr, nullptr);
+          if (conn_fd < 0) {
+            return;
+          }
+          std::string req = ReadForkRequestLine(conn_fd);
+          if (received_req != nullptr) {
+            *received_req = std::move(req);
+          }
+          if (omit_scm_rights) {
+            std::string reply = "{\"pid\": " + std::to_string(reply_pid) + "}\n";
+            EXPECT_EQ(write(conn_fd, reply.data(), reply.size()),
+                      static_cast<ssize_t>(reply.size()));
+          } else {
+            int life_w = SendForkReplyWithLifetimePipe(conn_fd, reply_pid);
+            if (out_life_w != nullptr) {
+              *out_life_w = life_w;
+            } else {
+              close(life_w);
+            }
+          }
+          close(conn_fd);
+        });
+  }
+};
+
+}  // namespace
+
+TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerProcessViaForkServerAndFallback) {
+  const bool prev_enable = RayConfig::instance().enable_worker_fork_server();
+  const int64_t prev_timeout = RayConfig::instance().worker_fork_server_timeout_ms();
+  std::string temp_dir = "/tmp/ray_wp_test_" + std::to_string(getpid());
+  struct ScopedTestReset {
+    bool prev_enable;
+    int64_t prev_timeout;
+    std::string temp_dir;
+    ~ScopedTestReset() {
+      std::error_code ec;
+      std::filesystem::remove_all(temp_dir, ec);
+      RayConfig::instance().enable_worker_fork_server() = prev_enable;
+      RayConfig::instance().worker_fork_server_timeout_ms() = prev_timeout;
+    }
+  } scoped_reset{prev_enable, prev_timeout, temp_dir};
+
+  RayConfig::instance().enable_worker_fork_server() = true;
+  RayConfig::instance().worker_fork_server_timeout_ms() = 100;
+
+  std::string session_name = "session_test";
+  std::string sockets_dir = temp_dir + "/" + session_name + "/sockets";
+  std::filesystem::create_directories(sockets_dir);
+
+  SetWorkerCommands(
+      {{Language::PYTHON,
+        {"python",
+         "ray/workers/setup_worker.py",
+         "ray/workers/default_worker.py",
+         "--temp-dir=" + temp_dir,
+         "--session-name=" + session_name,
+         "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+         "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER"}},
+       {Language::JAVA, {"java", "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER", "MainClass"}}});
+
+  // With enable_worker_fork_server=true on Linux, boot prestart in WorkerPool::Start()
+  // and RegisterDriver() must be suppressed automatically.
+#ifdef __linux__
+  worker_pool_->Start();
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+#endif
+  RegisterDriver(Language::PYTHON, JOB_ID, rpc::JobConfig());
+#ifdef __linux__
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+#endif
+
+  PopWorkerStatus status = PopWorkerStatus::OK;
+
+  // 1. Default fork server resolution via --temp-dir and --session-name ("fs_0"),
+  // SCM_RIGHTS lifetime pipe transfer, and RegisterWorker preserving the lifetime fd.
+  const pid_t expected_default_pid = getpid();
+  {
+    MockForkServer default_server(sockets_dir + "/fs_0");
+    int default_life_w = -1;
+    auto t = default_server.ServeOnce(expected_default_pid, &default_life_w);
+    auto [proc, wid] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON, rpc::WorkerType::WORKER, JOB_ID, &status);
+    t.join();
+    ASSERT_EQ(proc.GetId(), expected_default_pid);
+    ASSERT_FALSE(wid.IsNil());
+    ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+    EXPECT_TRUE(proc.IsAlive());
+
+    auto registered_worker = worker_pool_->CreateWorker(wid, nullptr, Language::PYTHON);
+    ASSERT_TRUE(
+        worker_pool_->RegisterWorker(registered_worker, proc.GetId(), [](Status, int) {})
+            .ok());
+    EXPECT_TRUE(registered_worker->GetProcess().IsAlive());
+
+    close(default_life_w);
+    EXPECT_FALSE(proc.IsAlive());
+    EXPECT_FALSE(registered_worker->GetProcess().IsAlive());
+    worker_pool_->DisconnectWorker(registered_worker,
+                                   rpc::WorkerExitType::INTENDED_USER_EXIT);
+  }
+
+  // 1b. SPILL_WORKER must bypass the fork server cleanly without connecting to fs_0.
+  auto [spill_proc, spill_wid] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::SPILL_WORKER, JobID::Nil(), &status);
+  ASSERT_FALSE(spill_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  // 2. Per-runtime_env fork server resolution, wrapper arg stripping, and separate
+  // runtime_env_vars payload (without wall-clock deadline_ms).
+  MockForkServer env_server("/tmp/ray_wp_fs_" + std::to_string(getpid()) + ".sock");
+  const pid_t expected_fork_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 999);
+  std::string received_request;
+  int fork_life_w = -1;
+  auto server_thread =
+      env_server.ServeOnce(expected_fork_pid, &fork_life_w, &received_request);
+
+  json ctx_json = {
+      {"fork_server_socket_path", env_server.path},
+      {"env_vars", {{"CUSTOM_ENV_VAR", "custom_val"}}},
+  };
+  rpc::RuntimeEnvInfo env_info;
+  env_info.set_serialized_runtime_env(
+      R"({"preload_modules":["torch"],"env_vars":{"CUSTOM_ENV_VAR":"custom_val"}})");
+
+  auto [proc, worker_id] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       /*serialized_runtime_env_context=*/ctx_json.dump(),
+                                       env_info);
+  server_thread.join();
+  close(fork_life_w);
+
+  ASSERT_EQ(proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(worker_id.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
+
+  auto req_json = json::parse(received_request, nullptr, false);
+  ASSERT_FALSE(req_json.is_discarded());
+  ASSERT_TRUE(req_json.contains("args"));
+  ASSERT_TRUE(req_json.contains("env"));
+  ASSERT_TRUE(req_json.contains("runtime_env_vars"));
+  ASSERT_FALSE(req_json.contains("deadline_ms"));
+  for (const auto &arg : req_json["args"]) {
+    const std::string arg_str = arg.get<std::string>();
+    ASSERT_EQ(arg_str.find("--serialized-runtime-env-context="), std::string::npos);
+    ASSERT_EQ(arg_str.find("--language="), std::string::npos);
+  }
+  ASSERT_EQ(req_json["env"]["RAY_JOB_ID"].get<std::string>(), JOB_ID.Hex());
+  ASSERT_FALSE(req_json["env"].contains("CUSTOM_ENV_VAR"));
+  ASSERT_EQ(req_json["runtime_env_vars"]["CUSTOM_ENV_VAR"].get<std::string>(),
+            "custom_val");
+
+  // 3. Consecutive-timeout hysteresis (3 timeouts before 5s cooldown) + fresh WorkerID
+  // on fallback so a late timed-out child cannot register under the fallback ID.
+  std::vector<int> stalled_conns;
+  for (int attempt = 1; attempt <= 3; ++attempt) {
+    auto t_start = std::chrono::steady_clock::now();
+    auto [timeout_proc, timeout_wid] = worker_pool_->StartWorkerProcess(
+        Language::PYTHON,
+        rpc::WorkerType::WORKER,
+        JOB_ID,
+        &status,
+        /*dynamic_options=*/{},
+        /*runtime_env_hash=*/123,
+        /*serialized_runtime_env_context=*/ctx_json.dump(),
+        env_info);
+    auto elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - t_start)
+                          .count();
+    ASSERT_NE(timeout_proc.GetId(), expected_fork_pid);
+    ASSERT_FALSE(timeout_wid.IsNil());
+    EXPECT_GE(elapsed_ms, 80) << "attempt=" << attempt;
+    EXPECT_LT(elapsed_ms, 1000) << "attempt=" << attempt;
+
+    int stalled_fd = accept(env_server.listen_fd, nullptr, nullptr);
+    ASSERT_GE(stalled_fd, 0);
+    std::string stalled_req = ReadForkRequestLine(stalled_fd);
+    stalled_conns.push_back(stalled_fd);
+    auto stalled_json = json::parse(stalled_req, nullptr, false);
+    ASSERT_TRUE(stalled_json.is_object());
+    std::string timed_out_req_worker_id;
+    for (const auto &arg : stalled_json["args"]) {
+      const std::string s = arg.get<std::string>();
+      constexpr std::string_view kWidPrefix = "--worker-id=";
+      if (absl::StartsWith(s, kWidPrefix)) {
+        timed_out_req_worker_id = s.substr(kWidPrefix.size());
+      }
+    }
+    ASSERT_FALSE(timed_out_req_worker_id.empty());
+    ASSERT_NE(timed_out_req_worker_id, timeout_wid.Hex());
+    auto stale_worker = worker_pool_->CreateWorker(
+        WorkerID::FromHex(timed_out_req_worker_id), nullptr, Language::PYTHON);
+    Status reg_s = worker_pool_->RegisterWorker(stale_worker, 12345, [](Status, int) {});
+    EXPECT_TRUE(reg_s.IsInvalid());
+  }
+  for (int fd : stalled_conns) {
+    close(fd);
+  }
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 4);
+
+  // 4. After 3 consecutive timeouts, the 4th spawn bypasses immediately (<80ms).
+  auto t_start_4 = std::chrono::steady_clock::now();
+  auto [bypass_proc, bypass_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       ctx_json.dump(),
+                                       env_info);
+  auto elapsed_ms_4 = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - t_start_4)
+                          .count();
+  ASSERT_NE(bypass_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(bypass_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 5);
+  EXPECT_LT(elapsed_ms_4, 80);
+
+  // 5. Unlinking the socket records a missing-socket cooldown, and atomically publishing
+  // a new socket inode via rename() immediately clears the cooldown.
+  unlink(env_server.path.c_str());
+  auto [enoent_proc, enoent_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       ctx_json.dump(),
+                                       env_info);
+  ASSERT_NE(enoent_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(enoent_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 6);
+
+  std::string tmp_respawn_sock = env_server.path + ".new";
+  MockForkServer respawn_server(tmp_respawn_sock);
+  ASSERT_EQ(rename(tmp_respawn_sock.c_str(), env_server.path.c_str()), 0);
+
+  const pid_t expected_respawn_pid = static_cast<pid_t>(Process::PID_MAX_LIMIT + 1001);
+  int respawn_life_w = -1;
+  auto respawn_thread = respawn_server.ServeOnce(expected_respawn_pid, &respawn_life_w);
+  auto [respawn_proc, respawn_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       ctx_json.dump(),
+                                       env_info);
+  respawn_thread.join();
+  close(respawn_life_w);
+  ASSERT_EQ(respawn_proc.GetId(), expected_respawn_pid);
+  ASSERT_FALSE(respawn_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 6);
+
+  // 6. Replying WITHOUT an SCM_RIGHTS lifetime pipe fd is rejected as a 1-strike hard
+  // error, so the next spawn bypasses immediately (<80ms).
+  auto no_scm_thread =
+      respawn_server.ServeOnce(12345, nullptr, nullptr, /*omit_scm_rights=*/true);
+  auto [no_scm_proc, no_scm_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       ctx_json.dump(),
+                                       env_info);
+  no_scm_thread.join();
+  ASSERT_NE(no_scm_proc.GetId(), 12345);
+  ASSERT_FALSE(no_scm_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 7);
+
+  auto t_start_6 = std::chrono::steady_clock::now();
+  auto [cooldown_proc, cooldown_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/123,
+                                       ctx_json.dump(),
+                                       env_info);
+  auto elapsed_ms_6 = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - t_start_6)
+                          .count();
+  ASSERT_FALSE(cooldown_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 8);
+  EXPECT_LT(elapsed_ms_6, 80);
+
+  // 7. Non-empty dynamic_options bypasses ForkServer directly.
+  auto [dyn_proc, dyn_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{"--custom-flag"},
+                                       /*runtime_env_hash=*/123,
+                                       ctx_json.dump(),
+                                       env_info);
+  ASSERT_NE(dyn_proc.GetId(), expected_fork_pid);
+  ASSERT_FALSE(dyn_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 9);
+
+  // 8. Slow-trickle server sending 1 byte every 35 ms (each read < 100 ms, total > 100
+  // ms) must still be bounded by the single monotonic worker_fork_server_timeout_ms
+  // deadline rather than resetting per syscall.
+  MockForkServer trickle_server("/tmp/ray_wp_trickle_" + std::to_string(getpid()) +
+                                ".sock");
+  std::thread trickle_thread([listen_fd = trickle_server.listen_fd]() {
+    int conn_fd = accept(listen_fd, nullptr, nullptr);
+    if (conn_fd >= 0) {
+      (void)ReadForkRequestLine(conn_fd);
+      const char *partial = "{\"pid\":12345";
+      for (size_t i = 0; i < std::strlen(partial); ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(35));
+#ifdef MSG_NOSIGNAL
+        constexpr int kFlags = MSG_NOSIGNAL;
+#else
+        constexpr int kFlags = 0;
+#endif
+        if (send(conn_fd, &partial[i], 1, kFlags) <= 0) {
+          break;
+        }
+      }
+      close(conn_fd);
+    }
+  });
+  json trickle_ctx = {{"fork_server_socket_path", trickle_server.path}};
+  auto t_trickle_start = std::chrono::steady_clock::now();
+  auto [trickle_proc, trickle_wid] =
+      worker_pool_->StartWorkerProcess(Language::PYTHON,
+                                       rpc::WorkerType::WORKER,
+                                       JOB_ID,
+                                       &status,
+                                       /*dynamic_options=*/{},
+                                       /*runtime_env_hash=*/124,
+                                       trickle_ctx.dump(),
+                                       env_info);
+  auto trickle_elapsed_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::steady_clock::now() - t_trickle_start)
+                                .count();
+  trickle_thread.join();
+  ASSERT_NE(trickle_proc.GetId(), 12345);
+  ASSERT_FALSE(trickle_wid.IsNil());
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 10);
+  EXPECT_LT(trickle_elapsed_ms, 250);
+}
+#endif
 
 }  // namespace ray::raylet
