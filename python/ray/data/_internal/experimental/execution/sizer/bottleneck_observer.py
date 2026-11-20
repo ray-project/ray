@@ -1,4 +1,4 @@
-"""Observation-only bottleneck model for the actor-only sizer.
+"""The bottleneck model the actor-only sizer decides on.
 
 Per operator, tracks what fraction of its serving task slots' time over a
 window went to each of (a slot is one of an actor's ``max_concurrency`` task
@@ -40,9 +40,9 @@ donor's candidate victims on its nodes would take to drain (time-to-free:
 outstanding output blocks over the rate the donor's consumer finishes them),
 flagging circular drains whose outputs only clear through the recipient.
 
-Nothing here changes a sizing decision. The sizer samples on every
-scheduling-loop step and logs one line per tick, so the named bottlenecks can
-be checked against release-test runs before any rule depends on them.
+Nothing here scales a pool: the sizer samples on every scheduling-loop step,
+logs one line per tick, and its bottleneck policy (``policy``) decides from
+the model.
 """
 
 from __future__ import annotations
@@ -206,7 +206,7 @@ class Assessment(Generic[K]):
 
 @dataclass(frozen=True)
 class BottleneckTick(Generic[K]):
-    """One sizer tick's model, computed once and shared by the optimizer and
+    """One sizer tick's model, computed once and shared by the bottleneck policy and
     the log line."""
 
     snapshot: Snapshot[K]

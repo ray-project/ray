@@ -105,7 +105,7 @@ class TickCapacitySnapshot:
 class TickContext:
     """The state one sizing tick shares across its phases.
 
-    Built on the sizing cadence and threaded through optimize -> how_many ->
+    Built on the sizing cadence and threaded through decide -> how_many ->
     where. It dies with the tick, so nothing here needs consume-and-clear
     bookkeeping; anything that must outlive a tick (signal windows, streaks,
     idle counters) belongs to the component that owns it.
@@ -119,14 +119,3 @@ class TickContext:
     # The order every phase walks operators in (scarcest first), so grants in
     # scale_how_many line up with placements in scale_where.
     ordered_ops: Tuple["ExperimentalActorPoolMapOperator", ...] = ()
-
-
-@dataclass
-class OpShortfall:
-    """How many actors one op asked for and was not granted."""
-
-    num_actors: int
-    # True when a rule (silent bottleneck) inferred this want rather than the
-    # op asking for it and being clamped. Transfers serve real asks first when
-    # donors are scarce.
-    silent: bool = False

@@ -51,7 +51,7 @@ class SizerTelemetry:
         # per-tick delta (see _log_locality).
         self._last_remote_bytes: Dict[ExperimentalActorPoolMapOperator, int] = {}
 
-    # --- scale_how_many ------------------------------------------------------
+    # --- scale_how_many -------------------------------------------------------
 
     def log_completed_release(
         self, op: ExperimentalActorPoolMapOperator, num_actors_to_release: int
@@ -186,7 +186,7 @@ class SizerTelemetry:
         where: PlacedSizingRequest,
         *,
         prepare_s: float,
-        cross_op_optimize_s: float,
+        decide_s: float,
         per_op_how_many_s: float,
         per_op_where_s: float,
         apply_s: float,
@@ -195,13 +195,13 @@ class SizerTelemetry:
         """Close out one evaluation.
 
         The phase histograms observe every step, including ones that sized
-        nothing: the optimizer does most of its work on those, so durations
+        nothing: lifecycle transitions run on those, so durations
         recorded only on sizing ticks would miss it. The verbose roll-up is
         logged only when something actually changed.
         """
         for phase, seconds in (
             ("prepare", prepare_s),
-            ("cross_op_optimize", cross_op_optimize_s),
+            ("decide", decide_s),
             ("per_op_how_many", per_op_how_many_s),
             ("per_op_where", per_op_where_s),
             ("apply", apply_s),
@@ -235,12 +235,12 @@ class SizerTelemetry:
             node for r in where.request.values() if r.delta > 0 for node in r.nodes
         }
         logger.debug(
-            "OperatorSizer tick: e2e=%.1fms (cross_op_optimize=%.1f "
+            "OperatorSizer tick: e2e=%.1fms (decide=%.1f "
             "per_op_how_many=%.1f per_op_where=%.1f apply=%.1f) | "
             "scale_up=+%d scale_down=-%d across %d ops "
             "[%s]; placed on %d nodes",
             e2e_s * 1e3,
-            cross_op_optimize_s * 1e3,
+            decide_s * 1e3,
             per_op_how_many_s * 1e3,
             per_op_where_s * 1e3,
             apply_s * 1e3,

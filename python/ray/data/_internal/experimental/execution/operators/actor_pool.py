@@ -216,7 +216,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._status_counts: Counter[ActorStatus] = Counter()
         self._total_num_tasks_in_flight: int = 0
         # Whether an actor's output pull budget is used up. Set by the
-        # operator under ``RAY_DATA_SIZER_BOTTLENECK_MODEL``; read by
+        # operator; read by
         # ``_task_slot_limit``.
         self._output_backpressured: Optional[Callable[[ActorId], bool]] = None
 

@@ -196,8 +196,8 @@ class SizingTicker:
 
         A critical op that finished without producing (an empty branch of a union)
         does not hold warmup open. Nor does one that never produces within the
-        warmup timeout: leaving warmup early only hands sizing to the warm
-        phase, which can still move capacity to it.
+        warmup timeout: leaving warmup early only hands sizing to the
+        bottleneck policy, which can still move capacity to it.
         """
         if not self.warmup:
             return
@@ -209,7 +209,7 @@ class SizingTicker:
                 return
             logger.warning(
                 "OperatorSizer: warmup timed out after %.0fs with no output yet "
-                "from %s; switching to the warm phase.",
+                "from %s; leaving warmup.",
                 now - self._warmup_started_t,
                 ", ".join(op.name for op in waiting_on),
             )

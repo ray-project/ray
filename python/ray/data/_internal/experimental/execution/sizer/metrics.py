@@ -1,4 +1,4 @@
-"""Metrics emmited by sizer (and optimizer) during its run time"""
+"""Metrics the sizer (and its bottleneck policy) emit at run time."""
 
 from ray.util.metrics import Counter, Histogram
 
@@ -32,7 +32,7 @@ class SizerMetrics:
         "data_sizer_actor_delta",
         description=(
             "Actors the sizer added (direction=up) or removed (direction=down),"
-            " by phase (per_op_how_many = what sizing asked for;"
+            " by phase (per_op_how_many = what per-op how_many asked for;"
             " per_op_where = what placement resolved)."
         ),
         tag_keys=("dataset", "operator", "phase", "direction"),
@@ -41,9 +41,9 @@ class SizerMetrics:
         "data_sizer_tick_duration_s",
         description=(
             "OperatorSizer per-phase tick wall time in seconds. prepare:"
-            " signal sampling plus the tick's cluster snapshot |"
-            " cross_op_optimize: the pipeline optimizer rules |"
-            " per_op_how_many: per-operator sizing | per_op_where: placement |"
+            " lifecycle transitions plus the tick's cluster snapshot |"
+            " decide: the bottleneck policy's decision |"
+            " per_op_how_many: per-operator how_many | per_op_where: placement |"
             " apply: handing requests to the pools | e2e: one whole"
             " perform_sizing_decision call."
         ),
@@ -78,8 +78,8 @@ class OptimizerMetrics:
     actions = Counter(
         "data_pipeline_optimizer_actions",
         description=(
-            "Optimizer actions by stage. capacity_transfer: fired ->"
-            " landed | timeout. silent_bottleneck: granted."
+            "Bottleneck policy actions by stage. bottleneck_transfer: fired"
+            " -> landed | lost | timeout."
         ),
         tag_keys=("dataset", "optimization", "recipient", "result"),
     )
@@ -94,8 +94,8 @@ class OptimizerMetrics:
     refusals = Counter(
         "data_pipeline_optimizer_refusals",
         description=(
-            "Why an optimization refused to act: warmup | cluster_settling |"
-            " no_donor_surplus | no_free_capacity | capacity_already_free |"
+            "Why the bottleneck policy refused to move capacity:"
+            " cluster_settling | no_donor | capacity_already_free |"
             " victims_insufficient | thrashing."
         ),
         tag_keys=("dataset", "optimization", "reason"),
@@ -106,8 +106,7 @@ class OptimizerMetrics:
 
     def record_outcome(self, optimization: str, operator: str, outcome: str) -> None:
         """One step of an optimization acting on ``operator`` (the op that
-        grows). ``outcome`` is fired / landed / lost / timeout for
-        capacity_transfer, granted for silent_bottleneck."""
+        grows). ``outcome`` is fired / landed / lost / timeout."""
         self.actions.inc(
             1,
             tags={

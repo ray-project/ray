@@ -1,5 +1,5 @@
 """Unit tests for ``OperatorSizer`` and the phase components it sequences:
-bootstrap validation and initial sizing, the warmup and warm sizing arms,
+bootstrap validation and initial sizing, the sizer's phases and per-op how_many,
 capacity granting (the ledger), scarcity ordering, constraint matching and
 placement-group caps, allocation-shrink reclaim, and the operator's
 placement-view surface. Duck-typed operator/pool doubles over a fake
@@ -47,16 +47,11 @@ from ray.data._internal.experimental.execution.operators.placement_constraints i
 from ray.data._internal.experimental.execution.sizer import placement_view
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     OpPlacementView,
-    pack_actors,
 )
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
-from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
-    LocalityBasedActorPlacement,
-)
 from ray.data._internal.experimental.execution.sizer.models import (
-    OpShortfall,
     PerOpSizingRequest,
     PlacedSizingRequest,
     TickCapacitySnapshot,
@@ -72,12 +67,11 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
 )
 from ray.data._internal.experimental.execution.sizer.operator_sizer import OperatorSizer
-from ray.data._internal.experimental.execution.sizer.optimizer import PipelineOptimizer
-from ray.data._internal.experimental.execution.sizer.optimizer.rule import (
-    OptimizationRule,
-)
 from ray.data._internal.experimental.execution.sizer.pg_bundles import (
     PlacementGroupBundles,
+)
+from ray.data._internal.experimental.execution.sizer.policy.states import (
+    SizerPhase,
 )
 from ray.data._internal.experimental.execution.sizer.scale_how_many import (
     OpSizingPolicy,
@@ -86,8 +80,6 @@ from ray.data._internal.experimental.execution.sizer.scale_where import (
     place_downscales,
     resolve_evictions,
 )
-from ray.data._internal.experimental.execution.sizer.scaling_guard import OpScalingGuard
-from ray.data._internal.experimental.execution.sizer.signals import BoolStreak
 from ray.data._internal.experimental.execution.sizer.telemetry import (
     SizerTelemetry,
 )
@@ -491,29 +483,18 @@ class _TestSizer(OperatorSizer):
         return self._ticker.next_tick(self.reporter.view)
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
-        """One scale_how_many evaluation, after the step's on_start releases."""
-        self._release_started_ops()
+        """One per-op how_many evaluation, after the step's lifecycle
+        transitions and the tick's phase update."""
+        self._lifecycles.on_step()
         ctx = self.next_tick(force=force)
         assert ctx is not None
         self._note_held_ops(ctx)
+        self._advance_phase(ctx)
         return self._per_op_how_many(ctx)
 
     @property
-    def guard(self):
-        return self._guard
-
-    def shortfalls(self) -> Dict[Any, OpShortfall]:
-        """Unplaced asks the last pass reported to the optimizer."""
-        return cast(
-            Dict[Any, OpShortfall], self._optimizer._signals.signal_dict()["shortfalls"]
-        )
-
-    def shortfall_streak(self, op) -> bool:
-        streaks = cast(
-            Dict[Any, BoolStreak],
-            self._optimizer._signals.signal_dict()["shortfall_streak"],
-        )
-        return streaks[op].is_streak()
+    def lifecycles(self):
+        return self._lifecycles
 
 
 def _placement_view(
@@ -558,14 +539,24 @@ def _make_sizer(
 
 
 def _bootstrapped(*ops, enqueued=0, view=None, warm=False, **cluster):
-    """Sizer over ``ops``; ``warm=True`` has every op report output, so the
-    first tick is already past warmup. Returns (sizer, topology)."""
+    """Sizer over ``ops``; ``warm=True`` has every op report output and marks
+    it modeled, so the first tick is already STEADY (past warmup, with the
+    bottleneck model deciding growth). Returns (sizer, topology)."""
     topo = _topology(*ops, enqueued=enqueued)
     sizer = _make_sizer(topo, view, **cluster)
     if warm:
         for op in topo:
             op.metrics.num_task_outputs_generated = 1
+        _mark_modeled(sizer, *topo)
     return sizer, topo
+
+
+def _mark_modeled(sizer: _TestSizer, *ops) -> None:
+    """Have the bottleneck model already seen ``ops`` (a full window each),
+    so after warmup how_many leaves their growth to the bottleneck policy."""
+    sizer._modeled_ops.update(
+        op for op in ops if isinstance(op, ExperimentalActorPoolMapOperator)
+    )
 
 
 def _tick(sizer: _TestSizer, topo=None) -> PerOpSizingRequest:
@@ -601,15 +592,6 @@ def _ticks_until_idle_drain(sizer: _TestSizer, op, limit: int = 20) -> int:
         if req is not None and req.reason == "drain (idle)":
             return n
     raise AssertionError(f"{op.name} never drained")
-
-
-def _shortfall_actors(sizer: _TestSizer, op=None) -> int:
-    """Unplaced actors the last tick reported to the optimizer: for ``op``, or
-    summed across every op."""
-    shortfalls = sizer.shortfalls()
-    if op is not None:
-        return shortfalls[op].num_actors if op in shortfalls else 0
-    return sum(sf.num_actors for sf in shortfalls.values())
 
 
 def _write_op(name, pool, **kwargs) -> _FakeOp:
@@ -648,7 +630,7 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     # Creating an actor serializes the MapTransformer, so an actor created
     # before ``on_write_start`` ships a datasink without the state it sets
     # (Iceberg: table metadata is None). Such an op stays at zero actors,
-    # through initial sizing and the warm loop, until its first input runs it.
+    # through initial sizing and how_many, until its first input runs it.
     read = _FakeOp("read", _FakePool(min_size=1, max_size=10, cpu=1))
     write = _write_op(
         "write",
@@ -674,8 +656,7 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
     # first and the op (e.g. a Write sink) can then never grow past its first
     # actor. Its warmup share stays out of the tick's free capacity, with
     # memory held as well as CPU, so every phase sizes and places around it;
-    # once on_start runs it grows straight to that share. Not behind the
-    # bottleneck model.
+    # once on_start runs it grows straight to that share.
     read = _FakeOp(
         "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=1, running=1)
     )
@@ -690,7 +671,7 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
-    target = sizer._policy.warmup_target(write, view.reserved_by_node["node0"])
+    target = sizer._how_many.warmup_target(write, view.reserved_by_node["node0"])
     assert target is not None and target > write._pool.min_size()
 
     assert write not in _tick(sizer).request
@@ -699,19 +680,13 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
     assert (free.cpu, free.memory) == (16 - 1 - target, 20 - 1 - target)
 
     # on_start runs on write's first input, so read has produced output.
+    # Modeled: past warmup the held grant, not the equal share, grows it.
     read.metrics.num_task_outputs_generated = 1
     write.pending_on_start = False
+    _mark_modeled(sizer, read, write)
     request = _tick(sizer).request
     assert request[write].delta == target
     assert request[write].reason == "held share (hold released)"
-
-
-def _with_bottleneck_model(sizer: "_TestSizer") -> "_TestSizer":
-    """Turn on what RAY_DATA_SIZER_BOTTLENECK_MODEL selects at construction
-    that these tests depend on: memory-aware warmup shares. (Held ops reserve
-    their share with or without it.)"""
-    sizer._policy.memory_aware_warmup = True
-    return sizer
 
 
 def _video_pipeline(write_awaiting_on_start=False):
@@ -752,29 +727,20 @@ def _video_pipeline(write_awaiting_on_start=False):
     return {"read": read, "resize": resize, "features": features, "write": write}, view
 
 
-@pytest.mark.parametrize(
-    "memory_aware, cpu_target",
-    [
-        # CPU share (32 - 3 floors) x 0.8 / 3 = 7.7 -> 7 for each CPU stage:
-        # 21 x 2.4 = 50.4 memory, plus 5 x 3.3 for the GPU stage, exceeds the
-        # usable 49.3 and leaves the GPU stage unplaceable.
-        (False, 7),
-        # GPU stage first: 5 x 3.3 = 16.5; (49.3 - 16.5) / 3 / 2.4 = 4.6 -> 4.
-        (True, 4),
-    ],
-    ids=["cpu-only-share", "memory-aware-share"],
-)
-def test_warmup_share_respects_memory_after_gpu_ops(memory_aware, cpu_target):
+def test_warmup_share_respects_memory_after_gpu_ops():
+    # A CPU-only share, (32 - 3 floors) x 0.8 / 3 = 7.7 -> 7 per CPU stage,
+    # would take 21 x 2.4 = 50.4 memory; with the GPU stage's 5 x 3.3 that
+    # exceeds the usable 49.3 and leaves the GPU stage unplaceable. GPU stage
+    # first: 5 x 3.3 = 16.5; (49.3 - 16.5) / 3 / 2.4 = 4.6 -> 4.
+    cpu_target = 4
     ops, view = _video_pipeline()
     sizer, _ = _bootstrapped(*ops.values(), view=view)
-    if memory_aware:
-        _with_bottleneck_model(sizer)
     capacity = view.reserved_by_node["node0"]
     targets = {
-        name: sizer._policy.warmup_target(op, capacity) for name, op in ops.items()
+        name: sizer._how_many.warmup_target(op, capacity) for name, op in ops.items()
     }
 
-    # GPU share: (8 - 1 floor) x 0.8 = 5.6 -> 5, unchanged either way.
+    # GPU share: (8 - 1 floor) x 0.8 = 5.6 -> 5.
     assert targets == {
         "read": cpu_target,
         "resize": cpu_target,
@@ -790,10 +756,9 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
         "write", _FakePool(min_size=1, max_size=100, cpu=1), inputs=(read,)
     )
     sizer, _ = _bootstrapped(read, write, cpu=32)
-    _with_bottleneck_model(sizer)
     capacity = ExecutionResources(cpu=32, gpu=4)
     # (32 - 2 floors) x 0.8 / 2 = 12.
-    assert sizer._policy.warmup_target(read, capacity) == 12
+    assert sizer._how_many.warmup_target(read, capacity) == 12
 
 
 def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
@@ -803,7 +768,6 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
     ops, view = _video_pipeline(write_awaiting_on_start=True)
     write = ops["write"]
     sizer, _ = _bootstrapped(*ops.values(), view=view)
-    _with_bottleneck_model(sizer)
     # Upstream is producing (so only Write's on_start hold is in play).
     for name in ("read", "resize", "features"):
         ops[name].metrics.num_task_outputs_generated = 1
@@ -817,6 +781,7 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
     )
 
     write.pending_on_start = False
+    _mark_modeled(sizer, *ops.values())
     request = _tick(sizer).request
     assert request[write].delta == 4
     assert request[write].reason == "held share (hold released)"
@@ -831,7 +796,6 @@ def test_op_waiting_on_upstream_output_reserves_its_share():
     # upstream output arrives.
     ops, view = _video_pipeline()
     sizer, _ = _bootstrapped(*ops.values(), view=view)
-    _with_bottleneck_model(sizer)
 
     held = _snapshot_of(sizer).held_actors_by_op
     # resize, features and write wait on upstream output; read is a source.
@@ -845,10 +809,10 @@ def test_op_waiting_on_upstream_output_reserves_its_share():
     assert request[ops["resize"]].delta == held[ops["resize"]] - 1
 
 
-def test_bottleneck_model_warm_loop_only_sheds_idle_actors():
-    # Under the bottleneck model growth comes only from the bottleneck rule:
-    # an op with work and demand gets no upscale from the warm loop, and an
-    # idle op is still drained after the hysteresis.
+def test_steady_how_many_only_sheds_idle_actors():
+    # Past warmup, growth comes only from the bottleneck policy: an op with
+    # work and demand gets no upscale from how_many, and an idle op is still
+    # drained after the hysteresis.
     busy = _FakeOp(
         "busy", _FakePool(min_size=1, max_size=50, cpu=1, running=2, in_flight=2)
     )
@@ -857,13 +821,64 @@ def test_bottleneck_model_warm_loop_only_sheds_idle_actors():
     )
     sizer, topo = _bootstrapped(busy, idle, enqueued=0, warm=True)
     topo[busy]._enqueued = 20
-    sizer._bottleneck_model = True
 
-    for _ in range(sizer._policy.downscale_hysteresis - 1):
+    for _ in range(sizer._how_many.downscale_hysteresis - 1):
         assert _tick(sizer).request == {}
     request = _tick(sizer).request
     assert busy not in request
     assert request[idle].delta < 0
+
+
+def test_unmodeled_op_keeps_its_warmup_share_after_warmup():
+    # The model needs a full window per op. Until it has one, an op past
+    # warmup still grows toward its equal share (MODEL_WARMING), while an
+    # op it has seen only sheds idle actors.
+    seen = _FakeOp("seen", _FakePool(min_size=1, max_size=50, cpu=1, running=1))
+    unseen = _FakeOp(
+        "unseen", _FakePool(min_size=1, max_size=50, cpu=1, running=1), inputs=(seen,)
+    )
+    sizer, topo = _bootstrapped(seen, unseen, cpu=32.0, gpu=0.0)
+    for op in topo:
+        op.metrics.num_task_outputs_generated = 1
+    _mark_modeled(sizer, seen)
+
+    request = _tick(sizer).request
+    assert sizer.phase is SizerPhase.MODEL_WARMING
+    assert seen not in request
+    capacity = ExecutionResources(cpu=32.0, gpu=0.0)
+    target = sizer._how_many.warmup_target(unseen, capacity)
+    assert target is not None and target > 1
+    assert (request[unseen].delta, request[unseen].reason) == (
+        target - 1,
+        "warmup equal-share",
+    )
+
+
+@pytest.mark.parametrize(
+    "modeled, completed, expected",
+    [
+        pytest.param(("a", "b"), (), SizerPhase.STEADY, id="all-modeled"),
+        pytest.param(("a",), (), SizerPhase.MODEL_WARMING, id="one-unmodeled"),
+        # A completed op never needs the model.
+        pytest.param(("a",), ("b",), SizerPhase.STEADY, id="unmodeled-completed"),
+    ],
+)
+def test_phase_is_steady_once_every_unfinished_op_is_modeled(
+    modeled, completed, expected
+):
+    ops = {
+        "a": _FakeOp("a", _FakePool(min_size=1, max_size=10, cpu=1, running=1)),
+    }
+    ops["b"] = _FakeOp(
+        "b", _FakePool(min_size=1, max_size=10, cpu=1, running=1), inputs=(ops["a"],)
+    )
+    sizer, _ = _bootstrapped(*ops.values(), warm=True)
+    sizer._modeled_ops.clear()
+    _mark_modeled(sizer, *(ops[name] for name in modeled))
+    for name in completed:
+        ops[name]._completed = True
+    _tick(sizer)
+    assert sizer.phase is expected
 
 
 def test_warmup_latches_off_on_critical_op_first_output():
@@ -876,7 +891,11 @@ def test_warmup_latches_off_on_critical_op_first_output():
     ops["infer"].metrics.num_task_outputs_generated = 1
     ctx = sizer.next_tick()
     assert ctx is not None and not ctx.warmup
-    # The first warm tick holds sizes; the warm arms need a signal to act on.
+    # Once the model has every op, the first tick past warmup holds sizes:
+    # growth is the bottleneck policy's, and nothing has been idle yet.
+    _mark_modeled(sizer, *topo)
+    sizer._advance_phase(ctx)
+    assert sizer.phase is SizerPhase.STEADY
     assert sizer._per_op_how_many(ctx).request == {}
 
 
@@ -1484,37 +1503,26 @@ def test_warmup_pg_ops_share_their_placement_group():
     assert result.request[plain].delta == 4
 
 
-def test_guard_blocked_op_gets_no_want():
-    # An op an optimizer rule has claimed is left alone by every arm: no idle
+def test_non_active_op_gets_no_want():
+    # An op a transfer holds (not ACTIVE) is left alone by every arm: no idle
     # drain, no below-min replenish -- a replenish would add pendings that
-    # ``_record_transfer_pendings`` mistakes for a transfer's claim. Released,
-    # both arms act again.
+    # ``_record_transfer_pendings`` mistakes for a transfer's claim. Back to
+    # ACTIVE, both arms act again.
     idle = _FakeOp("idle", _FakePool(min_size=1, max_size=10, cpu=1, running=5))
     short = _FakeOp(
         "short", _FakePool(min_size=3, max_size=10, cpu=1, running=1), inputs=[idle]
     )
     sizer, topo = _bootstrapped(idle, short, warm=True)
     for op in (idle, short):
-        sizer.guard.block(op, "claimed by a rule")
+        sizer.lifecycles.start_receiving(op)
     for _ in range(5):  # longer than the idle-drain hysteresis
         assert _tick(sizer, topo).request == {}
 
     for op in (idle, short):
-        sizer.guard.release(op)
+        sizer.lifecycles.activate(op)
     requests = [_tick(sizer, topo).request for _ in range(5)]
     assert any(r.get(idle) and r[idle].delta < 0 for r in requests)
     assert requests[0][short].delta == 2
-
-
-def test_below_min_op_granted_nothing_builds_the_transfer_streak():
-    # A below-min op that gets zero actors is ungranted like any other ask, so
-    # it can become a capacity-transfer recipient.
-    op = _FakeOp("op", _FakePool(min_size=3, max_size=10, cpu=1, running=1))
-    sizer, topo = _bootstrapped(op, warm=True, cpu=1.0, gpu=0.0)
-    for _ in range(3):
-        assert op not in _tick(sizer, topo).request
-    assert _shortfall_actors(sizer, op) == 2
-    assert sizer.shortfall_streak(op)
 
 
 def test_warmup_is_upscale_only_and_holds_while_pending():
@@ -1634,12 +1642,10 @@ def test_fixed_pool_replenished_below_min_only(running: int, expected_delta):
         assert (req.delta, req.reason) == (expected_delta, "below min size")
 
 
-def test_below_min_grants_full_min_in_order_and_reports_shortfall():
+def test_below_min_grants_full_min_in_order():
     # Each below-min op is granted its FULL min (clamped to placeable
     # capacity), in the sizer's ordering. On a full cluster a large downstream
-    # pool processed first can consume everything and leave the source at 0
-    # -- that shortfall must be reported so the optimizer can qualify the op
-    # for a capacity transfer.
+    # pool processed first can consume everything and leave the source at 0.
     src = _FakeOp("ReadRange", _FakePool(min_size=1, max_size=1, cpu=1, running=0))
     producer = _FakeOp(
         "MapBatches(producer)",
@@ -1658,22 +1664,18 @@ def test_below_min_grants_full_min_in_order_and_reports_shortfall():
     assert result.request[consumer].delta == 1
     assert result.request[producer].delta == 15
     assert src not in result.request or result.request[src].delta == 0
-    assert _shortfall_actors(sizer, src) == 1
-    assert _shortfall_actors(sizer, producer) == 15
 
 
 @pytest.mark.parametrize(
-    "cluster_cpu,expected_placed,expected_short_actors",
+    "cluster_cpu,expected_placed",
     [
-        # Autoscale-from-zero: nothing placeable, the whole min reported short.
-        pytest.param(0, 0, 5, id="zero-capacity-full-shortfall"),
-        # Part of the min fits: that part is requested, the rest reported.
-        pytest.param(2, 2, 3, id="partial-placement-remaining-shortfall"),
+        # Autoscale-from-zero: nothing placeable.
+        pytest.param(0, 0, id="zero-capacity"),
+        # Part of the min fits: that part is requested.
+        pytest.param(2, 2, id="partial-placement"),
     ],
 )
-def test_below_min_shortfall_is_reported(
-    cluster_cpu: float, expected_placed: int, expected_short_actors: int
-):
+def test_below_min_requests_what_fits(cluster_cpu: float, expected_placed: int):
     src = _FakeOp("ReadRange", _FakePool(min_size=1, max_size=1, cpu=1, running=0))
     mapper = _FakeOp(
         "Map(sleep_task)",
@@ -1682,10 +1684,8 @@ def test_below_min_shortfall_is_reported(
     )
     sizer, topo = _bootstrapped(src, mapper, cpu=cluster_cpu, gpu=0)
     result = _tick(sizer, topo)
-    # Placed + reported-short covers the full min (src 1 + mapper 4 = 5).
     placed = sum(max(0, req.delta) for req in result.request.values())
     assert placed == expected_placed
-    assert _shortfall_actors(sizer) == expected_short_actors
 
 
 def test_below_min_constrained_op_granted_full_min():
@@ -1749,80 +1749,10 @@ def test_source_op_not_released_at_startup():
     assert req.delta > 0 and not req.force
 
 
-# --- warm loop -----------------------------------------------------------------
+# --- how_many after warmup -------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "pool_kwargs,bp_kind,bp,expected_full",
-    [
-        # A pool with pending actors (mid-resize) must not read as output-full:
-        # cross-op queries have no other guard, so a resizing neighbour would
-        # flip them.
-        pytest.param(
-            dict(running=4, pending=2), "tasks", (8, 8), False, id="mid-resize-guard"
-        ),
-        # 1 blocked actor out of 10 running (9 idle) must not read as full:
-        # idle actors are unblocked capacity, not absent from the denominator.
-        pytest.param(
-            dict(running=10), "actors", (1, 10), False, id="idle-actors-in-denominator"
-        ),
-        pytest.param(dict(running=10), "actors", (10, 10), True, id="all-blocked"),
-    ],
-)
-def test_outqueue_full(pool_kwargs, bp_kind, bp, expected_full):
-    op = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, **pool_kwargs))
-    if bp_kind == "tasks":
-        op.out_backpressure = bp
-    else:
-        op.out_backpressure_actors = bp
-    policy = OpSizingPolicy(OpProfiles(_topology(op)))
-    full, blocked, running = policy.is_output_backpressured(op)
-    assert full is expected_full
-    if bp_kind == "actors":
-        assert (blocked, running) == bp
-
-
-# Warm-loop grow/hold arms for a single fed op: the +50% growth step bounded
-# by backlog demand, max_size, and the "not output-full" gate.
-@pytest.mark.parametrize(
-    "pool_kwargs,enqueued,out_backpressure,expected_delta",
-    [
-        # want = ceil(0.5*10) = 5; demand ceil(40/1.75)=23 and max_size both
-        # leave it -> grows multiplicatively.
-        pytest.param(dict(running=10), 40, (0, 5), 5, id="grow-multiplicative"),
-        # demand = ceil(21/1.75) = 12 sits between cur and cur+want, so demand
-        # (not the +50% rate) caps: min(want=5, demand-cur=2, max-cur) = 2.
-        pytest.param(dict(running=10), 21, (0, 5), 2, id="grow-capped-by-demand"),
-        # Cold start: fed and NOT output-backpressured, but already at/above
-        # the work it has (demand = ceil((10+5)/1.75) = 9 << cur=100) -> held
-        # at demand, no unbounded growth.
-        pytest.param(
-            dict(running=100, in_flight=10), 5, (0, 0), None, id="hold-at-demand"
-        ),
-        # max_size clamps the step: min(want=5, 12-10) = 2.
-        pytest.param(
-            dict(max_size=12, running=10), 40, (0, 5), 2, id="grow-clamped-by-max"
-        ),
-        pytest.param(dict(max_size=10, running=10), 40, (0, 5), None, id="hold-at-max"),
-        # An idle pool (zero active tasks) must not read as output-full; fed ->
-        # upscales min(want=3, demand ceil(10/1.75)=6 - cur=5) = 1.
-        pytest.param(dict(running=5), 10, (0, 0), 1, id="grow-zero-active-not-full"),
-    ],
-)
-def test_warm_grow_hold_arms(pool_kwargs, enqueued, out_backpressure, expected_delta):
-    kwargs = dict(min_size=1, max_size=500, cpu=1)
-    kwargs.update(pool_kwargs)
-    op = _FakeOp("A", _FakePool(**kwargs))
-    sizer, topo = _bootstrapped(op, enqueued=enqueued, warm=True, cpu=1000.0, gpu=8.0)
-    op.out_backpressure = out_backpressure
-    result = _tick(sizer, topo)
-    if expected_delta is None:
-        assert op not in result.request
-    else:
-        assert result.request[op].delta == expected_delta
-
-
-def test_warm_demand_target_formula():
+def test_backlog_actor_target_formula():
     # ceil((in_flight + ceil(enqueued/avg)) / (max_concurrency * 1.75)).
     op = _FakeOp(
         "A", _FakePool(min_size=1, max_size=500, cpu=1, running=10, in_flight=20)
@@ -1830,43 +1760,6 @@ def test_warm_demand_target_formula():
     op._fake_metrics.average_num_inputs_per_task = 2
     topo = _topology(op, enqueued=40)  # 20 tasks; total 40
     assert OpSizingPolicy(OpProfiles(topo)).backlog_actor_target(op, topo[op]) == 23
-
-
-@pytest.mark.parametrize(
-    "pool_kwargs,expected",
-    [
-        # No backlog at all: the step is still one +50% growth step.
-        pytest.param(dict(running=10), 5, id="not-capped-by-backlog"),
-        pytest.param(dict(max_size=12, running=10), 2, id="capped-by-max-size"),
-        pytest.param(dict(max_size=10, running=10), 0, id="at-max-size"),
-    ],
-)
-def test_silent_bottleneck_growth_delta_ignores_backlog(pool_kwargs, expected):
-    """The silent bottleneck rule's growth step is capped by max size only:
-    upstream backpressure keeps a bottleneck's input backlog shallow."""
-    kwargs = dict(min_size=1, max_size=500, cpu=1)
-    kwargs.update(pool_kwargs)
-    op = _FakeOp("A", _FakePool(**kwargs))
-    topo = _topology(op, enqueued=0)
-    assert OpSizingPolicy(OpProfiles(topo)).growth_delta(op) == expected
-
-
-def test_warm_same_tick_grants_do_not_overcommit_cluster():
-    # Two fed pools, 5 free CPU slots: downstream-first grant must debit the
-    # tick-local budget so the second op cannot claim the same slots.
-    a = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, running=10))
-    b = _FakeOp(
-        "B", _FakePool(min_size=1, max_size=500, cpu=1, running=10), inputs=(a,)
-    )
-    sizer, topo = _bootstrapped(a, b, enqueued=40, warm=True, cpu=25.0)
-    for op in (a, b):
-        op.out_backpressure = (0, 5)
-    result = _tick(sizer, topo)
-    granted = sum(req.delta for req in result.request.values() if req.delta > 0)
-    assert granted <= 5
-    # Downstream-first: B gets its full step (want=5), A gets nothing.
-    assert result.request[b].delta == 5
-    assert a not in result.request
 
 
 # An output-backpressured pool must HOLD (never shed) when draining it would
@@ -1983,9 +1876,8 @@ def test_warm_backpressured_producer_holds(producer, consumer, cpu, ticks_fn, ex
         assert _PRODUCER_HOLD_CHECKS[expect](req), f"{expect} violated: {req}"
 
 
-# A saturated op braked by its consumer holds at demand in the warm loop: the
-# warm loop never lifts it, whatever its producer does -- that is the
-# optimizer's silent-bottleneck rule (see test_sizer_pipeline_optimizer).
+# How-many never grows an op past warmup, whatever its producer does: growth
+# is the bottleneck policy's (see test_sizer_bottleneck_policy).
 @pytest.mark.parametrize(
     "producer_bp,bottleneck_pool",
     [
@@ -2052,38 +1944,6 @@ def test_warm_pending_gate_blocks_all_arms(caplog, propagate_logs):
     assert _ticks_until_idle_drain(sizer, op) == SIZER_DOWNSCALE_HYSTERESIS
 
 
-# other -> op. `other` occupies most of the 100 cluster CPUs; op's fed upscale
-# is clamped to what is free, and whatever cannot be placed is reported short.
-@pytest.mark.parametrize(
-    "other_running,expected_delta,expected_short_actors",
-    [
-        # free = 100 - (10 + 85) = 5 -> placeable = min(want=5, free=5).
-        pytest.param(85, 5, 0, id="fits-free-capacity"),
-        # free = 0 -> want = ceil(0.5 * 10) = 5 actors, all reported short.
-        pytest.param(90, 0, 5, id="unplaced-want-is-reported-short"),
-    ],
-)
-def test_warm_upscale_clamped_by_free_cluster(
-    other_running, expected_delta, expected_short_actors
-):
-    other = _FakeOp(
-        "B", _FakePool(min_size=1, max_size=500, cpu=1, running=other_running)
-    )
-    op = _FakeOp(
-        "A", _FakePool(min_size=1, max_size=500, cpu=1, running=10), inputs=(other,)
-    )
-    sizer, topo = _bootstrapped(other, op, warm=True, cpu=100.0)
-    topo[op]._enqueued = 200
-    op.out_backpressure = (0, 5)
-    other.out_backpressure = (0, 40)
-    result = _tick(sizer, topo)
-    if expected_delta == 0:
-        assert op not in result.request or result.request[op].delta == 0
-    else:
-        assert result.request[op].delta == expected_delta
-    assert _shortfall_actors(sizer, op) == expected_short_actors
-
-
 def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
     alloc = {
         "n1": ExecutionResources(cpu=16),
@@ -2104,7 +1964,7 @@ def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
     )
     embed = _FakeOp(
         "embed",
-        _FakePool(min_size=1, max_size=500, gpu=1, running=20, in_flight=50),
+        _FakePool(min_size=10, max_size=500, gpu=1, running=0),
         inputs=[read],
         node=None,
         ray_remote_args={"label_selector": {"accelerator-type": "A100"}},
@@ -2118,11 +1978,9 @@ def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
     assert set(snap.schedulable_nodes_by_op[embed]) == {"g1", "g2"}
     assert set(snap.schedulable_nodes_by_op[read]) == {"n1"}
 
-    # embed wants ceil(0.5*20)=10 but only 8 A100 GPUs are free -> capped at
-    # 8; the other 2 are reported short.
+    # embed wants its min of 10 but only 8 A100 GPUs are free -> capped at 8.
     req = _tick(sizer, topo)
     assert req.request[embed].delta == 8
-    assert _shortfall_actors(sizer, embed) == 2
 
 
 def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
@@ -2134,20 +1992,20 @@ def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
     )
     up = _FakeOp(
         "up",
-        _FakePool(min_size=1, max_size=500, cpu=1, running=16, in_flight=1),
+        _FakePool(min_size=24, max_size=500, cpu=1, running=16, in_flight=1),
         node=None,
     )
     sink = _FakeOp(
         "sink",
-        _FakePool(min_size=1, max_size=500, cpu=1, running=10, in_flight=1),
+        _FakePool(min_size=15, max_size=500, cpu=1, running=10, in_flight=1),
         inputs=[up],
         node=None,
         reclaimable=3,  # sink (processed first, sink-most) reclaims these for free
     )
     sizer, topo = _bootstrapped(up, sink, enqueued=100_000, view=view, warm=True)
     req = _tick(sizer, topo)
-    # sink: want=ceil(0.5*10)=5, of which 3 are reclaimed -> only 2 consume
-    # free, leaving 8 CPU. up: want=ceil(0.5*16)=8, and it gets all 8.
+    # sink: 5 below min, of which 3 are reclaimed -> only 2 consume free,
+    # leaving 8 CPU. up: 8 below min, and it gets all 8.
     assert req.request[sink].delta == 5
     assert req.request[up].delta == 8
 
@@ -2290,46 +2148,19 @@ def test_ledger_ops_sharing_a_pg_spend_the_same_bundles():
     assert ledger.max_upscale_delta(cpu_op) == 0
 
 
-def test_rule_claims_reach_the_per_op_passes():
-    """Rules debit the tick snapshot's own free maps, so the ledger that
-    phase 2 builds afterwards sees what phase 1 claimed."""
-    op = cast(Any, _LedgerOp())
-    bundle = ("pg1", 0)
-    capacity = _snapshot(
-        {"n1": ExecutionResources(cpu=4)},
-        {op: None},
-        {op: ExecutionResources(cpu=1)},
-        pg_free={bundle: ExecutionResources(cpu=4)},
-    )
-
-    class _Claim(OptimizationRule[None]):
-        name = "claim"
-
-        def apply(self, ctx, state):
-            ctx.claim_free("n1", ExecutionResources(cpu=1), 3)
-            pack_actors(ctx.pg_free, [bundle], ExecutionResources(cpu=1), 1)
-            return []
-
-    optimizer = PipelineOptimizer(
-        "ds",
-        LocalityBasedActorPlacement(),
-        _FakeClock(),
-        lambda _op: (False, 0, 0),
-        OpScalingGuard(),
-    )
-    optimizer.register(_Claim())
-    optimizer.optimize_pipeline(
-        cast(Any, {}),
-        warmup=True,  # the built-in rules stand down
-        capacity=capacity,
-        profiles=cast(
-            Any, SimpleNamespace(actor_pool_ops=(), non_pg_ops=(), next_ops={})
-        ),
-        growth_delta={},
-        seconds_since_allocation_change=0.0,
-    )
-    assert ConstraintAwareCapacityLedger(capacity).max_upscale_delta(op) == 1
-    assert capacity.pg_free_by_bundle[bundle].cpu == 3
+def test_decision_claims_reach_the_how_many_pass():
+    """The bottleneck policy debits the tick snapshot's own free maps, so the
+    ledger the how-many pass builds afterwards sees what the decision
+    claimed."""
+    op = _FakeOp("op", _FakePool(min_size=1, max_size=10, cpu=1, running=1))
+    sizer, _ = _bootstrapped(op, warm=True, cpu=4.0, gpu=0.0)
+    ctx = sizer.next_tick()
+    assert ctx is not None
+    before = ConstraintAwareCapacityLedger(ctx.capacity).max_upscale_delta(op)
+    decision_ctx = sizer._decision_context(ctx, seconds_since_allocation_change=0.0)
+    decision_ctx.claim_free("node0", ExecutionResources(cpu=1), 2)
+    after = ConstraintAwareCapacityLedger(ctx.capacity).max_upscale_delta(op)
+    assert after == before - 2
 
 
 def test_next_and_prev_actor_pool_ops_look_through_non_pool_ops():
@@ -2839,8 +2670,8 @@ def test_build_op_profile(pool_kwargs, is_write, has_pg, pinned, expected):
 
 def test_record_tick_emits_every_phase(monkeypatch):
     """An idle tick -- nothing sized, nothing placed -- still reports every
-    phase: the optimizer does most of its work on ticks where no operator is
-    resized, so a phase set that only appeared on sizing ticks would miss it."""
+    phase: lifecycle transitions run on ticks where no operator is resized,
+    so a phase set that only appeared on sizing ticks would miss it."""
     observed = []
     telemetry = SizerTelemetry("test-ds")
     monkeypatch.setattr(
@@ -2853,7 +2684,7 @@ def test_record_tick_emits_every_phase(monkeypatch):
         PerOpSizingRequest(request={}),
         PlacedSizingRequest(request={}),
         prepare_s=0.0005,
-        cross_op_optimize_s=0.001,
+        decide_s=0.001,
         per_op_how_many_s=0.002,
         per_op_where_s=0.004,
         apply_s=0.008,
@@ -2861,7 +2692,7 @@ def test_record_tick_emits_every_phase(monkeypatch):
     )
     assert [phase for phase, _ in observed] == [
         "prepare",
-        "cross_op_optimize",
+        "decide",
         "per_op_how_many",
         "per_op_where",
         "apply",
