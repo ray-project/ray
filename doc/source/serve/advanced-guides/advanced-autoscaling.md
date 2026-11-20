@@ -554,7 +554,7 @@ By default, each deployment in Ray Serve autoscales independently. When you have
 
 #### Define an application level policy
 
-An application-level autoscaling policy is a function that takes a `dict[DeploymentID, AutoscalingContext]` objects (one per deployment) and returns a tuple of `(decisions, policy_state)`. Each context contains metrics and bounds for one deployment, and the policy returns target replica counts for all deployments.
+An application-level autoscaling policy receives a dictionary keyed by deployment ID and returns a tuple of `(decisions, policy_state)`. For a deployment that only reports metrics, the value is an [`AutoscalingMetricsContext`](../api/doc/ray.serve.config.AutoscalingMetricsContext.rst). For an autoscaling deployment, the value is an [`AutoscalingContext`](../api/doc/ray.serve.config.AutoscalingContext.rst), which also includes replica bounds and scaling settings. The policy can use metrics from either context and return target replica counts for autoscaling deployments.
 
 The `policy_state` returned from an application-level policy must be a `Dict[DeploymentID, Dict]`— a dictionary mapping each deployment ID to its own state dictionary. Serve stores this per-deployment state and on the next control-loop iteration, injects each deployment's state back into that deployment's `AutoscalingContext.policy_state`. The per deployment number replicas returned from the policy can be an `int` or a `float`. If it returns a float, Ray Serve converts it to an integer replica count by rounding up to the next greatest integer.
 
