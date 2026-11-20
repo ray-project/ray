@@ -1,3 +1,4 @@
+import sys
 import time
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
@@ -109,3 +110,7 @@ def test_replicated_router_reports(requests, load, expected):
     assert policy(contexts) == ({}, {})
     del contexts[router]
     assert policy(contexts) == ({}, {})
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
