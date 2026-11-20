@@ -4496,7 +4496,7 @@ class Dataset:
 
         The datasets must have the same number of rows. Their column sets are
         merged, and any duplicate column names are disambiguated with suffixes like
-        ``"_1"``.
+        ``"_1"``. Rows are paired by position; pandas index labels are ignored.
 
         .. note::
             The smaller of the two datasets is repartitioned to align the number

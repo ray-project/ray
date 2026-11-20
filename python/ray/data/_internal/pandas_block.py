@@ -824,7 +824,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     new_name = "{}_{}".format(col_name, i)
                     i += 1
                 col_name = new_name
-            r[col_name] = col
+            r[col_name] = col.array
         return r
 
     @staticmethod
