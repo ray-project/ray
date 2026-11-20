@@ -502,13 +502,9 @@ def get_torchtpu_env_vars(
         )
     if master_port is not None:
         if type(master_port) is not int:
-            raise TypeError(
-                f"master_port must be an integer, got {type(master_port)}."
-            )
+            raise TypeError(f"master_port must be an integer, got {type(master_port)}.")
         if not (1 <= master_port <= 65535):
-            raise ValueError(
-                f"master_port must be in [1, 65535], got {master_port}."
-            )
+            raise ValueError(f"master_port must be in [1, 65535], got {master_port}.")
     if type(num_slices) is not int:
         raise TypeError(f"num_slices must be an integer, got {type(num_slices)}.")
     if num_slices < 1:
@@ -537,17 +533,13 @@ def get_torchtpu_env_vars(
     if master_port is not None:
         env_vars["MASTER_PORT"] = str(master_port)
     if not isinstance(skip_mds_query, bool):
-        raise TypeError(
-            f"skip_mds_query must be a bool, got {type(skip_mds_query)}."
-        )
+        raise TypeError(f"skip_mds_query must be a bool, got {type(skip_mds_query)}.")
     if skip_mds_query:
         env_vars[TPU_SKIP_MDS_QUERY_ENV_VAR] = "1"
     if visible_device is not None:
         if type(visible_device) is int:
             if visible_device < 0:
-                raise ValueError(
-                    f"visible_device must be >= 0, got {visible_device}."
-                )
+                raise ValueError(f"visible_device must be >= 0, got {visible_device}.")
             env_vars[TPU_VISIBLE_DEVICES_ENV_VAR] = str(visible_device)
         elif isinstance(visible_device, str):
             cleaned_device = visible_device.strip()
@@ -559,9 +551,7 @@ def get_torchtpu_env_vars(
                     f"Invalid visible_device {visible_device!r}; expected a "
                     "non-negative integer or comma-separated non-negative integers."
                 )
-            env_vars[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(
-                str(int(p)) for p in parts
-            )
+            env_vars[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(str(int(p)) for p in parts)
         else:
             raise TypeError(
                 f"visible_device must be an int or str, got {type(visible_device)}."
@@ -1332,9 +1322,7 @@ class SlicePlacementGroup:
                 be resolved.
         """
         if type(slice_index) is not int:
-            raise TypeError(
-                f"slice_index must be an integer, got {type(slice_index)}."
-            )
+            raise TypeError(f"slice_index must be an integer, got {type(slice_index)}.")
         if not (0 <= slice_index < self.num_slices):
             raise ValueError(
                 f"slice_index {slice_index} is out of range for {self.num_slices} slice(s)."
