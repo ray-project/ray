@@ -16,7 +16,16 @@ it consumed are re-produced.
 
 import itertools
 import threading
-from typing import TYPE_CHECKING, Dict, FrozenSet, List, NamedTuple, Optional, Set, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Dict,
+    FrozenSet,
+    List,
+    NamedTuple,
+    Optional,
+    Set,
+    Tuple,
+)
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
