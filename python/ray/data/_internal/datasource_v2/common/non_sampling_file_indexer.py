@@ -446,7 +446,7 @@ class NonSamplingFileIndexer(FileIndexer):
                     has_metadata = True
                 if has_metadata:
                     running_metadatas.append(
-                        file_info.metadata.without_footer()
+                        file_info.metadata
                         if file_info.metadata is not None
                         else FileMetadata()
                     )

@@ -76,7 +76,6 @@ FILE_MTIME_COLUMN_NAME = "__file_mtime_ns"
 FILE_METADATA_TYPE = pa.struct(
     [
         pa.field("num_rows", pa.int64()),
-        pa.field("parquet_footer", pa.binary()),
         pa.field("mtime_ns", pa.int64()),
     ]
 )
@@ -87,7 +86,6 @@ class FileMetadata:
     """Optional planning metadata for one whole file, independent of chunks."""
 
     num_rows: Optional[int] = None
-    parquet_footer: Optional[bytes] = None
     mtime_ns: Optional[int] = None
 
     def to_metadata(self) -> Dict[str, Any]:
@@ -96,9 +94,6 @@ class FileMetadata:
     @classmethod
     def from_metadata(cls, value: Optional[Mapping[str, Any]]) -> "FileMetadata":
         return cls(**value) if value is not None else cls()
-
-    def without_footer(self) -> "FileMetadata":
-        return FileMetadata(num_rows=self.num_rows, mtime_ns=self.mtime_ns)
 
 
 # The columns every manifest carries. A source may add its own beyond these;
@@ -187,7 +182,8 @@ class FileManifest:
         assert isinstance(accessor, TableBlockAccessor)
         if FILE_METADATA_COLUMN_NAME not in accessor.column_names():
             return None
-        block = accessor.to_arrow()
+        # This converts the already materialized manifest, not external input.
+        block = BlockAccessor.for_block(self._block).to_arrow()
         return [
             FileMetadata.from_metadata(value)
             for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()

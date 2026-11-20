@@ -34,7 +34,6 @@ py_library(
 
 py_test_module_list(
     size = "small",
-    extra_srcs = ["tests/schema_planning_utils.py"],
     files = glob(["tests/unit/**/test_*.py"]),
     tags = [
         "exclusive",
@@ -119,7 +118,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },

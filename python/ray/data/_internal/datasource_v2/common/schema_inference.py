@@ -5,7 +5,6 @@ import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
-from threading import Lock
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pyarrow as pa
@@ -49,9 +48,9 @@ _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY = env_integer(
     "RAY_DATA_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY", 4
 )
 _FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S = 30
-# Cached metadata payload budgets, internal constants rather than public
-# DataContext config. Zero disables caching. Index scaffolding, schemas and
-# transient copies are excluded from these byte budgets.
+# Estimated row-count metadata budgets, internal rather than public config.
+# Zero disables caching. Index scaffolding, schemas and temporary copies are
+# excluded from these budgets.
 _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES = env_integer(
     "RAY_DATA_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 32 * 1024 * 1024
 )
@@ -74,32 +73,6 @@ class FullSchemaInferenceResult:
 class _SchemaBatchResult:
     schemas: List[Tuple[int, bytes, bool]]
     metadata: Optional[pa.Array]
-    footer_bytes: int
-
-
-class _FooterBudget:
-    def __init__(self, limit: int):
-        self.limit = limit
-        self.remaining = limit
-        self.lock = Lock()
-
-    def encode(self, metadata) -> Optional[bytes]:
-        # A metadata-only file adds its header, footer length and trailing magic.
-        reserved = metadata.serialized_size + 12
-        with self.lock:
-            if reserved > self.remaining:
-                return None
-            self.remaining -= reserved
-        with pa.BufferOutputStream() as output:
-            metadata.write_metadata_file(output)
-            payload = output.getvalue().to_pybytes()
-        with self.lock:
-            extra = len(payload) - reserved
-            if extra > self.remaining:
-                self.remaining += reserved
-                return None
-            self.remaining -= extra
-        return payload
 
 
 def _add_unique_schema(
@@ -192,25 +165,18 @@ def _read_schema_metadata_batch(
     format_name: str,
     context: DataContext,
     row_records: int = 0,
-    footer_credit: int = 0,
     mtimes: Optional[List[Optional[int]]] = None,
     *,
     read_metadata: Callable,
     io_concurrency: Optional[int] = None,
 ) -> _SchemaBatchResult:
-    """Read every schema once and, within budget, file metadata in the same open.
+    """Read schemas and bounded row counts from the same Parquet footers.
 
-    Schemas are batch-deduplicated and their first positions restored on the
-    driver (using the schema-only path's lossless encoding). Metadata stays
-    file-specific and aligned with the input
-    order, so deduplication never reorders or drops per-file records. Parquet
-    reads use the listed file size when available to spare the extra size
-    request, matching the schema-only path.
+    Schemas are deduplicated; row counts stay aligned with the input files.
     """
     DataContext._set_current(context)
     if format_name != "Parquet":
         raise ValueError(f"Unsupported schema format: {format_name}")
-    budget = _FooterBudget(footer_credit)
 
     def read_file(item: Tuple[int, str]):
         index, path = item
@@ -224,9 +190,8 @@ def _read_schema_metadata_batch(
             schema = parquet_metadata.schema.to_arrow_schema()
             if index < row_records:
                 metadata = FileMetadata(
-                    parquet_metadata.num_rows,
-                    budget.encode(parquet_metadata) if footer_credit else None,
-                    mtimes[index] if mtimes is not None else None,
+                    num_rows=parquet_metadata.num_rows,
+                    mtime_ns=mtimes[index] if mtimes is not None else None,
                 )
             value = schema.serialize().to_pybytes()
             return schema, value, metadata, parquet_metadata
@@ -265,9 +230,7 @@ def _read_schema_metadata_batch(
         if row_records
         else None
     )
-    return _SchemaBatchResult(
-        list(unique.values()), metadata, budget.limit - budget.remaining
-    )
+    return _SchemaBatchResult(list(unique.values()), metadata)
 
 
 def _schema_task_options(
@@ -435,26 +398,12 @@ def _driver_read_all_metadata(
         full_batches * row_slots + min(tail, row_slots),
     )
     row_remaining = row_limit
-    footer_available = (
-        budget - row_limit * _FILE_METADATA_RECORD_BYTES
-        if format_name == "Parquet"
-        else 0
-    )
     schemas: List[Tuple[int, pa.Schema]] = []
     metadata_chunks: Dict[int, pa.Array] = {}
     for start in range(0, len(paths), batch_size):
         stop = min(start + batch_size, len(paths))
         row_records = min(row_slots, stop - start, row_remaining)
         row_remaining -= row_records
-        credit = (
-            min(
-                footer_available,
-                task_budget - row_records * _FILE_METADATA_RECORD_BYTES,
-            )
-            if row_records
-            else 0
-        )
-        footer_available -= credit
         result = _read_schema_metadata_batch(
             paths[start:stop],
             sizes[start:stop] if sizes is not None else None,
@@ -462,12 +411,10 @@ def _driver_read_all_metadata(
             format_name,
             context,
             row_records,
-            credit,
             mtimes[start:stop] if mtimes is not None else None,
             read_metadata=read_metadata,
             io_concurrency=16,
         )
-        footer_available += credit - result.footer_bytes
         metadata_chunks[start] = (
             result.metadata
             if result.metadata is not None
@@ -502,18 +449,10 @@ def infer_full_schema_with_metadata_from_files(
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
 ) -> Optional[FullSchemaInferenceResult]:
-    """Read every schema once and optionally retain budgeted file metadata.
+    """Read schemas and retain row counts within the metadata budget.
 
-    Schemas are deduplicated per batch; metadata remains file-specific.
-    Scheduling follows the schema-only path: the first batch is a
-    single file so progress lands early, and the first distributed result has
-    a timeout after which this function cancels pending tasks and finishes
-    with a driver-side read, so the caller is not pushed into a second
-    distributed planning round.
-
-    Returns None only when no metadata can be retained for the caller's
-    candidate set -- the caller then falls back to its existing schema-only
-    planning.
+    Return None when caching is disabled. A first-result timeout cancels
+    pending tasks and falls back directly to driver reads.
     """
     context = DataContext.get_current()
     budget = _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES
@@ -579,23 +518,15 @@ def infer_full_schema_with_metadata_from_files(
         1 + full_batches * row_slots + min(tail, row_slots),
     )
     row_remaining = row_limit
-    footer_available = (
-        budget - row_limit * _FILE_METADATA_RECORD_BYTES
-        if format_name == "Parquet"
-        else 0
-    )
     schemas: List[Tuple[int, pa.Schema]] = []
     metadata_chunks: Dict[int, pa.Array] = {}
-    pending: Dict[ObjectRef[Any], Tuple[int, int, int]] = {}
+    pending: Dict[ObjectRef[Any], Tuple[int, int]] = {}
 
     def consume(
         result: _SchemaBatchResult,
         offset: int,
         count: int,
-        credit: int,
     ) -> None:
-        nonlocal footer_available
-        footer_available += credit - result.footer_bytes
         metadata_chunks[offset] = (
             result.metadata
             if result.metadata is not None
@@ -614,15 +545,6 @@ def infer_full_schema_with_metadata_from_files(
                 stop = min(start + (1 if start == 0 else batch_size), len(paths))
                 row_records = min(row_slots, stop - start, row_remaining)
                 row_remaining -= row_records
-                credit = (
-                    min(
-                        footer_available,
-                        task_budget - row_records * _FILE_METADATA_RECORD_BYTES,
-                    )
-                    if row_records
-                    else 0
-                )
-                footer_available -= credit
                 ref = read_remote.remote(
                     paths[start:stop],
                     sizes[start:stop] if sizes is not None else None,
@@ -630,12 +552,11 @@ def infer_full_schema_with_metadata_from_files(
                     format_name,
                     context,
                     row_records,
-                    credit,
                     mtimes[start:stop] if mtimes is not None else None,
                     read_metadata=read_metadata,
                     io_concurrency=_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY,
                 )
-                pending[ref] = (start, stop - start, credit)
+                pending[ref] = (start, stop - start)
                 start = stop
             if not pending:
                 break
@@ -658,8 +579,8 @@ def infer_full_schema_with_metadata_from_files(
                 break
             first_result = False
             ref = ready[0]
-            offset, count, credit = pending.pop(ref)
-            consume(ray.get(ref), offset, count, credit)
+            offset, count = pending.pop(ref)
+            consume(ray.get(ref), offset, count)
     finally:
         for ref in pending:
             try:

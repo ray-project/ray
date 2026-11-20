@@ -95,7 +95,7 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     assert all(r["pid"] != os.getpid() for r in records)
 
 
-@pytest.mark.parametrize("budget", [0, 32, 4096])
+@pytest.mark.parametrize("budget", [0, 32])
 def test_driver_parquet_empty_struct_schema_with_metadata_budget(
     monkeypatch, tmp_path, budget
 ):
@@ -127,7 +127,6 @@ def test_driver_parquet_empty_struct_schema_with_metadata_budget(
         assert metadata is not None
         file_metadata = FileMetadata.from_metadata(metadata[0].as_py())
         assert file_metadata.num_rows == pq.read_metadata(path).num_rows
-        assert (file_metadata.parquet_footer is not None) == (budget == 4096)
 
 
 class _CustomType(pa.ExtensionType):

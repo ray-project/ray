@@ -10,6 +10,9 @@ steps:
     wanda: ci/docker/forge.aarch64.wanda.yaml
     instance_type: builder-arm64
 
+  # Bazel built for glibc 2.17, for the images that run Bazel inside
+  # manylinux2014. See the x86_64 step in _forge.rayci.yml for why.
+  # TODO: remove after the move to manylinux_2_28 (see _forge.rayci.yml).
   - name: bazel-glibc217-aarch64
     label: "wanda: bazel for manylinux2014 (aarch64)"
     wanda: ci/docker/bazel-glibc217.wanda.yaml
@@ -20,6 +23,7 @@ steps:
 
   - name: manylinux-aarch64
     wanda: ci/docker/manylinux.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     env:
@@ -29,6 +33,7 @@ steps:
   - name: ray-java-build-aarch64
     label: "wanda: java build (aarch64)"
     wanda: ci/docker/ray-java.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-aarch64
     tags:
       - release_wheels
@@ -196,6 +201,7 @@ steps:
   - name: ray-core-build-aarch64
     label: "wanda: core binary parts py{{array.python}} (aarch64)"
     wanda: ci/docker/ray-core.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     array:
@@ -270,6 +276,7 @@ steps:
   - name: ray-cpp-core-build-aarch64
     label: "wanda: cpp core (aarch64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
     depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     env:

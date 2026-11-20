@@ -20,9 +20,7 @@ def get_cached_file_metadata(
     Size and available mtime detect ordinary replacement, not an atomic snapshot.
     """
     metadata = file.metadata
-    if metadata is None or (
-        metadata.num_rows is None and metadata.parquet_footer is None
-    ):
+    if metadata is None or metadata.num_rows is None:
         return None
     info = call_with_retry(
         lambda: filesystem.get_file_info(file.path),

@@ -1888,8 +1888,9 @@ def read_parquet(
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
         eligible reads distribute schema I/O across Ray tasks. When available
-        and valid, planning metadata may be reused for row-group indexing or
-        eligible counts; otherwise, those operations read the footer again.
+        and valid, planning row counts may be reused for eligible counts;
+        otherwise, counting reads the footer again. Row-group indexing reads
+        footer metadata during execution.
         With more than 10,000 candidate files, the reader warns before schema
         merging. Retained path and size metadata adds O(files) data to serialized
         lineage.
