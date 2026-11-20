@@ -174,7 +174,8 @@ def get_tpu_worker_resources(
         topology: The TPU topology string.
         accelerator_type: The accelerator string.
         resources_per_worker: Optional manual override for resources per worker. If
-            unspecified, the number of TPU chips in a host is assumed.
+            unspecified, defaults to the number of TPU devices on one host and
+            one CPU per TPU device (at least 1 CPU).
         num_slices: The number of TPU slices.
         chips_per_vm: An optional override for the number of chips per VM.
             If unspecified, this is inferred automatically from the topology
@@ -218,9 +219,6 @@ def get_tpu_worker_resources(
     # Calculate the per-worker resources based on the TPU topology.
     final_resources = resources_per_worker.copy() if resources_per_worker else {}
 
-    if "CPU" not in final_resources:
-        final_resources["CPU"] = 1
-
     # If user didn't specify TPU, default to # of chips on 1 host.
     if "TPU" not in final_resources:
         final_resources["TPU"] = resolved_chips_per_vm
@@ -243,6 +241,20 @@ def get_tpu_worker_resources(
             f"divide evenly into the TPU devices available per slice ({total_tpus_per_slice}). "
             "This configuration results in an uneven distribution of workers across slices, "
             "which is not supported."
+        )
+
+    min_cpus = max(1, int(math.ceil(tpus_per_worker)))
+    if "CPU" not in final_resources:
+        final_resources["CPU"] = min_cpus
+    elif final_resources["CPU"] < min_cpus:
+        logger.warning(
+            "TPU worker bundle requests %s CPU(s) for %s TPU device(s). "
+            "Scheduling one actor per TPU device with default num_cpus=1 requires at "
+            "least %s CPU(s) per bundle and may remain PENDING unless actors set "
+            "num_cpus=0 or resources_per_worker specifies more CPUs.",
+            final_resources["CPU"],
+            tpus_per_worker,
+            min_cpus,
         )
 
     num_workers = int(total_tpus_available // tpus_per_worker)
@@ -730,8 +742,10 @@ class SlicePlacementGroup:
     Args:
         topology: The TPU topology string (e.g. "2x2x2").
         accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
-        resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-            The TPU count per bundle must evenly divide the TPU devices on one host.
+        resources_per_bundle: Optionally specify the resources to include in every
+            worker bundle. Defaults to the TPU devices on one host and one CPU per
+            TPU device (at least 1 CPU). The TPU count per bundle must evenly divide
+            the TPU devices on one host.
         strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
 
             - "PACK": Packs Bundles into as few nodes as possible.
@@ -1352,10 +1366,12 @@ def slice_placement_group(
         topology: The desired TPU pod topology (e.g. "4x4", "2x4").
         accelerator_version: The TPU accelerator generation, (e.g. "v4", "v5p", "v6e").
         resources_per_bundle: Specify the number of resources to reserve per bundle.
-            When unspecified, SlicePlacementGroup defaults to reserving 1 bundle per TPU host in
-            a topology, with the bundle resources set to the number of TPU in a host.
-            Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles, each with 1 TPU.
-            If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
+            When unspecified, SlicePlacementGroup defaults to reserving 1 bundle per TPU
+            host in a topology, with all TPU devices on that host and one CPU per TPU
+            device (at least 1 CPU).
+            Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles,
+            each with 1 TPU and 1 CPU. If resources_per_bundle=None for the same
+            topology, there would be 4 bundles with 4 TPUs and 4 CPUs each.
             The TPU count per bundle must evenly divide the TPU devices on one host.
         num_slices: The number of tpu slices within the placement group.
         chips_per_vm: An optional override for the number of chips per TPU VM.
@@ -2602,26 +2618,39 @@ def _build_subslice_pg(
     """Create a Ray placement group for the selected subslice workers and
     return a :class:`SubslicePlacementGroup` handle.
 
-    resources_per_bundle defaults to one bundle per host with ``CPU: 1`` and all
-    of the subslice's logical TPU devices on that host.
+    resources_per_bundle defaults to one bundle per host with all of the
+    subslice's logical TPU devices on that host and one CPU per TPU device
+    (at least 1 CPU).
     """
     # A subslice smaller than one host (e.g. 2x2 on an 8-chip v6e host) only
     # uses its own chips on that host.
     chips_per_host = min(chips_per_vm, get_num_chips_from_topology(subslice_topology))
     tpu_resource_per_chip = get_tpu_resource_per_chip()
     logical_devices_per_host = chips_per_host * tpu_resource_per_chip
-    resources_per_bundle = {
-        "CPU": 1,
-        "TPU": logical_devices_per_host,
-        **(resources_per_bundle or {}),
-    }
+    final_resources = dict(resources_per_bundle) if resources_per_bundle else {}
+    if "TPU" not in final_resources:
+        final_resources["TPU"] = logical_devices_per_host
 
-    tpus_per_bundle = resources_per_bundle["TPU"]
+    tpus_per_bundle = final_resources["TPU"]
     if tpus_per_bundle <= 0 or logical_devices_per_host % tpus_per_bundle != 0:
         raise ValueError(
             f"TPU resources per bundle ({tpus_per_bundle}) must be positive and "
             f"evenly divide the logical TPU devices per host ({logical_devices_per_host})."
         )
+    min_cpus = max(1, int(math.ceil(tpus_per_bundle)))
+    if "CPU" not in final_resources:
+        final_resources["CPU"] = min_cpus
+    elif final_resources["CPU"] < min_cpus:
+        logger.warning(
+            "Subslice placement group bundle requests %s CPU(s) for %s TPU device(s). "
+            "Scheduling one actor per TPU device with default num_cpus=1 requires at "
+            "least %s CPU(s) per bundle and may remain PENDING unless actors set "
+            "num_cpus=0 or resources_per_bundle specifies more CPUs.",
+            final_resources["CPU"],
+            tpus_per_bundle,
+            min_cpus,
+        )
+    resources_per_bundle = final_resources
     bundles_per_host = int(logical_devices_per_host // tpus_per_bundle)
 
     bundle_label_selectors = [
@@ -2780,7 +2809,8 @@ def subslice_placement_group(
             ambiguous topologies like v6e 2x4 which can be 1 VM (8 chips)
             or 2 VMs (4 chips each).
         resources_per_bundle: Per-bundle resources. Defaults to one bundle per
-            host with ``CPU: 1`` and the subslice's logical TPU devices on that host.
+            host with the subslice's logical TPU devices on that host and one
+            CPU per TPU device (at least 1 CPU).
         strategy: Placement group strategy (default ``"SPREAD"``).
         name: Optional placement group name.
         lifetime: Placement group lifetime (``None`` or ``"detached"``).
