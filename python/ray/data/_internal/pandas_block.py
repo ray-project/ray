@@ -367,11 +367,26 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         return self._column.quantile(q=q)
 
     def value_counts(self) -> Optional[Dict[str, List]]:
-        value_counts = self._column.value_counts()
+        # `dropna=False` to match Arrow's `value_counts`, which counts nulls as
+        # values of their own; pandas drops them by default.
+        value_counts = self._column.value_counts(dropna=False)
         if len(value_counts) == 0:
             return None
+        # Missing entries are reported as a single canonical `None`, so that
+        # accumulators built from Arrow- and pandas-backed blocks merge on the
+        # same key. Which entries count as missing is dtype-dependent, so use
+        # pandas' own mask rather than testing each value: for an
+        # Arrow-backed column `NaN` is a real value distinct from null (as it
+        # is for Arrow's `value_counts`), while for a numpy or nullable column
+        # `NaN` is the missing marker and becomes null when the block is
+        # converted to Arrow.
+        index = value_counts.index
+        missing = index.isna()
         return {
-            "values": value_counts.index.tolist(),
+            "values": [
+                None if is_missing else value
+                for value, is_missing in zip(index.tolist(), missing.tolist())
+            ],
             "counts": value_counts.values.tolist(),
         }
 
