@@ -78,8 +78,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_AWAITING_ON_START_REASON = "awaiting first input to run on_start"
-
 
 class OperatorSizer:
     """Owns how many actors every operator in the topology has, and where.
@@ -146,7 +144,7 @@ class OperatorSizer:
             op for op in self._profiles.actor_pool_ops if op.awaiting_on_start()
         }
         for op in self._awaiting_on_start:
-            self._guard.block(op, _AWAITING_ON_START_REASON)
+            self._guard.block(op, "awaiting first input to run on_start")
         # Actors last held for each op awaiting on_start, and the one-time
         # grant to that count queued when its on_start runs.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}

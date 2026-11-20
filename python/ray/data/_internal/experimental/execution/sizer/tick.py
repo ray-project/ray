@@ -302,22 +302,11 @@ class SizingTicker:
         constrained_op_count_by_node: Dict[NodeIdStr, int],
         global_limits: ExecutionResources,
     ) -> Dict["ExperimentalActorPoolMapOperator", int]:
-        """Take each op still waiting on its ``on_start`` out of ``free``
-        (mutated) for its warmup equal share; return how many actors each
-        got held.
-
-        Such an op (e.g. a Write sink) gets no actor until its first input
-        arrives (an actor made earlier would ship a transformer without the
-        state ``on_start`` sets), so nothing else would hold room for it, and
-        by then upstream ops can have taken every node's space; getting it
-        back means draining actors whose outputs only clear through this op.
-        Holding its share here keeps that room out of every phase's free map
-        without starting an actor. Once released, the sizer grows it straight
-        to the held count, ahead of other ops (it is below min size). The
-        share is held whole per actor, every resource the actor needs, on the
-        least contended nodes, as the ledger would place it; what does not
-        fit is not held.
-        """
+        """During warmup we want to prestart all the actors. However,
+        we cannot do that for iceberg write operators because they require
+        schema metadata on their first available input. This method reserves
+        headroom for those types of operators during warmup, without actually
+        scaling them up. This ensures fair share during warmup."""
         held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = {}
         for op in self._profiles.non_pg_ops:
             if not op.awaiting_on_start() or op.has_completed():
