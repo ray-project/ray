@@ -440,7 +440,7 @@ def _parse_tpu_chip_coordinates_env(raw: str) -> List[List[int]]:
             for c in parsed
         ):
             raise ValueError(f"Invalid {TPU_CHIP_COORDINATES_ENV_VAR} JSON: {raw!r}")
-        return [list(c) for c in parsed]
+        return [list(c) + [0] if len(c) == 2 else list(c) for c in parsed]
     coords: List[List[int]] = []
     for entry in raw.split(";"):
         entry = entry.strip()
@@ -449,6 +449,8 @@ def _parse_tpu_chip_coordinates_env(raw: str) -> List[List[int]]:
         parts = [int(p.strip()) for p in entry.split(",")]
         if len(parts) not in (2, 3):
             raise ValueError(f"Invalid chip coordinate entry: {entry!r}")
+        if len(parts) == 2:
+            parts.append(0)
         coords.append(parts)
     return coords
 
@@ -519,9 +521,14 @@ def _query_tpu_chip_coordinates_from_torch_tpu() -> Optional[List[List[int]]]:
     except ImportError:
         return None
 
-    getter = getattr(
-        getattr(torch_tpu, "tpu", None), "get_chip_coordinates", None
-    ) or getattr(torch_tpu, "get_chip_coordinates", None)
+    tpu_module = getattr(torch_tpu, "tpu", None)
+    getter = (
+        getattr(tpu_module, "get_chip_coordinates", None)
+        if tpu_module is not None
+        else None
+    )
+    if getter is None:
+        getter = getattr(torch_tpu, "get_chip_coordinates", None)
     if getter is None:
         return None
 
