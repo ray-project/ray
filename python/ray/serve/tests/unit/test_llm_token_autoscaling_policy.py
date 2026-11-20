@@ -15,7 +15,7 @@ async def test_router_report_reaches_app_policy():
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
     from ray.serve._private.autoscaling_state import AutoscalingStateManager
     from ray.serve._private.common import ReplicaID, ReplicaMetricReport
-    from ray.serve.config import AutoscalingMetricsConfig
+    from ray.serve._private.config import AutoscalingMetricsConfig
 
     target = DeploymentID(name="decode", app_name="app")
     source = DeploymentID(name="LLMRouter", app_name="app")

@@ -129,24 +129,27 @@ def _build_openai_ingress_request_router(
             else None
         ),
     }
-    metrics_config = None
-    if is_kv_aware(llm_config):
-        target_config = server._bound_deployment._deployment_config
-        metrics_config = target_config.autoscaling_metrics_config
-        if metrics_config is None and target_config.autoscaling_config is not None:
-            metrics_config = target_config.autoscaling_config.model_dump(
-                include={
-                    "metrics_interval_s",
-                    "look_back_period_s",
-                    "aggregation_function",
-                }
-            )
     deployment = serve.deployment(
         LLMRouter,
-        autoscaling_metrics_config=metrics_config,
         max_ongoing_requests=1000,
         ray_actor_options=ray_actor_options,
     )
+    if is_kv_aware(llm_config):
+        from ray.serve._private.config import AutoscalingMetricsConfig
+
+        target_config = server._bound_deployment._deployment_config
+        metrics_config = target_config.autoscaling_metrics_config
+        if metrics_config is None and target_config.autoscaling_config is not None:
+            metrics_config = AutoscalingMetricsConfig(
+                **target_config.autoscaling_config.model_dump(
+                    include={
+                        "metrics_interval_s",
+                        "look_back_period_s",
+                        "aggregation_function",
+                    }
+                )
+            )
+        deployment._deployment_config.autoscaling_metrics_config = metrics_config
     return deployment.bind(
         server=server,
         llm_config=llm_config if is_kv_aware(llm_config) else None,
