@@ -11,7 +11,6 @@ from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import (
     AutoscalingConfig,
-    AutoscalingMetricsConfig,
     BackpressureConfig,
     DeploymentActorConfig,
     GangSchedulingConfig,
@@ -286,9 +285,6 @@ class Deployment:
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
         max_surge_percent: Default[int] = DEFAULT.VALUE,
-        autoscaling_metrics_config: Default[
-            Union[Dict, AutoscalingMetricsConfig, None]
-        ] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -351,7 +347,6 @@ class Deployment:
                 Lightweight configuration changes to replicas on the new code
                 wait until restarts finish. Setting this to ``0`` stops old
                 replicas before starting replacements.
-            autoscaling_metrics_config: Configure custom replica metrics for application policies.
 
         Returns:
             A copy of this deployment with the given options applied.
@@ -468,10 +463,6 @@ class Deployment:
         if max_replicas_per_node is DEFAULT.VALUE:
             max_replicas_per_node = self._replica_config.max_replicas_per_node
 
-        if autoscaling_metrics_config is not DEFAULT.VALUE:
-            new_deployment_config.autoscaling_metrics_config = (
-                autoscaling_metrics_config
-            )
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
 
@@ -597,7 +588,6 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "max_queued_requests": d.max_queued_requests,
         "backpressure_config": d.backpressure_config,
         "user_config": d.user_config,
-        "autoscaling_metrics_config": d._deployment_config.autoscaling_metrics_config,
         "autoscaling_config": d._deployment_config.autoscaling_config,
         "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
         "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
@@ -668,7 +658,6 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
         backpressure_config=s.backpressure_config,
-        autoscaling_metrics_config=s.autoscaling_metrics_config,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
         graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,

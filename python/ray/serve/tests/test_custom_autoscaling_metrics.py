@@ -332,8 +332,7 @@ class TestCustomServeMetrics:
 
 
 def test_metric_source_configuration_round_trip():
-    from ray.serve._private.config import DeploymentConfig
-    from ray.serve.config import AutoscalingMetricsConfig
+    from ray.serve._private.config import AutoscalingMetricsConfig, DeploymentConfig
 
     config = DeploymentConfig(
         num_replicas=2,
