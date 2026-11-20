@@ -5,6 +5,7 @@ Exercises the connector pipeline (``AddOneTsToEpisodesAndTruncate`` +
 ``compute_value_targets``. Targets are pinned to closed-form GAE answers so a
 regression in either the connector layout or the GAE recursion is caught.
 """
+
 import numpy as np
 import pytest
 
@@ -16,16 +17,109 @@ from ray.rllib.connectors.learner import (
     BatchIndividualItems,
     LearnerConnectorPipeline,
 )
+from ray.rllib.connectors.learner.general_advantage_estimation import (
+    GeneralAdvantageEstimation,
+)
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
+from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 torch, _ = try_import_torch()
+
+
+@pytest.mark.parametrize(
+    "mask,expected",
+    [
+        ([True, True, False], [-1.0, 1.0, -2.0]),
+        (None, [-0.26726124, 1.3363062, -1.069045]),
+        ([False, False, False], [0.0, 0.0, 0.0]),
+    ],
+)
+@pytest.mark.parametrize("stateful", [False, True])
+def test_gae_normalization_excludes_bootstrap_timestep(mask, expected, stateful):
+    class ValueModule(TorchRLModule, ValueFunctionAPI):
+        def compute_values(self, batch, embeddings=None):
+            return torch.zeros((1, 4) if stateful else (3,))
+
+        def is_stateful(self):
+            return stateful
+
+    episode = SingleAgentEpisode(
+        observations=[0, 1, 2, 3],
+        actions=[0, 0, 0],
+        rewards=[1.0, 3.0, 0.0],
+        len_lookback_buffer=0,
+    )
+    batch = {
+        DEFAULT_MODULE_ID: {
+            Columns.REWARDS: np.array([1.0, 3.0, 0.0]),
+            Columns.TERMINATEDS: np.array([False, True, False]),
+            Columns.TRUNCATEDS: np.zeros(3, dtype=bool),
+        }
+    }
+    if mask is not None:
+        batch[DEFAULT_MODULE_ID][Columns.LOSS_MASK] = np.array(mask)
+    if stateful:
+        batch[DEFAULT_MODULE_ID] = {
+            key: np.pad(value, (0, 1))[None, :]
+            for key, value in batch[DEFAULT_MODULE_ID].items()
+        }
+    connector = GeneralAdvantageEstimation(gamma=0.0, lambda_=0.0)
+    modules = MultiRLModule()
+    modules.add_module(DEFAULT_MODULE_ID, ValueModule(model_config={"max_seq_len": 4}))
+    result = connector(rl_module=modules, episodes=[episode], batch=batch)
+    advantages = result[DEFAULT_MODULE_ID][Postprocessing.ADVANTAGES]
+    np.testing.assert_allclose(advantages.reshape(-1)[:3], expected, atol=1e-6)
+    if stateful:
+        assert advantages[0, 3] == 0.0
+
+
+def test_gae_normalization_excludes_padding_across_episode_chunks():
+    class ValueModule(TorchRLModule, ValueFunctionAPI):
+        def compute_values(self, batch, embeddings=None):
+            return torch.zeros((3, 2))
+
+        def is_stateful(self):
+            return True
+
+    episodes = [
+        SingleAgentEpisode(
+            observations=[0, 1, 2],
+            actions=[0, 0],
+            rewards=[1.0, 0.0],
+            len_lookback_buffer=0,
+        ),
+        SingleAgentEpisode(
+            observations=[0, 1, 2, 3],
+            actions=[0, 0, 0],
+            rewards=[3.0, 5.0, 0.0],
+            len_lookback_buffer=0,
+        ),
+    ]
+    batch = {
+        DEFAULT_MODULE_ID: {
+            Columns.REWARDS: np.array([[1.0, 0.0], [3.0, 5.0], [0.0, 0.0]]),
+            Columns.TERMINATEDS: np.zeros((3, 2), dtype=bool),
+            Columns.TRUNCATEDS: np.zeros((3, 2), dtype=bool),
+            Columns.LOSS_MASK: np.array([[True, False], [True, True], [False, False]]),
+        }
+    }
+    modules = MultiRLModule()
+    modules.add_module(DEFAULT_MODULE_ID, ValueModule(model_config={"max_seq_len": 2}))
+    connector = GeneralAdvantageEstimation(gamma=0.0, lambda_=0.0)
+    result = connector(rl_module=modules, episodes=episodes, batch=batch)
+    advantages = result[DEFAULT_MODULE_ID][Postprocessing.ADVANTAGES]
+    valid = advantages[torch.tensor([[True, False], [True, True], [False, False]])]
+    np.testing.assert_allclose(valid, [-np.sqrt(1.5), 0.0, np.sqrt(1.5)], atol=1e-6)
 
 
 def _targets(per_ep_values, per_ep_rewards, terminated, truncated, gamma, lambda_):
