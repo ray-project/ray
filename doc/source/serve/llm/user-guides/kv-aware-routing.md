@@ -127,6 +127,21 @@ Set it to `0` to disable pinning. Requests without `x-session-id` use token-load
 
 ### Tuning
 
+To estimate remaining prefill work for token autoscaling, set a rate measured
+for your model and hardware in `request_router_kwargs`. For example:
+
+```python
+request_router_config = RequestRouterConfig(
+    request_router_class=KVAwareRouter,
+    request_router_kwargs={"prefill_decay_tokens_per_second": 15000},
+)
+```
+
+At each metrics poll, the router subtracts each engine replica's estimated
+progress from its outstanding uncached prefill tokens. The rate is shared by
+all requests in prefill on that replica. Idle time earns no credit toward
+future requests. A rate of zero (the default) reports the exact tracked total.
+
 Set these in the cluster environment:
 
 | Environment variable | Default | Effect |
