@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <thread>
 
@@ -250,11 +251,19 @@ TEST_F(TestGrpcServerClientFixture, TestNotIdleWhileCallInFlight) {
 // IDLE after GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS on subsequent idle cycles, not only the
 // first cycle.
 TEST_F(TestGrpcServerClientFixture, TestChannelIdleTimeoutMultipleCycles) {
-  grpc::ChannelArguments channel_args = CreateDefaultChannelArguments();
-  // 1000ms is gRPC's minimum unclamped client idle timeout.
-  channel_args.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS, 1000);
+  const int64_t prev_idle_timeout_ms =
+      ::RayConfig::instance().grpc_client_idle_timeout_ms();
+  struct RestoreIdleTimeout {
+    int64_t prev;
+    ~RestoreIdleTimeout() {
+      ::RayConfig::instance().grpc_client_idle_timeout_ms() = prev;
+    }
+  } restore_idle_timeout{prev_idle_timeout_ms};
+  // 1000ms is gRPC's minimum unclamped client idle timeout. Configure it via RayConfig
+  // because gRPC keeps the first value when a channel argument key is set twice.
+  ::RayConfig::instance().grpc_client_idle_timeout_ms() = 1000;
   grpc_client_ = std::make_unique<GrpcClient<TestService>>(
-      "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_, channel_args);
+      "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_);
 
   auto send_ping_and_wait = [this]() {
     PingRequest request;
