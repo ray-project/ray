@@ -169,17 +169,13 @@ class SQLDatasource(Datasource):
         parallelism = min(
             parallelism, math.ceil(num_rows_total / self.MIN_ROWS_PER_READ_TASK)
         )
-        num_rows_per_block = num_rows_total // parallelism
-        num_blocks_with_extra_row = num_rows_total % parallelism
-
         tasks = []
         for i in range(parallelism):
-            num_rows = num_rows_per_block
-            if i < num_blocks_with_extra_row:
-                num_rows += 1
             read_fn = self._create_parallel_read_fn(i, parallelism)
             metadata = BlockMetadata(
-                num_rows=num_rows,
+                # Hash partitions can be skewed or empty; the total does not
+                # determine the row count of an individual partition.
+                num_rows=None,
                 size_bytes=None,
                 input_files=None,
                 exec_stats=None,
