@@ -11,7 +11,8 @@ import ray.cloudpickle as cloudpickle
 from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
     DeltaDatasourceV2,
     DeltaTableInfo,
-    delta_datasource_v2_unsupported_reason,
+    check_delta_scan_options,
+    check_delta_table_is_readable,
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     DeltaFileIndexer,
@@ -211,53 +212,94 @@ def _stub_table(
 
 
 @pytest.mark.parametrize(
-    "table, kwargs, expected",
+    "table, include_paths, error, match",
     [
-        (_stub_table(reader_version=3, reader_features=["timestampNtz"]), {}, None),
-        (_stub_table(reader_version=2), {}, "reader version 2"),
-        # Only the unsupported features are named.
+        (
+            _stub_table(reader_version=3, reader_features=["timestampNtz"]),
+            False,
+            None,
+            "",
+        ),
+        # Reader version 2 and ``columnMapping`` allow column mapping; with
+        # the mode ``none`` the data files use the column names.
+        (_stub_table(reader_version=2), False, None, ""),
+        (
+            _stub_table(reader_version=3, reader_features=["columnMapping"]),
+            False,
+            None,
+            "",
+        ),
+        (
+            _stub_table(
+                reader_version=2, configuration={"delta.columnMapping.mode": "name"}
+            ),
+            False,
+            NotImplementedError,
+            "`delta.columnMapping.mode` is 'name'",
+        ),
         (
             _stub_table(
                 reader_version=3, reader_features=["timestampNtz", "deletionVectors"]
             ),
-            {},
-            "reader features ['deletionVectors']",
+            False,
+            RuntimeError,
+            "delta.enableDeletionVectors",
         ),
+        # Only the unsupported features are named.
         (
-            _stub_table(configuration={"delta.columnMapping.mode": "name"}),
-            {},
-            "column mapping",
+            _stub_table(
+                reader_version=3, reader_features=["timestampNtz", "variantType"]
+            ),
+            False,
+            NotImplementedError,
+            r"reader features \['variantType'\]",
         ),
+        (_stub_table(reader_version=4), False, NotImplementedError, "reader version 4"),
         (
             _stub_table(
                 schema=pa.schema([("x", pa.int64()), ("b", pa.binary())]),
                 partition_columns=["b"],
             ),
-            {},
-            "types the V2 reader doesn't support: {'b': 'binary'}",
+            False,
+            NotImplementedError,
+            "{'b': 'binary'}",
         ),
-        (_stub_table(column_names=["path"]), {"include_paths": True}, "`path`"),
-        (_stub_table(column_names=["path"]), {}, None),
-        (SimpleNamespace(), {}, "couldn't be inspected"),
+        (_stub_table(column_names=["path"]), True, ValueError, "own `path` column"),
+        (_stub_table(column_names=["path"]), False, None, ""),
     ],
 )
-def test_delta_datasource_v2_unsupported_reason(table, kwargs, expected):
-    reason = delta_datasource_v2_unsupported_reason(
-        table, include_paths=kwargs.get("include_paths", False)
-    )
-
-    if expected is None:
-        assert reason is None
+def test_check_delta_table_is_readable(table, include_paths, error, match):
+    if error is None:
+        check_delta_table_is_readable(table, include_paths=include_paths)
     else:
-        assert reason is not None and expected in reason
+        with pytest.raises(error, match=match):
+            check_delta_table_is_readable(table, include_paths=include_paths)
+
+
+@pytest.mark.parametrize(
+    "options, match",
+    [
+        ({}, None),
+        ({"batch_size": 2, "use_threads": False}, None),
+        ({"filter": object()}, r"filter\(expr=expr\)"),
+        ({"batch_size": 2, "fragment_scan_options": object()}, "fragment_scan_options"),
+    ],
+)
+def test_check_delta_scan_options(options, match):
+    """Options that only tuned V1's reading are ignored; others are rejected,
+    not dropped."""
+    if match is None:
+        check_delta_scan_options(options)
+    else:
+        with pytest.raises(ValueError, match=match):
+            check_delta_scan_options(options)
 
 
 def test_delta_datasource_v2_supports_a_real_table(partitioned_table):
     """Catches a ``deltalake`` whose ``protocol()``, ``metadata()`` or
-    ``schema()`` changed, which would send every table to the V1 reader."""
+    ``schema()`` changed, which would reject every table."""
     info = DeltaTableInfo.from_table(_open(partitioned_table))
 
-    assert info.unsupported_reason is None
     assert info.schema.names == ["id", "grp", "value"]
     assert info.partition_columns == ("grp",)
 

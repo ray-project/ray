@@ -6756,7 +6756,12 @@ def read_delta(
         **arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see the `PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
-                    #pyarrow.dataset.Scanner.from_fragment>`_
+                    #pyarrow.dataset.Scanner.from_fragment>`_. The DataSourceV2
+            reader accepts only ``batch_size``, ``batch_readahead``,
+            ``fragment_readahead``, ``use_threads``, ``cache_metadata`` and
+            ``memory_pool``, and ignores them; it raises ``ValueError`` for
+            any other option. Use :meth:`~ray.data.Dataset.filter` instead of
+            ``filter``.
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified
@@ -6807,68 +6812,55 @@ def read_delta(
             _, normalized_path = pafs.FileSystem.from_uri(path)
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
+    from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
+        DeltaDatasourceV2,
+        check_delta_scan_options,
+        column_mapping_error,
+        deletion_vectors_error,
+        open_delta_table,
+    )
+
     ctx = DataContext.get_current()
-    v1_version = version
     if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
-        from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
-            DeltaDatasourceV2,
-            open_delta_table,
+        check_delta_scan_options(arrow_parquet_args)
+        # Opens the table once, in a Ray task: the driver gets the schema, and
+        # the file list stays in the object store for the listing.
+        table_info, loaded_add_actions = open_delta_table(
+            path,
+            version=version,
+            storage_options=storage_options,
+            partition_filters=partition_filters,
+            include_paths=include_paths,
+            ray_remote_args=_delta_open_task_remote_args(runtime_env, ray_remote_args),
+        )
+        datasource_v2 = DeltaDatasourceV2(
+            table_info,
+            loaded_add_actions=loaded_add_actions,
+            storage_options=storage_options,
+            filesystem=filesystem,
+            columns=columns,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            version_pinned_by_caller=version is not None,
+            partition_filters=partition_filters,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
         )
 
-        if arrow_parquet_args:
-            unsupported_reason = (
-                f"PyArrow scan options were passed: {sorted(arrow_parquet_args)}"
-            )
-        else:
-            # Opens the table once, in a Ray task: the driver gets the schema,
-            # and the file list stays in the object store for the listing.
-            table_info, loaded_add_actions = open_delta_table(
-                path,
-                version=version,
-                storage_options=storage_options,
-                partition_filters=partition_filters,
-                include_paths=include_paths,
-                ray_remote_args=_delta_open_task_remote_args(
-                    runtime_env, ray_remote_args
-                ),
-            )
-            unsupported_reason = table_info.unsupported_reason
-            if unsupported_reason is None:
-                datasource_v2 = DeltaDatasourceV2(
-                    table_info,
-                    loaded_add_actions=loaded_add_actions,
-                    storage_options=storage_options,
-                    filesystem=filesystem,
-                    columns=columns,
-                    include_paths=include_paths,
-                    shuffle=shuffle,
-                    version_pinned_by_caller=version is not None,
-                    partition_filters=partition_filters,
-                )
-                return _read_datasource_v2(
-                    datasource_v2,
-                    parallelism=_get_num_output_blocks(
-                        parallelism, override_num_blocks
-                    ),
-                    num_cpus=num_cpus,
-                    num_gpus=num_gpus,
-                    memory=memory,
-                    ray_remote_args=ray_remote_args,
-                    label_selector=label_selector,
-                    fallback_strategy=fallback_strategy,
-                    max_calls=max_calls,
-                    resources=resources,
-                    accelerator_type=accelerator_type,
-                    runtime_env=runtime_env,
-                    concurrency=concurrency,
-                )
-            # V1 reads the version that was checked.
-            v1_version = table_info.version
-        logger.info(
-            "Reading Delta table %r with the V1 reader: %s.", path, unsupported_reason
-        )
-
-    dt = DeltaTable(path, version=v1_version, storage_options=storage_options)
+    dt = DeltaTable(path, version=version, storage_options=storage_options)
     # The data files of a column-mapped table name their columns with physical
     # names (such as ``col-<uuid>``) that only the log maps to the table's
     # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some
@@ -6879,14 +6871,7 @@ def read_delta(
         "delta.columnMapping.mode"
     ) or "none"
     if column_mapping_mode.lower() != "none":
-        raise NotImplementedError(
-            "This Delta table uses column mapping (`delta.columnMapping.mode` is "
-            f"{column_mapping_mode!r}), which `ray.data.read_delta` doesn't "
-            "support yet. Its data files store columns under physical names that "
-            "only the Delta log maps to the table's column names, so reading "
-            "them would return nulls or wrong columns. Follow "
-            "https://github.com/ray-project/ray/issues/64854 for support."
-        )
+        raise column_mapping_error(column_mapping_mode)
     partition_filter_kwargs = (
         _delta_partition_filter_kwargs(dt, partition_filters)
         if partition_filters is not None
@@ -6900,38 +6885,9 @@ def read_delta(
         error_msg = str(e)
         # from: https://github.com/delta-io/delta-rs/blob/main/python/deltalake/table.py
         if "deletionVectors" in error_msg:
-            # No deltalake version lifts this: the restriction is specific to
-            # `to_pyarrow_dataset`, which hands raw Parquet fragments to pyarrow.
-            # pyarrow cannot apply the deletion-vector bitmaps, so honouring them
-            # is impossible on that path and deltalake refuses rather than
-            # returning deleted rows. It refuses on the *declared* reader feature,
-            # so a table with deletion vectors enabled but none written is
-            # rejected too. Don't suggest upgrading -- it will not help.
-            raise RuntimeError(
-                "This Delta table declares the `deletionVectors` reader "
-                "feature, which deltalake cannot honour when reading through "
-                "pyarrow datasets -- the path `ray.data.read_delta` uses. "
-                "Upgrading deltalake will not change this, and note the table "
-                "is rejected for *declaring* the feature, whether or not any "
-                "deletion vectors have actually been written.\n"
-                "\n"
-                "Reading it with Ray Data needs the `delta.enableDeletionVectors"
-                "` table property turned off and the feature dropped from the "
-                "table's protocol. That rewrites data files and changes what "
-                "other readers and writers see, so it is worth reading your "
-                "Delta engine's documentation on removing the feature before "
-                "doing it -- some engines, Databricks included, enable deletion "
-                "vectors by default. If the property is already off, the "
-                "declaration can linger until existing deletion vectors are "
-                "purged and the feature is dropped.\n"
-                "\n"
-                "If reading deletion-vector tables directly matters to you, "
-                "please open or comment on a Ray issue -- it would need a read "
-                "path that does not go through pyarrow datasets, and knowing "
-                "there is demand helps us prioritise it.\n"
-                "\n"
-                f"Underlying error: {error_msg}"
-            ) from e
+            # `to_pyarrow_dataset` hands raw Parquet fragments to pyarrow, which
+            # can't apply the deletion-vector bitmaps, so deltalake refuses.
+            raise deletion_vectors_error(error_msg) from e
         raise
 
     datasource = ParquetDatasource.from_pyarrow_dataset(
