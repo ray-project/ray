@@ -21,7 +21,7 @@ billiard==4.2.4
 boltons @ file:///home/conda/feedstock_root/build_artifacts/boltons_1733827268945/work
 boto3==1.29.7
 botocore==1.32.7
-Brotli @ file:///home/conda/feedstock_root/build_artifacts/brotli-split_1786622598436/work
+brotli==1.2.1
 build @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_python-build_1790158724/work
 cached-property @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_cached_property_1787678456/work
 cachetools==5.5.2
@@ -146,7 +146,7 @@ python-discovery==1.6.1
 python-dotenv==1.2.2
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-2.59.1-cp310-cp310-manylinux2014_x86_64.whl#sha256=dbc13f103c58ad606080d6061d2f07c7e87539f7a70808af2fdd1c59c167fbf1
+ray @ file:///home/ray/ray-2.59.2-cp310-cp310-manylinux2014_x86_64.whl#sha256=7509a46f11fccf07509d0e88753cbf507dee9272186dcea080d00ee695d3ccef
 ray-haproxy==2.8.25
 referencing==0.36.2
 requests==2.33.1
