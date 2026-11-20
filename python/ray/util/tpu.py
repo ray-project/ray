@@ -1,11 +1,11 @@
 import atexit
-from dataclasses import dataclass
 import json
 import logging
 import math
 import os
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import ray
@@ -336,7 +336,7 @@ class TPUHostInfo:
       ``tpu_worker_id`` / bundle host order. This matches the deterministic
       ``NODE_RANK`` order expected by ``torch_tpu`` and ``libtpu``.
 
-    Attributes:
+    Args:
         rank: 0-based deterministic ``NODE_RANK`` of this host.
         node_id: Ray NodeID where this host's bundle is placed, or None if
             unplaced or the node is not alive.
