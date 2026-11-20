@@ -190,6 +190,9 @@ def plan_project_op(
             BlockMapTransformFn(
                 _generate_transform_fn_for_map_block(_project_block),
                 disable_block_shaping=(len(op.exprs) == 0),
+                output_block_size_option=OutputBlockSizeOption.of(
+                    target_max_block_size=data_context.target_max_block_size,
+                ),
             )
         ],
         init_fn=init_fn,

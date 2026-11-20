@@ -3,7 +3,6 @@ from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
-from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -91,10 +90,9 @@ class LimitOperator(PhysicalOperator):
                 )
                 out_blocks.append(sliced_block)
                 sliced_metadata = ray.get(sliced_metadata_ref)
-                if actor_only_backend_enabled():
+                if self._resource_bank is not None:
                     # Sliced blocks are new ObjectRefs; register them so the
                     # bank's withdraw on consumption matches an on_new_output.
-                    assert self._resource_bank is not None
                     self._resource_bank.on_new_output(
                         op=self,
                         ref=sliced_block,

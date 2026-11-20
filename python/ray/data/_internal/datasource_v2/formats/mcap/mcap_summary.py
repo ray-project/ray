@@ -21,12 +21,14 @@ from typing import (
     Any,
     Callable,
     Deque,
+    Dict,
     Generic,
     Iterable,
     Iterator,
     List,
     Optional,
     Sequence,
+    Set,
     Tuple,
     TypeVar,
 )
@@ -42,6 +44,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_io import (
     read_summary_from,
     read_tail,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.util import call_with_retry
 
@@ -243,6 +246,31 @@ def _section_bytes(tail_read: "Future[SummaryTail]") -> int:
     if tail_read.exception() is not None:
         return 0
     return tail_read.result().section_bytes
+
+
+def topic_chunks(summary: "Summary", channel_ids: Set[int]) -> List["ChunkIndex"]:
+    """The chunks that may hold a topic whose channels are ``channel_ids``.
+
+    A chunk may hold it when its message indexes name one of those channels, or
+    name none (``MCAPSelection.chunk_may_match``). A summary that lists no channel cannot tell, so every chunk may.
+    One that lists others but none of the topic's says the file lacks the topic.
+    """
+    if not summary.channels:
+        return list(summary.chunk_indexes)
+    if not channel_ids:
+        return []
+    any_time = MCAPSelection()
+    return [
+        c for c in summary.chunk_indexes if any_time.chunk_may_match(c, channel_ids)
+    ]
+
+
+def channel_ids_by_topic(summary: "Summary") -> Dict[str, Set[int]]:
+    """The ids of each topic's channels in ``summary``."""
+    by_topic: Dict[str, Set[int]] = {}
+    for channel_id, channel in summary.channels.items():
+        by_topic.setdefault(channel.topic, set()).add(channel_id)
+    return by_topic
 
 
 def chunk_unit_id(path: str, chunk_start_offset: int) -> str:
