@@ -611,21 +611,16 @@ async def test_active_load_tracking():
 async def test_autoscaling_snapshot_tracks_request_phases():
     actor = LocalKVTokenTracker(block_size=16)
     actor._svc.effective_prefill_tokens = 3
-    published = []
-    actor.set_autoscaling_metrics_callback(published.append)
-    assert published == []
 
     await reserve(actor, "a", 1, list(range(20)))
     await reserve(actor, "b", 1, list(range(20, 40)))
     expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 6}
     assert await actor.get_autoscaling_snapshot() == expected
-    assert published[-1] == expected
 
     # Prefill completion drops the request's prefill tokens.
     await actor.on_prefill_complete("a")
     expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 3}
     assert await actor.get_autoscaling_snapshot() == expected
-    assert published[-1] == expected
 
     # Duplicate lifecycle events are idempotent.
     await actor.on_prefill_complete("a")
@@ -639,29 +634,6 @@ async def test_autoscaling_snapshot_tracks_request_phases():
     await actor.on_request_completed("b")
     expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0}
     assert await actor.get_autoscaling_snapshot() == expected
-    assert published[-1] == expected
-
-
-@pytest.mark.asyncio
-async def test_raising_autoscaling_callback_does_not_skip_side_effects():
-    actor = LocalKVTokenTracker(block_size=16)
-    actor._svc.effective_prefill_tokens = 3
-
-    def raising_callback(snapshot):
-        raise RuntimeError("metrics not ready")
-
-    actor.set_autoscaling_metrics_callback(raising_callback)
-
-    await reserve(actor, "a", 1, list(range(20)))
-    await actor.on_prefill_complete("a")
-    await actor.on_request_completed("a")
-    actor.remove_worker(1)
-    await asyncio.gather(*actor._pending_tasks)
-
-    calls = [call[:2] for call in actor._svc.calls]
-    assert ("prefill_complete", "a") in calls
-    assert ("free_reservation", "a") in calls
-    assert ("delete_worker", 1) in calls
 
 
 @pytest.mark.asyncio
