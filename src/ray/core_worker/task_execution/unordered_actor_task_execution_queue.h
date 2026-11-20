@@ -67,13 +67,17 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
  private:
   void CancelAllQueuedTasks(const std::string &msg);
 
-  void RunRequest(TaskToExecute request);
+  void RunRequest(int64_t seq_no, TaskToExecute request);
 
-  void RunRequestWithResolvedDependencies(TaskToExecute request);
+  void RunRequestWithResolvedDependencies(int64_t seq_no, TaskToExecute request);
 
-  /// Accept the given TaskToExecute or reject it if a task id is canceled via
-  /// CancelTaskIfFound.
-  void AcceptRequestOrRejectIfCanceled(TaskID task_id, TaskToExecute &request);
+  /// Accept a request unless explicitly canceled or made stale by the client.
+  void AcceptRequestOrRejectIfCanceled(int64_t seq_no, TaskToExecute &request);
+
+  struct SequencedTask {
+    int64_t seq_no;
+    TaskToExecute task;
+  };
 
   instrumented_io_context &task_execution_service_;
   /// The id of the thread that constructed this scheduling queue.
@@ -100,10 +104,13 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   /// This can happen if transient network error happens after an actor
   /// task is submitted and received by the actor and the caller retries
   /// the same task.
-  absl::flat_hash_map<TaskID, TaskToExecute> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<TaskID, SequencedTask> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
+  /// Highest client watermark observed in each concurrency group. This queue is
+  /// already scoped to one caller worker by TaskReceiver.
+  absl::flat_hash_map<std::string, int64_t> client_processed_up_to_ ABSL_GUARDED_BY(mu_);
 
   FRIEND_TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts);
   FRIEND_TEST(UnorderedActorTaskExecutionQueueTest,
