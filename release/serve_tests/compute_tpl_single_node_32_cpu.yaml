@@ -8,7 +8,7 @@ advanced_instance_config:
           Value: '24'
 
 head_node:
-    # 32 cpus, x86, 128G mem, 10Gb NIC
-    instance_type: m5.8xlarge
+    # 32 cpus, x86, 128G mem, 12.5Gb NIC
+    instance_type: m7i.8xlarge
 
 worker_nodes: []

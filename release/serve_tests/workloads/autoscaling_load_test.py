@@ -32,6 +32,11 @@ logging.basicConfig(level=logging.INFO)
 
 URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/000000000019.jpeg"
 CLOUD = "serve_release_tests_cloud"
+# Worker instance families, in order of preference. All are x86 with the same
+# vCPU and memory per size; the later ones are fallbacks for when the earlier
+# ones have no capacity.
+WORKER_FAMILIES = ["m7i", "m6i", "m5", "m6a"]
+MAX_WORKERS = 10
 
 
 @click.command()
@@ -49,12 +54,32 @@ def main(output_path: Optional[str], image_uri: Optional[str]):
     }
     compute_config = ComputeConfig(
         cloud=CLOUD,
-        head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
+        head_node=HeadNodeConfig(instance_type="m7i.8xlarge"),
+        # One logical pool of 32-CPU workers. Anyscale tries the groups in
+        # `group_order`, so a later group is used only when the ones before it
+        # can't be launched. It may try an earlier group in another zone first.
         worker_nodes=[
             WorkerNodeGroupConfig(
-                instance_type="m5.8xlarge", min_nodes=0, max_nodes=10
-            ),
+                name=f"worker-{family}",
+                instance_type=f"{family}.8xlarge",
+                min_nodes=0,
+                max_nodes=MAX_WORKERS,
+            )
+            for family in WORKER_FAMILIES
         ],
+        # Keeps the pool at MAX_WORKERS in total rather than per group. The
+        # head is not counted: Anyscale gives it 0 logical CPUs by default.
+        max_resources={"CPU": 32 * MAX_WORKERS},
+        flags={
+            "instance_ranking_strategy": [
+                {
+                    "ranker_type": "custom_group_order",
+                    "ranker_config": {
+                        "group_order": [f"worker-{f}" for f in WORKER_FAMILIES]
+                    },
+                }
+            ]
+        },
     )
     stages = [
         LocustStage(duration_s=1200, users=10, spawn_rate=1),
