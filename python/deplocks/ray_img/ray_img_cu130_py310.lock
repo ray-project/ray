@@ -1,4 +1,4 @@
-absl-py==2.4.0 \
+absl-py==2.4.0; python_full_version < "3.15" \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \
     --hash=sha256:8c6af82722b35cf71e0f4d1d47dcaebfff286e27110a99fc359349b247dfb5d4
 # via
@@ -549,7 +549,7 @@ distlib==0.4.3 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
 #   virtualenv
-dm-tree==0.1.10 \
+dm-tree==0.1.10; python_full_version < "3.15" \
     --hash=sha256:012c2b376e88d3685c73a4b5c23be41fe933e14e380dcd90172971690b0e02d2 \
     --hash=sha256:033f9a063e1e19b6c65fb5c76079bd923044f5a6095357ad2637845513d47938 \
     --hash=sha256:0e8f8f1354f178112732b30d2293bc53d212ea64a9556db80a926af3d4647a6b \
@@ -598,7 +598,7 @@ fastapi==0.133.0 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
 #   ray
-fastrlock==0.8.3; sys_platform != "darwin" \
+fastrlock==0.8.3; python_full_version < "3.15" and sys_platform != "darwin" \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -1009,7 +1009,7 @@ linkify-it-py==2.1.0; sys_platform != "win32" \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
 #   markdown-it-py
-lz4==4.4.5 \
+lz4==4.4.5; python_full_version < "3.15" \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \
@@ -2816,7 +2816,7 @@ websockets==15.0.1 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
 #   uvicorn
-wrapt==1.17.3 \
+wrapt==1.17.3; python_full_version < "3.15" \
     --hash=sha256:02b551d101f31694fc785e58e0720ef7d9a10c4e62c1c9358ce6f63f23e30a56 \
     --hash=sha256:042ec3bb8f319c147b1301f2393bc19dba6e176b7da446853406d041c36c7828 \
     --hash=sha256:0610b46293c59a3adbae3dee552b648b984176f8562ee0dba099a56cfbe4df1f \

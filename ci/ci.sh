@@ -98,19 +98,26 @@ compile_pip_dependencies() {
   )
 }
 
-# Compiles python/requirements_compiled_py3.14.txt from the same sources as
-# compile_pip_dependencies. Where a shared pin has no cp314 wheel, the source
-# files gate it with a `python_version` marker.
-compile_pip_dependencies_py314() {
-  local target="python/requirements_compiled_py3.14.txt"
+# Compiles python/requirements_compiled_py<version>.txt for a Python version
+# that has its own constraints file, from the same sources as
+# compile_pip_dependencies. Where a shared pin has no wheel for that version,
+# the source files gate it with a `python_version` marker.
+# Usage: compile_pip_dependencies_for_python <python_version>
+compile_pip_dependencies_for_python() {
+  local python_version="$1"
+  local target="python/requirements_compiled_py${python_version}.txt"
 
   # These ship only an sdist, for every Python version, so building them is not
-  # a 3.14 regression. hyperopt is pinned to a git commit, so it is always built
+  # a regression. hyperopt is pinned to a git commit, so it is always built
   # from source. Everything else must install from a wheel.
   local sdist_only=(
     crcmod deepspeed fairscale feather-format gcs-oauth2-boto-plugin gsutil halo
     hyperopt promise pyspark pyu2f retry-decorator s3torchconnector
   )
+  if [[ "${python_version}" == "3.15" ]]; then
+    # In install_requires, but no release has a cp315 wheel yet.
+    sdist_only+=(pyyaml)
+  fi
   local no_binary_args=()
   for pkg in "${sdist_only[@]}"; do
     no_binary_args+=(--no-binary "${pkg}")
@@ -123,7 +130,8 @@ compile_pip_dependencies_py314() {
     # Ray images are glibc 2.35 (Ubuntu 22.04), hence manylinux_2_35.
     env -u PIP_INDEX_URL -u PIP_EXTRA_INDEX_URL -u PIP_TRUSTED_HOST \
       -u UV_INDEX_URL -u UV_EXTRA_INDEX_URL -u UV_INSECURE_HOST \
-      uv pip compile --python-version 3.14 --python-platform x86_64-manylinux_2_35 \
+      uv pip compile --python-version "${python_version}" \
+      --python-platform x86_64-manylinux_2_35 \
       --no-header --strip-extras --emit-index-url --emit-find-links \
       --index-strategy unsafe-best-match \
       --only-binary :all: "${no_binary_args[@]}" \
@@ -137,6 +145,14 @@ compile_pip_dependencies_py314() {
     # Same local-version strip as compile_pip_dependencies.
     sed -i -E 's/==([A-Za-z0-9.]+)[+][A-Za-z0-9._-]*cpu[A-Za-z0-9._-]*/==\1/g' "${target}"
   )
+}
+
+compile_pip_dependencies_py314() {
+  compile_pip_dependencies_for_python 3.14
+}
+
+compile_pip_dependencies_py315() {
+  compile_pip_dependencies_for_python 3.15
 }
 
 test_cpp() {

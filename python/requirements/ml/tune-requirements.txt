@@ -1,5 +1,6 @@
 # Searchers
-ax-platform==1.2.1
+# Not installed on py3.15: ax-platform needs botorch[pymoo], and pymoo has no cp315 wheel.
+ax-platform==1.2.1; python_version < '3.15'
 # Python 3.13 only: no jaxtyping cap here; default tune-requirements.txt uses jaxtyping<0.3.8 for Python 3.10.
 
 bayesian-optimization>=1.4.0

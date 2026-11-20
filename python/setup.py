@@ -239,7 +239,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras = {
         "cgraph": [
-            "cupy-cuda12x; sys_platform != 'darwin'",
+            "cupy-cuda12x; sys_platform != 'darwin' and python_version < '3.15'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -331,9 +331,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["cpp"] = ["ray-cpp==" + setup_spec.version]
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
-        "dm_tree",
+        "dm_tree; python_version < '3.15'",
         "gymnasium==1.2.2",
-        "lz4",
+        "lz4; python_version < '3.15'",
         "ormsgpack>=1.7.0",
         "pyyaml",
         "scipy",
