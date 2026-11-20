@@ -108,7 +108,7 @@ class AutoscalingContext:
         current_num_replicas: int,
         target_num_replicas: Optional[int],
         running_replicas: List[ReplicaID],
-        total_num_requests: Union[float, Callable[[], float]],
+        total_num_requests: Optional[Union[float, Callable[[], float]]],
         total_queued_requests: Optional[Union[float, Callable[[], float]]],
         aggregated_metrics: Optional[
             Union[
@@ -202,7 +202,7 @@ class AutoscalingContext:
         return self._raw_metrics_value
 
     @cached_property
-    def total_num_requests(self) -> float:
+    def total_num_requests(self) -> Optional[float]:
         """Ongoing requests, running plus queued, across the deployment.
 
         Evaluated on first access and cached.
@@ -212,14 +212,14 @@ class AutoscalingContext:
         return self._total_num_requests_value
 
     @cached_property
-    def total_queued_requests(self) -> float:
+    def total_queued_requests(self) -> Optional[float]:
         """Requests queued at handles. Evaluated on first access and cached."""
         if callable(self._total_queued_requests_value):
             return self._total_queued_requests_value()
         return self._total_queued_requests_value
 
     @property
-    def total_running_requests(self) -> float:
+    def total_running_requests(self) -> Optional[float]:
         """Approximate number of requests that replicas are processing.
 
         Computed as ``total_num_requests`` minus ``total_queued_requests``,
@@ -227,7 +227,10 @@ class AutoscalingContext:
         """
         # Approximate: the two operands are reduced over independently derived windows,
         # so their difference can even go negative. Clamped until they share one window.
-        return max(0.0, self.total_num_requests - self.total_queued_requests)
+        total, queued = self.total_num_requests, self.total_queued_requests
+        if total is None or queued is None:
+            return None
+        return max(0.0, total - queued)
 
 
 @PublicAPI(stability="alpha")
