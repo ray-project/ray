@@ -116,10 +116,6 @@ DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_USE_DATASOURCE_V2 = env_bool("RAY_DATA_USE_DATASOURCE_V2", True)
 
-DEFAULT_PARQUET_MAX_FRAGMENT_WORKERS: Optional[int] = env_integer(
-    "RAY_DATA_PARQUET_MAX_FRAGMENT_WORKERS", None
-)
-
 DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE = 64 * 1024 * 1024
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -745,11 +741,6 @@ class DataContext:
             ``ray.data.read_text()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
-        parquet_max_fragment_workers: Positive limit on concurrent Python
-            fragment scan workers per Parquet V2 read task. Defaults to
-            ``RAY_DATA_PARQUET_MAX_FRAGMENT_WORKERS`` if set before importing
-            Ray Data. With ``None``, parallel reads use one worker per fragment.
-            Ordered reads scan sequentially.
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
             runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
@@ -1317,8 +1308,6 @@ class DataContext:
     object_store_memory_pressure_fraction: Optional[
         float
     ] = DEFAULT_OBJECT_STORE_MEMORY_PRESSURE_FRACTION
-
-    parquet_max_fragment_workers: Optional[int] = DEFAULT_PARQUET_MAX_FRAGMENT_WORKERS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to

@@ -233,7 +233,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
         parquet_format_kwargs: Optional[Dict[str, Any]] = None,
-        max_fragment_workers: Optional[int] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -261,8 +260,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 ``coerce_int96_timestamp_unit``, ``pre_buffer``,
                 ``dictionary_columns``). Used to forward the deprecated
                 ``dataset_kwargs`` arg on the V2 path.
-            max_fragment_workers: Maximum concurrent Python fragment scans per
-                read task. None allows one worker per fragment.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -275,7 +272,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             ignore_prefixes=ignore_prefixes,
             synthesized_columns=synthesized_columns,
             schema=schema,
-            max_fragment_workers=max_fragment_workers,
         )
         self._explicit_batch_size = batch_size
         self._partition_value_parser = (

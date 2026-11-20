@@ -33,10 +33,6 @@ class ParquetScanner(ArrowFileScanner):
     path cannot determine the predicate. Reader creation keeps that predicate
     for row filtering, alongside adaptive batch sizing and the Parquet-only
     legacy-tensor-type schema check.
-
-    Args:
-        max_fragment_workers: Per-task upper bound on concurrent Python
-            fragment scans. None allows one worker per fragment.
     """
 
     target_block_size: Optional[int] = None
@@ -49,8 +45,6 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
-    # A class default also covers scanners stored in older dataset lineages.
-    max_fragment_workers: Optional[int] = None
 
     @override
     def prune_partitions(self, predicate: Expr) -> "ParquetScanner":
@@ -109,5 +103,4 @@ class ParquetScanner(ArrowFileScanner):
             synthesized_columns=self.synthesized_columns,
             schema=self.schema,
             parquet_format_kwargs=dict(self.parquet_format_kwargs),
-            max_fragment_workers=self.max_fragment_workers,
         )

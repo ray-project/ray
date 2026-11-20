@@ -6,7 +6,6 @@ include-paths schema augmentation against a local tmpdir.
 
 import os
 from contextlib import closing
-from dataclasses import replace
 from itertools import islice
 from types import GeneratorType
 from unittest.mock import Mock, PropertyMock
@@ -16,7 +15,7 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
-import ray.cloudpickle as cloudpickle
+from ray._common.test_utils import run_string_as_driver
 from ray.data._internal.datasource_v2.common import file_reader
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
@@ -488,20 +487,24 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
 @pytest.mark.parametrize(
     "cap,file_count,preserve_order,expected_workers",
     [
-        (None, 4, False, 4),
+        (64, 64, False, 64),
+        (64, 65, False, 64),
         (2, 8, False, 2),
-        (8, 3, False, 3),
-        (2, 1, False, None),
+        (70, 65, False, 65),
+        (64, 1, False, None),
         (1, 4, False, None),
-        (2, 4, True, None),
+        (0, 4, False, None),
+        (-1, 4, False, None),
+        (64, 4, True, None),
     ],
 )
 def test_parquet_fragment_workers(
     tmp_path, monkeypatch, cap, file_count, preserve_order, expected_workers
 ):
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "parquet_max_fragment_workers", cap)
-    monkeypatch.setattr(ctx.execution_options, "preserve_order", preserve_order)
+    monkeypatch.setattr(file_reader, "_MAX_FRAGMENT_WORKERS", cap)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", preserve_order
+    )
     paths = [str(tmp_path / f"{i}.parquet") for i in range(file_count)]
     schema = pa.schema([("id", pa.int64())])
     for i, path in enumerate(paths):
@@ -522,61 +525,51 @@ def test_parquet_fragment_workers(
 
 
 @pytest.mark.parametrize("limit", [None, 5])
-def test_parquet_fragment_workers_survive_replay(tmp_path, monkeypatch, limit):
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx.execution_options, "preserve_order", False)
-    monkeypatch.setattr(ctx, "parquet_max_fragment_workers", 2)
+def test_parquet_fragment_workers_replay_batch_order(tmp_path, monkeypatch, limit):
+    monkeypatch.setattr(file_reader, "_MAX_FRAGMENT_WORKERS", 2)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", False
+    )
     paths = [str(tmp_path / f"{i}.parquet") for i in range(3)]
     schema = pa.schema([("id", pa.int64())])
     for path, ids in zip(paths, [[0, 1, 2, 3, 4], [10, 11], [20, 21, 22]]):
         pq.write_table(pa.table({"id": ids}, schema=schema), path)
     manifest = _manifest_of([*paths, paths[1]])
-    scanner = replace(ParquetDatasourceV2(paths).create_scanner(schema), batch_size=2)
+    scanner = ParquetScanner(schema=schema, batch_size=2)
     expected = [[0, 1], [10, 11], [2, 3], [10, 11], [4], [20, 21], [22]]
     if limit is not None:
         scanner = scanner.push_limit(limit)
         expected = [[0, 1], [10, 11], [2]]
-    serialized = cloudpickle.dumps(scanner)
-    assert [
-        b["id"].to_pylist() for b in scanner.create_reader().read(manifest)
-    ] == expected
 
     interrupted = scanner.create_reader().read(manifest)
     assert isinstance(interrupted, GeneratorType)
     with closing(interrupted):
         prefix = [b["id"].to_pylist() for b in islice(interrupted, 2)]
-    monkeypatch.setattr(ctx, "parquet_max_fragment_workers", 3)
-    assert ParquetDatasourceV2(paths).create_scanner(schema).max_fragment_workers == 3
-    replay = cloudpickle.loads(serialized).create_reader().read(manifest)
+
+    replay = scanner.create_reader().read(manifest)
     replayed = [b["id"].to_pylist() for b in replay]
     assert replayed == expected
     assert prefix + replayed[len(prefix) :] == expected
 
 
-def test_parquet_scanner_reads_legacy_pickle(tmp_path, monkeypatch):
-    monkeypatch.setattr(DataContext.get_current(), "parquet_max_fragment_workers", 2)
-    path = str(tmp_path / "data.parquet")
-    table = pa.table({"id": [1, 2]})
-    pq.write_table(table, path)
-    scanner = ParquetDatasourceV2([path]).create_scanner(table.schema)
-    # Replicate the instance state saved before this field was added.
-    object.__delattr__(scanner, "max_fragment_workers")
-    restored = cloudpickle.loads(cloudpickle.dumps(scanner))
+@pytest.mark.parametrize(
+    "cap,expected", [(None, 64), ("2", 2), ("0", 0), ("-1", -1), ("invalid", 64)]
+)
+def test_parquet_fragment_worker_limit_environment(cap, expected):
+    env = os.environ.copy()
+    env_var = "RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS"
+    if cap is None:
+        env.pop(env_var, None)
+    else:
+        env[env_var] = cap
+    run_string_as_driver(
+        f"""
+from ray.data._internal.datasource_v2.common import file_reader
 
-    assert restored.max_fragment_workers is None
-    reader = restored.push_limit(1).create_reader()
-    assert pa.concat_tables(reader.read(_manifest_of([path]))).equals(table.slice(0, 1))
-
-
-@pytest.mark.parametrize("cap", [0, -1, 1.5, True, "2"])
-def test_parquet_rejects_invalid_fragment_worker_context(tmp_path, cap):
-    datasource = ParquetDatasourceV2([str(tmp_path)])
-    ctx = DataContext(parquet_max_fragment_workers=cap)
-    with DataContext.current(ctx):
-        with pytest.raises(
-            ValueError, match=r"DataContext\.parquet_max_fragment_workers must be"
-        ):
-            datasource.create_scanner(pa.schema([]))
+assert file_reader._MAX_FRAGMENT_WORKERS == {expected}
+""",
+        env=env,
+    )
 
 
 def test_get_file_partitioner_returns_bin_packer(tmp_path):
@@ -938,20 +931,19 @@ def test_parquet_file_reader_row_group_row_hashes_are_unique(tmp_path):
     assert len(set(hashes)) == expected_rows
 
 
-@pytest.mark.parametrize("legacy_pickle", [False, True])
-def test_parquet_file_reader_reads_after_pickling(tmp_path, legacy_pickle):
+def test_parquet_file_reader_reads_after_pickling(tmp_path):
     """A reader pickled before its first read still sizes its batches.
 
     Regression: an unset sampled batch size was an ``object()`` sentinel that
     unpickled as a different object, so the reader passed it to pyarrow as the
-    batch size. Older readers also lack a fragment worker limit.
+    batch size.
     """
+    import ray.cloudpickle as cloudpickle
+
     file_path = str(tmp_path / "data.parquet")
     _write_multi_row_group_parquet(file_path, num_rows=40, row_group_size=20)
     manifest = _row_group_manifest(file_path, row_group_ids=[0, 1], num_rows=40)
     reader = ParquetFileReader()
-    if legacy_pickle:
-        del reader._max_fragment_workers
 
     reader = cloudpickle.loads(cloudpickle.dumps(reader))
 

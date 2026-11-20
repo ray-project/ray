@@ -51,6 +51,9 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
 
+# Upper bound on concurrent Python fragment scans per read task.
+_MAX_FRAGMENT_WORKERS = env_integer("RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS", 64)
+
 
 class FileFormat(str, Enum):
     PARQUET = "parquet"
@@ -69,10 +72,12 @@ class FileReader(Reader[FileManifest]):
     PyArrow's Dataset API handles column pruning and batch-level filtering.
     Metadata pruning depends on the file format; for example, Parquet can
     prune row groups while ORC filters are applied after reading.
-    """
 
-    # Readers stored in older dataset lineages lack this instance attribute.
-    _max_fragment_workers: Optional[int] = None
+    Parallel reads use at most 64 Python fragment workers per task by default.
+    Set ``RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS`` in the worker environment
+    before importing Ray Data to override the limit. Values of 1 or less
+    scan fragments sequentially.
+    """
 
     def __init__(
         self,
@@ -86,7 +91,6 @@ class FileReader(Reader[FileManifest]):
         ignore_prefixes: Optional[List[str]] = None,
         synthesized_columns: Sequence[SynthesizedColumn] = (),
         schema: Optional[pa.Schema] = None,
-        max_fragment_workers: Optional[int] = None,
     ):
         """Initialize the reader.
         Refer to https://arrow.apache.org/docs/python/generated/pyarrow.dataset.dataset.html for more details.
@@ -114,13 +118,8 @@ class FileReader(Reader[FileManifest]):
                 is all-null doesn't pin the type to ``null``) and to cast
                 path-derived partition values to their target types when
                 ``Partitioning(field_types=...)`` is set.
-            max_fragment_workers: Maximum concurrent Python fragment scans per
-                read task. None allows one worker per fragment.
 
         """
-        if max_fragment_workers is not None and max_fragment_workers < 1:
-            raise ValueError("max_fragment_workers must be positive")
-        self._max_fragment_workers = max_fragment_workers
         self._format = format
         self._columns = columns
         self._predicate = predicate
@@ -488,11 +487,12 @@ class FileReader(Reader[FileManifest]):
         (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
         the same per-fragment pattern via ``fragment.to_batches``.
 
-        When there is more than one fragment and
-        ``execution_options.preserve_order`` is False, fragments are
-        read concurrently via :func:`make_async_gen`. We still pass
-        ``preserve_ordering=True`` so the same worker count yields a
-        deterministic sequence of batches on Ray Data task retries.
+        When multiple workers are available and
+        ``execution_options.preserve_order`` is False, fragments are read
+        concurrently via :func:`make_async_gen`. With
+        ``preserve_ordering=True``, the worker count determines how batches
+        are interleaved. Set the same limit on all workers so task retries
+        can reproduce the batch sequence.
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
@@ -513,9 +513,7 @@ class FileReader(Reader[FileManifest]):
         if not fragments_with_offsets:
             return
 
-        num_workers = len(fragments_with_offsets)
-        if self._max_fragment_workers is not None:
-            num_workers = min(num_workers, self._max_fragment_workers)
+        num_workers = min(len(fragments_with_offsets), _MAX_FRAGMENT_WORKERS)
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs
