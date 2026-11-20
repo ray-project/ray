@@ -5,6 +5,7 @@ import math
 import os
 import threading
 import time
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import ray
@@ -17,6 +18,7 @@ from ray._private.accelerators.tpu import (
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     DEFAULT_TPU_PROCESS_PORT,
     GKE_TPU_TOPOLOGY_ENV_VAR,
+    NOSET_TPU_VISIBLE_CHIPS_ENV_VAR,
     TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR,
     TORCH_TPU_TOPOLOGY_ENV_VAR,
     TPU_CHIPS_PER_HOST_BOUNDS_MAP,
@@ -24,6 +26,7 @@ from ray._private.accelerators.tpu import (
     TPU_PROCESS_ADDRESSES_ENV_VAR,
     TPU_PROCESS_BOUNDS_ENV_VAR,
     TPU_PROCESS_PORT_ENV_VAR,
+    TPU_VISIBLE_DEVICES_ENV_VAR,
     TPU_WORKER_HOSTNAMES_ENV_VAR,
     TPU_WORKER_ID_ENV_VAR,
     VALID_TPU_TYPES,
@@ -56,6 +59,60 @@ logger = logging.getLogger(__name__)
 DEFAULT_TPU_SLICE_DISCOVERY_TIMEOUT_S: float = env_float(
     "RAY_TPU_SLICE_DISCOVERY_TIMEOUT_S", 180.0
 )
+DEFAULT_TORCH_MASTER_PORT: int = 29500
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class RoleActorSpec:
+    """Specification for one MPMD role launched by ``create_role_actors``.
+
+    Attributes:
+        actor_cls: A ``@ray.remote``-decorated actor class.
+        count: Number of actor replicas (TPU ranks) assigned to this role.
+        args: Positional arguments passed to ``actor_cls.remote(*args, **kwargs)``.
+        kwargs: Keyword arguments passed to ``actor_cls.remote(*args, **kwargs)``.
+        env_vars: Optional per-role environment variable overrides merged on top of
+            the generated framework environment variables.
+        actor_options: Optional extra keyword arguments passed to
+            ``actor_cls.options(...)`` (excluding ``scheduling_strategy``).
+    """
+
+    actor_cls: Any
+    count: int
+    args: Tuple[Any, ...] = ()
+    kwargs: Dict[str, Any] = field(default_factory=dict)
+    env_vars: Dict[str, str] = field(default_factory=dict)
+    actor_options: Dict[str, Any] = field(default_factory=dict)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class RoleActorsResult:
+    """Result returned by :meth:`SlicePlacementGroup.create_role_actors`.
+
+    Attributes:
+        actors: Mapping of ``role_name -> List[ActorHandle]`` in ascending rank order.
+        role_ranks: Mapping of ``role_name -> List[int]`` of global ranks assigned
+            to each role.
+        world_size: Total number of actors launched across all roles.
+        master_addr: Resolved rank-0 master IP/hostname.
+        master_port: Master TCP port used for distributed coordination.
+    """
+
+    actors: Dict[str, List[Any]]
+    role_ranks: Dict[str, List[int]]
+    world_size: int
+    master_addr: str
+    master_port: int
+
+    def __getitem__(self, role_name: str) -> List[Any]:
+        return self.actors[role_name]
+
+    @property
+    def all_actors(self) -> List[Any]:
+        """Flat list of all actor handles ordered by global rank."""
+        return [actor for handles in self.actors.values() for actor in handles]
 
 
 @PublicAPI(stability="alpha")
@@ -1224,6 +1281,368 @@ class SlicePlacementGroup:
             accelerator_type=self._accelerator_version,
         )
 
+    def create_role_actors(
+        self,
+        roles: Dict[str, Any],
+        *,
+        framework: str = "torch_tpu",
+        cpus_per_actor: float = 1,
+        master_port: Optional[int] = None,
+        slicebuilder_port: Optional[int] = None,
+        skip_mds_query: bool = True,
+        box_aligned: bool = True,
+        extra_env_vars: Optional[Dict[str, str]] = None,
+    ) -> RoleActorsResult:
+        """Launch MPMD actors for multiple roles across this TPU slice.
+
+        The underlying placement group(s) must already be ready before calling
+        this method (for example, via ``ray.get(spg.placement_group.ready())``).
+
+        Maps each role to a contiguous range of global ranks, pins every actor
+        to its deterministic placement-group bundle, and injects the required
+        distributed environment variables (for ``"torch_tpu"``: ``RANK``,
+        ``LOCAL_RANK``, ``WORLD_SIZE``, ``MASTER_ADDR``, ``MASTER_PORT``,
+        ``TORCH_TPU_TOPOLOGY``, ``TORCH_TPU_SLICEBUILDER_ADDRESSES``,
+        ``TPU_VISIBLE_DEVICES``, ``TPU_WORKER_HOSTNAMES``, ``TPU_WORKER_ID``,
+        and optionally ``TPU_SKIP_MDS_QUERY``; for ``"jax"``:
+        ``get_jax_env_vars``). For multi-slice placement groups
+        (``num_slices > 1``), Megascale coordinator environment variables from
+        :func:`get_tpu_coordinator_env_vars` are also injected.
+
+        Args:
+            roles: Ordered mapping of ``role_name -> spec``. Each spec may be a
+                :class:`RoleActorSpec`, a ``(actor_cls, count)`` tuple, a
+                ``(actor_cls, count, args, kwargs)`` tuple, or a dict with keys
+                ``actor_cls``, ``count``, and optional ``args``, ``kwargs``,
+                ``env_vars``, ``actor_options``.
+            framework: Target distributed framework: ``"torch_tpu"`` (1 actor
+                per TPU device) or ``"jax"`` (1 actor per host).
+            cpus_per_actor: CPU resources requested per launched actor.
+            master_port: TCP port for ``MASTER_PORT`` (defaults to 29500).
+            slicebuilder_port: Base port for ``TORCH_TPU_SLICEBUILDER_ADDRESSES``
+                (defaults to 8471).
+            skip_mds_query: If True and ``framework == "torch_tpu"``, sets
+                ``TPU_SKIP_MDS_QUERY="1"``.
+            box_aligned: If True and ``framework == "torch_tpu"``, validates
+                that every role's contiguous rank range does not straddle a
+                partial host boundary (roles with ``count >= devices_per_host``
+                must start on a host boundary and cover whole hosts; smaller
+                roles must lie within a single host).
+            extra_env_vars: Optional dict of additional environment variables
+                applied to every launched actor.
+
+        Returns:
+            A :class:`RoleActorsResult` containing ``actors``, ``role_ranks``,
+            ``world_size``, ``master_addr``, and ``master_port``.
+
+        Raises:
+            RuntimeError: If the placement group has been shut down or its
+                bundles are not yet placed.
+            ValueError: If arguments, role specs, rank alignment, or bundle
+                resource capacities are invalid.
+            TypeError: If a role spec or ``actor_cls`` has an unsupported type.
+        """
+        if not self._managed_pgs:
+            raise RuntimeError("This SlicePlacementGroup has been shut down.")
+        if framework not in ("torch_tpu", "jax"):
+            raise ValueError(
+                f"Unsupported framework {framework!r}; expected 'torch_tpu' or 'jax'."
+            )
+        if not roles:
+            raise ValueError("roles must contain at least one role.")
+        if isinstance(cpus_per_actor, bool) or cpus_per_actor < 0:
+            raise ValueError(
+                f"cpus_per_actor must be a non-negative number, got {cpus_per_actor!r}."
+            )
+
+        resolved_master_port = (
+            DEFAULT_TORCH_MASTER_PORT if master_port is None else master_port
+        )
+        if type(resolved_master_port) is not int or not (
+            1 <= resolved_master_port <= 65535
+        ):
+            raise ValueError(
+                "master_port must be an integer in [1, 65535], "
+                f"got {resolved_master_port!r}."
+            )
+        resolved_sb_port = (
+            DEFAULT_TORCH_TPU_SLICEBUILDER_PORT
+            if slicebuilder_port is None
+            else slicebuilder_port
+        )
+
+        # Normalize role specifications.
+        allowed_dict_keys = {
+            "actor_cls",
+            "count",
+            "args",
+            "kwargs",
+            "env_vars",
+            "actor_options",
+        }
+        parsed_roles: List[Tuple[str, RoleActorSpec]] = []
+        for role_name, raw_spec in roles.items():
+            if isinstance(raw_spec, RoleActorSpec):
+                spec = raw_spec
+            elif isinstance(raw_spec, tuple):
+                if len(raw_spec) == 2:
+                    spec = RoleActorSpec(actor_cls=raw_spec[0], count=raw_spec[1])
+                elif len(raw_spec) == 4:
+                    spec = RoleActorSpec(
+                        actor_cls=raw_spec[0],
+                        count=raw_spec[1],
+                        args=tuple(raw_spec[2] or ()),
+                        kwargs=dict(raw_spec[3] or {}),
+                    )
+                else:
+                    raise ValueError(
+                        f"Role {role_name!r} tuple spec must have 2 or 4 items, "
+                        f"got {len(raw_spec)}."
+                    )
+            elif isinstance(raw_spec, dict):
+                missing_keys = {"actor_cls", "count"} - set(raw_spec.keys())
+                if missing_keys:
+                    raise ValueError(
+                        f"Role {role_name!r} dict spec is missing required key(s): "
+                        f"{sorted(missing_keys)}."
+                    )
+                unknown_keys = set(raw_spec.keys()) - allowed_dict_keys
+                if unknown_keys:
+                    raise ValueError(
+                        f"Role {role_name!r} dict spec has unknown key(s): "
+                        f"{sorted(unknown_keys)}."
+                    )
+                spec = RoleActorSpec(
+                    actor_cls=raw_spec["actor_cls"],
+                    count=raw_spec["count"],
+                    args=tuple(raw_spec.get("args") or ()),
+                    kwargs=dict(raw_spec.get("kwargs") or {}),
+                    env_vars=dict(raw_spec.get("env_vars") or {}),
+                    actor_options=dict(raw_spec.get("actor_options") or {}),
+                )
+            else:
+                raise TypeError(
+                    f"Unsupported role spec for {role_name!r}: {type(raw_spec)}."
+                )
+
+            if not hasattr(spec.actor_cls, "options"):
+                raise TypeError(
+                    f"Role {role_name!r} actor_cls must be a @ray.remote class."
+                )
+            if type(spec.count) is not int or spec.count <= 0:
+                raise ValueError(
+                    f"Role {role_name!r} count must be a positive integer, "
+                    f"got {spec.count!r}."
+                )
+            if "scheduling_strategy" in (spec.actor_options or {}):
+                raise ValueError(
+                    f"Role {role_name!r} actor_options must not specify "
+                    "'scheduling_strategy'; placement is managed by "
+                    "create_role_actors()."
+                )
+            parsed_roles.append((role_name, spec))
+
+        devices_per_host = self.devices_per_host
+        actors_per_host = devices_per_host if framework == "torch_tpu" else 1
+        tpus_per_actor = 1 if framework == "torch_tpu" else devices_per_host
+        world_size = self.num_hosts * actors_per_host
+        total_requested = sum(spec.count for _, spec in parsed_roles)
+        if total_requested != world_size:
+            raise ValueError(
+                f"Total actors across roles ({total_requested}) must equal "
+                f"slice world size ({world_size}) for framework='{framework}'."
+            )
+
+        # Assign contiguous rank ranges and validate box alignment.
+        role_ranks: Dict[str, List[int]] = {}
+        cursor = 0
+        for role_name, spec in parsed_roles:
+            start, end = cursor, cursor + spec.count
+            if box_aligned and framework == "torch_tpu" and devices_per_host > 1:
+                if spec.count >= devices_per_host:
+                    if (
+                        start % devices_per_host != 0
+                        or spec.count % devices_per_host != 0
+                    ):
+                        raise ValueError(
+                            f"Role {role_name!r} ranks [{start}, {end}) are not "
+                            f"box-aligned to host size "
+                            f"({devices_per_host} devices/host)."
+                        )
+                else:
+                    if start // devices_per_host != (end - 1) // devices_per_host:
+                        raise ValueError(
+                            f"Role {role_name!r} ranks [{start}, {end}) straddle a "
+                            f"host boundary ({devices_per_host} devices/host)."
+                        )
+            role_ranks[role_name] = list(range(start, end))
+            cursor = end
+
+        actors_per_slice = self.hosts_per_slice * actors_per_host
+        bundles_per_host = self.bundles_per_slice // self.hosts_per_slice
+        bundle_tpu_cap = float(self._bundle_resources.get("TPU", 0))
+        bundle_cpu_cap = float(self._bundle_resources.get("CPU", 0))
+
+        if framework == "jax" and (
+            bundles_per_host != 1 or bundle_tpu_cap < devices_per_host
+        ):
+            raise ValueError(
+                f"framework='jax' requires 1 bundle per host with at least "
+                f"{devices_per_host} TPU(s) per bundle, but this placement group has "
+                f"{bundles_per_host} bundle(s)/host with "
+                f"bundle_resources={self._bundle_resources}."
+            )
+
+        # Validate per-bundle TPU and CPU capacity before launching any actors.
+        bundle_tpu_demand: Dict[Tuple[int, int, int], float] = {}
+        bundle_cpu_demand: Dict[Tuple[int, int, int], float] = {}
+        for role_name, spec in parsed_roles:
+            spec_opts = spec.actor_options or {}
+            spec_cpus = float(spec_opts.get("num_cpus", cpus_per_actor))
+            spec_res = spec_opts.get("resources") or {}
+            spec_tpus = float(spec_res.get("TPU", tpus_per_actor))
+            for rank in role_ranks[role_name]:
+                slice_idx = rank // actors_per_slice
+                in_slice = rank % actors_per_slice
+                host_in_slice = in_slice // actors_per_host
+                local_rank = in_slice % actors_per_host
+                bundle_offset = (
+                    (local_rank * bundles_per_host) // actors_per_host
+                    if bundles_per_host > 1
+                    else 0
+                )
+                key = (slice_idx, host_in_slice, bundle_offset)
+                bundle_tpu_demand[key] = bundle_tpu_demand.get(key, 0.0) + spec_tpus
+                bundle_cpu_demand[key] = bundle_cpu_demand.get(key, 0.0) + spec_cpus
+
+        max_tpu_demand = max(bundle_tpu_demand.values(), default=0.0)
+        if max_tpu_demand > bundle_tpu_cap:
+            raise ValueError(
+                f"Assigned actors require {max_tpu_demand} TPU(s) per bundle, "
+                f"exceeding bundle capacity ({bundle_tpu_cap} TPU(s) in "
+                f"{self._bundle_resources})."
+            )
+        max_cpu_demand = max(bundle_cpu_demand.values(), default=0.0)
+        if max_cpu_demand > bundle_cpu_cap:
+            raise ValueError(
+                f"Assigned actors require {max_cpu_demand} CPU(s) per bundle, "
+                f"exceeding bundle capacity ({bundle_cpu_cap} CPU(s) in "
+                f"{self._bundle_resources}). Increase bundle CPUs or lower "
+                "cpus_per_actor."
+            )
+
+        # Resolve slice host addresses and master address.
+        slice_addrs = [
+            self._resolve_placed_worker_addrs(s) for s in range(self.num_slices)
+        ]
+        master_addr = slice_addrs[0][0]
+
+        role_actors: Dict[str, List[Any]] = {}
+        created_handles: List[Any] = []
+        try:
+            for role_name, spec in parsed_roles:
+                handles: List[Any] = []
+                for rank in role_ranks[role_name]:
+                    slice_idx = rank // actors_per_slice
+                    in_slice = rank % actors_per_slice
+                    host_in_slice = in_slice // actors_per_host
+                    local_rank = in_slice % actors_per_host
+
+                    if self._pg_per_slice:
+                        pg = self._managed_pgs[slice_idx]
+                        bundle_base = 0
+                    else:
+                        pg = self._managed_pgs[0]
+                        bundle_base = slice_idx * self.bundles_per_slice
+
+                    bundle_offset_in_host = (
+                        (local_rank * bundles_per_host) // actors_per_host
+                        if bundles_per_host > 1
+                        else 0
+                    )
+                    bundle_idx = (
+                        bundle_base
+                        + host_in_slice * bundles_per_host
+                        + bundle_offset_in_host
+                    )
+
+                    if framework == "torch_tpu":
+                        env_vars = self.get_torchtpu_env_vars(
+                            worker_id=host_in_slice,
+                            slice_index=slice_idx,
+                            worker_hostnames=slice_addrs[slice_idx],
+                            slicebuilder_port=resolved_sb_port,
+                            master_addr=master_addr,
+                        )
+                        env_vars["RANK"] = str(rank)
+                        env_vars["LOCAL_RANK"] = str(local_rank)
+                        env_vars["WORLD_SIZE"] = str(world_size)
+                        env_vars["MASTER_PORT"] = str(resolved_master_port)
+                        env_vars[TPU_VISIBLE_DEVICES_ENV_VAR] = str(local_rank)
+                        env_vars[NOSET_TPU_VISIBLE_CHIPS_ENV_VAR] = "1"
+                        if skip_mds_query:
+                            env_vars["TPU_SKIP_MDS_QUERY"] = "1"
+                    else:
+                        env_vars = self.get_jax_env_vars(
+                            worker_id=host_in_slice,
+                            slice_index=slice_idx,
+                            worker_hostnames=slice_addrs[slice_idx],
+                        )
+
+                    if self.num_slices > 1:
+                        env_vars.update(
+                            get_tpu_coordinator_env_vars(
+                                coordinator_address=master_addr,
+                                num_slices=self.num_slices,
+                                slice_id=slice_idx,
+                            )
+                        )
+
+                    if extra_env_vars:
+                        env_vars.update(extra_env_vars)
+                    if spec.env_vars:
+                        env_vars.update(spec.env_vars)
+
+                    actor_opts = dict(spec.actor_options or {})
+                    runtime_env = dict(actor_opts.pop("runtime_env", None) or {})
+                    merged_env = dict(runtime_env.get("env_vars") or {})
+                    merged_env.update(env_vars)
+                    runtime_env["env_vars"] = merged_env
+
+                    actor_opts.setdefault("num_cpus", cpus_per_actor)
+                    resources = dict(actor_opts.get("resources") or {})
+                    resources.setdefault("TPU", tpus_per_actor)
+                    actor_opts["resources"] = resources
+                    actor_opts["scheduling_strategy"] = (
+                        PlacementGroupSchedulingStrategy(
+                            placement_group=pg,
+                            placement_group_bundle_index=bundle_idx,
+                        )
+                    )
+                    actor_opts["runtime_env"] = runtime_env
+
+                    handle = spec.actor_cls.options(**actor_opts).remote(
+                        *spec.args, **spec.kwargs
+                    )
+                    handles.append(handle)
+                    created_handles.append(handle)
+                role_actors[role_name] = handles
+        except Exception:
+            for handle in created_handles:
+                try:
+                    ray.kill(handle, no_restart=True)
+                except Exception:
+                    pass
+            raise
+
+        return RoleActorsResult(
+            actors=role_actors,
+            role_ranks=role_ranks,
+            world_size=world_size,
+            master_addr=master_addr,
+            master_port=resolved_master_port,
+        )
+
     @property
     def num_hosts(self) -> int:
         """The total number of hosts in the SlicePlacementGroup."""
@@ -1584,6 +2003,121 @@ def run_on_slice(
             )
 
     return results
+
+
+@PublicAPI(stability="alpha")
+def run_once_per_host(
+    fn: Any,
+    *args: Any,
+    slice_pg: Union[SlicePlacementGroup, "SubslicePlacementGroup"],
+    slice_index: Optional[int] = None,
+    num_cpus: float = 0,
+    pg_ready_timeout_s: Optional[float] = None,
+    **kwargs: Any,
+) -> "List[ray.ObjectRef]":
+    """Run a remote function exactly once on each host in a TPU slice or subslice.
+
+    Unlike :func:`run_on_slice`, this helper schedules one task per unique host
+    even when the placement group has multiple bundles per host (e.g.,
+    ``resources_per_bundle={"TPU": 1}``), and does **not** request TPU
+    resources so it can run setup/cache-warmup/diagnostics alongside active TPU
+    actors.
+
+    Args:
+        fn: A ``@ray.remote``-decorated function to execute once per host.
+        *args: Positional arguments forwarded to ``fn``.
+        slice_pg: An existing :class:`SlicePlacementGroup` or
+            :class:`SubslicePlacementGroup`.
+        slice_index: Optional 0-based slice index when ``slice_pg`` is a
+            multi-slice :class:`SlicePlacementGroup`.
+        num_cpus: CPU resources requested per host task (defaults to 0).
+        pg_ready_timeout_s: Optional timeout waiting for the placement group(s)
+            to become ready.
+        **kwargs: Keyword arguments forwarded to ``fn``.
+
+    Returns:
+        List[ray.ObjectRef]: One object reference per host in deterministic
+        host order.
+    """
+    if not hasattr(fn, "options"):
+        raise TypeError(
+            f"fn must be a @ray.remote-decorated function, but got "
+            f"{type(fn).__name__!r} which has no .options() method."
+        )
+    if slice_pg is None:
+        raise ValueError("slice_pg is required for run_once_per_host().")
+
+    targets: List[Tuple[PlacementGroup, int]] = []
+    if isinstance(slice_pg, SlicePlacementGroup):
+        pgs = (
+            slice_pg.slice_placement_groups
+            if slice_pg._pg_per_slice
+            else [slice_pg.slice_placement_group]
+        )
+        if not pgs or any(pg is None for pg in pgs):
+            raise ValueError("The provided slice_pg has already been shut down.")
+        if slice_index is not None:
+            if type(slice_index) is not int or not (
+                0 <= slice_index < slice_pg.num_slices
+            ):
+                raise ValueError(
+                    f"Invalid slice_index {slice_index!r}. Must be an integer "
+                    f"in [0, {slice_pg.num_slices - 1}]."
+                )
+            slice_indices = [slice_index]
+        else:
+            slice_indices = list(range(slice_pg.num_slices))
+
+        wait_pgs = [pgs[s] for s in slice_indices] if slice_pg._pg_per_slice else pgs
+        ready, _ = ray.wait(
+            [pg.ready() for pg in wait_pgs],
+            num_returns=len(wait_pgs),
+            timeout=pg_ready_timeout_s,
+        )
+        if len(ready) != len(wait_pgs):
+            raise TimeoutError(
+                f"TPU slice placement group was not ready within {pg_ready_timeout_s}s."
+            )
+        ray.get(ready)
+
+        bundles_per_host = slice_pg.bundles_per_slice // slice_pg.hosts_per_slice
+        for s in slice_indices:
+            pg = pgs[s] if slice_pg._pg_per_slice else pgs[0]
+            base = 0 if slice_pg._pg_per_slice else s * slice_pg.bundles_per_slice
+            for h in range(slice_pg.hosts_per_slice):
+                targets.append((pg, base + h * bundles_per_host))
+    elif isinstance(slice_pg, SubslicePlacementGroup):
+        if slice_index is not None:
+            raise ValueError("slice_index is not supported for SubslicePlacementGroup.")
+        pg = slice_pg.placement_group
+        if pg is None:
+            raise ValueError("The provided slice_pg has already been shut down.")
+        ready, _ = ray.wait([pg.ready()], num_returns=1, timeout=pg_ready_timeout_s)
+        if not ready:
+            raise TimeoutError(
+                "TPU subslice placement group was not ready within "
+                f"{pg_ready_timeout_s}s."
+            )
+        ray.get(ready)
+        bundles_per_host = pg.bundle_count // slice_pg.num_hosts
+        for h in range(slice_pg.num_hosts):
+            targets.append((pg, h * bundles_per_host))
+    else:
+        raise TypeError(
+            "slice_pg must be a SlicePlacementGroup or SubslicePlacementGroup, "
+            f"got {type(slice_pg).__name__!r}."
+        )
+
+    return [
+        fn.options(
+            num_cpus=num_cpus,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg,
+                placement_group_bundle_index=bundle_idx,
+            ),
+        ).remote(*args, **kwargs)
+        for pg, bundle_idx in targets
+    ]
 
 
 # Deprecated alias — ``dispatch`` was the original name of ``run_on_slice``.
