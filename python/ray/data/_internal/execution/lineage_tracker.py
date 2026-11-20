@@ -891,6 +891,8 @@ class LineageTracker:
           completion against this node;
         - no plan set, since one means a reconstruction still expects this task
           to re-run (a seed reconstruction task may be queued for it).
+        - no queued reconstruction task, since it will still be submitted against
+          this node.
 
         Args:
             task_node: The task node to check for garbage collectibility.
@@ -904,6 +906,8 @@ class LineageTracker:
         if task_node.num_running_attempts > 0:
             return False
         if task_node.plan_to_child_block_lineages:
+            return False
+        if task_node.plans_with_queued_reconstruction_task:
             return False
         if task_node.child_tasks:
             return False
