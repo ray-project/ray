@@ -15,6 +15,7 @@ class Normalizer(SerializablePreprocessorBase):
     r"""Scales each sample to have unit norm.
 
     This preprocessor works by dividing each sample (i.e., row) by the sample's norm.
+    Integer features are promoted to floating point when computing the norm.
     The general formula is given by
 
     .. math::
@@ -142,7 +143,15 @@ class Normalizer(SerializablePreprocessorBase):
 
     def _transform_pandas(self, df: pd.DataFrame):
         columns = df.loc[:, self._columns]
-        column_norms = self._norm_fns[self._norm](columns)
+        # Squaring an integer or taking abs of its minimum can overflow before
+        # the row reduction, even when the norm itself fits in the input dtype.
+        promote = {
+            name: np.float64
+            for name, dtype in columns.dtypes.items()
+            if pd.api.types.is_integer_dtype(dtype)
+        }
+        norm_inputs = columns.astype(promote) if promote else columns
+        column_norms = self._norm_fns[self._norm](norm_inputs)
 
         df[self._output_columns] = columns.div(column_norms, axis=0)
         return df
