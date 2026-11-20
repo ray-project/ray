@@ -412,7 +412,7 @@ def test_multihost_replica_config_validation():
             replica_config=WorkerReplicaConfig(workers_per_replica=4),
         )
 
-    # TG10: Size-multiple and field validation through AutoscalingConfig.get_node_type_configs.
+    # Size-multiple and field validation through AutoscalingConfig.get_node_type_configs.
     bad_min_cfg = _make_internal_replica_autoscaling_cfg(
         min_workers=2,
         max_workers=8,

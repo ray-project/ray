@@ -11,7 +11,6 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
 )
 from ray.autoscaler.v2.instance_manager.common import (
     _TEARDOWN_INSTANCE_STATUSES,
-    _TERMINAL_INSTANCE_STATUSES,
     _UNALLOCATED_INSTANCE_STATUSES,
     InstanceUtil,
     _get_replica_key,
@@ -1767,7 +1766,7 @@ class Reconciler:
             binary_to_hex(node.node_id): node for node in ray_state.node_states
         }
         cloud_instances = non_terminated_cloud_instances or {}
-        node_type_configs = autoscaling_config.get_node_type_configs()
+        node_type_configs = autoscaling_config.get_node_type_configs() or {}
         Reconciler._warn_on_runtime_label_mismatch(
             im_instances=im_instances,
             ray_nodes_by_id=ray_nodes_by_id,
@@ -2057,7 +2056,6 @@ class Reconciler:
                 active_by_type[nt] += extra_slots
                 active_total += extra_slots
 
-            node_type_configs = autoscaling_config.get_node_type_configs() or {}
             max_num_nodes = autoscaling_config.get_max_num_nodes()
             for item in pending_launches:
                 nt, count = item
@@ -2068,9 +2066,6 @@ class Reconciler:
                     if nt in replica_sizes
                     else 0
                 )
-                if nt not in reply.exact_launch_types and gap > 0 and count > 0:
-                    size = replica_sizes[nt]
-                    count = gap + (count - size) if count >= size else gap
                 if nt in node_type_configs:
                     count = min(
                         count,
@@ -2130,19 +2125,6 @@ class Reconciler:
             view = _MultiHostReplicaView.build(
                 im_instances, cloud_instances, replica_sizes
             )
-        # Mid-materialization guard is bounded by request_status_timeout_s.
-        done_cids = {
-            (i.instance_type, i.cloud_instance_id)
-            for i in im_instances
-            if i.cloud_instance_id
-            and (i.instance_type, i.cloud_instance_id) not in view.live_cids
-            and i.status
-            not in _TERMINAL_INSTANCE_STATUSES | _UNALLOCATED_INSTANCE_STATUSES
-        }
-        present_by_rep: Dict[Tuple[NodeType, str], Set[str]] = defaultdict(set)
-        for cid, c_inst in cloud_instances.items():
-            if c_inst.replica_id:
-                present_by_rep[(c_inst.node_type, c_inst.replica_id)].add(cid)
         term_cids = {
             (
                 im_instances_by_instance_id[r.instance_id].instance_type,
@@ -2158,18 +2140,18 @@ class Reconciler:
         for req in to_terminate:
             inst = im_instances_by_instance_id.get(req.instance_id)
             rep_key = _get_replica_key(inst, cloud_instances, replica_sizes)
-            if rep_key is not None and req.instance_status != IMInstance.QUEUED:
-                nt, rid = rep_key
-                rep_cids = present_by_rep[rep_key]
-                size = replica_sizes[nt]
-                if not all(
-                    (nt, c) in term_cids or (nt, c) in done_cids for c in rep_cids
-                ) or (
-                    len(rep_cids) < size
-                    and view.has_pending_backfill_for_replica(nt, rid, size)
-                ):
-                    skipped_by_rep[rid].append(req.instance_id)
-                    continue
+            if (
+                rep_key is not None
+                and req.instance_status != IMInstance.QUEUED
+                and view.should_defer_replica_termination(
+                    rep_key[0],
+                    rep_key[1],
+                    replica_sizes[rep_key[0]],
+                    term_cids,
+                )
+            ):
+                skipped_by_rep[rep_key[1]].append(req.instance_id)
+                continue
             kept_terminate.append(req)
 
         if skipped_by_rep:
@@ -2787,7 +2769,7 @@ class Reconciler:
             return
 
         instances, _ = Reconciler._get_im_instances(instance_manager)
-        node_type_configs = autoscaling_config.get_node_type_configs()
+        node_type_configs = autoscaling_config.get_node_type_configs() or {}
 
         metrics_reporter.report_instances(instances, node_type_configs)
         metrics_reporter.report_resources(instances, node_type_configs)

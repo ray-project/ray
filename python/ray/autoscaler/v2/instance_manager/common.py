@@ -624,9 +624,6 @@ class _ReplicaViewBuildState:
         default_factory=lambda: defaultdict(list)
     )
     live_untagged_td_cids: Set[Tuple[NodeType, str]] = field(default_factory=set)
-    rep_occupying_cids: Dict[Tuple[NodeType, str], Set[str]] = field(
-        default_factory=lambda: defaultdict(set)
-    )
     term_tagged_rows: List[Tuple[NodeType, str, str, str, bool, int, Instance]] = field(
         default_factory=list
     )
@@ -650,6 +647,9 @@ class _MultiHostReplicaView:
     )
     non_fillable_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
     rep_occupying: Dict[Tuple[NodeType, str], int] = field(default_factory=dict)
+    rep_occupying_cids: Dict[Tuple[NodeType, str], Set[CloudInstanceId]] = field(
+        default_factory=dict
+    )
     draining_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
     ray_running_reps: Set[Tuple[NodeType, str]] = field(default_factory=set)
     claimed_reps_by_lid: Dict[Tuple[NodeType, str], Set[str]] = field(
@@ -663,11 +663,20 @@ class _MultiHostReplicaView:
     unlabeled_occupying_cids: Dict[NodeType, Set[CloudInstanceId]] = field(
         default_factory=dict
     )
+    done_cids: Set[Tuple[NodeType, CloudInstanceId]] = field(default_factory=set)
+    cloud_cids_by_rep: Dict[Tuple[NodeType, str], Set[CloudInstanceId]] = field(
+        default_factory=dict
+    )
 
     def owed_batch_slots(self, nt: NodeType, rid: str, lid: str, size: int) -> int:
         """Unallocated pods that batch `lid` still owes live replica `(nt, rid)`."""
         rk = (nt, rid)
-        if not rid or not lid or rk in self.non_fillable_reps:
+        if (
+            not rid
+            or not lid
+            or rk in self.non_fillable_reps
+            or (nt, lid) in self.torn_down_lids
+        ):
             return 0
         bound = self.rep_bound_cids_by_lid.get((rk, lid))
         if not bound:
@@ -738,6 +747,25 @@ class _MultiHostReplicaView:
             self.requested_by_lid.get((nt, lid), 0) > 0
             and self.owed_batch_slots(nt, rid, lid, size) > 0
             for lid in self.rep_lids.get(rk, ())
+        )
+
+    def should_defer_replica_termination(
+        self,
+        nt: NodeType,
+        rid: str,
+        size: int,
+        terminating_cids: Set[Tuple[NodeType, CloudInstanceId]],
+    ) -> bool:
+        """Return True if terminating `terminating_cids` splits `(nt, rid)` or
+        strands owed REQUESTED slots on that replica."""
+        rep_cids = self.cloud_cids_by_rep.get((nt, rid), ())
+        if not all(
+            (nt, cid) in terminating_cids or (nt, cid) in self.done_cids
+            for cid in rep_cids
+        ):
+            return True
+        return len(rep_cids) < size and self.has_pending_backfill_for_replica(
+            nt, rid, size
         )
 
     def unclaimed_replicas_by_lid(
@@ -829,20 +857,39 @@ class _MultiHostReplicaView:
         return matched
 
     def uncovered_replica_slots_by_type(
-        self, replica_sizes: Dict[NodeType, int]
+        self,
+        replica_sizes: Dict[NodeType, int],
+        *,
+        dropped_cids: Optional[Set[Tuple[NodeType, CloudInstanceId]]] = None,
+        extra_td_lids: Optional[Set[Tuple[NodeType, str]]] = None,
+        extra_non_fillable_reps: Optional[Set[Tuple[NodeType, str]]] = None,
     ) -> Dict[NodeType, int]:
         """Count phantom replica slots (degraded/draining replica gaps not covered
         by owed REQUESTED backfills, plus mid-boot vanished batch slots) per type."""
         uncovered: Dict[NodeType, int] = defaultdict(int)
+        eff_td_lids = (
+            self.torn_down_lids | extra_td_lids
+            if extra_td_lids
+            else self.torn_down_lids
+        )
+        eff_non_fillable = (
+            self.non_fillable_reps | extra_non_fillable_reps
+            if extra_non_fillable_reps
+            else self.non_fillable_reps
+        )
         requested_by_lid: Dict[Tuple[NodeType, str], int] = defaultdict(
-            int, self.requested_by_lid
+            int,
+            {k: v for k, v in self.requested_by_lid.items() if k not in eff_td_lids},
         )
         for rk in sorted(
             self.rep_occupying,
             key=lambda r: (
                 0
-                if self.has_pending_backfill_for_replica(
-                    r[0], r[1], replica_sizes[r[0]]
+                if (
+                    r not in eff_non_fillable
+                    and self.has_pending_backfill_for_replica(
+                        r[0], r[1], replica_sizes[r[0]]
+                    )
                 )
                 else 1,
                 r,
@@ -850,15 +897,24 @@ class _MultiHostReplicaView:
         ):
             nt, rid = rk
             size = replica_sizes[nt]
-            occ = self.rep_occupying[rk]
-            if occ >= size:
+            if dropped_cids:
+                occ = sum(
+                    1
+                    for c in self.rep_occupying_cids.get(rk, ())
+                    if (nt, c) not in dropped_cids
+                )
+            else:
+                occ = self.rep_occupying[rk]
+            if occ <= 0 or occ >= size:
                 continue
             covered = 0
-            if rk not in self.non_fillable_reps:
+            if rk not in eff_non_fillable:
                 missing_unassigned = max(
                     0, size - len(self.rep_assigned_cids.get(rk, ()))
                 )
                 for lid in sorted(self.rep_lids.get(rk, ())):
+                    if (nt, lid) in eff_td_lids:
+                        continue
                     owed = self.owed_batch_slots(nt, rid, lid, size)
                     take = min(
                         missing_unassigned - covered,
@@ -872,40 +928,73 @@ class _MultiHostReplicaView:
                 uncovered[nt] += extra_gap
 
         for (nt, lid), vanished_cids in self.vanished_cids_by_lid.items():
-            if self.requested_by_lid.get((nt, lid), 0) > 0 and vanished_cids:
+            if (
+                (nt, lid) not in eff_td_lids
+                and self.requested_by_lid.get((nt, lid), 0) > 0
+                and vanished_cids
+            ):
                 uncovered[nt] += len(vanished_cids)
 
         return dict(uncovered)
 
-    def unclaimed_vanished_by_lid(self, nt: NodeType) -> Dict[str, int]:
+    def unclaimed_vanished_by_lid(
+        self,
+        nt: NodeType,
+        extra_td_lids: Optional[Set[Tuple[NodeType, str]]] = None,
+    ) -> Dict[str, int]:
         """Return vanished pod counts per unclaimed, non-torn-down active batch of `nt`."""
+        eff_td_lids = (
+            self.torn_down_lids | extra_td_lids
+            if extra_td_lids
+            else self.torn_down_lids
+        )
         return {
             lid: len(vc)
             for (t, lid), vc in self.vanished_cids_by_lid.items()
             if t == nt
             and vc
-            and (t, lid) not in self.torn_down_lids
+            and (t, lid) not in eff_td_lids
             and self.requested_by_lid.get((t, lid), 0) > 0
             and not self.claimed_reps_by_lid.get((t, lid))
         }
 
     def unlabeled_backfill_gap(
-        self, nt: NodeType, size: int, extra_queued: int = 0
+        self,
+        nt: NodeType,
+        size: int,
+        extra_queued: int = 0,
+        *,
+        dropped_cids: Optional[Set[Tuple[NodeType, CloudInstanceId]]] = None,
+        extra_td_lids: Optional[Set[Tuple[NodeType, str]]] = None,
     ) -> int:
         """Missing pods needed to round existing unlabeled pods of `nt` up to `size`."""
         unlabeled = self.unlabeled_occupying_cids.get(nt)
         if not unlabeled or size <= 1:
             return 0
-        vanished_by_lid = self.unclaimed_vanished_by_lid(nt)
+        occ_cnt = (
+            sum(1 for c in unlabeled if (nt, c) not in dropped_cids)
+            if dropped_cids
+            else len(unlabeled)
+        )
+        if occ_cnt <= 0:
+            return 0
+        eff_td_lids = (
+            self.torn_down_lids | extra_td_lids
+            if extra_td_lids
+            else self.torn_down_lids
+        )
+        vanished_by_lid = self.unclaimed_vanished_by_lid(
+            nt, extra_td_lids=extra_td_lids
+        )
         unclaimed_req = sum(
             cnt + vanished_by_lid.get(lid, 0)
             for (t, lid), cnt in self.requested_by_lid.items()
             if t == nt
             and cnt > 0
-            and (t, lid) not in self.torn_down_lids
+            and (t, lid) not in eff_td_lids
             and not self.claimed_reps_by_lid.get((t, lid))
         )
-        return (-(len(unlabeled) + unclaimed_req + extra_queued)) % size
+        return (-(occ_cnt + unclaimed_req + extra_queued)) % size
 
     @classmethod
     def build(
@@ -923,6 +1012,12 @@ class _MultiHostReplicaView:
         )
         if not replica_sizes:
             return view
+
+        for cid, c_inst in cloud_instances.items():
+            if c_inst.replica_id:
+                view.cloud_cids_by_rep.setdefault(
+                    (c_inst.node_type, c_inst.replica_id), set()
+                ).add(cid)
 
         for inst in im_instances:
             if (
@@ -970,6 +1065,15 @@ class _MultiHostReplicaView:
                 active_nt_cids.add((inst.instance_type, inst.cloud_instance_id))
             if st in _LIVE_CID_STATUSES:
                 self.live_cids.add((inst.instance_type, inst.cloud_instance_id))
+        for inst in im_instances:
+            st = overrides.get(inst.instance_id, inst.status)
+            if (
+                inst.cloud_instance_id
+                and (inst.instance_type, inst.cloud_instance_id) not in self.live_cids
+                and st
+                not in _TERMINAL_INSTANCE_STATUSES | _UNALLOCATED_INSTANCE_STATUSES
+            ):
+                self.done_cids.add((inst.instance_type, inst.cloud_instance_id))
         return active_nt_cids
 
     def _record_terminal_row(
@@ -1055,8 +1159,9 @@ class _MultiHostReplicaView:
 
         self.rep_assigned_cids.setdefault(rk, set()).add(inst.cloud_instance_id)
         if st in _OCCUPYING_CLOUD_STATUSES:
-            state.rep_occupying_cids[rk].add(inst.cloud_instance_id)
-            self.rep_occupying[rk] = len(state.rep_occupying_cids[rk])
+            occ_cids = self.rep_occupying_cids.setdefault(rk, set())
+            occ_cids.add(inst.cloud_instance_id)
+            self.rep_occupying[rk] = len(occ_cids)
         if st in _DRAINING_INSTANCE_STATUSES:
             self.draining_reps.add(rk)
             self.ray_running_reps.add(rk)
@@ -1113,8 +1218,6 @@ class _MultiHostReplicaView:
                     term_cids
                 )
                 self.rep_lids.setdefault(rk, set()).add(lid)
-                if is_td:
-                    self.non_fillable_reps.add(rk)
 
     def _propagate_live_teardowns(self, state: _ReplicaViewBuildState) -> None:
         # Propagate teardown of any live pod on a replica (including untagged
@@ -1154,8 +1257,6 @@ class _MultiHostReplicaView:
                     self.rep_bound_cids_by_lid.setdefault((rk, lid), set()).update(
                         missing_cids
                     )
-                    if is_td:
-                        self.non_fillable_reps.add(rk)
             elif (
                 not is_td
                 and self.requested_by_lid.get((nt, lid), 0) > 0

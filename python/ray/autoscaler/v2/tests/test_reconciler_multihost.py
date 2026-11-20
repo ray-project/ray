@@ -19,6 +19,7 @@ from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.cloud_provider i
 from ray.autoscaler.v2.instance_manager.common import (
     _BOOTING_INSTANCE_STATUSES,
     _DRAINING_INSTANCE_STATUSES,
+    _TERMINAL_INSTANCE_STATUSES,
     InstanceUtil,
     _get_replica_key,
     _MultiHostReplicaView,
@@ -43,7 +44,6 @@ from ray.autoscaler.v2.instance_manager.node_provider import (
 )
 from ray.autoscaler.v2.instance_manager.reconciler import (
     _TEARDOWN_INSTANCE_STATUSES,
-    _TERMINAL_INSTANCE_STATUSES,
     _UNALLOCATED_INSTANCE_STATUSES,
     Reconciler,
 )
@@ -122,20 +122,64 @@ class TestReconcilerMultiHost:
             if cloud_provider_errors is None and isinstance(provider, KubeRayProvider)
             else (cloud_provider_errors or [])
         )
-        return Reconciler.reconcile(
-            instance_manager=im,
-            scheduler=scheduler if scheduler is not None else MockScheduler(),
-            cloud_provider=provider,
-            cloud_resource_monitor=cloud_resource_monitor or CloudResourceMonitor(),
-            ray_cluster_resource_state=ray_state or ClusterResourceState(),
-            non_terminated_cloud_instances=instances,
-            autoscaling_config=cfg,
-            cloud_provider_errors=errors,
-            ray_install_errors=ray_install_errors or [],
-            ray_stop_errors=ray_stop_errors or [],
-            metrics_reporter=metrics_reporter,
-            _logger=_logger,
-        )
+        real_sched_replies: Optional[List[SchedulingReply]] = None
+        queued_sub = None
+        if isinstance(
+            scheduler, ResourceDemandScheduler
+        ) and Reconciler._get_multihost_replica_sizes(cfg):
+            real_sched_replies = []
+            orig_schedule = scheduler.schedule
+
+            class _SpyScheduler(IResourceScheduler):
+                def schedule(self, request):
+                    reply = orig_schedule(request)
+                    real_sched_replies.append(reply)
+                    return reply
+
+            class _QueuedCounter(InstanceUpdatedSubscriber):
+                def __init__(self):
+                    self.queued = Counter()
+
+                def notify(self, events):
+                    for ev in events:
+                        if ev.new_instance_status == Instance.QUEUED:
+                            self.queued[ev.instance_type] += 1
+
+            queued_sub = _QueuedCounter()
+            im._status_update_subscribers.append(queued_sub)
+            sched_arg = _SpyScheduler()
+        else:
+            sched_arg = scheduler if scheduler is not None else MockScheduler()
+
+        try:
+            reconcile_res = Reconciler.reconcile(
+                instance_manager=im,
+                scheduler=sched_arg,
+                cloud_provider=provider,
+                cloud_resource_monitor=cloud_resource_monitor or CloudResourceMonitor(),
+                ray_cluster_resource_state=ray_state or ClusterResourceState(),
+                non_terminated_cloud_instances=instances,
+                autoscaling_config=cfg,
+                cloud_provider_errors=errors,
+                ray_install_errors=ray_install_errors or [],
+                ray_stop_errors=ray_stop_errors or [],
+                metrics_reporter=metrics_reporter,
+                _logger=_logger,
+            )
+        finally:
+            if queued_sub is not None:
+                im._status_update_subscribers.remove(queued_sub)
+
+        if real_sched_replies is not None and queued_sub is not None:
+            expected_launches = Counter()
+            for rep in real_sched_replies:
+                for lr in rep.to_launch:
+                    expected_launches[lr.instance_type] += lr.count
+            assert queued_sub.queued == expected_launches, (
+                f"Scheduler/reconciler launch mismatch: queued={dict(queued_sub.queued)} "
+                f"vs to_launch={dict(expected_launches)}"
+            )
+        return reconcile_res
 
     @staticmethod
     def _replica_nt_cfg(
@@ -945,6 +989,15 @@ class TestReconcilerMultiHost:
             ],
         )
         part_log = MagicMock()
+        part_sched = ResourceDemandScheduler()
+        part_replies: List[SchedulingReply] = []
+
+        class _PartSpyScheduler(IResourceScheduler):
+            def schedule(self, request):
+                reply = part_sched.schedule(request)
+                part_replies.append(reply)
+                return reply
+
         Reconciler._scale_cluster(
             autoscaling_state=MagicMock(),
             instance_manager=p_im,
@@ -959,7 +1012,7 @@ class TestReconcilerMultiHost:
                     ),
                 ]
             ),
-            scheduler=ResourceDemandScheduler(),
+            scheduler=_PartSpyScheduler(),
             autoscaling_config=MockAutoscalingConfig(
                 configs={"node_type_configs": tpu_cap0, "max_num_worker_nodes": 11}
             ),
@@ -969,19 +1022,23 @@ class TestReconcilerMultiHost:
         )
         # Only outdated g2-outdated drains; partial booting G1 + REQUESTED r-2/r-3/gpu-req
         # defer, whole-replica launch for tpu_active (4 hosts, with 1 existing REQUESTED
-        # host and max_worker_nodes=8 -> 7 slots free) is preserved, and cpu (requested 2)
-        # is clamped to 1 because g2-outdated is an outdated single-host type (not in
-        # replica_sizes) newly marked RAY_STOP_REQUESTED while active nodes
-        # (h + g1-0 + g1-1 + r-2 + r-3 + r-active + gpu-req + 4 tpu_active = 11)
-        # leave 1 slot before max_num_nodes=12.
-        assert [
-            (e.instance_type or e.instance_id, e.new_instance_status)
+        # host and max_worker_nodes=8 -> 7 slots free) is preserved, and cpu (min=2)
+        # launches 1 in both scheduler and reconciler because g1-0/g1-1 remain deferred
+        # alongside outdated g2-outdated (`h + g1-0 + g1-1 + r-2 + r-3 + r-active + gpu-req + 4 tpu_active = 11`).
+        assert p_sub.events[0].instance_id == "g2-outdated"
+        assert p_sub.events[0].new_instance_status == Instance.RAY_STOP_REQUESTED
+        queued_counts = Counter(
+            e.instance_type
             for e in p_sub.events
-        ] == [
-            ("g2-outdated", Instance.RAY_STOP_REQUESTED),
-            *(("tpu_active", Instance.QUEUED) for _ in range(4)),
-            ("cpu", Instance.QUEUED),
-        ]
+            if e.new_instance_status == Instance.QUEUED
+        )
+        sched_launch_counts = Counter()
+        for rep in part_replies:
+            for lr in rep.to_launch:
+                sched_launch_counts[lr.instance_type] += lr.count
+        assert queued_counts == Counter({"tpu_active": 4, "cpu": 1})
+        assert sched_launch_counts == queued_counts
+        assert len(p_sub.events) == 6
         assert any(
             "partial replica or in-flight REQUESTED pods, waiting for remaining replica pods"
             in str(c)
@@ -7501,7 +7558,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg1_r1",
+            cluster_id="legacy-mh-unaligned",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -7582,7 +7639,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg2_r2",
+            cluster_id="single-host-rv",
             worker_groups=[
                 {
                     "groupName": "cpu",
@@ -7682,7 +7739,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg3_r3",
+            cluster_id="rv-stall",
             worker_groups=[
                 {
                     "groupName": "cpu",
@@ -7771,7 +7828,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg4_r4",
+            cluster_id="backoff-cap",
             worker_groups=[
                 {
                     "groupName": "cpu",
@@ -7891,7 +7948,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg5_real_sched",
+            cluster_id="mh-scale-sched",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -7976,7 +8033,7 @@ class TestReconcilerMultiHost:
             head2,
             _pod2,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg5_partial_queued",
+            cluster_id="mh-partial-queued",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -8070,7 +8127,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id=f"tg6_r6_{request_count}",
+            cluster_id=f"sub-rep-cancel-{request_count}",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -8140,7 +8197,7 @@ class TestReconcilerMultiHost:
             head_sub,
             _,
         ) = self._make_kuberay_e2e_env(
-            cluster_id=f"tg6_sub_{request_count}",
+            cluster_id=f"sub-rep-sched-{request_count}",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -8185,7 +8242,7 @@ class TestReconcilerMultiHost:
         pods with (a) an in-flight replica, (b) pending workersToDelete, and
         (c) a held/degraded replica converges cleanly without replica inflation."""
         cr, pods, client, _, cfg, _, _, head_state, _pod = self._make_kuberay_e2e_env(
-            cluster_id="tg7_init",
+            cluster_id="stopping-slot-init",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -8245,7 +8302,7 @@ class TestReconcilerMultiHost:
 
         # (a) Restart with rep-1 mid-flight: clamping counts rep-1's 2 extra_gap slots,
         # so requesting 4 more nodes scales 2 -> 3 (not 4) while rep-1 finishes.
-        prov_a, store_a, im_a = fresh_autoscaler("tg7_a")
+        prov_a, store_a, im_a = fresh_autoscaler("stopping-slot-a")
         sched = MagicMock()
         sched.schedule.return_value = SchedulingReply()
         self.run_tick(
@@ -8287,7 +8344,7 @@ class TestReconcilerMultiHost:
         cr["spec"]["workerGroupSpecs"][0]["scaleStrategy"] = {
             "workersToDelete": [f"r2-{i}" for i in range(4)]
         }
-        prov_b, store_b, im_b = fresh_autoscaler("tg7_b")
+        prov_b, store_b, im_b = fresh_autoscaler("stopping-slot-b")
         self.run_tick(
             im_b, cfg, scheduler=sched, cloud_provider=prov_b, ray_state=head_state
         )
@@ -8319,7 +8376,7 @@ class TestReconcilerMultiHost:
         pods["items"].extend(_pod(f"r1-{i}", "tpu", rep="rep-1") for i in range(4))
         pods["metadata"]["resourceVersion"] = "25"
         cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
-        prov_c, store_c, im_c = fresh_autoscaler("tg7_c")
+        prov_c, store_c, im_c = fresh_autoscaler("stopping-slot-c")
         ray_nodes_c = [head_state.node_states[0]]
         for i in range(4):
             ray_nodes_c.append(
@@ -8365,7 +8422,7 @@ class TestReconcilerMultiHost:
             head_state,
             _pod,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="tg8_mh",
+            cluster_id="mh-draining-head",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -8455,7 +8512,7 @@ class TestReconcilerMultiHost:
             "workers_per_replica": 4
         }
         _, _, _, provider, _, store, im, head_state, _ = self._make_kuberay_e2e_env(
-            cluster_id="tg10_bad_cfg",
+            cluster_id="mh-invalid-cfg",
             worker_groups=[],
             node_type_configs={},
         )
@@ -9753,10 +9810,12 @@ class TestReconcilerMultiHost:
            active_by_type, and raylet restarts on a draining pod deduplicate
            rep_occupying and active_by_type by cloud_instance_id.
         """
-        # 1. R3: i-1..i-3 are already RAY_STOP_REQUESTED when sibling i-0 (p-0)
+        # 1. i-1..i-3 are already RAY_STOP_REQUESTED when sibling i-0 (p-0)
         # dies unsolicited (missing from ray_nodes -> RAY_STOPPED -> TERMINATING).
         tpu_cfg = self._replica_nt_cfg("tpu", max_w=8, workers_per_replica=4)
-        store_s = InstanceStorage(cluster_id="r3_sweep", storage=InMemoryStorage())
+        store_s = InstanceStorage(
+            cluster_id="unsolicited-sweep", storage=InMemoryStorage()
+        )
         sub_s = MockSubscriber()
         im_s = InstanceManager(
             instance_storage=store_s, instance_status_update_subscribers=[sub_s]
@@ -9834,7 +9893,7 @@ class TestReconcilerMultiHost:
             f"i-{k}": Instance.TERMINATING for k in range(4)
         }
 
-        # 2a. R4 (mid-boot teardown): 1 RAY_INSTALL_FAILED + 1 ALLOCATED + 2
+        # 2a. Mid-boot teardown: 1 RAY_INSTALL_FAILED + 1 ALLOCATED + 2
         # REQUESTED on lid-td (max_worker_nodes=8, size=4). Tearing-down replica
         # occupies 4 slots (not 6), so launching 4 new workers succeeds.
         head_im = create_instance(
@@ -9851,7 +9910,9 @@ class TestReconcilerMultiHost:
             ray_node_type_name="head",
             status=NodeStatus.RUNNING,
         )
-        store_m = InstanceStorage(cluster_id="r4_midboot", storage=InMemoryStorage())
+        store_m = InstanceStorage(
+            cluster_id="midboot-teardown", storage=InMemoryStorage()
+        )
         im_m = InstanceManager(
             instance_storage=store_m, instance_status_update_subscribers=[]
         )
@@ -9917,9 +9978,11 @@ class TestReconcilerMultiHost:
         assert insts_m["i-req-2"].status == Instance.ALLOCATION_FAILED
         assert insts_m["i-req-3"].status == Instance.ALLOCATION_FAILED
 
-        # 2b. R4 (raylet restart on draining pod): p-0 has both a RAY_STOPPING row
+        # 2b. Raylet restart on draining pod: p-0 has both a RAY_STOPPING row
         # and a restarted RAY_RUNNING row while p-1..p-3 are RAY_RUNNING.
-        store_d = InstanceStorage(cluster_id="r4_dedup", storage=InMemoryStorage())
+        store_d = InstanceStorage(
+            cluster_id="raylet-restart-dedup", storage=InMemoryStorage()
+        )
         im_d = InstanceManager(
             instance_storage=store_d, instance_status_update_subscribers=[]
         )
@@ -9994,16 +10057,16 @@ class TestReconcilerMultiHost:
         insts_d, _ = store_d.get_instances()
         assert sum(1 for v in insts_d.values() if v.status == Instance.REQUESTED) == 4
 
-    def test_multihost_real_scheduler_r1_r2_end_to_end_seams(self):
+    def test_multihost_real_scheduler_end_to_end_seams(self):
         """Drive unmocked Reconciler.reconcile + ResourceDemandScheduler +
         KubeRayProvider across multiple ticks for:
-        1. R1: shared single-host launch_request_id partial timeout retry across
+        1. Shared single-host launch_request_id partial timeout retry across
            sh-a and sh-b followed by fresh demand.
-        2. R2: live RayCluster update raising minReplicas alongside replicas.
+        2. Live RayCluster update raising minReplicas alongside replicas.
         """
         sched = ResourceDemandScheduler()
 
-        # 1. R1: 3-tick single-host shared launch_request_id timeout retry.
+        # 1. 3-tick single-host shared launch_request_id timeout retry.
         (
             cr_r1,
             pods_r1,
@@ -10015,7 +10078,7 @@ class TestReconcilerMultiHost:
             head_r1,
             make_pod_r1,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="r1_e2e",
+            cluster_id="single-host-timeout-retry",
             worker_groups=[
                 {
                     "groupName": "sh-a",
@@ -10151,7 +10214,7 @@ class TestReconcilerMultiHost:
         assert cr_r1["spec"]["workerGroupSpecs"][0]["replicas"] == 3
         assert cr_r1["spec"]["workerGroupSpecs"][1]["replicas"] == 4
 
-        # 2. R2: Live CR update raising minReplicas=2 and replicas=2 together.
+        # 2. Live CR update raising minReplicas=2 and replicas=2 together.
         (
             cr_r2,
             _,
@@ -10163,7 +10226,7 @@ class TestReconcilerMultiHost:
             head_r2,
             _,
         ) = self._make_kuberay_e2e_env(
-            cluster_id="r2_e2e",
+            cluster_id="live-min-replicas",
             worker_groups=[
                 {
                     "groupName": "tpu",
@@ -11302,13 +11365,16 @@ class TestReconcilerMultiHost:
         omit_runtime_labels: bool = False,
         min_replicas: int = 0,
         head_res: Optional[str] = None,
+        domain_exclusive: bool = True,
+        pod_labels: Optional[Dict[str, Dict[str, str]]] = None,
+        domain_label_key: Optional[str] = "ray.io/tpu-slice-name",
     ):
-        slice_key = "ray.io/tpu-slice-name"
-        wid_key = "ray.io/tpu-worker-id"
+        slice_key = domain_label_key
+        wid_key = "ray.io/tpu-worker-id" if domain_label_key else None
         rc = WorkerReplicaConfig(
             workers_per_replica=size,
             domain_label_key=slice_key,
-            domain_exclusive=True,
+            domain_exclusive=domain_exclusive,
             worker_index_label_key=wid_key,
             head_resources=(head_res,) if head_res else (),
         )
@@ -11322,7 +11388,7 @@ class TestReconcilerMultiHost:
             min_worker_nodes=min_replicas * size,
             max_worker_nodes=max_replicas * size,
             replica_config=rc,
-            runtime_label_keys=(slice_key, wid_key),
+            runtime_label_keys=(slice_key, wid_key) if slice_key else (),
         )
         (
             cr,
@@ -11438,11 +11504,15 @@ class TestReconcilerMultiHost:
                         },
                         labels=(
                             {}
-                            if omit_runtime_labels
-                            else {
-                                slice_key: f"slice-{idx // size}",
-                                wid_key: str(idx % size),
-                            }
+                            if omit_runtime_labels or not slice_key
+                            else (
+                                dict(pod_labels[nm])
+                                if pod_labels and nm in pod_labels
+                                else {
+                                    slice_key: f"slice-{idx // size}",
+                                    wid_key: str(idx % size),
+                                }
+                            )
                         ),
                     )
                 )
@@ -12081,41 +12151,41 @@ class TestReconcilerMultiHost:
         assert group_r.get("replicas") == 1
         assert workers_r() == ["r-0", "r-1", "r-2", "r-4"]
 
-        # 3. R12-1 F3: Operator-created initial replica (lid="") at maxReplicas=1 refills
-        # immediately in 3 ticks after one host's raylet dies while siblings stay busy.
-        (
-            group_op,
-            pods_op,
-            _,
-            ray_busy_op,
-            workers_op,
-            step_tick_op,
-        ) = self._make_unlabeled_kuberay_sim(
-            "operator-init-lidless",
-            size=4,
-            max_replicas=1,
-            pod_names=[f"op-{i}" for i in range(8)],
-        )
-        group_op["replicas"] = 1
-        # Step once with 0 demand so operator creates op-0..op-3 without any LaunchRequest.
-        step_tick_op()
-        assert workers_op() == ["op-0", "op-1", "op-2", "op-3"]
-        for nm in workers_op():
-            ray_busy_op[nm] = True
-        step_tick_op()
-        # Kill op-3's raylet (autoscaler tears down op-3 and lowers replicas 1 -> 0).
-        step_tick_op(dead="op-3")
-        assert group_op.get("replicas") == 0
-        assert workers_op() == ["op-0", "op-1", "op-2"]
-        res_op = None
-        for _ in range(3):
-            res_op = step_tick_op(tasks=1)
-        assert res_op.infeasible_resource_requests == []
-        assert group_op.get("replicas") == 1
-        assert workers_op() == ["op-0", "op-1", "op-2", "op-4"]
+        # 3. Operator-created initial replica (empty launch_request_id) at maxReplicas=1
+        # refills in 3 ticks after one host's raylet dies in both exclusive and shared modes.
+        for is_excl in (True, False):
+            (
+                group_op,
+                _,
+                _,
+                ray_busy_op,
+                workers_op,
+                step_tick_op,
+            ) = self._make_unlabeled_kuberay_sim(
+                f"operator-init-lidless-{is_excl}",
+                size=4,
+                max_replicas=1,
+                pod_names=[f"op-{i}" for i in range(8)],
+                domain_exclusive=is_excl,
+            )
+            group_op["replicas"] = 1
+            step_tick_op()
+            assert workers_op() == ["op-0", "op-1", "op-2", "op-3"]
+            for nm in workers_op():
+                ray_busy_op[nm] = True
+            step_tick_op()
+            step_tick_op(dead="op-3")
+            assert group_op.get("replicas") == 0
+            assert workers_op() == ["op-0", "op-1", "op-2"]
+            res_op = None
+            for _ in range(3):
+                res_op = step_tick_op(tasks=1)
+            assert res_op.infeasible_resource_requests == []
+            assert group_op.get("replicas") == 1
+            assert workers_op() == ["op-0", "op-1", "op-2", "op-4"]
 
-        # 4. R12-1 (K8s direct pod deletion at maxReplicas=1): 2 QUEUED refills attach on
-        # Tick 2 without failing a feasible 4-host STRICT_PACK gang.
+        # 4. Direct Kubernetes pod deletion at maxReplicas=1 attaches 2 QUEUED refills
+        # on the following tick without failing a feasible 4-host STRICT_PACK gang.
         (
             group_kd,
             pods_kd,
@@ -12150,7 +12220,7 @@ class TestReconcilerMultiHost:
             t_kd[0] = 2700.0
             res_kd_t1 = step_tick_kd(gangs=1, run_operator=False)
             assert len(res_kd_t1.infeasible_gang_resource_requests) == 0
-            # Tick 2 before operator runs: 2 QUEUED pods exist alongside 2 RAY_RUNNING pods.
+            # Next tick before operator runs: 2 QUEUED pods coexist with 2 RAY_RUNNING pods.
             t_kd[0] = 2701.0
             res_kd_t2 = step_tick_kd(gangs=1, run_operator=False)
             assert len(res_kd_t2.infeasible_gang_resource_requests) == 0
@@ -12161,44 +12231,964 @@ class TestReconcilerMultiHost:
             assert group_kd.get("replicas") == 1
             assert len(workers_kd()) == 4
 
-        # 5. R12-1 F2: Autoscaler restart after one host died (re-adopted lid="" survivors,
-        # replicas=0) waits before TTL and refills the 1 missing host once TTL expires.
+        # 5. Autoscaler restart after one host died (re-adopted survivors with empty
+        # launch_request_id) waits before TTL and refills after TTL in both modes.
+        for is_excl in (True, False):
+            (
+                group_f2,
+                _,
+                _,
+                ray_busy_f2,
+                workers_f2,
+                step_tick_f2,
+            ) = self._make_unlabeled_kuberay_sim(
+                f"restart-lidless-ttl-{is_excl}",
+                size=4,
+                max_replicas=1,
+                pod_names=[f"f2-{i}" for i in range(8)],
+                domain_exclusive=is_excl,
+            )
+            for _ in range(3):
+                step_tick_f2(tasks=4)
+            for nm in workers_f2():
+                ray_busy_f2[nm] = True
+            step_tick_f2()
+            step_tick_f2(dead="f2-3")
+            assert group_f2.get("replicas") == 0
+            assert workers_f2() == ["f2-0", "f2-1", "f2-2"]
+            t_f2 = [5000.0]
+            with patch(
+                "ray.autoscaler.v2.scheduler.time.monotonic",
+                side_effect=lambda: t_f2[0],
+            ):
+                res_f2_pre = step_tick_f2(tasks=1, reset_autoscaler=True)
+                assert len(res_f2_pre.infeasible_resource_requests) == 1
+                assert workers_f2() == ["f2-0", "f2-1", "f2-2"]
+                t_f2[0] = 5700.0
+                for _ in range(3):
+                    t_f2[0] += 1.0
+                    res_f2_post = step_tick_f2(tasks=1)
+                assert res_f2_post.infeasible_resource_requests == []
+                assert group_f2.get("replicas") == 1
+                assert workers_f2() == ["f2-0", "f2-1", "f2-2", "f2-4"]
+
+        # 6. Shared-domain slice healed across mixed batches coalesces into a complete
+        # 4-host slice and scales to replicas=2 when a new 4-host gang arrives.
+        sh_lbls = {
+            **{
+                f"sh-{i}": {
+                    "ray.io/tpu-slice-name": "slice-0",
+                    "ray.io/tpu-worker-id": str(i),
+                }
+                for i in range(4)
+            },
+            "sh-4": {
+                "ray.io/tpu-slice-name": "slice-0",
+                "ray.io/tpu-worker-id": "3",
+            },
+            **{
+                f"sh-{5 + i}": {
+                    "ray.io/tpu-slice-name": "slice-1",
+                    "ray.io/tpu-worker-id": str(i),
+                }
+                for i in range(4)
+            },
+        }
         (
-            group_f2,
+            group_sh,
             _,
             _,
-            ray_busy_f2,
-            workers_f2,
-            step_tick_f2,
+            ray_busy_sh,
+            workers_sh,
+            step_tick_sh,
         ) = self._make_unlabeled_kuberay_sim(
-            "restart-lidless-ttl",
+            "shared-mixed-batch-heal",
             size=4,
-            max_replicas=1,
-            pod_names=[f"f2-{i}" for i in range(8)],
+            max_replicas=2,
+            pod_names=[f"sh-{i}" for i in range(12)],
+            domain_exclusive=False,
+            pod_labels=sh_lbls,
         )
         for _ in range(3):
-            step_tick_f2(tasks=4)
-        for nm in workers_f2():
-            ray_busy_f2[nm] = True
-        step_tick_f2()
-        step_tick_f2(dead="f2-3")
-        assert group_f2.get("replicas") == 0
-        assert workers_f2() == ["f2-0", "f2-1", "f2-2"]
-        t_f2 = [5000.0]
-        with patch(
-            "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: t_f2[0]
-        ):
-            # Restart autoscaler with empty InMemoryStorage over surviving pods f2-0..f2-2.
-            res_f2_pre = step_tick_f2(tasks=1, reset_autoscaler=True)
-            assert len(res_f2_pre.infeasible_resource_requests) == 1
-            assert workers_f2() == ["f2-0", "f2-1", "f2-2"]
-            t_f2[0] = 5700.0
+            step_tick_sh(tasks=4)
+        for nm in workers_sh():
+            ray_busy_sh[nm] = True
+        step_tick_sh()
+        step_tick_sh(dead="sh-3")
+        for _ in range(3):
+            step_tick_sh(tasks=1)
+        assert workers_sh() == ["sh-0", "sh-1", "sh-2", "sh-4"]
+        ray_busy_sh["sh-4"] = True
+        step_tick_sh()
+        res_sh_gang = None
+        for _ in range(3):
+            res_sh_gang = step_tick_sh(gangs=1)
+        assert res_sh_gang.infeasible_gang_resource_requests == []
+        assert group_sh.get("replicas") == 2
+        assert len(workers_sh()) == 8
+
+        # 7. Retained 24-hour terminal teardown rows from an older incarnation never
+        # mark a newer staggered 3/4 slice as torn down at t=0s.
+        (
+            group_ret,
+            pods_ret,
+            store_ret,
+            ray_busy_ret,
+            workers_ret,
+            step_tick_ret,
+        ) = self._make_unlabeled_kuberay_sim(
+            "retained-terminal-incarnation",
+            size=4,
+            max_replicas=2,
+            pod_names=[f"rt-{i}" for i in range(12)],
+        )
+        stale_im = Instance(
+            instance_id="stale-dead-0",
+            instance_type="tpu",
+            status=Instance.TERMINATED,
+            cloud_instance_id="rt-old-0",
+            node_kind=NodeKind.WORKER,
+        )
+        stale_im.status_history.add(
+            instance_status=Instance.RAY_INSTALL_FAILED, timestamp_ns=1_000_000_000
+        )
+        stale_im.status_history.add(
+            instance_status=Instance.TERMINATED, timestamp_ns=2_000_000_000
+        )
+        _, ver_ret = store_ret.get_instances()
+        store_ret.batch_upsert_instances([stale_im], expected_storage_version=ver_ret)
+        group_ret["replicas"] = 1
+        step_tick_ret(run_operator=True)
+        # Keep only 3 of the 4 pods of the new slice admitted so pod 4 is still pending.
+        pods_ret["items"] = [
+            p for p in pods_ret["items"] if p["metadata"]["name"] != "rt-3"
+        ]
+        pods_ret["metadata"]["resourceVersion"] = str(
+            int(pods_ret["metadata"]["resourceVersion"]) + 1
+        )
+        for nm in ["rt-0", "rt-1", "rt-2"]:
+            ray_busy_ret[nm] = False
+        step_tick_ret(run_operator=False)
+        res_ret = step_tick_ret(gangs=1, run_operator=False)
+        assert res_ret.infeasible_gang_resource_requests == []
+        assert group_ret.get("replicas") == 2
+
+    def test_reconciler_multihost_parity_and_plain_refill_seams(self):
+        """End-to-end Reconciler + KubeRayProvider + ResourceDemandScheduler seams:
+        plain multi-host refill before single-host task demand, partial provider
+        crash headroom parity, same-tick RAY_RUNNING plus ALLOCATED deferral vs
+        pure ALLOCATED cancellation, last unlabeled pod exit alignment, and
+        occupied partial replicas preserving queued 4-host gangs."""
+        slice_key = "ray.io/tpu-slice-name"
+        wid_key = "ray.io/tpu-worker-id"
+
+        # 1. Plain multi-host group (no domain key): a busy 4-host replica
+        # refilled across two IM batches scales immediately on 1, 3, or 4 tasks.
+        for task_cnt in (1, 3, 4):
+            (
+                group_p,
+                _,
+                _,
+                ray_busy_p,
+                workers_p,
+                step_tick_p,
+            ) = self._make_unlabeled_kuberay_sim(
+                f"plain-refill-tasks-{task_cnt}",
+                size=4,
+                max_replicas=2,
+                pod_names=[f"pr-{i}" for i in range(12)],
+                domain_label_key=None,
+            )
             for _ in range(3):
-                t_f2[0] += 1.0
-                res_f2_post = step_tick_f2(tasks=1)
-            assert res_f2_post.infeasible_resource_requests == []
-            assert group_f2.get("replicas") == 1
-            assert workers_f2() == ["f2-0", "f2-1", "f2-2", "f2-4"]
+                step_tick_p(tasks=4)
+            for nm in workers_p():
+                ray_busy_p[nm] = True
+            step_tick_p()
+            victim = workers_p()[-1]
+            step_tick_p(dead=victim)
+            for _ in range(3):
+                step_tick_p(tasks=1)
+            assert group_p.get("replicas") == 1
+            assert workers_p() == ["pr-0", "pr-1", "pr-2", "pr-4"]
+            ray_busy_p["pr-4"] = True
+            step_tick_p()
+            res_p = None
+            for _ in range(3):
+                res_p = step_tick_p(tasks=task_cnt)
+            assert res_p.infeasible_resource_requests == []
+            assert group_p.get("replicas") == 2
+            assert len(workers_p()) == 8
+
+        # 2. Partial provider-labeled replica crash at max_num_worker_nodes=8
+        # keeps all 4 replica slots active in Reconciler and scheduler parity.
+        tpu_prov = NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 8, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            runtime_label_keys=(slice_key, wid_key),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=slice_key,
+                domain_exclusive=True,
+                worker_index_label_key=wid_key,
+            ),
+        )
+        cpu_single = NodeTypeConfig(
+            name="cpu",
+            resources={"CPU": 4, "HELPER": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+        )
+        (
+            cr_c,
+            pods_c,
+            _,
+            prov_c,
+            cfg_c,
+            store_c,
+            im_c,
+            head_c,
+            mk_pod_c,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="prov-crash-parity",
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 2,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "cpu",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 4,
+                    "numOfHosts": 1,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            node_type_configs={"tpu": tpu_prov, "cpu": cpu_single},
+            max_num_worker_nodes=8,
+        )
+        pods_c["items"].extend(
+            [mk_pod_c(f"r0-{w}", "tpu", "rep-0") for w in range(3)]
+            + [mk_pod_c(f"r1-{w}", "tpu", "rep-1") for w in range(4)]
+        )
+        r0_dead = create_instance(
+            "r0-dead",
+            status=Instance.TERMINATED,
+            instance_type="tpu",
+            cloud_instance_id="r0-dead",
+            launch_request_id="L0",
+        )
+        for st in (
+            Instance.RAY_RUNNING,
+            Instance.RAY_STOPPED,
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+        ):
+            r0_dead.status_history.add(instance_status=st)
+        store_c_rows = (
+            [
+                create_instance(
+                    f"r0-{w}",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id=f"r0-{w}",
+                    launch_request_id="L0",
+                    ray_node_id=f"n0-{w}".encode().ljust(28, b"0").hex(),
+                )
+                for w in range(3)
+            ]
+            + [
+                create_instance(
+                    f"r1-{w}",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id=f"r1-{w}",
+                    launch_request_id="L1",
+                    ray_node_id=f"n1-{w}".encode().ljust(28, b"0").hex(),
+                )
+                for w in range(4)
+            ]
+            + [r0_dead]
+        )
+        _, ver_c = store_c.get_instances()
+        store_c.batch_upsert_instances(store_c_rows, expected_storage_version=ver_c)
+        rs_c = list(head_c.node_states)
+        for w in range(3):
+            rs_c.append(
+                NodeState(
+                    node_id=f"n0-{w}".encode().ljust(28, b"0"),
+                    instance_id=f"r0-{w}",
+                    ray_node_type_name="tpu",
+                    status=NodeStatus.IDLE,
+                    total_resources={"CPU": 8.0, "TPU": 4.0},
+                    available_resources={"CPU": 8.0, "TPU": 4.0},
+                    labels={slice_key: "s0", wid_key: str(w)},
+                )
+            )
+        for w in range(4):
+            rs_c.append(
+                NodeState(
+                    node_id=f"n1-{w}".encode().ljust(28, b"0"),
+                    instance_id=f"r1-{w}",
+                    ray_node_type_name="tpu",
+                    status=NodeStatus.RUNNING,
+                    total_resources={"CPU": 8.0, "TPU": 4.0},
+                    available_resources={"CPU": 0.0, "TPU": 0.0},
+                    labels={slice_key: "s1", wid_key: str(w)},
+                )
+            )
+        state_c = ClusterResourceState(
+            node_states=rs_c,
+            pending_resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"HELPER": 1.0}), count=1
+                )
+            ],
+        )
+        res_c = self.run_tick(
+            im_c,
+            cfg_c,
+            scheduler=ResourceDemandScheduler(),
+            cloud_provider=prov_c,
+            ray_state=state_c,
+        )
+        assert len(res_c.infeasible_resource_requests) == 1
+        assert cr_c["spec"]["workerGroupSpecs"][1]["replicas"] == 0
+
+        # 3. Same-tick RAY_RUNNING plus ALLOCATED TO_TERMINATE defers in
+        # Reconciler and holds replica slots, whereas pure ALLOCATED TO_TERMINATE
+        # frees uncovered slots for a sibling min_worker_nodes type.
+        for is_mixed in (True, False):
+            tpu_shrink = NodeTypeConfig(
+                name="tpu",
+                resources={"CPU": 8, "TPU": 4},
+                min_worker_nodes=0,
+                max_worker_nodes=0,
+                runtime_label_keys=(slice_key, wid_key),
+                replica_config=WorkerReplicaConfig(
+                    workers_per_replica=4,
+                    domain_label_key=slice_key,
+                    domain_exclusive=True,
+                    worker_index_label_key=wid_key,
+                ),
+            )
+            cpu_min1 = NodeTypeConfig(
+                name="cpu",
+                resources={"CPU": 4, "HELPER": 1},
+                min_worker_nodes=1,
+                max_worker_nodes=4,
+            )
+            (
+                cr_s,
+                pods_s,
+                _,
+                prov_s,
+                cfg_s,
+                store_s,
+                im_s,
+                head_s,
+                mk_pod_s,
+            ) = self._make_kuberay_e2e_env(
+                cluster_id=f"term-parity-mixed-{is_mixed}",
+                worker_groups=[
+                    {
+                        "groupName": "tpu",
+                        "replicas": 1,
+                        "minReplicas": 0,
+                        "maxReplicas": 2,
+                        "numOfHosts": 4,
+                        "template": {"spec": {"containers": [{}]}},
+                    },
+                    {
+                        "groupName": "cpu",
+                        "replicas": 0,
+                        "minReplicas": 1,
+                        "maxReplicas": 4,
+                        "numOfHosts": 1,
+                        "template": {"spec": {"containers": [{}]}},
+                    },
+                ],
+                node_type_configs={"tpu": tpu_shrink, "cpu": cpu_min1},
+                max_num_worker_nodes=4,
+            )
+            pods_s["items"].extend(
+                [mk_pod_s("m-0", "tpu", "rep-m"), mk_pod_s("m-1", "tpu", "rep-m")]
+            )
+            rows_s = [
+                create_instance(
+                    "m-0",
+                    status=Instance.RAY_RUNNING if is_mixed else Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="m-0",
+                    launch_request_id="Lm",
+                    ray_node_id=b"m0".ljust(28, b"0").hex() if is_mixed else "",
+                ),
+                create_instance(
+                    "m-1",
+                    status=Instance.ALLOCATED,
+                    instance_type="tpu",
+                    cloud_instance_id="m-1",
+                    launch_request_id="Lm",
+                ),
+            ]
+            _, ver_s = store_s.get_instances()
+            store_s.batch_upsert_instances(rows_s, expected_storage_version=ver_s)
+            rs_s = list(head_s.node_states)
+            if is_mixed:
+                rs_s.append(
+                    NodeState(
+                        node_id=b"m0".ljust(28, b"0"),
+                        instance_id="m-0",
+                        ray_node_type_name="tpu",
+                        status=NodeStatus.IDLE,
+                        total_resources={"CPU": 8.0, "TPU": 4.0},
+                        available_resources={"CPU": 8.0, "TPU": 4.0},
+                        labels={slice_key: "sm", wid_key: "0"},
+                    )
+                )
+            self.run_tick(
+                im_s,
+                cfg_s,
+                scheduler=ResourceDemandScheduler(),
+                cloud_provider=prov_s,
+                ray_state=ClusterResourceState(node_states=rs_s),
+            )
+            insts_after, _ = store_s.get_instances()
+            if is_mixed:
+                assert insts_after["m-0"].status == Instance.RAY_STOP_REQUESTED
+                assert insts_after["m-1"].status == Instance.ALLOCATED
+                assert cr_s["spec"]["workerGroupSpecs"][1]["replicas"] == 0
+            else:
+                assert insts_after["m-0"].status == Instance.TERMINATING
+                assert insts_after["m-1"].status == Instance.TERMINATING
+                assert cr_s["spec"]["workerGroupSpecs"][1]["replicas"] == 1
+
+        # 4. When the last unlabeled pod enters TERMINATING while an orphan
+        # 1-pod REQUESTED batch and a fresh 2-pod REQUESTED batch remain,
+        # post-TTL scheduling never emits a sub-replica launch.
+        nt_u2 = NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            replica_config=WorkerReplicaConfig(workers_per_replica=2),
+        )
+        (
+            cr_44,
+            pods_44,
+            _,
+            prov_44,
+            cfg_44,
+            store_44,
+            im_44,
+            head_44,
+            mk_pod_44,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="last-unlabeled-exit",
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 1,
+                    "minReplicas": 0,
+                    "maxReplicas": 2,
+                    "numOfHosts": 2,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            node_type_configs={"tpu": nt_u2},
+            max_num_worker_nodes=4,
+        )
+        term_pod = mk_pod_44("u-term", "tpu", rep=None)
+        term_pod["metadata"]["deletionTimestamp"] = "2026-01-01T00:00:00Z"
+        pods_44["items"].append(term_pod)
+        _, ver_44 = store_44.get_instances()
+        store_44.batch_upsert_instances(
+            [
+                create_instance(
+                    "u-term",
+                    status=Instance.TERMINATING,
+                    instance_type="tpu",
+                    cloud_instance_id="u-term",
+                    launch_request_id="L0",
+                ),
+                create_instance(
+                    "q-orphan",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="L1",
+                ),
+                create_instance(
+                    "q-f0",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="L2",
+                ),
+                create_instance(
+                    "q-f1",
+                    status=Instance.REQUESTED,
+                    instance_type="tpu",
+                    launch_request_id="L2",
+                ),
+            ],
+            expected_storage_version=ver_44,
+        )
+        sched_44 = ResourceDemandScheduler()
+        t_44 = [1000.0]
+        state_44 = ClusterResourceState(
+            node_states=list(head_44.node_states),
+            pending_resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequestUtil.make({"TPU": 4.0}), count=4
+                )
+            ],
+        )
+        with patch(
+            "ray.autoscaler.v2.scheduler.time.monotonic", side_effect=lambda: t_44[0]
+        ):
+            self.run_tick(
+                im_44,
+                cfg_44,
+                scheduler=sched_44,
+                cloud_provider=prov_44,
+                ray_state=state_44,
+            )
+            t_44[0] = 2000.0
+            res_44 = self.run_tick(
+                im_44,
+                cfg_44,
+                scheduler=sched_44,
+                cloud_provider=prov_44,
+                ray_state=state_44,
+            )
+        assert len(res_44.infeasible_resource_requests) == 1
+        assert cr_44["spec"]["workerGroupSpecs"][0]["replicas"] == 1
+
+        # 5. Occupied partial replicas (< size open) preserve a QUEUED 4-host
+        # STRICT_PACK gang batch across pod admission instead of splitting it.
+        tpu_occ = NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=12,
+            runtime_label_keys=(slice_key, wid_key),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=slice_key,
+                domain_exclusive=True,
+                worker_index_label_key=wid_key,
+            ),
+        )
+        (
+            cr_g,
+            pods_g,
+            _,
+            prov_g,
+            cfg_g,
+            store_g,
+            im_g,
+            head_g,
+            mk_pod_g,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="occ-gang-preserve",
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 3,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            node_type_configs={"tpu": tpu_occ},
+            max_num_worker_nodes=12,
+        )
+        pods_g["items"].extend([mk_pod_g(f"og-{i}", "tpu") for i in range(3)])
+        _, ver_g = store_g.get_instances()
+        store_g.batch_upsert_instances(
+            [
+                create_instance(
+                    f"og-{i}",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id=f"og-{i}",
+                    launch_request_id="L0" if i == 0 else "L1",
+                    ray_node_id=f"og-{i}".encode().ljust(28, b"0").hex(),
+                )
+                for i in range(3)
+            ],
+            expected_storage_version=ver_g,
+        )
+        og_lbls = [
+            {slice_key: "s0", wid_key: "0"},
+            {slice_key: "s1", wid_key: "0"},
+            {slice_key: "s1", wid_key: "1"},
+        ]
+        rs_g = list(head_g.node_states) + [
+            NodeState(
+                node_id=f"og-{i}".encode().ljust(28, b"0"),
+                instance_id=f"og-{i}",
+                ray_node_type_name="tpu",
+                status=NodeStatus.RUNNING,
+                total_resources={"CPU": 4.0, "TPU": 4.0},
+                available_resources={"CPU": 4.0, "TPU": 0.0},
+                labels=og_lbls[i],
+            )
+            for i in range(3)
+        ]
+        state_g = ClusterResourceState(node_states=rs_g)
+        bs_g = state_g.pending_gang_resource_requests.add().bundle_selectors.add()
+        for _ in range(4):
+            bs_g.resource_requests.add().CopyFrom(
+                ResourceRequestUtil.make({"TPU": 4.0})
+            )
+        bs_g.locality_requirement.locality_constraint.label_name = slice_key
+        bs_g.locality_requirement.locality_constraint.placement_strategy = (
+            PlacementStrategy.STRICT_PACK
+        )
+        sched_g = ResourceDemandScheduler()
+        res_g1 = self.run_tick(
+            im_g,
+            cfg_g,
+            scheduler=sched_g,
+            cloud_provider=prov_g,
+            ray_state=state_g,
+        )
+        assert res_g1.infeasible_gang_resource_requests == []
+        assert cr_g["spec"]["workerGroupSpecs"][0]["replicas"] == 3
+        pods_g["items"].extend([mk_pod_g(f"og-{3 + k}", "tpu") for k in range(4)])
+        res_g2 = self.run_tick(
+            im_g,
+            cfg_g,
+            scheduler=sched_g,
+            cloud_provider=prov_g,
+            ray_state=state_g,
+        )
+        assert res_g2.infeasible_gang_resource_requests == []
+        assert cr_g["spec"]["workerGroupSpecs"][0]["replicas"] == 3
+
+    def test_multihost_healed_terminal_siblings_and_queued_cap_stability(self):
+        """End-to-end Reconciler + KubeRayProvider + Scheduler seams: healed labeled
+        replicas retaining 24h TERMINATED siblings stay schedulable and idle-terminable,
+        multi-tick queued batches stay intact when unlabeled min launches cancel, and
+        same-tick ALLOCATED/mixed terminations align Reconciler capacity."""
+        slice_key = "ray.io/tpu-slice-name"
+        wid_key = "ray.io/tpu-worker-id"
+
+        # 1. Healed labeled replica retaining a 24h TERMINATED sibling from L0
+        # accepts a 4-host STRICT_PACK gang at max=4 and scales down when idle.
+        tpu_heal = NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 8, "TPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=4,
+            idle_timeout_s=1.0,
+            runtime_label_keys=(slice_key, wid_key),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=slice_key,
+                domain_exclusive=True,
+                worker_index_label_key=wid_key,
+            ),
+        )
+        (
+            cr_h,
+            pods_h,
+            _,
+            prov_h,
+            cfg_h,
+            store_h,
+            im_h,
+            head_h,
+            mk_pod_h,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="healed-terminal-sibling",
+            worker_groups=[
+                {
+                    "groupName": "tpu",
+                    "replicas": 1,
+                    "minReplicas": 0,
+                    "maxReplicas": 1,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            node_type_configs={"tpu": tpu_heal},
+            max_num_worker_nodes=4,
+        )
+        cfg_h._configs["idle_timeout_s"] = 1.0
+        pods_h["items"].extend(
+            [mk_pod_h(f"h-{i}", "tpu", "rep-h") for i in range(3)]
+            + [mk_pod_h("h-healed", "tpu", "rep-h")]
+        )
+        _, ver_h = store_h.get_instances()
+        dead_h = create_instance(
+            "h-dead",
+            status=Instance.TERMINATED,
+            instance_type="tpu",
+            cloud_instance_id="h-dead-pod",
+            launch_request_id="L0",
+        )
+        dead_h.status_history.add(
+            instance_status=Instance.RAY_RUNNING, timestamp_ns=100
+        )
+        dead_h.status_history.add(
+            instance_status=Instance.TERMINATING, timestamp_ns=150
+        )
+        dead_h.status_history.add(instance_status=Instance.TERMINATED, timestamp_ns=200)
+        live_names_h = ["h-0", "h-1", "h-2", "h-healed"]
+        store_h.batch_upsert_instances(
+            [dead_h]
+            + [
+                create_instance(
+                    nm,
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu",
+                    cloud_instance_id=nm,
+                    launch_request_id="L0" if i < 3 else "",
+                    ray_node_id=nm.encode().ljust(28, b"0").hex(),
+                )
+                for i, nm in enumerate(live_names_h)
+            ],
+            expected_storage_version=ver_h,
+        )
+        sched_h = ResourceDemandScheduler()
+        busy_rs = ClusterResourceState(
+            node_states=list(head_h.node_states)
+            + [
+                NodeState(
+                    node_id=nm.encode().ljust(28, b"0"),
+                    instance_id=nm,
+                    ray_node_type_name="tpu",
+                    status=NodeStatus.RUNNING,
+                    total_resources={"CPU": 8.0, "TPU": 4.0},
+                    available_resources={"CPU": 8.0, "TPU": 4.0},
+                    labels={slice_key: "sh-0", wid_key: str(i)},
+                )
+                for i, nm in enumerate(live_names_h)
+            ]
+        )
+        bs_h = busy_rs.pending_gang_resource_requests.add().bundle_selectors.add()
+        for _ in range(4):
+            bs_h.resource_requests.add().CopyFrom(
+                ResourceRequestUtil.make({"TPU": 4.0})
+            )
+        bs_h.locality_requirement.locality_constraint.label_name = slice_key
+        bs_h.locality_requirement.locality_constraint.placement_strategy = (
+            PlacementStrategy.STRICT_PACK
+        )
+        res_h_busy = self.run_tick(
+            im_h,
+            cfg_h,
+            scheduler=sched_h,
+            cloud_provider=prov_h,
+            ray_state=busy_rs,
+        )
+        assert res_h_busy.infeasible_gang_resource_requests == []
+        assert cr_h["spec"]["workerGroupSpecs"][0]["replicas"] == 1
+
+        idle_rs = ClusterResourceState(
+            node_states=list(head_h.node_states)
+            + [
+                NodeState(
+                    node_id=nm.encode().ljust(28, b"0"),
+                    instance_id=nm,
+                    ray_node_type_name="tpu",
+                    status=NodeStatus.IDLE,
+                    idle_duration_ms=5_000,
+                    total_resources={"CPU": 8.0, "TPU": 4.0},
+                    available_resources={"CPU": 8.0, "TPU": 4.0},
+                    labels={slice_key: "sh-0", wid_key: str(i)},
+                )
+                for i, nm in enumerate(live_names_h)
+            ]
+        )
+        self.run_tick(
+            im_h,
+            cfg_h,
+            scheduler=sched_h,
+            cloud_provider=prov_h,
+            ray_state=idle_rs,
+        )
+        insts_h_after, _ = store_h.get_instances()
+        assert all(
+            insts_h_after[nm].status == Instance.RAY_STOP_REQUESTED
+            for nm in live_names_h
+        )
+
+        # 2. Multi-tick stability: valid QUEUED tpu_b replica keeps exact instance
+        # IDs when tpu_a's speculative unlabeled min-worker launches are canceled.
+        tpu_a_t1_cfg = NodeTypeConfig(
+            name="tpu_a",
+            resources={"CPU": 1, "TPU_A": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=12,
+            replica_config=WorkerReplicaConfig(workers_per_replica=4),
+        )
+        tpu_a_cfg = NodeTypeConfig(
+            name="tpu_a",
+            resources={"CPU": 1, "TPU_A": 1},
+            min_worker_nodes=8,
+            max_worker_nodes=12,
+            replica_config=WorkerReplicaConfig(workers_per_replica=4),
+        )
+        tpu_b_cfg = NodeTypeConfig(
+            name="tpu_b",
+            resources={"CPU": 1, "TPU_B": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=8,
+            replica_config=WorkerReplicaConfig(workers_per_replica=2),
+        )
+        cpu_b_cfg = NodeTypeConfig(
+            name="cpu", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=8
+        )
+        (
+            cr_q,
+            pods_q,
+            _,
+            prov_q,
+            cfg_q,
+            store_q,
+            im_q,
+            head_q,
+            mk_pod_q,
+        ) = self._make_kuberay_e2e_env(
+            cluster_id="queued-cap-stability",
+            worker_groups=[
+                {
+                    "groupName": "tpu_a",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 3,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "tpu_b",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 4,
+                    "numOfHosts": 2,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "cpu",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 8,
+                    "numOfHosts": 1,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            node_type_configs={
+                "tpu_a": tpu_a_t1_cfg,
+                "tpu_b": tpu_b_cfg,
+                "cpu": cpu_b_cfg,
+            },
+            max_num_worker_nodes=8,
+        )
+        cfg_q._configs["max_concurrent_launches"] = 0
+        pods_q["items"].extend(
+            [mk_pod_q("ta-0", "tpu_a")] + [mk_pod_q(f"c-{i}", "cpu") for i in range(2)]
+        )
+        _, ver_q = store_q.get_instances()
+        ta_td = create_instance(
+            "ta-td",
+            status=Instance.TERMINATED,
+            instance_type="tpu_a",
+            cloud_instance_id="ta-td-pod",
+            launch_request_id="La0",
+        )
+        ta_td.status_history.add(instance_status=Instance.RAY_RUNNING, timestamp_ns=100)
+        ta_td.status_history.add(instance_status=Instance.TERMINATING, timestamp_ns=150)
+        ta_td.status_history.add(instance_status=Instance.TERMINATED, timestamp_ns=200)
+        store_q.batch_upsert_instances(
+            [
+                create_instance(
+                    "ta-0",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="tpu_a",
+                    cloud_instance_id="ta-0",
+                    launch_request_id="La0",
+                    ray_node_id=b"ta0".ljust(28, b"0").hex(),
+                ),
+                ta_td,
+            ]
+            + [
+                create_instance(
+                    f"c-{i}",
+                    status=Instance.RAY_RUNNING,
+                    instance_type="cpu",
+                    cloud_instance_id=f"c-{i}",
+                    ray_node_id=f"c{i}".encode().ljust(28, b"0").hex(),
+                )
+                for i in range(2)
+            ],
+            expected_storage_version=ver_q,
+        )
+        rs_q = ClusterResourceState(
+            node_states=list(head_q.node_states)
+            + [
+                NodeState(
+                    node_id=b"ta0".ljust(28, b"0"),
+                    instance_id="ta-0",
+                    ray_node_type_name="tpu_a",
+                    status=NodeStatus.RUNNING,
+                    total_resources={"CPU": 1.0, "TPU_A": 1.0},
+                    available_resources={},
+                )
+            ]
+            + [
+                NodeState(
+                    node_id=f"c{i}".encode().ljust(28, b"0"),
+                    instance_id=f"c-{i}",
+                    ray_node_type_name="cpu",
+                    status=NodeStatus.RUNNING,
+                    total_resources={"CPU": 1.0},
+                    available_resources={},
+                )
+                for i in range(2)
+            ]
+        )
+        bs_q = rs_q.pending_gang_resource_requests.add().bundle_selectors.add()
+        for _ in range(2):
+            bs_q.resource_requests.add().CopyFrom(
+                ResourceRequestUtil.make({"TPU_B": 1.0})
+            )
+        sched_q = ResourceDemandScheduler()
+        self.run_tick(
+            im_q, cfg_q, scheduler=sched_q, cloud_provider=prov_q, ray_state=rs_q
+        )
+        insts_q1, _ = store_q.get_instances()
+        q_ids_1 = sorted(
+            iid
+            for iid, inst in insts_q1.items()
+            if inst.instance_type == "tpu_b" and inst.status == Instance.QUEUED
+        )
+        assert len(q_ids_1) == 2
+
+        cfg_q._configs["node_type_configs"]["tpu_a"] = tpu_a_cfg
+        self.run_tick(
+            im_q, cfg_q, scheduler=sched_q, cloud_provider=prov_q, ray_state=rs_q
+        )
+        insts_q2, _ = store_q.get_instances()
+        q_ids_2 = sorted(
+            iid
+            for iid, inst in insts_q2.items()
+            if inst.instance_type == "tpu_b" and inst.status == Instance.QUEUED
+        )
+        assert q_ids_2 == q_ids_1
+        assert not any(
+            inst.instance_type == "tpu_b" and inst.status == Instance.TERMINATED
+            for inst in insts_q2.values()
+        )
+        assert cr_q["spec"]["workerGroupSpecs"][1]["replicas"] == 0
 
 
 if __name__ == "__main__":
