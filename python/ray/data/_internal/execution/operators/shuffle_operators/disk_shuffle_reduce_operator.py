@@ -187,6 +187,7 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
             name=_file_server_name(shuffle_id, node_id),
             namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
             max_restarts=-1,
+            max_task_retries=-1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
             num_cpus=0,
         ).remote(map_dir)
