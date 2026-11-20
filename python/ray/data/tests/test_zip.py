@@ -106,6 +106,14 @@ def test_zip_pandas(ray_start_regular_shared):
     assert result[0] == {"col1": 1, "col2": 4, "col2_1": "a", "col4": "d"}
 
 
+@pytest.mark.parametrize("index", [[10, 20], [1, 0]])
+def test_zip_pandas_ignores_index_labels(ray_start_regular_shared, index):
+    left = ray.data.from_pandas(pd.DataFrame({"a": [10, 20]}, index=index))
+    right = ray.data.from_pandas(pd.DataFrame({"b": [30, 40]}))
+
+    assert left.zip(right).take_all() == [{"a": 10, "b": 30}, {"a": 20, "b": 40}]
+
+
 def test_zip_arrow(ray_start_regular_shared):
     ds1 = ray.data.range(5).map(lambda r: {"id": r["id"]})
     ds2 = ray.data.range(5).map(lambda r: {"a": r["id"] + 1, "b": r["id"] + 2})

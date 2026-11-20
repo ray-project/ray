@@ -28,6 +28,20 @@ from ray.data.context import DataContext
 np.random.seed(42)
 
 
+def test_zip_pairs_duplicate_indices_by_position():
+    left = pd.DataFrame({"a": [1, 2]}, index=[7, 7])
+    right_columns = {
+        "b": pd.array([5, None], dtype="Int64"),
+        "category": pd.Categorical(["x", "y"]),
+    }
+    right = pd.DataFrame(right_columns, index=[8, 8])
+
+    result = PandasBlockAccessor(left).zip(right)
+
+    expected = pd.DataFrame({"a": [1, 2], **right_columns}, index=left.index)
+    pd.testing.assert_frame_equal(result, expected)
+
+
 @pytest.mark.parametrize(
     "sort_key,limit",
     [
