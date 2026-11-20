@@ -2743,7 +2743,7 @@ class AlgorithmConfig(_Config):
             Union[
                 Type[RLlibCallback],
                 Callable[[], RLlibCallback],
-                List[Union[Type[RLlibCallback], Callable[[], RLlibCallback]]],
+                Collection[Union[Type[RLlibCallback], Callable[[], RLlibCallback]]],
             ]
         ] = NotProvided,
         *,
