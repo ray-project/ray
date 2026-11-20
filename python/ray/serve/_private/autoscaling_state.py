@@ -50,7 +50,11 @@ from ray.serve.autoscaling_policy import (
     _apply_app_level_autoscaling_config,
     _apply_autoscaling_config,
 )
-from ray.serve.config import AutoscalingContext, AutoscalingPolicy
+from ray.serve.config import (
+    AutoscalingContext,
+    AutoscalingMetricsContext,
+    AutoscalingPolicy,
+)
 from ray.util import metrics
 
 if TYPE_CHECKING:
@@ -687,7 +691,6 @@ class DeploymentAutoscalingState:
             decision_num_replicas = math.ceil(decision_num_replicas)
         policy_execution_time_ms = (time.time() - start_time) * 1000
 
-        assert autoscaling_context.total_num_requests is not None
         self.record_autoscaling_metrics(
             decision_num_replicas,
             autoscaling_context.total_num_requests,
@@ -1058,7 +1061,7 @@ class ApplicationAutoscalingState:
         ] = {}
         self._policy: Optional[
             Callable[
-                [Dict[DeploymentID, AutoscalingContext]],
+                [Dict[DeploymentID, AutoscalingMetricsContext]],
                 Tuple[
                     Dict[DeploymentID, Union[int, float]],
                     Optional[Dict[DeploymentID, Dict]],
@@ -1146,7 +1149,7 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
-    def _metrics_source_context(self, dep: DeploymentID) -> AutoscalingContext:
+    def _metrics_source_context(self, dep: DeploymentID) -> AutoscalingMetricsContext:
         settings = self._metric_sources[dep]
         now = time.time()
         running = list(self._source_running.get(dep, ()))
@@ -1160,15 +1163,12 @@ class ApplicationAutoscalingState:
                     if series:
                         metrics[key][replica] = series
 
-        return AutoscalingContext(
+        return AutoscalingMetricsContext(
             deployment_id=dep,
             deployment_name=dep.name,
             app_name=dep.app_name,
             current_num_replicas=len(running),
-            target_num_replicas=None,
             running_replicas=running,
-            total_num_requests=None,
-            total_queued_requests=None,
             raw_metrics=dict(metrics),
             aggregated_metrics=lambda: {
                 key: {
@@ -1178,13 +1178,7 @@ class ApplicationAutoscalingState:
                 }
                 for key, replicas in metrics.items()
             },
-            capacity_adjusted_min_replicas=None,
-            capacity_adjusted_max_replicas=None,
-            policy_state={},
-            last_scale_up_time=None,
-            last_scale_down_time=None,
             current_time=now,
-            config=None,
         )
 
     def _validate_policy_state(
@@ -1217,7 +1211,7 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
-            autoscaling_contexts = {
+            target_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
                     self._policy_state.get(deployment_id, {})
@@ -1228,6 +1222,9 @@ class ApplicationAutoscalingState:
                 if deployment_id in deployment_to_target_num_replicas
             }
 
+            autoscaling_contexts: Dict[DeploymentID, AutoscalingMetricsContext] = dict(
+                target_contexts
+            )
             for dep in (
                 self._metric_sources.keys() & deployment_to_target_num_replicas.keys()
             ):
@@ -1265,13 +1262,9 @@ class ApplicationAutoscalingState:
                 deployment_autoscaling_state = self._deployment_autoscaling_states[
                     deployment_id
                 ]
-                total_num_requests = autoscaling_contexts[
-                    deployment_id
-                ].total_num_requests
-                assert total_num_requests is not None
                 deployment_autoscaling_state.record_autoscaling_metrics(
                     num_replicas,  # type: ignore[arg-type]
-                    total_num_requests,
+                    target_contexts[deployment_id].total_num_requests,
                     policy_execution_time_ms,
                     "application",
                 )

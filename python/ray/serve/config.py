@@ -47,8 +47,65 @@ from ray.util.annotations import PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@PublicAPI(stability="alpha")
+class AutoscalingMetricsContext:
+    """Observed deployment state and replica metrics available to application policies."""
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        deployment_name: str,
+        app_name: Optional[str],
+        current_num_replicas: int,
+        running_replicas: List[ReplicaID],
+        current_time: Optional[float],
+        aggregated_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, float]],
+                Callable[[], Dict[str, Dict[ReplicaID, float]]],
+            ]
+        ],
+        raw_metrics: Optional[
+            Union[
+                Dict[str, Dict[ReplicaID, TimeSeries]],
+                Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
+            ]
+        ],
+    ):
+        self.deployment_id = deployment_id
+        self.deployment_name = deployment_name
+        self.app_name = app_name
+        self.current_num_replicas = current_num_replicas
+        self.running_replicas = running_replicas
+        self.current_time = current_time
+        self._aggregated_metrics_value = aggregated_metrics
+        self._raw_metrics_value = raw_metrics
+
+    @cached_property
+    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
+        """Custom metrics aggregated per replica over the look-back window.
+
+        Keyed by metric name, then by replica ID. Evaluated on first access and
+        cached.
+        """
+        if callable(self._aggregated_metrics_value):
+            return self._aggregated_metrics_value()
+        return self._aggregated_metrics_value
+
+    @cached_property
+    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
+        """Custom metric time series per replica.
+
+        Keyed by metric name, then by replica ID. Evaluated on first access and
+        cached.
+        """
+        if callable(self._raw_metrics_value):
+            return self._raw_metrics_value()
+        return self._raw_metrics_value
+
+
 @PublicAPI(stability="stable")
-class AutoscalingContext:
+class AutoscalingContext(AutoscalingMetricsContext):
     """Rich context provided to custom autoscaling policies.
 
     This class provides comprehensive information about a deployment's current state,
@@ -74,8 +131,7 @@ class AutoscalingContext:
         deployment_name: Name of the deployment.
         app_name: Name of the application that contains the deployment.
         current_num_replicas: Number of replicas currently running.
-        target_num_replicas: Number of replicas the autoscaler currently targets,
-            or None for a metrics-only deployment.
+        target_num_replicas: Number of replicas the autoscaler currently targets.
         running_replicas: IDs of the replicas currently running.
         total_num_requests: Ongoing requests, running plus queued, across the
             deployment, or a callable that returns that value on first access.
@@ -106,9 +162,9 @@ class AutoscalingContext:
         deployment_name: str,
         app_name: Optional[str],
         current_num_replicas: int,
-        target_num_replicas: Optional[int],
+        target_num_replicas: int,
         running_replicas: List[ReplicaID],
-        total_num_requests: Optional[Union[float, Callable[[], float]]],
+        total_num_requests: Union[float, Callable[[], float]],
         total_queued_requests: Optional[Union[float, Callable[[], float]]],
         aggregated_metrics: Optional[
             Union[
@@ -122,29 +178,25 @@ class AutoscalingContext:
                 Callable[[], Dict[str, Dict[ReplicaID, TimeSeries]]],
             ]
         ],
-        capacity_adjusted_min_replicas: Optional[int],
-        capacity_adjusted_max_replicas: Optional[int],
+        capacity_adjusted_min_replicas: int,
+        capacity_adjusted_max_replicas: int,
         policy_state: Dict[str, Any],
         last_scale_up_time: Optional[float],
         last_scale_down_time: Optional[float],
         current_time: Optional[float],
         config: Optional[Any],
     ):
-        # Deployment information
-        self.deployment_id = deployment_id  #: Unique identifier for the deployment.
-        self.deployment_name = deployment_name  #: Name of the deployment.
-        self.app_name = app_name  #: Name of the application containing this deployment.
-
-        # Current state
-        self.current_num_replicas = (
-            current_num_replicas  #: Current number of running replicas.
+        super().__init__(
+            deployment_id=deployment_id,
+            deployment_name=deployment_name,
+            app_name=app_name,
+            current_num_replicas=current_num_replicas,
+            running_replicas=running_replicas,
+            current_time=current_time,
+            raw_metrics=raw_metrics,
+            aggregated_metrics=aggregated_metrics,
         )
-        self.target_num_replicas = (
-            target_num_replicas  #: Target number of replicas set by the autoscaler.
-        )
-        self.running_replicas = (
-            running_replicas  #: List of currently running replica IDs.
-        )
+        self.target_num_replicas = target_num_replicas
 
         # Built-in metrics
         self._total_num_requests_value = (
@@ -153,10 +205,6 @@ class AutoscalingContext:
         self._total_queued_requests_value = (
             total_queued_requests  #: Requests queued at handles.
         )
-
-        # Custom metrics - store potentially lazy callables privately
-        self._aggregated_metrics_value = aggregated_metrics
-        self._raw_metrics_value = raw_metrics
 
         # Capacity and bounds
         self.capacity_adjusted_min_replicas = capacity_adjusted_min_replicas  #: Minimum replicas adjusted for cluster capacity.
@@ -174,35 +222,12 @@ class AutoscalingContext:
         self.last_scale_down_time = (
             last_scale_down_time  #: Timestamp of last scale-down action.
         )
-        self.current_time = current_time  #: Current timestamp.
 
         # Config
         self.config = config  #: Autoscaling configuration for this deployment.
 
     @cached_property
-    def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
-        """Custom metrics aggregated per replica over the look-back window.
-
-        Keyed by metric name, then by replica ID. Evaluated on first access and
-        cached.
-        """
-        if callable(self._aggregated_metrics_value):
-            return self._aggregated_metrics_value()
-        return self._aggregated_metrics_value
-
-    @cached_property
-    def raw_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, TimeSeries]]]:
-        """Custom metric time series per replica.
-
-        Keyed by metric name, then by replica ID. Evaluated on first access and
-        cached.
-        """
-        if callable(self._raw_metrics_value):
-            return self._raw_metrics_value()
-        return self._raw_metrics_value
-
-    @cached_property
-    def total_num_requests(self) -> Optional[float]:
+    def total_num_requests(self) -> float:
         """Ongoing requests, running plus queued, across the deployment.
 
         Evaluated on first access and cached.
@@ -212,14 +237,14 @@ class AutoscalingContext:
         return self._total_num_requests_value
 
     @cached_property
-    def total_queued_requests(self) -> Optional[float]:
+    def total_queued_requests(self) -> float:
         """Requests queued at handles. Evaluated on first access and cached."""
         if callable(self._total_queued_requests_value):
             return self._total_queued_requests_value()
         return self._total_queued_requests_value
 
     @property
-    def total_running_requests(self) -> Optional[float]:
+    def total_running_requests(self) -> float:
         """Approximate number of requests that replicas are processing.
 
         Computed as ``total_num_requests`` minus ``total_queued_requests``,
@@ -227,10 +252,7 @@ class AutoscalingContext:
         """
         # Approximate: the two operands are reduced over independently derived windows,
         # so their difference can even go negative. Clamped until they share one window.
-        total, queued = self.total_num_requests, self.total_queued_requests
-        if total is None or queued is None:
-            return None
-        return max(0.0, total - queued)
+        return max(0.0, self.total_num_requests - self.total_queued_requests)
 
 
 @PublicAPI(stability="alpha")

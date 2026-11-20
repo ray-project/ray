@@ -335,6 +335,7 @@ def test_metric_source_observed_replica_count():
     from ray.serve._private.autoscaling_state import AutoscalingStateManager
     from ray.serve._private.common import ReplicaID
     from ray.serve._private.config import AutoscalingMetricsConfig
+    from ray.serve.config import AutoscalingMetricsContext
 
     manager = AutoscalingStateManager()
     dep = DeploymentID(name="Reporter", app_name="app")
@@ -344,12 +345,9 @@ def test_metric_source_observed_replica_count():
     ctx = manager._app_autoscaling_states["app"]._metrics_source_context(dep)
     assert ctx.running_replicas == [replica]
     assert ctx.current_num_replicas == 1
-    assert ctx.total_num_requests is None
-    assert ctx.total_queued_requests is None
-    assert ctx.total_running_requests is None
-    assert ctx.target_num_replicas is None
-    assert ctx.capacity_adjusted_min_replicas is None
-    assert ctx.capacity_adjusted_max_replicas is None
+    assert type(ctx) is AutoscalingMetricsContext
+    assert not hasattr(ctx, "config")
+    assert not hasattr(ctx, "target_num_replicas")
 
 
 def test_metric_source_configuration_round_trip():
