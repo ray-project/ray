@@ -63,11 +63,16 @@ logger = logging.getLogger(__name__)
 # Columns of ``DeltaTable.get_add_actions(flatten=True)``.
 ADD_ACTION_PATH_COLUMN = "path"
 ADD_ACTION_SIZE_COLUMN = "size_bytes"
+ADD_ACTION_NUM_RECORDS_COLUMN = "num_records"
 ADD_ACTION_PARTITION_PREFIX = "partition."
 
 # The manifest column that carries each file's partition values from the log
 # to the reader: a struct with one string field per partition column.
 PARTITION_VALUES_COLUMN = "__delta_partition_values"
+
+# The manifest column that carries each file's row count from the log to the
+# reader, for ``count()``. Null when the writer recorded no stats.
+NUM_RECORDS_COLUMN = "__delta_num_records"
 
 # One file's partition values, by column, as ``partition_values_as_strings``
 # writes them. ``None`` is a null value.
@@ -267,6 +272,7 @@ class _DeltaLogListing:
     _partition_schema: pa.Schema
     _shuffle_config: Optional["FileShuffleConfig"]
     _partition_values_by_path: Dict[str, PartitionValues]
+    _num_records_by_path: Dict[str, Optional[int]]
 
     def _init_delta_listing(
         self,
@@ -285,6 +291,7 @@ class _DeltaLogListing:
         self._shuffle_config = shuffle_config
         # Filled by ``list_file_infos``, in the listing task.
         self._partition_values_by_path = {}
+        self._num_records_by_path = {}
 
     def list_file_infos(
         self,
@@ -312,6 +319,15 @@ class _DeltaLogListing:
             zip(
                 file_paths,
                 partition_values_as_strings(add_actions, self._partition_schema),
+            )
+        )
+        # ``deltalake`` leaves the column out when no file has stats.
+        self._num_records_by_path = dict(
+            zip(
+                file_paths,
+                add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
+                if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
+                else [None] * add_actions.num_rows,
             )
         )
         file_infos = sorted(
@@ -458,7 +474,9 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
 class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
     """Lists a Delta table's data files from its log, one row per file.
 
-    Used for metadata-only reads such as a pushed-down ``count()``.
+    Used for metadata-only reads such as a pushed-down ``count()``. Each row
+    also carries its file's row count from the log, in ``NUM_RECORDS_COLUMN``,
+    so the reader needn't read the file's footer for it.
     """
 
     def __init__(
@@ -479,6 +497,28 @@ class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
             filesystem=filesystem,
             partition_schema=partition_schema,
         )
+
+    @override
+    def list_files(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: Optional["FileSystem"] = None,
+        **kwargs: Any,
+    ) -> Iterator[FileManifest]:
+        for manifest in super().list_files(paths, filesystem=filesystem, **kwargs):
+            block = manifest.as_block()
+            # Listing manifests are always built as Arrow tables.
+            assert isinstance(block, pa.Table)
+            num_records = pa.array(
+                [self._num_records_by_path[path] for path in manifest.paths.tolist()],
+                type=pa.int64(),
+            )
+            yield FileManifest(
+                block.append_column(
+                    pa.field(NUM_RECORDS_COLUMN, pa.int64()), num_records
+                )
+            )
 
     @override
     def as_whole_file_indexer(self) -> "DeltaWholeFileIndexer":
