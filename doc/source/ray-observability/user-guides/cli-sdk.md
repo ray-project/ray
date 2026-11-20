@@ -361,6 +361,50 @@ list_nodes()
 :::
 ::::
 
+**Read the accelerator inventory of a node**
+
+When you request node details with `--detail` or `detail=True`, each alive node includes an
+`accelerator_inventory` field describing the accelerator devices the node agent can see and
+their CPU NUMA locality. This is a read-only hardware inventory, not a free-resource count or a
+scheduling guarantee.
+
+```bash
+ray list nodes --detail
+```
+
+```python
+from ray.util.state import list_nodes
+nodes = list_nodes(detail=True)
+nodes[0].accelerator_inventory
+```
+
+The `accelerator_inventory` value is a dictionary with these fields:
+
+- `status`: one of `ok`, `unsupported`, `unavailable`, or `error`.
+- `status_message`: a human-readable description for non-`ok` statuses.
+- `devices`: a list of discovered devices, empty when `status` isn't `ok`.
+
+A successful empty inventory (`ok` with no devices) is different from `unsupported` (the node's accelerator family has no inventory implementation, or the discovery library isn't installed) and `unavailable` (the accelerator driver is present but couldn't initialize). A status of `ok` covers only the accelerator families that implement discovery. On a node with GPUs from multiple vendors, `devices` lists the discovered families and omits any vendor without an inventory implementation.
+
+Each device has these fields:
+
+- `vendor`: the vendor, such as `nvidia`.
+- `resource_family`: the Ray resource family, such as `GPU`.
+- `model`: the driver-reported model name, such as `Tesla V100-SXM2-16GB`.
+- `uuid`: the stable hardware UUID. Ray never reports a device with an empty or invented UUID.
+- `memory_total_bytes`: total physical memory in bytes.
+- `pci_bus_id`: the normalized PCI bus ID, such as `0000:3b:00.0`.
+- `numa_node`: the CPU NUMA node closest to the device, or `null` when unknown.
+- `kind`: `gpu` for a physical GPU.
+- `parent_uuid`: `null` for physical GPUs.
+
+The first implementation supports NVIDIA GPUs. Ray reads the CPU NUMA node from the Linux kernel
+through `/sys/bus/pci/devices/<pci_bus_id>/numa_node`, so `numa_node` is available only on Linux.
+A missing, unreadable, or unknown value is `null`, never node 0. The inventory reflects the
+physical GPUs the node agent can see, not `CUDA_VISIBLE_DEVICES` of any worker process, and Ray
+doesn't report MIG instances. Inside a container, the inventory reports the physical GPUs exposed
+to the container by the driver.
+
 **List all placement groups**
 
 ::::{tab-set}
