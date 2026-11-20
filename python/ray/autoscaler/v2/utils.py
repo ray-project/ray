@@ -766,10 +766,13 @@ class ClusterStatusParser:
             task_actor_demand.append(demand)
 
         for gang_request in state.pending_gang_resource_requests:
+            gang_reqs = gang_request.requests or (
+                gang_request.bundle_selectors[0].resource_requests
+                if gang_request.bundle_selectors
+                else []
+            )
             demand = PlacementGroupResourceDemand(
-                bundles_by_count=cls._aggregate_resource_requests_by_shape(
-                    gang_request.requests
-                ),
+                bundles_by_count=cls._aggregate_resource_requests_by_shape(gang_reqs),
                 details=gang_request.details,
             )
             pg_demand.append(demand)

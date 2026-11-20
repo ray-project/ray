@@ -2588,5 +2588,144 @@ def test_kuberay_cr_multihost_label_refs_scheduler_rescheduling_and_idle_seam():
     assert sorted(t.instance_id for t in rep_idle.to_terminate) == ["r2-0", "r2-1"]
 
 
+def test_skipped_label_refs_warn_and_valid_label_refs_suppress_when_missing():
+    """Skipped labelRefs entries log a warning while valid entries stay silent and
+    populate runtime_label_keys so missing dynamic labels stop scaling on Tick 2."""
+    import logging
+
+    from ray.autoscaler._private.kuberay import autoscaling_config as ac_mod
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+    from ray.autoscaler.v2.scheduler import ResourceDemandScheduler, SchedulingRequest
+    from ray.autoscaler.v2.schema import AutoscalerInstance
+    from ray.core.generated.autoscaler_pb2 import (
+        BundleSelector,
+        GangResourceRequest,
+        LocalityConstraint,
+        LocalityRequirement,
+        NodeState,
+        NodeStatus,
+        ResourceRequest,
+    )
+    from ray.core.generated.common_pb2 import PlacementStrategy
+    from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+    from ray.util.debug import reset_log_once
+
+    records = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record):
+            records.append(record.getMessage())
+
+    handler = _ListHandler(level=logging.WARNING)
+    ac_mod.logger.addHandler(handler)
+    try:
+        reset_log_once()
+        cr_valid = get_basic_ray_cr()
+        cr_valid["metadata"]["namespace"] = "default"
+        cr_valid["spec"]["workerGroupSpecs"][0]["labelRefs"] = [
+            _make_label_ref("topology.kubernetes.io/zone"),
+            _make_label_ref("nvidia.com/gpu.clique", name=""),
+            _make_label_ref("cloud.google.com/rack", name="ray.io/rack"),
+        ]
+        records.clear()
+        valid_cfg = _generate_available_node_types_from_ray_cr_spec(cr_valid["spec"])
+        assert [m for m in records if "labelRefs" in m] == []
+        assert valid_cfg["small-group"]["runtime_label_keys"] == [
+            "topology.kubernetes.io/zone",
+            "nvidia.com/gpu.clique",
+            "ray.io/rack",
+        ]
+
+        reset_log_once()
+        cr_mixed = get_basic_ray_cr()
+        cr_mixed["metadata"]["namespace"] = "default"
+        cr_mixed["spec"]["workerGroupSpecs"] = [cr_mixed["spec"]["workerGroupSpecs"][1]]
+        gpu_wg = cr_mixed["spec"]["workerGroupSpecs"][0]
+        gpu_wg["groupName"] = "gpu-wg"
+        gpu_wg["numOfHosts"] = 2
+        gpu_wg["minReplicas"] = 0
+        gpu_wg["maxReplicas"] = 4
+        gpu_wg["labelRefs"] = [
+            {"valueFrom": {"nodeRef": {"fieldPath": "metadata.name"}}},
+            _make_label_ref("nvidia.com/gpu.clique", name="bad name"),
+            _make_label_ref("nvidia.com/gpu.clique"),
+        ]
+        records.clear()
+        full_cfg = _derive_autoscaling_config_from_ray_cr(cr_mixed)
+        warn_msgs = [m for m in records if "labelRefs" in m]
+        assert len(warn_msgs) == 2
+        assert all("gpu-wg" in msg for msg in warn_msgs)
+        assert full_cfg["available_node_types"]["gpu-wg"]["runtime_label_keys"] == [
+            "nvidia.com/gpu.clique"
+        ]
+    finally:
+        ac_mod.logger.removeHandler(handler)
+
+    # Unmocked producer -> consumer seam: valid labelRefs populates runtime_label_keys;
+    # Tick 1 launches 1 replica (2 workers), Tick 2 suppresses once running replica lacks it.
+    nt_cfgs = AutoscalingConfig(configs=full_cfg).get_node_type_configs()
+    reqs = [ResourceRequest(resources_bundle={"CPU": 1.0}) for _ in range(2)]
+    for r in reqs:
+        pc = r.placement_constraints.add()
+        pc.anti_affinity.label_name = "_pg_seam"
+    gang = GangResourceRequest(
+        bundle_selectors=[
+            BundleSelector(
+                resource_requests=reqs,
+                locality_requirement=LocalityRequirement(
+                    locality_constraint=LocalityConstraint(
+                        label_name="nvidia.com/gpu.clique",
+                        placement_strategy=PlacementStrategy.STRICT_PACK,
+                    )
+                ),
+            )
+        ]
+    )
+    rep_t1 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=nt_cfgs,
+            current_instances=[],
+            gang_resource_requests=[gang],
+        )
+    )
+    assert [(lr.instance_type, lr.count) for lr in rep_t1.to_launch] == [("gpu-wg", 2)]
+
+    running_rep = [
+        AutoscalerInstance(
+            im_instance=Instance(
+                instance_id=f"g{i}",
+                instance_type="gpu-wg",
+                status=Instance.RAY_RUNNING,
+                node_id=(f"n{i}".encode().ljust(28, b"\0")).hex(),
+                cloud_instance_id=f"c{i}",
+                node_kind=NodeKind.WORKER,
+            ),
+            ray_node=NodeState(
+                node_id=f"n{i}".encode().ljust(28, b"\0"),
+                instance_id=f"c{i}",
+                ray_node_type_name="gpu-wg",
+                status=NodeStatus.RUNNING,
+                total_resources=dict(nt_cfgs["gpu-wg"].resources),
+                available_resources=dict(nt_cfgs["gpu-wg"].resources),
+                labels={},
+            ),
+            cloud_instance_id=f"c{i}",
+            cloud_instance_replica_id="rep-0",
+        )
+        for i in range(2)
+    ]
+    rep_t2 = ResourceDemandScheduler().schedule(
+        SchedulingRequest(
+            disable_launch_config_check=True,
+            node_type_configs=nt_cfgs,
+            current_instances=running_rep,
+            gang_resource_requests=[gang],
+        )
+    )
+    assert list(rep_t2.to_launch) == []
+    assert len(rep_t2.infeasible_gang_resource_requests) == 1
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

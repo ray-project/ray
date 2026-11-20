@@ -177,11 +177,13 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
 
 def _parse_worker_group_label_refs(
     group_spec: Dict[str, Any],
+    group_name: Optional[str] = None,
 ) -> List[str]:
     """Parse workerGroupSpecs[].labelRefs into delivered Ray label keys.
 
     Args:
         group_spec: Worker group specification dictionary from the RayCluster CR.
+        group_name: Optional worker group name for warning context.
 
     Returns:
         The deduplicated list of delivered Ray label keys preserving
@@ -191,22 +193,37 @@ def _parse_worker_group_label_refs(
     if not isinstance(raw_refs, list):
         return []
 
+    wg_label = group_name or group_spec.get("groupName") or "<unknown>"
+
+    def _warn_skipped(idx: int, reason: str) -> None:
+        if log_once(f"kuberay_invalid_label_ref:{wg_label}:{idx}:{reason}"):
+            logger.warning(
+                f"Skipping workerGroupSpecs[{wg_label!r}].labelRefs[{idx}]: {reason}"
+            )
+
     delivered_keys: List[str] = []
     seen_delivered: Set[str] = set()
 
-    for ref in raw_refs:
+    for idx, ref in enumerate(raw_refs):
         if not isinstance(ref, dict):
+            _warn_skipped(idx, "entry is not a mapping")
             continue
         value_from = ref.get("valueFrom")
         node_ref = value_from.get("nodeRef") if isinstance(value_from, dict) else None
         field_path = node_ref.get("fieldPath") if isinstance(node_ref, dict) else None
         if not isinstance(field_path, str):
+            _warn_skipped(idx, "missing string valueFrom.nodeRef.fieldPath")
             continue
         match = _NODE_LABEL_FIELD_PATH_RE.match(field_path)
         if not match:
+            _warn_skipped(
+                idx,
+                f"unsupported fieldPath {field_path!r} (expected metadata.labels['<key>'])",
+            )
             continue
         node_label_key = match.group(1)
         if not node_label_key.strip() or any(c.isspace() for c in node_label_key):
+            _warn_skipped(idx, f"invalid node label key {node_label_key!r}")
             continue
 
         raw_name = ref.get("name")
@@ -219,6 +236,7 @@ def _parse_worker_group_label_refs(
         ):
             delivered_key = raw_name
         else:
+            _warn_skipped(idx, f"invalid target label name {raw_name!r}")
             continue
 
         if delivered_key in seen_delivered:
@@ -289,7 +307,9 @@ def _node_type_from_group_spec(
 
     if not is_head:
         node_selector, pod_annotations = pod_scheduling_metadata
-        delivered_label_ref_keys = _parse_worker_group_label_refs(group_spec)
+        delivered_label_ref_keys = _parse_worker_group_label_refs(
+            group_spec, group_name=group_name
+        )
         replica_meta: Dict[str, Any] = {}
         if num_of_hosts > 0:
             for accelerator_manager in sorted(
