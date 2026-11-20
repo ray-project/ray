@@ -11,9 +11,7 @@ myst:
 Ray Serve can record an [OpenTelemetry](https://opentelemetry.io/) trace for each request it handles. A trace follows a request from the proxy that receives it through every deployment it calls, so you can see where the time goes and where errors happen. This page shows how to turn tracing on, find the spans Serve writes, add your own spans, and send traces to a tracing backend.
 
 :::{note}
-Tracing is an alpha feature, and its APIs may change.
-
-The complete feature described on this page isn't in a stable Ray release yet. To use it, {ref}`install a nightly build of Ray <install-nightlies>`. Ray 2.59 and 2.60 include `TracingConfig`, but in those releases it applies only to replicas: proxies read the `RAY_SERVE_TRACING_*` environment variables instead, Serve doesn't apply `tracing_config` from a config file until after the proxies start, and Serve doesn't validate exporters at startup.
+Request tracing requires Ray 2.61 or later.
 :::
 
 ## How Serve traces a request
