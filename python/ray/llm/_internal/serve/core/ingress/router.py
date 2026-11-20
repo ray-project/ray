@@ -1,10 +1,11 @@
 import asyncio
 import uuid
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import msgspec
 from fastapi import FastAPI, HTTPException, Request
+from starlette.responses import Response
 
 from ray import serve
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
@@ -22,11 +23,14 @@ from ray.llm._internal.serve.routing_policies.kv_aware.metrics import (
     record_tokenization_bypass,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
     SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
     SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
 )
 from ray.serve._private.http_util import _matches_session_id_header
+from ray.serve.context import _get_global_client
 from ray.serve.exceptions import DeploymentUnavailableError
 from ray.serve.handle import DeploymentHandle
 
@@ -77,6 +81,61 @@ def _get_routing_payload_from_body(
 
 def _parse_routing_payload(body: bytes) -> Optional[SimpleNamespace]:
     return _get_routing_payload_from_body(_parse_request_body(body))
+
+
+async def _check_router_health(
+    handle: DeploymentHandle,
+    route: Callable[[Request], Awaitable[Any]],
+    model_id: Optional[str] = None,
+) -> None:
+    """Exercise routing without sending an inference request."""
+    if not handle.running_replicas_populated():
+        return
+
+    deployment_info, _ = await asyncio.wait_for(
+        asyncio.to_thread(
+            lambda: _get_global_client().get_deployment_info(
+                handle.deployment_name, handle.app_name
+            )
+        ),
+        timeout=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+    )
+    autoscaling_config = deployment_info.deployment_config.autoscaling_config
+    if autoscaling_config is not None and autoscaling_config.min_replicas == 0:
+        return
+
+    # A plain prompt also works for tokenizers without a chat template.
+    payload: Dict[str, Any] = {"prompt": "health check"}
+    if model_id is not None:
+        payload["model"] = model_id
+
+    async def receive():
+        return {"type": "http.request", "body": json.dumps(payload).encode()}
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/internal/route",
+            "headers": [
+                (
+                    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER.encode(),
+                    b"/v1/completions",
+                ),
+                (SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER.encode(), b"POST"),
+                (b"content-type", b"application/json"),
+            ],
+        },
+        receive=receive,
+    )
+    response = await asyncio.wait_for(
+        route(request), timeout=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
+    )
+    if isinstance(response, Response) and response.status_code != 200:
+        raise RuntimeError(
+            f"Routing health check failed for model {model_id!r}: "
+            f"HTTP {response.status_code}: {response.body.decode()}"
+        )
 
 
 @serve.ingress(router_app)
@@ -134,7 +193,9 @@ class LLMRouter:
 
     Health:
         ``GET /health`` is exposed as a human-operator convenience.
-        Serve uses ``check_health()`` for replica readiness, not HTTP.
+        Serve's ``check_health()`` exercises request routing after a model
+        replica has been observed. Models configured to scale to zero are
+        excluded from routing probes.
     """
 
     # Warn once per replica when no routing key is derived. Class-level default
@@ -150,6 +211,7 @@ class LLMRouter:
         base_model_id: Optional[str] = None,
     ):
         self._handle: DeploymentHandle = server
+        self._llm_config = llm_config
         self._base_model_id = base_model_id
         self._tokenizer = None
         self._token_sender = None
@@ -196,6 +258,15 @@ class LLMRouter:
         self._token_sender = token_channel.TokenSender()
         self._kv_token_tracker.subscribe_token_endpoints(self._token_sender.connect)
         init_tokenization_bypass_counter()
+
+    async def check_health(self):
+        await _check_router_health(
+            self._handle,
+            self.route,
+            self._llm_config.model_id
+            if self._llm_config is not None
+            else self._base_model_id,
+        )
 
     @router_app.post("/internal/route")
     async def route(self, request: Request):

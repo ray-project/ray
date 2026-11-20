@@ -18,6 +18,7 @@ from ray.llm._internal.serve.core.configs.llm_config import (
     ModelLoadingConfig,
 )
 from ray.llm._internal.serve.core.ingress import (
+    router as router_module,
     router_application as router_application_module,
 )
 from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
@@ -27,6 +28,7 @@ from ray.serve._private.constants import (
     SERVE_ROUTER_APPLICATION_ORIGINAL_METHOD_HEADER,
     SERVE_SESSION_ID,
 )
+from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import DeploymentUnavailableError, RayServeException
 
 MODEL_APPS = {
@@ -58,6 +60,7 @@ class FakeHandle:
 
     def __init__(self, app_name: str):
         self.app_name = app_name
+        self.deployment_name = "Ingress"
         self.replica_id = f"SERVE_REPLICA::{app_name}#Ingress#r1"
         self.initialized = False
         self.session_id = None
@@ -66,9 +69,13 @@ class FakeHandle:
         # Raised by the pick-only (`_reserve=False`) path only.
         self.pick_only_error: Optional[Exception] = None
         self.delay_s = 0.0
+        self.replicas_populated = True
 
     def _init(self):
         self.initialized = True
+
+    def running_replicas_populated(self):
+        return self.replicas_populated
 
     @property
     def is_initialized(self):
@@ -99,8 +106,15 @@ class FakeHandle:
 @pytest.fixture(autouse=True)
 def _no_real_app_handles():
     """Background lookups may outlive a test's own patch; never reach Serve."""
-    with patch.object(router_application_module.serve, "get_app_handle", FakeHandle):
-        yield
+    with patch.object(
+        router_application_module.serve, "get_app_handle", FakeHandle
+    ), patch.object(router_module, "_get_global_client") as get_client:
+        get_info = get_client.return_value.get_deployment_info
+        get_info.return_value = (
+            SimpleNamespace(deployment_config=SimpleNamespace(autoscaling_config=None)),
+            None,
+        )
+        yield get_info
 
 
 def _new(cls, *args):
@@ -176,6 +190,92 @@ async def _route(router, method, path, body=b"", headers=None, form=None):
 async def _chat(router, body, headers=None):
     raw = body if isinstance(body, bytes) else json.dumps(body).encode()
     return await _route(router, "POST", "/v1/chat/completions", raw, headers)
+
+
+class TestHealth:
+    @pytest.mark.asyncio
+    async def test_skips_scale_to_zero_models(self, _no_real_app_handles):
+        configs = _llm_configs()
+
+        def get_info(name, app_name):
+            return (
+                SimpleNamespace(
+                    deployment_config=SimpleNamespace(
+                        autoscaling_config=AutoscalingConfig(
+                            min_replicas=0 if app_name == "llm-model-a" else 1
+                        )
+                    )
+                ),
+                None,
+            )
+
+        _no_real_app_handles.side_effect = get_info
+        router = _new(RouterApplication, MODEL_APPS, configs)
+        try:
+            handle = await router._handles["model-a"]
+            other_handle = await router._handles["org/model-b"]
+
+            await router.check_health()
+
+            assert not handle.calls
+            assert other_handle.calls
+        finally:
+            _cancel_handle_tasks(router)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error", [None, ValueError("broken routing"), RuntimeError("broken routing")]
+    )
+    async def test_probes_resolved_models(self, error):
+        router, _, patcher = _new_router()
+        try:
+            handle = await router._handles["model-a"]
+            other_handle = await router._handles["org/model-b"]
+            handle.error = error
+            if error is not None:
+                with pytest.raises(RuntimeError, match="model-a"):
+                    await router.check_health()
+            else:
+                await router.check_health()
+
+            assert handle.calls[0]["args"][0].model == "model-a"
+            assert other_handle.calls[0]["args"][0].model == "org/model-b"
+            assert other_handle.calls[0]["args"][0].prompt == "health check"
+        finally:
+            _cancel_handle_tasks(router)
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_skips_unresolved_applications(self, monkeypatch):
+        monkeypatch.setattr(router_application_module, "HANDLE_RETRY_INITIAL_S", 0.01)
+        router, _, patcher = _new_router(missing_apps={"llm-model-a"})
+        try:
+            live_handle = await router._handles["org/model-b"]
+            await router.check_health()
+            assert live_handle.calls
+            assert not router._handles["model-a"].done()
+        finally:
+            _cancel_handle_tasks(router)
+            patcher.stop()
+
+    @pytest.mark.asyncio
+    async def test_health_waits_for_first_running_replica(self):
+        router, _, patcher = _new_router()
+        try:
+            handle = await router._handles["model-a"]
+            other_handle = await router._handles["org/model-b"]
+            handle.replicas_populated = False
+
+            await router.check_health()
+            assert not handle.calls
+            assert other_handle.calls
+
+            handle.replicas_populated = True
+            await router.check_health()
+            assert handle.calls
+        finally:
+            _cancel_handle_tasks(router)
+            patcher.stop()
 
 
 class TestModels:
