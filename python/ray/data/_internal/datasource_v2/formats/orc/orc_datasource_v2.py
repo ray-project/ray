@@ -27,7 +27,15 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
+from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+    supports_stripe_reads,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+    ORC_TARGET_BYTES,
+    OrcStripeIndexer,
+    OrcStripePartitioner,
+)
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -83,6 +91,7 @@ class OrcDatasourceV2(FileDataSourceV2):
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+        enable_stripe_reads: bool = False,
     ):
         super().__init__(name="OrcV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -98,6 +107,10 @@ class OrcDatasourceV2(FileDataSourceV2):
         self._file_extensions = file_extensions
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
+        self._enable_stripe_reads = enable_stripe_reads
+        self._max_stripe_bytes = (
+            DataContext.get_current().target_max_block_size or ORC_TARGET_BYTES
+        )
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
 
     @property
@@ -128,6 +141,11 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def _get_file_indexer(self) -> FileIndexer:
+        if self._enable_stripe_reads and supports_stripe_reads():
+            return OrcStripeIndexer(
+                ignore_missing_paths=self._ignore_missing_paths,
+                max_decoded_stripe_bytes=self._max_stripe_bytes,
+            )
         return NonSamplingFileIndexer(ignore_missing_paths=self._ignore_missing_paths)
 
     @override
@@ -136,6 +154,8 @@ class OrcDatasourceV2(FileDataSourceV2):
     ) -> Optional[FilePartitioner]:
         if hints is None:
             return None
+        if self._enable_stripe_reads and supports_stripe_reads():
+            return OrcStripePartitioner(ORC_TARGET_BYTES)
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 

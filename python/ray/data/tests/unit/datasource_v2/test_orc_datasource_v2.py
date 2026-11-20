@@ -12,9 +12,6 @@ import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
-    RoundRobinPartitioner,
-)
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
     _read_orc_schema,
@@ -103,7 +100,10 @@ def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
 
 
 @pytest.mark.parametrize("root_first", [False, True])
-def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_first):
+@pytest.mark.parametrize("enable_stripe_reads", [False, True])
+def test_resolve_partitioning_and_reuse_generic_file_components(
+    tmp_path, root_first, enable_stripe_reads
+):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     file_path = partition_dir / "data.orc"
@@ -116,6 +116,7 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_f
         [str(tmp_path)],
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
         file_extensions=["orc"],
+        enable_stripe_reads=enable_stripe_reads,
     )
 
     resolved = datasource.resolve_partitioning(sample)
@@ -129,7 +130,22 @@ def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_f
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
-    assert isinstance(partitioner, RoundRobinPartitioner)
+    from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+        supports_stripe_reads,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
+        OrcStripePartitioner,
+    )
+
+    expected_type = (
+        OrcStripePartitioner
+        if enable_stripe_reads and supports_stripe_reads()
+        else RoundRobinPartitioner
+    )
+    assert isinstance(partitioner, expected_type)
     partitioner.add_input(sample)
     partitioner.finalize()
     assert partitioner.has_partition()
@@ -179,8 +195,9 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
 
 
 @pytest.mark.parametrize("merge_schema", [False, True])
+@pytest.mark.parametrize("enable_stripe_reads", [False, True])
 def test_read_orc_routes_to_v2_and_forwards_read_options(
-    monkeypatch, tmp_path, merge_schema
+    monkeypatch, tmp_path, merge_schema, enable_stripe_reads
 ):
     result = object()
     captured = {}
@@ -202,11 +219,13 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(
         parallelism=2,
         override_num_blocks=3,
         merge_schema=merge_schema,
+        enable_stripe_reads=enable_stripe_reads,
     )
 
     datasource = captured["datasource"]
     assert actual is result
     assert isinstance(datasource, OrcDatasourceV2)
+    assert datasource._enable_stripe_reads is enable_stripe_reads
     assert datasource.paths == [str(tmp_path)]
     assert datasource.file_extensions == ["orc"]
     # Keep the deprecated ``parallelism`` precedence used by ``read_datasource``.
@@ -220,6 +239,8 @@ def test_read_orc_rejects_full_schema_on_v1(monkeypatch, tmp_path):
     monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", False)
     with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
         read_api.read_orc(str(tmp_path), merge_schema=True)
+    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
+        read_api.read_orc(str(tmp_path), enable_stripe_reads=True)
 
 
 def test_infer_schema_empty_sample(tmp_path):

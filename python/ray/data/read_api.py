@@ -3049,6 +3049,7 @@ def read_orc(
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     merge_schema: bool = False,
+    enable_stripe_reads: bool = False,
     # Advanced Ray remote parameters
     label_selector: Optional[Dict[str, str]] = None,
     fallback_strategy: Optional[List[Dict[str, Any]]] = None,
@@ -3069,6 +3070,11 @@ def read_orc(
         setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
         Ray. This shared setting also affects ``read_parquet()``.
+
+        With ``enable_stripe_reads=True``, DataSourceV2 may schedule a multi-stripe
+        file across read tasks. Selected stripes use ``ORCFile.read_stripe()`` and
+        may be fully materialized before batched output. Memory estimates and batch
+        sizes are not memory bounds. The default uses whole-file streaming.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -3126,6 +3132,8 @@ def read_orc(
             before returning the Dataset. Defaults to ``False``, which infers from
             up to 16 files. Requires the V2 datasource. See the notes below for cost
             and file-discovery behavior.
+        enable_stripe_reads: Opt into stripe-level reads with DataSourceV2. Stripe
+            decoding may materialize a whole stripe before producing batches.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -3160,6 +3168,10 @@ def read_orc(
     """
 
     ctx = DataContext.get_current()
+    if enable_stripe_reads and not ctx.use_datasource_v2:
+        raise NotImplementedError(
+            "`enable_stripe_reads=True` requires the V2 datasource"
+        )
     if merge_schema and not ctx.use_datasource_v2:
         raise NotImplementedError(
             "`merge_schema=True` on `read_orc` requires the V2 datasource. "
@@ -3180,6 +3192,7 @@ def read_orc(
             ignore_missing_paths=ignore_missing_paths,
             include_paths=include_paths,
             shuffle=shuffle,
+            enable_stripe_reads=enable_stripe_reads,
         )
         return _read_datasource_v2(
             datasource,
