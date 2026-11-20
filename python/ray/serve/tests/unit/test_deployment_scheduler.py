@@ -4249,6 +4249,20 @@ class TestDownscaleKeepsRules:
 
         assert _downscale(scheduler, d_id, 1) == {ReplicaID("recovering", d_id)}
 
+    def test_asking_for_more_stops_than_replicas_stops_them_all(self):
+        n1, n2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {n1: (4, {}), n2: (4, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("on_n1", d_id), n1)
+        scheduler.on_replica_running(ReplicaID("on_n2", d_id), n2)
+
+        with mock.patch("ray.serve._private.deployment_scheduler.logger") as log:
+            stopped = _downscale(scheduler, d_id, 3)
+        assert stopped == {ReplicaID("on_n1", d_id), ReplicaID("on_n2", d_id)}
+        assert not any("gave way" in str(c) for c in log.info.call_args_list)
+
 
 def _zone_compaction_scheduler(layout, rules):
     d_id = DeploymentID(name="deployment1")

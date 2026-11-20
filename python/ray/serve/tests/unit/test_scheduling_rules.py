@@ -2,6 +2,7 @@ import sys
 
 import pytest
 
+from ray.serve._private import scheduling_rules
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.scheduling_rules import (
     RAY_NODE_ID_LABEL,
@@ -108,6 +109,28 @@ def test_floor_is_capped_at_the_domains_the_replica_can_use():
     )
     assert rule.effective_floor(ctx) == 1
     assert rule.is_met(ctx)
+
+
+def test_domain_counts_follow_the_candidate_nodes(monkeypatch):
+    ctx = make_ctx(NODE_LABELS, candidate_nodes={"a1", "a2", "u1"})
+    assert ctx.num_domains(ZONE) == 1
+    assert ctx.num_domains(RAY_NODE_ID_LABEL) == 3
+    assert make_ctx(NODE_LABELS).num_domains(ZONE) == 2
+
+    calls = []
+    real_label_value = scheduling_rules.label_value
+    monkeypatch.setattr(
+        scheduling_rules,
+        "label_value",
+        lambda *args: calls.append(args) or real_label_value(*args),
+    )
+    rule = MinTopologyDomainsConstraint(ZONE, 3)
+    ctx = make_ctx(NODE_LABELS, num_replicas=6)
+    assert rule.effective_floor(ctx) == 2
+    num_calls = len(calls)
+    assert rule.effective_floor(ctx) == 2
+    assert not rule.is_met(ctx)
+    assert len(calls) == num_calls
 
 
 def test_node_floor_counts_distinct_nodes():

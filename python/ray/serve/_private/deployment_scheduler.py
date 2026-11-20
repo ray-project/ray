@@ -1595,6 +1595,7 @@ class DeploymentScheduler:
 
         If too few stops pass, optional rules are dropped, last listed first.
         """
+        max_num_to_stop = min(max_num_to_stop, len(replicas_priority))
         rules = self._deployments[deployment_id].rules
         node_by_replica = dict(self._running_replicas[deployment_id])
         for replica_id, info in self._launching_replicas[deployment_id].items():
@@ -1604,7 +1605,7 @@ class DeploymentScheduler:
             node_id: self._cluster_node_info_cache.get_node_labels(node_id)
             for node_id in self._cluster_node_info_cache.get_active_node_ids()
         }
-        num_replicas_after = self._num_replicas(deployment_id) - max_num_to_stop
+        num_replicas_after = len(replicas_priority) - max_num_to_stop
 
         tiers = rule_tiers(rules)
         for tier in tiers:
@@ -1956,7 +1957,7 @@ class DeploymentScheduler:
             if rule.allowed_nodes({source_node_id}, ctx)
         )
         for required_resources, required_labels in placement_candidates:
-            chosen_node = PackNodeScorer().choose(
+            chosen_node = self._compaction_scorer.choose(
                 required_resources,
                 self._filter_candidate_nodes(
                     view.available_resources,

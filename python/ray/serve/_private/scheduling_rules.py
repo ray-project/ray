@@ -38,6 +38,27 @@ class SchedulingContext:
     replicas_per_node: Mapping[str, int] = field(default_factory=dict)
     num_replicas: int = 0
     candidate_nodes: Optional[Set[str]] = None
+    _num_domains: Dict[str, int] = field(
+        default_factory=dict, init=False, repr=False, compare=False
+    )
+
+    def num_domains(self, label_key: str) -> int:
+        """How many values of `label_key` the candidate nodes span."""
+        if label_key not in self._num_domains:
+            nodes = (
+                self.candidate_nodes
+                if self.candidate_nodes is not None
+                else self.node_labels
+            )
+            self._num_domains[label_key] = len(
+                {
+                    domain
+                    for node_id in nodes
+                    if (domain := label_value(node_id, label_key, self.node_labels))
+                    is not None
+                }
+            )
+        return self._num_domains[label_key]
 
 
 class SchedulingConstraint:
@@ -113,18 +134,9 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
 
     def effective_floor(self, ctx: SchedulingContext) -> int:
         """The floor capped at the replica count and the usable domains."""
-        nodes = (
-            ctx.candidate_nodes if ctx.candidate_nodes is not None else ctx.node_labels
+        return min(
+            self._min_domains, ctx.num_replicas, ctx.num_domains(self._label_key)
         )
-        num_domains = len(
-            {
-                domain
-                for node_id in nodes
-                if (domain := label_value(node_id, self._label_key, ctx.node_labels))
-                is not None
-            }
-        )
-        return min(self._min_domains, ctx.num_replicas, num_domains)
 
     def is_met(self, ctx: SchedulingContext) -> bool:
         return len(self.covered_domains(ctx)) >= self.effective_floor(ctx)
