@@ -517,16 +517,13 @@ class PackNodeScorer(NodeScorer):
         candidates: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
     ) -> Optional[str]:
-        non_idle_nodes = {
-            node_id: resources
-            for node_id, resources in candidates.items()
-            if node_to_assigned_replicas.get(node_id)
-        }
-        idle_nodes = {
-            node_id: resources
-            for node_id, resources in candidates.items()
-            if not node_to_assigned_replicas.get(node_id)
-        }
+        non_idle_nodes: Dict[str, AvailableNodeResources] = {}
+        idle_nodes: Dict[str, AvailableNodeResources] = {}
+        for node_id, resources in candidates.items():
+            if node_to_assigned_replicas.get(node_id):
+                non_idle_nodes[node_id] = resources
+            else:
+                idle_nodes[node_id] = resources
         return _best_fit_node(required_resources, non_idle_nodes) or _best_fit_node(
             required_resources, idle_nodes
         )
@@ -597,6 +594,7 @@ class DeploymentScheduler:
         # re-detects compaction opportunities.
         self._compacting_node: Optional[CompactingNodeInfo] = None
         self._compaction_rule = ExcludeNodesConstraint(self._compacting_node_ids)
+        self._compaction_scorer = PackNodeScorer()
         # Set after a scan finds nothing, cleared as soon as the cluster changes.
         self._next_compaction_scan_timestamp_s: float = 0
         self._num_consecutive_failed_compactions: int = 0
@@ -1260,6 +1258,10 @@ class DeploymentScheduler:
             return None
 
         deployment_id = scheduling_request.replica_id.deployment_id
+        rules = self._rules_for(deployment_id)
+        ctx = SchedulingContext(
+            deployment_id=deployment_id, node_labels=view.node_labels
+        )
         target_node = None
         for (
             required_resources,
@@ -1268,12 +1270,7 @@ class DeploymentScheduler:
             target_node = scorer.choose(
                 required_resources,
                 self._filter_candidate_nodes(
-                    view.available_resources,
-                    required_labels,
-                    self._rules_for(deployment_id),
-                    SchedulingContext(
-                        deployment_id=deployment_id, node_labels=view.node_labels
-                    ),
+                    view.available_resources, required_labels, rules, ctx
                 ),
                 view.node_to_assigned_replicas,
             )
@@ -1550,6 +1547,8 @@ class DeploymentScheduler:
                 available_resources_per_node = self._filter_nodes_by_label_selector(
                     available_resources_per_node, required_labels, ctx.node_labels
                 )
+                if not available_resources_per_node:
+                    return {}
 
         allowed = set(available_resources_per_node)
         for rule in rules:
@@ -1815,18 +1814,17 @@ class DeploymentScheduler:
                     assignment.clear()
                     break
 
+                rules = self._rules_for(replica_id.deployment_id)
+                ctx = SchedulingContext(
+                    deployment_id=replica_id.deployment_id,
+                    node_labels=all_node_labels,
+                )
                 chosen_node = None
                 for required_resources, required_labels in placement_candidates:
-                    chosen_node = PackNodeScorer().choose(
+                    chosen_node = self._compaction_scorer.choose(
                         required_resources,
                         self._filter_candidate_nodes(
-                            available_resources,
-                            required_labels,
-                            self._rules_for(replica_id.deployment_id),
-                            SchedulingContext(
-                                deployment_id=replica_id.deployment_id,
-                                node_labels=all_node_labels,
-                            ),
+                            available_resources, required_labels, rules, ctx
                         ),
                         node_to_simulated_replicas,
                     )
