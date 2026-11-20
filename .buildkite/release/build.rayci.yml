@@ -82,6 +82,30 @@ steps:
     depends_on:
       - raycudabaseextra($)
 
+  # AWS Neuron (Trainium / Inferentia) image. AWS ships prebuilt TorchNeuron
+  # wheels for Ubuntu 26.04 only, so the wheel is built from source for 22.04.
+  # That build takes hours when wanda has no cached result for it.
+  - name: torchneuronxwheel
+    label: "wanda: torch-neuronx-wheel-py{{array.python}}"
+    wanda: docker/ray-neuron/torch-neuronx-wheel.wanda.yaml
+    array:
+      python:
+        - "3.13"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+
+  - name: rayneuronbase
+    label: "wanda: ray-py{{array.python}}-neuron-base"
+    wanda: docker/ray-neuron/cpu.wanda.yaml
+    array:
+      python:
+        - "3.13"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+    depends_on:
+      - raycpubaseextra($)
+      - torchneuronxwheel($)
+
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
     wanda: ci/docker/ray-anyscale-cpu.wanda.yaml
@@ -264,3 +288,38 @@ steps:
       gpu:
         - cu12.8.1-cudnn
         - cu13.3.1-cudnn
+
+  - name: ray-anyscale-neuron-build
+    label: "wanda: ray-anyscale py{{array.python}} neuron"
+    wanda: ci/docker/ray-anyscale-neuron.wanda.yaml
+    env_file: rayci.env
+    array:
+      python:
+        - "3.13"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      ARCH_SUFFIX: ""
+    tags:
+      - oss
+    depends_on:
+      - ray-wheel-build($)
+      - rayneuronbase($)
+
+  - label: ":crane: publish: ray-anyscale py{{array.python}} neuron"
+    key: anyscaleneuronbuild
+    instance_type: release-medium
+    mount_buildkite_agent: true
+    tags:
+      - oss
+    commands:
+      - bazel run //ci/ray_ci/automation:push_release_test_image --
+        --python-version {{array.python}}
+        --platform neuron
+        --image-type ray
+        --upload
+    depends_on:
+      - forge
+      - ray-anyscale-neuron-build($)
+    array:
+      python:
+        - "3.13"

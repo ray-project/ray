@@ -20,6 +20,7 @@ class TestFormatPlatformTag:
         [
             ("cpu", "-cpu"),
             ("tpu", "-tpu"),
+            ("neuron", "-neuron"),
             ("cu11.7.1-cudnn8", "-cu117"),
             ("cu11.8.0-cudnn8", "-cu118"),
             ("cu12.1.1-cudnn8", "-cu121"),
