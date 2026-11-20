@@ -122,6 +122,7 @@ class AsyncInferenceAutoscalingPolicy:
             self._task = asyncio.get_running_loop().create_task(self._poll_once())
 
         num_running_replicas = ctx.current_num_replicas
+        assert ctx.total_num_requests is not None
         total_workload = ctx.total_num_requests + self._queue_length
         config = ctx.config
 

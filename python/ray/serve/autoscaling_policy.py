@@ -222,7 +222,11 @@ def _merge_user_state_with_internal_state(
 
 def _get_cold_start_scale_up_replicas(ctx: AutoscalingContext) -> Optional[int]:
     """Returns the desired number of replicas if the cold start fast path applies, otherwise returns None."""
-    if ctx.current_num_replicas == 0 and ctx.total_num_requests > 0:
+    if (
+        ctx.current_num_replicas == 0
+        and ctx.total_num_requests is not None
+        and ctx.total_num_requests > 0
+    ):
         assert ctx.target_num_replicas is not None
         return max(
             math.ceil(1 * ctx.config.get_upscaling_factor()),
@@ -342,6 +346,7 @@ def _core_replica_queue_length_policy(
         assert ctx.target_num_replicas is not None
         return ctx.target_num_replicas, {}
     target_num_requests = config.get_target_ongoing_requests() * num_running_replicas
+    assert ctx.total_num_requests is not None
     error_ratio = ctx.total_num_requests / target_num_requests
     desired_num_replicas = num_running_replicas * error_ratio
     return desired_num_replicas, {}

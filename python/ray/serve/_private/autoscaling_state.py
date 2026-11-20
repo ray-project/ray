@@ -687,6 +687,7 @@ class DeploymentAutoscalingState:
             decision_num_replicas = math.ceil(decision_num_replicas)
         policy_execution_time_ms = (time.time() - start_time) * 1000
 
+        assert autoscaling_context.total_num_requests is not None
         self.record_autoscaling_metrics(
             decision_num_replicas,
             autoscaling_context.total_num_requests,
@@ -1166,7 +1167,7 @@ class ApplicationAutoscalingState:
             current_num_replicas=len(running),
             target_num_replicas=None,
             running_replicas=running,
-            total_num_requests=0,
+            total_num_requests=None,
             total_queued_requests=None,
             raw_metrics=dict(metrics),
             aggregated_metrics=lambda: {
@@ -1264,9 +1265,13 @@ class ApplicationAutoscalingState:
                 deployment_autoscaling_state = self._deployment_autoscaling_states[
                     deployment_id
                 ]
+                total_num_requests = autoscaling_contexts[
+                    deployment_id
+                ].total_num_requests
+                assert total_num_requests is not None
                 deployment_autoscaling_state.record_autoscaling_metrics(
                     num_replicas,  # type: ignore[arg-type]
-                    autoscaling_contexts[deployment_id].total_num_requests,
+                    total_num_requests,
                     policy_execution_time_ms,
                     "application",
                 )
