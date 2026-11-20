@@ -309,7 +309,9 @@ def test_push_split_checkpointing_records_yielded_row_ids(ray_start_regular_shar
     ds = ray.data.range(1000, override_num_blocks=20)
     iterators = streaming_split_push_based(ds, 2, equal=True)
     for it in iterators:
-        it._enable_checkpointing(_RecordingCheckpointer())
+        it._enable_checkpointing(
+            _RecordingCheckpointer()  # pyrefly: ignore[bad-argument-type]
+        )
     consumers = _make_consumers(iterators)
 
     results = _run_epochs(consumers)
