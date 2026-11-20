@@ -1145,9 +1145,7 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
-    def _metrics_source_context(
-        self, dep: DeploymentID, target: int
-    ) -> AutoscalingContext:
+    def _metrics_source_context(self, dep: DeploymentID) -> AutoscalingContext:
         settings = self._metric_sources[dep]
         now = time.time()
         running = list(self._source_running.get(dep, ()))
@@ -1166,7 +1164,7 @@ class ApplicationAutoscalingState:
             deployment_name=dep.name,
             app_name=dep.app_name,
             current_num_replicas=len(running),
-            target_num_replicas=target,
+            target_num_replicas=None,
             running_replicas=running,
             total_num_requests=0,
             total_queued_requests=None,
@@ -1179,8 +1177,8 @@ class ApplicationAutoscalingState:
                 }
                 for key, replicas in metrics.items()
             },
-            capacity_adjusted_min_replicas=target,
-            capacity_adjusted_max_replicas=target,
+            capacity_adjusted_min_replicas=None,
+            capacity_adjusted_max_replicas=None,
             policy_state={},
             last_scale_up_time=None,
             last_scale_down_time=None,
@@ -1233,9 +1231,7 @@ class ApplicationAutoscalingState:
                 self._metric_sources.keys() & deployment_to_target_num_replicas.keys()
             ):
                 if dep not in autoscaling_contexts:
-                    autoscaling_contexts[dep] = self._metrics_source_context(
-                        dep, deployment_to_target_num_replicas[dep]
-                    )
+                    autoscaling_contexts[dep] = self._metrics_source_context(dep)
             # Time the policy execution
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
