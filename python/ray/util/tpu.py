@@ -2924,9 +2924,8 @@ class SliceActorGroup:
     :class:`SubslicePlacementGroup`. When any actor in the gang fails, all
     sibling actors are torn down together (``ray.kill(..., no_restart=True)``),
     every bundle waits for kernel TPU VFIO teardown via
-    :func:`~ray._private.accelerators.tpu.wait_for_tpu_vfio_ready` so restarted
-    actors do not hit ``EBUSY``, and a fresh gang is created via
-    ``actor_factory``.
+    ``wait_for_tpu_vfio_ready()`` so restarted actors do not hit ``EBUSY``, and
+    a fresh gang is created via ``actor_factory``.
 
     Args:
         slice_pg: The :class:`SlicePlacementGroup` or
