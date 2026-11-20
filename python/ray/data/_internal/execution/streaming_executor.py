@@ -646,6 +646,9 @@ class StreamingExecutor(Executor, threading.Thread):
         task is unresolved, so a lost input can still be reconstructed.
         """
         assert self._topology is None, "Enable before execute()."
+        assert (
+            self._external_consumer_tasks is None
+        ), "External consumer tasks are already enabled."
         self._external_consumer_tasks = ExternalConsumerTasks()
         return self._external_consumer_tasks
 
