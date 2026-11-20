@@ -141,6 +141,8 @@ Ray reports the head node's own dashboard address by default, which users behind
 The Ray dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
 ```
 
+If the cluster runs with `RAY_AUTH_MODE=disabled` and the reverse proxy adds its own `Authorization` header, such as for Basic authentication, strip that header before forwarding the request. With authentication disabled, the dashboard rejects any request that carries an `Authorization` header or a non-empty `X-Ray-Authorization` header. See {ref}`token-auth`.
+
 ## Disabling the dashboard
 
 The dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
@@ -287,6 +289,27 @@ When the Grafana instance requires user authentication, the following settings h
   cookie_secure = true
   cookie_samesite = none
 ```
+
+(grafana-dashboard-annotations)=
+#### Overlay event annotations on the dashboards
+
+Ray Train emits *annotations*, which are discrete, timestamped events. When you turn annotations on, Ray writes each one as a single JSON object on its own line. Every process that emits annotations writes its own `annotations_<pid>.log` file in the session logs directory. Grafana can overlay each of these events as a marker on the time axis of every panel, so you can line up what happened against the metric graphs.
+
+![Ray Train dashboard panels with annotation markers and the tooltip of a ray.train.report annotation](images/train-grafana-annotations.png)
+
+Annotations are off by default, because Ray doesn't ship a log collector and provisions only a Prometheus datasource. With annotations off, Ray writes no annotation log lines, and the generated dashboards leave out the annotation queries. To render annotations, supply the rest of the pipeline and turn them on with the following steps:
+
+1. Run a log collector, such as [Grafana Alloy](https://grafana.com/docs/alloy/latest/) or [Vector](https://vector.dev/), that tails `/tmp/ray/session_*/logs/annotations_*.log` and ships each line to [Loki](https://grafana.com/docs/loki/latest/). If you start Ray with a custom `--temp-dir`, replace `/tmp/ray` with that directory. The generated queries read fields such as `session_name` and `event` from the top level of the JSON object. Ship the line as-is, or merge its fields into the top level of the record your collector sends. Don't nest the line under a key of your own, which hides those fields from the queries.
+1. Label that stream `ray_annotations="true"` in the collector so the generated queries can find it. This label is the one thing Ray needs from your collector configuration. Attach it statically to the stream your collector builds from the annotation files, which the path in step 1 already identifies.
+1. Optionally, set each log entry's timestamp from the record's `timestamp_s` field, which holds the emit time in seconds since the Unix epoch. Grafana places an annotation at its log entry's timestamp, and a collector that stamps entries when it ships them shifts every annotation later by the shipping delay.
+1. Add Loki to Grafana as a datasource.
+1. Set `RAY_ANNOTATIONS_ENABLED=1` on every node before you start Ray, for example `RAY_ANNOTATIONS_ENABLED=1 ray start ...`. Worker nodes need it to write annotation log lines, and the head node needs it for the generated dashboards to include the annotation queries. Setting it through a job's `runtime_env` doesn't reach the dashboard, so it isn't enough.
+
+Ray needs no further configuration. The annotation queries select the stream by the `ray_annotations="true"` label from step 2. They resolve the datasource through an `annotation_datasource` dashboard variable, which Grafana binds to your first Loki datasource automatically, the same way the metric panels find Prometheus. If you have several Loki datasources, pick one from that variable's dropdown on the dashboard.
+
+The annotations follow the `SessionName` dashboard variable, like the metric panels. When it's set to `All`, they match only the sessions that Prometheus has metrics for under the dashboard's global filters, so a dashboard doesn't render other clusters' events when one Loki serves several clusters. Within a session, the `TrainRunName` and `TrainRunId` dashboard variables select between concurrent runs.
+
+Each kind of annotation is its own layer, with its own toggle in the dashboard's controls, and every layer starts switched on.
 
 #### Troubleshooting
 

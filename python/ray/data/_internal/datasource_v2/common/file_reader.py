@@ -1,10 +1,10 @@
 from enum import Enum
 from functools import cached_property, partial
-from typing import Any, Iterator, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, Iterator, List, Mapping, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 import pyarrow.dataset as pds
-from pyarrow.fs import FileSystem, LocalFileSystem
+from pyarrow.fs import FileInfo, FileSystem, FileType, LocalFileSystem
 
 from ray._common.utils import env_integer
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
@@ -24,7 +24,11 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
 )
-from ray.data._internal.util import iterate_with_retry, make_async_gen
+from ray.data._internal.util import (
+    filesystem_for_sized_opens,
+    iterate_with_retry,
+    make_async_gen,
+)
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
@@ -151,9 +155,10 @@ class FileReader(Reader[FileManifest]):
         match an on-disk column of the same name; stripping it keeps pyarrow
         from attempting that cast.
         """
-        if self._schema is None:
+        schema = self._schema
+        if schema is None:
             return None
-        if any(isinstance(f.type, pa.ExtensionType) for f in self._schema):
+        if any(isinstance(f.type, pa.ExtensionType) for f in schema):
             return None
         partition_keys = (
             set(self._partition_parser._scheme.field_names or [])
@@ -163,7 +168,7 @@ class FileReader(Reader[FileManifest]):
         synthesized = {c.name for c in self._synthesized_columns}
         fields = [
             f
-            for f in self._schema
+            for f in schema
             if f.name not in partition_keys and f.name not in synthesized
         ]
         return pa.schema(fields) if fields else None
@@ -181,6 +186,42 @@ class FileReader(Reader[FileManifest]):
         """
         return _broadcast_partition_value(name, value, num_rows, self._schema)
 
+    def _get_partition_values(self, path: str) -> Dict[str, Any]:
+        """Return partition values for one file or fragment path."""
+        return (
+            self._partition_parser(path) if self._partition_parser is not None else {}
+        )
+
+    def _apply_partition_values(
+        self,
+        table: pa.Table,
+        values: Mapping[str, Any],
+        *,
+        required_columns: Optional[Set[str]] = None,
+    ) -> pa.Table:
+        """Replace requested columns with typed path-derived partition values.
+
+        Format readers call this before residual filtering. The base read loop
+        keeps its post-read placement for formats using the default path.
+
+        Args:
+            table: Batch receiving the path-derived values.
+            values: Partition values for the current file or fragment.
+            required_columns: Keys to synthesize, or None for all parsed keys.
+
+        Returns:
+            Table with requested path values replacing same-named columns.
+        """
+        for name, value in values.items():
+            if required_columns is not None and name not in required_columns:
+                continue
+            if name in table.column_names:
+                table = table.drop([name])
+            table = table.append_column(
+                name, self._broadcast_partition_value(name, value, table.num_rows)
+            )
+        return table
+
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
         """Read data from the input bucket and yield Arrow tables.
 
@@ -196,13 +237,22 @@ class FileReader(Reader[FileManifest]):
         if len(input_split) == 0:
             return
 
-        # Dedupe paths before handing them to pyarrow. When chunking is on,
-        # a manifest can carry multiple rows per file (each describing a
-        # different row-group slice); pyarrow only needs one fragment per
-        # file, and ``_get_fragments_to_read`` then fans out chunk-level
-        # sub-fragments using the per-row chunk metadata.
-        paths = list(dict.fromkeys(list(input_split.paths)))
-        filesystem = self._filesystem or LocalFileSystem()
+        # Dedupe paths before handing them to pyarrow. A manifest can carry
+        # multiple rows per file — chunking emits one row per row-group
+        # slice, and a user may deliberately list the same file more than
+        # once; pyarrow only needs one fragment per file, and
+        # ``_get_fragments_to_read`` fans out per manifest row from that
+        # fragment, so repeated rows are each still read.
+        #
+        # Each file carries its on-disk size from the listing, so pyarrow
+        # opens it without first asking the filesystem for the size (an
+        # extra HEAD request per open on S3).
+        file_sizes = dict(zip(input_split.paths, input_split.known_file_sizes))
+        files = [
+            FileInfo(path, FileType.File, size=size)
+            for path, size in file_sizes.items()
+        ]
+        filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         # Build a ``pds.Dataset`` over *all* manifest paths so pyarrow's
         # listing + column metadata is shared, but then iterate its
         # fragments one at a time. ``dataset.scanner(fragments=...)``
@@ -212,7 +262,7 @@ class FileReader(Reader[FileManifest]):
         # fragment scanners let pyarrow use the native per-file type,
         # and downstream concat handles unification.
         dataset = pds.dataset(
-            source=paths,
+            source=files,
             format=self._make_format(),
             filesystem=filesystem,
             schema=self._file_dataset_schema,
@@ -254,29 +304,11 @@ class FileReader(Reader[FileManifest]):
                 if len(table) > self._limit - rows_read:
                     table = table.slice(0, self._limit - rows_read)
 
-            # Build the list of (name, value) pairs to synthesize from
-            # the fragment path: hive partitions.
-            derived_items: List[Tuple[str, Any]] = []
             if self._partition_parser is not None:
-                derived_items.extend(
-                    self._partition_parser(position.unit.source).items()
-                )
-
-            for name, value in derived_items:
-                if (
-                    columns_to_synthesize is not None
-                    and name not in columns_to_synthesize
-                ):
-                    continue
-                if name in table.column_names:
-                    # When the caller schema names a partition key, pyarrow
-                    # expects it in every file and fills it with nulls when
-                    # absent (the hive-typical case). Drop that placeholder
-                    # so the path-derived value below replaces it.
-                    table = table.drop([name])
-                table = table.append_column(
-                    name,
-                    self._broadcast_partition_value(name, value, table.num_rows),
+                table = self._apply_partition_values(
+                    table,
+                    self._get_partition_values(position.unit.source),
+                    required_columns=columns_to_synthesize,
                 )
 
             # Skip a synthesized column when projection pushdown has narrowed
@@ -365,20 +397,62 @@ class FileReader(Reader[FileManifest]):
         one file position their rows correctly instead of all counting from
         zero.
 
-        Default impl returns one whole-file fragment per file in the
-        dataset, the unit named by its path (paths are deduped in
-        :meth:`read` before the dataset is built). Subclasses that support
-        per-row chunk metadata (e.g. :class:`ParquetFileReader`) override
-        this to fan a single file fragment out into N sub-fragments — one
-        per row-group slice — based on :attr:`FileManifest.file_chunk_metadatas`,
-        each paired with its read unit and the row in the file where it starts.
+        Default impl returns one whole-file fragment per *manifest row*,
+        the unit named by its path. Paths are deduped in :meth:`read`
+        before the dataset is built, so rows that repeat a path (the user
+        listed the same file more than once) share one pyarrow fragment —
+        but each row still yields its own :class:`ReadUnitFragment`, so
+        every listed copy is read.
+
+        Subclasses that support per-row chunk metadata (e.g.
+        :class:`ParquetFileReader`) override :meth:`_get_chunk_fragments` to
+        fan a single file fragment out into N sub-fragments based on
+        :attr:`FileManifest.file_chunk_metadatas`, each paired with its read
+        unit and the row in the file where it starts. They override
+        :meth:`_get_whole_file_fragment` to enrich the whole-file unit.
         """
-        return [
-            ReadUnitFragment(
-                fragment, ReadUnit(id=fragment.path, source=fragment.path, count=1)
-            )
-            for fragment in dataset.get_fragments()
-        ]
+        path_to_fragment = {
+            fragment.path: fragment for fragment in dataset.get_fragments()
+        }
+        fragments: List[ReadUnitFragment] = []
+        for path, file_size, chunk_metadata in zip(
+            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
+        ):
+            fragment = path_to_fragment[path]
+            if chunk_metadata is None:
+                fragments.append(self._get_whole_file_fragment(fragment))
+            else:
+                fragments.extend(
+                    self._get_chunk_fragments(fragment, chunk_metadata, file_size)
+                )
+        return fragments
+
+    def _get_whole_file_fragment(self, fragment: pds.Fragment) -> ReadUnitFragment:
+        """Return the read unit that scans all of ``fragment``'s file."""
+        return ReadUnitFragment(
+            fragment, ReadUnit(id=fragment.path, source=fragment.path, count=1)
+        )
+
+    def _get_chunk_fragments(
+        self,
+        fragment: pds.Fragment,
+        chunk_metadata: Dict[str, Any],
+        file_size: Optional[int],
+    ) -> List[ReadUnitFragment]:
+        """Return the read units for a manifest row that carries chunk metadata.
+
+        Default impl ignores the metadata and reads the whole file.
+
+        Args:
+            fragment: The file's pyarrow fragment.
+            chunk_metadata: The row's :attr:`FileManifest.file_chunk_metadatas`
+                entry.
+            file_size: The file's size from the listing, if known.
+
+        Returns:
+            The units to scan for this row, in order.
+        """
+        return [self._get_whole_file_fragment(fragment)]
 
     def _read_fragment_batches(
         self,
@@ -425,7 +499,7 @@ class FileReader(Reader[FileManifest]):
         # ``num_workers`` at the actual fragment count and (b) avoid
         # an early-fallback when the manifest has a single fragment.
         # Subclasses (e.g. ``ParquetFileReader``) override
-        # ``_get_fragments_to_read`` to fan out chunk-level
+        # ``_get_chunk_fragments`` to fan out chunk-level
         # sub-fragments from the manifest's chunk metadata.
         fragments_with_offsets = self._get_fragments_to_read(dataset, manifest)
         if not fragments_with_offsets:
@@ -478,7 +552,11 @@ class FileReader(Reader[FileManifest]):
             # Post-filter cursor: rows already yielded from this unit.
             rows_before = 0
             for table in iterate_with_retry(
-                partial(self._iter_fragment_tables, fragment, scanner_kwargs),
+                partial(
+                    self._iter_unit_tables,
+                    fragment_to_read=fragment_to_read,
+                    scanner_kwargs=scanner_kwargs,
+                ),
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
             ):
@@ -490,6 +568,28 @@ class FileReader(Reader[FileManifest]):
                     )
                     rows_before += table.num_rows
 
+    def _iter_unit_tables(
+        self,
+        fragment_to_read: ReadUnitFragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Yield Arrow tables for one read unit.
+
+        The default scans ``fragment_to_read.fragment`` through
+        :meth:`_iter_fragment_tables`.
+
+        Override this when building the unit's fragment needs IO, such as
+        downloading a CSV byte range. It runs inside the retry loop and the
+        scan threads, so that IO is retried and parallel. Your implementation
+        should:
+
+            1. Read what ``fragment_to_read.unit`` names.
+            2. Yield its tables with ``scanner_kwargs`` applied.
+        """
+        yield from self._iter_fragment_tables(
+            fragment=fragment_to_read.fragment, scanner_kwargs=scanner_kwargs
+        )
+
     def _iter_fragment_tables(
         self,
         fragment: pds.Fragment,
@@ -499,20 +599,28 @@ class FileReader(Reader[FileManifest]):
 
         Subclasses override this to swap in a format-specific reader for
         fragments that don't fit the default scanner-based path (e.g.
-        Parquet's ARROW-5030 nested-type fallback).
-
-        When a non-extension caller schema is available we pin it at the
-        scanner so pyarrow null-fills any column the unified schema names
-        but the fragment lacks (V1 parity — ``ParquetDatasource`` passes
-        ``read_schema`` to ``fragment.to_batches``). Falling back to the
-        per-fragment ``physical_schema`` preserves the variable-shape
-        tensor escape hatch already encoded in ``_file_dataset_schema``.
+        Parquet's ARROW-5030 nested-type fallback). Subclasses that only need
+        a different scan schema override :meth:`_get_scan_schema` instead.
         """
-        fragment_schema = (
-            self._file_dataset_schema
-            if self._file_dataset_schema is not None
-            else fragment.physical_schema
+        scanner = fragment.scanner(
+            **scanner_kwargs, schema=self._get_scan_schema(fragment, scanner_kwargs)
         )
-        scanner = fragment.scanner(**scanner_kwargs, schema=fragment_schema)
         for tagged in scanner.scan_batches():
             yield pa.Table.from_batches(batches=[tagged.record_batch])
+
+    def _get_scan_schema(
+        self, fragment: pds.Fragment, scanner_kwargs: dict
+    ) -> pa.Schema:
+        """Return the schema ``fragment`` is scanned with.
+
+        Default: the caller schema when there is one, else the fragment's
+        ``physical_schema``. Pinning the caller schema makes pyarrow
+        null-fill any column it names but the fragment lacks (V1 parity —
+        ``ParquetDatasource`` passes ``read_schema`` to
+        ``fragment.to_batches``). The ``physical_schema`` fallback preserves
+        the variable-shape tensor escape hatch already encoded in
+        ``_file_dataset_schema``.
+        """
+        if self._file_dataset_schema is not None:
+            return self._file_dataset_schema
+        return fragment.physical_schema

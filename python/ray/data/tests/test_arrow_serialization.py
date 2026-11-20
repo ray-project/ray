@@ -6,14 +6,12 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
 import ray.data
 import ray.train
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
 )
@@ -305,10 +303,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
         )
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version >= parse_version("7.0.0"):
-        # get_total_buffer_size API was added in Arrow 7.0.0.
-        buf_size = data.get_total_buffer_size()
+    buf_size = data.get_total_buffer_size()
     # Create a zero-copy slice view of data.
     view = data.slice(10, 10)
     s_arr = pickle.dumps(data)
@@ -325,11 +320,10 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
             assert column.chunk(0).offset == 0
         # Check that null count was either properly cached or recomputed.
         assert column.null_count == pre_column.null_count
-    if pyarrow_version >= parse_version("7.0.0"):
-        # Check that slice buffer only contains slice data.
-        slice_buf_size = post_slice.get_total_buffer_size()
-        if buf_size > 0:
-            assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+    # Check that slice buffer only contains slice data.
+    slice_buf_size = post_slice.get_total_buffer_size()
+    if buf_size > 0:
+        assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
 def test_custom_arrow_data_serializer_fallback(
@@ -355,10 +349,7 @@ def test_custom_arrow_data_serializer_fallback(
     cap_mult = 0.1
     ray._private.worker.global_worker.get_serialization_context()
     data.validate()
-    pyarrow_version = get_pyarrow_version()
-    if pyarrow_version >= parse_version("7.0.0"):
-        # get_total_buffer_size API was added in Arrow 7.0.0.
-        buf_size = data.get_total_buffer_size()
+    buf_size = data.get_total_buffer_size()
     # Create a zero-copy slice view of data.
     view = data.slice(10, 10)
     # Confirm that (1) fallback works, and (2) warning is logged.
@@ -388,11 +379,10 @@ def test_custom_arrow_data_serializer_fallback(
             assert column.chunk(0).offset == 0
         # Check that null count was either properly cached or recomputed.
         assert column.null_count == pre_column.null_count
-    if pyarrow_version >= parse_version("7.0.0"):
-        # Check that slice buffer only contains slice data.
-        slice_buf_size = post_slice.get_total_buffer_size()
-        if buf_size > 0:
-            assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
+    # Check that slice buffer only contains slice data.
+    slice_buf_size = post_slice.get_total_buffer_size()
+    if buf_size > 0:
+        assert buf_size / slice_buf_size - len(data) / len(post_slice) < 100
 
 
 def test_arrow_scalar_conversion(ray_start_regular_shared):

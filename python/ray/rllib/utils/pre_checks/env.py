@@ -256,14 +256,15 @@ def _find_offending_sub_space(space: gym.Space, value: Any):
         3) the offending sub-space's dtype, 4) the offending sub-value, 5) the offending
         sub-value's dtype.
 
-    .. testcode::
-        :skipif: True
-
-        path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
-            gym.spaces.Dict({
-           -2.0, 1.5, (2, ), np.int8), np.array([-1.5, 3.0])
-        )
-
+    Examples:
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> path, space, space_dtype, value, value_dtype = _find_offending_sub_space(
+        ...     gym.spaces.Dict({"a": gym.spaces.Box(-2.0, 1.5, (2, ), np.int8)}),
+        ...     {"a": np.array([-1.5, 3.0])},
+        ... )
+        >>> print(path, space, value_dtype)
+        a Box(-2, 1, (2,), int8) float64
     """
     if not isinstance(space, (gym.spaces.Dict, gym.spaces.Tuple)):
         return None, space, space.dtype, value, _get_type(value)

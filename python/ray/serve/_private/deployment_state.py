@@ -32,6 +32,7 @@ from ray._common import ray_constants
 from ray._common.utils import Timer, TimerBase
 from ray.actor import ActorHandle
 from ray.exceptions import (
+    ActorUnavailableError,
     RayActorError,
     RayError,
     RayTaskError,
@@ -57,7 +58,11 @@ from ray.serve._private.common import (
     RequestRoutingInfo,
     RunningReplicaInfo,
 )
-from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
+from ray.serve._private.config import (
+    DeploymentConfig,
+    GangSchedulingConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     CONTROLLER_HEALTH_CHECK_RECONCILIATION_FRACTION,
@@ -317,6 +322,8 @@ class DeploymentActorWrapper:
             try:
                 ray.get(self._health_check_ref)
                 return ReplicaHealthCheckResponse.SUCCEEDED
+            except ActorUnavailableError:
+                return ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
             except RayActorError:
                 return ReplicaHealthCheckResponse.ACTOR_CRASHED
             except RayError as e:
@@ -381,6 +388,26 @@ class DeploymentActorWrapper:
                     "marking unhealthy."
                 )
                 self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                logger.warning(
+                    f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
+                    "is temporarily unavailable after "
+                    f"{self._consecutive_health_check_failures} consecutive failed "
+                    "health checks, marking it unhealthy."
+                )
+                self._healthy = False
+            else:
+                logger.warning(
+                    f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
+                    "is temporarily unavailable "
+                    f"({self._consecutive_health_check_failures}/"
+                    f"{DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
+                )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             logger.warning(
                 f"Deployment actor '{self._config.name}' ({self._deployment_id}) "
@@ -553,6 +580,7 @@ class ReplicaHealthCheckResponse(Enum):
     SUCCEEDED = 2
     APP_FAILURE = 3
     ACTOR_CRASHED = 4
+    ACTOR_UNAVAILABLE = 5
 
 
 @dataclass
@@ -870,6 +898,7 @@ class PushedHealthTracker:
             in (
                 ReplicaHealthCheckResponse.SUCCEEDED,
                 ReplicaHealthCheckResponse.APP_FAILURE,
+                ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
             )
             and probe_started_at < self._applied_push_received_at
         ):
@@ -902,6 +931,48 @@ class PushedHealthTracker:
             ReplicaHealthCheckResponse.APP_FAILURE,
             self._mirror_failures(pushed, probed_failures),
         )
+
+
+def format_scheduling_constraints(replica_config: ReplicaConfig) -> str:
+    """Describe the node label constraints a replica must be scheduled against.
+
+    A replica whose label selector matches no node stays pending while the
+    resources in the slow-startup warning look plentiful, so the warning names
+    the selectors as well. For a placement-group deployment they live on the
+    bundles, otherwise in the actor options.
+
+    Args:
+        replica_config: The replica config to read the selectors from.
+
+    Returns:
+        A sentence naming the selectors, or "" when none are set.
+    """
+    if replica_config.placement_group_bundles:
+        label_selector = replica_config.placement_group_bundle_label_selector
+        fallback_strategy = replica_config.placement_group_fallback_strategy
+        selector_noun = "Required bundle label selectors"
+    else:
+        actor_options = replica_config.ray_actor_options or {}
+        label_selector = actor_options.get("label_selector")
+        fallback_strategy = actor_options.get("fallback_strategy")
+        selector_noun = "Required node label selector"
+
+    sentences = []
+    if label_selector:
+        sentences.append(f"{selector_noun}: {json.dumps(label_selector)}.")
+    # Fallbacks are tried when the selector above matches no node, so a replica
+    # that is still pending did not match them either.
+    fallback_selectors = [
+        option.get("label_selector")
+        for option in fallback_strategy or []
+        if option.get("label_selector")
+    ]
+    if fallback_selectors:
+        sentences.append(
+            "No node matched the fallback label selectors either: "
+            f"{json.dumps(fallback_selectors)}."
+        )
+    return " ".join(sentences)
 
 
 class ActorReplicaWrapper:
@@ -937,6 +1008,7 @@ class ActorReplicaWrapper:
         self._unrecoverable: bool = False
 
         self._actor_resources: Optional[Dict[str, float]] = None
+        self._scheduling_constraints: str = ""
         # If the replica is being started, this will be the true version
         # If the replica is being recovered, this will be the target
         # version, which may be inconsistent with the actual replica
@@ -1267,6 +1339,9 @@ class ActorReplicaWrapper:
         """
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
+        self._scheduling_constraints = format_scheduling_constraints(
+            deployment_info.replica_config
+        )
         self._ingress = deployment_info.ingress
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
@@ -1467,7 +1542,24 @@ class ActorReplicaWrapper:
         self._rank = rank
         return updating
 
-    def recover(self, ingress: bool = False) -> bool:
+    def check_reconfigure_done(self) -> Tuple[bool, Optional[str]]:
+        """Non-blocking check of the `reconfigure` call started by `reconfigure()`.
+
+        Returns:
+            done: whether the call finished.
+            error_msg: the error if the call raised, else None.
+        """
+        if not check_obj_ref_ready_nowait(self._ready_obj_ref):  # type: ignore[arg-type]
+            return False, None
+        try:
+            ray.get(self._ready_obj_ref)  # type: ignore[arg-type]
+        except RayTaskError as e:
+            return True, str(e.as_instanceof_cause())
+        except Exception as e:
+            return True, repr(e)
+        return True, None
+
+    def recover(self, ingress: bool = False, scheduling_constraints: str = "") -> bool:
         """Recover replica version from a live replica actor.
 
         When controller dies, the deployment state loses the info on the version that's
@@ -1482,6 +1574,8 @@ class ActorReplicaWrapper:
 
         Args:
             ingress: Whether this replica is an ingress replica.
+            scheduling_constraints: The replica's scheduling constraints, as
+                formatted by `format_scheduling_constraints`.
 
         Returns:
             False if the replica actor is no longer alive; the caller drops
@@ -1492,6 +1586,7 @@ class ActorReplicaWrapper:
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
+        self._scheduling_constraints = scheduling_constraints
         try:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=SERVE_NAMESPACE
@@ -1735,6 +1830,9 @@ class ActorReplicaWrapper:
     def actor_resources(self) -> Optional[Dict[str, float]]:
         return self._actor_resources
 
+    def scheduling_constraints(self) -> str:
+        return self._scheduling_constraints
+
     @property
     def available_resources(self) -> Dict[str, float]:
         # pyrefly: ignore[bad-return]
@@ -1835,6 +1933,8 @@ class ActorReplicaWrapper:
             - APP_FAILURE if the active health check failed (or didn't return
               before the timeout).
             - ACTOR_CRASHED if the underlying actor crashed.
+            - ACTOR_UNAVAILABLE if the underlying actor is temporarily unavailable
+              and may recover (e.g. a transient network partition).
         """
         # Reset the last health check status for this check cycle.
         # We do this because _resolve_active_probe is being called in a loop,
@@ -1857,6 +1957,10 @@ class ActorReplicaWrapper:
                 self._last_health_check_failed = False
                 # Health check succeeded without exception.
                 response = ReplicaHealthCheckResponse.SUCCEEDED
+            except ActorUnavailableError:
+                # Communication failed without confirmed actor death at the caller.
+                response = ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE
+                self._last_health_check_failed = True
             except RayActorError:
                 # Health check failed due to actor crashing.
                 response = ReplicaHealthCheckResponse.ACTOR_CRASHED
@@ -2020,6 +2124,24 @@ class ActorReplicaWrapper:
                     "times in a row, marking it unhealthy."
                 )
                 self._healthy = False
+        elif response is ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE:
+            self._consecutive_health_check_failures += 1
+            if (
+                self._consecutive_health_check_failures
+                >= REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                logger.warning(
+                    f"Actor for {self._replica_id} is temporarily unavailable after "
+                    f"{self._consecutive_health_check_failures} consecutive failed "
+                    "health checks, marking it unhealthy."
+                )
+                self._healthy = False
+            else:
+                logger.warning(
+                    f"Actor for {self._replica_id} is temporarily unavailable "
+                    f"({self._consecutive_health_check_failures}/"
+                    f"{REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD}); will retry."
+                )
         elif response is ReplicaHealthCheckResponse.ACTOR_CRASHED:
             # Actor crashed, mark the replica unhealthy immediately.
             logger.warning(
@@ -2305,6 +2427,10 @@ class DeploymentReplica:
         self.update_actor_details(version=version.version_id)
         return updating
 
+    def check_reconfigure_done(self) -> Tuple[bool, Optional[str]]:
+        """Non-blocking check of the `reconfigure` call started by `reconfigure()`."""
+        return self._actor.check_reconfigure_done()
+
     def recover(self, deployment_info: DeploymentInfo) -> bool:
         """Recover states in DeploymentReplica instance by fetching running actor
         status
@@ -2317,7 +2443,12 @@ class DeploymentReplica:
             False if the replica actor is no longer alive.
         """
         # If replica is no longer alive
-        if not self._actor.recover(ingress=deployment_info.ingress):
+        if not self._actor.recover(
+            ingress=deployment_info.ingress,
+            scheduling_constraints=format_scheduling_constraints(
+                deployment_info.replica_config
+            ),
+        ):
             return False
 
         self._start_time = time.time()
@@ -2461,6 +2592,15 @@ class DeploymentReplica:
         # Use .model_copy(update=...) instead of .model_dump() + reconstruction
         # to avoid full Pydantic serialization and validation on every update.
         self._actor_details = self._actor_details.model_copy(update=kwargs)
+
+    def scheduling_constraints(self) -> str:
+        """Returns the label selectors this replica waits on, as a sentence.
+
+        Empty when the replica has no label selector or its actor is gone.
+        """
+        if self._actor is None:
+            return ""
+        return self._actor.scheduling_constraints()
 
     def resource_requirements(self) -> Tuple[str, str]:
         """Returns required and currently available resources.
@@ -3273,6 +3413,9 @@ class DeploymentState:
             fail_on_rank_error=RAY_SERVE_FAIL_ON_RANK_ERROR
         )
         self._last_rank_membership_ids: Optional[Set[str]] = None
+        # Replicas with a rank-change reconfigure in flight, mapped to whether the
+        # slow-reconfigure warning was logged. See _check_pending_rank_reconfigures.
+        self._pending_rank_reconfigures: Dict[ReplicaID, bool] = {}
 
         self.replica_average_ongoing_requests: Dict[str, float] = {}
 
@@ -4383,6 +4526,9 @@ class DeploymentState:
                     rank=current_rank,
                 )
                 if actor_updating:
+                    # This reconfigure replaces the in-flight one, and the
+                    # UPDATING check observes it.
+                    self._pending_rank_reconfigures.pop(replica.replica_id, None)
                     self._replicas.add(ReplicaState.UPDATING, replica)
                 else:
                     self._replicas.add(ReplicaState.RUNNING, replica)
@@ -5119,14 +5265,7 @@ class DeploymentState:
                             initialization_latency_ms
                         )
                 elif original_state == ReplicaState.UPDATING:
-                    # Record replica reconfigure latency.
-                    if replica.reconfigure_start_time is not None:
-                        reconfigure_latency_ms = (
-                            time.time() - replica.reconfigure_start_time
-                        ) * 1000
-                        self.replica_reconfigure_latency_histogram.observe(
-                            reconfigure_latency_ms
-                        )
+                    self._record_reconfigure_latency(replica)
 
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed.
@@ -5194,6 +5333,60 @@ class DeploymentState:
                         self._replicas.add(state, replica)
 
         return slow_replicas
+
+    def _record_reconfigure_latency(self, replica: DeploymentReplica) -> None:
+        if replica.reconfigure_start_time is not None:
+            self.replica_reconfigure_latency_histogram.observe(
+                (time.time() - replica.reconfigure_start_time) * 1000
+            )
+
+    def _check_pending_rank_reconfigures(self) -> None:
+        """Observe the rank-change reconfigures started by
+        `_reconfigure_replicas_with_new_ranks`.
+
+        Those replicas stay RUNNING, so `_check_startup_replicas` never sees the
+        result. Record the reconfigure latency on success, and log failures and
+        slow reconfigures. A failed replica is not replaced: a replacement can
+        start while the failed one still holds its rank, get renumbered in turn
+        and fail again, churning replicas forever.
+        """
+        if not self._pending_rank_reconfigures:
+            return
+
+        for replica_id, warned_slow in list(self._pending_rank_reconfigures.items()):
+            replica = self._replicas.get_by_id(replica_id)
+            if (
+                replica is None
+                or replica.actor_details.state not in self._BROADCAST_STATES
+            ):
+                # Stopped, or moved to UPDATING whose own check now observes the
+                # in-flight reconfigure.
+                del self._pending_rank_reconfigures[replica_id]
+                continue
+
+            done, error_msg = replica.check_reconfigure_done()
+            if done:
+                del self._pending_rank_reconfigures[replica_id]
+                if error_msg is not None:
+                    logger.error(
+                        f"{replica_id} failed to reconfigure with its new rank "
+                        f"{replica.rank}. Until it restarts, the replica's context "
+                        f"may report its previous rank. Error:\n{error_msg}"
+                    )
+                else:
+                    self._record_reconfigure_latency(replica)
+            elif (
+                not warned_slow
+                and replica.reconfigure_start_time is not None
+                and time.time() - replica.reconfigure_start_time
+                > SLOW_STARTUP_WARNING_S
+            ):
+                self._pending_rank_reconfigures[replica_id] = True
+                logger.warning(
+                    f"{replica_id} has not finished reconfiguring with its new "
+                    f"rank after {SLOW_STARTUP_WARNING_S}s. The replica's "
+                    "`reconfigure` method may be hanging."
+                )
 
     def _mark_rolling_update_failed_if_needed(self) -> None:
         """Mark threshold-reaching rolling updates for checkpointing."""
@@ -5782,6 +5975,7 @@ class DeploymentState:
         # if we delay the rank reassignment, the rank system will be in an invalid state
         # for a longer period of time. Abrar made this decision because he is not confident
         # about how rollouts work in the deployment state machine.
+        self._check_pending_rank_reconfigures()
         self._maybe_check_rank_consistency()
 
     def _maybe_check_rank_consistency(self) -> None:
@@ -5907,14 +6101,29 @@ class DeploymentState:
 
             if len(pending_allocation) > 0:
                 required, available = pending_allocation[0].resource_requirements()
+                scheduling_constraints = pending_allocation[0].scheduling_constraints()
+                if scheduling_constraints:
+                    # The resources below can look plentiful when no node matches
+                    # the label selector, so name the selector as the likely cause.
+                    likely_causes = (
+                        "This may be due to waiting for the cluster to auto-scale, "
+                        "for a runtime environment to be installed, or for a node "
+                        "matching the replica's label selector to become available. "
+                    )
+                    scheduling_constraints += " "
+                else:
+                    likely_causes = (
+                        "This may be due to waiting for the cluster to auto-scale or "
+                        "for a runtime environment to be installed. "
+                    )
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
                     f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
-                    "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed. "
+                    f"{likely_causes}"
                     f"Resources required for each replica: {required}, "
                     f"total resources available: {available}. "
+                    f"{scheduling_constraints}"
                     "Use `ray status` for more details."
                 )
                 logger.warning(message)
@@ -6035,12 +6244,19 @@ class DeploymentState:
 
             # Use reconfigure() to update rank
             # World size is calculated automatically from deployment config
-            _ = replica.reconfigure(
+            updating = replica.reconfigure(
                 # The target version is set for deployed target states.
                 # pyrefly: ignore[bad-argument-type]
                 self._target_state.version,  # type: ignore[arg-type]
                 rank=new_rank,
             )
+            # Unlike a config update, the replica stays RUNNING: rank changes are
+            # not throttled, so moving replicas to UPDATING could pull every
+            # replica out of routing at once. _check_pending_rank_reconfigures
+            # observes the result instead. An UPDATING replica's result is
+            # already observed by _check_startup_replicas.
+            if updating and replica.actor_details.state in self._BROADCAST_STATES:
+                self._pending_rank_reconfigures[replica.replica_id] = False
             updated_count += 1
 
         logger.debug(
@@ -7115,7 +7331,12 @@ class DeploymentStateManager:
                     id.name,
                     self.get_deployment(id),  # type: ignore[arg-type]
                 ),
-                target_num_replicas=deployment_state._target_state.target_num_replicas,
+                target_num_replicas=deployment_state.target_num_replicas,
+                num_running_replicas_at_target_version=(
+                    deployment_state.get_num_running_replicas(
+                        deployment_state.target_version
+                    )
+                ),
                 required_resources=deployment_state.target_info.replica_config.resource_dict,
                 target_version=deployment_state.target_version.version_id,
                 replicas=deployment_state.list_replica_details(),

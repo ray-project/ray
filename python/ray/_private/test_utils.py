@@ -2001,7 +2001,7 @@ def get_resource_usage(gcs_address, timeout=10):
 # Gets the load metrics report assuming gcs is local.
 def get_load_metrics_report(webui_url):
     webui_url = format_web_url(webui_url)
-    response = requests.get(f"{webui_url}/api/cluster_status")
+    response = request_with_auth_token("GET", f"{webui_url}/api/cluster_status")
     response.raise_for_status()
     return response.json()["data"]["clusterStatus"]["loadMetricsReport"]
 

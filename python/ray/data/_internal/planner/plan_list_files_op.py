@@ -24,6 +24,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     partition_files,
@@ -56,6 +57,20 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_NUM_LIST_FILES_TASKS = 200
 
 
+def _num_listing_tasks(num_paths: int, should_parallelize: bool) -> int:
+    """Number of parallel listing tasks = one listing block per worker.
+
+    Used for BOTH the input-bundle split and the ListFiles pool size cap, so
+    they stay in sync. Without the pool cap the actor-only backend's sizer gives
+    this trivial source a full equal-share warmup target (observed ~479 actors
+    at scale); capping it at the listing-block count is the genuine parallelism.
+    A single prefix (the common case) lists in one task -> 1.
+    """
+    if should_parallelize and num_paths:
+        return min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, num_paths)
+    return 1
+
+
 def plan_list_files_op(
     op: ListFiles,
     physical_children: List[PhysicalOperator],
@@ -71,6 +86,13 @@ def plan_list_files_op(
     partitioner = op.file_partitioner
 
     shuffle_config = op.shuffle_config_factory()
+
+    # Cap the ListFiles pool at the listing-block count (see _num_listing_tasks).
+    # maybe_promote_compute_strategy turns TaskPoolStrategy(size=N) into a fixed
+    # ActorPoolStrategy(size=N) under the actor-only backend; for the common
+    # single-prefix read N=1, so ListFiles becomes a (1,1) pool the sizer leaves
+    # alone. TaskPool mode is unaffected in type (just a max-concurrency cap).
+    num_list_tasks = _num_listing_tasks(len(op.paths), shuffle_config is None)
 
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
@@ -124,7 +146,10 @@ def plan_list_files_op(
         name="ListFiles",
         # Listing is extremely fast; default backpressure would starve the
         # downstream reader of inputs.
-        ray_remote_args={"_generator_backpressure_num_objects": -1},
+        generator_backpressure_disabled=True,
+        # One worker per listing block; never the sizer's equal share (see
+        # num_list_tasks above).
+        compute_strategy=TaskPoolStrategy(size=num_list_tasks),
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,
@@ -168,7 +193,7 @@ def _create_input_data_buffer(
     if should_parallelize and op.paths:
         path_splits = np.array_split(
             list(op.paths),
-            min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, len(op.paths)),
+            _num_listing_tasks(len(op.paths), should_parallelize),
         )
     else:
         path_splits = [list(op.paths)]

@@ -1521,7 +1521,10 @@ def test_deploy_config_rejects_custom_ingress_request_router(ray_shutdown):
     wait_for_condition(deploy_failed)
 
 
-def test_router_application_dispatches_across_applications(ray_shutdown):
+@pytest.mark.parametrize("router_scaled_to_zero", [False, True])
+def test_router_application_dispatches_across_applications(
+    ray_shutdown, router_scaled_to_zero
+):
     """A router app picks sibling-app replicas; HAProxy sends requests there."""
     from fastapi.responses import JSONResponse
 
@@ -1546,7 +1549,19 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
 
     router_api = FastAPI()
 
-    @serve.deployment
+    router_options = {}
+    if router_scaled_to_zero:
+        router_options["autoscaling_config"] = {
+            "min_replicas": 0,
+            "initial_replicas": 0,
+            "max_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 60,
+            "upscale_delay_s": 0,
+        }
+
+    @serve.deployment(**router_options)
     @serve._router_application
     @serve.ingress(router_api)
     class Router:
@@ -1586,10 +1601,28 @@ def test_router_application_dispatches_across_applications(ray_shutdown):
             "http://localhost:8000/llm/v1/chat/completions",
             json={"model": model},
             headers={"x-request-id": request_id},
-            timeout=10,
+            timeout=30,
         )
 
-    wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
+    if router_scaled_to_zero:
+        wait_for_condition(
+            lambda: "/llm" in httpx.get("http://localhost:8000/-/routes").json(),
+            timeout=30,
+        )
+        assert not list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+                ("class_name", "=", "ServeReplica:router:Router"),
+            ],
+        )
+        response = chat("model-a", "wakeup")
+        assert response.status_code == 200, response.text
+        assert response.json()["request_id"] == "wakeup"
+        assert response.json()["path"] == "/v1/model-a/v1/chat/completions"
+        assert "::model-a#Backend#" in response.json()["replica_id"]
+    else:
+        wait_for_condition(lambda: chat("model-a", "warmup").status_code == 200)
 
     served = {}
     for i in range(8):

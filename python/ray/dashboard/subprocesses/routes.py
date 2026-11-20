@@ -8,8 +8,7 @@ from ray.dashboard.subprocesses.utils import ResponseType
 
 
 class SubprocessRouteTable(BaseRouteTable):
-    """
-    A route table to bind http route to SubprocessModuleHandle and SubprocessModule.
+    """A route table to bind http route to SubprocessModuleHandle and SubprocessModule.
 
     This class is used in cls object: all the decorator methods are @classmethod, and
     the routes are binded to the cls object.
@@ -55,9 +54,7 @@ class SubprocessRouteTable(BaseRouteTable):
     def _register_route(
         cls, method, path, resp_type: ResponseType = ResponseType.HTTP, **kwargs
     ):
-        """
-        Register a route to the module and return the decorated handler.
-        """
+        """Register a route to the module and return the decorated handler."""
 
         def _wrapper(handler):
             if path in cls._bind_map[method]:

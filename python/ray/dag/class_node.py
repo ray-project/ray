@@ -264,8 +264,7 @@ class ClassMethodNode(DAGNode):
 
     @property
     def num_returns(self) -> int:
-        """
-        Return the number of return values from the class method call. If the
+        """Return the number of return values from the class method call. If the
         node is a class method output, return the number of return values from
         the upstream class method call.
         """
@@ -282,24 +281,21 @@ class ClassMethodNode(DAGNode):
 
     @property
     def is_class_method_call(self) -> bool:
-        """
-        Return True if the node is a class method call, False if the node is a
+        """Return True if the node is a class method call, False if the node is a
         class method output.
         """
         return not self._is_class_method_output
 
     @property
     def is_class_method_output(self) -> bool:
-        """
-        Return True if the node is a class method output, False if the node is a
+        """Return True if the node is a class method output, False if the node is a
         class method call.
         """
         return self._is_class_method_output
 
     @property
     def class_method_call(self) -> Optional["ClassMethodNode"]:
-        """
-        Return the upstream class method call that returns multiple values. If
+        """Return the upstream class method call that returns multiple values. If
         the node is a class method output, return None.
         """
 
@@ -309,8 +305,7 @@ class ClassMethodNode(DAGNode):
 
     @property
     def output_idx(self) -> Optional[int]:
-        """
-        Return the output index of the return value from the upstream class
+        """Return the output index of the return value from the upstream class
         method call that returns multiple values. If the node is a class method
         call, return None.
         """

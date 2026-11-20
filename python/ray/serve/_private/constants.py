@@ -269,6 +269,11 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
+#: `graceful_shutdown_wait_loop_s` may be 0. A draining replica still sleeps at
+#: least this long between checks, and logs that it is waiting at most once per
+#: `DRAIN_WAITING_LOG_INTERVAL_S`.
+MIN_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 0.01
+DRAIN_WAITING_LOG_INTERVAL_S = 1.0
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 
 # Dependency ordered shutdown deletes deployments in tiers, callers before
@@ -772,6 +777,12 @@ RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE = get_env_int_positive(
     "RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE", 1
 )
 
+# HAProxy weight for every ingress request router on the session hash ring.
+# HAProxy places weight * 16 virtual nodes per router, so 16 gives 256 virual
+# nodes per router: enough for an even session spread without a large ring.
+# Every proxy must use the same value, or sessions map to different routers.
+HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT = 16
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
@@ -986,14 +997,6 @@ RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S = get_env_int(
 # backpressure). Set RAY_SERVE_HAPROXY_RETRY_ON to override globally.
 RAY_SERVE_HAPROXY_RETRY_ON = get_env_str("RAY_SERVE_HAPROXY_RETRY_ON", "conn-failure")
 RAY_SERVE_HAPROXY_RETRIES = get_env_int_non_negative("RAY_SERVE_HAPROXY_RETRIES", None)
-# Same retry policy as above; defaults to the global value so the ingress
-# request router shares one policy unless explicitly overridden.
-RAY_SERVE_HAPROXY_INGRESS_RETRY_ON = get_env_str(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRY_ON", RAY_SERVE_HAPROXY_RETRY_ON
-)
-RAY_SERVE_HAPROXY_INGRESS_RETRIES = get_env_int_non_negative(
-    "RAY_SERVE_HAPROXY_INGRESS_RETRIES", RAY_SERVE_HAPROXY_RETRIES
-)
 RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S = get_env_int_non_negative(
     "RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S", None
 )

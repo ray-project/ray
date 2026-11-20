@@ -32,7 +32,7 @@ VALID_TEST = {
     "frequency": "nightly",
     "team": "release",
     "cluster": {
-        "byod": {"type": "gpu"},
+        "byod": {"type": "gpu-cu130"},
         "cluster_compute": "tpl_cpu_small.yaml",
         "autosuspend_mins": 10,
     },
@@ -61,7 +61,7 @@ def test_parse_test_definition():
           team: sample
           cluster:
             byod:
-              type: gpu
+              type: gpu-cu130
             cluster_compute: compute.yaml
           run:
             timeout: 100
@@ -83,7 +83,7 @@ def test_parse_test_definition():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
-    assert gce_test["cluster"]["byod"]["type"] == "gpu"
+    assert gce_test["cluster"]["byod"]["type"] == "gpu-cu130"
     invalid_test_definition = test_definitions[0]
     # Intentionally make the test definition invalid by create an empty 'variations'
     # field. Check that the parser throws exception at runtime
@@ -109,10 +109,10 @@ def test_parse_test_definition_with_python_version():
           working_dir: sample_dir
           frequency: nightly
           team: sample
-          python: "3.10"
+          python: "3.11"
           cluster:
             byod:
-              type: gpu
+              type: torch-cu128
             cluster_compute: compute.yaml
           run:
             timeout: 100
@@ -134,7 +134,7 @@ def test_parse_test_definition_with_python_version():
     assert not validate_test(gce_test, schema)
     assert aws_test["name"] == "sample_test.aws"
     assert gce_test["cluster"]["cluster_compute"] == "compute_gce.yaml"
-    assert gce_test["cluster"]["byod"]["type"] == "gpu"
+    assert gce_test["cluster"]["byod"]["type"] == "torch-cu128"
     invalid_test_definition = test_definitions[0]
     # Intentionally make the test definition invalid by create an empty 'variations'
     # field. Check that the parser throws exception at runtime
@@ -158,7 +158,7 @@ def test_parse_test_definition_with_defaults():
           team: sample
           cluster:
             byod:
-              type: gpu
+              type: gpu-cu130
             cluster_compute: compute.yaml
           run:
             timeout: 100
@@ -169,7 +169,7 @@ def test_parse_test_definition_with_defaults():
           team: sample
           cluster:
             byod:
-              type: gpu
+              type: gpu-cu130
             cluster_compute: compute.yaml
           run:
             timeout: 100
@@ -194,7 +194,7 @@ def test_parse_test_definition_with_matrix_and_variations_raises():
           working_dir: sample_dir
           cluster:
             byod:
-              type: gpu
+              type: gpu-cu130
             cluster_compute: "{{os}}.yaml"
           matrix:
             setup:
@@ -229,7 +229,7 @@ def test_parse_test_definition_with_matrix_and_adjustments():
           working_dir: sample_dir
           cluster:
             byod:
-              type: gpu
+              type: gpu-cu130
               runtime_env:
                 SCALING_MODE: "{{compute}}"
             cluster_compute: "{{compute}}.yaml"
@@ -341,10 +341,15 @@ def test_schema_validation():
     invalid_test["cluster"]["byod"]["type"] = "invalid"
     assert validate_test(invalid_test, schema)
 
-    # Faulty BYOD and Python version match
+    # Removed BYOD type: the ray-ml "gpu" image no longer exists
     invalid_test = Test(**copy.deepcopy(VALID_TEST))
     invalid_test["cluster"]["byod"]["type"] = "gpu"
-    invalid_test["python"] = "3.11"
+    assert validate_test(invalid_test, schema)
+
+    # Faulty BYOD and Python version match
+    invalid_test = Test(**copy.deepcopy(VALID_TEST))
+    invalid_test["cluster"]["byod"]["type"] = "torch-cu128"
+    invalid_test["python"] = "3.10"
     assert validate_test(invalid_test, schema)
 
 

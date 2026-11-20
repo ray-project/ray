@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Optional, Tuple
 
 from ray.autoscaler.v2.instance_manager.common import InstanceUtil
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
@@ -18,6 +19,22 @@ from ray.core.generated.instance_manager_pb2 import (
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class _InstanceStatusSummary:
+    """Lifetime summaries independent of the bounded diagnostic history."""
+
+    counts: Dict[int, int] = field(default_factory=dict)
+    first_times_ns: Dict[int, int] = field(default_factory=dict)
+
+    def record_transition(self, transition: Instance.StatusHistory) -> None:
+        status = transition.instance_status
+        self.counts[status] = self.counts.get(status, 0) + 1
+        self.first_times_ns[status] = min(
+            self.first_times_ns.get(status, transition.timestamp_ns),
+            transition.timestamp_ns,
+        )
+
+
 class InstanceUpdatedSubscriber(ABC):
     """Subscribers to instance status changes."""
 
@@ -27,8 +44,7 @@ class InstanceUpdatedSubscriber(ABC):
 
 
 class InstanceManager:
-    """
-    See `InstanceManagerService` in instance_manager.proto
+    """See `InstanceManagerService` in instance_manager.proto
 
     This handles updates to an instance, or inserts a new instance if
     it's an insert update. We should only be inserting new instances
@@ -51,12 +67,14 @@ class InstanceManager:
     ):
         self._instance_storage = instance_storage
         self._status_update_subscribers = instance_status_update_subscribers or []
+        # Like the instance storage used by Autoscaler, summaries live only in
+        # this process. Each summary has at most one entry per status.
+        self._status_summaries: Dict[str, _InstanceStatusSummary] = {}
 
     def update_instance_manager_state(
         self, request: UpdateInstanceManagerStateRequest
     ) -> UpdateInstanceManagerStateReply:
-        """
-        Updates the instance manager state.
+        """Updates the instance manager state.
 
         If there's any failure, no updates would be made and the reply
         would contain the latest version of the instance manager state,
@@ -89,15 +107,20 @@ class InstanceManager:
 
         # Handle instances states update.
         to_upsert_instances = []
+        to_update_summaries = {}
         for instance_id, update in ids_to_updates.items():
             if instance_id in to_update_instances:
+                # Seed from stored history before the next transition trims it.
+                summary = self._get_status_summary(to_update_instances[instance_id])
                 instance = self._update_instance(
                     to_update_instances[instance_id], update
                 )
             else:
+                summary = _InstanceStatusSummary()
                 instance = self._create_instance(update)
 
             to_upsert_instances.append(instance)
+            to_update_summaries[instance_id] = summary
 
         # Updates the instance storage.
         result = self._instance_storage.batch_upsert_instances(
@@ -122,6 +145,13 @@ class InstanceManager:
                 )
 
         # Successful updates.
+        # Update summaries only after storage commits, avoiding a copy for every
+        # transition while leaving them unchanged if the write fails.
+        for instance in to_upsert_instances:
+            to_update_summaries[instance.instance_id].record_transition(
+                instance.status_history[-1]
+            )
+        self._status_summaries.update(to_update_summaries)
         for subscriber in self._status_update_subscribers:
             subscriber.notify(request.updates)
 
@@ -130,8 +160,7 @@ class InstanceManager:
     def get_instance_manager_state(
         self, request: GetInstanceManagerStateRequest
     ) -> GetInstanceManagerStateReply:
-        """
-        Gets the instance manager state.
+        """Gets the instance manager state.
 
         Args:
             request: The request to get the instance manager state.
@@ -146,6 +175,38 @@ class InstanceManager:
         reply.status.code = StatusCode.OK
 
         return reply
+
+    def get_status_transition_count(
+        self, instance: Instance, status: Instance.InstanceStatus
+    ) -> int:
+        """Return the lifetime number of transitions into a status.
+
+        Existing instances are initialized from their available history.
+
+        Args:
+            instance: The instance to check.
+            status: The status whose transitions to count.
+
+        Returns:
+            The transition count, or zero if the status is absent.
+        """
+        return self._get_status_summary(instance).counts.get(status, 0)
+
+    def get_first_status_transition_time_ns(
+        self, instance: Instance, status: Instance.InstanceStatus
+    ) -> Optional[int]:
+        """Return the first transition time into a status.
+
+        Existing instances are initialized from their available history.
+
+        Args:
+            instance: The instance to check.
+            status: The status whose first transition to find.
+
+        Returns:
+            The first timestamp in nanoseconds, or None if the status is absent.
+        """
+        return self._get_status_summary(instance).first_times_ns.get(status)
 
     def delete_instances(
         self, instance_ids: List[str], expected_storage_version: Optional[int] = None
@@ -164,21 +225,32 @@ class InstanceManager:
         Returns:
             A (success, version) tuple. success is False on a version mismatch.
         """
-        return self._instance_storage.batch_delete_instances(
+        result = self._instance_storage.batch_delete_instances(
             instance_ids=instance_ids,
             expected_storage_version=expected_storage_version,
         )
+        if result.success:
+            for instance_id in instance_ids:
+                self._status_summaries.pop(instance_id, None)
+        return result
 
     #########################################
     # Private methods
     #########################################
 
+    def _get_status_summary(self, instance: Instance) -> _InstanceStatusSummary:
+        if instance.instance_id not in self._status_summaries:
+            summary = _InstanceStatusSummary()
+            for transition in instance.status_history:
+                summary.record_transition(transition)
+            self._status_summaries[instance.instance_id] = summary
+        return self._status_summaries[instance.instance_id]
+
     @staticmethod
     def _get_update_im_state_reply(
         status_code: StatusCode, version: int, error_message: str = ""
     ) -> UpdateInstanceManagerStateReply:
-        """
-        Returns a UpdateInstanceManagerStateReply with the given status code and
+        """Returns a UpdateInstanceManagerStateReply with the given status code and
         version.
 
         Args:
@@ -198,8 +270,7 @@ class InstanceManager:
 
     @staticmethod
     def _apply_update(instance: Instance, update: InstanceUpdateEvent):
-        """
-        Apply status specific update to the instance.
+        """Apply status specific update to the instance.
 
         Args:
             instance: The instance to update.
@@ -238,9 +309,7 @@ class InstanceManager:
 
     @staticmethod
     def _create_instance(update: InstanceUpdateEvent) -> Instance:
-        """
-        Create a new instance from the given update.
-        """
+        """Create a new instance from the given update."""
 
         assert update.upsert, "upsert must be true for creating new instance."
 
@@ -272,8 +341,7 @@ class InstanceManager:
 
     @staticmethod
     def _update_instance(instance: Instance, update: InstanceUpdateEvent) -> Instance:
-        """
-        Update the instance with the given update.
+        """Update the instance with the given update.
 
         Args:
             instance: The instance to update.

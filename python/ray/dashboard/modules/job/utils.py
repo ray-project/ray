@@ -210,9 +210,7 @@ async def find_job_by_ids(
     job_info_client: JobInfoStorageClient,
     job_or_submission_id: str,
 ) -> Optional[JobDetails]:
-    """
-    Attempts to find the job with a given submission_id or job id.
-    """
+    """Attempts to find the job with a given submission_id or job id."""
     # First try to find by job_id
     driver_jobs, submission_job_drivers = await get_driver_jobs(
         gcs_client, job_or_submission_id=job_or_submission_id
@@ -255,8 +253,7 @@ async def find_jobs_by_job_ids(
     job_info_client: JobInfoStorageClient,
     job_ids: List[str],
 ) -> Dict[str, JobDetails]:
-    """
-    Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
+    """Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
 
     This only accepts job ids and not submission ids.
     """

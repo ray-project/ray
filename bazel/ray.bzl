@@ -147,15 +147,23 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility =
         **kwargs
     )
 
-def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main = True, **kwargs):
+def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main = True, auth_token = False, data = [], env = {}, **kwargs):
     # By default, all `ray_cc_test` targets use `ray_gtest_main`.
     # Some tests might need bespoke setup logic, so let them skip this dependency.
     if use_ray_gtest_main:
         deps = deps + ["//src/ray/common:ray_gtest_main"]
 
+    # For tests that run Ray's gRPC servers or clients without a driver, which is
+    # what creates a token: they read the build-time token instead.
+    if auth_token:
+        data = data + ["//src/ray/common:auth_token_file"]
+        env = dict(env, RAY_AUTH_TOKEN_PATH = "$(rootpath //src/ray/common:auth_token_file)")
+
     cc_test(
         name = name,
         deps = deps,
+        data = data,
+        env = env,
         copts = COPTS_TESTS + copts,
         linkopts = linkopts + ["-pie"],
         **kwargs

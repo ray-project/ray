@@ -14,6 +14,7 @@ import ray._private.ray_constants as ray_constants
 from ray._common.filters import CoreContextFilter
 from ray._common.formatters import JSONFormatter, TextFormatter
 from ray._common.network_utils import build_address
+from ray._private.accelerators.mlu import NOSET_CN_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.npu import NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
 from ray._private.accelerators.nvidia_gpu import NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
@@ -56,8 +57,7 @@ if sys.platform == "win32":
 
 
 class JobSupervisor:
-    """
-    Ray actor created by JobManager for each submitted job, responsible to
+    """Ray actor created by JobManager for each submitted job, responsible to
     setup runtime_env, execute given shell command in subprocess, update job
     status, persist job logs and manage subprocess group cleaning.
 
@@ -105,8 +105,7 @@ class JobSupervisor:
         self._configure_logger()
 
     def _configure_logger(self) -> None:
-        """
-        Configure self._logger object to write logs to file based on job
+        """Configure self._logger object to write logs to file based on job
         submission ID and to console.
         """
         supervisor_log_file_name = os.path.join(
@@ -149,6 +148,7 @@ class JobSupervisor:
         # & actors.
         env_vars = curr_runtime_env.get("env_vars", {})
         env_vars.pop(NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR)
+        env_vars.pop(NOSET_CN_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(NOSET_ASCEND_RT_VISIBLE_DEVICES_ENV_VAR)
         env_vars.pop(ray_constants.RAY_WORKER_NICENESS)
         curr_runtime_env["env_vars"] = env_vars
@@ -159,8 +159,7 @@ class JobSupervisor:
         pass
 
     def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
-        """
-        Runs the entrypoint command as a child process, streaming stderr &
+        """Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
 
         Unix systems:
@@ -326,8 +325,7 @@ class JobSupervisor:
         _start_signal_actor: Optional[ActorHandle] = None,
         resources_specified: bool = False,
     ):
-        """
-        Stop and start both happen asynchronously, coordinated by asyncio event
+        """Stop and start both happen asynchronously, coordinated by asyncio event
         and coroutine, respectively.
 
         1) Sets job status as running
