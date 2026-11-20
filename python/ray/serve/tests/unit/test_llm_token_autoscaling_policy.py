@@ -112,5 +112,66 @@ def test_replicated_router_reports(requests, load, expected):
     assert policy(contexts) == ({}, {})
 
 
+def _cooldown_contexts(now, tokens, requests=0):
+    target = DeploymentID("decode", "app")
+    source = DeploymentID("LLMRouter", "app")
+    server = _server_context(target, now, requests)
+    server.target_num_replicas = 3
+    server.current_num_replicas = 4
+    server.last_scale_down_time = 100
+    router = AutoscalingMetricsContext(
+        source,
+        source.name,
+        source.app_name,
+        1,
+        [],
+        now,
+        aggregated_metrics={
+            "outstanding_effective_prefill_tokens:decode": {"r": tokens}
+        },
+        raw_metrics={},
+    )
+    return target, {source: router, target: server}
+
+
+@pytest.mark.parametrize("tokens,required", [(10, 1), (50, 5)])
+def test_cooldown_holds_server_and_restarts_delays(monkeypatch, tokens, required):
+    target, contexts = _cooldown_contexts(150, tokens)
+    server = contexts[target]
+    server.config = AutoscalingConfig(
+        min_replicas=0,
+        max_replicas=8,
+        upscale_delay_s=10,
+        downscale_delay_s=10,
+        downscale_to_zero_delay_s=10,
+    )
+    policy = _apply_app_level_autoscaling_config(LLMTokenAutoscalingPolicy(10, 60))
+    for now in [150, 159, 160, 169, 170]:
+        monkeypatch.setattr("ray.serve.autoscaling_policy.time.time", lambda: now)
+        server.current_time = now
+        decisions, states = policy(contexts)
+        assert decisions == {target: 3 if now < 170 else required}
+        server.policy_state = states[target]
+        assert server.policy_state["required_replicas"] == required
+
+
+def test_cooldown_inflight_floor_and_factor_validation():
+    target, contexts = _cooldown_contexts(150, 0, requests=1)
+    server = contexts[target]
+    server.target_num_replicas = 0
+    server.current_num_replicas = 0
+    policy = LLMTokenAutoscalingPolicy(10, 60)
+    assert policy(contexts)[0] == {target: 1}
+    server.config = AutoscalingConfig(upscaling_factor=2)
+    with pytest.raises(ValueError, match="factors of 1"):
+        policy(contexts)
+
+
+@pytest.mark.parametrize("duration", [-1, float("inf"), float("nan")])
+def test_invalid_cooldown_duration(duration):
+    with pytest.raises(ValueError, match="nonnegative and finite"):
+        LLMTokenAutoscalingPolicy(10, duration)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
