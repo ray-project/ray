@@ -24,13 +24,29 @@ namespace gcs {
 
 class LeaderLeaseClientFactory {
  public:
-  /// Creates a lease client for `lease_key`. An empty `lease_namespace` falls back to
-  /// $POD_NAMESPACE, then the pod's service account namespace file. Crashes if either
-  /// the key or the namespace can't be determined.
+  /**
+   * @brief Creates a client for the Kubernetes Lease the GCS heads compete for.
+   *
+   * Crashes if the lease name or its namespace can't be determined.
+   *
+   * @param lease_namespace Namespace of the Lease. Resolved with
+   *        ResolveLeaseNamespace().
+   * @param lease_key Name of the Lease. Surrounding whitespace is ignored.
+   * @return The lease client.
+   */
   static std::unique_ptr<LeaderLeaseClientInterface> Create(
       const std::string &lease_namespace, const std::string &lease_key);
 
-  /// The namespace Create() uses for `lease_namespace`, or empty if none is found.
+  /**
+   * @brief Resolves the namespace Create() uses for the Lease.
+   *
+   * Falls back from `lease_namespace` to $POD_NAMESPACE, then to the pod's service
+   * account namespace file. Surrounding whitespace is ignored, and an empty value
+   * falls through to the next source.
+   *
+   * @param lease_namespace The configured namespace. May be empty.
+   * @return The resolved namespace, or an empty string if none is found.
+   */
   static std::string ResolveLeaseNamespace(const std::string &lease_namespace);
 };
 

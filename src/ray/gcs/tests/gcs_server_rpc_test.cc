@@ -36,8 +36,10 @@
 #include "ray/gcs/store_client_kv.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/clock.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
+#include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray {
 
@@ -1359,6 +1361,52 @@ TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresLeaseName) {
         gcs::GcsServer server(config, fake_metrics_, io_service);
       },
       "gcs_leader_election_lease_name must be set");
+}
+
+// The heads only agree on a leader's writes through storage they share, which in-memory
+// storage is not.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresSharedStorage) {
+  gcs::GcsServerConfig config =
+      MakeGcsServerConfig("MockedGcsServerWithoutRedis", /*leader_elect=*/true);
+  config.redis_address = "";
+  EXPECT_DEATH(
+      {
+        RayConfig::instance().gcs_storage() = gcs::GcsServer::kInMemoryStorage;
+        instrumented_io_context io_service;
+        gcs::GcsServer server(config, fake_metrics_, io_service);
+      },
+      "GCS leader election requires shared external storage");
+}
+
+// Stop() must return, and release the lease, while a raylet still holds a RaySyncer
+// stream open. Cancelling the stream finishes it on the syncer's io context, so that io
+// context has to outlive the gRPC shutdown.
+TEST_F(GcsLeaderElectionTestBase, TestStopWithOpenSyncerStreamReleasesLease) {
+  auto lease = std::make_shared<InMemoryLeaseClient>();
+  auto leader = MakePassiveServer("MockedLeaderGcsServer", lease);
+  ASSERT_TRUE(WaitForLeader(*leader, std::chrono::seconds(30)));
+  ASSERT_TRUE(leader->WaitForStarted(std::chrono::seconds(30)));
+  ASSERT_FALSE(lease->Holder().empty());
+
+  auto channel =
+      grpc::CreateChannel("localhost:" + std::to_string(leader->server().GetPort()),
+                          grpc::InsecureChannelCredentials());
+  auto stub = rpc::syncer::RaySyncer::NewStub(channel);
+  grpc::ClientContext context;
+  context.AddMetadata("node_id", NodeID::FromRandom().Hex());
+  auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
+  if (auth_token && !auth_token->empty()) {
+    auth_token->SetMetadata(context);
+  }
+  auto stream = stub->StartSync(&context);
+  // The server answers with its own node ID once its side of the stream is up.
+  stream->WaitForInitialMetadata();
+  ASSERT_EQ(context.GetServerInitialMetadata().count("node_id"), 1);
+
+  // If Stop() hangs, so does this future's destructor, and the test times out.
+  auto stopped = std::async(std::launch::async, [&leader]() { leader->Stop(); });
+  ASSERT_EQ(stopped.wait_for(std::chrono::seconds(30)), std::future_status::ready);
+  EXPECT_TRUE(lease->Holder().empty());
 }
 
 // Adds a promoted leader, for the cases that need a standing leader to observe or to

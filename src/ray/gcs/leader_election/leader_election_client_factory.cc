@@ -48,7 +48,8 @@ std::string LeaderLeaseClientFactory::ResolveLeaseNamespace(
 
 std::unique_ptr<LeaderLeaseClientInterface> LeaderLeaseClientFactory::Create(
     const std::string &lease_namespace, const std::string &lease_key) {
-  RAY_CHECK(!lease_key.empty())
+  const std::string resolved_key(absl::StripAsciiWhitespace(lease_key));
+  RAY_CHECK(!resolved_key.empty())
       << "RAY_gcs_leader_election_lease_name must be set when GCS leader election "
          "is enabled.";
   const std::string resolved_namespace = ResolveLeaseNamespace(lease_namespace);
@@ -65,7 +66,7 @@ std::unique_ptr<LeaderLeaseClientInterface> LeaderLeaseClientFactory::Create(
 
   return std::make_unique<K8sLeaseClient>(
       resolved_namespace,
-      lease_key,
+      resolved_key,
       [](const std::string &path, nlohmann::json &resp) {
         return rpc::k8s::K8sApiGet(path, resp);
       },
