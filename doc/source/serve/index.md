@@ -23,6 +23,7 @@ http-guide
 Serving LLMs <llm/index>
 Production Guide <production-guide/index>
 monitoring
+tracing
 resource-allocation
 autoscaling-guide
 asynchronous-inference

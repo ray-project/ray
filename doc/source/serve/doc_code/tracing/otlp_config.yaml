@@ -1,0 +1,18 @@
+# __otlp_config_start__
+tracing_config:
+  enabled: true
+  sampling_ratio: 0.1
+  exporter_import_path: my_exporters:otlp_exporter
+
+controller_options:
+  runtime_env:
+    env_vars:
+      # Proxies and replicas inherit these from the Serve controller.
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector.example.com:4317"
+      OTEL_SERVICE_NAME: "my-serve-app"
+
+applications:
+  - name: default
+    route_prefix: /
+    import_path: my_app:app
+# __otlp_config_end__

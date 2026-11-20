@@ -57,7 +57,7 @@ applications:
     ...
 ```
 
-The file contains `proxy_location`, `http_options`, `grpc_options`, `logging_config` and `applications`.
+The file contains `proxy_location`, `http_options`, `grpc_options`, `logging_config` and `applications`. It can also contain `tracing_config`, described in [Tracing config](tracing-config).
 
 (proxy-config)=
 
@@ -105,6 +105,20 @@ The `grpc_options` are as follows. Note that the gRPC config is global to your R
 ## Logging config 
 
 The `logging_config` is global config, you can configure controller & proxy & replica logs. Note that you can also set application and deployment level logging config, which will take precedence over the global config. See logging config API [here](../../serve/api/doc/ray.serve.schema.LoggingConfig.rst) for more details.
+
+(tracing-config)=
+
+## Tracing config
+
+The `tracing_config` is global config that turns on OpenTelemetry request tracing for the proxies and replicas, and sets its sampling ratio and exporter:
+
+```yaml
+tracing_config:
+  enabled: true
+  sampling_ratio: 1.0
+```
+
+Serve applies it when it starts, and you can't change it while Serve is running. See [Trace requests with OpenTelemetry](serve-tracing) for the options and how to use them.
 
 (application-config)=
 
