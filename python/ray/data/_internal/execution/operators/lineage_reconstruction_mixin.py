@@ -50,6 +50,10 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # A plan that traces back to a queued seed is batched here instead of
         # re-injecting the seed.
         self._batched_plans: Dict[LineageTaskId, Set[ReconstructionPlanId]] = {}
+        # Whether this operator's outputs leave the executor to external consumer
+        # tasks, such as the push-based split's deliveries. No operator owns those
+        # child tasks, so there is no queued reconstruction task to join.
+        self._has_external_consumer = False
         # Reconstruction tasks that finished successfully.
         self._num_reconstruction_tasks_finished = 0
         super().__init__(*args, **kwargs)
@@ -174,6 +178,11 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                 reconstruction_plan_ids=plan_ids,
             ),
         )
+
+    def set_has_external_consumer(self) -> None:
+        """Mark that every child task of this operator is an external consumer
+        task. Called by the executor before the operator starts."""
+        self._has_external_consumer = True
 
     def _queue_reconstruction_task(self, lineage_task_id: LineageTaskId) -> None:
         """Record that a stamped input for ``lineage_task_id`` was queued, so plans can
@@ -373,10 +382,15 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                     del self._reconstruction_outputs[reconstruction_plan_id]
             # If the child reconstruction task is already queued, batch these plans into
             # it instead of queueing it again. The queued input holds the same
-            # rows, so these blocks are dropped.
-            consumer = self._consumer_of(child_task_id)
-            if consumer.join_queued_reconstruction_task(child_task_id, ready_plan_ids):
-                continue
+            # rows, so these blocks are dropped. An external consumer task is
+            # never queued in an operator, so there is nothing to join.
+            if not self._has_external_consumer:
+                consumer = self._consumer_of(child_task_id)
+                if consumer.join_queued_reconstruction_task(
+                    child_task_id, ready_plan_ids
+                ):
+                    continue
+                consumer._queue_reconstruction_task(child_task_id)
             # Create a complete RefBundle containing all reconstruction blocks withheld for a child reconstruction task,
             # stamp it with the child reconstruction task's lineage task ID and every plan it serves.
             inputs = replace(
@@ -386,7 +400,6 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
                     reconstruction_plan_ids=frozenset(ready_plan_ids),
                 ),
             )
-            consumer._queue_reconstruction_task(child_task_id)
             # Add to the output queue of the current task
             self._enqueue_reconstruction_output(inputs, task_index)
 

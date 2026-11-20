@@ -30,6 +30,7 @@ from ray.data._internal.iterator.push_split_coordinator import (
     _BlockPush,
     _EndOfEpoch,
     _ExecutorError,
+    _LostBlock,
     _SequencedItem,
 )
 from ray.data._internal.stats import DatasetStats
@@ -54,7 +55,7 @@ class _BlockDelivery:
     num_rows: int
 
 
-_QueueItem = Union[_BlockDelivery, _EndOfEpoch, _ExecutorError]
+_QueueItem = Union[_BlockDelivery, _EndOfEpoch, _ExecutorError, _LostBlock]
 
 
 def streaming_split_push_based(
@@ -159,7 +160,11 @@ class _PushReceiver:
                 self.reorder_pending = {}
             self.reorder_pending[seq] = queue_item
             while self.reorder_next_seq in self.reorder_pending:
-                self.queue.put(self.reorder_pending.pop(self.reorder_next_seq))
+                released = self.reorder_pending.pop(self.reorder_next_seq)
+                # A lost block only fills its seq. Its replacement arrives later
+                # under a new seq.
+                if not isinstance(released, _LostBlock):
+                    self.queue.put(released)
                 self.reorder_next_seq += 1
 
     def deliver_error(self, epoch_id: int, error: _ExecutorError) -> None:
