@@ -49,7 +49,24 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 @PublicAPI(stability="alpha")
 class AutoscalingMetricsContext:
-    """Observed deployment state and replica metrics available to application policies."""
+    """Observed deployment state and replica metrics available to application policies.
+
+    Serve passes this context to the application policy for deployments that
+    report autoscaling metrics. Deployments that autoscale receive an
+    :class:`AutoscalingContext`, which also includes their scaling settings.
+
+    Args:
+        deployment_id: Unique identifier of the reporting deployment.
+        deployment_name: Name of the reporting deployment.
+        app_name: Name of the application containing the deployment, if available.
+        current_num_replicas: Number of replicas currently running.
+        running_replicas: Identifiers of the running replicas.
+        current_time: Controller timestamp in seconds since the Unix epoch, if available.
+        aggregated_metrics: Aggregated values keyed by metric name and replica ID,
+            or a callable that returns them on first access. May be None.
+        raw_metrics: Timestamped samples keyed by metric name and replica ID,
+            or a callable that returns them on first access. May be None.
+    """
 
     def __init__(
         self,

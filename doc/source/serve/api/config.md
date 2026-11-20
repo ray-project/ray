@@ -23,6 +23,7 @@ These APIs configure Serve's proxies, controller, autoscaling, request routing, 
    :template: autosummary/class_without_autosummary.rst
 
    serve.config.ProxyLocation
+   serve.config.AutoscalingMetricsContext
    serve.config.AutoscalingContext
    serve.autoscaling_policy.replica_queue_length_autoscaling_policy
    serve.autoscaling_policy.PrometheusScalar
