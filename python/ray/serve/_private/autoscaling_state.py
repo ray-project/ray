@@ -4,6 +4,7 @@ import math
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -1069,6 +1070,7 @@ class ApplicationAutoscalingState:
             DeploymentID, Dict[ReplicaID, ReplicaMetricReport]
         ] = defaultdict(dict)
         self._source_running: Dict[DeploymentID, Set[ReplicaID]] = {}
+        self._published_metrics: Dict[DeploymentID, Set[Tuple[str, ReplicaID]]] = {}
         self._deployment_autoscaling_states: Dict[
             DeploymentID, DeploymentAutoscalingState
         ] = {}
@@ -1162,6 +1164,39 @@ class ApplicationAutoscalingState:
     def should_autoscale_deployment(self, deployment_id: DeploymentID):
         return deployment_id in self._deployment_autoscaling_states
 
+    @cached_property
+    def _replica_metric_gauge(self):
+        return metrics.Gauge(
+            "serve_autoscaling_replica_metric",
+            description="Custom autoscaling metric aggregated over a replica's reporting window.",
+            tag_keys=("application", "deployment", "replica", "metric"),
+        )
+
+    def _publish_replica_metrics(
+        self, dep: DeploymentID, aggregates: Dict[str, Dict[ReplicaID, float]]
+    ):
+        values = {
+            (key, replica): value
+            for key, replicas in aggregates.items()
+            for replica, value in replicas.items()
+        }
+        previous = self._published_metrics.pop(dep, set())
+        if values:
+            self._published_metrics[dep] = set(values)
+        # A missing report is a gap, including when the last replica stops.
+        for missing in previous - values.keys():
+            values[missing] = math.nan
+        for (key, replica), value in values.items():
+            self._replica_metric_gauge.set(
+                value,
+                tags={
+                    "application": dep.app_name,
+                    "deployment": dep.name,
+                    "replica": replica.unique_id,
+                    "metric": key,
+                },
+            )
+
     def _metrics_source_context(self, dep: DeploymentID) -> AutoscalingMetricsContext:
         settings = self._metric_sources[dep]
         now = time.time()
@@ -1223,8 +1258,8 @@ class ApplicationAutoscalingState:
         """Decide scaling for all deployments in this application by calling
         each deployment's autoscaling policy.
         """
+        target_contexts = {}
         if self.has_policy():
-            # Using app-level policy
             target_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
@@ -1236,14 +1271,20 @@ class ApplicationAutoscalingState:
                 if deployment_id in deployment_to_target_num_replicas
             }
 
-            autoscaling_contexts: Dict[DeploymentID, AutoscalingMetricsContext] = dict(
-                target_contexts
+        autoscaling_contexts: Dict[DeploymentID, AutoscalingMetricsContext] = dict(
+            target_contexts
+        )
+        for dep in self._metric_sources:
+            if dep not in deployment_to_target_num_replicas:
+                self._publish_replica_metrics(dep, {})
+                continue
+            if dep not in autoscaling_contexts:
+                autoscaling_contexts[dep] = self._metrics_source_context(dep)
+            self._publish_replica_metrics(
+                dep, autoscaling_contexts[dep].aggregated_metrics or {}
             )
-            for dep in (
-                self._metric_sources.keys() & deployment_to_target_num_replicas.keys()
-            ):
-                if dep not in autoscaling_contexts:
-                    autoscaling_contexts[dep] = self._metrics_source_context(dep)
+
+        if self.has_policy():
             # Time the policy execution
             start_time = time.time()
             # Policy returns decisions: {deployment_id -> decision} and
@@ -1453,7 +1494,9 @@ class AutoscalingStateManager:
         """Remove application from tracking."""
         if app_name in self._app_autoscaling_states:
             logger.info(f"Deregistering autoscaling state for application {app_name}")
-            self._app_autoscaling_states.pop(app_name, None)
+            app = self._app_autoscaling_states.pop(app_name)
+            for dep in app._metric_sources:
+                app._publish_replica_metrics(dep, {})
 
     def configure_metrics_source(self, deployment_id, config):
         app = self._app_autoscaling_states.get(deployment_id.app_name)
@@ -1463,6 +1506,7 @@ class AutoscalingStateManager:
                 self._app_autoscaling_states[deployment_id.app_name] = app
             app._metric_sources[deployment_id] = config
         elif app is not None:
+            app._publish_replica_metrics(deployment_id, {})
             app._metric_sources.pop(deployment_id, None)
             app._source_reports.pop(deployment_id, None)
             app._source_running.pop(deployment_id, None)

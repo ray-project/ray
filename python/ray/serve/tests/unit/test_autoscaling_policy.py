@@ -1,12 +1,25 @@
 import math
 import sys
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
-from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
-from ray.serve._private.config import DeploymentConfig, ReplicaConfig
+from ray.serve._private.autoscaling_state import (
+    AutoscalingStateManager,
+    DeploymentAutoscalingState,
+)
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    ReplicaMetricReport,
+    TimeStampedValue,
+)
+from ray.serve._private.config import (
+    AutoscalingMetricsConfig,
+    DeploymentConfig,
+    ReplicaConfig,
+)
 from ray.serve._private.constants import (
     CONTROL_LOOP_INTERVAL_S,
     SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
@@ -38,6 +51,40 @@ from ray.serve.config import (
 wrapped_replica_queue_length_autoscaling_policy = _apply_autoscaling_config(
     replica_queue_length_autoscaling_policy
 )
+
+
+def test_publish_metrics_only_replica_aggregates():
+    manager = AutoscalingStateManager()
+    source = DeploymentID("reporter", "app")
+    manager.configure_metrics_source(source, AutoscalingMetricsConfig())
+    app = manager._app_autoscaling_states["app"]
+    gauge = MagicMock()
+    app._replica_metric_gauge = gauge
+    now = time.time()
+    replicas = [ReplicaID("r1", source), ReplicaID("r2", source)]
+    manager.update_running_replica_ids(source, replicas)
+    for replica, value in zip(replicas, (10, 30)):
+        manager.record_request_metrics_for_replica(
+            ReplicaMetricReport(replica, {"load": [TimeStampedValue(now, value)]}, now)
+        )
+
+    tags = {"application": "app", "deployment": "reporter", "metric": "load"}
+    assert manager.get_decision_num_replicas("app", {source: 2}) == {}
+    gauge.set.assert_any_call(10, tags={**tags, "replica": "r1"})
+    gauge.set.assert_any_call(30, tags={**tags, "replica": "r2"})
+
+    manager.update_running_replica_ids(source, replicas[:1])
+    gauge.reset_mock()
+    manager.get_decision_num_replicas("app", {source: 1})
+    gauge.set.assert_any_call(math.nan, tags={**tags, "replica": "r2"})
+    gauge.set.assert_any_call(10, tags={**tags, "replica": "r1"})
+
+    with patch(
+        "ray.serve._private.autoscaling_state.time.time", return_value=now + 100
+    ):
+        gauge.reset_mock()
+        manager.get_decision_num_replicas("app", {source: 1})
+        gauge.set.assert_called_once_with(math.nan, tags={**tags, "replica": "r1"})
 
 
 def create_context_with_overrides(
