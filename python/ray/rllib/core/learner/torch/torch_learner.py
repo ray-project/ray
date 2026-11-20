@@ -366,7 +366,8 @@ class TorchLearner(Learner):
                 # object-store buffers. Optimizers mutate these in-place,
                 # so each Learner must own its restored state independently.
                 # GPU transfers already allocate a separate device buffer.
-                if self._device.type == "cpu":
+                device_type = getattr(self._device, "type", self._device)
+                if str(device_type).split(":", 1)[0] == "cpu":
                     optimizer_buffers = copy_torch_tensors(optimizer_buffers)
                 loaded_state = {
                     **optimizer_state,
