@@ -26,6 +26,7 @@
 
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/placement_group_util.h"
+#include "ray/raylet/worker_resource_limits.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -363,7 +364,9 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
 
       // Check if the node is still schedulable. It may not be if dependency resolution
       // took a long time.
-      auto allocated_instances = std::make_shared<TaskResourceInstances>();
+      // Keep a non-null allocation locally while scheduling and building worker limits.
+      // Allocation and cancellation handlers cannot reset this shared_ptr.
+      const auto allocated_instances = std::make_shared<TaskResourceInstances>();
       bool schedulable =
           !cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining() &&
           cluster_resource_scheduler_.GetLocalResourceManager()
@@ -401,6 +404,8 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
         // task might be hanging.
         worker_pool_.PopWorker(
             spec,
+            BuildWorkerResourceLimits(spec.SerializedRuntimeEnv(),
+                                      allocated_instances->ToResourceSet()),
             [this, lease_id, scheduling_class, work, is_detached_actor, owner_address](
                 const std::shared_ptr<WorkerInterface> worker,
                 PopWorkerStatus status,
