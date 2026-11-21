@@ -24,6 +24,7 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/metrics.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -83,6 +84,8 @@ class GcsPlacementGroup {
         clock_.NowUnixMillis());
     *placement_group_table_data_.mutable_topology_strategy() =
         placement_group_spec.topology_strategy();
+    *placement_group_table_data_.mutable_fallback_strategy() =
+        placement_group_spec.fallback_strategy();
     SetupStates();
   }
 
@@ -179,6 +182,21 @@ class GcsPlacementGroup {
   /// Clear all topology assignments (used when every bundle of a topology
   /// strategy PG becomes unplaced, so a fresh selection can be made).
   void ClearTopologyAssignments();
+
+  /// Get the number of fallback options after the bundles' own label selectors.
+  int GetFallbackStrategySize() const;
+
+  /// Get the label selector of the bundle at `bundle_index` in fallback option
+  /// `fallback_index`, where 1 is the first option. A bundle the option doesn't list
+  /// gets an empty label selector.
+  LabelSelector GetFallbackLabelSelector(int fallback_index, int64_t bundle_index) const;
+
+  /// Get the label selectors the bundles were last scheduled with. 0 means the
+  /// bundles' own label selectors, and n means fallback option n.
+  int GetSelectedFallbackIndex() const;
+
+  /// Record the label selectors the bundles are scheduled with.
+  void SetSelectedFallbackIndex(int fallback_index);
 
  private:
   // XXX.

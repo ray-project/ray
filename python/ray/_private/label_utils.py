@@ -31,12 +31,16 @@ LABEL_OPERATORS = {"in"}
 # Create a pattern string dynamically based on the LABEL_OPERATORS
 OPERATOR_PATTERN = "|".join([re.escape(operator) for operator in LABEL_OPERATORS])
 
-# Regex to match valid label selector operators and values
+# Pattern for one label selector expression: an optional "!", then `exists()`, a label
+# value, or an operator with a list of label values.
+LABEL_SELECTOR_EXPRESSION = rf"!?(?:exists\(\)|(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, ?{LABEL_REGEX.pattern})*\)|{LABEL_REGEX.pattern})"
+
+# Regex to match a label selector value: one or more expressions separated by commas
 # Examples:
-#   Valid matches: "spot", "!GPU", "213521", "in(A123, B456, C789)", "!in(spot, on-demand)", "valid-value"
-#   Invalid matches: "-spot", "spot_", "in()", "in(spot,", "in(H100, TPU!GPU)", "!!!in(H100, TPU)"
+#   Valid matches: "spot", "!GPU", "213521", "in(A123, B456, C789)", "!in(spot, on-demand)", "valid-value", "in(a,b),!c", "exists(),!in(a,b)"
+#   Invalid matches: "-spot", "spot_", "in()", "in(spot,", "in(H100, TPU!GPU)", "!!!in(H100, TPU)", "in(a,b),", "exists(a)"
 LABEL_SELECTOR_REGEX = re.compile(
-    rf"^!?(?:{OPERATOR_PATTERN})?\({LABEL_REGEX.pattern}(?:, ?{LABEL_REGEX.pattern})*\)$|^!?{LABEL_REGEX.pattern}$"
+    rf"^{LABEL_SELECTOR_EXPRESSION}(?:,{LABEL_SELECTOR_EXPRESSION})*$"
 )
 
 
@@ -171,7 +175,7 @@ def validate_label_selector_value(selector: str) -> Optional[str]:
         return None
     if not re.fullmatch(LABEL_SELECTOR_REGEX, selector):
         return str(
-            f"Invalid label selector value `{selector}`. The label selector value should contain optional operators and a label value. Supported operators are: ! and {LABEL_OPERATORS}. "
+            f"Invalid label selector value `{selector}`. The label selector value should contain one or more expressions separated by commas, each with optional operators and a label value. Supported operators are: ! and {LABEL_OPERATORS}, plus `exists()`, which takes no value. "
             f"Value must be 63 chars or less beginning and ending "
             f"with an alphanumeric character ([a-z0-9A-Z]) with dashes (-), underscores (_),"
             f"dots (.), and alphanumerics between."

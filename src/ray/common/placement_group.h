@@ -93,7 +93,9 @@ class PlacementGroupSpecBuilder {
       const std::vector<std::unordered_map<std::string, std::string>>
           &bundle_label_selector = {},
       const std::unordered_map<std::string, rpc::PlacementStrategy> &topology_strategy =
-          {}) {
+          {},
+      const std::vector<std::vector<std::unordered_map<std::string, std::string>>>
+          &fallback_strategy = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -137,6 +139,15 @@ class PlacementGroupSpecBuilder {
 
     message_->mutable_topology_strategy()->insert(topology_strategy.begin(),
                                                   topology_strategy.end());
+
+    // Each fallback option holds one label selector per bundle.
+    for (const auto &bundle_label_selectors : fallback_strategy) {
+      auto *option = message_->add_fallback_strategy();
+      for (const auto &label_selector : bundle_label_selectors) {
+        option->add_bundle_label_selector()->mutable_label_selector()->insert(
+            label_selector.begin(), label_selector.end());
+      }
+    }
     return *this;
   }
 

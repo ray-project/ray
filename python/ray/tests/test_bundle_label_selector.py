@@ -297,6 +297,35 @@ def test_spread_strategy_bundle_label_selector(ray_start_cluster):
     ray.util.remove_placement_group(fail_pg)
 
 
+def test_placement_group_fallback_strategy(ray_start_cluster):
+    """
+    Verifies that a placement group tries its own `bundle_label_selector`, then each
+    fallback option in order, and places every bundle with the first one that fits.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, labels={"region": "us-east"})
+    us_west_node = cluster.add_node(num_cpus=4, labels={"region": "us-west"})
+    ray.init(address=cluster.address)
+
+    # us-east has room for one bundle only and no node is in us-central, so both
+    # bundles use the second fallback option.
+    pg = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        bundle_label_selector=[{"region": "us-east"}] * 2,
+        fallback_strategy=[
+            {"bundle_label_selector": [{"region": "us-central"}] * 2},
+            {"bundle_label_selector": [{"region": "us-west"}] * 2},
+        ],
+    )
+    ray.get(pg.ready(), timeout=10)
+
+    bundles_to_node_id = placement_group_table()[pg.id.hex()]["bundles_to_node_id"]
+    assert bundles_to_node_id[0] == us_west_node.node_id
+    assert bundles_to_node_id[1] == us_west_node.node_id
+
+    placement_group_assert_no_leak([pg])
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

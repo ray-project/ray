@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -32,8 +33,15 @@ enum class LabelSelectorOperator {
   // This is to support equality or in semantics.
   LABEL_IN = 1,
   // This is to support not equal or not in semantics.
-  LABEL_NOT_IN = 2
+  LABEL_NOT_IN = 2,
+  // The node has the label key, with any value.
+  LABEL_EXISTS = 3,
+  // The node does not have the label key.
+  LABEL_DOES_NOT_EXIST = 4
 };
+
+// Short name of an operator for debug output, such as "in" or "!exists".
+std::string_view LabelSelectorOperatorName(LabelSelectorOperator op);
 
 // Defines requirements for a label key and value.
 class LabelConstraint {
@@ -97,9 +105,13 @@ class LabelSelector {
   // Convert LabelSelector object to rpc::LabelSelector proto message.
   void ToProto(rpc::LabelSelector *proto) const;
 
-  // Convert the LabelSelector object back into a string map.
+  // Convert the LabelSelector object back into a string map. Constraints on the same key
+  // are joined with commas in the order they were added.
   google::protobuf::Map<std::string, std::string> ToStringMap() const;
 
+  // Parse a label selector value and add one constraint for each expression in it. A
+  // value holds one or more expressions separated by commas outside parentheses, such
+  // as "in(a,b),!c". A node must satisfy every expression.
   void AddConstraint(const std::string &key, const std::string &value);
 
   void AddConstraint(LabelConstraint constraint);
@@ -108,8 +120,14 @@ class LabelSelector {
 
   std::string DebugString() const;
 
+  // Parse a single expression: "v", "!v", "in(a,b)", "!in(a,b)", "exists()" or
+  // "!exists()".
   std::pair<LabelSelectorOperator, absl::flat_hash_set<std::string>>
   ParseLabelSelectorValue(const std::string &key, const std::string &value);
+
+  // Split a label selector value into its expressions at the commas outside
+  // parentheses, so "in(a,b),!c" gives "in(a,b)" and "!c".
+  static std::vector<std::string> SplitLabelSelectorValue(const std::string &value);
 
  private:
   std::vector<LabelConstraint> constraints_;

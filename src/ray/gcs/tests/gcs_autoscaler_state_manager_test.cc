@@ -1313,6 +1313,67 @@ TEST_F(GcsAutoscalerStateManagerTest,
 }
 
 TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsWithFallbackStrategy) {
+  rpc::PlacementGroupLoad load;
+
+  // A pending PG whose two bundles want zone a, then zone b, then zone c.
+  auto *pending_pg = load.add_placement_group_data();
+  pending_pg->set_state(rpc::PlacementGroupTableData::PENDING);
+  pending_pg->set_placement_group_id(PlacementGroupID::Of(JobID::FromInt(1)).Binary());
+  for (int i = 0; i < 2; ++i) {
+    auto *bundle = pending_pg->add_bundles();
+    (*bundle->mutable_unit_resources())["CPU"] = 1;
+    (*bundle->mutable_label_selector())["zone"] = "a";
+  }
+  for (const char *zone : {"b", "c"}) {
+    auto *option = pending_pg->add_fallback_strategy();
+    for (int i = 0; i < 2; ++i) {
+      (*option->add_bundle_label_selector()->mutable_label_selector())["zone"] = zone;
+    }
+  }
+
+  // The same PG placed with its first fallback option, after bundle 0 was lost.
+  auto *rescheduling_pg = load.add_placement_group_data();
+  *rescheduling_pg = *pending_pg;
+  rescheduling_pg->set_state(rpc::PlacementGroupTableData::RESCHEDULING);
+  rescheduling_pg->set_placement_group_id(
+      PlacementGroupID::Of(JobID::FromInt(2)).Binary());
+  rescheduling_pg->mutable_bundles(1)->set_node_id(NodeID::FromRandom().Binary());
+  rescheduling_pg->set_selected_fallback_index(1);
+
+  gcs_placement_group_manager_->get_placement_group_load_return =
+      std::make_shared<rpc::PlacementGroupLoad>(std::move(load));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 2);
+
+  // Returns the zone each resource request of a bundle selector asks for.
+  auto zones = [](const auto &bundle_selector) {
+    std::vector<std::string> result;
+    for (const auto &request : bundle_selector.resource_requests()) {
+      result.push_back(request.label_selectors(0).label_constraints(0).label_values(0));
+    }
+    return result;
+  };
+  using Zones = std::vector<std::string>;
+
+  // A pending PG reports its own label selectors, then each fallback option.
+  const auto &pending_req = requests.Get(0);
+  EXPECT_EQ(pending_req.requests_size(), 2);
+  ASSERT_EQ(pending_req.bundle_selectors_size(), 3);
+  EXPECT_EQ(zones(pending_req.bundle_selectors(0)), Zones({"a", "a"}));
+  EXPECT_EQ(zones(pending_req.bundle_selectors(1)), Zones({"b", "b"}));
+  EXPECT_EQ(zones(pending_req.bundle_selectors(2)), Zones({"c", "c"}));
+
+  // A partly placed PG reports its lost bundle with the option it was placed with.
+  const auto &rescheduling_req = requests.Get(1);
+  EXPECT_EQ(rescheduling_req.requests_size(), 1);
+  ASSERT_EQ(rescheduling_req.bundle_selectors_size(), 1);
+  EXPECT_EQ(zones(rescheduling_req.bundle_selectors(0)), Zones({"b"}));
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
        TestGetPendingGangResourceRequestsWithLocalityRequirementPending) {
   rpc::PlacementGroupLoad load;
   auto *pg_data = load.add_placement_group_data();

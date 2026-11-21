@@ -133,6 +133,7 @@ def placement_group(
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
     topology_strategy: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, List[Dict[str, str]]]]] = None,
 ) -> PlacementGroup:
     """Asynchronously creates a PlacementGroup.
 
@@ -164,6 +165,10 @@ def placement_group(
             topology label key to a placement strategy (e.g.,
             ``{"ray.io/gpu-domain": "STRICT_PACK"}``).
             Mutually exclusive with `strategy`.
+        fallback_strategy: Label selector options to try, in order, when the
+            bundles can't be placed with `bundle_label_selector`. Each option is
+            a dict ``{"bundle_label_selector": [...]}`` with one label selector
+            per bundle. All bundles are placed with one option, never a mix.
 
     Raises:
         ValueError: if bundle type is not a list.
@@ -185,10 +190,14 @@ def placement_group(
         _soft_target_node_id=_soft_target_node_id,
         bundle_label_selector=bundle_label_selector,
         topology_strategy=topology_strategy,
+        fallback_strategy=fallback_strategy,
     )
 
     if bundle_label_selector is None:
         bundle_label_selector = []
+    fallback_bundle_label_selectors = [
+        option["bundle_label_selector"] for option in fallback_strategy or []
+    ]
 
     node_level_strategy = _derive_node_level_strategy(strategy, topology_strategy)
 
@@ -214,6 +223,7 @@ def placement_group(
         _soft_target_node_id,
         bundle_label_selector,
         stripped_topology_strategy,
+        fallback_bundle_label_selectors,
     )
 
     return PlacementGroup(
@@ -362,6 +372,7 @@ def validate_placement_group(
     _soft_target_node_id: Optional[str] = None,
     bundle_label_selector: List[Dict[str, str]] = None,
     topology_strategy: Optional[Dict[str, str]] = None,
+    fallback_strategy: Optional[List[Dict[str, List[Dict[str, str]]]]] = None,
 ) -> bool:
     """Validates inputs for placement_group.
 
@@ -407,6 +418,9 @@ def validate_placement_group(
                 f"The length of `bundle_label_selector` should equal the length of `bundles`."
             )
         _validate_bundle_label_selector(bundle_label_selector)
+
+    if fallback_strategy is not None:
+        _validate_fallback_strategy(fallback_strategy, len(bundles))
 
     if lifetime not in [None, "detached"]:
         raise ValueError(
@@ -512,6 +526,37 @@ def _validate_bundles(bundles: List[Dict[str, float]]):
                 DeprecationWarning,
                 stacklevel=1,
             )
+
+
+def _validate_fallback_strategy(
+    fallback_strategy: List[Dict[str, List[Dict[str, str]]]], num_bundles: int
+):
+    """Validates a placement group fallback strategy and raises a ValueError if it's invalid."""
+    if not isinstance(fallback_strategy, list):
+        raise ValueError(
+            "Placement group fallback_strategy must be a list, "
+            f"got {type(fallback_strategy)}."
+        )
+
+    for option in fallback_strategy:
+        if not isinstance(option, dict) or set(option) != {"bundle_label_selector"}:
+            raise ValueError(
+                "Each placement group fallback_strategy option must be a dict with "
+                "only a `bundle_label_selector` key, for example "
+                '`{"bundle_label_selector": [{"ray.io/availability-zone": "us-west-2a"}]}`. '
+                f"Got {option!r}."
+            )
+        bundle_label_selector = option["bundle_label_selector"]
+        if (
+            not isinstance(bundle_label_selector, list)
+            or len(bundle_label_selector) != num_bundles
+        ):
+            raise ValueError(
+                "The `bundle_label_selector` of each placement group fallback_strategy "
+                f"option must be a list with one label selector per bundle. Got "
+                f"{bundle_label_selector!r} for {num_bundles} bundles."
+            )
+        _validate_bundle_label_selector(bundle_label_selector)
 
 
 def _validate_bundle_label_selector(bundle_label_selector: List[Dict[str, str]]):

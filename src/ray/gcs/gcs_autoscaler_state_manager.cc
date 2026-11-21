@@ -21,6 +21,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/util/string_utils.h"
 
 namespace ray {
@@ -224,12 +225,10 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     // Add the strategy as detail info for the gang resource request.
     gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
-    // Create a BundleSelector. Only one BundleSelector will be created for now.
-    // Multiple will be added when we implement the fallback mechanism.
-    auto *bundle_selector = gang_resource_req->add_bundle_selectors();
-
-    // Copy the PG's bundles to the request.
-    for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
+    // Copy the PG's unplaced bundles to the request.
+    std::vector<int> unplaced_bundle_indexes;
+    for (int i = 0; i < pg_data.bundles_size(); ++i) {
+      const auto &bundle = pg_data.bundles(i);
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when
@@ -239,50 +238,77 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         // to node crashed.
         continue;
       }
-
-      const auto &unit_resources = bundle.unit_resources();
+      unplaced_bundle_indexes.push_back(i);
 
       // Add the resources. This field will be removed after migrating to
       // use the BundleSelector for GangResourceRequests.
       auto legacy_resource_req = gang_resource_req->add_requests();
-      *legacy_resource_req->mutable_resources_bundle() = unit_resources;
-
-      // Add ResourceRequest for this bundle.
-      auto *bundle_resource_req = bundle_selector->add_resource_requests();
-      *bundle_resource_req->mutable_resources_bundle() = unit_resources;
-
-      // Parse label selector map into LabelSelector proto in ResourceRequest
-      if (!bundle.label_selector().empty()) {
-        ray::LabelSelector selector(bundle.label_selector());
-        selector.ToProto(bundle_resource_req->add_label_selectors());
-      }
-
-      // Add the placement constraint.
+      *legacy_resource_req->mutable_resources_bundle() = bundle.unit_resources();
       if (pg_constraint.has_value()) {
         legacy_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
-        bundle_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
       }
     }
 
-    // Populate locality_requirement if this PG uses a topology strategy.
-    const auto &topology_strategy = pg_data.topology_strategy();
-    if (!topology_strategy.empty()) {
-      const auto &[topology_label_key, _strategy] = *topology_strategy.begin();
+    // Add one BundleSelector for each set of label selectors the GCS scheduler tries:
+    // the bundles' own, then each fallback option, in order. Bundles of a partly placed
+    // PG keep the option the placed bundles use, so only that one is added.
+    int first_fallback_index = 0;
+    int last_fallback_index = pg_data.fallback_strategy_size();
+    if (static_cast<int>(unplaced_bundle_indexes.size()) < pg_data.bundles_size()) {
+      first_fallback_index = pg_data.selected_fallback_index();
+      last_fallback_index = first_fallback_index;
+    }
+    for (int fallback_index = first_fallback_index; fallback_index <= last_fallback_index;
+         ++fallback_index) {
+      auto *bundle_selector = gang_resource_req->add_bundle_selectors();
+      for (int i : unplaced_bundle_indexes) {
+        const auto &bundle = pg_data.bundles(i);
 
-      auto *locality_req = bundle_selector->mutable_locality_requirement();
-      auto *locality_constraint = locality_req->mutable_locality_constraint();
-      locality_constraint->set_label_name(topology_label_key);
-      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+        // Add ResourceRequest for this bundle.
+        auto *bundle_resource_req = bundle_selector->add_resource_requests();
+        *bundle_resource_req->mutable_resources_bundle() = bundle.unit_resources();
 
-      // If the scheduler has already picked a value for this topology label
-      // (rescheduling case), pin the autoscaler request to that value.
-      const auto &assignments = pg_data.topology_assignments();
-      if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
-        auto *label_constraint =
-            locality_req->mutable_label_selector()->add_label_constraints();
-        label_constraint->set_label_key(topology_label_key);
-        label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
-        label_constraint->add_label_values(it->second);
+        // Parse label selector map into LabelSelector proto in ResourceRequest
+        const google::protobuf::Map<std::string, std::string> *label_selector =
+            &bundle.label_selector();
+        if (fallback_index > 0) {
+          const auto &option = pg_data.fallback_strategy(fallback_index - 1);
+          label_selector = i < option.bundle_label_selector_size()
+                               ? &option.bundle_label_selector(i).label_selector()
+                               : nullptr;
+        }
+        if (label_selector != nullptr && !label_selector->empty()) {
+          ray::LabelSelector selector(*label_selector);
+          selector.ToProto(bundle_resource_req->add_label_selectors());
+        }
+
+        // Add the placement constraint.
+        if (pg_constraint.has_value()) {
+          bundle_resource_req->add_placement_constraints()->CopyFrom(
+              pg_constraint.value());
+        }
+      }
+
+      // Populate locality_requirement if this PG uses a topology strategy.
+      const auto &topology_strategy = pg_data.topology_strategy();
+      if (!topology_strategy.empty()) {
+        const auto &[topology_label_key, _strategy] = *topology_strategy.begin();
+
+        auto *locality_req = bundle_selector->mutable_locality_requirement();
+        auto *locality_constraint = locality_req->mutable_locality_constraint();
+        locality_constraint->set_label_name(topology_label_key);
+        locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+
+        // If the scheduler has already picked a value for this topology label
+        // (rescheduling case), pin the autoscaler request to that value.
+        const auto &assignments = pg_data.topology_assignments();
+        if (auto it = assignments.find(topology_label_key); it != assignments.end()) {
+          auto *label_constraint =
+              locality_req->mutable_label_selector()->add_label_constraints();
+          label_constraint->set_label_key(topology_label_key);
+          label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+          label_constraint->add_label_values(it->second);
+        }
       }
     }
   }
@@ -617,10 +643,8 @@ std::string GcsAutoscalerStateManager::DebugString() const {
           stream << "{";
           for (const auto &constraint : selector.label_constraints()) {
             stream << constraint.label_key() << " "
-                   << (constraint.operator_() ==
-                               rpc::LabelSelectorOperator::LABEL_OPERATOR_IN
-                           ? "in"
-                           : "!in")
+                   << LabelSelectorOperatorName(
+                          static_cast<LabelSelectorOperator>(constraint.operator_()))
                    << " [";
             for (const auto &val : constraint.label_values()) {
               stream << val << ",";
