@@ -1,7 +1,7 @@
 """GPU providers for monitoring GPU usage in Ray dashboard.
 
 This module provides an object-oriented interface for different GPU providers
-(NVIDIA, AMD) to collect GPU utilization information.
+(NVIDIA, AMD, Iluvatar CoreX) to collect GPU utilization information.
 """
 
 import abc
@@ -44,6 +44,7 @@ class GpuProviderType(enum.Enum):
 
     NVIDIA = "nvidia"
     AMD = "amd"
+    ILUVATAR = "iluvatar"
 
 
 class ProcessGPUInfo(TypedDict):
@@ -526,6 +527,154 @@ class NvidiaGpuProvider(GpuProvider):
             return None
 
 
+class IluvatarGpuProvider(GpuProvider):
+    """Iluvatar CoreX GPU metrics using an independent libixml binding."""
+
+    def __init__(self):
+        super().__init__()
+        self._pynvml = None
+        self._gpu_process_last_sample_ts: Dict[int, int] = {}
+
+    def get_provider_name(self) -> GpuProviderType:
+        return GpuProviderType.ILUVATAR
+
+    def load_nvml(self):
+        from ray._private.accelerators.iluvatar_gpu import _load_nvml
+
+        return _load_nvml()
+
+    def is_available(self) -> bool:
+        if not self._initialize():
+            return False
+        try:
+            return self._pynvml.nvmlDeviceGetCount() > 0
+        except Exception as e:
+            logger.debug("Failed to count Iluvatar GPUs: %s", e)
+            return False
+        finally:
+            self._shutdown()
+
+    def _initialize(self) -> bool:
+        if self._initialized:
+            return True
+        try:
+            self._pynvml = self.load_nvml()
+            self._pynvml.nvmlInit()
+            self._initialized = True
+            return True
+        except Exception as e:
+            logger.debug("Failed to initialize Iluvatar GPU provider: %s", e)
+            return False
+
+    def _shutdown(self):
+        if self._initialized:
+            try:
+                self._pynvml.nvmlShutdown()
+            except Exception as e:
+                logger.debug("Failed to shut down Iluvatar GPU provider: %s", e)
+            finally:
+                self._initialized = False
+
+    def get_gpu_utilization(self) -> List[GpuUtilizationInfo]:
+        if not self._initialize():
+            return []
+        gpu_infos = []
+        try:
+            for index in range(self._pynvml.nvmlDeviceGetCount()):
+                try:
+                    handle = self._pynvml.nvmlDeviceGetHandleByIndex(index)
+                    gpu_infos.append(self._get_gpu_info(handle, index))
+                except Exception as e:
+                    logger.debug(
+                        "Failed to collect Iluvatar GPU %s metrics: %s", index, e
+                    )
+        except Exception as e:
+            logger.debug("Failed to enumerate Iluvatar GPUs: %s", e)
+        finally:
+            self._shutdown()
+        return gpu_infos
+
+    def _get_gpu_info(self, handle, index: int) -> GpuUtilizationInfo:
+        nvml = self._pynvml
+        optional_errors = (
+            nvml.NVMLError,
+            # Raised when a versioned symbol such as
+            # nvmlDeviceGetComputeRunningProcesses_v3 is missing. It is not a
+            # subclass of NVMLError.
+            getattr(nvml, "NVMLLibraryMismatchError", nvml.NVMLError),
+            AttributeError,
+        )
+        memory = nvml.nvmlDeviceGetMemoryInfo(handle)
+        try:
+            utilization = nvml.nvmlDeviceGetUtilizationRates(handle).gpu
+        except nvml.NVMLError:
+            utilization = None
+
+        processes: Dict[int, ProcessGPUInfo] = {}
+        for api_name in (
+            "nvmlDeviceGetComputeRunningProcesses",
+            "nvmlDeviceGetGraphicsRunningProcesses",
+        ):
+            try:
+                for process in getattr(nvml, api_name)(handle):
+                    pid = int(process.pid)
+                    processes[pid] = ProcessGPUInfo(
+                        pid=pid,
+                        gpu_memory_usage=(
+                            int(process.usedGpuMemory) // MB
+                            if process.usedGpuMemory is not None
+                            else 0
+                        ),
+                        gpu_utilization=None,
+                    )
+            except optional_errors:
+                pass
+
+        try:
+            # The legacy NVML API takes a timestamp in microseconds.
+            timestamp = int(time.time() * 1_000_000)
+            samples = nvml.nvmlDeviceGetProcessUtilization(
+                handle, self._gpu_process_last_sample_ts.get(index, 0)
+            )
+            self._gpu_process_last_sample_ts[index] = timestamp
+            for sample in samples or []:
+                pid = int(sample.pid)
+                if pid not in processes:
+                    processes[pid] = ProcessGPUInfo(
+                        pid=pid, gpu_memory_usage=0, gpu_utilization=None
+                    )
+                # memUtil is memory activity, not allocated GPU memory.
+                if sample.smUtil is not None:
+                    processes[pid]["gpu_utilization"] = int(sample.smUtil)
+        except optional_errors:
+            pass
+
+        power = None
+        temperature = None
+        try:
+            power = nvml.nvmlDeviceGetPowerUsage(handle)
+        except optional_errors:
+            pass
+        try:
+            temperature = nvml.nvmlDeviceGetTemperature(
+                handle, nvml.NVML_TEMPERATURE_GPU
+            )
+        except optional_errors:
+            pass
+
+        return GpuUtilizationInfo(
+            index=index,
+            name=self._decode(nvml.nvmlDeviceGetName(handle)),
+            uuid=self._decode(nvml.nvmlDeviceGetUUID(handle)),
+            utilization_gpu=utilization,
+            memory_used=int(memory.used) // MB,
+            memory_total=int(memory.total) // MB,
+            processes_pids=processes,
+            power_mw=power,
+            temperature_c=temperature,
+        )
+
+
 class AmdGpuProvider(GpuProvider):
     """AMD GPU provider using pyamdsmi."""
 
@@ -641,7 +790,9 @@ class GpuMetricProvider:
         self._provider: Optional[GpuProvider] = None
         self._enable_metric_report = enable_metric_report
         self._providers = (
-            [NvidiaGpuProvider(), AmdGpuProvider()] if enable_metric_report else []
+            [NvidiaGpuProvider(), IluvatarGpuProvider(), AmdGpuProvider()]
+            if enable_metric_report
+            else []
         )
         self._initialized = False
 
