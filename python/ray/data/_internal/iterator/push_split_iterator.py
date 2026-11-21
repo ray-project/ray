@@ -34,7 +34,6 @@ from ray.data._internal.iterator.push_split_coordinator import (
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_streaming_split_dataset
 from ray.data.block import Block
-from ray.data.checkpoint.iterator import CheckpointingBatchIterator
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator, _BatchSource
 
@@ -203,30 +202,6 @@ class PushSplitReceiverMixin:
             receiver.deliver_error(epoch_id, error)
 
 
-class _MaterializedBatchIterator(CheckpointingBatchIterator):
-    """BatchIterator over already-materialized blocks: skips the ref-level
-    prefetch/resolve stages, inherits everything else unchanged.
-
-    It extends ``CheckpointingBatchIterator`` so that a split with a
-    checkpointer records the row IDs of each batch it yields, like the
-    pull-based split. Without a checkpointer, it behaves like a plain
-    ``BatchIterator``.
-    """
-
-    def __init__(self, blocks: Iterator[ResolvedBlock], **kwargs):
-        # BatchIterator stores its input and hands it to _pipeline, which
-        # this class overrides to consume blocks instead of RefBundles.
-        super().__init__(cast(Any, blocks), **kwargs)
-
-    def _pipeline(self, ref_bundles: Iterator[Any]):
-        batch_iter = self._blocks_to_batches(ref_bundles)
-        batch_iter = self._format_batches(batch_iter)
-        if self._preserve_order:
-            batch_iter = self._restore_original_batch_order(batch_iter)
-        batch_iter = self._finalize_batches(batch_iter)
-        yield from batch_iter
-
-
 class PushBasedDataIterator(DataIterator):
     """DataIterator over one split of a push-based streaming split.
 
@@ -304,6 +279,13 @@ class PushBasedDataIterator(DataIterator):
         self._prefetch_batches = batch_iterator_kwargs.get("prefetch_batches", 1)
         self._prefetch_batch_size = batch_iterator_kwargs.get("batch_size")
         dataset_tags = self._get_dataset_tag()
+        # Lazy import: this module loads with ``import ray.train``, and the
+        # batch iterator module loads ``ray.data.checkpoint`` submodules that
+        # Ray otherwise loads only when a dataset has a checkpoint config.
+        from ray.data._internal.iterator.push_split_batch_iterator import (
+            _MaterializedBatchIterator,
+        )
+
         batch_iterator = _MaterializedBatchIterator(
             self._iter_blocks(),
             checkpointer=self._checkpointer,
