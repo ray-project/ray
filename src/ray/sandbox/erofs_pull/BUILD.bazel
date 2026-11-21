@@ -1,0 +1,57 @@
+load("@erofs_pull_crates//:defs.bzl", "all_crate_deps")
+load("@rules_cc//cc:defs.bzl", "cc_library")
+load("@rules_rust//rust:defs.bzl", "rust_binary", "rust_test")
+
+# erofs-pull builds a Ray Sandbox root filesystem (an EROFS image gVisor
+# mounts) straight from a registry image's layers: ranged parallel downloads
+# into the layer cache, parallel gzip decoding with rapidgzip, and each file's
+# data written once into the image. Python resolves the image and hands it a
+# JSON spec on stdin; see src/main.rs.
+rust_binary(
+    name = "erofs_pull",
+    srcs = glob(["src/*.rs"]),
+    crate_name = "erofs_pull",
+    edition = "2021",
+    rustc_flags = [
+        # Errors are returned, not unwound; a panic still prints its message
+        # and exits non-zero. Drops the unwinding runtime.
+        "-Cpanic=abort",
+        "-Cstrip=symbols",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    # Packaged into the wheel by //:erofs_pull_files.
+    visibility = ["//:__pkg__"],
+    deps = all_crate_deps(normal = True) + [":gzip_shim"],
+)
+
+rust_test(
+    name = "erofs_pull_test",
+    size = "small",
+    crate = ":erofs_pull",
+    target_compatible_with = ["@platforms//os:linux"],
+)
+
+# erofs-pull's own C API over rapidgzip (src/gzip.cpp; Rust side src/gzip.rs).
+cc_library(
+    name = "gzip_shim",
+    srcs = ["src/gzip.cpp"],
+    # rapidgzip computes lookup tables at compile time, past the compilers'
+    # default constexpr limits (clang's 1M steps fails); these are the limits
+    # rapidgzip's own build sets.
+    copts = select({
+        "@rules_cc//cc/compiler:clang": ["-fconstexpr-steps=99000100"],
+        "@rules_cc//cc/compiler:gcc": ["-fconstexpr-ops-limit=99000100"],
+        "//conditions:default": [],
+    }),
+    # This is C++. The link of erofs_pull must name libstdc++ after it:
+    # devtoolset's libstdc++ (manylinux) puts the symbols newer than the
+    # system's libstdc++.so.6 in a static libstdc++_nonshared.a, which only
+    # resolves references made before it; libc follows for what that archive
+    # needs from libc_nonshared.a.
+    linkopts = [
+        "-lstdc++",
+        "-lc",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = ["@rapidgzip"],
+)
