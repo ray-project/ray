@@ -159,7 +159,7 @@ class SchedulingRequest:
     # Optional lifetime first-transition lookup from InstanceManager so status_history
     # trimming never flips im_created_lids or had_running.
     first_status_transition_time_ns_fn: Optional[
-        Callable[[Instance, Instance.InstanceStatus], Optional[int]]
+        Callable[[Instance, Instance.InstanceStatus.ValueType], Optional[int]]
     ] = None
 
 
@@ -5440,7 +5440,8 @@ class ResourceDemandScheduler(IResourceScheduler):
             first_fn = req.first_status_transition_time_ns_fn
 
             def _has_lifetime_status(
-                im: Instance, statuses: Tuple[Instance.InstanceStatus, ...]
+                im: Instance,
+                statuses: Tuple[Instance.InstanceStatus.ValueType, ...],
             ) -> bool:
                 if im.status in statuses:
                     return True
