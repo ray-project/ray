@@ -151,11 +151,12 @@ def _tar_file_iterator(
         fname = tarinfo.name
         if not tarinfo.isreg() or fname is None:
             continue
-        data = stream.extractfile(tarinfo).read()
         fname = _apply_list(filerename, fname)
         assert isinstance(fname, str)
         if not _check_suffix(fname, fileselect):
             continue
+
+        data = stream.extractfile(tarinfo).read()
         result = dict(fname=fname, data=data)
         yield result
     if verbose_open:
