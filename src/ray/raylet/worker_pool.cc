@@ -886,12 +886,22 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     errno = 0;
     pgid = getpgid(pid);
     if (pgid != -1) {
-      if (pgid == pid) {
-        worker->SetSavedProcessGroupId(pgid);
+      if (pgid == pid && pgid > 1) {
+        WorkerProcessGroup group{pgid};
+#if defined(__linux__)
+        group.leader_start_time = ReadProcessStartTime(pid);
+        if (!group.leader_start_time) {
+          RAY_LOG(WARNING).WithField(worker_id)
+              << "Could not identify process group leader " << pid
+              << " at registration; cleanup must wait for the leader to exit.";
+        }
+#endif
+        worker->SetSavedProcessGroup(group);
       } else {
-        RAY_LOG(WARNING) << "Worker " << pid << " pgid (" << pgid
-                         << ") != pid; skipping SetSavedProcessGroupId to avoid "
-                         << "signaling parent process group.";
+        RAY_LOG(WARNING)
+            << "Worker " << pid << " pgid (" << pgid
+            << ") is not an isolated worker group; skipping cleanup to avoid "
+            << "signaling parent process group.";
       }
     } else {
       RAY_LOG(WARNING) << "getpgid(" << pid

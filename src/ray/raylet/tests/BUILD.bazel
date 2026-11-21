@@ -190,10 +190,13 @@ ray_cc_test(
         "//src/ray/raylet:local_object_manager_interface",
         "//src/ray/raylet:raylet_lib",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
+        "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/rpc:utils",
         "//src/ray/util:clock",
         "//src/ray/util:macros",
+        "//src/ray/util:process",
+        "//src/ray/util:process_utils",
     ],
 )
 
