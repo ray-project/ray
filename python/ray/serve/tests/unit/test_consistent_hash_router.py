@@ -5,6 +5,7 @@ from typing import Optional
 
 import pytest
 
+from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
@@ -579,6 +580,78 @@ async def test_concurrent_same_session_does_not_orphan(router):
     chosen_replicas = {t.result().replica_id for t in done}
     # Affinity preserved: every burst request lands on the same primary.
     assert len(chosen_replicas) == 1
+
+
+@pytest.mark.asyncio
+async def test_cancelled_request_stops_its_routing_task(router):
+    """Cancelling a request, as a routing timeout does, cancels the routing task
+    that owns it, even while an earlier pending request keeps the task target up.
+    """
+    loop = get_or_create_event_loop()
+
+    replicas = [
+        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_NUM_FALLBACK_REPLICAS)
+    ]
+    for r in replicas:
+        r.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    router.update_replicas(replicas)
+
+    head = loop.create_task(router._choose_replica_for_request(_make_request("a")))
+    cancelled = loop.create_task(router._choose_replica_for_request(_make_request("b")))
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 2, retry_interval_ms=1
+    )
+
+    cancelled.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await cancelled
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 1, timeout=2, retry_interval_ms=1
+    )
+
+    for r in replicas:
+        r.set_queue_len_response(0)
+    await head
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 0, retry_interval_ms=1
+    )
+
+
+@pytest.mark.asyncio
+async def test_cancelled_routing_tasks_are_replaced_for_queued_request(router):
+    """A request still queued when the tasks routing the others are cancelled
+    gets a replacement routing task, so it's routed once the replica is free."""
+    loop = get_or_create_event_loop()
+
+    replica = FakeRunningReplica("r0")
+    replica.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    router.update_replicas([replica])
+
+    routing = [
+        loop.create_task(router._choose_replica_for_request(_make_request(s)))
+        for s in ("a", "b")
+    ]
+    await async_wait_for_condition(
+        lambda: len(router._routing_task_by_pending_request_future) == 2,
+        retry_interval_ms=1,
+    )
+    waiting = loop.create_task(router._choose_replica_for_request(_make_request("c")))
+    await async_wait_for_condition(
+        lambda: router.num_pending_requests == 3, retry_interval_ms=1
+    )
+    assert len(router._pending_requests_to_route) == 1
+
+    for task in routing:
+        task.cancel()
+    for task in routing:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    replica.set_queue_len_response(0)
+    assert await asyncio.wait_for(waiting, timeout=2) is replica
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 0, retry_interval_ms=1
+    )
 
 
 @pytest.mark.asyncio

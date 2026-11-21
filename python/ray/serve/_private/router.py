@@ -15,6 +15,7 @@ from functools import lru_cache, partial
 from typing import (
     Any,
     AsyncIterator,
+    Awaitable,
     Callable,
     Coroutine,
     DefaultDict,
@@ -22,6 +23,7 @@ from typing import (
     List,
     Optional,
     Tuple,
+    TypeVar,
     Union,
     cast,
 )
@@ -97,11 +99,14 @@ from ray.serve.exceptions import (
     DeploymentUnavailableError,
     RayServeException,
     ReplicaUnavailableError,
+    RequestRoutingTimeoutError,
 )
 from ray.types import ObjectRef
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_T = TypeVar("_T")
 
 
 class RouterMetricsManager:
@@ -669,6 +674,7 @@ class AsyncioRouter:
         self._initial_backoff_s: Optional[float] = None
         self._backoff_multiplier: Optional[float] = None
         self._max_backoff_s: Optional[float] = None
+        self._request_routing_timeout_s: Optional[float] = None
 
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
@@ -857,6 +863,9 @@ class AsyncioRouter:
             deployment_config.request_router_config.backoff_multiplier
         )
         self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
+        self._request_routing_timeout_s = (
+            deployment_config.request_router_config.request_routing_timeout_s
+        )
 
         if self._request_router:
             self._request_router.update_backoff_params(
@@ -1041,8 +1050,11 @@ class AsyncioRouter:
 
             num_curr_replicas = len(self._active_request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
-                replica = await self._active_request_router._choose_replica_for_request(
-                    pr, is_retry=is_retry
+                replica = await self._wait_for_routing(
+                    pr,
+                    self._active_request_router._choose_replica_for_request(
+                        pr, is_retry=is_retry
+                    ),
                 )
 
                 # If the queue len cache is disabled or we're sending a request to Java,
@@ -1141,7 +1153,8 @@ class AsyncioRouter:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
-        request, so it's up to the caller to time out or cancel the request.
+        request and `request_routing_timeout_s` is unset, so it's up to the
+        caller to time out or cancel the request.
         """
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
@@ -1318,7 +1331,9 @@ class AsyncioRouter:
                         self._active_request_router._choose_replicas_with_backoff(pr)
                     )
                     try:
-                        replica = (await candidates.__anext__())[0]
+                        replica = (
+                            await self._wait_for_routing(pr, candidates.__anext__())
+                        )[0]
                     finally:
                         await candidates.aclose()
                 slot_token = None
@@ -1495,6 +1510,51 @@ class AsyncioRouter:
         resolution_ms = (time.monotonic() - resolution_start) * 1000
         self._objref_resolution_latency_ms.observe(resolution_ms)
 
+    async def _wait_for_routing(self, pr: PendingRequest, aw: Awaitable[_T]) -> _T:
+        """Await a routing step, bounded by `request_routing_timeout_s`.
+
+        The deadline is set on the request's first routing attempt and kept across
+        retries, so a retry after a replica rejects the request doesn't restart it.
+        Time spent resolving the request's arguments doesn't count.
+        """
+        timeout_s = self._request_routing_timeout_s
+        if timeout_s is None:
+            return await aw
+
+        loop = asyncio.get_running_loop()
+        routing_context = pr.routing_context
+        if routing_context.routing_deadline is None:
+            routing_context.routing_deadline = loop.time() + timeout_s
+        # Only the deadline expiring is a routing timeout. A `TimeoutError` that
+        # the request router raises itself propagates unchanged.
+        if sys.version_info >= (3, 11):
+            timeout = asyncio.timeout_at(routing_context.routing_deadline)
+            try:
+                async with timeout:
+                    return await aw
+            except TimeoutError:
+                if not timeout.expired():
+                    raise
+        else:
+            # `wait_for` raises `asyncio.TimeoutError` for its own deadline, but
+            # so can the awaited step. Only the deadline cancels the task.
+            task = asyncio.ensure_future(aw)
+            try:
+                return await asyncio.wait_for(
+                    task, routing_context.routing_deadline - loop.time()
+                )
+            except asyncio.TimeoutError:
+                # Before Python 3.11, this is distinct from the builtin
+                # `TimeoutError`.
+                if not task.cancelled():
+                    raise
+
+        self._active_request_router._drop_timed_out_request(pr)
+        raise RequestRoutingTimeoutError(
+            f"Request wasn't assigned to a replica of {self.deployment_id} "
+            f"within {timeout_s}s."
+        )
+
     async def _pick_and_reserve_replica(
         self, pr: PendingRequest
     ) -> Tuple[RunningReplica, str]:
@@ -1511,8 +1571,11 @@ class AsyncioRouter:
             with self._metrics_manager.wrap_queued_request(
                 is_retry=is_retry, num_curr_replicas=num_curr_replicas
             ):
-                replica = await self._active_request_router._choose_replica_for_request(
-                    pr, is_retry=is_retry
+                replica = await self._wait_for_routing(
+                    pr,
+                    self._active_request_router._choose_replica_for_request(
+                        pr, is_retry=is_retry
+                    ),
                 )
                 try:
                     slot_token, queue_info = await replica.reserve_slot(pr.metadata)
