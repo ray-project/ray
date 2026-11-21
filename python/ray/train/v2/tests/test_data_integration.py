@@ -55,6 +55,30 @@ def test_dataset_sharding_across_workers(ray_start_4_cpus, num_workers):
     trainer.fit()
 
 
+@pytest.mark.parametrize("push_based", [False, True])
+def test_dataset_shard_materialize(ray_start_4_cpus, push_based):
+    """Workers can materialize their shards, as the XGBoost and LightGBM
+    examples do, with the pull split and the push split."""
+    from ray.train._internal.push_based_data_config import PushBasedDataConfig
+
+    NUM_ROWS = 1000
+    NUM_WORKERS = 2
+
+    def train_fn():
+        shard = ray.train.get_dataset_shard("train")
+        ids = [row["id"] for row in shard.materialize().take_all()]
+        assert len(set(ids)) == NUM_ROWS // NUM_WORKERS
+
+    data_config = PushBasedDataConfig() if push_based else ray.train.DataConfig()
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": ray.data.range(NUM_ROWS)},
+        dataset_config=data_config,
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+    )
+    trainer.fit()
+
+
 @pytest.mark.parametrize("datasets_to_split", ["all", ["train"], []])
 def test_multiple_datasets(ray_start_4_cpus, datasets_to_split):
     """Tests that the dataset is sharded across a variety of num_workers."""
