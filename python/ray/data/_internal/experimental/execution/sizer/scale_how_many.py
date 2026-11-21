@@ -20,15 +20,15 @@ from ray.data._internal.execution.execution_flags import (
     SIZER_UTIL_THRESHOLD,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    PlacementGroupSlots,
+)
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     FIT_EPS,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
     has_produced_output,
-)
-from ray.data._internal.experimental.execution.sizer.pg_bundles import (
-    PlacementGroupBundles,
 )
 from ray.data._internal.experimental.execution.sizer.signals import BoolStreak
 
@@ -54,18 +54,8 @@ class OpSizingPolicy:
     def __init__(
         self,
         profiles: OpProfiles,
-        *,
-        pg_bundles: Optional[PlacementGroupBundles] = None,
-        unknown_pg_cap_by_op: Optional[
-            Dict["ExperimentalActorPoolMapOperator", int]
-        ] = None,
     ):
         self._profiles = profiles
-        # PG-managed ops warm up against their placement group, not the
-        # allocation: static-PG ops against their bundles, ops whose PG
-        # capacity is unknown against their pool's max size.
-        self._pg_bundles = pg_bundles or PlacementGroupBundles()
-        self._unknown_pg_cap_by_op = dict(unknown_pg_cap_by_op or {})
         self.reservation_ratio = SIZER_RESERVATION_RATIO
         self.downscale_factor = SIZER_DOWNSCALE_FACTOR
         self.downscale_hysteresis = SIZER_DOWNSCALE_HYSTERESIS
@@ -85,6 +75,7 @@ class OpSizingPolicy:
         self,
         op: "ExperimentalActorPoolMapOperator",
         cluster_capacity: ExecutionResources,
+        pg_slots: PlacementGroupSlots,
     ) -> Optional[ActorPoolScalingRequest]:
         """Grow toward this op's warmup share, clamped to [min_size, max_size].
 
@@ -103,7 +94,7 @@ class OpSizingPolicy:
         if not all(has_produced_output(prev) for prev in self._profiles.prev_ops[op]):
             return None
         pool = op.actor_pool
-        target = self.warmup_target(op, cluster_capacity)
+        target = self.warmup_target(op, cluster_capacity, pg_slots)
         if target is None:
             return None
         delta = target - pool.serving_size()
@@ -117,6 +108,7 @@ class OpSizingPolicy:
         self,
         op: "ExperimentalActorPoolMapOperator",
         cluster_capacity: ExecutionResources,
+        pg_slots: PlacementGroupSlots,
     ) -> Optional[int]:
         """This op's warmup share in actors, clamped to [min_size, max_size]
         (see ``warmup_delta``). Also what an op held at zero or min reserves
@@ -128,10 +120,10 @@ class OpSizingPolicy:
         the GPU stage cannot place its actors.
         """
         pool = op.actor_pool
-        share = self._share_by_resource_type(op, cluster_capacity)
+        share = self._share_by_resource_type(op, cluster_capacity, pg_slots)
         if share is None:
             return None
-        memory_share = self._memory_share(op, cluster_capacity)
+        memory_share = self._memory_share(op, cluster_capacity, pg_slots)
         if memory_share is not None:
             share = min(share, memory_share)
         # FIT_EPS: float division can land just under a whole actor
@@ -150,18 +142,19 @@ class OpSizingPolicy:
         self,
         op: "ExperimentalActorPoolMapOperator",
         cluster_capacity: ExecutionResources,
+        pg_slots: PlacementGroupSlots,
     ) -> Optional[float]:
         """The op's equal share of its resource type (CPU or GPU), in actors."""
         pool = op.actor_pool
-        if op in self._unknown_pg_cap_by_op:
-            return self._unknown_pg_cap_by_op[op] * self.reservation_ratio
+        if op in pg_slots.unknown_cap_by_op:
+            return pg_slots.unknown_cap_by_op[op] * self.reservation_ratio
         resource_type = self._profiles.resource_type(op)
         per_actor = getattr(pool.per_actor_resource_usage(), resource_type)
         if per_actor <= 0:
             # The sizer rejects this shape when built; defensive only.
             return None
-        if op in self._pg_bundles.bundles_by_op:
-            ceiling = self._pg_warmup_ceiling(op, resource_type)
+        if op in pg_slots.static_bundles_by_op:
+            ceiling = self._pg_warmup_ceiling(op, resource_type, pg_slots)
         else:
             ceiling = self._warmup_ceiling(resource_type, cluster_capacity)
         # An actor with max_actor_concurrency=k serves ~k tasks at once, so we
@@ -173,6 +166,7 @@ class OpSizingPolicy:
         self,
         op: "ExperimentalActorPoolMapOperator",
         cluster_capacity: ExecutionResources,
+        pg_slots: PlacementGroupSlots,
     ) -> Optional[float]:
         """A non-PG CPU op's share of memory, in actors, or None when memory
         does not bound it (a GPU or PG op, or actors that request none).
@@ -182,8 +176,8 @@ class OpSizingPolicy:
         request memory.
         """
         if (
-            op in self._unknown_pg_cap_by_op
-            or op in self._pg_bundles.bundles_by_op
+            op in pg_slots.unknown_cap_by_op
+            or op in pg_slots.static_bundles_by_op
             or self._profiles.resource_type(op) != "cpu"
         ):
             return None
@@ -192,7 +186,7 @@ class OpSizingPolicy:
             return None
         usable = cluster_capacity.memory * self.reservation_ratio
         for gpu_op in self._eligible_ops_by_resource_type("gpu"):
-            gpu_share = self._share_by_resource_type(gpu_op, cluster_capacity)
+            gpu_share = self._share_by_resource_type(gpu_op, cluster_capacity, pg_slots)
             if gpu_share is None:
                 continue
             gpu_pool = gpu_op.actor_pool
@@ -215,15 +209,16 @@ class OpSizingPolicy:
         return max(usable, 0.0) / sharers / per_actor_memory
 
     def _pg_warmup_ceiling(
-        self, op: "ExperimentalActorPoolMapOperator", resource_type: str
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        resource_type: str,
+        pg_slots: PlacementGroupSlots,
     ) -> float:
         """``_warmup_ceiling`` over the op's PG bundles instead of the
         allocation, shared with the ops that can land in the same bundles."""
-        bundles_by_op = self._pg_bundles.bundles_by_op
+        bundles_by_op = pg_slots.static_bundles_by_op
         op_bundles = set(bundles_by_op[op])
-        limit = sum(
-            getattr(self._pg_bundles.shapes[key], resource_type) for key in op_bundles
-        )
+        limit = sum(getattr(pg_slots.shapes[key], resource_type) for key in op_bundles)
         sharers = [
             other
             for other, keys in bundles_by_op.items()

@@ -86,9 +86,6 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     PLACEMENT_RESOURCE_DIMS,
     max_placeable_actors,
 )
-from ray.data._internal.experimental.execution.sizer.op_profile import (
-    bounded_max_size,
-)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
@@ -1051,7 +1048,7 @@ class BottleneckObserver:
         freeable: Mapping[NodeIdStr, ExecutionResources],
     ) -> str:
         pool = op.actor_pool
-        if pool.serving_size() >= bounded_max_size(pool):
+        if pool.serving_size() >= pool.bounded_max_size():
             return "no: at max size"
         if self._profiles.is_pg_managed(op):
             return self._pg_eligibility(op, capacity)
@@ -1209,7 +1206,7 @@ class BottleneckObserver:
                 self._profiles.next_ops,
                 snapshot.edge_shares,
                 SIZER_BOTTLENECK_MAX_STEP_RATIO,
-                bounded_max_size(op.actor_pool),
+                op.actor_pool.bounded_max_size(),
             ),
         )
 

@@ -35,7 +35,7 @@ class PlacementConstraint:
     # ``{"ray.io/node-id": <node>}``). None if the op selects no labels.
     label_selector: Optional[Dict[str, str]] = None
     # Placement group + optional bundle index. PG ops are sized against their
-    # bundles (see ``PlacementGroupBundles``) but placed by Ray core, so they
+    # bundles (see ``PlacementGroupSlots``) but placed by Ray core, so they
     # impose no label filter.
     placement_group: Optional["PlacementGroup"] = None
     placement_group_bundle_index: Optional[int] = None

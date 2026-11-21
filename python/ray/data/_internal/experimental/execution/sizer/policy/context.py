@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, AbstractSet, Dict, Optional, Sequence, Tuple
 
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
-from ray.data._internal.experimental.execution.sizer.pg_bundles import BundleKey
+from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    BundleKey,
+)
 from ray.data._internal.experimental.execution.sizer.policy.states import SizerPhase
 
 if TYPE_CHECKING:

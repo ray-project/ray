@@ -7,8 +7,12 @@ from typing import Any, Dict, Sequence, Tuple, cast
 
 import pytest
 
+from ray.data._internal.actor_autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import ActorStatus
+from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    BundleKey,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     SlotUsage,
 )
@@ -457,6 +461,8 @@ class _Pool:
     def max_size(self):
         return self._max_size
 
+    bounded_max_size = AutoscalingActorPool.bounded_max_size
+
     def max_actor_concurrency(self):
         return 1
 
@@ -767,7 +773,7 @@ def test_pg_bottleneck_is_eligible_by_room_in_its_pg_but_never_a_recipient(
     observer._profiles.non_pg_ops = cast(Any, (producer,))
     step(5)
 
-    bundle = ("pg", 0)
+    bundle = BundleKey("pg", 0)
     capacity = cast(
         Any,
         SimpleNamespace(

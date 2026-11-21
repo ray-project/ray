@@ -22,7 +22,9 @@ from ray.data._internal.execution.resource_manager import (
     terminal_operator_from_topology,
 )
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    BundleKey,
     DatasetAllocationView,
+    PlacementGroupSlots,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
@@ -44,9 +46,6 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
-)
-from ray.data._internal.experimental.execution.sizer.pg_bundles import (
-    PlacementGroupBundles,
 )
 
 if TYPE_CHECKING:
@@ -72,6 +71,46 @@ def committed_by_node(
                 usage
             )
     return committed
+
+
+def pg_free_by_bundle(
+    pg_slots: PlacementGroupSlots,
+) -> Dict[BundleKey, ExecutionResources]:
+    """Each bundle's shape minus what the PG ops already hold in it: the PG
+    counterpart of ``reserved - committed_by_node``.
+
+    Ray core picks the bundle and never reports it back, so held actors
+    (``total_size``: a draining actor keeps its bundle until dead) are
+    assumed packed first-fit, most constrained op first. If core packed
+    differently the result is optimistic; the excess pendings wait and are
+    released by the stuck-pending expiry.
+    """
+    bundles_by_op = pg_slots.static_bundles_by_op
+    free = {key: shape.copy() for key, shape in pg_slots.shapes.items()}
+    for op in sorted(bundles_by_op, key=lambda o: len(bundles_by_op[o])):
+        pool = op.actor_pool
+        pack_actors(
+            free,
+            bundles_by_op[op],
+            pool.per_actor_resource_usage(),
+            pool.total_size(),
+        )
+    return free
+
+
+def unknown_pg_headroom(
+    pg_slots: PlacementGroupSlots,
+) -> Dict["ExperimentalActorPoolMapOperator", int]:
+    """How many more actors each op whose PG capacity is unknown may add
+    under its cap.
+
+    Counts ``total_size``, not ``serving_size``: a draining actor keeps its
+    PG until it is actually dead.
+    """
+    return {
+        op: max(0, cap - op.actor_pool.total_size())
+        for op, cap in pg_slots.unknown_cap_by_op.items()
+    }
 
 
 def draining_by_node(
@@ -109,14 +148,15 @@ class SizingTicker:
         *,
         cadence_s: float,
         clock: Callable[[], float] = time.monotonic,
-        pg_bundles: Optional[PlacementGroupBundles] = None,
-        unknown_pg_cap_by_op: Optional[
-            Dict["ExperimentalActorPoolMapOperator", int]
-        ] = None,
         warmup_timeout_s: float = SIZER_WARMUP_TIMEOUT_S,
         hold_target: Optional[
             Callable[
-                ["ExperimentalActorPoolMapOperator", ExecutionResources], Optional[int]
+                [
+                    "ExperimentalActorPoolMapOperator",
+                    ExecutionResources,
+                    PlacementGroupSlots,
+                ],
+                Optional[int],
             ]
         ] = None,
     ):
@@ -141,10 +181,6 @@ class SizingTicker:
         self._warned_loop_lag = False
         self._alloc_seen_nonempty = False
         self._consecutive_empty_alloc_ticks = 0
-        self._pg_bundles = pg_bundles or PlacementGroupBundles()
-        self._unknown_pg_cap_by_op: Dict[
-            "ExperimentalActorPoolMapOperator", int
-        ] = dict(unknown_pg_cap_by_op or {})
 
     def next_tick(
         self,
@@ -276,6 +312,7 @@ class SizingTicker:
             per_actor_resources_by_op,
             constrained_op_count_by_node,
             global_limits,
+            cluster_view.pg_slots,
         )
 
         return TickCapacitySnapshot(
@@ -285,9 +322,10 @@ class SizingTicker:
             schedulable_nodes_by_op=schedulable_nodes_by_op,
             per_actor_resources_by_op=per_actor_resources_by_op,
             constrained_op_count_by_node=constrained_op_count_by_node,
-            pg_free_by_bundle=self._pg_bundles.free_by_bundle(),
-            schedulable_bundles_by_op=dict(self._pg_bundles.bundles_by_op),
-            unknown_pg_headroom_by_op=self._unknown_pg_headroom(),
+            pg_slots=cluster_view.pg_slots,
+            pg_free_by_bundle=pg_free_by_bundle(cluster_view.pg_slots),
+            schedulable_bundles_by_op=dict(cluster_view.pg_slots.static_bundles_by_op),
+            unknown_pg_headroom_by_op=unknown_pg_headroom(cluster_view.pg_slots),
             held_actors_by_op=held_actors_by_op,
         )
 
@@ -319,6 +357,7 @@ class SizingTicker:
         ],
         constrained_op_count_by_node: Dict[NodeIdStr, int],
         global_limits: ExecutionResources,
+        pg_slots: PlacementGroupSlots,
     ) -> Dict["ExperimentalActorPoolMapOperator", int]:
         """Take each held op's room out of ``free`` (mutated); return how
         many actors each got held.
@@ -338,7 +377,7 @@ class SizingTicker:
         for op in self._held_ops():
             pool = op.actor_pool
             target = (
-                self._hold_target(op, global_limits)
+                self._hold_target(op, global_limits, pg_slots)
                 if self._hold_target is not None
                 else None
             )
@@ -389,18 +428,6 @@ class SizingTicker:
             for node_id in nodes:
                 count[node_id] = count.get(node_id, 0) + 1
         return count
-
-    def _unknown_pg_headroom(self) -> Dict["ExperimentalActorPoolMapOperator", int]:
-        """How many more actors each op whose PG capacity is unknown may add
-        under its pool's max size.
-
-        Counts ``total_size``, not ``serving_size``: a draining actor keeps
-        its PG until it is actually dead.
-        """
-        return {
-            op: max(0, cap - op.actor_pool.total_size())
-            for op, cap in self._unknown_pg_cap_by_op.items()
-        }
 
     # --- shrinking allocation -------------------------------------------------
 

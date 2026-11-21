@@ -6,6 +6,9 @@ import math
 from typing import Dict, Hashable, List, Tuple
 
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
+from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    BundleKey,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
 )
@@ -14,7 +17,6 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     pack_actors,
 )
 from ray.data._internal.experimental.execution.sizer.models import TickCapacitySnapshot
-from ray.data._internal.experimental.execution.sizer.pg_bundles import BundleKey
 
 # Placeable count for an actor that requests no cpu/gpu/memory (fits anywhere).
 _UNBOUNDED_PLACEABLE = 1 << 30

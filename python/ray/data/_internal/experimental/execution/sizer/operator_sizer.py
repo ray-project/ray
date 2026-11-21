@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Set
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import SIZER_CADENCE_S
@@ -54,13 +54,9 @@ from ray.data._internal.experimental.execution.sizer.models import (
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
-    bounded_max_size,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
-)
-from ray.data._internal.experimental.execution.sizer.pg_bundles import (
-    PlacementGroupBundles,
 )
 from ray.data._internal.experimental.execution.sizer.policy.bottleneck_policy import (  # noqa: E501
     BottleneckPolicy,
@@ -91,7 +87,6 @@ from ray.data._internal.experimental.execution.sizer.tick import SizingTicker
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.experimental.execution.actor_only_resource_reporter import (  # noqa: E501
-        ActorOnlyResourceReporter,
         DatasetAllocationView,
     )
 
@@ -137,72 +132,57 @@ class OperatorSizer:
         self,
         *,
         dataset_id: str,
-        topology: "Topology",
-        resource_reporter: "ActorOnlyResourceReporter",
         clock: Callable[[], float] = time.monotonic,
     ):
-        """Validate the topology and build the per-run state.
-
-        ``resource_reporter`` is read here, once, for placement-group capacity
-        and to warm the allocation cache. After this the sizer only registers
-        placement groups through it: every tick is handed the cluster view the
-        scheduling loop already read (see ``perform_sizing_decision``).
+        """State that needs no topology. ``bootstrap`` builds the rest. The
+        sizer never reads the resource reporter: every tick is handed the
+        cluster view the scheduling loop already read (see
+        ``perform_sizing_decision``).
         """
+        self.phase = SizerPhase.WARMUP
+
         self._dataset_id = dataset_id
-        self._resource_reporter = resource_reporter
-        self._topology = topology
         self._clock = clock
         self._placement: ActorPlacementStrategy = LocalityBasedActorPlacement()
 
-        self._validate_topology(topology)
-
-        # Static per-op traits (resource type, pool cap, PG-managed or not), and
-        # the operator listings every step shares.
-        self._profiles = OpProfiles(topology)
-        # Whether each op may be resized now (awaiting on_start, part of an
-        # open transfer, cooling down after donating).
-        self._lifecycles = OpLifecycles(self._profiles.actor_pool_ops)
-        # Actors held last tick for each held op (see SizingTicker), and the
-        # one-time grant to that count queued when its hold releases.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
         self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
-        # The sizer's phase, and the ops the bottleneck model has had a full
-        # window for at least once (an op it has not seen yet keeps growing
-        # toward its equal share after warmup).
-        self._phase = SizerPhase.WARMUP
         self._modeled_ops: Set[ExperimentalActorPoolMapOperator] = set()
-        # This tick's bottleneck model and decision.
         self._bottleneck: Optional[BottleneckTick] = None
         self._decision: Optional[Decision] = None
-        # Warm the non-blocking allocation cache, so the first ticks read a
-        # real allocation instead of the cold-cache empty value (the client
-        # submits an async RPC and serves the answer on a later call).
-        resource_reporter.get_reserved_resources_by_node()
-        pg_bundles, unknown_pg_cap_by_op = self._read_pg_capacity(resource_reporter)
-        self._how_many = OpSizingPolicy(
-            self._profiles,
-            pg_bundles=pg_bundles,
-            unknown_pg_cap_by_op=unknown_pg_cap_by_op,
-        )
         self._telemetry = SizerTelemetry(dataset_id)
-        self._policy = BottleneckPolicy(
-            OptimizerMetrics(dataset_id), self._placement, self._lifecycles
-        )
-        self._bottleneck_observer = BottleneckObserver(self._profiles, clock=clock)
-        self._ticker = SizingTicker(
-            self._profiles,
-            cadence_s=SIZER_CADENCE_S,
-            clock=clock,
-            pg_bundles=pg_bundles,
-            unknown_pg_cap_by_op=unknown_pg_cap_by_op,
-            # Held ops reserve their warmup share.
-            hold_target=self._how_many.warmup_target,
-        )
 
     # --- lifecycle ------------------------------------------------------------
 
-    def initial_sizing_request(self) -> None:
-        """Bring every pool up to its initial (min) size, untargeted."""
+    def bootstrap(self, topology: "Topology") -> None:
+        """Build the per-run state over ``topology``, then bring every pool up
+        to its initial (min) size."""
+        self._validate_topology(topology)
+        self._topology = topology
+        self._profiles = OpProfiles(topology)
+        self._lifecycles = OpLifecycles(self._profiles.actor_pool_ops)
+
+        self._policy = BottleneckPolicy(
+            metrics=OptimizerMetrics(self._dataset_id),
+            placement=self._placement,
+            lifecycles=self._lifecycles,
+        )
+        self._how_many = OpSizingPolicy(profiles=self._profiles)
+        self._bottleneck_observer = BottleneckObserver(
+            profiles=self._profiles, clock=self._clock
+        )
+        self._ticker = SizingTicker(
+            profiles=self._profiles,
+            cadence_s=SIZER_CADENCE_S,
+            clock=self._clock,
+            # Held ops reserve their warmup share.
+            hold_target=self._how_many.warmup_target,
+        )
+        self._scale_to_initial_size()
+
+    def _scale_to_initial_size(self) -> None:
+        """Bring every pool up to its initial (min) size, untargeted, in
+        scarcity order."""
         for op in ordered_actor_pool_ops(self._topology, self._profiles.actor_pool_ops):
             if not self._lifecycles.can_scale(op):
                 continue
@@ -215,10 +195,6 @@ class OperatorSizer:
                     )
                 )
             op.wait_for_min_actors()
-
-    @property
-    def phase(self) -> SizerPhase:
-        return self._phase
 
     # --- one sizing evaluation ------------------------------------------------
 
@@ -249,9 +225,6 @@ class OperatorSizer:
         )
         self._bottleneck_observer.log_tick(self._bottleneck)
         self._advance_phase(ctx)
-        # Picks up placement groups a ray_remote_args_fn created since the
-        # last tick, so later views take their bundles out of the slice.
-        self._register_placement_groups()
 
         self._decide(ctx, seconds_since_allocation_change)
         t2 = time.perf_counter()
@@ -284,15 +257,15 @@ class OperatorSizer:
             if op not in self._modeled_ops and not op.has_completed()
         }
         phase = classify_phase(ctx.warmup, unmodeled)
-        if phase is not self._phase:
-            logger.info("OperatorSizer: phase %s -> %s", self._phase.value, phase.value)
-            self._phase = phase
+        if phase is not self.phase:
+            logger.info("OperatorSizer: phase %s -> %s", self.phase.value, phase.value)
+            self.phase = phase
 
     def _awaits_model(self, op: ExperimentalActorPoolMapOperator) -> bool:
         """Whether ``op`` still grows toward its equal share: in warmup, or
         after it while the model has not had a full window of it."""
-        return self._phase is SizerPhase.WARMUP or (
-            self._phase is SizerPhase.MODEL_WARMING and op not in self._modeled_ops
+        return self.phase is SizerPhase.WARMUP or (
+            self.phase is SizerPhase.MODEL_WARMING and op not in self._modeled_ops
         )
 
     def _note_held_ops(self, ctx: TickContext) -> None:
@@ -325,7 +298,7 @@ class OperatorSizer:
         capacity = ctx.capacity
         return DecisionContext(
             topology=self._topology,
-            phase=self._phase,
+            phase=self.phase,
             # Shared, not copied (here and the PG maps below): the policy
             # debits what it claims, so the how-many pass later this tick
             # (which copies from the same snapshot) doesn't hand it out again.
@@ -348,7 +321,7 @@ class OperatorSizer:
     def _growth_ceiling(self, op: ExperimentalActorPoolMapOperator) -> int:
         """The pool's bounded max size, or less once every upstream op has
         completed and the remaining work needs fewer actors."""
-        ceiling = bounded_max_size(op.actor_pool)
+        ceiling = op.actor_pool.bounded_max_size()
         remaining = self._how_many.remaining_work_cap(op, self._topology[op])
         return ceiling if remaining is None else min(ceiling, remaining)
 
@@ -412,7 +385,9 @@ class OperatorSizer:
             if pool.min_size() == pool.max_size():
                 pass  # fixed pool: only ever replenished to min
             elif self._awaits_model(op):
-                want = self._how_many.warmup_delta(op, ctx.capacity.get_global_limits())
+                want = self._how_many.warmup_delta(
+                    op, ctx.capacity.get_global_limits(), ctx.capacity.pg_slots
+                )
             else:
                 # Growth comes only from the bottleneck policy; per op, only
                 # idle actors are shed.
@@ -576,45 +551,6 @@ class OperatorSizer:
             op.actor_pool.scale(req)
 
     # --- construction-time validation -----------------------------------------
-
-    def _read_pg_capacity(
-        self, resource_reporter: "ActorOnlyResourceReporter"
-    ) -> Tuple[PlacementGroupBundles, Dict[ExperimentalActorPoolMapOperator, int]]:
-        """Capacity for PG-managed ops, read once: bundle shapes are fixed at
-        PG creation. Also registers the placement groups with the coordinator.
-
-        An op that mints a PG per actor has no bundles to inspect, so its PG
-        capacity is unknown. It is capped at its pool's max size instead, and
-        Ray core still places its actors into their PGs.
-        """
-        ops = self._profiles.actor_pool_ops
-        placement_groups = [
-            pg
-            for op in ops
-            if (pg := op.placement_constraint().placement_group) is not None
-        ]
-        resource_reporter.cache_pg_bundle_shapes(placement_groups)
-        self._register_placement_groups()
-        view = resource_reporter.get_cluster_view(include_pg_bundles=True)
-        pg_bundles = PlacementGroupBundles.measure(ops, view)
-        unknown_pg_caps = {
-            op: bounded_max_size(op.actor_pool)
-            for op in ops
-            if op.placement_constraint().is_pg_managed
-            and op not in pg_bundles.bundles_by_op
-        }
-        return pg_bundles, unknown_pg_caps
-
-    def _register_placement_groups(self) -> None:
-        """Register every placement group the ops hold with the coordinator:
-        static ones, and those a ``ray_remote_args_fn`` created per actor."""
-        placement_groups = []
-        for op in self._profiles.actor_pool_ops:
-            pg = op.placement_constraint().placement_group
-            if pg is not None:
-                placement_groups.append(pg)
-            placement_groups.extend(op.fn_placement_groups())
-        self._resource_reporter.register_placement_groups(placement_groups)
 
     @staticmethod
     def _validate_topology(topology: "Topology") -> None:

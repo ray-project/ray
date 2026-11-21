@@ -66,9 +66,6 @@ from ray.data._internal.experimental.execution.sizer.metrics import (
 from ray.data._internal.experimental.execution.sizer.models import (
     PlacedSizingRequest,
 )
-from ray.data._internal.experimental.execution.sizer.op_profile import (
-    bounded_max_size,
-)
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -320,7 +317,7 @@ class BottleneckPolicy:
 
         best: Optional[Tuple[int, List[NodePlan], Dict]] = None
         top = min(
-            max_step_size(b, bounded_max_size(pool)),
+            max_step_size(b, pool.bounded_max_size()),
             tick.growth_target(recipient),
             ceiling,
         )
@@ -414,7 +411,7 @@ class BottleneckPolicy:
         b_prime = max(
             b + 1,
             min(
-                max_step_size(b, bounded_max_size(pool)),
+                max_step_size(b, pool.bounded_max_size()),
                 tick.growth_target(recipient),
             ),
         )

@@ -10,11 +10,15 @@ from typing import Any, Dict, cast
 
 import pytest
 
+from ray.data._internal.actor_autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.execution_flags import (
     SIZER_CLUSTER_SETTLE_S,
     SIZER_TRANSFER_TIMEOUT_S,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    BundleKey,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     ScaleUpRequest,
 )
@@ -145,6 +149,8 @@ class _Pool:
 
     def max_size(self):
         return getattr(self, "_max_size", 100)
+
+    bounded_max_size = AutoscalingActorPool.bounded_max_size
 
     def num_pending_actors(self):
         return self._pending
@@ -1408,7 +1414,7 @@ def test_balanced_growth_waits_while_a_bottleneck_is_named():
 def _apply_pg_bottleneck(policy, tick, pg_op, *, bundle_free_cpu, others=()):
     """Run ``policy`` with ``pg_op`` placed by a one-bundle placement group
     and no free node capacity."""
-    bundle = ("pg", 0)
+    bundle = BundleKey("pg", 0)
     ctx = _ctx(
         non_pg_ops=list(others),
         actor_pool_ops=[pg_op, *others],
@@ -1545,7 +1551,7 @@ def test_bottleneck_pg_free_share_counts_only_shared_bundles():
     recipient, shared, separate, ordinary = [
         _op(n) for n in ["B", "Shared", "Separate", "Ordinary"]
     ]
-    bundle, other = ("pg", 0), ("other", 0)
+    bundle, other = BundleKey("pg", 0), BundleKey("other", 0)
     ctx = _ctx(
         actor_pool_ops=[recipient, shared, separate, ordinary],
         non_pg_ops=[ordinary],

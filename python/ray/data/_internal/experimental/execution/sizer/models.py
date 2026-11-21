@@ -12,7 +12,10 @@ from typing import TYPE_CHECKING, AbstractSet, Dict, Tuple
 
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
-from ray.data._internal.experimental.execution.sizer.pg_bundles import BundleKey
+from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
+    BundleKey,
+    PlacementGroupSlots,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
@@ -73,11 +76,8 @@ class TickCapacitySnapshot:
     # How many constrained ops can use each node (lower = less contended).
     # Drives grant order and the placement tie-break.
     constrained_op_count_by_node: Dict[NodeIdStr, int] = field(default_factory=dict)
-    # Static-PG ops size against their PG's bundles, not the free map: each
-    # bundle is a slot an actor must fit inside, like a node. Free = bundle
-    # shape minus the PG ops' held actors (see
-    # ``PlacementGroupBundles.free_by_bundle``).
     pg_free_by_bundle: Dict[BundleKey, ExecutionResources] = field(default_factory=dict)
+    pg_slots: PlacementGroupSlots = field(default_factory=PlacementGroupSlots)
     schedulable_bundles_by_op: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
     ] = field(default_factory=dict)

@@ -18,9 +18,6 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     pack_actors,
 )
 from ray.data._internal.experimental.execution.sizer.models import PlacedSizingRequest
-from ray.data._internal.experimental.execution.sizer.op_profile import (
-    bounded_max_size,
-)
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -130,7 +127,7 @@ def pending_actor_ids(pool: "_ExperimentalActorPool") -> Set[ActorId]:
 
 def growth_ceiling(op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext) -> int:
     """Most actors ``op`` may grow to (see ``DecisionContext.growth_ceiling``)."""
-    return ctx.growth_ceiling.get(op, bounded_max_size(op.actor_pool))
+    return ctx.growth_ceiling.get(op, op.actor_pool.bounded_max_size())
 
 
 def placeable_slots(
@@ -184,7 +181,7 @@ def free_growth_share(
         for peer in ctx.actor_pool_ops
         if ctx.is_pg_managed(peer) == pg
         and not peer.has_completed()
-        and peer.actor_pool.serving_size() < bounded_max_size(peer.actor_pool)
+        and peer.actor_pool.serving_size() < peer.actor_pool.bounded_max_size()
         and (peer.actor_pool.per_actor_resource_usage().gpu > 0) == (per_actor.gpu > 0)
         and eligible.intersection(domains.get(peer, ()))
     )

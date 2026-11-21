@@ -13,7 +13,10 @@ from typing import Any, Dict, Optional, cast
 
 import pytest
 
-from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
+from ray.data._internal.actor_autoscaler import (
+    ActorPoolScalingRequest,
+    AutoscalingActorPool,
+)
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
     SIZER_DOWNSCALE_HYSTERESIS,
@@ -26,7 +29,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.resource_bank import LiveObjStore
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
     ActorOnlyResourceReporter,
+    BundleKey,
     DatasetAllocationView,
+    PlacementGroupSlots,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool import (
     _ExperimentalActorPool,
@@ -67,9 +72,6 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
 )
 from ray.data._internal.experimental.execution.sizer.operator_sizer import OperatorSizer
-from ray.data._internal.experimental.execution.sizer.pg_bundles import (
-    PlacementGroupBundles,
-)
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     SizerPhase,
 )
@@ -86,6 +88,7 @@ from ray.data._internal.experimental.execution.sizer.telemetry import (
 from ray.data._internal.experimental.execution.sizer.tick import (
     SizingTicker,
     committed_by_node,
+    pg_free_by_bundle,
 )
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.util import GiB, MiB
@@ -231,6 +234,8 @@ class _FakePool:
 
     def max_size(self):
         return self._max
+
+    bounded_max_size = AutoscalingActorPool.bounded_max_size
 
     def num_pending_actors(self):
         return self.pending
@@ -436,22 +441,32 @@ class _FakeOpState:
 
 class _FakeReporter(ActorOnlyResourceReporter):
     """Serves a fixed cluster view; tests replace ``view`` to model a changing
-    grant. Skips the real ``__init__`` (no coordinator, no ``ray.nodes()``)."""
+    grant. Skips the real ``__init__`` (no coordinator, no ``ray.nodes()``).
+    Like the real reporter, measures the topology's PG slots from the
+    placement groups' bundle shapes (``pg_bundles_by_id``)."""
 
-    def __init__(self, view: DatasetAllocationView):
+    def __init__(
+        self, view: DatasetAllocationView, topology=None, pg_bundles_by_id=None
+    ):
         self.view = view
+        self.topology = topology or {}
+        self.pg_bundles_by_id = dict(pg_bundles_by_id or {})
 
     def get_reserved_resources_by_node(self):
         return dict(self.view.reserved_by_node)
 
-    def get_cluster_view(self, **kwargs):
-        return self.view
-
-    def cache_pg_bundle_shapes(self, placement_groups):
-        pass
-
-    def register_placement_groups(self, placement_groups):
-        self.registered_placement_groups = list(placement_groups)
+    def get_cluster_view(self):
+        return replace(
+            self.view,
+            pg_slots=PlacementGroupSlots.measure(
+                (
+                    op
+                    for op in self.topology
+                    if isinstance(op, ExperimentalActorPoolMapOperator)
+                ),
+                self.pg_bundles_by_id,
+            ),
+        )
 
 
 class _FakeClock:
@@ -470,17 +485,23 @@ class _TestSizer(OperatorSizer):
     phase at a time, off the fake reporter's view and the fake clock."""
 
     def __init__(self, topo, reporter: _FakeReporter, clock: _FakeClock):
-        super().__init__(
-            dataset_id="test-ds", topology=topo, resource_reporter=reporter, clock=clock
-        )
+        super().__init__(dataset_id="test-ds", clock=clock)
         self.reporter = reporter
         self.clock = clock
+        self.bootstrap(topo)
+
+    def _scale_to_initial_size(self) -> None:
+        """Skipped by ``bootstrap``, so tests start from the fakes' sizes;
+        tests that check initial sizing call ``initial_sizing_request``."""
+
+    def initial_sizing_request(self) -> None:
+        OperatorSizer._scale_to_initial_size(self)
 
     def next_tick(self, *, force: bool = True) -> Optional[TickContext]:
         """The next TickContext; ``force`` steps the clock past the cadence."""
         if force:
             self.clock.advance(SIZER_CADENCE_S)
-        return self._ticker.next_tick(self.reporter.view)
+        return self._ticker.next_tick(self.reporter.get_cluster_view())
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
         """One per-op how_many evaluation, after the step's lifecycle
@@ -528,22 +549,30 @@ def _single_node(cpu=100.0, gpu=4.0) -> DatasetAllocationView:
 
 
 def _make_sizer(
-    topo, view: Optional[DatasetAllocationView] = None, **cluster
+    topo,
+    view: Optional[DatasetAllocationView] = None,
+    pg_bundles_by_id=None,
+    **cluster,
 ) -> _TestSizer:
     """A sizer over ``topo`` whose reporter serves the given cluster view (a
-    single ``node0`` by default). Free capacity is the tick's real math:
-    allocation minus what the fakes commit (per_actor x total_size)."""
+    single ``node0`` by default) and placement-group bundle shapes. Free
+    capacity is the tick's real math: allocation minus what the fakes commit
+    (per_actor x total_size)."""
     return _TestSizer(
-        topo, _FakeReporter(view or _single_node(**cluster)), _FakeClock()
+        topo,
+        _FakeReporter(view or _single_node(**cluster), topo, pg_bundles_by_id),
+        _FakeClock(),
     )
 
 
-def _bootstrapped(*ops, enqueued=0, view=None, warm=False, **cluster):
+def _bootstrapped(
+    *ops, enqueued=0, view=None, pg_bundles_by_id=None, warm=False, **cluster
+):
     """Sizer over ``ops``; ``warm=True`` has every op report output and marks
     it modeled, so the first tick is already STEADY (past warmup, with the
     bottleneck model deciding growth). Returns (sizer, topology)."""
     topo = _topology(*ops, enqueued=enqueued)
-    sizer = _make_sizer(topo, view, **cluster)
+    sizer = _make_sizer(topo, view, pg_bundles_by_id, **cluster)
     if warm:
         for op in topo:
             op.metrics.num_task_outputs_generated = 1
@@ -671,7 +700,9 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
-    target = sizer._how_many.warmup_target(write, view.reserved_by_node["node0"])
+    target = sizer._how_many.warmup_target(
+        write, view.reserved_by_node["node0"], PlacementGroupSlots()
+    )
     assert target is not None and target > write._pool.min_size()
 
     assert write not in _tick(sizer).request
@@ -737,7 +768,8 @@ def test_warmup_share_respects_memory_after_gpu_ops():
     sizer, _ = _bootstrapped(*ops.values(), view=view)
     capacity = view.reserved_by_node["node0"]
     targets = {
-        name: sizer._how_many.warmup_target(op, capacity) for name, op in ops.items()
+        name: sizer._how_many.warmup_target(op, capacity, PlacementGroupSlots())
+        for name, op in ops.items()
     }
 
     # GPU share: (8 - 1 floor) x 0.8 = 5.6 -> 5.
@@ -758,7 +790,7 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
     sizer, _ = _bootstrapped(read, write, cpu=32)
     capacity = ExecutionResources(cpu=32, gpu=4)
     # (32 - 2 floors) x 0.8 / 2 = 12.
-    assert sizer._how_many.warmup_target(read, capacity) == 12
+    assert sizer._how_many.warmup_target(read, capacity, PlacementGroupSlots()) == 12
 
 
 def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
@@ -846,7 +878,7 @@ def test_unmodeled_op_keeps_its_warmup_share_after_warmup():
     assert sizer.phase is SizerPhase.MODEL_WARMING
     assert seen not in request
     capacity = ExecutionResources(cpu=32.0, gpu=0.0)
-    target = sizer._how_many.warmup_target(unseen, capacity)
+    target = sizer._how_many.warmup_target(unseen, capacity, PlacementGroupSlots())
     assert target is not None and target > 1
     assert (request[unseen].delta, request[unseen].reason) == (
         target - 1,
@@ -1238,39 +1270,37 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
     an out-of-range one is warned about and widened to every bundle; an
     unresolved PG is left out (its capacity is unknown)."""
     pg = _FakePG("pg1")
-    view = DatasetAllocationView(
-        reserved_by_node={},
-        pg_bundles={"pg1": [ExecutionResources(gpu=2)] * 4},
-    )
+    pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=2)] * 4}
     anywhere = _pg_op("anywhere", pg, gpu=1, running=3)
     pinned = _pg_op("pinned", pg, bundle_index=1, gpu=1, running=1, inputs=[anywhere])
     big = _pg_op("big", pg, gpu=4, inputs=[pinned])
     unresolved = _pg_op("unresolved", _FakePG("missing"), gpu=1, inputs=[big])
     bad_index = _pg_op("bad_index", pg, bundle_index=9, gpu=1, inputs=[unresolved])
     with caplog.at_level(logging.WARNING):
-        bundles = PlacementGroupBundles.measure(
-            [anywhere, pinned, big, unresolved, bad_index], view
+        bundles = PlacementGroupSlots.measure(
+            [anywhere, pinned, big, unresolved, bad_index], pg_bundles_by_id
         )
 
-    every_bundle = tuple(("pg1", i) for i in range(4))
-    assert bundles.bundles_by_op[anywhere] == every_bundle
-    assert bundles.bundles_by_op[pinned] == (("pg1", 1),)
-    assert unresolved not in bundles.bundles_by_op
-    assert bundles.bundles_by_op[bad_index] == every_bundle
+    every_bundle = tuple(BundleKey("pg1", i) for i in range(4))
+    assert bundles.static_bundles_by_op[anywhere] == every_bundle
+    assert bundles.static_bundles_by_op[pinned] == (BundleKey("pg1", 1),)
+    assert unresolved not in bundles.static_bundles_by_op
+    assert bundles.unknown_cap_by_op[unresolved] == unresolved._pool.max_size()
+    assert bundles.static_bundles_by_op[bad_index] == every_bundle
     assert any(
         "placement_group_bundle_index=9" in r.getMessage() for r in caplog.records
     )
     # Held actors pack first-fit, most constrained op first: pinned's actor
     # takes half of bundle 1, then anywhere's 3 fill bundle 0 and the rest of 1.
-    free = bundles.free_by_bundle()
-    assert [free[("pg1", i)].gpu for i in range(4)] == [0, 0, 2, 2]
+    free = pg_free_by_bundle(bundles)
+    assert [free[BundleKey("pg1", i)].gpu for i in range(4)] == [0, 0, 2, 2]
 
     snapshot = _snapshot(
         {},
         {},
         {op: op._pool.per_actor_resource_usage() for op in (anywhere, big)},
         pg_free=free,
-        bundles=bundles.bundles_by_op,
+        bundles=bundles.static_bundles_by_op,
     )
     ledger = ConstraintAwareCapacityLedger(snapshot)
     assert ledger.max_upscale_delta(anywhere) == 4
@@ -1281,17 +1311,16 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
     """The slice includes the placement group's bundles on the nodes Ray placed
     them, but only PG actors can use them: non-PG ops see that node's capacity
     without them, read from each tick's view, so a group Ray places after the
-    sizer is built is taken out on the next tick. The group is registered with
-    the coordinator."""
+    sizer is built is taken out on the next tick."""
     pg = _FakePG("pg1")
     reserved_by_node = {
         "g1": ExecutionResources(cpu=8, gpu=4),
         "c1": ExecutionResources(cpu=8),
     }
+    pg_bundles_by_id = {"pg1": [ExecutionResources(cpu=1, gpu=1)] * 2}
     view = DatasetAllocationView(
         reserved_by_node=reserved_by_node,
         labels_by_node={"g1": {}, "c1": {}},
-        pg_bundles={"pg1": [ExecutionResources(cpu=1, gpu=1)] * 2},
     )
     infer = _pg_op("infer", pg, cpu=1, gpu=1, running=2)
     write = _FakeOp(
@@ -1303,8 +1332,7 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
     # Upstream is producing, so write holds no share and free shows only the
     # bundles taken out.
     infer.metrics.num_task_outputs_generated = 1
-    sizer, _ = _bootstrapped(infer, write, view=view)
-    assert sizer.reporter.registered_placement_groups == [pg]
+    sizer, _ = _bootstrapped(infer, write, view=view, pg_bundles_by_id=pg_bundles_by_id)
 
     # Pending group: it holds nothing yet.
     assert _snapshot_of(sizer).reserved_by_node["g1"] == reserved_by_node["g1"]
@@ -1316,28 +1344,6 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
     assert capacity.reserved_by_node["g1"] == ExecutionResources(cpu=6, gpu=2)
     assert capacity.free_by_node["g1"] == ExecutionResources(cpu=5, gpu=2)
     assert capacity.free_by_node["c1"] == ExecutionResources(cpu=8)
-
-
-def test_fn_placement_groups_are_registered():
-    """Placement groups a ray_remote_args_fn creates per actor are registered
-    with the coordinator alongside the static ones (each sizing tick does
-    this), so the coordinator takes their bundles out of the non-PG slice."""
-    static_pg = _FakePG("static")
-    infer = _pg_op("infer", static_pg, gpu=1)
-    embed = _FakeOp(
-        "embed",
-        _FakePool(min_size=1, max_size=4, gpu=1),
-        node=None,
-        uses_ray_remote_args_fn=True,
-        inputs=[infer],
-    )
-    sizer, _ = _bootstrapped(infer, embed)
-    assert sizer.reporter.registered_placement_groups == [static_pg]
-
-    fn_pg = _FakePG("fn")
-    embed._fn_placement_groups = {"fn": cast(Any, fn_pg)}
-    sizer._register_placement_groups()
-    assert sizer.reporter.registered_placement_groups == [static_pg, fn_pg]
 
 
 @pytest.mark.parametrize(
@@ -1362,16 +1368,16 @@ def test_fn_placement_groups_are_registered():
     ],
 )
 def test_sizer_measures_core_placed_caps(pg, uses_fn, pool_kwargs, expected_cap):
+    pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=4)]}
     view = DatasetAllocationView(
         reserved_by_node={"g1": ExecutionResources(gpu=4)},
-        pg_bundles={"pg1": [ExecutionResources(gpu=4)]},
     )
     op = _FakeOp(
         "embed", _FakePool(**pool_kwargs), node=None, uses_ray_remote_args_fn=uses_fn
     )
     if pg is not None:
         op._placement_constraint = PlacementConstraint(placement_group=cast(Any, pg))
-    sizer, _ = _bootstrapped(op, view=view)
+    sizer, _ = _bootstrapped(op, view=view, pg_bundles_by_id=pg_bundles_by_id)
     # Nothing running yet, so the whole cap is free.
     ledger = ConstraintAwareCapacityLedger(_snapshot_of(sizer))
     assert ledger.max_upscale_delta(op) == expected_cap
@@ -1471,10 +1477,10 @@ def test_warmup_pg_ops_share_their_placement_group():
     allocation. They also stay out of the non-PG equal share, so the non-PG
     GPU op gets the whole slice."""
     pg = _FakePG("pg1")
+    pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=10)]}
     view = DatasetAllocationView(
         reserved_by_node={"node0": ExecutionResources(cpu=8, gpu=8)},
         labels_by_node={"node0": {}},
-        pg_bundles={"pg1": [ExecutionResources(gpu=10)]},
     )
     pg_ops = []
     for name in ("embed", "rerank"):
@@ -1494,7 +1500,9 @@ def test_warmup_pg_ops_share_their_placement_group():
     # Upstreams have output (no op held at min); plain keeps warmup going.
     for op in pg_ops:
         op.metrics.num_task_outputs_generated = 1
-    sizer, _ = _bootstrapped(*pg_ops, plain, view=view)
+    sizer, _ = _bootstrapped(
+        *pg_ops, plain, view=view, pg_bundles_by_id=pg_bundles_by_id
+    )
     result = sizer.how_many()
     # (10 GPU - 2 floors) * 0.8 / 2 = 3.2 -> target 3 -> +2 each.
     for op in pg_ops:
@@ -2127,7 +2135,7 @@ def test_ledger_ops_sharing_a_pg_spend_the_same_bundles():
     not: every GPU actor also takes a CPU, leaving no bundle with the 4 CPU
     the other op's actor needs -- which a per-op actor cap cannot see."""
     gpu_op, cpu_op = cast(Any, _LedgerOp()), cast(Any, _LedgerOp())
-    keys = tuple(("pg1", i) for i in range(4))
+    keys = tuple(BundleKey("pg1", i) for i in range(4))
     ledger = ConstraintAwareCapacityLedger(
         _snapshot(
             {},

@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-import sys
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Tuple
 
@@ -16,7 +14,6 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.logical.operators.write_operator import Write
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler import AutoscalingActorPool
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
@@ -34,13 +31,6 @@ def has_produced_output(op: "PhysicalOperator") -> bool:
     return op.metrics.num_task_outputs_generated > 0 or op.has_completed()
 
 
-def bounded_max_size(pool: "AutoscalingActorPool") -> int:
-    """The pool's max size as an int; an unbounded pool (``inf``) reads as
-    ``sys.maxsize`` so cap arithmetic stays integral."""
-    max_size = pool.max_size()
-    return int(max_size) if math.isfinite(max_size) else sys.maxsize
-
-
 @dataclass(frozen=True)
 class OpProfile:
     """One operator's sizing traits, derived once from its configuration.
@@ -53,7 +43,7 @@ class OpProfile:
     # "gpu" if the op's actors each request GPU, else "cpu" -- the
     # scarce resource type the warmup equal-share sizes against.
     resource_type: str
-    # The pool's max size as an int (see ``bounded_max_size``).
+    # The pool's max size as an int (see ``AutoscalingActorPool.bounded_max_size``).
     pool_cap: int
     # True if the op's actors are placed through a placement group -- a
     # static PG (sized against its bundles) or a ``ray_remote_args_fn`` that
@@ -66,7 +56,7 @@ def build_op_profile(op: ExperimentalActorPoolMapOperator) -> OpProfile:
     pool = op.actor_pool
     return OpProfile(
         resource_type="gpu" if pool.per_actor_resource_usage().gpu > 0 else "cpu",
-        pool_cap=bounded_max_size(pool),
+        pool_cap=pool.bounded_max_size(),
         pg_managed=op.placement_constraint().is_pg_managed,
     )
 
