@@ -88,7 +88,12 @@ class RuntimeEnvContext:
         if language == Language.PYTHON and sys.platform == "win32":
             executable = [self.py_executable]
         elif language == Language.PYTHON:
-            executable = ["exec", self.py_executable]
+            # py_executable can also be a command such as `uv run python`, so
+            # only quote it for bash when it's the path of an existing file.
+            py_executable = self.py_executable
+            if os.path.isfile(py_executable):
+                py_executable = shlex.quote(py_executable)
+            executable = ["exec", py_executable]
         elif language == Language.JAVA:
             executable = ["java"]
             ray_jars = os.path.join(get_ray_jars_dir(), "*")

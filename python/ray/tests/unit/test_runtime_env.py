@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -12,6 +13,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.uri_cache import URICache
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
@@ -20,6 +22,7 @@ from ray._private.runtime_env.utils import (
 from ray._private.test_utils import (
     chdir,
 )
+from ray.core.generated.common_pb2 import Language
 from ray.runtime_env import RuntimeEnv
 from ray.runtime_env.runtime_env import (
     RuntimeEnvConfig,
@@ -534,6 +537,42 @@ def test_runtime_env_interface():
 
     runtime_env.pop("container")
     assert runtime_env.to_dict() == {}
+
+
+def _assert_exec_worker_runs(context: RuntimeEnvContext, command: str):
+    # A cleared environment, so DYLD_LIBRARY_PATH can't prefix the command.
+    with mock.patch.dict(os.environ, clear=True), mock.patch.object(
+        os, "execvp"
+    ) as execvp:
+        context.exec_worker(["worker.py"], Language.PYTHON)
+    execvp.assert_called_once_with("bash", args=["bash", "-c", command])
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Checks the POSIX bash command.")
+@pytest.mark.parametrize("dir_name", ["dir with space", "dir (with) parens"])
+@pytest.mark.parametrize("use_default", [True, False])
+def test_exec_worker_quotes_py_executable_path(tmp_path, dir_name, use_default):
+    py_executable = tmp_path / dir_name / "python"
+    py_executable.parent.mkdir()
+    py_executable.touch()
+    kwargs = {} if use_default else {"py_executable": str(py_executable)}
+    with mock.patch.object(sys, "executable", str(py_executable)):
+        context = RuntimeEnvContext(**kwargs)
+
+    _assert_exec_worker_runs(
+        context, f"exec {shlex.quote(str(py_executable))} worker.py"
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Checks the POSIX bash command.")
+@pytest.mark.parametrize(
+    "py_executable",
+    ["uv run --locked python", "env A=1 python", "'/dir with space/python'"],
+)
+def test_exec_worker_runs_py_executable_command_as_written(py_executable):
+    context = RuntimeEnvContext(py_executable=py_executable)
+
+    _assert_exec_worker_runs(context, f"exec {py_executable} worker.py")
 
 
 if __name__ == "__main__":
