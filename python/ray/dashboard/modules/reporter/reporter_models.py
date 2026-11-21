@@ -1,8 +1,12 @@
 from typing import Dict, List, Optional, Tuple
 
-from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    # Pydantic is not part of the minimal Ray installation.
+    BaseModel = None
 
-if PYDANTIC_INSTALLED:
+if BaseModel is not None:
     from pydantic import field_validator
 
     # TODO(aguo): Use these pydantic models in the dashboard API as well.
