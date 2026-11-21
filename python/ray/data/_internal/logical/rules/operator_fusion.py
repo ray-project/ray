@@ -33,11 +33,12 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_ope
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
+from ray.data._internal.logical.interfaces import LogicalOperator, PhysicalPlan, Rule
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     AbstractMap,
     AbstractUDFMap,
+    Join,
     MapBatches,
     RandomShuffle,
     Repartition,
@@ -311,6 +312,26 @@ class FuseOperators(Rule):
             and isinstance(down_op, AllToAllOperator)
         )
 
+    def _logical_map_op(self, op: PhysicalOperator) -> LogicalOperator:
+        """The logical operator map fusion describes ``op`` with.
+
+        The disk-shuffle writer is a plain task-pool map planned by its
+        shuffle's logical op (Repartition, Sort, Aggregate, Join, ...), so it has
+        no ``AbstractMap`` of its own. Describe it from the physical op: a
+        task-pool map with its own remote args and no batching requirement.
+        """
+        logical_op = self._op_map[op]
+        if isinstance(op, TaskPoolMapOperator) and isinstance(
+            logical_op, (AbstractAllToAll, Join)
+        ):
+            return AbstractMap(
+                op.name,
+                logical_op.input_dependencies,
+                can_modify_num_rows=True,
+                ray_remote_args=op._ray_remote_args,
+            )
+        return logical_op
+
     def _can_fuse(self, down_op: PhysicalOperator, up_op: PhysicalOperator) -> bool:
         """Returns whether the provided downstream operator can be fused with the given
         upstream operator.
@@ -330,7 +351,7 @@ class FuseOperators(Rule):
         if not self._can_fuse_op_types(up_op, down_op):
             return False
 
-        down_logical_op = self._op_map[down_op]
+        down_logical_op = self._logical_map_op(down_op)
         up_logical_op = self._op_map[up_op]
 
         # An AllToAllOperator that already absorbed a map must not absorb another.
@@ -631,7 +652,8 @@ class FuseOperators(Rule):
         # Fuse operator names.
         name = up_op.name + "->" + down_op.name
 
-        down_logical_op = self._op_map.pop(down_op)
+        down_logical_op = self._logical_map_op(down_op)
+        self._op_map.pop(down_op)
         up_logical_op = self._op_map.pop(up_op)
         assert isinstance(down_logical_op, AbstractMap)
         assert isinstance(up_logical_op, AbstractMap)

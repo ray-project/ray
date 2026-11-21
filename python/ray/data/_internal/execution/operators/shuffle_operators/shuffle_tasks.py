@@ -3,6 +3,7 @@
 import abc
 import logging
 import math
+import os
 import time
 import typing
 from dataclasses import replace
@@ -128,6 +129,13 @@ def _encode_partition_ipc(
     return sink.getvalue()
 
 
+def cap_polars_threads() -> None:
+    """Cap polars max threads to 1 so it don't over-sub, we set it
+    here instead of runtime env because we want to keep tasks fusiable.
+    """
+    os.environ.setdefault("POLARS_MAX_THREADS", "1")
+
+
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _shuffle_map_task(
     *blocks: Block,
@@ -140,6 +148,7 @@ def _shuffle_map_task(
     ...,
 ]:
     """Map stage: partition the input blocks and return one shard per partition."""
+    cap_polars_threads()
     stats = BlockExecStats.builder()
 
     # Use BlockAccessor so we also work for non-Arrow blocks (pandas, numpy)
