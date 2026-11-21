@@ -368,6 +368,18 @@ def _get_autoscaling_config_with_worker_group_priority() -> dict:
     return config
 
 
+def _get_ray_cr_with_pending_node_idle_termination_gate(value: str) -> dict:
+    cr = get_basic_ray_cr()
+    cr["metadata"]["annotations"] = {"ray.io/pending-node-idle-termination-gate": value}
+    return cr
+
+
+def _get_autoscaling_config_with_pending_node_idle_termination_gated() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["provider"]["pending_node_idle_termination_gated"] = True
+    return config
+
+
 def _get_tpu_group_with_no_node_selectors() -> dict[str, Any]:
     cr = get_basic_ray_cr()
     tpu_group = cr["spec"]["workerGroupSpecs"][2]
@@ -509,6 +521,30 @@ TEST_DATA = (
             None,
             None,
             id="worker-group-priority",
+        ),
+        pytest.param(
+            _get_ray_cr_with_pending_node_idle_termination_gate("true"),
+            _get_autoscaling_config_with_pending_node_idle_termination_gated(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-gated",
+        ),
+        pytest.param(
+            _get_ray_cr_with_pending_node_idle_termination_gate("True"),
+            _get_autoscaling_config_with_pending_node_idle_termination_gated(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-gated-case-insensitive",
+        ),
+        pytest.param(
+            _get_ray_cr_with_pending_node_idle_termination_gate("false"),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-not-gated",
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),

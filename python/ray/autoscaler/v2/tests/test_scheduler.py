@@ -2000,6 +2000,36 @@ def test_idle_termination_pending_nodes_timeout(pending_idle_timeout_s):
     assert sorted(to_terminate) == sorted(expected)
 
 
+def test_idle_termination_pending_nodes_timeout_reenabled():
+    """
+    Test that the idle durations of the pending nodes don't carry over a period
+    when the pending node idle timeout is disabled (e.g. gated on KubeRay), so
+    the pending nodes aren't terminated right after it's enabled again.
+    """
+    idle_timeout_s = 10
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    def _schedule(now_s: float, pending_idle_timeout_s: Optional[float]) -> List[str]:
+        request = sched_request(
+            node_type_configs=_pending_idle_test_configs(),
+            instances=[_pending_instance("i-1", Instance.ALLOCATED)],
+            idle_timeout_s=idle_timeout_s,
+            pending_idle_timeout_s=pending_idle_timeout_s,
+            disable_launch_config_check=True,
+        )
+        with patch("time.monotonic", return_value=now_s):
+            _, to_terminate = _launch_and_terminate(scheduler.schedule(request))
+        return [instance_id for instance_id, _, _ in to_terminate]
+
+    # Unneeded since t=0, then the timeout is disabled for longer than itself.
+    assert _schedule(0, idle_timeout_s) == []
+    assert _schedule(20, None) == []
+    # Once enabled again, the node has only been unneeded since t=21.
+    assert _schedule(21, idle_timeout_s) == []
+    assert _schedule(31, idle_timeout_s) == []
+    assert _schedule(32, idle_timeout_s) == ["i-1"]
+
+
 def test_gang_scheduling():
     """
     Test that gang scheduling works.

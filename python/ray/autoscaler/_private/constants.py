@@ -173,3 +173,7 @@ DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
 DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
 FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"
 WORKER_LIVENESS_CHECK_KEY = "worker_liveness_check"
+# Autoscaler v2 only. While this provider config flag is set, pending nodes are
+# never terminated for not being needed, as if
+# RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S were negative.
+PENDING_NODE_IDLE_TERMINATION_GATED_KEY = "pending_node_idle_termination_gated"
