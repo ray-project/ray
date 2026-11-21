@@ -79,6 +79,10 @@ class SchedulingConstraint:
         """The nodes among `node_ids` the replica may be placed on."""
         return set(node_ids)
 
+    def selector(self, ctx: SchedulingContext) -> Dict[str, str]:
+        """The rule as a Ray Core label selector, empty if it allows every node."""
+        return {}
+
     def may_stop(self, node_id: str, ctx: SchedulingContext) -> bool:
         """Whether one replica on the node may stop.
 
@@ -100,17 +104,31 @@ class ExcludeNodesConstraint(SchedulingConstraint):
     ) -> Set[str]:
         return set(node_ids) - self._nodes()
 
+    def selector(self, ctx: SchedulingContext) -> Dict[str, str]:
+        nodes = self._nodes()
+        if not nodes:
+            return {}
+        return {RAY_NODE_ID_LABEL: f"!in({','.join(sorted(nodes))})"}
+
 
 class MinTopologyDomainsConstraint(SchedulingConstraint):
     """Spreads replicas over at least `min_domains` values of `label_key`.
 
-    The floor is capped at the replica count and the domains the replica
-    can use.
+    The floor is capped at the replica count and, unless required, the
+    domains the replica can use.
     """
 
-    def __init__(self, label_key: str, min_domains: int):
+    def __init__(
+        self,
+        label_key: str,
+        min_domains: int,
+        required: bool = False,
+        wait_timeout_s: Optional[float] = None,
+    ):
         self._label_key = label_key
         self._min_domains = min_domains
+        self.required = required
+        self.wait_timeout_s = wait_timeout_s
 
     @property
     def label_key(self) -> str:
@@ -121,7 +139,8 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
         return self._min_domains
 
     def describe(self) -> str:
-        return f"topology_spread[{self._label_key}>={self._min_domains}]"
+        kind = "required " if self.required else ""
+        return f"{kind}topology_spread[{self._label_key}>={self._min_domains}]"
 
     def covered_domains(self, ctx: SchedulingContext) -> Set[str]:
         """The domains the deployment's replicas are on."""
@@ -133,13 +152,19 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
         return domains
 
     def effective_floor(self, ctx: SchedulingContext) -> int:
-        """The floor capped at the replica count and the usable domains."""
+        """The floor capped at the replica count and, unless required, the domains."""
+        if self.required:
+            return min(self._min_domains, ctx.num_replicas)
         return min(
             self._min_domains, ctx.num_replicas, ctx.num_domains(self._label_key)
         )
 
     def is_met(self, ctx: SchedulingContext) -> bool:
-        return len(self.covered_domains(ctx)) >= self.effective_floor(ctx)
+        return self.missing_domains(ctx) == 0
+
+    def missing_domains(self, ctx: SchedulingContext) -> int:
+        """How many more domains the floor needs."""
+        return max(0, self.effective_floor(ctx) - len(self.covered_domains(ctx)))
 
     def may_stop(self, node_id: str, ctx: SchedulingContext) -> bool:
         """Refuses a stop that would leave fewer domains than the floor."""
@@ -155,6 +180,20 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
             return True
         return len(replicas_per_domain) - 1 >= self.effective_floor(ctx)
 
+    def selector(self, ctx: SchedulingContext) -> Dict[str, str]:
+        """Avoids covered domains, and unlabeled nodes, while unmet."""
+        if self.is_met(ctx):
+            return {}
+        expressions = []
+        if self._label_key != RAY_NODE_ID_LABEL:
+            expressions.append("exists()")
+        covered = self.covered_domains(ctx)
+        if covered:
+            expressions.append(f"!in({','.join(sorted(covered))})")
+        if not expressions:
+            return {}
+        return {self._label_key: ",".join(expressions)}
+
     def allowed_nodes(
         self, node_ids: Iterable[str], ctx: SchedulingContext
     ) -> Set[str]:
@@ -168,6 +207,17 @@ class MinTopologyDomainsConstraint(SchedulingConstraint):
             is not None
             and domain not in covered
         }
+
+
+def merge_selectors(selectors: Iterable[Mapping[str, str]]) -> Dict[str, str]:
+    """Joins label selectors into one that requires all of them."""
+    merged: Dict[str, List[str]] = {}
+    for selector in selectors:
+        for key, value in selector.items():
+            expressions = merged.setdefault(key, [])
+            if value not in expressions:
+                expressions.append(value)
+    return {key: ",".join(expressions) for key, expressions in merged.items()}
 
 
 def rule_tiers(

@@ -44,12 +44,14 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.domain_probe import DomainProbe
 from ray.serve._private.scheduling_rules import (
     RAY_NODE_ID_LABEL,
     ExcludeNodesConstraint,
     MinTopologyDomainsConstraint,
     SchedulingConstraint,
     SchedulingContext,
+    merge_selectors,
     rule_tiers,
 )
 from ray.serve._private.usage import ServeUsageTag
@@ -594,6 +596,7 @@ class DeploymentScheduler:
         cluster_node_info_cache: ClusterNodeInfoCache,
         head_node_id: str,
         create_placement_group_fn: Callable,
+        create_domain_probe_fn: Optional[Callable] = None,
     ):
         # {deployment_id: scheduling_policy}
         self._deployments: Dict[DeploymentID, DeploymentSchedulingInfo] = {}
@@ -627,10 +630,16 @@ class DeploymentScheduler:
         self._last_pack_schedule_order_log_key: Optional[tuple] = None
         # Dedupes repeated pack placement failure logs for stuck replicas.
         self._logged_pack_placement_failures: Set[ReplicaID] = set()
+        self._held_replicas: DefaultDict[DeploymentID, Set[ReplicaID]] = defaultdict(
+            set
+        )
+        self._held_since: Dict[ReplicaID, float] = {}
 
         self._cluster_node_info_cache = cluster_node_info_cache
         self._head_node_id = head_node_id
         self._create_placement_group_fn = create_placement_group_fn
+        self._create_domain_probe_fn = create_domain_probe_fn or DomainProbe
+        self._probes: Dict[DeploymentID, Any] = {}
 
         # Not checkpointed: a restarted controller reconciles first, then
         # re-detects compaction opportunities.
@@ -726,6 +735,8 @@ class DeploymentScheduler:
         self._running_replicas.pop(deployment_id, None)
 
         self._outdated_replicas.pop(deployment_id, None)
+        self._held_replicas.pop(deployment_id, None)
+        self._stop_probe(deployment_id)
 
         del self._deployments[deployment_id]
 
@@ -737,6 +748,8 @@ class DeploymentScheduler:
         self._recovering_replicas[deployment_id].discard(replica_id)
         self._running_replicas[deployment_id].pop(replica_id, None)
         self._outdated_replicas[deployment_id].discard(replica_id)
+        self._held_replicas[deployment_id].discard(replica_id)
+        self._held_since.pop(replica_id, None)
         self._logged_pack_placement_failures.discard(replica_id)
 
     def on_replicas_outdated(
@@ -772,6 +785,7 @@ class DeploymentScheduler:
         target_labels: Optional[Dict[str, Any]] = None,
     ):
         deployment_id = replica_id.deployment_id
+        self._held_since.pop(replica_id, None)
         self._launching_replicas[deployment_id][replica_id] = LaunchingReplicaInfo(
             target_node_id=target_node_id, target_labels=target_labels
         )
@@ -866,6 +880,7 @@ class DeploymentScheduler:
         default_scheduling_strategy: str,
         target_node_id: Optional[str] = None,
         target_labels: Optional[LabelMatchExpressionsT] = None,
+        label_selector_chain: Optional[List[Dict[str, str]]] = None,
     ) -> bool:
         """Schedule a replica from a scheduling request.
 
@@ -890,6 +905,7 @@ class DeploymentScheduler:
                 target node.
             target_labels: Attempt to schedule this replica onto nodes
                 with these target labels.
+            label_selector_chain: Label selectors Ray Core tries in order.
 
         Returns:
             True if the replica was successfully scheduled, False otherwise.
@@ -971,6 +987,16 @@ class DeploymentScheduler:
             target_node_id = None
 
         actor_options = copy.deepcopy(scheduling_request.actor_options)
+        if label_selector_chain and placement_group is None and per_replica_pg is None:
+            first, *rest = label_selector_chain
+            if first or "label_selector" in actor_options:
+                actor_options["label_selector"] = first
+            if rest:
+                actor_options["fallback_strategy"] = [
+                    {"label_selector": selector} for selector in rest
+                ]
+            else:
+                actor_options.pop("fallback_strategy", None)
         if (
             scheduling_request.max_replicas_per_node is not None
             and scheduling_request.max_replicas_per_node > 0
@@ -1215,6 +1241,7 @@ class DeploymentScheduler:
             )
 
         self._schedule_pending_replicas()
+        self._update_probes()
 
         # Handle downscales
         deployment_to_replicas_to_stop = {}
@@ -1350,6 +1377,7 @@ class DeploymentScheduler:
             key=lambda r: r.requested_resources,
             reverse=True,
         )
+        self._held_replicas.clear()
         if not all_scheduling_requests:
             return
         if scorer.picks_nodes:
@@ -1414,13 +1442,17 @@ class DeploymentScheduler:
             return None
 
         placement_candidates = self._build_pack_placement_candidates(scheduling_request)
-        target_node = self._select_node(
-            placement_candidates,
-            rules,
-            self._context_for(deployment_id, placement_candidates, view),
-            scorer,
-            view,
-        )
+        ctx = self._context_for(deployment_id, placement_candidates, view)
+        target_node = self._select_node(placement_candidates, rules, ctx, scorer, view)
+        if target_node is None:
+            unmet = self._unmet_required_floors(rules, ctx)
+            if unmet:
+                if self._hold_for(scheduling_request, unmet, ctx):
+                    return None
+                rules = tuple(rule for rule in rules if rule not in unmet)
+                target_node = self._select_node(
+                    placement_candidates, rules, ctx, scorer, view
+                )
 
         replica_id = scheduling_request.replica_id
 
@@ -1459,6 +1491,9 @@ class DeploymentScheduler:
             scheduling_request,
             default_scheduling_strategy=scorer.default_scheduling_strategy,
             target_node_id=target_node,
+            label_selector_chain=self._label_selector_chain(
+                scheduling_request, rules, ctx
+            ),
         )
 
         if succeeded and target_node is not None:
@@ -1695,6 +1730,12 @@ class DeploymentScheduler:
                 f"stop while keeping every rule, so {dropped} gave way, last "
                 "listed first."
             )
+        if len(replicas_to_stop) < max_num_to_stop and tier:
+            logger.info(
+                f"Stopping {len(replicas_to_stop)} of the {max_num_to_stop} "
+                f"replica(s) of {deployment_id} asked for, because "
+                f"{[rule.describe() for rule in tier]} never give way."
+            )
         return replicas_to_stop
 
     def _filter_nodes_by_label_selector(
@@ -1737,6 +1778,180 @@ class DeploymentScheduler:
     ) -> Tuple[SchedulingConstraint, ...]:
         """The deployment's own rules, then the cluster wide rules."""
         return self._deployments[deployment_id].rules + self._cluster_rules()
+
+    def _stop_probe(self, deployment_id: DeploymentID) -> None:
+        probe = self._probes.pop(deployment_id, None)
+        if probe is not None:
+            probe.kill()
+
+    def _update_probes(self) -> None:
+        """Keeps one probe pending per deployment with an unmet required floor."""
+        view: Optional[ClusterView] = None
+        for deployment_id in sorted(self._deployments, key=str):
+            info = self._deployments[deployment_id]
+            required = [
+                rule
+                for rule in info.rules
+                if isinstance(rule, MinTopologyDomainsConstraint) and rule.required
+            ]
+            placement_candidates = (
+                self._get_deployment_placement_candidates(info) if required else None
+            )
+            if not required or placement_candidates is None:
+                self._stop_probe(deployment_id)
+                continue
+
+            view = view or self._cluster_view()
+            ctx = self._context_for(deployment_id, placement_candidates, view)
+            unmet = next((rule for rule in required if not rule.is_met(ctx)), None)
+            probe = self._probes.get(deployment_id)
+            if unmet is None:
+                if probe is not None:
+                    logger.info(
+                        f"Removing the probe of {deployment_id}, because its "
+                        "required rules hold."
+                    )
+                self._stop_probe(deployment_id)
+                continue
+
+            if not self._needs_probe(info, placement_candidates, unmet, ctx, view):
+                self._stop_probe(deployment_id)
+                continue
+
+            if probe is not None:
+                landed_node = probe.landed_node()
+                if landed_node is not None:
+                    logger.info(
+                        f"The probe of {deployment_id} for {unmet.describe()} "
+                        f"found room on node {landed_node}."
+                    )
+                    self._stop_probe(deployment_id)
+                continue
+
+            selector = merge_selectors(
+                [
+                    info.label_selector or {},
+                    unmet.selector(ctx),
+                    self._compaction_rule.selector(ctx),
+                ]
+            )
+            try:
+                self._probes[deployment_id] = self._create_domain_probe_fn(
+                    deployment_id, dict(info.required_resources), selector
+                )
+            except Exception:
+                logger.exception(f"Failed to start a probe for {deployment_id}.")
+                continue
+            logger.info(
+                f"Started a probe for {deployment_id} asking for {selector}, "
+                f"because {unmet.describe()} covers "
+                f"{len(unmet.covered_domains(ctx))} domain(s)."
+            )
+
+    def _needs_probe(
+        self,
+        info: DeploymentSchedulingInfo,
+        placement_candidates: List[Tuple[RequestedResources, List[Dict[str, str]]]],
+        unmet: MinTopologyDomainsConstraint,
+        ctx: SchedulingContext,
+        view: ClusterView,
+    ) -> bool:
+        """Whether to ask the autoscaler for a node in a missing domain."""
+        if self._recovering_replicas.get(info.deployment_id):
+            return False
+        for required_resources, required_labels in placement_candidates:
+            with_room = {
+                node_id: available
+                for node_id, available in view.available_resources.items()
+                if available.can_fit(required_resources)
+            }
+            if self._filter_candidate_nodes(
+                with_room, required_labels, (unmet,) + self._cluster_rules(), ctx
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _unmet_required_floors(
+        rules: Sequence[SchedulingConstraint], ctx: SchedulingContext
+    ) -> Tuple[MinTopologyDomainsConstraint, ...]:
+        return tuple(
+            rule
+            for rule in rules
+            if isinstance(rule, MinTopologyDomainsConstraint)
+            and rule.required
+            and not rule.is_met(ctx)
+        )
+
+    def _hold_for(
+        self,
+        scheduling_request: ReplicaSchedulingRequest,
+        unmet: Sequence[MinTopologyDomainsConstraint],
+        ctx: SchedulingContext,
+    ) -> bool:
+        """Whether to hold the replica until a missing domain has room.
+
+        At most one replica per missing domain waits, each up to `wait_timeout_s`.
+        """
+        replica_id = scheduling_request.replica_id
+        held_since = self._held_since.get(replica_id)
+        waited_s = time.time() - held_since if held_since is not None else 0.0
+        waiting_for = [
+            rule
+            for rule in unmet
+            if rule.wait_timeout_s is None or waited_s < rule.wait_timeout_s
+        ]
+        if len(waiting_for) < len(unmet):
+            logger.info(
+                f"{replica_id} waited {waited_s:.0f}s, so "
+                f"{[rule.describe() for rule in unmet if rule not in waiting_for]} "
+                "gave way for it."
+            )
+        held = self._held_replicas[ctx.deployment_id]
+        if not waiting_for or len(held) >= max(
+            rule.missing_domains(ctx) for rule in waiting_for
+        ):
+            return False
+        held.add(replica_id)
+        self._held_since.setdefault(replica_id, time.time())
+        if replica_id not in self._logged_pack_placement_failures:
+            self._logged_pack_placement_failures.add(replica_id)
+            logger.info(
+                f"Holding {replica_id} until a node with room joins a domain "
+                f"{[rule.describe() for rule in unmet]} doesn't cover yet."
+            )
+        return True
+
+    def _label_selector_chain(
+        self,
+        scheduling_request: ReplicaSchedulingRequest,
+        rules: Sequence[SchedulingConstraint],
+        ctx: SchedulingContext,
+    ) -> Optional[List[Dict[str, str]]]:
+        """The rules as Ray Core label selectors, strictest tier first.
+
+        None when the deployment has no rules or the replica can't be steered.
+        """
+        if (
+            not self._deployments[ctx.deployment_id].rules
+            or scheduling_request.placement_group_bundles is not None
+            or scheduling_request.gang_placement_group is not None
+            or scheduling_request.target_node_id is not None
+        ):
+            return None
+        options = scheduling_request.actor_options
+        own_selectors = [options.get("label_selector") or {}] + [
+            fallback.get("label_selector") or {}
+            for fallback in options.get("fallback_strategy") or []
+        ]
+        chain: List[Dict[str, str]] = []
+        for tier in rule_tiers(rules):
+            tier_selector = merge_selectors(rule.selector(ctx) for rule in tier)
+            for own_selector in own_selectors:
+                selector = merge_selectors([own_selector, tier_selector])
+                if selector not in chain:
+                    chain.append(selector)
+        return chain
 
     def _select_node(
         self,
