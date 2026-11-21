@@ -278,13 +278,9 @@ class SGLangServer:
         return
 
     async def check_health(self) -> None:
-        # The engine probe is a real generate request. It blocks while paused
-        # and cannot run while weights or KV cache are released.
+        # The probe is a real generate request, which blocks while paused or asleep.
         if self._is_paused or self._sleeping_tags:
             return
-        # SGLang versions whose RayEngine has check_health run it here; it raises
-        # when a scheduler actor died or stopped answering a probe. Older versions
-        # do not have it, so the check stays a no-op for them.
         engine_check_health = getattr(self.engine, "check_health", None)
         if engine_check_health is None:
             return
