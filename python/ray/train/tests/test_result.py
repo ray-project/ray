@@ -148,6 +148,36 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri, storage, m
     assert isinstance(result.error, RuntimeError)
 
 
+def test_result_from_path_missing_checkpoint_column_and_duplicate_rows(tmp_path):
+    import json
+
+    trial_dir = tmp_path / "trial_dir"
+    trial_dir.mkdir()
+    (trial_dir / "checkpoint_000000").mkdir()
+    (trial_dir / "checkpoint_000001").mkdir()
+
+    # Case 1: result.json has rows without checkpoint_dir_name column
+    result_file = trial_dir / EXPR_RESULT_FILE
+    result_file.write_text(json.dumps({"metric_a": 1.0}) + "\n")
+
+    restored = ray.air.Result.from_path(str(trial_dir))
+    assert len(restored.best_checkpoints) == 2
+    assert restored.best_checkpoints[0][1] == {}
+    assert restored.best_checkpoints[1][1] == {}
+
+    # Case 2: result.json has multiple rows for the same checkpoint_dir_name
+    rows = [
+        {"metric_a": 1.0, "checkpoint_dir_name": "checkpoint_000000"},
+        {"metric_a": 2.5, "checkpoint_dir_name": "checkpoint_000000"},
+        {"metric_a": 3.0},
+    ]
+    result_file.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+
+    restored = ray.air.Result.from_path(str(trial_dir))
+    assert restored.best_checkpoints[0][1]["metric_a"] == 2.5
+    assert restored.best_checkpoints[1][1] == {}
+
+
 if __name__ == "__main__":
     import sys
 
