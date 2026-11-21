@@ -1,0 +1,103 @@
+diff --git a/boost/boost.bzl b/boost/boost.bzl
+--- a/boost/boost.bzl
++++ b/boost/boost.bzl
+@@ -27,4 +27,4 @@
+ default_defines = select({
+-    ":windows_x86_64": ["BOOST_ALL_NO_LIB"],  # Turn auto_link off in MSVC compiler
++    "@platforms//os:windows": ["BOOST_ALL_NO_LIB"],  # Turn auto_link off in MSVC compiler
+     "//conditions:default": [],
+ })
+diff --git a/BUILD.boost b/BUILD.boost
+--- a/BUILD.boost
++++ b/BUILD.boost
+@@ -71,3 +71,11 @@
+ config_setting(
++    name = "windows_arm64",
++    constraint_values = [
++        "@platforms//os:windows",
++        "@platforms//cpu:arm64",
++    ],
++)
++
++config_setting(
+     name = "android_arm",
+     constraint_values = [
+@@ -155,8 +163,18 @@
+-        ":windows_x86_64": [
++        "@platforms//os:windows": [
+             "libs/context/src/windows/stack_traits.cpp",
+         ],
+         "//conditions:default": [],
++    }) + select({
++        ":windows_arm64": [
++            "libs/context/src/continuation.cpp",
++            "libs/context/src/fiber.cpp",
++        ],
++        "//conditions:default": [],
++    }),
++    defines = select({
++        ":windows_arm64": ["BOOST_USE_WINFIB"],
++        "//conditions:default": [],
+     }),
+     exclude_src = [
+         "libs/context/src/fiber.cpp",
+         "libs/context/src/untested.cpp",
+@@ -165,4 +183,4 @@
+     local_defines = select({
+-        ":windows_x86_64": ["BOOST_CONTEXT_EXPORT="],
++        "@platforms//os:windows": ["BOOST_CONTEXT_EXPORT="],
+         "//conditions:default": [],
+     }),
+@@ -192,4 +210,4 @@
+-    ":windows_x86_64": [
++    "@platforms//os:windows": [
+         "libs/fiber/src/numa/windows/pin_thread.cpp",
+         "libs/fiber/src/numa/windows/topology.cpp",
+     ],
+@@ -208,4 +226,4 @@
+     copts = select({
+-        ":windows_x86_64": [
++        "@platforms//os:windows": [
+             "/D_WIN32_WINNT=0x0601",
+         ],
+@@ -342,5 +360,5 @@
+     name = "atomic",
+     srcs = select({
+-        ":windows_x86_64": ["libs/atomic/src/wait_on_address.cpp"],
++        "@platforms//os:windows": ["libs/atomic/src/wait_on_address.cpp"],
+         "//conditions:default": [],
+     }),
+@@ -2053,5 +2071,5 @@
+-        ":windows_x86_64": [
++        "@platforms//os:windows": [
+             "libs/thread/src/win32/thread.cpp",
+             "libs/thread/src/win32/tss_dll.cpp",
+             "libs/thread/src/win32/tss_pe.cpp",
+         ],
+@@ -2063,1 +2081,1 @@
+-        ":windows_x86_64": [],
++        "@platforms//os:windows": [],
+@@ -2067,1 +2085,1 @@
+-        ":windows_x86_64": [],
++        "@platforms//os:windows": [],
+@@ -2072,4 +2090,4 @@
+-        ":windows_x86_64": [
++        "@platforms//os:windows": [
+             "BOOST_ALL_NO_LIB",
+             "BOOST_THREAD_BUILD_LIB",
+             "BOOST_THREAD_USE_LIB",
+diff --git a/config.lzma-windows.h b/config.lzma-windows.h
+--- a/config.lzma-windows.h
++++ b/config.lzma-windows.h
+@@ -157,3 +157,5 @@
+ /* Define to 1 if you have the <immintrin.h> header file. */
++#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
+ #define HAVE_IMMINTRIN_H 1
++#endif
+ 
+@@ -296,3 +298,5 @@
+ /* Define to 1 if _mm_movemask_epi8 is available. */
++#if defined(_M_IX86) || defined(_M_X64) || defined(__i386__) || defined(__x86_64__)
+ #define HAVE__MM_MOVEMASK_EPI8 1
++#endif
+ 
