@@ -1,4 +1,3 @@
-import functools
 import logging
 import secrets
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -16,7 +15,6 @@ from ray.data._internal.execution.operators.hash_aggregate_v2 import (
     _make_aggregating_transformer,
 )
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-    _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
     _make_hash_partition_fn,
     _make_slice_partition_fn,
@@ -61,7 +59,6 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_o
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
-from ray.data._internal.execution.util import merge_runtime_envs
 from ray.data._internal.logical.interfaces import HashPartitioning
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
@@ -108,6 +105,13 @@ def plan_disk_hash_shuffle_map(
     transform partitions each input bundle into one local file and yields a
     one-row handle block for ``DiskHashShuffleRegroupOp``.
 
+    Being a plain task-pool map, the upstream read or map fuses into it through
+    the generic map-fusion rule, so one task reads, maps and writes its shuffle
+    file. The writer therefore adds no runtime env of its own; the polars
+    thread cap is set inside the task (``cap_polars_threads``), since a
+    runtime env would make its remote args differ from the upstream op's and
+    refuse fusion.
+
     Args:
         input_op: Upstream physical operator.
         data_context: Runtime configuration.
@@ -139,21 +143,13 @@ def plan_disk_hash_shuffle_map(
         block_transformer=block_transformer,
     )
     user_args = {k: v for k, v in (ray_remote_args or {}).items() if v is not None}
-    user_runtime_env = user_args.pop("runtime_env", None)
-    remote_args: Dict[str, Any] = {
-        "num_cpus": map_cpus,
-        "runtime_env": merge_runtime_envs(
-            _SHUFFLE_MAP_RUNTIME_ENV, user_runtime_env or {}
-        ),
-        **user_args,
-    }
+    remote_args: Dict[str, Any] = {"num_cpus": map_cpus, **user_args}
     return MapOperator.create(
         MapTransformer([BlockMapTransformFn(write_fn, disable_block_shaping=True)]),
         input_op,
         data_context,
         name=name,
         ray_remote_args=remote_args,
-        supports_fusion=False,
         on_start=on_start,
     )
 
@@ -201,11 +197,7 @@ def _select_shuffle_v2_op_classes(
     """
     if data_context.use_disk_based_hash_shuffle:
         return plan_disk_hash_shuffle_map, plan_disk_hash_shuffle_reduce, "Disk"
-    return (
-        functools.partial(ShuffleMapOp, map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV),
-        ShuffleReduceOp,
-        "",
-    )
+    return ShuffleMapOp, ShuffleReduceOp, ""
 
 
 def _plan_gpu_shuffle_repartition(
@@ -387,7 +379,6 @@ def _plan_sort_v2(
             data_context,
             num_partitions=num_partitions,
             sort_key=sort_key,
-            map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
             name=f"{prefix}SortShuffleMap(partitions={num_partitions})",
         )
     return build_reduce(

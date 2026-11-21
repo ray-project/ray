@@ -17,9 +17,6 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
 )
-from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-    _SHUFFLE_MAP_RUNTIME_ENV,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
@@ -45,6 +42,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     _encode_partition_ipc,
     _get_shard_batch,
     _ipc_write_options,
+    cap_polars_threads,
 )
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import (
@@ -683,7 +681,7 @@ def test_shuffle_map_task_uses_context_label_selector(
                 "num_cpus": 2,
                 "num_gpus": 1,
                 "resources": {"bar": 1},
-                "runtime_env": {"env_vars": {"POLARS_MAX_THREADS": "1", "CUSTOM": "x"}},
+                "runtime_env": {"env_vars": {"CUSTOM": "x"}},
             },
         ),
         # None means "default" to ray.remote and must not override the operator's ask.
@@ -705,6 +703,44 @@ def test_disk_shuffle_map_applies_ray_remote_args(
     assert {k: kwargs[k] for k in expected_options} == expected_options
     assert ("num_gpus" in kwargs) == ("num_gpus" in expected_options)
     assert "memory" not in kwargs
+
+
+def test_disk_shuffle_write_fn_caps_polars_threads_in_task(monkeypatch):
+    """Shuffle map tasks cap polars at one thread from inside the task instead
+    of through a runtime env, so the writer's remote args stay equal to the
+    upstream read's and the two fuse. A cap the user already set wins."""
+    from ray.data._internal.execution.interfaces.task_context import TaskContext
+
+    write_fn = DiskShuffleWriteFn(
+        partition_fn=lambda table: {},
+        num_partitions=1,
+        out_dir="unused",
+        shuffle_id="s",
+        compression=None,
+        block_transformer=None,
+    )
+    seen = []
+
+    def _fake_write(blocks, **kwargs):
+        seen.append(os.environ.get("POLARS_MAX_THREADS"))
+        return {"path": "unused"}
+
+    ctx = TaskContext(task_idx=0, op_name="writer")
+    with patch(
+        "ray.data._internal.execution.operators.shuffle_operators."
+        "disk_shuffle_tasks._write_disk_shuffle_file",
+        side_effect=_fake_write,
+    ):
+        monkeypatch.delenv("POLARS_MAX_THREADS", raising=False)
+        list(write_fn([], ctx))
+        monkeypatch.setenv("POLARS_MAX_THREADS", "4")
+        list(write_fn([], ctx))
+    assert seen == ["1", "4"]
+
+    # The object-store map task shares the helper.
+    monkeypatch.delenv("POLARS_MAX_THREADS", raising=False)
+    cap_polars_threads()
+    assert os.environ["POLARS_MAX_THREADS"] == "1"
 
 
 def test_disk_regroup_orders_handles_by_map_id(ray_start_regular_shared_2_cpus):
@@ -789,13 +825,15 @@ def test_disk_shuffle_map_is_plain_map_operator(restore_data_context):
     )
     assert isinstance(map_op, TaskPoolMapOperator)
     assert not map_op.isolate_workers
-    assert not map_op.supports_fusion()
+    assert map_op.supports_fusion()
     remote_args = map_op._get_dynamic_ray_remote_args()
     assert remote_args["label_selector"] == {
         "subcluster": "train",
         "zone": "us-west",
     }
-    assert remote_args["runtime_env"] == _SHUFFLE_MAP_RUNTIME_ENV
+    # No runtime env of its own: the polars thread cap is set in the task so
+    # the writer's remote args match the upstream read's and the two fuse.
+    assert "runtime_env" not in remote_args
 
 
 @pytest.mark.parametrize(
