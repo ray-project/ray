@@ -143,8 +143,9 @@ class Normalizer(SerializablePreprocessorBase):
     def _transform_pandas(self, df: pd.DataFrame):
         columns = df.loc[:, self._columns]
         column_norms = self._norm_fns[self._norm](columns)
+        safe_norms = column_norms.where(column_norms != 0, 1)
 
-        df[self._output_columns] = columns.div(column_norms, axis=0)
+        df[self._output_columns] = columns.div(safe_norms, axis=0)
         return df
 
     def __repr__(self):
