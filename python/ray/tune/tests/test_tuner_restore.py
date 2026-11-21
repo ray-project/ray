@@ -333,6 +333,53 @@ def test_tuner_restore_restart_errored(ray_start_2_cpus, tmpdir):
     assert [r.metrics["it"] for r in ordered_results] == [2, 2, 2, 2]
 
 
+def _train_fn_report_run_window(config):
+    if os.path.exists(config["fail_marker"]):
+        raise RuntimeError("I am failing")
+
+    start = time.time()
+    time.sleep(0.5)
+    tune.report({"start": start, "end": time.time()})
+
+
+@pytest.mark.parametrize(
+    "restore_kwargs", [{"resume_errored": True}, {"restart_errored": True}]
+)
+def test_tuner_restore_errored_max_concurrent_trials(
+    ray_start_2_cpus, tmpdir, restore_kwargs
+):
+    """Restored trials should not run more at once than `max_concurrent_trials`."""
+    fail_marker = tmpdir / "fail_marker"
+    fail_marker.write_text("", encoding="utf-8")
+    exp_name = "test_tuner_restore_errored_max_concurrent_trials"
+    # All 4 trials fit on the 2 CPUs at once, so only the limit keeps them apart.
+    trainable = tune.with_resources(_train_fn_report_run_window, {"cpu": 0.5})
+
+    tuner = Tuner(
+        trainable,
+        tune_config=TuneConfig(max_concurrent_trials=1),
+        run_config=RunConfig(name=exp_name, storage_path=str(tmpdir)),
+        param_space={
+            "id": tune.grid_search([0, 1, 2, 3]),
+            "fail_marker": str(fail_marker),
+        },
+    )
+    assert len(tuner.fit().errors) == 4
+
+    del tuner
+    fail_marker.remove(ignore_errors=True)
+
+    tuner = Tuner.restore(str(tmpdir / exp_name), trainable=trainable, **restore_kwargs)
+    results = tuner.fit()
+    assert len(results) == 4
+    assert len(results.errors) == 0
+
+    # One trial at a time: each trial starts after the previous one has ended.
+    runs = sorted((r.metrics["start"], r.metrics["end"]) for r in results)
+    for (_, prev_end), (start, _) in zip(runs, runs[1:]):
+        assert start >= prev_end
+
+
 def test_tuner_resume_unfinished(ray_start_2_cpus, tmpdir, monkeypatch):
     """Resuming unfinished trials should pick up existing state"""
     monkeypatch.setenv("TUNE_GLOBAL_CHECKPOINT_S", "0.1")
