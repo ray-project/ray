@@ -327,15 +327,20 @@ class ReadFiles(
         return schema
 
     def infer_metadata(self) -> BlockMetadata:
-        """Return empty metadata; downstream callers fall back to materialization.
+        """Return the row count if the scanner knows it; nothing else.
 
         Prior ``ReadFiles`` versions reached into a driver-side file cache to
         compute size hints. With listing owned by an upstream
         ``ListFiles`` op, metadata-for-sizing is computed from the
         materialized manifest at execution time — the logical op doesn't
-        try to pre-estimate.
+        try to pre-estimate. The row count comes from
+        ``Scanner.exact_row_count``; a ``block_udf`` could change it, so it is
+        dropped then.
         """
-        return BlockMetadata(None, None, None, None)
+        num_rows = None if self.block_udf else self.scanner.exact_row_count()
+        return BlockMetadata(
+            num_rows=num_rows, size_bytes=None, input_files=None, exec_stats=None
+        )
 
     def supports_projection_pushdown(self) -> bool:
         from ray.data._internal.datasource_v2.interfaces.pushdown import (

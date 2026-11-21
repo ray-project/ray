@@ -150,6 +150,40 @@ class IcebergDatasourceV2(DataSourceWithMetadata[FileManifest]):
     def _projected_schema(self) -> "Schema":
         return self._data_scan().projection()
 
+    def _snapshot_row_count(self) -> Optional[int]:
+        """Rows in the pinned snapshot per its summary, or ``None``.
+
+        Every summary field is optional, so a missing one declines.
+        ``total-records`` counts rows in data files, so both delete totals
+        must be present and zero for it to be the table's row count. A catalog
+        that plans on its server also declines: its plan, not the snapshot,
+        says which files a read covers.
+        """
+        from pyiceberg.table.snapshots import (
+            TOTAL_EQUALITY_DELETES,
+            TOTAL_POSITION_DELETES,
+            TOTAL_RECORDS,
+        )
+
+        if ServerSidePlanning.for_table(self.table) is not None:
+            return None
+        if self.snapshot_id is None:
+            # A table nothing was ever written to has no rows.
+            return 0
+        snapshot = self.table.snapshot_by_id(self.snapshot_id)
+        if snapshot is None or snapshot.summary is None:
+            return None
+        counts = []
+        for key in (TOTAL_POSITION_DELETES, TOTAL_EQUALITY_DELETES, TOTAL_RECORDS):
+            value = snapshot.summary.get(key)
+            if value is None or not value.isdigit():
+                return None
+            counts.append(int(value))
+        position_deletes, equality_deletes, total_records = counts
+        if position_deletes or equality_deletes:
+            return None
+        return total_records
+
     # --- ``DataSourceV2`` interface -------------------------------------
 
     @property
@@ -211,4 +245,5 @@ class IcebergDatasourceV2(DataSourceWithMetadata[FileManifest]):
             row_filter=self._row_filter,
             case_sensitive=self._case_sensitive,
             limit=self._limit,
+            snapshot_row_count=self._snapshot_row_count(),
         )
