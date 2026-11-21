@@ -56,6 +56,9 @@ def test_request_cancel_resources(ray_start_4_cpus):
     assert pg_states["PENDING"] + pg_states["CREATED"] == 0
     assert pg_states["REMOVED"] == 1
 
+    with pytest.raises(RuntimeError, match="Cannot cancel resource request"):
+        manager.cancel_resource_request(REQUEST_2_CPU)
+
 
 def test_acquire_return_resources(ray_start_4_cpus):
     """Tests that acquiring and returning resources works.

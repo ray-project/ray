@@ -218,6 +218,29 @@ def test_task_barrier(ray_start_4_cpus):
     assert "e" not in seen
 
 
+def test_wait_empty_and_discarded_sibling(ray_start_4_cpus):
+    event_manager = RayEventManager()
+    # Waiting with no tracked futures should be a no-op rather than raising ValueError
+    event_manager.wait()
+    event_manager.wait(num_results=5)
+
+    seen = []
+    f1 = succeeding.remote("first")
+    f2 = succeeding.remote("second")
+
+    def on_first(result: Any):
+        seen.append(result)
+        event_manager.discard_future(f2)
+
+    event_manager.track_future(f1, on_result=on_first)
+    event_manager.track_future(f2, on_result=lambda r: seen.append(r))
+
+    # Ensure both futures are ready before wait() resolves them
+    ray.wait([f1, f2], num_returns=2)
+    event_manager.wait(num_results=10)
+    assert not event_manager._tracked_futures
+
+
 if __name__ == "__main__":
     import sys
 
