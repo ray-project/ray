@@ -670,7 +670,7 @@ def test_on_task_completed_tolerates_released_actor(two_node_cluster):
 # The output-backpressure path asks the pool for an actor's output
 # limits even after the actor was released (a lingering data-task ref). A bare
 # _logical_id_to_actor[actor_id] lookup KeyError'd there and crashed the
-# executor (detect_if_idle -> is_output_backpressured -> output_bytes_limit);
+# executor (relieve_output_limit_deadlock -> is_output_backpressured -> output_bytes_limit);
 # a released / unknown actor must yield no constraint instead.
 # ---------------------------------------------------------------------------
 def test_output_limits_tolerate_released_actor(two_node_cluster):

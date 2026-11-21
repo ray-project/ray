@@ -674,7 +674,7 @@ def test_failed_reconstruction_aborts_the_lost_task_once(
         reconstruction_attempts.append(task.task_index())
         raise LineageReconstructionError(lost_error, "failed by test")
 
-    def lost_output(self, max_bytes_to_read, metadata_fetcher):
+    def lost_output(self, max_to_read, metadata_fetcher):
         # A lost output stays lost: every read raises until the executor stops
         # polling the task.
         raise _lost_error()

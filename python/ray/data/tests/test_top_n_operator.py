@@ -19,7 +19,10 @@ from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
+from ray.data._internal.execution.interfaces.physical_operator import (
+    DataOpTask,
+    TaskPullRequest,
+)
 from ray.data._internal.execution.metadata_fetcher import ThreadedMetadataFetcher
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
@@ -1025,7 +1028,9 @@ def test_top_n_delayed_metadata_does_not_commit_or_resurrect_state(
         task: DataOpTask = active_task
 
         def defer_output() -> bool:
-            task.on_data_ready(None, fetcher)
+            task.on_data_ready(
+                max_to_read=TaskPullRequest.inf(), metadata_fetcher=fetcher
+            )
             fetcher.submit(operator.id, [task])
             return task.has_pending_emits()
 
@@ -1050,7 +1055,9 @@ def test_top_n_delayed_metadata_does_not_commit_or_resurrect_state(
         def finish_fetch() -> bool:
             assert not fetcher.emit_ready_and_fire_done_callbacks()
 
-            task.on_data_ready(None, fetcher)
+            task.on_data_ready(
+                max_to_read=TaskPullRequest.inf(), metadata_fetcher=fetcher
+            )
             fetcher.submit(operator.id, [task])
             return task.has_finished and not task.has_pending_emits()
 
