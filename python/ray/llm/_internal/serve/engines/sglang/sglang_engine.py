@@ -148,6 +148,12 @@ class SGLangServer:
         finally:
             signal.signal = original_signal_func
 
+        if not hasattr(self.engine, "check_health"):
+            logger.warning(
+                "Installed SGLang RayEngine has no check_health. Replica health "
+                "checks will not detect a dead or stuck scheduler."
+            )
+
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
         sampling_params: dict[str, Any] = {}
@@ -272,10 +278,17 @@ class SGLangServer:
         return
 
     async def check_health(self) -> None:
-        # SGLang's in-process Engine API does not expose a health-check method.
-        # Its health endpoints exist only in HTTP/gRPC server entrypoints, which
-        # this integration does not run. Keep the protocol hook as a no-op.
-        return
+        # The probe is a real generate request, which blocks while paused or asleep.
+        if self._is_paused or self._sleeping_tags:
+            return
+        engine_check_health = getattr(self.engine, "check_health", None)
+        if engine_check_health is None:
+            return
+        try:
+            await engine_check_health()
+        except Exception as e:
+            logger.error("SGLang engine health check failed: %s", e)
+            raise
 
     async def __serve_build_asgi_app__(self) -> Any:
         """Return SGLang's native OpenAI ASGI app for Ray Serve direct streaming.
