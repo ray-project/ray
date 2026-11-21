@@ -24,6 +24,8 @@ from ray._private.accelerators.tpu import (
     TPU_PROCESS_ADDRESSES_ENV_VAR,
     TPU_PROCESS_BOUNDS_ENV_VAR,
     TPU_PROCESS_PORT_ENV_VAR,
+    TPU_SKIP_MDS_QUERY_ENV_VAR,
+    TPU_VISIBLE_DEVICES_ENV_VAR,
     TPU_WORKER_HOSTNAMES_ENV_VAR,
     TPU_WORKER_ID_ENV_VAR,
     VALID_TPU_TYPES,
@@ -422,24 +424,35 @@ def get_torchtpu_env_vars(
     master_addr: Optional[str] = None,
     tpu_resource_per_chip: int = 1,
     accelerator_type: Optional[str] = None,
+    local_rank: Optional[int] = None,
+    master_port: Optional[int] = None,
+    skip_mds_query: bool = False,
+    visible_device: Optional[Union[int, str]] = None,
+    slice_index: int = 0,
+    num_slices: int = 1,
 ) -> Dict[str, str]:
     """Returns environment variables required for PyTorch/TPU (torch_tpu) execution.
 
     Derived ``TORCH_TPU_SLICEBUILDER_ADDRESSES`` entries are ordered host-major
     across ``worker_hostnames`` with ``devices_per_host`` sequential ports per
     host starting at ``slicebuilder_port`` (``torch_tpu`` indexes
-    ``addresses[RANK % len(addresses)]``). Standard ``torch.distributed`` rank
-    variables (``RANK``, ``LOCAL_RANK``, ``WORLD_SIZE``, ``MASTER_PORT``) are
-    set by the caller or launcher (such as ``torchrun``), and multi-slice
-    workloads pair this with :func:`get_tpu_coordinator_env_vars`.
+    ``addresses[RANK % len(addresses)]``). When ``local_rank``, ``master_port``,
+    ``visible_device``, or ``skip_mds_query`` are provided, the corresponding
+    per-process variables (``RANK``, ``LOCAL_RANK``, ``WORLD_SIZE``,
+    ``MASTER_PORT``, ``TPU_VISIBLE_DEVICES``, ``TPU_SKIP_MDS_QUERY``) are
+    included as well; when omitted, those variables are left to the caller or
+    launcher (such as ``torchrun``). Multi-slice workloads pair this with
+    :func:`get_tpu_coordinator_env_vars`.
 
     Args:
         topology: The target TPU topology string (e.g. "4x4", "2x4", or "4,4,1").
         worker_hostnames: Optional comma-separated string or list of host IP addresses
             or DNS hostnames. When both ``worker_hostnames`` and
             ``slicebuilder_addresses`` are omitted, only ``TORCH_TPU_TOPOLOGY``
-            (plus ``MASTER_ADDR`` or ``TPU_WORKER_ID`` if explicitly passed) is
-            returned for pairing with ambient container environment variables.
+            (plus any explicitly requested port/device/MDS options) is
+            returned for pairing with ambient container environment variables;
+            computing rank variables via ``local_rank`` requires
+            ``worker_hostnames`` or ``slicebuilder_addresses``.
         worker_id: Optional integer ID of the worker host (0-indexed, for passing
             to ``torchrun``-style launchers as ``--node_rank`` / ``NODE_RANK``).
             Defaults to 0 for a single host; when omitted on multiple hosts,
@@ -452,16 +465,32 @@ def get_torchtpu_env_vars(
             defaults to the first worker hostname.
         tpu_resource_per_chip: Logical TPU resources per physical chip (defaults to 1).
         accelerator_type: Optional TPU accelerator version or type (e.g. "v6e", "v7x").
+        local_rank: Optional 0-indexed device rank on the local host. When set,
+            requires ``worker_hostnames`` or ``slicebuilder_addresses`` and
+            populates ``LOCAL_RANK``, ``RANK``, and ``WORLD_SIZE``.
+        master_port: Optional TCP port for ``MASTER_PORT`` (1..65535).
+        skip_mds_query: If True, sets ``TPU_SKIP_MDS_QUERY="1"`` (useful for
+            soft-slice and explicit-topology TorchTPU runs).
+        visible_device: Optional device index or comma-separated device mask to
+            export as ``TPU_VISIBLE_DEVICES``.
+        slice_index: 0-based slice index used when computing global ``RANK``
+            across multiple slices (defaults to 0).
+        num_slices: Total number of slices used when computing ``WORLD_SIZE``
+            (defaults to 1).
 
     Returns:
         A dictionary mapping PyTorch/TPU environment variables to their values.
 
     Raises:
-        TypeError: If ``worker_id``, ``slicebuilder_port``, or
-            ``tpu_resource_per_chip`` is not an integer.
+        TypeError: If ``worker_id``, ``slicebuilder_port``,
+            ``tpu_resource_per_chip``, ``local_rank``, ``master_port``,
+            ``slice_index``, or ``num_slices`` is not an integer, if
+            ``skip_mds_query`` is not a bool, or if ``visible_device`` is not
+            an integer or string.
         ValueError: If ``topology``, ``worker_hostnames``, ``slicebuilder_addresses``,
-            ``slicebuilder_port``, ``master_addr``, ``worker_id``, or
-            ``tpu_resource_per_chip`` is invalid.
+            ``slicebuilder_port``, ``master_addr``, ``worker_id``,
+            ``tpu_resource_per_chip``, ``local_rank``, ``master_port``,
+            ``visible_device``, ``slice_index``, or ``num_slices`` is invalid.
     """
     if type(slicebuilder_port) is not int:
         raise TypeError(
@@ -471,6 +500,24 @@ def get_torchtpu_env_vars(
         raise ValueError(
             f"slicebuilder_port must be in [1, 65535], got {slicebuilder_port}."
         )
+    if master_port is not None:
+        if type(master_port) is not int:
+            raise TypeError(f"master_port must be an integer, got {type(master_port)}.")
+        if not (1 <= master_port <= 65535):
+            raise ValueError(f"master_port must be in [1, 65535], got {master_port}.")
+    if type(num_slices) is not int:
+        raise TypeError(f"num_slices must be an integer, got {type(num_slices)}.")
+    if num_slices < 1:
+        raise ValueError(f"num_slices must be >= 1, got {num_slices}.")
+    if type(slice_index) is not int:
+        raise TypeError(f"slice_index must be an integer, got {type(slice_index)}.")
+    if not (0 <= slice_index < num_slices):
+        raise ValueError(
+            f"slice_index {slice_index} is out of range for {num_slices} slice(s)."
+        )
+    if local_rank is not None and type(local_rank) is not int:
+        raise TypeError(f"local_rank must be an integer, got {type(local_rank)}.")
+
     env_vars: Dict[str, str] = {
         TORCH_TPU_TOPOLOGY_ENV_VAR: normalize_torchtpu_topology(
             topology,
@@ -483,6 +530,32 @@ def get_torchtpu_env_vars(
         if not clean_master:
             raise ValueError(f"Invalid master_addr: {master_addr!r}.")
         env_vars["MASTER_ADDR"] = clean_master
+    if master_port is not None:
+        env_vars["MASTER_PORT"] = str(master_port)
+    if not isinstance(skip_mds_query, bool):
+        raise TypeError(f"skip_mds_query must be a bool, got {type(skip_mds_query)}.")
+    if skip_mds_query:
+        env_vars[TPU_SKIP_MDS_QUERY_ENV_VAR] = "1"
+    if visible_device is not None:
+        if type(visible_device) is int:
+            if visible_device < 0:
+                raise ValueError(f"visible_device must be >= 0, got {visible_device}.")
+            env_vars[TPU_VISIBLE_DEVICES_ENV_VAR] = str(visible_device)
+        elif isinstance(visible_device, str):
+            cleaned_device = visible_device.strip()
+            if not cleaned_device:
+                raise ValueError("visible_device must not be empty.")
+            parts = [p.strip() for p in cleaned_device.split(",")]
+            if not all(p.isascii() and p.isdecimal() for p in parts):
+                raise ValueError(
+                    f"Invalid visible_device {visible_device!r}; expected a "
+                    "non-negative integer or comma-separated non-negative integers."
+                )
+            env_vars[TPU_VISIBLE_DEVICES_ENV_VAR] = ",".join(str(int(p)) for p in parts)
+        else:
+            raise TypeError(
+                f"visible_device must be an int or str, got {type(visible_device)}."
+            )
 
     if slicebuilder_addresses is not None:
         if isinstance(slicebuilder_addresses, str):
@@ -512,6 +585,9 @@ def get_torchtpu_env_vars(
         if worker_hostnames is None:
             worker_hostnames = list(unique_hosts)
 
+    total_devices_per_slice = math.prod(
+        int(d) for d in env_vars[TORCH_TPU_TOPOLOGY_ENV_VAR].split(",")
+    )
     clean_hosts: List[str] = []
     if worker_hostnames is not None:
         if isinstance(worker_hostnames, str):
@@ -526,15 +602,13 @@ def get_torchtpu_env_vars(
             raise ValueError("worker_hostnames must contain at least one host.")
         env_vars[TPU_WORKER_HOSTNAMES_ENV_VAR] = ",".join(clean_hosts)
         if TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR not in env_vars:
-            total_devices = math.prod(
-                int(d) for d in env_vars[TORCH_TPU_TOPOLOGY_ENV_VAR].split(",")
-            )
-            if total_devices % len(clean_hosts) != 0:
+            if total_devices_per_slice % len(clean_hosts) != 0:
                 raise ValueError(
-                    f"Total TPU devices ({total_devices}) for topology '{topology}' "
-                    f"must be divisible by the number of hosts ({len(clean_hosts)})."
+                    f"Total TPU devices ({total_devices_per_slice}) for topology "
+                    f"'{topology}' must be divisible by the number of hosts "
+                    f"({len(clean_hosts)})."
                 )
-            devices_per_host = total_devices // len(clean_hosts)
+            devices_per_host = total_devices_per_slice // len(clean_hosts)
             if slicebuilder_port + devices_per_host - 1 > 65535:
                 raise ValueError(
                     f"slicebuilder_port {slicebuilder_port} with {devices_per_host} "
@@ -550,6 +624,43 @@ def get_torchtpu_env_vars(
     worker_id = _validate_worker_id(worker_id, len(clean_hosts))
     if worker_id is not None:
         env_vars[TPU_WORKER_ID_ENV_VAR] = str(worker_id)
+
+    if local_rank is not None:
+        if not clean_hosts:
+            raise ValueError(
+                "worker_hostnames or slicebuilder_addresses is required when "
+                "local_rank is specified."
+            )
+        if total_devices_per_slice % len(clean_hosts) != 0:
+            raise ValueError(
+                f"Total TPU devices ({total_devices_per_slice}) for topology "
+                f"'{topology}' must be divisible by the number of hosts "
+                f"({len(clean_hosts)})."
+            )
+        devices_per_host = total_devices_per_slice // len(clean_hosts)
+        if not (0 <= local_rank < devices_per_host):
+            raise ValueError(
+                f"local_rank {local_rank} is out of bounds for {devices_per_host} "
+                f"device(s) per host. Must be in range [0, {devices_per_host - 1}]."
+            )
+        resolved_worker_id = worker_id
+        if resolved_worker_id is None:
+            if len(clean_hosts) <= 1:
+                resolved_worker_id = 0
+            else:
+                raise ValueError(
+                    "worker_id is required when local_rank is specified on a "
+                    f"multi-host slice ({len(clean_hosts)} hosts)."
+                )
+        world_size = total_devices_per_slice * num_slices
+        rank = (
+            slice_index * total_devices_per_slice
+            + resolved_worker_id * devices_per_host
+            + local_rank
+        )
+        env_vars["LOCAL_RANK"] = str(local_rank)
+        env_vars["RANK"] = str(rank)
+        env_vars["WORLD_SIZE"] = str(world_size)
 
     return env_vars
 
@@ -1162,11 +1273,15 @@ class SlicePlacementGroup:
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         slicebuilder_port: int = DEFAULT_TORCH_TPU_SLICEBUILDER_PORT,
         master_addr: Optional[str] = None,
+        local_rank: Optional[int] = None,
+        master_port: Optional[int] = None,
+        skip_mds_query: bool = False,
+        visible_device: Optional[Union[int, str]] = None,
     ) -> Dict[str, str]:
         """Returns the PyTorch/TPU (torch_tpu) environment variables for this slice.
 
         See :func:`get_torchtpu_env_vars` for details on address ordering and
-        required ``torch.distributed`` rank variables.
+        optional per-rank ``torch.distributed`` variables.
 
         Args:
             worker_id: Optional integer ID of the worker within the slice
@@ -1185,17 +1300,29 @@ class SlicePlacementGroup:
                 resolve the placed IP of slice 0's host 0 (pass
                 ``spg.get_worker_addrs(slice_index)[0]`` once that slice is ready
                 when running independent single-slice worlds).
+            local_rank: Optional 0-indexed device rank on the local host. When set,
+                populates ``LOCAL_RANK``, ``RANK``, and ``WORLD_SIZE`` across
+                ``num_slices``.
+            master_port: Optional TCP port for ``MASTER_PORT``.
+            skip_mds_query: If True, sets ``TPU_SKIP_MDS_QUERY="1"``.
+            visible_device: Optional device index or comma-separated device mask
+                to export as ``TPU_VISIBLE_DEVICES``.
 
         Returns:
             A dictionary mapping PyTorch/TPU environment variables to their values.
 
         Raises:
-            TypeError: If worker_id or slicebuilder_port is not an integer.
-            ValueError: If slice_index, worker_id, or any address or port
-                argument is invalid.
+            TypeError: If worker_id, slice_index, slicebuilder_port,
+                local_rank, or master_port is not an integer, if
+                skip_mds_query is not a bool, or if visible_device is not an
+                integer or string.
+            ValueError: If slice_index, worker_id, local_rank, visible_device,
+                or any address or port argument is invalid.
             RuntimeError: If worker hostnames or slice 0's master address cannot
                 be resolved.
         """
+        if type(slice_index) is not int:
+            raise TypeError(f"slice_index must be an integer, got {type(slice_index)}.")
         if not (0 <= slice_index < self.num_slices):
             raise ValueError(
                 f"slice_index {slice_index} is out of range for {self.num_slices} slice(s)."
@@ -1222,6 +1349,12 @@ class SlicePlacementGroup:
             master_addr=master_addr,
             tpu_resource_per_chip=self._tpu_resource_per_chip,
             accelerator_type=self._accelerator_version,
+            local_rank=local_rank,
+            master_port=master_port,
+            skip_mds_query=skip_mds_query,
+            visible_device=visible_device,
+            slice_index=slice_index,
+            num_slices=self._num_slices,
         )
 
     @property
@@ -2371,11 +2504,15 @@ class SubslicePlacementGroup:
         slicebuilder_addresses: Optional[Union[str, List[str]]] = None,
         slicebuilder_port: int = DEFAULT_TORCH_TPU_SLICEBUILDER_PORT,
         master_addr: Optional[str] = None,
+        local_rank: Optional[int] = None,
+        master_port: Optional[int] = None,
+        skip_mds_query: bool = False,
+        visible_device: Optional[Union[int, str]] = None,
     ) -> Dict[str, str]:
         """Returns the PyTorch/TPU (torch_tpu) environment variables for this subslice.
 
         See :func:`get_torchtpu_env_vars` for details on address ordering and
-        required ``torch.distributed`` rank variables.
+        optional per-rank ``torch.distributed`` variables.
 
         Args:
             worker_id: Optional integer ID of the worker within the subslice
@@ -2391,13 +2528,22 @@ class SubslicePlacementGroup:
                 of address:port strings for this subslice.
             slicebuilder_port: Base port number for slicebuilder addresses (defaults to 8471).
             master_addr: Optional IP address or hostname of the rank-0 master node.
+            local_rank: Optional 0-indexed device rank on the local host. When set,
+                populates ``LOCAL_RANK``, ``RANK``, and ``WORLD_SIZE``.
+            master_port: Optional TCP port for ``MASTER_PORT``.
+            skip_mds_query: If True, sets ``TPU_SKIP_MDS_QUERY="1"``.
+            visible_device: Optional device index or comma-separated device mask
+                to export as ``TPU_VISIBLE_DEVICES``.
 
         Returns:
             A dictionary mapping PyTorch/TPU environment variables to their values.
 
         Raises:
-            TypeError: If worker_id or slicebuilder_port is not an integer.
-            ValueError: If worker_id or any address or port argument is invalid.
+            TypeError: If worker_id, slicebuilder_port, local_rank, or
+                master_port is not an integer, if skip_mds_query is not a bool,
+                or if visible_device is not an integer or string.
+            ValueError: If worker_id, local_rank, visible_device, or any
+                address or port argument is invalid.
             RuntimeError: If worker hostnames cannot be resolved.
         """
         if worker_hostnames is None and slicebuilder_addresses is None:
@@ -2412,6 +2558,10 @@ class SubslicePlacementGroup:
             master_addr=master_addr,
             tpu_resource_per_chip=self._tpu_resource_per_chip,
             accelerator_type=self._accelerator_version,
+            local_rank=local_rank,
+            master_port=master_port,
+            skip_mds_query=skip_mds_query,
+            visible_device=visible_device,
         )
         env_vars[GKE_TPU_TOPOLOGY_ENV_VAR] = self._subslice_topology
         return env_vars
