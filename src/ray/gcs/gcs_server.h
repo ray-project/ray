@@ -33,6 +33,7 @@
 #include "ray/gcs/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/gcs/gcs_task_manager.h"
+#include "ray/gcs/leader_election/leader_elector.h"
 #include "ray/gcs/metrics.h"
 #include "ray/gcs/postable/postable.h"
 #include "ray/gcs/pubsub_handler.h"
@@ -78,6 +79,9 @@ struct GcsServerConfig {
   // server boots as passive and its mutating RPCs are gated until it is promoted
   // to the active leader. Defaults to false (single active GCS, legacy behavior).
   bool enable_gcs_leader_election = false;
+  // Set only in tests, so the GCS competes for a fake lease instead of the Kubernetes
+  // one.
+  std::shared_ptr<LeaderLeaseClientInterface> lease_client;
 };
 
 class GcsNodeManager;
@@ -129,7 +133,8 @@ class GcsServer {
   bool IsStopped() const { return is_stopped_; }
 
   /// Check if this GCS server instance is currently the active leader.
-  bool IsLeader() const { return is_leader_.load(); }
+  /// Stays false once the lease is lost, whatever later sets is_leader_.
+  bool IsLeader() const { return is_leader_.load() && !lease_lost_.load(); }
 
   /// Promote this GCS from passive to active.
   ///
@@ -401,8 +406,7 @@ class GcsServer {
   std::atomic<bool> is_stopped_;
   /// Whether this GCS is currently the active leader. Initialized from
   /// config_.enable_gcs_leader_election: leader election disabled => always leader
-  /// (legacy behavior); enabled => starts passive until promoted (promotion wired
-  /// up in a later PR).
+  /// (legacy behavior); enabled => starts passive until promoted.
   std::atomic<bool> is_leader_;
   /// Whether PromoteToLeader() has begun loading the GCS tables. Closes the window
   /// where is_leader_ is still false but a promotion is already in flight. Unlike the
@@ -410,12 +414,18 @@ class GcsServer {
   /// io context, so a plain bool is correct; making it atomic would imply the rest of
   /// that function is safe to call from another thread, and it is not.
   bool promotion_started_ = false;
+  /// Set from the elector's thread when the leader lease is lost.
+  std::atomic<bool> lease_lost_ = false;
   /// Flag to ensure InitMetricsExporter is only called once.
   std::atomic<bool> metrics_exporter_initialized_ = false;
   // Invoked when the RPC server has bound to a port.
   std::function<void(int)> port_ready_callback_;
   /// Client to call a metrics agent gRPC server.
   std::unique_ptr<rpc::MetricsAgentClient> metrics_agent_client_;
+  /// Competes for the leader lease and promotes this GCS when it wins. Null when leader
+  /// election is disabled.
+  /// Declared after everything its callbacks touch, so it is destroyed before them.
+  std::unique_ptr<LeaderElector> leader_elector_;
   /// Monitors the GCS io_contexts on a dedicated thread. The health_callback
   /// passed into it is used to set the gRPC health check as SERVING/NOT_SERVING.
   /// Declared last so it is stopped/destroyed before the io_contexts

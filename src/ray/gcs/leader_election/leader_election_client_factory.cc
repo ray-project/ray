@@ -14,16 +14,49 @@
 
 #include "ray/gcs/leader_election/leader_election_client_factory.h"
 
+#include <cstdlib>
+#include <fstream>
+#include <iterator>
 #include <mutex>
 
+#include "absl/strings/ascii.h"
 #include "ray/gcs/leader_election/k8s_lease_client.h"
 #include "ray/rpc/authentication/k8s_util.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace gcs {
 
+std::string LeaderLeaseClientFactory::ResolveLeaseNamespace(
+    const std::string &configured_namespace) {
+  std::string lease_namespace(absl::StripAsciiWhitespace(configured_namespace));
+  if (!lease_namespace.empty()) {
+    return lease_namespace;
+  }
+  if (const char *pod_namespace = std::getenv("POD_NAMESPACE");
+      pod_namespace != nullptr) {
+    lease_namespace = std::string(absl::StripAsciiWhitespace(pod_namespace));
+    if (!lease_namespace.empty()) {
+      return lease_namespace;
+    }
+  }
+  std::ifstream namespace_file("/var/run/secrets/kubernetes.io/serviceaccount/namespace");
+  std::string file_contents((std::istreambuf_iterator<char>(namespace_file)),
+                            std::istreambuf_iterator<char>());
+  return std::string(absl::StripAsciiWhitespace(file_contents));
+}
+
 std::unique_ptr<LeaderLeaseClientInterface> LeaderLeaseClientFactory::Create(
     const std::string &lease_namespace, const std::string &lease_key) {
+  const std::string resolved_key(absl::StripAsciiWhitespace(lease_key));
+  RAY_CHECK(!resolved_key.empty())
+      << "RAY_gcs_leader_election_lease_name must be set when GCS leader election "
+         "is enabled.";
+  const std::string resolved_namespace = ResolveLeaseNamespace(lease_namespace);
+  RAY_CHECK(!resolved_namespace.empty())
+      << "Could not determine the namespace of the GCS leader lease. Set "
+         "RAY_gcs_leader_election_lease_namespace or POD_NAMESPACE.";
+
   // Ensure the in-cluster Kubernetes client configuration is initialized before any
   // K8sApiGet/Post/Put call. Otherwise those helpers return Status::Invalid until some
   // other subsystem (currently only the auth-token validator) happens to initialize it
@@ -32,8 +65,8 @@ std::unique_ptr<LeaderLeaseClientInterface> LeaderLeaseClientFactory::Create(
   std::call_once(rpc::k8s::k8s_client_config_flag, rpc::k8s::InitK8sClientConfig);
 
   return std::make_unique<K8sLeaseClient>(
-      lease_namespace,
-      lease_key,
+      resolved_namespace,
+      resolved_key,
       [](const std::string &path, nlohmann::json &resp) {
         return rpc::k8s::K8sApiGet(path, resp);
       },
