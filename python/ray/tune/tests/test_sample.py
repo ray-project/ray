@@ -1307,6 +1307,33 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testConvertNevergradNormal(self):
+        import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
+
+        searcher = NevergradSearch(
+            space={"a": tune.randn(5, 2)},
+            optimizer=ng.optimizers.RandomSearchMaker(sampler="parametrization"),
+            metric="m",
+            mode="min",
+        )
+        values = [searcher.suggest(f"trial_{i}")["a"] for i in range(2000)]
+
+        self.assertTrue(np.isfinite(values).all())
+        self.assertAlmostEqual(np.mean(values), 5, delta=0.3)
+        self.assertAlmostEqual(np.std(values), 2, delta=0.3)
+
+        # qrandn drops quantization, so it must take the same path.
+        searcher = NevergradSearch(
+            space={"a": tune.qrandn(5, 2, 0.5)},
+            optimizer=ng.optimizers.RandomSearchMaker(sampler="parametrization"),
+            metric="m",
+            mode="min",
+        )
+        values = [searcher.suggest(f"trial_{i}")["a"] for i in range(20)]
+        self.assertTrue(np.isfinite(values).all())
+
     def testSampleBoundsNevergrad(self):
         import nevergrad as ng
 
@@ -1314,7 +1341,6 @@ class SearchSpaceTest(unittest.TestCase):
 
         ignore = [
             "func",
-            "randn",
             "qrandn",
             "quniform",
             "qloguniform",
