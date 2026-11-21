@@ -25,8 +25,8 @@ amd_product_dict = {
     "0x75a3": "AMD-Instinct-MI355X-OAM",
     "0x6798": "AMD-Radeon-R9-200-HD-7900",
     "0x6799": "AMD-Radeon-HD-7900",
-    "0x679A": "AMD-Radeon-HD-7900",
-    "0x679B": "AMD-Radeon-HD-7900",
+    "0x679a": "AMD-Radeon-HD-7900",
+    "0x679b": "AMD-Radeon-HD-7900",
 }
 
 
@@ -146,7 +146,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
             return None
         finally:
             try:
-                pyamdsmi.pyamdsmi_shutdown()
+                pyamdsmi.smi_shutdown()
             except Exception:
                 pass
 
