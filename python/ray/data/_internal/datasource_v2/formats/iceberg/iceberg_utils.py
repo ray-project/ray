@@ -1,6 +1,6 @@
 """Iceberg helpers shared by the V2 Iceberg scanner and by V1.
 
-Two pieces, both stateless:
+Three pieces, all stateless:
 
 - Filter translation. ``_IcebergExpressionVisitor`` turns a Ray ``Expr`` into a
   PyIceberg ``BooleanExpression`` by mapping each Ray operation to its Iceberg
@@ -9,16 +9,21 @@ Two pieces, both stateless:
   use it; V2 doesn't push filters yet.
 - ``_get_empty_projection_schema``, the stub field a read projects when it needs
   no columns, because PyIceberg returns zero rows for an empty projection.
+- ``_estimate_inmemory_file_size``, a data file's decoded size for the columns
+  read, from the per-column sizes Iceberg's manifests record.
 
-The visitor and the stub schema used to live in the legacy
+The visitor, the stub schema and the size estimate used to live in the legacy
 ``ray.data._internal.datasource.iceberg_datasource`` module. They moved here so
 that ``datasource_v2`` doesn't depend on the legacy package; the legacy
 datasource and datasink import them from here instead.
 """
 
-from typing import TYPE_CHECKING, Callable, Dict
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource_v2.formats.parquet.parquet_size_estimator import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import _ExprVisitor
 from ray.data.expressions import (
     AliasExpr,
@@ -80,6 +85,7 @@ except ImportError:
 
 if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
+    from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
 
 
@@ -121,6 +127,36 @@ def _get_empty_projection_schema() -> "Schema":
             required=False,
         )
     )
+
+
+def _estimate_inmemory_file_size(
+    data_file: "DataFile", projected_field_ids: Optional[Set[int]]
+) -> int:
+    """Estimate a data file's decoded size for the projected columns.
+
+    Iceberg's column sizes are compressed on-disk bytes. For Parquet, use them
+    only when they cover every projected top-level field, then apply Ray's
+    established Parquet decoding-ratio default. For other formats, retain the
+    existing whole-file estimate until Ray has a format-specific decode ratio.
+    """
+    if projected_field_ids == set():
+        return 0
+
+    file_format = getattr(data_file.file_format, "name", data_file.file_format)
+    if file_format != "PARQUET":
+        return data_file.file_size_in_bytes
+
+    column_sizes = data_file.column_sizes
+    if (
+        projected_field_ids is not None
+        and column_sizes is not None
+        and projected_field_ids.issubset(column_sizes)
+    ):
+        on_disk_size = sum(column_sizes[field_id] for field_id in projected_field_ids)
+    else:
+        on_disk_size = data_file.file_size_in_bytes
+
+    return int(on_disk_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT)
 
 
 class _IcebergExpressionVisitor(

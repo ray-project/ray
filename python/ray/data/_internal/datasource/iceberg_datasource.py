@@ -12,10 +12,8 @@ from packaging import version
 
 import ray
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
-from ray.data._internal.datasource.parquet_datasource import (
-    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
-)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
+    _estimate_inmemory_file_size,
     _get_empty_projection_schema,
     _IcebergExpressionVisitor,
 )
@@ -38,36 +36,6 @@ if TYPE_CHECKING:
     from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
-
-
-def _estimate_inmemory_file_size(
-    data_file: "DataFile", projected_field_ids: Optional[Set[int]]
-) -> int:
-    """Estimate a data file's decoded size for the projected columns.
-
-    Iceberg's column sizes are compressed on-disk bytes. For Parquet, use them
-    only when they cover every projected top-level field, then apply Ray's
-    established Parquet decoding-ratio default. For other formats, retain the
-    existing whole-file estimate until Ray has a format-specific decode ratio.
-    """
-    if projected_field_ids == set():
-        return 0
-
-    file_format = getattr(data_file.file_format, "name", data_file.file_format)
-    if file_format != "PARQUET":
-        return data_file.file_size_in_bytes
-
-    column_sizes = data_file.column_sizes
-    if (
-        projected_field_ids is not None
-        and column_sizes is not None
-        and projected_field_ids.issubset(column_sizes)
-    ):
-        on_disk_size = sum(column_sizes[field_id] for field_id in projected_field_ids)
-    else:
-        on_disk_size = data_file.file_size_in_bytes
-
-    return int(on_disk_size * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT)
 
 
 @dataclass(frozen=True)
