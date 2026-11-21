@@ -172,6 +172,7 @@ class IcebergScanner(
         output_columns = [field.name for field in pruned.fields]
         row_filter = self.row_filter
         after_read = None
+        scan_predicate = None
         if self.predicate is not None:
             schema = self.table_metadata.schema()
             parts = split_predicate(
@@ -184,6 +185,7 @@ class IcebergScanner(
                 case_sensitive=self.case_sensitive,
             )
             after_read = combine_predicate_chain(parts.after_read, Operation.AND)
+            scan_predicate = combine_predicate_chain(parts.scan, Operation.AND)
         read_schema = pruned
         if after_read is not None:
             # Read the columns the after-read filter needs too.
@@ -205,6 +207,7 @@ class IcebergScanner(
             drop_all_columns=row_count_only,
             after_read_filter=after_read,
             output_columns=output_columns if drop_filter_columns else None,
+            scan_predicate=scan_predicate,
         )
 
     def _with_columns(self, pruned: "Schema", names: List[str]) -> "Schema":

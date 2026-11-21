@@ -3410,7 +3410,7 @@ class TestIcebergDatasourceV2:
         )
 
     @classmethod
-    def _indexer(cls, reads_footers=False):
+    def _indexer(cls, reads_footers=False, row_filter=pyi_expr.AlwaysTrue()):
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
             IcebergFileIndexer,
         )
@@ -3421,12 +3421,14 @@ class TestIcebergDatasourceV2:
             io=table.io,
             scan_kwargs={},
             snapshot_id=None,
-            row_filter=pyi_expr.AlwaysTrue(),
+            row_filter=row_filter,
             reads_footers=reads_footers,
         )
 
     @classmethod
-    def _listed_chunks(cls, columns, reads_footers=True):
+    def _listed_chunks(
+        cls, columns, reads_footers=True, row_filter=pyi_expr.AlwaysTrue()
+    ):
         """Each listed file's ``FileChunk``, by path."""
         from ray.data._internal.datasource_v2.interfaces.file_manifest import (
             FileChunk,
@@ -3434,9 +3436,9 @@ class TestIcebergDatasourceV2:
 
         return {
             path: FileChunk.from_metadata(metadata)
-            for manifest in cls._indexer(reads_footers=reads_footers).list_files(
-                None, filesystem=None, projected_columns=columns
-            )
+            for manifest in cls._indexer(
+                reads_footers=reads_footers, row_filter=row_filter
+            ).list_files(None, filesystem=None, projected_columns=columns)
             for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas)
         }
 
@@ -3532,7 +3534,10 @@ class TestIcebergDatasourceV2:
 
         assert read(rebuilt).equals(read(tasks))
 
-    def test_reader_rejects_pickle_object_columns(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("parquet_route", [False, True])
+    def test_reader_rejects_pickle_object_columns(
+        self, monkeypatch, tmp_path, parquet_route
+    ):
         """A decoded batch with a pickled-object column is rejected unread.
 
         The V2 counterpart of ``test_get_read_task_rejects_pickle_object_columns``.
@@ -3540,11 +3545,19 @@ class TestIcebergDatasourceV2:
         """
         from pyiceberg.io import pyarrow as pyi_pa_io
 
+        from ray.data._internal.datasource_v2.formats.iceberg import (
+            iceberg_file_reader,
+        )
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (  # noqa: E501
             IcebergFileReader,
         )
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            SCAN_TASK_COLUMN_NAME,
             manifest_from_scan_tasks,
+        )
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FileChunk,
+            FileManifest,
         )
 
         marker = tmp_path / "exploit_marker"
@@ -3568,9 +3581,27 @@ class TestIcebergDatasourceV2:
                 yield from poisoned.to_batches()
 
         monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+        monkeypatch.setattr(
+            iceberg_file_reader,
+            "read_routed_rows",
+            lambda *args, **kwargs: iter(poisoned.to_batches()),
+        )
 
         table = self._load_table()
-        manifest = manifest_from_scan_tasks(list(table.scan().plan_files())[:1])
+        task = list(table.scan().plan_files())[0]
+        if parquet_route:
+            manifest = FileManifest.construct_manifest(
+                paths=[task.file.file_path],
+                sizes=[task.file.file_size_in_bytes],
+                chunk_metadatas=[
+                    FileChunk(unit_ids=(0,), num_rows=2, size_bytes=1).to_metadata()
+                ],
+                extra_columns=pa.table(
+                    {SCAN_TASK_COLUMN_NAME: pa.nulls(1, type=pa.large_binary())}
+                ),
+            )
+        else:
+            manifest = manifest_from_scan_tasks([task])
         reader = IcebergFileReader(
             table_metadata=table.metadata,
             io=table.io,
@@ -3694,10 +3725,16 @@ class TestIcebergDatasourceV2:
             for file in files
         }
 
-    def test_listing_sizes_parquet_files_from_their_footers(self):
-        """A Parquet file is sized at its decoded bytes, with the memory decoding takes."""
-        chunks = self._listed_chunks(["col_a"])
+    @pytest.mark.parametrize("routed", [False, True])
+    def test_listing_sizes_parquet_files_from_their_footers(self, routed):
+        """A Parquet file is sized at its decoded bytes, with the memory decoding
+        takes, on either route."""
+        # A row filter keeps every file on ``ArrowScan``.
+        row_filter = pyi_expr.AlwaysTrue() if routed else pyi_expr.NotNull("col_a")
+        chunks = self._listed_chunks(["col_a"], row_filter=row_filter)
         assert chunks, "fixture table should plan at least one file"
+        # Routed rows are row-group runs, so they name row groups.
+        assert all(bool(chunk.unit_ids) == routed for chunk in chunks.values())
         for path, chunk in chunks.items():
             parquet = pq.ParquetFile(path.removeprefix("file://"))
             # A fixed-width column, so the estimate is exact.
@@ -4261,6 +4298,142 @@ class TestIcebergDatasourceV2:
 
         assert rows == first.file.record_count + second.file.record_count - 2
         assert io.opened[delete_file.file_path] == 1
+
+    @staticmethod
+    def _list_and_read(predicate, *, parquet_route=True, **kwargs):
+        """``(manifests, table, rows_counted)``: the table listed and read."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2 import (  # noqa: E501
+            IcebergDatasourceV2,
+        )
+
+        datasource = IcebergDatasourceV2(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+            **kwargs,
+        )
+        scanner = datasource.create_scanner(datasource.infer_schema(None))
+        if predicate is not None:
+            scanner, residual = scanner.push_filters(predicate)
+            assert residual is None
+        indexer = datasource._get_file_indexer()
+        if not parquet_route:
+            indexer = indexer.as_whole_file_indexer()
+        manifests = list(indexer.list_files(None, filesystem=None, predicate=predicate))
+        reader = scanner.create_reader()
+        tables = [table for manifest in manifests for table in reader.read(manifest)]
+        rows_counted = sum(
+            metadata.num_rows
+            for manifest in manifests
+            for metadata in reader.read_metadata(manifest)
+        )
+        return manifests, pa.concat_tables(tables), rows_counted
+
+    @staticmethod
+    def _routed_rows(manifests):
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_parquet_route import (  # noqa: E501
+            is_routed_row,
+        )
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FileChunk,
+        )
+
+        return [
+            (path, FileChunk.from_metadata(chunk))
+            for manifest in manifests
+            for path, chunk in zip(manifest.paths, manifest.file_chunk_metadatas)
+            if is_routed_row(chunk)
+        ]
+
+    @pytest.mark.parametrize(
+        "predicate",
+        [
+            None,
+            col("col_a") < 50,
+            (col("col_b") == "a") | (col("col_a") >= 100),
+            col("col_a").is_in([1, 5, 9]),
+            ~col("col_c").is_in([1]),
+        ],
+        ids=["no_filter", "less_than", "or", "is_in", "not_is_in"],
+    )
+    def test_parquet_route_reads_what_arrow_scan_reads(self, predicate):
+        """Every file of the fixture table is listed by row group and reads the
+        same, and ``read_metadata`` counts the same rows."""
+        routed_manifests, routed, routed_count = self._list_and_read(predicate)
+        whole_manifests, arrow_scan_only, _ = self._list_and_read(
+            predicate, parquet_route=False
+        )
+
+        assert len(self._routed_rows(routed_manifests)) == sum(
+            len(manifest) for manifest in routed_manifests
+        )
+        assert self._routed_rows(whole_manifests) == []
+        assert routed.schema == arrow_scan_only.schema
+        assert rows_same(routed.to_pandas(), arrow_scan_only.to_pandas())
+        assert routed_count == routed.num_rows
+
+    def test_parquet_route_prunes_row_groups_at_listing(self, clean_table):
+        """Row groups the filter rules out are never listed, so never read."""
+        _, table = clean_table
+        with table.transaction() as transaction:
+            transaction.set_properties({"write.parquet.row-group-limit": "2"})
+        table = self._load_table()
+        _append_files(
+            table, [{"col_a": value, "col_b": "a", "col_c": 1} for value in range(6)]
+        )
+
+        manifests, result, rows_counted = self._list_and_read(col("col_a") >= 4)
+
+        ((_, chunk),) = self._routed_rows(manifests)
+        assert chunk.unit_ids == (2,)
+        assert chunk.fully_matched
+        assert sorted(result["col_a"].to_pylist()) == [4, 5]
+        assert rows_counted == 2
+
+    @pytest.mark.parametrize(
+        "change",
+        [
+            lambda update: update.rename_column("col_b", "col_s"),
+            lambda update: update.add_column("col_d", pyi_types.StringType()),
+            lambda update: update.update_column(
+                "col_a", field_type=pyi_types.LongType()
+            ),
+            lambda update: update.delete_column("col_b").add_column(
+                "col_b", pyi_types.StringType()
+            ),
+        ],
+        ids=["rename", "add_column", "promote", "drop_and_add_same_name"],
+    )
+    def test_parquet_route_is_off_after_a_schema_change(self, clean_table, change):
+        """A read of a column whose name, ID or type ever changed stays on
+        ``ArrowScan``.
+
+        Re-adding a dropped column under the same name gives it a new field ID,
+        so only the ID check catches the old file: by name it would return the
+        dropped column's values instead of nulls.
+        """
+        _, table = clean_table
+        _append_files(table, [{"col_a": 1, "col_b": "a", "col_c": 1}])
+        with table.update_schema() as update:
+            change(update)
+        table = self._load_table()
+        _append_files(table, [{"col_a": 2, "col_c": 2}])
+
+        # No filter: PyIceberg 0.11.1 fails to plan one on a promoted column.
+        manifests, routed, _ = self._list_and_read(None)
+        _, arrow_scan_only, _ = self._list_and_read(None, parquet_route=False)
+
+        assert self._routed_rows(manifests) == []
+        assert rows_same(routed.to_pandas(), arrow_scan_only.to_pandas())
+        assert sorted(routed["col_a"].to_pylist()) == [1, 2]
+
+    def test_parquet_route_is_off_under_a_row_filter(self):
+        """``read_iceberg``'s ``row_filter`` has no Ray form, so it keeps every
+        file on ``ArrowScan``."""
+        manifests, _, _ = self._list_and_read(
+            None, row_filter=pyi_expr.LessThan("col_a", 50)
+        )
+
+        assert self._routed_rows(manifests) == []
 
     def test_reader_declines_metadata_under_a_limit(self):
         """The reader's own guard, independent of the scanner's.
