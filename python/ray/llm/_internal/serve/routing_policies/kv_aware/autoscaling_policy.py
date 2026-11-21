@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
@@ -24,14 +25,56 @@ def _get_target_and_reports(contexts):
     return target, metrics[key]
 
 
+def _token_target_from_queue_fit(
+    queue_time_slo_ms: Optional[float],
+    slope_ms_per_token: Optional[float],
+    intercept_ms: Optional[float],
+) -> int:
+    """Invert the single-replica queue-time fit and round down to whole tokens."""
+    if queue_time_slo_ms is None or slope_ms_per_token is None or intercept_ms is None:
+        raise ValueError(
+            "Provide target_prefill_tokens_per_replica or all three of "
+            "queue_time_slo_ms, slope_ms_per_token, and intercept_ms"
+        )
+    if not math.isfinite(queue_time_slo_ms) or queue_time_slo_ms <= 0:
+        raise ValueError("queue_time_slo_ms must be positive and finite")
+    if not math.isfinite(slope_ms_per_token) or slope_ms_per_token <= 0:
+        raise ValueError("slope_ms_per_token must be positive and finite")
+    if not math.isfinite(intercept_ms):
+        raise ValueError("intercept_ms must be finite")
+
+    tokens = (queue_time_slo_ms - intercept_ms) / slope_ms_per_token
+    if not math.isfinite(tokens) or tokens < 1:
+        raise ValueError(
+            "The queue-time fit and SLO must allow a finite target of at least one token"
+        )
+    return math.floor(tokens)
+
+
 class LLMTokenAutoscalingPolicy:
     """Application policy scaling the bound server from replicated KV workload."""
 
     def __init__(
         self,
-        target_prefill_tokens_per_replica: int,
+        target_prefill_tokens_per_replica: Optional[int] = None,
         post_downscale_cooldown_s: float = 0,
+        *,
+        queue_time_slo_ms: Optional[float] = None,
+        slope_ms_per_token: Optional[float] = None,
+        intercept_ms: Optional[float] = None,
     ):
+        if target_prefill_tokens_per_replica is None:
+            target_prefill_tokens_per_replica = _token_target_from_queue_fit(
+                queue_time_slo_ms, slope_ms_per_token, intercept_ms
+            )
+        elif any(
+            value is not None
+            for value in (queue_time_slo_ms, slope_ms_per_token, intercept_ms)
+        ):
+            raise ValueError(
+                "Choose either target_prefill_tokens_per_replica or the queue-time fit"
+            )
+
         if (
             not math.isfinite(target_prefill_tokens_per_replica)
             or target_prefill_tokens_per_replica <= 0
