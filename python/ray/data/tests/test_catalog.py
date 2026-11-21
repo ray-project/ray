@@ -398,8 +398,9 @@ def test_read_iceberg_uses_catalog_resolved_kwargs():
         ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u", "token": "tk"})
     )
     with mock.patch(
-        "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource"
-    ) as ds_cls, mock.patch("ray.data.read_api.read_datasource"):
+        "ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2."
+        "IcebergDatasourceV2"
+    ) as ds_cls, mock.patch("ray.data.read_api._read_datasource_v2"):
         ray.data.read_iceberg(table_identifier="main.db.tbl", catalog=catalog)
 
     _, kwargs = ds_cls.call_args
@@ -413,8 +414,9 @@ def test_read_iceberg_explicit_catalog_kwargs_take_precedence():
     # When both catalog and catalog_kwargs are given, catalog is ignored.
     catalog = _FakeCatalog(ResolvedSource(catalog_kwargs={"type": "rest", "uri": "u"}))
     with mock.patch(
-        "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource"
-    ) as ds_cls, mock.patch("ray.data.read_api.read_datasource"):
+        "ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2."
+        "IcebergDatasourceV2"
+    ) as ds_cls, mock.patch("ray.data.read_api._read_datasource_v2"):
         ray.data.read_iceberg(
             table_identifier="main.db.tbl",
             catalog=catalog,
