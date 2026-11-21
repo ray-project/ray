@@ -6,6 +6,7 @@ import time
 import typing
 from typing import Dict, List, Optional, Tuple
 
+import ray
 from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
@@ -30,6 +31,9 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.lineage_tracker import LineageTracker
 from ray.data._internal.execution.metadata_fetcher import make_metadata_fetcher
 from ray.data._internal.execution.no_progress_guard import NoProgressGuard
+from ray.data._internal.execution.operators import (
+    get_task_pool_map_operator_cls,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
 )
@@ -172,6 +176,73 @@ def _disable_data_reconstruction_if_unsupported(
     return False
 
 
+def _warn_if_actors_may_consume_all_cpus(
+    dag: PhysicalOperator, total_cpus: Optional[float] = None
+) -> None:
+    """Warn when actor pools may consume all CPUs and starve task operators.
+
+    Actor-based map operators hold their CPUs for their entire lifetime. If
+    the CPU demand of the pools' *minimum* actor sizes meets or exceeds the
+    total CPUs of the cluster, while the plan also contains task-based
+    operators (e.g., reads and writes), those operators can never be
+    scheduled and the execution hangs without an error
+    (see https://github.com/ray-project/ray/issues/44687).
+
+    This only warns rather than errors because a cluster autoscaler may
+    legitimately add more CPUs after execution starts.
+
+    Args:
+        dag: The physical plan's output operator.
+        total_cpus: Total CPUs available to the execution, or None to query
+            the cluster. Exposed for testing.
+    """
+    TaskPoolMapOperator = get_task_pool_map_operator_cls()
+
+    has_task_pool_op = False
+    min_actor_cpus = 0.0
+    actor_op_names = []
+    for op in dag.post_order_iter():
+        if isinstance(op, TaskPoolMapOperator):
+            has_task_pool_op = True
+        op_min_cpus = sum(
+            (pool.per_actor_resource_usage().cpu or 0.0) * pool.min_size()
+            for pool in op.get_autoscaling_actor_pools()
+        )
+        if op_min_cpus > 0:
+            min_actor_cpus += op_min_cpus
+            actor_op_names.append(op.name)
+
+    # Without task-based operators there is nothing to starve.
+    if not has_task_pool_op or min_actor_cpus <= 0:
+        return
+
+    if total_cpus is None:
+        try:
+            total_cpus = ray.cluster_resources().get("CPU", 0)
+        except Exception:
+            logger.debug(
+                "Failed to get cluster resources; skipping the check for "
+                "whether actor pools may consume all CPUs."
+            )
+            return
+
+    if total_cpus <= 0 or min_actor_cpus < total_cpus:
+        return
+
+    if log_once("ray_data_actor_pool_may_consume_all_cpus"):
+        logger.warning(
+            f"Actor-based operators {actor_op_names} require at least "
+            f"{min_actor_cpus:g} CPUs for their minimum actor pools, which "
+            f"meets or exceeds all {total_cpus:g} CPUs in the cluster, but "
+            "this plan also contains task-based operators (e.g., reads and "
+            "writes). The task operators may never be scheduled, hanging "
+            "the execution without an error. Leave at least one CPU for "
+            "task operators: reduce the actor pool size or concurrency "
+            "(e.g., a smaller ActorPoolStrategy size), or scale the cluster "
+            "to more CPUs. See https://github.com/ray-project/ray/issues/44687."
+        )
+
+
 class StreamingExecutor(Executor, threading.Thread):
     """A streaming Dataset executor.
 
@@ -309,6 +380,11 @@ class StreamingExecutor(Executor, threading.Thread):
                         truncate_length=DATA_CONTEXT_LOG_TRUNCATE_LENGTH,
                     ),
                 )
+
+        # Warn up front if actor pools may consume all CPUs and starve
+        # task-based operators, which would hang the execution without an
+        # error (see #44687).
+        _warn_if_actors_may_consume_all_cpus(dag)
 
         # Setup the streaming DAG topology and start the runner thread.
         self._lineage_tracker = None
