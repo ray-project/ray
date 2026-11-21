@@ -17,6 +17,7 @@ This guide explains how Ray Serve schedules deployment replicas across your clus
 | Multi-GPU inference with tensor parallelism | `placement_group_bundles` + `STRICT_PACK` | vLLM with `tensor_parallel_size=4` |
 | Target specific GPU types or zones | `label_selector` in `ray_actor_options` | Schedule on A100 nodes only |
 | Limit replicas per node for high availability | `max_replicas_per_node` | Max 2 replicas of each deployment per node |
+| Spread replicas over nodes, zones or slices | `topology_spread` | Cover two zones, then pack the rest |
 | Reduce cloud costs by packing nodes | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Many small models sharing nodes |
 | Release nodes left underused after downscaling | `RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY=1` | Service whose deployments scale up and down over time |
 | Reserve resources for worker actors | `placement_group_bundles` | Replica spawns Ray Data workers |
@@ -126,6 +127,43 @@ applications:
       - name: MyDeployment
         num_replicas: 6
         max_replicas_per_node: 2
+```
+
+(serve-topology-spread)=
+### Spread replicas over nodes or zones with `topology_spread`
+
+Use `topology_spread` to give a deployment a floor on how many distinct nodes, zones, or other domains its replicas cover. A domain is the set of nodes that share one value of a node label. Ray sets `ray.io/node-id` on every node, `ray.io/availability-zone` when the environment names a zone, and `ray.io/tpu-slice-name` on TPU nodes. You can also spread over any label you set yourself.
+
+```{literalinclude} ../doc_code/replica_scheduling.py
+:start-after: __topology_spread_start__
+:end-before: __topology_spread_end__
+:language: python
+```
+
+While the replicas cover fewer domains than a rule's `min_domains`, the next replica goes to a domain they don't cover yet. Once every rule holds, pack or spread scheduling places the rest, so `topology_spread` guarantees coverage, not even counts. Downscaling, rolling updates, and node compaction keep each floor too. A stop that would leave fewer domains than a floor at the new replica count is skipped.
+
+Rules apply in list order. When no node with room holds every rule, the last listed rule that isn't required gives way first. By default a rule is best effort. It is capped at the replica count and at the domains the replica could use, and it never holds a replica back. With `required=True`, a rule is only capped at the replica count. Until a node with room joins a missing domain, as many replicas wait as there are domains missing, and the rest place under the remaining rules. While the floor is unmet, Ray Serve keeps a request pending so the cluster autoscaler can add a node in a missing domain. With `wait_timeout_s`, a waiting replica is placed without the rule once that time passes. A required rule's `min_domains` can't exceed `num_replicas`, or `min_replicas` with autoscaling.
+
+Once a deployment has stayed `HEALTHY` for `RAY_SERVE_NODE_COMPACTION_DELAY_S`, Ray Serve moves a running replica to a node with room where it holds more of its rules, counted from the top. A move starts the replacement first and stops the old replica once the replacement runs. When a rule isn't met, the deployment's status message names it, and the `serve_topology_spread_covered_domains` and `serve_topology_spread_floor_domains` metrics report each rule's coverage next to its floor.
+
+With placement groups, the rules apply to bundle 0, which holds the replica actor. Ray Serve aims the group at the node it picks and passes the rules to Ray Core as the group's fallback strategy, so Ray Core relaxes them in the same order. You can't set `topology_spread` together with `gang_scheduling_config`.
+
+You can also specify this in a config file:
+
+```yaml
+applications:
+  - name: my_app
+    import_path: my_module:app
+    deployments:
+      - name: Ranker
+        num_replicas: 6
+        topology_spread:
+          - label_key: ray.io/availability-zone
+            min_domains: 2
+            required: true
+            wait_timeout_s: 600
+          - label_key: ray.io/node-id
+            min_domains: 3
 ```
 
 ### Reserve resources with placement groups
@@ -278,7 +316,7 @@ ray start --head
 **When to avoid pack scheduling:** High availability is critical and you want replicas spread across nodes
 
 :::{note}
-Pack scheduling automatically falls back to spread scheduling when any deployment uses placement groups with `PACK`, `SPREAD`, or `STRICT_SPREAD` strategies. This happens because pack scheduling needs to predict where resources will be consumed to bin-pack effectively. With `STRICT_PACK`, all bundles are guaranteed to land on one node, making resource consumption predictable. With other strategies, bundles may spread across multiple nodes unpredictably, so the scheduler can't accurately track available resources per node.
+Pack scheduling picks a node only for replicas without a placement group and for `STRICT_PACK` placement groups, whose bundles all land on one node. Ray Core places a placement group with the `PACK`, `SPREAD`, or `STRICT_SPREAD` strategy itself, because its bundles may span nodes. Pack scheduling stays on for every other deployment.
 :::
 
 #### Node compaction
@@ -287,7 +325,7 @@ Pack scheduling only decides where new replicas go. As deployments scale down or
 
 Once every deployment has stayed `HEALTHY` for `RAY_SERVE_NODE_COMPACTION_DELAY_S` seconds and no node is draining, the scheduler looks for a worker node whose replicas all fit onto the other nodes that already run replicas. If several nodes qualify, it picks the largest. It compares resources in the same priority order that pack scheduling uses. The custom resources named in `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES` come first, then GPU, then CPU, then memory, then any remaining custom resources. A node with more of a higher priority resource always wins, whatever its other resources. Among nodes that compare equal, the scheduler picks the one with the fewest replicas to move. For each replica on the chosen node, the scheduler starts a replacement on another node and stops the old replica only after the replacement is running, so serving capacity never dips. Once the node is empty, the scheduler keeps new replicas off it until the autoscaler drains it, and counts the compaction as complete only then.
 
-The scheduler cancels a compaction when new replicas land on the target node, when a replica it places has no room on any other node, or when the compaction doesn't finish within `RAY_SERVE_COMPACTION_TIMEOUT_S`. That time limit includes the wait for the drain. After each cancellation it doubles the wait before the next attempt, up to `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`. The scheduler never compacts the head node or a node that runs a replica of a deployment with `gang_scheduling_config`. An ingress request router replica doesn't block compaction of a node that also runs ordinary replicas. Ray Serve pins one router replica to each proxy node, and the proxy leaves the node with its router replica once the other replicas have left. A node that runs nothing but router replicas is never a compaction target, because it has nothing to migrate and it empties itself once the proxy leaves. When a scan of a stable cluster finds nothing to compact, the scheduler waits 10 seconds before scanning again. Compaction turns off whenever pack scheduling has fallen back to spread scheduling. The `serve_num_compacted_nodes` metric counts completed compactions.
+The scheduler cancels a compaction when new replicas land on the target node, when a replica it places has no room on any other node, or when the compaction doesn't finish within `RAY_SERVE_COMPACTION_TIMEOUT_S`. That time limit includes the wait for the drain. After each cancellation it doubles the wait before the next attempt, up to `RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S`. The scheduler never compacts the head node or a node that runs a replica of a deployment with `gang_scheduling_config`. An ingress request router replica doesn't block compaction of a node that also runs ordinary replicas. Ray Serve pins one router replica to each proxy node, and the proxy leaves the node with its router replica once the other replicas have left. A node that runs nothing but router replicas is never a compaction target, because it has nothing to migrate and it empties itself once the proxy leaves. When a scan of a stable cluster finds nothing to compact, the scheduler waits 10 seconds before scanning again. The scheduler never compacts a node that runs a replica in a placement group other than `STRICT_PACK`, because Ray Core places such groups itself. The `serve_num_compacted_nodes` metric counts completed compactions.
 
 ### `RAY_SERVE_NODE_COMPACTION_DELAY_S`
 
@@ -306,6 +344,18 @@ How long a node compaction can run before the scheduler cancels it. This time in
 **Default**: `3600`
 
 Upper bound on the wait between compaction attempts after a cancellation or timeout.
+
+### `RAY_SERVE_MIN_REPLICA_NODES`
+
+**Default**: `1`
+
+A best effort floor on the nodes that every deployment without `topology_spread` covers, the same as `topology_spread=[TopologySpread(label_key="ray.io/node-id", min_domains=N)]`. The default adds no rule. Setting `topology_spread`, even to an empty list, replaces it. Deployments with `gang_scheduling_config` are exempt.
+
+### `RAY_SERVE_REBALANCE_RULES`
+
+**Default**: `1`
+
+Whether Ray Serve moves running replicas toward their `topology_spread` rules once their deployment settles. Set it to `0` to turn moves off.
 
 ### `RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES`
 
