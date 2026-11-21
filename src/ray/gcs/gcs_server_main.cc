@@ -205,6 +205,8 @@ int main(int argc, char *argv[]) {
       ray::gcs::GetTaskManagerTaskEventsReportedGaugeMetric();
   auto task_events_dropped_gauge = ray::gcs::GetTaskManagerTaskEventsDroppedGaugeMetric();
   auto task_events_stored_gauge = ray::gcs::GetTaskManagerTaskEventsStoredGaugeMetric();
+  auto task_events_stored_bytes_gauge =
+      ray::gcs::GetTaskManagerTaskEventsStoredBytesGaugeMetric();
   auto event_recorder_dropped_events_counter =
       ray::GetRayEventRecorderDroppedEventsCounterMetric();
   auto storage_operation_latency_in_ms_histogram =
@@ -242,6 +244,7 @@ int main(int argc, char *argv[]) {
       /*task_events_reported_gauge=*/task_events_reported_gauge,
       /*task_events_dropped_gauge=*/task_events_dropped_gauge,
       /*task_events_stored_gauge=*/task_events_stored_gauge,
+      /*task_events_stored_bytes_gauge=*/task_events_stored_bytes_gauge,
       /*event_recorder_dropped_events_counter=*/event_recorder_dropped_events_counter,
       /*storage_operation_latency_in_ms_histogram=*/
       storage_operation_latency_in_ms_histogram,
