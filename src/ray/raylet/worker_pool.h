@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/functional/hash.hpp>
 #include <deque>
 #include <list>
@@ -696,7 +697,9 @@ class WorkerPool : public WorkerPoolInterface {
       const std::string &serialized_runtime_env_context,
       const WorkerPool::State &state) const;
 
-  void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
+  void ExecuteOnPrestartWorkersStarted(const std::shared_ptr<WorkerInterface> &driver,
+                                       std::function<void()> callback);
+  void FinishPrestartWorkers(bool send_reply = true);
 
   /// Returns if the worker can be used to satisfy the request.
   ///
@@ -739,6 +742,8 @@ class WorkerPool : public WorkerPoolInterface {
 
   /// The callback to send RegisterClientReply to the driver of the first job.
   std::function<void()> first_job_send_register_client_reply_to_driver_;
+  std::shared_ptr<WorkerInterface> first_job_waiting_driver_;
+  std::shared_ptr<boost::asio::steady_timer> first_job_prestart_timer_;
 
   /// The number of registered workers of the first job.
   int first_job_registered_python_worker_count_;
