@@ -46,6 +46,7 @@ from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
+    RUNNING_REQUESTS_KEY,
     AsyncioRouter,
     CurrentLoopRouter,
     RouterMetricsManager,
@@ -977,6 +978,70 @@ class TestAssignRequest:
         if router._request_router._use_queue_len_cache:
             assert fake_request_router.replica_queue_len_cache.get(r1_id) == 10
             assert fake_request_router.replica_queue_len_cache.get(r2_id) == 20
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Tests handle metrics behavior.",
+    )
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"enable_strict_max_ongoing_requests": True}],
+        indirect=True,
+    )
+    async def test_rejected_request_not_counted_running_while_requeued(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """A rejected request stops counting as running before the retry queues it
+        again, not when its done callback later runs, so no metrics sample sees it
+        as both. The done callback then does not decrement it a second time."""
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="test-replica-1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="test-replica-2", deployment_id=d_id)
+        replica1 = FakeReplica(
+            r1_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=False, num_ongoing_requests=5
+            ),
+        )
+        replica2 = FakeReplica(
+            r2_id,
+            queue_len_info=ReplicaQueueLengthInfo(
+                accepted=True, num_ongoing_requests=1
+            ),
+        )
+        fake_request_router.set_replica_to_return(replica1)
+        fake_request_router.set_replica_to_return_on_retry(replica2)
+        rejected_results = []
+        send_to_replica1 = replica1.try_send_request
+
+        def capture_result(pr, with_rejection):
+            rejected_results.append(send_to_replica1(pr, with_rejection))
+            return rejected_results[-1]
+
+        replica1.try_send_request = capture_result
+        metrics_manager = router._metrics_manager
+        counts_on_retry = []
+        choose_replica = fake_request_router._choose_replica_for_request
+
+        async def record_counts_on_retry(pr, *, is_retry=False):
+            if is_retry:
+                counts_on_retry.append(
+                    (
+                        metrics_manager.num_queued_requests,
+                        metrics_manager.num_requests_sent_to_replicas[r1_id],
+                    )
+                )
+            return await choose_replica(pr, is_retry=is_retry)
+
+        fake_request_router._choose_replica_for_request = record_counts_on_retry
+        await router.assign_request(dummy_request_metadata())
+        # Queued again for the retry, and no longer running on the rejecting replica.
+        assert counts_on_retry == [(1, 0)]
+        rejected_results[0].fire_done_callbacks()
+        await asyncio.sleep(0)
+        assert metrics_manager.num_requests_sent_to_replicas[r1_id] == 0
+        assert metrics_manager.num_requests_sent_to_replicas[r2_id] == 1
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -2571,6 +2636,55 @@ class TestRouterMetricsManager:
                 report = decompress_metric_report(payload)
                 assert report.deployment_id == deployment_id
                 assert report.handle_id == handle_id
+
+    @pytest.mark.skipif(
+        not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+        reason="Tests handle metrics behavior.",
+    )
+    @pytest.mark.asyncio
+    async def test_metrics_report_records_new_replica_with_queued(self):
+        """A replica first routed to since the last recording has no samples yet.
+        The report must sample queued at the same time as that replica's first
+        point, or the request still counted as queued is counted twice."""
+        timer = MockTimer()
+        timer.reset(100)
+        r1, r2 = (ReplicaID(f"r{i}", DeploymentID("d", "a")) for i in range(2))
+        with patch("time.time", new=timer.time):
+            metrics_manager = RouterMetricsManager(
+                DeploymentID(name="a", app_name="b"),
+                "random",
+                "abc",
+                DeploymentHandleSource.PROXY,
+                Mock(),
+                FakeCounter(
+                    tag_keys=(
+                        "deployment",
+                        "route",
+                        "application",
+                        "handle",
+                        "actor_id",
+                    )
+                ),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+                FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+                event_loop=asyncio.get_event_loop(),
+            )
+            metrics_manager._deployment_config = DeploymentConfig(
+                autoscaling_config=AutoscalingConfig()
+            )
+            metrics_manager.inc_num_running_requests_for_replica(r1)
+            metrics_manager.inc_num_queued_requests()
+            metrics_manager._add_autoscaling_metrics_point()
+            timer.advance(0.1)
+            # The queued request goes to a replica this handle has not used yet.
+            metrics_manager.dec_num_queued_requests()
+            metrics_manager.inc_num_running_requests_for_replica(r2)
+            report = metrics_manager._get_metrics_report()
+        latest = [report.queued_requests[-1]] + [
+            series[-1] for series in report.metrics[RUNNING_REQUESTS_KEY].values()
+        ]
+        assert {point.timestamp for point in latest} == {timer.time()}
+        assert sum(point.value for point in latest) == 2
 
     @pytest.mark.skipif(
         not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
