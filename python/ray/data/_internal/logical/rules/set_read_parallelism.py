@@ -1,5 +1,6 @@
 import logging
 import math
+from collections import deque
 from typing import Optional, Tuple, Union
 
 from ray import available_resources as ray_available_resources
@@ -98,16 +99,20 @@ class SetReadParallelismRule(Rule):
     """
 
     def apply(self, plan: PhysicalPlan) -> PhysicalPlan:
-        ops = [plan.dag]
+        ops = deque([plan.dag])
+        visited = set()
 
-        while len(ops) > 0:
-            op = ops.pop(0)
+        while ops:
+            op = ops.popleft()
+            if op in visited:
+                continue
+            visited.add(op)
             if isinstance(op, InputDataBuffer):
                 continue
             logical_op = plan.op_map[op]
             if isinstance(logical_op, Read):
                 self._apply(plan, op, logical_op)
-            ops += op.input_dependencies
+            ops.extend(op.input_dependencies)
 
         return plan
 
