@@ -695,6 +695,28 @@ def test_generated_id_resume_skips_committed_work(ray_start_10_cpus_shared, tmp_
     assert written.equals(pa.Table.from_pylist(expected_rows, schema=written.schema))
 
 
+@pytest.mark.parametrize("suffix", ["//", "//f0.parquet"])
+def test_generated_id_resume_skips_committed_work_with_repeated_separators(
+    ray_start_10_cpus_shared, tmp_path, suffix
+):
+    """The reader lists a path as given, so the ID must restore a repeated
+    separator before the file name, or resume writes the committed rows again."""
+    ctx = ray.data.DataContext.get_current()
+    _write_two_row_group_files(str(tmp_path / "in"), num_files=1)
+    ctx.checkpoint_config = CheckpointConfig(
+        checkpoint_path=str(tmp_path / "ckpt"),
+        generated_id_column="generated_id",
+        delete_checkpoint_on_success=False,
+    )
+    out = str(tmp_path / "out")
+
+    for _ in range(2):
+        ray.data.read_parquet(str(tmp_path / "in") + suffix).write_parquet(out)
+
+    ctx.checkpoint_config = None
+    assert pq.read_table(out).num_rows == 6
+
+
 def test_generated_id_recovery_no_missing_rows(ray_start_10_cpus_shared, tmp_path):
     """Fail a job partway, rerun it: every row is written (at least once) and
     the checkpoint is deleted after the successful rerun."""
