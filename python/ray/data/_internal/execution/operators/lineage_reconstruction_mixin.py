@@ -91,6 +91,12 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking."""
         return f"{self.id}:{task_index}"
 
+    def _task_index_of(self, lineage_task_id: LineageTaskId) -> int:
+        """The task index in one of this operator's lineage task IDs. The inverse of
+        ``_lineage_task_id_for``."""
+        assert self.owns_data_task(lineage_task_id), lineage_task_id
+        return int(lineage_task_id.rsplit(":", 1)[1])
+
     def owns_data_task(self, lineage_task_id: str) -> bool:
         """Whether this operator owns the data task with the given lineage task ID."""
         return lineage_task_id.rsplit(":", 1)[0] == self.id
