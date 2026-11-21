@@ -56,8 +56,9 @@ def test_empty_get_current_pod_name_returns_none():
         (8, "v6e-8", 1),
         (4, "v6e-8", 2),
         (8, "v6e-16", 2),
-        (4, "v7x-8", 1),
-        (4, "v7x-16", 2),
+        # v7x exposes 2 logical devices per physical chip (8 devices for 4 chips/host).
+        (8, "v7x-8", 1),
+        (8, "v7x-16", 2),
     ],
 )
 @patch("glob.glob")
