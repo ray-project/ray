@@ -22,15 +22,13 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
-from ray.data._internal.execution.interfaces.common import ActorStatus, LogicalActorId
+from ray.data._internal.execution.interfaces.common import ActorId, ActorStatus
 
 # NOTE: generated protos have no type stubs.
 # pyrefly: ignore[missing-attribute]
 _ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
 # pyrefly: ignore[missing-attribute]
 _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
-# pyrefly: ignore[missing-attribute]
-_ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 
 
 class DrainReason(str, Enum):
@@ -55,7 +53,7 @@ class ScaleUpRequest(ActorPoolScalingRequest):
 
     ``num_to_reclaim`` of them are draining actors reclaimed in place (busiest
     draining actors are reclaimed first). The rest are created, one
-    per entry of ``nodes`` (soft node affinity; a repeated node stacks actors
+    per entry of ``nodes`` (hard node affinity; a repeated node stacks actors
     on it), or Ray-core-scheduled when ``nodes`` is empty. in case of shortfalls
     (unable to reclaim, node is full, etc) the next tick re-requests.
     """
@@ -113,7 +111,7 @@ class ScaleDownRequest(ActorPoolScalingRequest):
     """
 
     nodes: Tuple[NodeIdStr, ...] = ()
-    pending_ids: Tuple[LogicalActorId, ...] = ()
+    pending_ids: Tuple[ActorId, ...] = ()
     drain_reason: DrainReason = DrainReason.RESIZE
 
     def __post_init__(self):
@@ -128,7 +126,7 @@ class ScaleDownRequest(ActorPoolScalingRequest):
         cls,
         nodes: Iterable[NodeIdStr],
         *,
-        pending_ids: Iterable[LogicalActorId] = (),
+        pending_ids: Iterable[ActorId] = (),
         drain_reason: DrainReason = DrainReason.RESIZE,
         force: bool = False,
         reason: Optional[str] = None,
@@ -153,7 +151,7 @@ PlacedScalingRequest = Union[ScaleUpRequest, ScaleDownRequest]
 class _PendingActorInfo:
     """Placement bookkeeping for a not-yet-ready actor."""
 
-    logical_id: LogicalActorId
+    actor_id: ActorId
     # Node the actor was pinned to via NodeAffinitySchedulingStrategy if
     # passed, else None.
     target_node_id: Optional[NodeIdStr]
@@ -179,14 +177,12 @@ class _DrainingActorInfo:
 
 @dataclass
 class _ExperimentalActorState:
-    """Actor state. Not to be confused with Ray Core actor state that tracks
-    DEAD, RESTARTING, or ALIVE statuses, but rather, tracks additional info
-    in order to inform Ray Data scheduling decisions."""
+    """Actor state. Not to be confused with Ray Core actor state (ALIVE /
+    DEAD), but rather, tracks additional info in order to inform Ray Data
+    scheduling decisions."""
 
-    # Pool-assigned logical id (carried in actor labels). Stable for the
-    # actor's lifetime; lets us go from state -> logical id without a
-    # reverse lookup.
-    logical_id: LogicalActorId
+    # Ray actor id (hex).
+    actor_id: ActorId
 
     # Number of tasks in flight per actor
     num_tasks_in_flight: int

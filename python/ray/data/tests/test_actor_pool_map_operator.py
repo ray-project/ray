@@ -236,7 +236,7 @@ class TestActorPool(unittest.TestCase):
         )
         assert pool.min_size() == 1
         assert pool.max_size() == 4
-        assert pool.current_size() == 0
+        assert pool.total_size() == 0
         assert pool.max_tasks_in_flight_per_actor() == 4
 
     def test_resource_requests_track_pending_actors(self):
@@ -290,7 +290,7 @@ class TestActorPool(unittest.TestCase):
         assert self._assign_actor(pool) is None
 
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 1
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
@@ -307,7 +307,7 @@ class TestActorPool(unittest.TestCase):
         picked_actor = self._assign_actor(pool)
         assert picked_actor == actor
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 1
@@ -327,7 +327,7 @@ class TestActorPool(unittest.TestCase):
         ):
             pool.refresh_actor_state()
         assert self._assign_actor(pool) is None
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_restarting_actors() == 1
@@ -354,7 +354,7 @@ class TestActorPool(unittest.TestCase):
             pool.refresh_actor_state()
         picked_actor = self._assign_actor(pool)
         assert picked_actor == actor
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_restarting_actors() == 0
@@ -374,7 +374,7 @@ class TestActorPool(unittest.TestCase):
 
         # Return the actor
         pool.on_task_completed(picked_actor, _dummy_bundle())
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_restarting_actors() == 0
@@ -415,7 +415,7 @@ class TestActorPool(unittest.TestCase):
         with pytest.raises(AssertionError):
             pool.on_task_completed(picked_actor, _dummy_bundle())
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
@@ -457,7 +457,7 @@ class TestActorPool(unittest.TestCase):
         # returned.
         assert set(picked_actors) == set(actors)
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 4
+        assert pool.total_size() == 4
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 4
         assert pool.num_active_actors() == 4
@@ -507,7 +507,7 @@ class TestActorPool(unittest.TestCase):
         del actor
         self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
+        assert pool.total_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
@@ -529,7 +529,7 @@ class TestActorPool(unittest.TestCase):
         del actor
         self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
+        assert pool.total_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
@@ -574,7 +574,7 @@ class TestActorPool(unittest.TestCase):
         del pending_actor
         self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 1
+        assert pool.total_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
@@ -602,7 +602,7 @@ class TestActorPool(unittest.TestCase):
         self._wait_for_actor_dead(actor_id)
 
         # Check that the per-state pool sizes are as expected.
-        assert pool.current_size() == 0
+        assert pool.total_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
@@ -737,7 +737,7 @@ class TestActorPool(unittest.TestCase):
         pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Case 1: Empty pool - no actors at all
-        assert pool.current_size() == 0
+        assert pool.total_size() == 0
         assert not pool.can_schedule_task(bundle=None, actor_locality_enabled=False)
 
         # Case 2: Only pending actors (not yet ready)

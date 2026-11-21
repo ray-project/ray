@@ -208,7 +208,7 @@ class _FakePool:
             return self.committed_override
         if self.node is None:
             return {}
-        return {self.node: self._per_actor.scale(self.current_size())}
+        return {self.node: self._per_actor.scale(self.total_size())}
 
     def draining_usage_by_node(self):
         return self.draining_usage
@@ -220,7 +220,7 @@ class _FakePool:
         self.upkeep_calls += 1
         return 0
 
-    def current_size(self):
+    def total_size(self):
         return self.running + self.pending
 
     def serving_size(self):
@@ -272,7 +272,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         logical_ops=(),
         inputs=(),
         # Node the fake's actors are committed to (all of them, at
-        # per_actor x current_size); None commits nothing.
+        # per_actor x total_size); None commits nothing.
         node: Optional[str] = "node0",
         ray_remote_args=None,
         user_ray_remote_args=None,
@@ -350,7 +350,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         return _placement_view(
             per_actor=self._pool.per_actor_resource_usage(),
             actors_by_node=(
-                {self._node: self._pool.current_size()} if self._node else {}
+                {self._node: self._pool.total_size()} if self._node else {}
             ),
         )
 
@@ -360,7 +360,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         # disagree. Tests that care about a status breakdown set actor_counts.
         if self.actor_counts or self._node is None:
             return self.actor_counts
-        running = self._pool.current_size() - self._pool.num_pending_actors()
+        running = self._pool.total_size() - self._pool.num_pending_actors()
         counts: Dict[str, Counter] = {}
         if running > 0:
             counts[self._node] = Counter({ActorStatus.ACTIVE: running})
@@ -517,7 +517,7 @@ def _make_sizer(
 ) -> _TestSizer:
     """A sizer over ``topo`` whose reporter serves the given cluster view (a
     single ``node0`` by default). Free capacity is the tick's real math:
-    allocation minus what the fakes commit (per_actor x current_size)."""
+    allocation minus what the fakes commit (per_actor x total_size)."""
     return _TestSizer(
         topo, _FakeReporter(view or _single_node(**cluster)), _FakeClock()
     )
@@ -727,6 +727,9 @@ def test_resource_shape_rejects_actor_requesting_neither_cpu_nor_gpu():
         {"scheduling_strategy": NodeLabelSchedulingStrategy(hard={"k": In("v")})},
         {"placement_group_capture_child_tasks": True},
         {"resources": {"custom": 1}},
+        # Actors are never restarted by Ray core in this backend.
+        {"max_restarts": -1},
+        {"max_restarts": 3},
     ],
 )
 def test_validate_ray_remote_args_rejects(user_remote_args):
@@ -2502,14 +2505,13 @@ def test_build_op_placement_view():
     """Counts are identical whether or not victim order is requested; only the
     full build carries the cheapest-drain-first victim lists. Neighbor counts
     exclude only DRAINING actors: pendings (during warmup every neighbor
-    is still pending) and RESTARTING actors (they recover onto the same node)
-    stay counted for collocation."""
+    is still pending) stay counted for collocation."""
     upstream = _FakeOp("up", _FakePool(min_size=1, max_size=4, cpu=1))
     upstream.actor_counts = {
         "n1": Counter(
             {
                 ActorStatus.ACTIVE: 1,
-                ActorStatus.RESTARTING: 1,
+                ActorStatus.IDLE: 1,
                 ActorStatus.DRAINING: 1,
             }
         ),
