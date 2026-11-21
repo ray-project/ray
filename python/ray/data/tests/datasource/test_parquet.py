@@ -45,13 +45,8 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.fixture(params=[False, True], ids=["v1", "v2"])
-def use_datasource_v2(request, restore_data_context):
-    restore_data_context.use_datasource_v2 = request.param
-
-
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+    tmp_path, shutdown_only, datasource_v2, monkeypatch
 ):
     # Set the environment variable on both the driver and the worker processes.
     monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
@@ -70,7 +65,7 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
 
 
 def test_read_parquet_rejects_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, ray_start_regular_shared, datasource_v2
 ):
     marker = tmp_path / "exploit_marker"
 
@@ -93,7 +88,7 @@ def test_read_parquet_rejects_pickle_object_columns(
 
 
 def test_read_parquet_rejects_nested_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, ray_start_regular_shared, datasource_v2
 ):
     # A pickled-object column nested inside a `list<...>` must trip the guard
     # just like a top-level one; otherwise nesting bypasses the check.
@@ -302,7 +297,7 @@ def test_include_paths_with_column_projection(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    use_datasource_v2,
+    datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
@@ -406,7 +401,7 @@ def test_include_row_hash_with_column_projection(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    use_datasource_v2,
+    datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
@@ -1914,7 +1909,7 @@ def test_read_null_data_in_first_file(
 
 
 def test_read_parquet_does_not_call_infer_schema(
-    tmp_path, monkeypatch, ray_start_regular_shared, use_datasource_v2
+    tmp_path, monkeypatch, ray_start_regular_shared, datasource_v2
 ):
     """The V2 read path should not call _infer_schema, which can cause O(N)
     metadata reads. V1 still calls it to reconcile per-file schemas."""
@@ -3430,7 +3425,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
 
 
 def test_parquet_sampling_fails_on_permanent_error(
-    ray_start_regular_shared, tmp_path, use_datasource_v2
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """Test that parquet sampling does not hang on permanent OSError (e.g.,
     permission denied). Instead, it should fail with a clear error after
@@ -3467,7 +3462,7 @@ def test_parquet_sampling_fails_on_permanent_error(
 
 
 def test_parquet_sampling_retries_transient_error(
-    ray_start_regular_shared, tmp_path, use_datasource_v2
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """V2 schema sampling retries a footer read that fails with an error in
     ``DataContext.retried_io_errors``."""
