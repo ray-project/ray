@@ -933,7 +933,7 @@ def get_bin_pack_residual(
                 if strict_spread:
                     used.add(i)
                 break
-        if found and node is not None:
+        if found:
             _inplace_subtract(node, demand)
         else:
             unfulfilled.append(demand)
