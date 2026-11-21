@@ -3990,6 +3990,11 @@ def read_webdataset(
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
+    Note:
+        With ``DataContext.use_datasource_v2`` enabled:
+
+        - ``preserve_order`` doesn't guarantee shard order.
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.

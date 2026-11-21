@@ -161,6 +161,7 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
             if self._decoder is None
             else WEBDATASET_ENCODING_RATIO_DECODED
         )
+        # TODO: Use an order-preserving partitioner.
         return RoundRobinPartitioner(
             WebDatasetInMemorySizeEstimator(encoding_ratio), hints=hints
         )
