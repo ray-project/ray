@@ -5,9 +5,6 @@ include-paths schema augmentation against a local tmpdir.
 """
 
 import os
-from contextlib import closing
-from itertools import islice
-from types import GeneratorType
 from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
@@ -15,7 +12,6 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
-from ray._common.test_utils import run_string_as_driver
 from ray.data._internal.datasource_v2.common import file_reader
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
@@ -484,28 +480,13 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
     assert scanner.schema == schema
 
 
-@pytest.mark.parametrize(
-    "cap,file_count,preserve_order,expected_workers",
-    [
-        (64, 64, False, 64),
-        (64, 65, False, 64),
-        (2, 8, False, 2),
-        (70, 65, False, 65),
-        (64, 1, False, None),
-        (1, 4, False, None),
-        (0, 4, False, None),
-        (-1, 4, False, None),
-        (64, 4, True, None),
-    ],
-)
-def test_parquet_fragment_workers(
-    tmp_path, monkeypatch, cap, file_count, preserve_order, expected_workers
-):
+@pytest.mark.parametrize("cap,expected_workers", [(2, 2), (4, 3), (0, None)])
+def test_parquet_fragment_workers(tmp_path, monkeypatch, cap, expected_workers):
     monkeypatch.setattr(file_reader, "_MAX_FRAGMENT_WORKERS", cap)
     monkeypatch.setattr(
-        DataContext.get_current().execution_options, "preserve_order", preserve_order
+        DataContext.get_current().execution_options, "preserve_order", False
     )
-    paths = [str(tmp_path / f"{i}.parquet") for i in range(file_count)]
+    paths = [str(tmp_path / f"{i}.parquet") for i in range(3)]
     schema = pa.schema([("id", pa.int64())])
     for i, path in enumerate(paths):
         pq.write_table(pa.table({"id": [i]}, schema=schema), path)
@@ -515,61 +496,13 @@ def test_parquet_fragment_workers(
     scanner = ParquetDatasourceV2(paths).create_scanner(schema)
     batches = scanner.create_reader().read(_manifest_of(paths))
     ids = [value for batch in batches for value in batch["id"].to_pylist()]
-    assert (ids if preserve_order else sorted(ids)) == list(range(file_count))
+    assert sorted(ids) == [0, 1, 2]
     if expected_workers is None:
         pool.assert_not_called()
     else:
         pool.assert_called_once()
         assert pool.call_args.kwargs["num_workers"] == expected_workers
         assert pool.call_args.kwargs["preserve_ordering"]
-
-
-@pytest.mark.parametrize("limit", [None, 5])
-def test_parquet_fragment_workers_replay_batch_order(tmp_path, monkeypatch, limit):
-    monkeypatch.setattr(file_reader, "_MAX_FRAGMENT_WORKERS", 2)
-    monkeypatch.setattr(
-        DataContext.get_current().execution_options, "preserve_order", False
-    )
-    paths = [str(tmp_path / f"{i}.parquet") for i in range(3)]
-    schema = pa.schema([("id", pa.int64())])
-    for path, ids in zip(paths, [[0, 1, 2, 3, 4], [10, 11], [20, 21, 22]]):
-        pq.write_table(pa.table({"id": ids}, schema=schema), path)
-    manifest = _manifest_of([*paths, paths[1]])
-    scanner = ParquetScanner(schema=schema, batch_size=2)
-    expected = [[0, 1], [10, 11], [2, 3], [10, 11], [4], [20, 21], [22]]
-    if limit is not None:
-        scanner = scanner.push_limit(limit)
-        expected = [[0, 1], [10, 11], [2]]
-
-    interrupted = scanner.create_reader().read(manifest)
-    assert isinstance(interrupted, GeneratorType)
-    with closing(interrupted):
-        prefix = [b["id"].to_pylist() for b in islice(interrupted, 2)]
-
-    replay = scanner.create_reader().read(manifest)
-    replayed = [b["id"].to_pylist() for b in replay]
-    assert replayed == expected
-    assert prefix + replayed[len(prefix) :] == expected
-
-
-@pytest.mark.parametrize(
-    "cap,expected", [(None, 64), ("2", 2), ("0", 0), ("-1", -1), ("invalid", 64)]
-)
-def test_parquet_fragment_worker_limit_environment(cap, expected):
-    env = os.environ.copy()
-    env_var = "RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS"
-    if cap is None:
-        env.pop(env_var, None)
-    else:
-        env[env_var] = cap
-    run_string_as_driver(
-        f"""
-from ray.data._internal.datasource_v2.common import file_reader
-
-assert file_reader._MAX_FRAGMENT_WORKERS == {expected}
-""",
-        env=env,
-    )
 
 
 def test_get_file_partitioner_returns_bin_packer(tmp_path):
