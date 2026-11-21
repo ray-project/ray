@@ -39,7 +39,12 @@ class FlexDict(gym.spaces.Dict):
 
         super().__init__(spaces=spaces)
 
-    def assertSpace(self, space):
+    def assertSpace(self, space: gym.Space) -> None:
+        """Asserts that `space` is a `gym.spaces.Space`.
+
+        Args:
+            space: The value to check.
+        """
         err = "Values of the dict should be instances of gym.Space"
         assert issubclass(type(space), gym.spaces.Space), err
 

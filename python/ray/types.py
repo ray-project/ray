@@ -11,4 +11,11 @@ T = TypeVar("T")
 # We should update Cython > 3.0 for this.
 @PublicAPI
 class ObjectRef(Generic[T]):
+    """A generic placeholder for ``ray.ObjectRef`` used in type hints.
+
+    ``ObjectRef[T]`` annotates a reference to an object of type ``T``. This
+    class exists for documentation only. At runtime, object refs are instances
+    of the Cython class ``ray.ObjectRef``, which isn't generic.
+    """
+
     pass

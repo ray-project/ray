@@ -7,8 +7,10 @@ from dataclasses import asdict
 from typing import List, Tuple
 
 import ray
+from ray._common.observability.annotation import annotations_enabled
 from ray.dashboard.modules.metrics.dashboards.common import (
     DashboardConfig,
+    GrafanaAnnotation,
     Panel,
     PanelTemplate,
 )
@@ -40,6 +42,33 @@ GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"
 )
 GRAFANA_DASHBOARD_LOG_LINK_URL_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_LOG_LINK_URL"
+
+# The stream selector every annotation query starts with: the label a log
+# collector attaches to the annotation log stream. This is the contract between
+# Ray and the collector config, so changing it breaks it.
+ANNOTATION_STREAM_SELECTOR = '{ray_annotations="true"}'
+ANNOTATION_STREAM_SELECTOR_ENV_VAR = "RAY_GRAFANA_ANNOTATION_STREAM_SELECTOR"
+
+# Each annotation line is an `AnnotationEvent` serialized to JSON.
+# These are the fields every annotation record carries; an event-specific query
+# adds its own `| json` stage for its tags and fields.
+ANNOTATION_COMMON_LABELS = (
+    'annotation_source="annotation_source", '
+    'session_name="session_name", '
+    'event="event", '
+    'message="message"'
+)
+
+# Datasource template variable the annotation queries resolve through. Grafana
+# binds it to the first Loki datasource, as the metric panels find Prometheus.
+ANNOTATION_DATASOURCE_VARIABLE = "annotation_datasource"
+ANNOTATION_DATASOURCE = {
+    "type": "loki",
+    "uid": f"${{{ANNOTATION_DATASOURCE_VARIABLE}}}",
+}
+# Hidden template variable for selecting the session_name, otherwise, all
+# available sessions are queried.
+ANNOTATION_SESSION_VARIABLE = "AnnotationSessionName"
 
 # Grafana dashboard layout constants
 # Dashboard uses a 24-column grid with 2-column panels
@@ -180,7 +209,97 @@ def generate_train_grafana_dashboard() -> Tuple[str, str]:
     return _generate_grafana_dashboard(train_dashboard_config)
 
 
-def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
+def generate_annotation_variable() -> dict:
+    """Build the datasource template variable the annotation queries use."""
+    return {
+        "name": ANNOTATION_DATASOURCE_VARIABLE,
+        "type": "datasource",
+        "description": (
+            "Loki datasource that dashboard annotations are queried from. "
+            "Ray does not provision this datasource."
+        ),
+        "datasource": None,
+        "query": ANNOTATION_DATASOURCE["type"],
+        "refresh": 1,
+        "hide": 0,
+        "includeAll": False,
+        "multi": False,
+        "current": {"selected": False},
+    }
+
+
+def generate_annotation_session_variable(session_variable: dict) -> dict:
+    """Build the hidden variable that scopes the annotation queries by session.
+
+    It is chained off ``SessionName``, so it follows that dropdown, and it has no
+    custom ``allValue``, so ``All`` expands to the sessions Prometheus actually
+    has rather than to ``.*``.
+
+    Args:
+        session_variable: The dashboard's ``SessionName`` variable, whose query
+            this one narrows to the selected sessions.
+
+    Returns:
+        The entry to append to the dashboard's ``templating.list``.
+    """
+    # Insert the selection into the label matchers, ahead of the global filters.
+    definition = session_variable["definition"].replace(
+        "{{{global_filters}}}", '{{SessionName=~"$SessionName",{global_filters}}}'
+    )
+    return {
+        "name": ANNOTATION_SESSION_VARIABLE,
+        "type": "query",
+        "description": "Sessions the dashboard annotations are queried for.",
+        "datasource": session_variable["datasource"],
+        "definition": definition,
+        "query": {"query": definition, "refId": "StandardVariableQuery"},
+        "refresh": session_variable["refresh"],
+        "hide": 2,
+        "includeAll": True,
+        "multi": True,
+        "current": {"selected": True, "text": ["All"], "value": ["$__all"]},
+    }
+
+
+def generate_annotation(annotation: GrafanaAnnotation) -> dict:
+    """Expand a ``GrafanaAnnotation`` into the full Grafana annotation JSON.
+
+    Args:
+        annotation: The annotation to expand.
+
+    Returns:
+        The entry to append to the dashboard's ``annotations.list``.
+    """
+    stream_selector = (
+        os.environ.get(ANNOTATION_STREAM_SELECTOR_ENV_VAR) or ANNOTATION_STREAM_SELECTOR
+    )
+    expr = (
+        f"{stream_selector} |= {json.dumps(annotation.source)} "
+        f"| json {ANNOTATION_COMMON_LABELS} "
+        f"| annotation_source={json.dumps(annotation.source)} "
+        f'| session_name=~"${{{ANNOTATION_SESSION_VARIABLE}:regex}}" '
+        f"{annotation.expr}"
+    )
+
+    return {
+        "datasource": dict(ANNOTATION_DATASOURCE),
+        "enable": annotation.enable,
+        "hide": annotation.hide,
+        "iconColor": annotation.icon_color,
+        "name": annotation.name,
+        "expr": expr,
+        "queryType": annotation.query_type,
+        "tagKeys": annotation.tag_keys,
+        "target": {
+            "datasource": dict(ANNOTATION_DATASOURCE),
+            "expr": expr,
+            "queryType": annotation.query_type,
+            "refId": annotation.ref_id,
+        },
+    }
+
+
+def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> Tuple[str, str]:
     """Render the Grafana dashboard JSON for the given config.
 
     Args:
@@ -198,6 +317,18 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
         open(os.path.join(os.path.dirname(__file__), "dashboards", base_file_name))
     )
     base_json["panels"] = panels
+
+    if dashboard_config.annotations and annotations_enabled():
+        annotations = base_json.setdefault("annotations", {})
+        annotations.setdefault("list", []).extend(
+            generate_annotation(annotation)
+            for annotation in dashboard_config.annotations
+        )
+        variables = base_json.setdefault("templating", {}).setdefault("list", [])
+        (session_variable,) = [v for v in variables if v["name"] == "SessionName"]
+        variables.append(generate_annotation_session_variable(session_variable))
+        variables.append(generate_annotation_variable())
+
     # Update variables to use global_filters
     global_filters_str = ",".join(global_filters)
     variables = base_json.get("templating", {}).get("list", [])

@@ -63,6 +63,9 @@ void InlineDependencies(
           }
 
           mutable_arg->set_is_inlined(true);
+          // A consume-once value small enough to inline is copied into the task spec,
+          // so moving it is a no-op.
+          mutable_arg->clear_is_move();
           if (it->second->HasData()) {
             const auto &data = it->second->GetData();
             mutable_arg->set_data(data->Data(), data->Size());

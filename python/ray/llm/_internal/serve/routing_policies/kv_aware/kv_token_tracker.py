@@ -1,13 +1,12 @@
 import asyncio
 import hashlib
 import logging
-import math
 import time
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, TypedDict
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, TypedDict
 
 import ray
 from ray import serve
@@ -15,7 +14,9 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     DEFAULT_KV_INDEXER_THREADS,
     DEFAULT_SESSION_AFFINITY_TTL_S,
     KV_INDEXER_THREADS_KEY,
+    KV_TOKEN_METADATA_KEY,
     LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
+    OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
     REQUEST_TRACKING_TTL_S,
     SESSION_AFFINITY_MODE,
 )
@@ -43,7 +44,6 @@ _ROUTING_GROUP = "default"
 LIFECYCLE_HOOKS = frozenset(
     {
         "on_prefill_complete",
-        "on_decode_progress",
         "on_request_completed",
     }
 )
@@ -56,20 +56,21 @@ def get_worker_id(replica_unique_id: str) -> int:
     )
 
 
+def get_token_endpoint(routing_stats: Dict[str, Any]) -> Optional[str]:
+    """Return the prompt-token endpoint a replica advertises in its routing stats."""
+    token_metadata = routing_stats.get(KV_TOKEN_METADATA_KEY)
+    if isinstance(token_metadata, dict):
+        return token_metadata.get("endpoint") or None
+    return None
+
+
 @dataclass
 class RequestLifecycle:
     """In-flight request load state while the request is served by a replica."""
 
     worker_id: int
-    prompt_tokens: int = 0
-    # Client-provided output-length estimate (``sampling_params.max_tokens``);
-    # weights each decode block's load by how much generation remains.
-    expected_output_tokens: Optional[int] = None
+    effective_prefill_tokens: int = 0
     prefill_completed: bool = False
-    output_tokens: int = 0
-    # Running count of KV blocks (prompt + output) the request occupies; the
-    # cursor for booking each newly crossed decode block.
-    total_blocks: int = 0
     # Monotonic admission time, for the TTL eviction sweep.
     created_at: float = field(default_factory=time.monotonic)
 
@@ -207,13 +208,17 @@ class KVTokenTracker:
         # NOTE (jeffreywang): _replica_id_by_worker is later used by select_worker
         # to get candidate workers to route among.
         self._replica_id_by_worker: Dict[int, str] = {}
-        # Per-request state that the lifecycle hooks need, keyed by request id, serves
-        # the following purposes:
-        #   1. Block cursor: Turn cumulative decode tokens into add_output_block deltas.
-        #   2. expected_output_tokens for decode-block decay weighting.
-        #   3. In-flight request set: Free reservation exactly once.
+        # Connects to the token endpoints of newly joined workers.
+        self._on_token_endpoints: Optional[Callable[[List[str]], None]] = None
+        # In-flight requests keyed by request id, so the lifecycle hooks free each
+        # reservation exactly once and track outstanding prefill tokens.
         # Ordered oldest-first so the TTL sweep pops stale entries off the front.
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
+        # Current workload snapshot, used by the autoscaler.
+        self._outstanding_effective_prefill_tokens = 0
+        self._autoscaling_metrics_callback: Optional[
+            Callable[[Dict[str, int]], None]
+        ] = None
         # Reverse index of in-flight request ids per worker, kept in lockstep with
         # _requests, so remove_worker is O(k) in the worker's requests, not O(N).
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
@@ -236,9 +241,12 @@ class KVTokenTracker:
         self._create_selection_service()
         self._start_replica_tracking()
 
-    def get_block_size(self) -> int:
-        """Return the KV-cache block size used for decode-block accounting."""
-        return self._block_size
+    def subscribe_token_endpoints(self, callback: Callable[[List[str]], None]) -> None:
+        """Call ``callback`` with the token endpoints of workers as they join.
+
+        Must be called before the event loop runs the first replica update.
+        """
+        self._on_token_endpoints = callback
 
     def start_replica_broadcast(self, handle: Any) -> None:
         """Broadcast load reservations and session affinity bindings to peers."""
@@ -288,6 +296,7 @@ class KVTokenTracker:
                 # replica falls behind its peers and skips bookings whose requests
                 # completed in the meantime.
                 await asyncio.gather(*map(self._apply_reservation, bookings))
+                self._publish_autoscaling_snapshot()
             except Exception:
                 logger.exception("Failed to apply selection service peer updates.")
             finally:
@@ -315,13 +324,33 @@ class KVTokenTracker:
                 await self._svc.free_reservation(request_id)
                 return
             self._track_request_state(
-                request_id,
-                booking["worker_id"],
-                booking["isl_tokens"],
-                booking["expected_output_tokens"],
+                request_id, booking["worker_id"], booking["effective_prefill_tokens"]
             )
         except Exception:
             logger.exception("Failed to apply a peer load reservation.")
+
+    def set_autoscaling_metrics_callback(
+        self, callback: Callable[[Dict[str, int]], None]
+    ) -> None:
+        """Set the local callback for router-owned autoscaling metrics."""
+        self._autoscaling_metrics_callback = callback
+
+    def _get_autoscaling_snapshot(self) -> Dict[str, int]:
+        return {
+            OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: (
+                self._outstanding_effective_prefill_tokens
+            ),
+        }
+
+    def _publish_autoscaling_snapshot(self) -> None:
+        if self._autoscaling_metrics_callback is None:
+            return
+        # Callers publish after updating local state but before syncing the
+        # selection service and peers, so a raising callback must not abort them.
+        try:
+            self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
+        except Exception:
+            logger.exception("Autoscaling metrics callback failed.")
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -412,6 +441,7 @@ class KVTokenTracker:
         are registered with the selection service and departed ones evicted.
         """
         members: Dict[int, tuple] = {}
+        token_endpoints: Dict[int, str] = {}
         for replica in target_info.running_replicas:
             worker_id = get_worker_id(replica.replica_id.unique_id)
             kv_event_metadata = replica.routing_stats.get("kv_event_metadata")
@@ -420,6 +450,9 @@ class KVTokenTracker:
                     replica.replica_id.to_full_id_str(),
                     kv_event_metadata,
                 )
+                token_endpoint = get_token_endpoint(replica.routing_stats)
+                if token_endpoint:
+                    token_endpoints[worker_id] = token_endpoint
 
         registered = set(self._replica_id_by_worker)
         added = members.keys() - registered
@@ -428,13 +461,18 @@ class KVTokenTracker:
         for worker_id in removed:
             self.remove_worker(worker_id)
             self._replica_id_by_worker.pop(worker_id, None)
+        new_token_endpoints = []
         for worker_id in added:
             replica_id, kv_event_metadata = members[worker_id]
             self._register_block_size(kv_event_metadata["block_size"], replica_id)
             self._replica_id_by_worker[worker_id] = replica_id
+            if worker_id in token_endpoints:
+                new_token_endpoints.append(token_endpoints[worker_id])
             self._schedule(
                 self._upsert_worker(worker_id, replica_id, kv_event_metadata)
             )
+        if new_token_endpoints and self._on_token_endpoints is not None:
+            self._on_token_endpoints(new_token_endpoints)
 
         if added or removed:
             logger.info(
@@ -452,7 +490,10 @@ class KVTokenTracker:
         # never arrive, so they would otherwise leak. delete_worker below frees
         # their load in the service, so no per-request free_reservation is needed.
         for request_id in self._request_ids_by_worker.pop(worker_id, set()):
-            self._requests.pop(request_id, None)
+            state = self._requests.pop(request_id, None)
+            if state is not None:
+                self._remove_autoscaling_load(state)
+        self._publish_autoscaling_snapshot()
         if self._svc is None:
             return
         self._schedule(self._svc.delete_worker(worker_id))
@@ -517,9 +558,8 @@ class KVTokenTracker:
             request_id: Unique identifier for the request being routed.
             token_ids: Prompt token ids used to compute KV-cache overlap.
             allowed_worker_ids: Candidate worker ids the router may select from.
-            expected_output_tokens: The request's output-token cap. With
-                select-time reservation this lets selection service decay decode
-                load without per-token progress events.
+            expected_output_tokens: The request's output-token cap, passed to
+                the selection service.
             lora_name: The adapter name vLLM stamps on the request's KV-cache
                 events. The selection service salts its KV hashes with it, so
                 omitting it on a LoRA request scores against the wrong
@@ -560,11 +600,9 @@ class KVTokenTracker:
             self._schedule(self._free_abandoned_reservation(request_id, reserve))
             raise
         self._track_request_state(
-            request_id,
-            selection["worker_id"],
-            len(token_ids),
-            expected_output_tokens,
+            request_id, selection["worker_id"], selection["effective_prefill_tokens"]
         )
+        self._publish_autoscaling_snapshot()
         if self._replica_forwarder is not None:
             self._replica_forwarder.report(
                 PeerUpdateKind.LOAD_RESERVATION,
@@ -608,27 +646,17 @@ class KVTokenTracker:
             )
 
     def _track_request_state(
-        self,
-        request_id: str,
-        worker_id: int,
-        prompt_tokens: int,
-        expected_output_tokens: Optional[int],
+        self, request_id: str, worker_id: int, effective_prefill_tokens: int
     ) -> None:
         old = self._requests.pop(request_id, None)
         if old is not None:
+            self._remove_autoscaling_load(old)
             self._untrack_worker_request(request_id, old.worker_id)
         self._completed_request_ids.pop(request_id, None)
-        if self._block_size is None:
-            raise RuntimeError(
-                "KV block size is unavailable before worker registration."
-            )
-        block_size = self._block_size
         self._requests[request_id] = RequestLifecycle(
-            worker_id=worker_id,
-            prompt_tokens=prompt_tokens,
-            expected_output_tokens=expected_output_tokens,
-            total_blocks=math.ceil(prompt_tokens / block_size),
+            worker_id=worker_id, effective_prefill_tokens=effective_prefill_tokens
         )
+        self._outstanding_effective_prefill_tokens += effective_prefill_tokens
         self._request_ids_by_worker.setdefault(worker_id, set()).add(request_id)
 
     async def on_lifecycle_events(self, events: List[tuple]) -> None:
@@ -658,28 +686,12 @@ class KVTokenTracker:
         """Record a request's prefill -> decode transition, dropping its prefill
         load in the selection service."""
         state = self._requests.get(request_id)
-        if state is None:
+        if state is None or state.prefill_completed:
             return
         state.prefill_completed = True
+        self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
+        self._publish_autoscaling_snapshot()
         await self._svc.prefill_complete(request_id)
-
-    async def on_decode_progress(
-        self, request_id: str, cumulative_output_tokens: int
-    ) -> None:
-        """Advance ``request_id`` to an exact cumulative output-token count,
-        booking one decode block in the selection service per crossed boundary.
-        """
-        state = self._requests.get(request_id)
-        if state is None:
-            return
-        state.output_tokens = cumulative_output_tokens
-        new_total_blocks = math.ceil(
-            (state.prompt_tokens + cumulative_output_tokens) / self._block_size
-        )
-        decay_fraction = self._get_decay_fraction(state)
-        while new_total_blocks > state.total_blocks:
-            state.total_blocks += 1
-            self._svc.add_output_block(request_id, decay_fraction=decay_fraction)
 
     async def on_request_completed(self, request_id: str) -> None:
         """Free ``request_id`` from the selection service's active load and the
@@ -688,8 +700,20 @@ class KVTokenTracker:
         self._mark_request_completed(request_id)
         if state is None:
             return
+        self._remove_autoscaling_load(state)
         self._untrack_worker_request(request_id, state.worker_id)
+        self._publish_autoscaling_snapshot()
         await self._svc.free_reservation(request_id)
+
+    def _remove_autoscaling_load(self, state: RequestLifecycle) -> None:
+        """Remove a request's outstanding prefill tokens if it is still in prefill."""
+        if not state.prefill_completed:
+            self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
+
+    async def get_autoscaling_snapshot(self) -> Dict[str, int]:
+        """Return this router replica's latest global LLM work estimate."""
+        await self._evict_stale_requests()
+        return self._get_autoscaling_snapshot()
 
     def _mark_request_completed(self, request_id: str) -> None:
         """Remember completions that beat reservation admission on this ingress."""
@@ -715,11 +739,14 @@ class KVTokenTracker:
             if completed_at > cutoff:
                 break
             self._completed_request_ids.pop(request_id, None)
+        autoscaling_load_changed = False
         while self._requests:
             request_id, state = next(iter(self._requests.items()))
             if state.created_at > cutoff:
                 break
             self._requests.popitem(last=False)
+            self._remove_autoscaling_load(state)
+            autoscaling_load_changed = True
             self._untrack_worker_request(request_id, state.worker_id)
             logger.warning(
                 "Evicting stale KV request %s (tracked > %ds without completion); "
@@ -728,13 +755,8 @@ class KVTokenTracker:
                 REQUEST_TRACKING_TTL_S,
             )
             await self._svc.free_reservation(request_id)
-
-    def _get_decay_fraction(self, state: RequestLifecycle) -> Optional[float]:
-        """Fraction of output still expected, or ``None`` without an estimate;
-        weights each decode block by how much generation remains."""
-        if not state.expected_output_tokens:
-            return None
-        return max(0.0, 1.0 - state.output_tokens / state.expected_output_tokens)
+        if autoscaling_load_changed:
+            self._publish_autoscaling_snapshot()
 
 
 _KV_TOKEN_TRACKER: Optional["KVTokenTracker"] = None

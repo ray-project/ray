@@ -271,48 +271,25 @@ class _NotProvided:
     Using the only instance of this class indicates that the user does NOT wish to
     change the value of some property.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-        config = AlgorithmConfig()
-        # Print out the default learning rate.
-        print(config.lr)
-
-    .. testoutput::
-
+    Examples:
+        >>> from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+        >>> config = AlgorithmConfig()
+        >>> # Print out the default learning rate.
+        >>> print(config.lr)
         0.001
 
-    .. testcode::
-        :skipif: True
+        >>> # Print out the default `preprocessor_pref`.
+        >>> print(config.preprocessor_pref)
+        deepmind
 
-        # Print out the default `preprocessor_pref`.
-        print(config.preprocessor_pref)
-
-    .. testoutput::
-
-        "deepmind"
-
-    .. testcode::
-        :skipif: True
-
-        # Will only set the `preprocessor_pref` property (to None) and leave
-        # all other properties at their default values.
-        config.training(preprocessor_pref=None)
-        config.preprocessor_pref is None
-
-    .. testoutput::
-
+        >>> # Will only set the `preprocessor_pref` property (to None) and leave
+        >>> # all other properties at their default values.
+        >>> _ = config.env_runners(preprocessor_pref=None)
+        >>> config.preprocessor_pref is None
         True
 
-    .. testcode::
-        :skipif: True
-
-        # Still the same value (didn't touch it in the call to `.training()`.
-        print(config.lr)
-
-    .. testoutput::
-
+        >>> # Still the same value (didn't touch it in the call to `.env_runners()`.
+        >>> print(config.lr)
         0.001
     """
 

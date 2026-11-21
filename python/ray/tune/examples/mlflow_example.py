@@ -9,6 +9,10 @@ import mlflow
 from ray import tune
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow
 
+# MLflow >= 3.18 requires opting in to the local filesystem tracking
+# backend that the smoke test's tempdir URI uses.
+os.environ.setdefault("MLFLOW_ALLOW_FILE_STORE", "true")
+
 
 def evaluation_fn(step, width, height):
     return (0.1 + width * step / 100) ** (-1) + height * 0.1

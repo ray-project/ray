@@ -439,7 +439,7 @@ class MetricsLogger:
 
     def log_dict(
         self,
-        value_dict,
+        value_dict: Dict[str, Any],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
@@ -464,6 +464,22 @@ class MetricsLogger:
         have been reduced by other, parallel components.
 
         See MetricsLogger.log_value for more details on the arguments.
+
+        Args:
+            value_dict: The possibly nested dict of values or Stats objects to log.
+            key: An optional key, or nested key tuple, to prefix the path of each leaf
+                with.
+            reduce: The reduction method. Passed to `log_value()` for each leaf.
+            window: An optional window size. Passed to `log_value()` for each leaf.
+            ema_coeff: An optional EMA coefficient. Passed to `log_value()` for each
+                leaf.
+            percentiles: The percentiles to compute. Passed to `log_value()` for
+                each leaf.
+            clear_on_reduce: Deprecated. Use `reduce="lifetime_sum"` instead.
+            with_throughput: Whether to track a throughput estimate. Passed to
+                `log_value()` for each leaf.
+            throughput_ema_coeff: Deprecated.
+            reduce_per_index_on_aggregate: Deprecated.
         """
         assert isinstance(
             value_dict, dict

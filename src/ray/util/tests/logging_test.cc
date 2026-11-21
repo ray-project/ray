@@ -14,13 +14,19 @@
 
 #include "ray/util/logging.h"
 
+#ifndef _WIN32
+#include <signal.h>
+#endif
+
 #include <chrono>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <vector>
 
+#include "absl/log/globals.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "gtest/gtest.h"
@@ -187,6 +193,15 @@ TEST(PrintLogTest, TestRayLogEveryMs) {
   EXPECT_LT(occurrences, num_iterations);
   EXPECT_GT(occurrences, 5);
   EXPECT_LT(occurrences, 15);
+}
+
+// gRPC logs through absl; without GRPC_VERBOSITY its INFO messages would reach
+// stderr. StartRayLog keeps absl at ERROR, as older gRPC did.
+TEST(PrintLogTest, TestAbslMinLogLevelDefaultsToError) {
+  ASSERT_EQ(std::getenv("GRPC_VERBOSITY"), nullptr);
+  RayLog::StartRayLog("/tmp/gcs", RayLogLevel::INFO, /*log_filepath=*/"");
+  EXPECT_EQ(absl::MinLogLevel(), absl::LogSeverityAtLeast::kError);
+  RayLog::ShutDownRayLog();
 }
 
 TEST(PrintLogTest, TestTextLogging) {
@@ -376,5 +391,121 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
   ray::RayLog::InstallFailureSignalHandler(nullptr);
   ASSERT_DEATH(abort(), ".*SIGABRT received.*");
 }
+
+#ifndef _WIN32
+static volatile sig_atomic_t dummy_handler_calls = 0;
+
+static void DummySignalHandler(int /*signum*/) { dummy_handler_calls++; }
+
+static void ResetSignalToDefault(int signal_num) {
+  struct sigaction default_action;
+  memset(&default_action, 0, sizeof(default_action));
+  sigemptyset(&default_action.sa_mask);
+  default_action.sa_handler = SIG_DFL;
+  ASSERT_EQ(sigaction(signal_num, &default_action, NULL), 0);
+}
+
+class SignalActionTest : public ::testing::TestWithParam<int> {
+ protected:
+  void TearDown() override {
+    RayLog::UninstallSignalAction();
+    ResetSignalToDefault(GetParam());
+  }
+};
+
+// A JVM in the same process installs its own SIGSEGV handler and relies on it for
+// safepoint polls and implicit null checks. Uninstalling Ray's handler must give
+// that handler back rather than resetting the disposition to SIG_DFL, which would
+// turn the JVM's next perfectly ordinary SIGSEGV into a process-killing fault.
+TEST_P(SignalActionTest, TestUninstallSignalActionRestoresPreexistingHandler) {
+  const int signal_num = GetParam();
+  // Start from a known state; the suite above may have left Ray's handler installed.
+  ray::RayLog::UninstallSignalAction();
+
+  struct sigaction preexisting;
+  memset(&preexisting, 0, sizeof(preexisting));
+  sigemptyset(&preexisting.sa_mask);
+  preexisting.sa_handler = DummySignalHandler;
+  ASSERT_EQ(sigaction(signal_num, &preexisting, NULL), 0);
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+
+  struct sigaction while_installed;
+  memset(&while_installed, 0, sizeof(while_installed));
+  ASSERT_EQ(sigaction(signal_num, NULL, &while_installed), 0);
+  ASSERT_NE(while_installed.sa_handler, DummySignalHandler)
+      << "Ray's handler should have taken over the signal";
+
+  ray::RayLog::UninstallSignalAction();
+
+  struct sigaction after_uninstall;
+  memset(&after_uninstall, 0, sizeof(after_uninstall));
+  ASSERT_EQ(sigaction(signal_num, NULL, &after_uninstall), 0);
+  ASSERT_EQ(after_uninstall.sa_handler, DummySignalHandler)
+      << "the pre-existing handler must be restored, not replaced with SIG_DFL";
+
+  dummy_handler_calls = 0;
+  ASSERT_EQ(raise(signal_num), 0);
+  EXPECT_EQ(dummy_handler_calls, 1);
+}
+
+// The path every Ray process takes: no handler before Ray's install, so uninstall
+// must put SIG_DFL back rather than leaving Ray's handler or anything else behind.
+TEST_P(SignalActionTest, TestUninstallSignalActionRestoresDefault) {
+  const int signal_num = GetParam();
+  ray::RayLog::UninstallSignalAction();
+  ResetSignalToDefault(signal_num);
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+
+  struct sigaction while_installed;
+  memset(&while_installed, 0, sizeof(while_installed));
+  ASSERT_EQ(sigaction(signal_num, NULL, &while_installed), 0);
+  ASSERT_TRUE((while_installed.sa_flags & SA_SIGINFO) != 0 ||
+              while_installed.sa_handler != SIG_DFL)
+      << "Ray's handler should have taken over the signal";
+
+  ray::RayLog::UninstallSignalAction();
+
+  struct sigaction after_uninstall;
+  memset(&after_uninstall, 0, sizeof(after_uninstall));
+  ASSERT_EQ(sigaction(signal_num, NULL, &after_uninstall), 0);
+  EXPECT_EQ(after_uninstall.sa_flags & SA_SIGINFO, 0);
+  EXPECT_EQ(after_uninstall.sa_handler, SIG_DFL);
+}
+
+// The ordering that actually bit us: Ray initialises first, and only afterwards
+// does something start a JVM, which installs its own SIGSEGV handler on top of
+// Ray's. Ray's teardown must not remove a handler that was installed after its
+// own -- it is not Ray's to remove, and its owner is still running.
+TEST_P(SignalActionTest, TestUninstallSignalActionLeavesLaterHandlerAlone) {
+  const int signal_num = GetParam();
+  ray::RayLog::UninstallSignalAction();
+
+  ray::RayLog::InstallFailureSignalHandler(nullptr);
+
+  struct sigaction later;
+  memset(&later, 0, sizeof(later));
+  sigemptyset(&later.sa_mask);
+  later.sa_handler = DummySignalHandler;
+  ASSERT_EQ(sigaction(signal_num, &later, NULL), 0);
+
+  ray::RayLog::UninstallSignalAction();
+
+  struct sigaction after_uninstall;
+  memset(&after_uninstall, 0, sizeof(after_uninstall));
+  ASSERT_EQ(sigaction(signal_num, NULL, &after_uninstall), 0);
+  ASSERT_EQ(after_uninstall.sa_handler, DummySignalHandler)
+      << "a handler installed after Ray's must survive Ray's uninstall";
+
+  dummy_handler_calls = 0;
+  ASSERT_EQ(raise(signal_num), 0);
+  EXPECT_EQ(dummy_handler_calls, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(PrintLogTest,
+                         SignalActionTest,
+                         ::testing::Values(SIGSEGV, SIGBUS, SIGTRAP));
+#endif
 
 }  // namespace ray

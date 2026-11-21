@@ -41,7 +41,6 @@ def _create(network, **kwargs):
     sid = runtime.create(
         os.environ.get("RAY_SANDBOX_TEST_IMAGE", "python:3.12-slim"),
         network=network,
-        readonly=False,
         timeout_seconds=300,
         env={"PATH": "/usr/local/bin:/usr/bin:/bin"},
         **kwargs,

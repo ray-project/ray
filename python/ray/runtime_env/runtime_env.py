@@ -321,6 +321,8 @@ class RuntimeEnv(dict):
             or with the ``config`` or ``env_vars`` parameters.
         uv: Either a list of pip packages, or a Python dictionary that has one field:
             1) ``packages`` (required, List[str]).
+        preload_modules: (Experimental) List of Python module names to preload in the
+            worker fork server before forking worker processes.
         **kwargs: Additional runtime environment fields that are forwarded
             verbatim to the underlying runtime environment dictionary.
     """
@@ -344,6 +346,7 @@ class RuntimeEnv(dict):
         "_nsight",
         "_rocprof_sys",
         "image_uri",
+        "preload_modules",
     }
 
     extensions_fields: Set[str] = {
@@ -369,6 +372,7 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         image_uri: Optional[str] = None,
         uv: Optional[List[str]] = None,
+        preload_modules: Optional[List[str]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -400,6 +404,8 @@ class RuntimeEnv(dict):
             runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
         if image_uri is not None:
             runtime_env["image_uri"] = image_uri
+        if preload_modules is not None:
+            runtime_env["preload_modules"] = preload_modules
 
         self.update(runtime_env)
 
@@ -494,7 +500,21 @@ class RuntimeEnv(dict):
         """
         self.__setitem__(name, value)
 
-    def get(self, name, default=None, data_class=None):
+    def get(
+        self, name: str, default: Any = None, data_class: Optional[type] = None
+    ) -> Any:
+        """Return the value of a runtime environment field.
+
+        Args:
+            name: The field name.
+            default: The value to return if the field isn't set.
+            data_class: A dataclass to convert the field value to. If None, the
+                value is returned as stored.
+
+        Returns:
+            The field value, converted to ``data_class`` if one is given, or
+            ``default`` if the field isn't set.
+        """
         if name not in self:
             return default
         if not data_class:
@@ -673,7 +693,7 @@ class RuntimeEnv(dict):
         """
         return self.get("env_vars", {})
 
-    def has_conda(self) -> str:
+    def has_conda(self) -> bool:
         """Return whether the ``conda`` field is set.
 
         Returns:
@@ -683,7 +703,7 @@ class RuntimeEnv(dict):
             return True
         return False
 
-    def conda_env_name(self) -> str:
+    def conda_env_name(self) -> Optional[str]:
         """Return the name of the existing conda environment to use.
 
         Returns:
@@ -694,7 +714,7 @@ class RuntimeEnv(dict):
             return None
         return self["conda"]
 
-    def conda_config(self) -> str:
+    def conda_config(self) -> Optional[str]:
         """Return the conda environment spec as JSON.
 
         Returns:
@@ -761,7 +781,19 @@ class RuntimeEnv(dict):
         self["uv"] = self["uv"]
         return self["uv"]
 
-    def get_extension(self, key) -> Optional[str]:
+    def get_extension(self, key: str) -> Optional[str]:
+        """Return the value of an extension field.
+
+        Args:
+            key: The extension field name. Must be one of
+                ``RuntimeEnv.extensions_fields``.
+
+        Returns:
+            The field value, or None if it isn't set.
+
+        Raises:
+            ValueError: If ``key`` isn't an extension field.
+        """
         if key not in RuntimeEnv.extensions_fields:
             raise ValueError(
                 f"Extension key must be one of {RuntimeEnv.extensions_fields}, "
@@ -802,7 +834,7 @@ class RuntimeEnv(dict):
             return None
         return self["container"].get("worker_path", "")
 
-    def py_container_run_options(self) -> List:
+    def py_container_run_options(self) -> Optional[List]:
         """Return the run options of the ``container`` field.
 
         Returns:
@@ -820,6 +852,16 @@ class RuntimeEnv(dict):
             The ``image_uri`` value, or None if it isn't set.
         """
         return self.get("image_uri")
+
+    def preload_modules(self) -> List[str]:
+        """Return the entries of the ``preload_modules`` field.
+
+        Returns:
+            A list of the ``preload_modules`` entries, or an empty list if it isn't set.
+        """
+        if "preload_modules" in self:
+            return list(self["preload_modules"])
+        return []
 
     def plugins(self) -> List[Tuple[str, Any]]:
         """Return the fields that aren't built-in runtime environment fields.

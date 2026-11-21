@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
-from typing import TYPE_CHECKING, Deque, Iterator, Optional
+from typing import TYPE_CHECKING, Any, Deque, Iterator, Optional
 
 import ray
 from ray.exceptions import GetTimeoutError, ObjectRefStreamEndOfStreamError
@@ -86,15 +86,33 @@ class ObjectRefGenerator:
         """
         return self._next_sync()
 
-    def send(self, value):
+    def send(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.send` is not supported.")
 
-    def throw(self, value):
+    def throw(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.throw` is not supported.")
 
     def close(self):
-        """Not supported. Always raises ``NotImplementedError``."""
-        raise NotImplementedError("`gen.close` is not supported.")
+        """Not supported. Always raises ``NotImplementedError``.
+
+        To stop the generator task, cancel it with :func:`ray.cancel`. After
+        cancellation, ``next(gen)`` can return an object ref that contains a
+        :class:`~ray.exceptions.TaskCancelledError`.
+        """
+        raise NotImplementedError(
+            "`gen.close` is not supported. To stop the generator task, "
+            "call `ray.cancel(gen)`."
+        )
 
     def __aiter__(self) -> "ObjectRefGenerator":
         return self
@@ -102,15 +120,33 @@ class ObjectRefGenerator:
     async def __anext__(self):
         return await self._next_async()
 
-    async def asend(self, value):
+    async def asend(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.asend` is not supported.")
 
-    async def athrow(self, value):
+    async def athrow(self, value: Any):
+        """Not supported. Always raises ``NotImplementedError``.
+
+        Args:
+            value: Ignored.
+        """
         raise NotImplementedError("`gen.athrow` is not supported.")
 
     async def aclose(self):
-        """Not supported. Always raises ``NotImplementedError``."""
-        raise NotImplementedError("`gen.aclose` is not supported.")
+        """Not supported. Always raises ``NotImplementedError``.
+
+        To stop the generator task, cancel it with :func:`ray.cancel`. After
+        cancellation, ``next(gen)`` can return an object ref that contains a
+        :class:`~ray.exceptions.TaskCancelledError`.
+        """
+        raise NotImplementedError(
+            "`gen.aclose` is not supported. To stop the generator task, "
+            "call `ray.cancel(gen)`."
+        )
 
     def completed(self) -> "ray.ObjectRef":
         """Returns an object ref that is ready when

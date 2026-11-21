@@ -28,13 +28,8 @@ def mock_sglang_wrapper():
         # Configure the mock instance's behavior
         async def mock_generate(row):
             return (
-                MagicMock(
-                    request_id=0,
-                    prompt=row["prompt"],
-                    prompt_token_ids=None,
-                    params=row["sampling_params"],
-                    idx_in_batch=row["__idx_in_batch"],
-                ),
+                0,  # request_id
+                row["__idx_in_batch"],
                 {
                     "prompt": row["prompt"],
                     "prompt_token_ids": None,
@@ -42,6 +37,7 @@ def mock_sglang_wrapper():
                     "generated_tokens": None,
                     "generated_text": f"Response to: {row['prompt']}",
                     "num_generated_tokens": 3,
+                    "params": str(row["sampling_params"]),
                 },
                 0.1,  # time_taken_llm
             )
@@ -55,18 +51,18 @@ def mock_sglang_wrapper():
 
 @pytest.fixture
 def mock_sgl_engine():
-    """Mock the SGLang engine and its _generate_async method."""
+    """Mock the SGLang engine and the generate task's _generate_async method."""
     with (
         patch.dict(sys.modules, {"sglang": MagicMock()}),
         patch(
-            "ray.llm._internal.batch.stages.sglang_engine_stage.SGLangEngineWrapper._generate_async"
+            "ray.llm._internal.batch.tasks.sglang.generate._SGLangGenerateTask._generate_async"
         ) as mock_generate_async,
     ):
         num_running_requests = 0
         request_lock = asyncio.Lock()
 
         # Configure mock engine's generate behavior to simulate delay
-        async def mock_generate(request):
+        async def mock_generate(engine, request):
             nonlocal num_running_requests
             async with request_lock:
                 num_running_requests += 1
@@ -185,6 +181,7 @@ async def test_sglang_engine_udf_basic(mock_sglang_wrapper):
         model=udf.model,
         idx_in_batch_column="__idx_in_batch",
         max_pending_requests=-1,
+        task_kwargs=None,
         task=SGLangTaskType.GENERATE,
     )
 
@@ -226,9 +223,11 @@ async def test_sglang_wrapper(mock_sgl_engine, max_pending_requests, batch_size)
     assert mock_generate_async.call_count == batch_size
 
     # Verify the outputs match expected values
-    for i, (request, output, time_taken_llm) in enumerate(results):
+    for i, (request_id, idx_in_batch, output, time_taken_llm) in enumerate(results):
+        assert idx_in_batch == i
         assert output["prompt"] == f"Test {i}"
         assert output["num_generated_tokens"] == i + 5  # max_new_tokens we set
+        assert output["params"] == str({"max_new_tokens": i + 5, "temperature": 0.7})
         assert time_taken_llm > 0
 
 
@@ -243,26 +242,13 @@ async def test_sglang_error_handling():
             )
 
 
-@pytest.mark.asyncio
-async def test_sglang_invalid_task_type(mock_sgl_engine):
-    """Test handling of invalid task types."""
-    wrapper = SGLangEngineWrapper(
-        model="Qwen/Qwen3.5-0.8B",
-        idx_in_batch_column="__idx_in_batch",
-        task=SGLangTaskType.GENERATE,
-    )
-
-    # Create a task type that doesn't exist in the prepare_llm_request method
-    invalid_task_type = "invalid_task"
-    wrapper.task_type = invalid_task_type
-
-    with pytest.raises(ValueError, match=f"Unsupported task type: {invalid_task_type}"):
-        await wrapper._prepare_llm_request(
-            {
-                "prompt": "Hello",
-                "sampling_params": {"temperature": 0.7},
-                "__idx_in_batch": 0,
-            }
+def test_sglang_invalid_task_type():
+    """Test that an invalid task type fails before SGLang is imported."""
+    with pytest.raises(ValueError, match="Unsupported task type: invalid_task"):
+        SGLangEngineWrapper(
+            model="Qwen/Qwen3.5-0.8B",
+            idx_in_batch_column="__idx_in_batch",
+            task="invalid_task",
         )
 
 

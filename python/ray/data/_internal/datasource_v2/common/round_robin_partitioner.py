@@ -49,6 +49,11 @@ class RoundRobinPartitioner(FilePartitioner):
         )
 
     def add_input(self, input_manifest: FileManifest):
+        # ``next_partition`` rebuilds rows from the three required columns only.
+        assert input_manifest.extra_columns is None, (
+            "RoundRobinPartitioner would drop the manifest's extra columns; "
+            "return an OnlineBinPacker from get_file_partitioner instead"
+        )
         in_memory_size_estimates = (
             self._in_memory_size_estimator.estimate_in_memory_sizes(input_manifest)
         )

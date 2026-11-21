@@ -30,6 +30,9 @@ assert os.environ.get(
 def train_func(config):
     save_dir = config["save_dir"]
     if ray.train.get_context().get_world_rank() == 0:
+        # MLflow >= 3.18 requires opting in to the local filesystem tracking
+        # backend; a database backend (e.g. sqlite) needs no opt-in.
+        os.environ["MLFLOW_ALLOW_FILE_STORE"] = "true"
         mlflow.set_tracking_uri(f"file:{save_dir}")
         mlflow.set_experiment("my_experiment")
         mlflow.start_run()

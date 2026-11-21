@@ -23,8 +23,15 @@ databricks-sdk
 # Azure clients, not this one.
 azure-storage-blob
 pytest-mock
+# Property-based testing for the Ray Data unit tests
+# (tests/unit/test_transform_pyarrow_properties.py). hypothesis 6.169+ requires
+# Python >=3.11 and the data locks still compile for py3.10, so pin per-Python
+# with exact versions -- pip-compile only preserves a marker when the source
+# declaration is an exact pin.
+hypothesis==6.168.5 ; python_version < '3.11'
+hypothesis==6.170.15 ; python_version >= '3.11'
 decord
-snowflake-connector-python>=3.15.0
+snowflake-connector-python>=4.3.0
 pyiceberg[sql-sqlite]==0.11.0; python_version < '3.14'
 pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14'
 clickhouse-connect
@@ -37,7 +44,10 @@ datasketches; python_version < '3.14'
 # `kafka` powers test_kafka.py's broker.
 testcontainers[kafka,azurite]
 obstore
-pyarrow
+# Newest pyarrow that daft (pyarrow < 26) allows; it is also the newest
+# release that still supports Python 3.10. The data "arrow latest" CI image
+# force-installs pyarrow 26 on top (ci/docker/data.build.Dockerfile).
+pyarrow==25.0.1
 torch
 tensorflow; python_version < '3.14'
 jax
