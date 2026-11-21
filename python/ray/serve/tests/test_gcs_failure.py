@@ -12,7 +12,11 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
 from ray.serve._private.test_utils import check_apps_running
 from ray.serve.config import DeploymentActorConfig
@@ -302,6 +306,23 @@ def replicas_resolved_proxy(proxy_handle: ActorHandle, num_replicas: int) -> boo
     return True
 
 
+def wait_for_replicas_to_resolve_proxy(client, num_replicas: int):
+    """Wait for replicas to resolve the proxy that forwards to them through actor
+    calls: HAProxy's fallback proxy when HAProxy is enabled, else the node's proxy.
+    """
+    proxies = ray.get(client._controller.get_proxies.remote())
+    if RAY_SERVE_ENABLE_HA_PROXY:
+        proxy = next(h for node, h in proxies.items() if node.startswith("fallback-"))
+    else:
+        proxy = next(iter(proxies.values()))
+    wait_for_condition(
+        replicas_resolved_proxy,
+        timeout=STARTUP_TIMEOUT_S,
+        proxy_handle=proxy,
+        num_replicas=num_replicas,
+    )
+
+
 @pytest.mark.parametrize("use_proxy", [True, False])
 def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     """Test that a new router can send requests to replicas when GCS is down.
@@ -348,12 +369,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
                 proxy_handle._dump_ingress_cache_for_testing.remote("/")
             ),
         )
-        wait_for_condition(
-            replicas_resolved_proxy,
-            timeout=STARTUP_TIMEOUT_S,
-            proxy_handle=proxy_handle,
-            num_replicas=2,
-        )
+        wait_for_replicas_to_resolve_proxy(client, num_replicas=2)
     else:
         wait_for_condition(
             router_populated_with_replicas,
@@ -459,12 +475,7 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
             proxy_handle._dump_ingress_cache_for_testing.remote("/")
         ),
     )
-    wait_for_condition(
-        replicas_resolved_proxy,
-        timeout=STARTUP_TIMEOUT_S,
-        proxy_handle=proxy_handle,
-        num_replicas=2,
-    )
+    wait_for_replicas_to_resolve_proxy(client, num_replicas=2)
 
     # Kill GCS server before router gets to send request to second replica
     ray.worker._global_node.kill_gcs_server()
