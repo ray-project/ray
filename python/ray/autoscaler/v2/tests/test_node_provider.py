@@ -2569,6 +2569,57 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         ):
             assert len(prov._claimed_pre_step_lids) == 0
 
+        # 4. When _requests FIFO-evicts an active pre-step lid within a large batch,
+        # _claimed_pre_step_lids keeps (nt, lid) until it leaves active_pre_lids so
+        # external CR capacity is never double-subtracted.
+        prov_fifo, client_fifo = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "ga",
+                    "replicas": 2,
+                    "minReplicas": 0,
+                    "maxReplicas": 3,
+                    "numOfHosts": 8,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "gb",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 4,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[],
+        )
+        prov_fifo._max_tracked_request_entries = 4
+        known_fifo = set(prov_fifo.get_non_terminated())
+        assert prov_fifo._external_unmaterialized["ga"] == 16
+        with prov_fifo.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_fifo,
+                unclaimed_replicas_by_lid={"ga": {"lid-pre-0": 1}},
+            )
+        ):
+            assert prov_fifo._external_unmaterialized["ga"] == 8
+            prov_fifo.launch_many(
+                {
+                    "lid-pre-0": {"ga": 8},
+                    "lid-0": {"ga": 8},
+                    "lid-1": {"gb": 4},
+                    "lid-2": {"gb": 4},
+                    "lid-3": {"gb": 4},
+                    "lid-4": {"gb": 4},
+                }
+            )
+            assert "lid-pre-0" not in prov_fifo._requests
+            assert ("ga", "lid-pre-0") in prov_fifo._claimed_pre_step_lids
+            assert prov_fifo._external_unmaterialized["ga"] == 8
+            assert (
+                client_fifo._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 3
+            )
+
     def test_launch_many_coalesces_multihost_scale_up_and_rolls_back_atomically(self):
         """Verify KubeRayProvider.launch_many coalesces N replica UUIDs into one PATCH,
         rolls back bounded dict and external-CR state atomically on 409 Conflict without

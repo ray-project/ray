@@ -205,7 +205,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             self._claimed_pre_step_lids = {
                 (nt, lid): None
                 for nt, lid in self._claimed_pre_step_lids
-                if lid not in self._requests and (nt, lid) in active_pre_lids
+                if (nt, lid) in active_pre_lids
             }
         for nt, counts in step.pre_sh_in_flight.items():
             for lid, cnt in counts.items():
