@@ -138,7 +138,9 @@ def Deprecated(
             obj_init = obj.__init__
 
             def patched_init(*args, **kwargs):
-                if log_once(old or obj.__name__):
+                # An error must be raised on every call; `log_once` only
+                # de-duplicates warnings.
+                if error or log_once(old or obj.__name__):
                     deprecation_warning(
                         old=old or obj.__name__,
                         new=new,
@@ -157,7 +159,7 @@ def Deprecated(
         # A deprecated class method or function.
         # Patch with the warning/error at the beginning.
         def _ctor(*args, **kwargs):
-            if log_once(old or obj.__name__):
+            if error or log_once(old or obj.__name__):
                 deprecation_warning(
                     old=old or obj.__name__,
                     new=new,
