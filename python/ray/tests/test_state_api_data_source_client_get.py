@@ -111,6 +111,21 @@ def test_list_api_options_has_conflicting_filters():
         filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_2")]
     )
     assert options.has_conflicting_filters()
+    # multiple filters, same key, different value, equal and not equal predicates
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "!=", "task_name_2")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, same value, equal then not equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "!=", "task_name_1")]
+    )
+    assert options.has_conflicting_filters()
+    # multiple filters, same key, same value, not equal then equal predicate
+    options = ListApiOptions(
+        filters=[("name", "!=", "task_name_1"), ("name", "=", "task_name_1")]
+    )
+    assert options.has_conflicting_filters()
 
 
 @pytest.mark.skipif(
