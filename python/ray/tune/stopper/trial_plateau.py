@@ -49,7 +49,7 @@ class TrialPlateauStopper(Stopper):
         self._grace_period = grace_period
         self._metric_threshold = metric_threshold
 
-        if self._metric_threshold:
+        if self._metric_threshold is not None:
             if mode not in ["min", "max"]:
                 raise ValueError(
                     f"When specifying a `metric_threshold`, the `mode` "
@@ -62,8 +62,10 @@ class TrialPlateauStopper(Stopper):
 
     def __call__(self, trial_id: str, result: Dict):
         metric_result = result.get(self._metric)
-        self._trial_results[trial_id].append(metric_result)
         self._iter[trial_id] += 1
+        if metric_result is None:
+            return False
+        self._trial_results[trial_id].append(metric_result)
 
         # If still in grace period, do not stop yet
         if self._iter[trial_id] < self._grace_period:
