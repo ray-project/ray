@@ -4195,6 +4195,73 @@ class TestIcebergDatasourceV2:
         (carried,) = scan_tasks_from_manifest(manifest_from_scan_tasks([dirty]))
         assert carried.file.record_count == clean_count
 
+    def test_shared_delete_file_is_fetched_once_per_read_unit(self, tmp_path):
+        """Two data files naming one position delete file open it once."""
+        from collections import Counter
+
+        from pyiceberg.io import FileIO
+        from pyiceberg.manifest import DataFileContent
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (  # noqa: E501
+            IcebergFileReader,
+        )
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+        )
+
+        class CountingIO(FileIO):
+            def __init__(self, io):
+                super().__init__(properties=io.properties)
+                self.io = io
+                self.opened = Counter()
+
+            def new_input(self, location):
+                self.opened[location] += 1
+                return self.io.new_input(location)
+
+            def new_output(self, location):
+                return self.io.new_output(location)
+
+            def delete(self, location):
+                self.io.delete(location)
+
+        table = self._load_table()
+        first, second = list(table.scan().plan_files())[:2]
+        delete_path = tmp_path / "shared-pos-deletes.parquet"
+        pq.write_table(
+            pa.table(
+                {
+                    "file_path": [first.file.file_path, second.file.file_path],
+                    "pos": pa.array([0, 0], pa.int64()),
+                }
+            ),
+            delete_path,
+        )
+        delete_file = DataFile.from_args(
+            content=DataFileContent.POSITION_DELETES,
+            file_path=f"file://{delete_path}",
+            file_format=FileFormat.PARQUET,
+            partition=first.file.partition,
+            record_count=2,
+            file_size_in_bytes=delete_path.stat().st_size,
+        )
+        tasks = [
+            FileScanTask(task.file, delete_files={delete_file})
+            for task in (first, second)
+        ]
+        io = CountingIO(table.io)
+        reader = IcebergFileReader(
+            table_metadata=table.metadata,
+            io=io,
+            projected_schema=table.scan().projection(),
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+
+        rows = sum(t.num_rows for t in reader.read(manifest_from_scan_tasks(tasks)))
+
+        assert rows == first.file.record_count + second.file.record_count - 2
+        assert io.opened[delete_file.file_path] == 1
+
     def test_reader_declines_metadata_under_a_limit(self):
         """The reader's own guard, independent of the scanner's.
 

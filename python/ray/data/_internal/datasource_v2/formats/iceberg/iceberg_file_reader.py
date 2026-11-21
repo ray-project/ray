@@ -12,9 +12,10 @@ reached. Filter parts PyArrow's statistics could get wrong (see
 ``iceberg_filter_pushdown``) are applied after ``ArrowScan``, with Ray's own
 evaluator, and the columns read only for them are then dropped.
 
-One file per call bounds memory but re-reads a delete file shared by several
-data files once per file; ``IcebergConfig.read_file_tasks_sequentially =
-False`` trades the other way, passing the whole unit in one call as V1 does.
+One file per call bounds memory; a delete file several of the unit's data
+files share is fetched once and kept for the unit
+(``iceberg_delete_file_cache``). ``IcebergConfig.read_file_tasks_sequentially
+= False`` passes the whole unit in one call instead, as V1 does.
 """
 
 from __future__ import annotations
@@ -92,12 +93,12 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         # The columns to keep after that filter, ``None`` for all of them.
         self._output_columns = output_columns
 
-    def _scan(self, limit: Optional[int]) -> "ArrowScan":
+    def _scan(self, limit: Optional[int], io: Optional["FileIO"] = None) -> "ArrowScan":
         from pyiceberg.io.pyarrow import ArrowScan
 
         return ArrowScan(
             table_metadata=self._table_metadata,
-            io=self._io,
+            io=self._io if io is None else io,
             projected_schema=self._projected_schema,
             row_filter=self._row_filter,
             case_sensitive=self._case_sensitive,
@@ -154,12 +155,19 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
             # holds every file's batches. A list, since PyIceberg iterates twice.
             yield from self._scan(limit=limit).to_record_batches(list(tasks))
             return
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_delete_file_cache import (  # noqa: E501
+            with_shared_delete_files_cached,
+        )
+
+        tasks = list(tasks)
+        io = with_shared_delete_files_cached(self._io, tasks)
         rows_read = 0
         for task in tasks:
             remaining = None if limit is None else limit - rows_read
             if remaining is not None and remaining <= 0:
                 return
-            for record_batch in self._scan(limit=remaining).to_record_batches([task]):
+            scan = self._scan(limit=remaining, io=io)
+            for record_batch in scan.to_record_batches([task]):
                 rows_read += record_batch.num_rows
                 yield record_batch
 
