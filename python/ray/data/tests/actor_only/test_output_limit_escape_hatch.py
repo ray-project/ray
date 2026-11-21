@@ -4,7 +4,7 @@ Fake-driven: the hatch only reads a handful of operator methods and one
 ResourceBank field, so the fakes implement exactly that surface.
 """
 from types import SimpleNamespace
-from typing import Any, Collection, List
+from typing import Any, Collection, List, cast
 
 import pytest
 from typing_extensions import override
@@ -254,6 +254,43 @@ def test_completed_operators_are_skipped():
     assert _detect(splitter) is None
     assert producer.upgrade_calls == 0
     assert producer.obp_notifications == []
+
+
+def test_budget_check_counts_only_working_actors():
+    """Condition (b) of the hatch reads the operator's budget check. Only
+    actors with tasks in flight count: an idle actor (e.g. one the sizer just
+    added) keeps a full, untouched budget that relieves nothing, so a stall on
+    the working actors must still read as "not enough budget"."""
+
+    def _op(states, prebuffered_bytes):
+        bank = SimpleNamespace(
+            live_object_store=lambda actor_id: LiveObjStore(
+                num_prebuffered_output_bytes=prebuffered_bytes.get(actor_id, 0),
+                num_prebuffered_output_blocks=1 if actor_id in prebuffered_bytes else 0,
+            )
+        )
+        return SimpleNamespace(
+            actor_pool=SimpleNamespace(
+                alive_actor_states_by_node=lambda: {"n1": states}
+            ),
+            resource_bank=bank,
+            max_output_bytes_for_actor=lambda actor_id: 100,
+            max_outputs_for_actor=lambda actor_id: 10,
+        )
+
+    check = ExperimentalActorPoolMapOperator.has_enough_budget_for_prebuffered_outputs
+    busy = SimpleNamespace(num_tasks_in_flight=5)
+    idle = SimpleNamespace(num_tasks_in_flight=0)
+
+    # The working actor is stalled (300 prebuffered > 100 budget); the idle
+    # actor's full budget does not count.
+    assert check(cast(Any, _op({"busy": busy, "idle": idle}, {"busy": 300}))) is False
+    # A working actor with room reads as enough.
+    ok = SimpleNamespace(num_tasks_in_flight=1)
+    stalled_and_ok = _op({"busy": busy, "ok": ok}, {"busy": 300, "ok": 10})
+    assert check(cast(Any, stalled_and_ok)) is True
+    # Nothing working: nothing is stalled.
+    assert check(cast(Any, _op({"idle": idle}, {}))) is True
 
 
 class _RemoteBundleSplitter(OutputSplitter):
