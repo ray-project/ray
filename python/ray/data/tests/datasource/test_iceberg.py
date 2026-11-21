@@ -42,10 +42,8 @@ from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
 from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
-from ray.data._internal.planner.plan_expression.expression_visitors import (
-    get_column_references,
-)
 from ray.data._internal.util import rows_same
+from ray.data.block import BlockAccessor
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
     get_operator_types as _get_operator_types,
@@ -156,22 +154,11 @@ def both_iceberg_readers(request, restore_data_context):
     return reader_v2
 
 
-def _assert_filter_placement(plan, reader_v2: bool) -> None:
-    """V1 pushes a Ray filter into the read; V2 takes none yet, so it stays above."""
-    assert (
-        _has_operator_type(plan, Filter) == reader_v2
+def _assert_filter_placement(plan) -> None:
+    """Both readers push a filter Iceberg can express into the read."""
+    assert not _has_operator_type(
+        plan, Filter
     ), f"got operators: {_get_operator_types(plan)}"
-
-
-def _skip_v2_filter_on_dropped_column(reader_v2, selected, filter_expr) -> None:
-    """V2 filters after the select, so it can't see a column the select dropped."""
-    if (
-        reader_v2
-        and selected is not None
-        and filter_expr is not None
-        and not set(get_column_references(filter_expr)) <= set(selected)
-    ):
-        pytest.skip("needs filter pushdown, which V2 Iceberg doesn't have yet")
 
 
 @pytest.fixture
@@ -959,7 +946,8 @@ def test_write_concurrency():
     assert df["col_a"].tolist() == [1, 2, 3, 4]
 
 
-def test_predicate_pushdown(both_iceberg_readers):
+@pytest.mark.usefixtures("both_iceberg_readers")
+def test_predicate_pushdown():
     """Test that predicate pushdown works correctly with Iceberg datasource."""
     # Read the table and apply filters using Ray Data expressions
     ds = ray.data.read_iceberg(
@@ -975,7 +963,7 @@ def test_predicate_pushdown(both_iceberg_readers):
     logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
-    _assert_filter_placement(optimized_plan, both_iceberg_readers)
+    _assert_filter_placement(optimized_plan)
 
     # Verify the results are correct
     result = filtered_ds.to_pandas()
@@ -993,7 +981,8 @@ def test_predicate_pushdown(both_iceberg_readers):
     assert rows_same(result, expected_table)
 
 
-def test_predicate_pushdown_with_initial_filter(both_iceberg_readers):
+@pytest.mark.usefixtures("both_iceberg_readers")
+def test_predicate_pushdown_with_initial_filter():
     """Test that predicate pushdown works when combined with initial row_filter."""
     # Read with an initial PyIceberg filter
     initial_filter = pyi_expr.LessThan("col_a", 50)
@@ -1013,7 +1002,7 @@ def test_predicate_pushdown_with_initial_filter(both_iceberg_readers):
     logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
-    _assert_filter_placement(optimized_plan, both_iceberg_readers)
+    _assert_filter_placement(optimized_plan)
 
     # Verify the results satisfy both conditions
     result = filtered_ds.to_pandas()
@@ -1107,11 +1096,11 @@ def test_projection_pushdown():
         ),
     ],
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_projection_and_predicate_pushdown(
-    selected_cols, filter_expr, pyi_filter, expected_cols, both_iceberg_readers
+    selected_cols, filter_expr, pyi_filter, expected_cols
 ):
     """Test that both projection and predicate pushdown work together."""
-    _skip_v2_filter_on_dropped_column(both_iceberg_readers, selected_cols, filter_expr)
     # Read the table
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -1132,7 +1121,7 @@ def test_projection_and_predicate_pushdown(
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     if filter_expr is not None:
-        _assert_filter_placement(optimized_plan, both_iceberg_readers)
+        _assert_filter_placement(optimized_plan)
     assert not _has_operator_type(
         optimized_plan, Project
     ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
@@ -1240,16 +1229,15 @@ def test_projection_and_predicate_pushdown(
         ),
     ],
 )
+@pytest.mark.usefixtures("both_iceberg_readers")
 def test_rename_select_filter_combinations(
     rename_map,
     select_cols,
     filter_expr,
     pyi_filter,
     expected_cols,
-    both_iceberg_readers,
 ):
     """Test all combinations of rename_columns, select_columns, and filter operations."""
-    _skip_v2_filter_on_dropped_column(both_iceberg_readers, select_cols, filter_expr)
     # Read the table
     ds = ray.data.read_iceberg(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -1273,7 +1261,7 @@ def test_rename_select_filter_combinations(
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     if filter_expr is not None:
-        _assert_filter_placement(optimized_plan, both_iceberg_readers)
+        _assert_filter_placement(optimized_plan)
 
     # Pure column selection (no renames) is subsumed by the scan's column
     # pruning, so no ``Project`` remains. Renames stay as a ``Project`` of
@@ -1332,7 +1320,8 @@ def test_rename_select_filter_combinations(
     assert rows_same(result, expected_table)
 
 
-def test_predicate_pushdown_complex_expression(both_iceberg_readers):
+@pytest.mark.usefixtures("both_iceberg_readers")
+def test_predicate_pushdown_complex_expression():
     """Test predicate pushdown with complex expressions."""
     # Apply a complex filter expression
     ds = ray.data.read_iceberg(
@@ -1354,7 +1343,7 @@ def test_predicate_pushdown_complex_expression(both_iceberg_readers):
     logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
-    _assert_filter_placement(optimized_plan, both_iceberg_readers)
+    _assert_filter_placement(optimized_plan)
     assert not _has_operator_type(
         optimized_plan, Project
     ), f"Projection should be pushed down, got operators: {_get_operator_types(optimized_plan)}"
@@ -1407,11 +1396,10 @@ def test_predicate_pushdown_with_untranslatable_conjunct(both_iceberg_readers):
 
     result = filtered_ds.to_pandas()
 
+    # Only the arithmetic part stays above the read; ``col_c >= 3`` is pushed.
     optimized_plan = LogicalOptimizer().optimize(filtered_ds._logical_plan)
-    assert _has_operator_type(optimized_plan, Filter), (
-        "the untranslatable conjunct has to survive as a Filter, got operators: "
-        f"{_get_operator_types(optimized_plan)}"
-    )
+    (filter_op,) = [op for op in _walk(optimized_plan.dag) if isinstance(op, Filter)]
+    assert filter_op.predicate_expr.structurally_equals(col("col_a") * 2 <= 100)
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
     expected = sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").scan().to_pandas()
@@ -3340,6 +3328,39 @@ def test_count_and_empty_projection():
     assert empty_projection.schema().names == []
 
 
+@pytest.fixture
+def nan_null_iceberg_table() -> Generator[Tuple[str, pa.Table], None, None]:
+    """Three files: NaN and null in the first, the rest plain.
+
+    The first file's ``f`` bounds are ``[0.1, 0.1]``, since Iceberg and Parquet
+    both leave NaN out of them, so a filter planned on bounds alone skips it.
+    """
+    catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    identifier = f"{_DB_NAME}.ray_nan_null"
+    if (_DB_NAME, "ray_nan_null") in catalog.list_tables(_DB_NAME):
+        catalog.drop_table(identifier)
+    table = catalog.create_table(
+        identifier,
+        schema=pyi_schema.Schema(
+            pyi_types.NestedField(
+                field_id=1, name="f", field_type=pyi_types.DoubleType(), required=False
+            ),
+            pyi_types.NestedField(
+                field_id=2, name="x", field_type=pyi_types.LongType(), required=False
+            ),
+        ),
+    )
+    arrow_schema = table.schema().as_arrow()
+    for f, x in [
+        ([0.1, float("nan")], [1, None]),
+        ([0.2, 0.3], [1, 1]),
+        ([2.0, 3.0], [2, 3]),
+    ]:
+        table.append(pa.table({"f": f, "x": x}, schema=arrow_schema))
+    yield identifier, table.scan().to_arrow()
+    catalog.drop_table(identifier)
+
+
 def _optimized_count_plan(ds):
     """The plan ``Dataset.count()`` executes, without executing it.
 
@@ -3827,6 +3848,65 @@ class TestIcebergDatasourceV2:
         assert expected < len(create_pa_table())
         assert ds.count() == expected
 
+    @pytest.mark.parametrize(
+        "predicate,free",
+        [
+            (col("col_c") == 3, True),
+            (col("col_a") < 50, False),
+            (col("col_b") == "a", False),
+        ],
+        ids=["partition_column", "data_column", "unprojected_data_column"],
+    )
+    def test_count_pushdown_survives_a_filter(
+        self, restore_data_context, predicate, free
+    ):
+        """A filtered ``count()`` is still answered without a read.
+
+        Iceberg plans a residual per file, the part of the filter the file's
+        partition values don't already satisfy, so a filter on the partition
+        column leaves every listed file countable from its ``record_count``.
+        Files with a data-column residual are decoded instead.
+        """
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            scan_tasks_from_manifest,
+        )
+        from ray.data._internal.logical.operators.read_operator import (
+            ListFiles,
+            ReadFiles,
+        )
+
+        restore_data_context._use_iceberg_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        ).filter(expr=predicate)
+
+        count_plan = _optimized_count_plan(ds)
+        assert not any(isinstance(op, ReadFiles) for op in _walk(count_plan.dag))
+        # Listing must prune by the same predicate the count relies on.
+        (list_files,) = [
+            op for op in _walk(count_plan.dag) if isinstance(op, ListFiles)
+        ]
+        assert list_files.predicate.structurally_equals(predicate)
+        assert list_files.pushdown_is_final
+
+        # ``count()`` first, on a fresh ``Dataset``: a materialized one answers
+        # from the blocks it already holds.
+        counted = ds.count()
+        expected = len(ds.take_all())
+        assert expected > 0, "predicate must match something to be a real test"
+        assert counted == expected
+
+        # The count was free exactly when every file's residual is ``AlwaysTrue``.
+        residuals = [
+            isinstance(task.residual, pyi_expr.AlwaysTrue)
+            for manifest in self._indexer().list_files(
+                None, filesystem=None, predicate=predicate
+            )
+            for task in scan_tasks_from_manifest(manifest)
+        ]
+        assert residuals and all(residuals) == free
+
     def test_count_pushdown_declines_a_limit(self, restore_data_context):
         """A limit is applied while reading; no metadata says where it stops."""
         from ray.data._internal.logical.operators.read_operator import ReadFiles
@@ -3972,6 +4052,98 @@ class TestIcebergDatasourceV2:
             **kwargs, row_filter=pyi_expr.LessThan("col_a", 50)
         )
         assert filtered.available_metadata() == {MetadataType.NUM_ROWS}
+
+    @pytest.mark.parametrize("one_file_per_call", [True, False])
+    @pytest.mark.parametrize(
+        "predicate",
+        [
+            ~(col("f") < 1.0),
+            col("f") != 0.1,
+            (col("f") > 0.15) & ~(col("f") < 1.0),
+            ~col("x").is_in([1]),
+            col("x").not_in([1]),
+        ],
+        ids=["not_less_than", "not_equal", "mixed", "not_is_in", "not_in"],
+    )
+    def test_pushed_filter_keeps_nan_and_null_rows(
+        self, restore_data_context, nan_null_iceberg_table, predicate, one_file_per_call
+    ):
+        """A pushed filter returns exactly the rows Ray's own filter keeps.
+
+        Ray keeps the NaN row for ``~(f < 1.0)`` and ``f != 0.1``, and the null
+        row for ``~x.is_in([1])``; file bounds, row-group statistics and
+        PyIceberg's one-value ``NotIn`` would each drop it.
+        """
+        identifier, full_table = nan_null_iceberg_table
+        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.iceberg_config.read_file_tasks_sequentially = (
+            one_file_per_call
+        )
+        ds = read_iceberg(
+            table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
+        ).filter(expr=predicate)
+
+        _assert_filter_placement(LogicalOptimizer().optimize(ds._logical_plan))
+        expected = BlockAccessor.for_block(full_table).filter(predicate).to_pandas()
+        assert len(expected) > 0
+        assert rows_same(ds.to_pandas(), expected)
+        assert ds.count() == len(expected)
+
+    def test_after_read_filter_columns_are_dropped(
+        self, restore_data_context, nan_null_iceberg_table
+    ):
+        """A column read only for the after-read filter isn't returned."""
+        identifier, full_table = nan_null_iceberg_table
+        restore_data_context._use_iceberg_datasource_v2 = True
+        predicate = ~(col("f") < 1.0)
+        ds = (
+            read_iceberg(
+                table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
+            )
+            .filter(expr=predicate)
+            .select_columns(["x"])
+        )
+
+        expected = BlockAccessor.for_block(full_table).filter(predicate).to_pandas()
+        assert rows_same(ds.to_pandas(), expected[["x"]])
+        assert ds.schema().names == ["x"]
+
+    def test_after_read_filter_stops_at_the_limit(
+        self, restore_data_context, nan_null_iceberg_table
+    ):
+        """The limit counts rows after the after-read filter, not before."""
+        identifier, _ = nan_null_iceberg_table
+        restore_data_context._use_iceberg_datasource_v2 = True
+        ds = (
+            read_iceberg(
+                table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
+            )
+            .filter(expr=col("f") != 0.1)
+            .limit(2)
+        )
+
+        rows = ds.take_all()
+        assert len(rows) == 2
+        assert all(row["f"] != 0.1 for row in rows)
+
+    def test_filter_that_does_not_bind_stays_above_the_read(self, restore_data_context):
+        """``col_a >= 1.5`` on an ``int`` column fails Iceberg's bind, so Ray keeps it."""
+        restore_data_context._use_iceberg_datasource_v2 = True
+        predicate = (col("col_c") >= 3) & (col("col_a") >= 1.5)
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        ).filter(expr=predicate)
+
+        optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+        (filter_op,) = [
+            op for op in _walk(optimized_plan.dag) if isinstance(op, Filter)
+        ]
+        assert filter_op.predicate_expr.structurally_equals(col("col_a") >= 1.5)
+        expected = self._load_table().scan().to_pandas()
+        expected = expected[(expected["col_c"] >= 3) & (expected["col_a"] >= 1.5)]
+        assert len(expected) > 0
+        assert rows_same(ds.to_pandas(), expected)
 
 
 if __name__ == "__main__":

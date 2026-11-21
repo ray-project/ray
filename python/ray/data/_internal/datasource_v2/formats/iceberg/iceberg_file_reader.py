@@ -8,19 +8,26 @@ time, so deletes, schema evolution and partition backfill stay PyIceberg's job:
                  -> pickle check -> cast to the projected schema -> block
 
 The reader yields a block per record batch and stops once the pushed limit is
-reached. One file per call bounds memory but re-reads a delete file shared by
-several data files once per file; ``IcebergConfig.read_file_tasks_sequentially
-= False`` trades the other way, passing the whole unit in one call as V1 does.
+reached. Filter parts PyArrow's statistics could get wrong (see
+``iceberg_filter_pushdown``) are applied after ``ArrowScan``, with Ray's own
+evaluator, and the columns read only for them are then dropped.
+
+One file per call bounds memory but re-reads a delete file shared by several
+data files once per file; ``IcebergConfig.read_file_tasks_sequentially =
+False`` trades the other way, passing the whole unit in one call as V1 does.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, Optional, Set
+from typing import TYPE_CHECKING, Iterator, List, Optional, Set
 
 import pyarrow as pa
 from typing_extensions import override
 
-from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.arrow_block import (
+    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+    ArrowBlockAccessor,
+)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     scan_tasks_from_manifest,
 )
@@ -41,6 +48,8 @@ if TYPE_CHECKING:
     from pyiceberg.schema import Schema
     from pyiceberg.table import FileScanTask
     from pyiceberg.table.metadata import TableMetadata
+
+    from ray.data.expressions import Expr
 
 
 @DeveloperAPI
@@ -64,6 +73,8 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         case_sensitive: bool = True,
         limit: Optional[int] = None,
         drop_all_columns: bool = False,
+        after_read_filter: Optional["Expr"] = None,
+        output_columns: Optional[List[str]] = None,
     ):
         self._table_metadata = table_metadata
         self._io = io
@@ -73,6 +84,10 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         self._limit = limit
         # Zero columns were asked for; see ``IcebergScanner.create_reader``.
         self._drop_all_columns = drop_all_columns
+        # Applied by Ray after ``ArrowScan``; see ``iceberg_filter_pushdown``.
+        self._after_read_filter = after_read_filter
+        # The columns to keep after that filter, ``None`` for all of them.
+        self._output_columns = output_columns
 
     def _scan(self, limit: Optional[int]) -> "ArrowScan":
         from pyiceberg.io.pyarrow import ArrowScan
@@ -95,11 +110,18 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
             self._projected_schema, include_field_ids=False
         )
 
+        rows_yielded = 0
         for record_batch in self._record_batches(input_split):
+            if self._limit is not None and rows_yielded >= self._limit:
+                return
             table = pa.Table.from_batches([record_batch])
             # Before the cast, which fails opaquely on a pickled column.
             raise_on_pickle_object_columns(table)
             table = table.cast(target_schema)
+            table = self._apply_after_read_filter(table)
+            if self._limit is not None:
+                table = table.slice(0, self._limit - rows_yielded)
+            rows_yielded += table.num_rows
             if self._drop_all_columns:
                 # Zero-column tables lose their length on concat, so use the
                 # shared ``FileReader``'s null stub column.
@@ -109,18 +131,29 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
                 )
             yield table
 
+    def _apply_after_read_filter(self, table: pa.Table) -> pa.Table:
+        if self._after_read_filter is None:
+            return table
+        table = ArrowBlockAccessor(table).filter(self._after_read_filter)
+        if self._output_columns is not None:
+            table = table.select(self._output_columns)
+        return table
+
     def _record_batches(self, input_split: FileManifest) -> Iterator[pa.RecordBatch]:
         from ray.data.context import DataContext
 
+        # ``ArrowScan`` counts rows before the after-read filter, so it gets no
+        # limit then; ``read`` stops instead.
+        limit = self._limit if self._after_read_filter is None else None
         tasks = scan_tasks_from_manifest(manifest=input_split)
         if not DataContext.get_current().iceberg_config.read_file_tasks_sequentially:
             # One call reads a delete file shared by several files once, but
             # holds every file's batches. A list, since PyIceberg iterates twice.
-            yield from self._scan(limit=self._limit).to_record_batches(list(tasks))
+            yield from self._scan(limit=limit).to_record_batches(list(tasks))
             return
         rows_read = 0
         for task in tasks:
-            remaining = None if self._limit is None else self._limit - rows_read
+            remaining = None if limit is None else limit - rows_read
             if remaining is not None and remaining <= 0:
                 return
             for record_batch in self._scan(limit=remaining).to_record_batches([task]):
@@ -140,7 +173,8 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         counted but must not be returned, and a file whose per-file residual is
         not ``AlwaysTrue`` has rows the filter rejects. Either way the count
         comes from decoding the file, which is what PyIceberg's own ``count()``
-        does.
+        does. So does every file under an after-read filter, whose residual
+        was planned with ``| is_nan`` and so can keep rows Ray drops.
 
         The residual is what makes a filtered ``count()`` worth attempting at
         all: a filter on a partition column leaves every listed file with an
@@ -163,6 +197,7 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
                 trust_residuals
                 and isinstance(task.residual, AlwaysTrue)
                 and not task.delete_files
+                and self._after_read_filter is None
             ):
                 num_rows = task.file.record_count
             else:
@@ -197,7 +232,8 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
             The number of rows the task yields after filters and deletes.
         """
         return sum(
-            batch.num_rows for batch in self._scan(None).to_record_batches([task])
+            self._apply_after_read_filter(pa.Table.from_batches([batch])).num_rows
+            for batch in self._scan(None).to_record_batches([task])
         )
 
     @override

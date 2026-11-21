@@ -4,21 +4,32 @@
 holds what PyIceberg's ``ArrowScan`` needs (table metadata, ``FileIO``,
 projected schema, row filter) and creates one ``IcebergFileReader`` per task.
 
-It takes column pruning and the limit: pruned columns are reprojected in the
-order asked for, and the limit is handed to the reader. It takes no filters: a
-Ray filter runs above the read, and filter pushdown is left to a later stack.
+It takes column pruning, the limit and filters: pruned columns are reprojected
+in the order asked for, the limit is handed to the reader, and a filter is
+split at its ``&`` (``iceberg_filter_pushdown.split_predicate``). Parts Iceberg
+can evaluate go into ``ArrowScan``'s row filter; float parts whose NaN rows
+PyArrow's statistics could drop are applied by the reader after the read, so
+their columns are read too; the rest stay in a ``Filter`` above the read.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from dataclasses import dataclass, replace
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import pyarrow as pa
 from typing_extensions import override
 
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicate_chain,
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (
     IcebergFileReader,
+)
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_filter_pushdown import (
+    split_predicate,
+    to_iceberg_filter,
 )
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
     _get_empty_projection_schema,
@@ -26,9 +37,14 @@ from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
+    SupportsFilterPushdown,
     SupportsLimitPushdown,
 )
 from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
+from ray.data.expressions import Expr, Operation
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -42,6 +58,7 @@ if TYPE_CHECKING:
 @dataclass(frozen=True)
 class IcebergScanner(
     Scanner[FileManifest],
+    SupportsFilterPushdown,
     SupportsColumnPruning,
     SupportsLimitPushdown,
 ):
@@ -58,6 +75,8 @@ class IcebergScanner(
     # ``read_iceberg``'s parsed ``row_filter`` argument.
     row_filter: "BooleanExpression"
     case_sensitive: bool = True
+    # The accepted Ray predicate: ``scan`` and ``after_read`` parts only.
+    predicate: Optional[Expr] = None
 
     def _pruned_schema(self) -> "Schema":
         from pyiceberg.schema import Schema
@@ -108,19 +127,73 @@ class IcebergScanner(
         """
         return self.limit is None
 
+    @override
+    def push_filters(self, predicate: Expr) -> Tuple["IcebergScanner", Optional[Expr]]:
+        parts = split_predicate(
+            predicate,
+            schema=self.table_metadata.schema(),
+            case_sensitive=self.case_sensitive,
+        )
+        accepted = combine_predicate_chain(parts.scan + parts.after_read, Operation.AND)
+        residual = combine_predicate_chain(parts.residual, Operation.AND)
+        if accepted is None:
+            return self, residual
+        pushed = combine_predicates(self.predicate, accepted)
+        return replace(self, predicate=pushed), residual
+
+    @override
+    def pushed_predicate(self) -> Optional[Expr]:
+        return self.predicate
+
     def create_reader(self) -> IcebergFileReader:
         pruned = self._pruned_schema()
+        output_columns = [field.name for field in pruned.fields]
+        row_filter = self.row_filter
+        after_read = None
+        if self.predicate is not None:
+            schema = self.table_metadata.schema()
+            parts = split_predicate(
+                self.predicate, schema=schema, case_sensitive=self.case_sensitive
+            )
+            row_filter = to_iceberg_filter(
+                self.row_filter,
+                parts.scan,
+                schema=schema,
+                case_sensitive=self.case_sensitive,
+            )
+            after_read = combine_predicate_chain(parts.after_read, Operation.AND)
+        read_schema = pruned
+        if after_read is not None:
+            # Read the columns the after-read filter needs too.
+            read_schema = self._with_columns(pruned, get_column_references(after_read))
+        # The reader drops columns read only for the after-read filter.
+        drop_filter_columns = read_schema is not pruned
         # PyIceberg returns zero rows for an empty projection (``count()``), so
         # project V1's stub field: no file has it, so it reads as one null per row.
-        row_count_only = len(pruned.fields) == 0
-        if row_count_only:
-            pruned = _get_empty_projection_schema()
+        row_count_only = not output_columns
+        if len(read_schema.fields) == 0:
+            read_schema = _get_empty_projection_schema()
         return IcebergFileReader(
             table_metadata=self.table_metadata,
             io=self.io,
-            projected_schema=pruned,
-            row_filter=self.row_filter,
+            projected_schema=read_schema,
+            row_filter=row_filter,
             case_sensitive=self.case_sensitive,
             limit=self.limit,
             drop_all_columns=row_count_only,
+            after_read_filter=after_read,
+            output_columns=output_columns if drop_filter_columns else None,
         )
+
+    def _with_columns(self, pruned: "Schema", names: List[str]) -> "Schema":
+        from pyiceberg.schema import Schema
+
+        have = {field.name for field in pruned.fields}
+        extra = [
+            self.projected_schema.find_field(name, case_sensitive=self.case_sensitive)
+            for name in dict.fromkeys(names)
+            if name not in have
+        ]
+        if not extra:
+            return pruned
+        return Schema(*pruned.fields, *extra, schema_id=pruned.schema_id)
