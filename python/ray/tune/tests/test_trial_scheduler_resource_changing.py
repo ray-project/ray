@@ -349,6 +349,23 @@ class TestTopJobResourceAllocation(TestUniformResourceAllocation):
             trial1, scheduler, PlacementGroupFactory([{"CPU": 8}])
         )
 
+    def testUnreportedTrialIsNotTopJob(self):
+        scheduler = ResourceChangingScheduler(
+            resources_allocation_function=DistributeResourcesToTopJob(
+                add_bundles=False, metric="metric", mode="max"
+            )
+        )
+
+        base_pgf = PlacementGroupFactory([{"CPU": 1, "GPU": 0}])
+        trial1, trial2, trial3, trial4 = self._prepareTrials(scheduler, base_pgf)
+        # trial4 has not reported the metric yet, so it must not rank as the
+        # best trial in "max" mode.
+        trial4.run_metadata.last_result = {}
+
+        self._allocateAndAssertNewResources(
+            trial1, scheduler, PlacementGroupFactory([{"CPU": 5}])
+        )
+
     def testAllocateFreeResourcesWithIncreaseBy(self):
         scheduler = ResourceChangingScheduler(
             resources_allocation_function=DistributeResourcesToTopJob(
