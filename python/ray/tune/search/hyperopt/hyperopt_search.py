@@ -493,13 +493,20 @@ class HyperOptSearch(Searcher):
                     return hpo.hp.normal(par, sampler.mean, sampler.sd)
 
             elif isinstance(domain, Integer):
+                lower, upper = domain.lower, domain.upper
+                if quantize:
+                    # Tune samples the multiples of `q`, so snap both bounds to
+                    # them. Otherwise rounding can land outside the domain. The
+                    # upper bound is inclusive for `q > 1` and exclusive for 1.
+                    lower = -(-lower // quantize) * quantize
+                    upper = upper - 1 if quantize == 1 else upper // quantize * quantize
                 if isinstance(sampler, LogUniform):
                     if quantize:
                         return hpo.base.pyll.scope.int(
                             hpo.hp.qloguniform(
                                 par,
-                                np.log(domain.lower),
-                                np.log(domain.upper),
+                                np.log(lower),
+                                np.log(upper),
                                 quantize,
                             )
                         )
@@ -511,9 +518,7 @@ class HyperOptSearch(Searcher):
                 elif isinstance(sampler, Uniform):
                     if quantize:
                         return hpo.base.pyll.scope.int(
-                            hpo.hp.quniform(
-                                par, domain.lower, domain.upper - 1, quantize
-                            )
+                            hpo.hp.quniform(par, lower, upper, quantize)
                         )
                     return hpo.hp.uniformint(par, domain.lower, high=domain.upper - 1)
             elif isinstance(domain, Categorical):
