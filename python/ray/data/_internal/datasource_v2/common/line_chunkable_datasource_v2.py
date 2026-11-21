@@ -150,7 +150,7 @@ class LineChunkableDatasourceV2(FileDataSourceV2):
         raise NotImplementedError
 
     @override
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         if self._can_split_files():
             return LineChunkFileIndexer(
                 chunk_size=self._chunk_size,

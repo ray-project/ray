@@ -167,7 +167,9 @@ class IcebergDatasourceV2(DataSourceWithMetadata[FileManifest]):
         # ``ArrowScan`` strips field ids from the batches it yields.
         return schema_to_pyarrow(self._projected_schema(), include_field_ids=False)
 
-    def _get_file_indexer(self) -> IcebergFileIndexer:
+    def _get_file_indexer(
+        self, schema: Optional[pa.Schema] = None
+    ) -> IcebergFileIndexer:
         table = self.table
         return IcebergFileIndexer(
             table_metadata=table.metadata,

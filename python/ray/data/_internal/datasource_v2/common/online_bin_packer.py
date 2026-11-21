@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import bisect
 import logging
+import math
 from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, List, Optional, Tuple
@@ -93,6 +94,16 @@ def _fit_at_least_one(prefix_sums: List[int], start: int, capacity_left: int) ->
     return max(_largest_prefix_fit(prefix_sums, start, capacity_left), start + 1)
 
 
+def _sum_memory(runs: List[FileChunk]) -> Optional[int]:
+    # ``None`` unless every run carries an estimate.
+    total = 0
+    for run in runs:
+        if run.memory_bytes is None:
+            return None
+        total += run.memory_bytes
+    return total
+
+
 def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
     # Units [a, b) of a multi-unit item as a new BinItem. Uses the exact
     # per-unit sizes/rows so num_rows stays an exact survivor count for the
@@ -101,10 +112,15 @@ def _slice_bin_item(item: BinItem, a: int, b: int) -> BinItem:
     assert run is not None
     sizes = run.unit_sizes[a:b]
     rows = run.unit_rows[a:b]
+    memory = run.memory_bytes
+    if memory is not None:
+        # No per-unit breakdown: the slice's share, by its bytes.
+        memory = math.ceil(memory * sum(sizes) / max(run.size_bytes, 1))
     piece = FileChunk(
         unit_ids=run.unit_ids[a:b],
         num_rows=sum(rows),
         size_bytes=sum(sizes),
+        memory_bytes=memory,
         fully_matched=run.fully_matched,
         unit_sizes=sizes if b - a > 1 else (),
         unit_rows=rows if b - a > 1 else (),
@@ -511,15 +527,23 @@ class OnlineBinPacker(FilePartitioner):
                     ),
                     num_rows=sum(run.num_rows for run in disjoint_runs),
                     size_bytes=sum(run.size_bytes for run in disjoint_runs),
+                    memory_bytes=_sum_memory(disjoint_runs),
                     fully_matched=all(run.fully_matched for run in disjoint_runs),
                 )
                 files.append(file)
                 chunk_metadatas.append(merged.to_metadata())
                 extra_columns.append(extra_columns_by_file[file])
+        # The bin's read task requests its runs' summed memory estimates; nothing
+        # when the bin holds a whole file or a run without an estimate.
+        runs = [item.run for item in bin_.items if item.run is not None]
+        consumer_memory_bytes = (
+            _sum_memory(runs) if len(runs) == len(bin_.items) else None
+        )
         return FileManifest.construct_manifest(
             paths=[file.path for file in files],
             sizes=[file.size for file in files],
             chunk_metadatas=chunk_metadatas,
+            consumer_memory_bytes=consumer_memory_bytes,
             extra_columns=_concat_extra_columns(extra_columns),
         )
 

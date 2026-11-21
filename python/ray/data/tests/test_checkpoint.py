@@ -858,12 +858,16 @@ class _BlockCountingDatasink(Datasink):
         ray.get(self._counter.add.remote(len(list(blocks))))
 
 
-def test_generated_id_read_keeps_block_size(ray_start_10_cpus_shared, tmp_path):
+def test_generated_id_read_keeps_block_size(
+    ray_start_10_cpus_shared, tmp_path, monkeypatch
+):
     """``DropCommittedRows`` runs last in the fused read task, so it must keep
     the read's block sizing instead of merging every block into one."""
+    # Keep the file in one read task; a 2 MiB bin would hold one row group.
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", str(1 << 30))
     data_dir = tmp_path / "in"
     data_dir.mkdir()
-    # ~16 MB in 8 row groups; with a 2 MB target the read makes 8 blocks.
+    # ~16 MB in 8 row groups; with a 2 MiB target the read makes several blocks.
     pq.write_table(
         pa.table({"s": ["x" * 1000] * 16000}),
         data_dir / "f.parquet",
@@ -888,8 +892,10 @@ def test_generated_id_read_keeps_block_size(ray_start_10_cpus_shared, tmp_path):
         )
     )
 
-    assert plain == [8]
-    assert with_generated_ids == plain
+    assert len(plain) == 1 and plain[0] > 1, plain
+    # The generated-ID column adds bytes, so the read makes at least as many blocks.
+    assert len(with_generated_ids) == 1, with_generated_ids
+    assert with_generated_ids[0] >= plain[0], (with_generated_ids, plain)
 
 
 def test_generated_id_without_restore_reads_every_row(
