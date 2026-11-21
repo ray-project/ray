@@ -42,6 +42,10 @@ def manifest(ref: str) -> dict[str, Any]:
     return json.loads(_crane(["manifest", ref]))
 
 
+def config(ref: str) -> dict[str, Any]:
+    return json.loads(_crane(["config", ref]))
+
+
 def sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
