@@ -60,18 +60,21 @@ def allow_unsafe_deserialization(monkeypatch):
 def test_webdataset_expand_json(
     ray_start_2_cpus, tmp_path, allow_unsafe_deserialization
 ):
+    import json
+
     import numpy as np
     import torch
 
     image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
     gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
-    dstruct = dict(a=[1, 2], b=dict(c=2), d="hello")
+    dstruct = dict(a=[1, 2], b=dict(c=2), d="hello", txt="json_txt")
     ttensor = torch.tensor([1, 2, 3]).numpy()
 
     sample = {
         "__key__": "foo",
         "jpg": image,
         "gray.png": gray,
+        "txt": "original_txt",
         "mp": dstruct,
         "json": dstruct,
         "pt": ttensor,
@@ -88,6 +91,37 @@ def test_webdataset_expand_json(
     )
     record = ds.take(1)
     assert [1, 2] == record[0]["a"]
+    assert record[0]["txt"] == "original_txt"
+
+    non_dict_path = os.path.join(tmp_path, "non_dict.tar")
+    with TarWriter(non_dict_path) as tf:
+        tf.write("0.json", json.dumps(["not", "a", "dict"]).encode("utf-8"))
+
+    with pytest.raises(TypeError, match="Expected a JSON object"):
+        ray.data.read_webdataset(
+            paths=[str(non_dict_path)],
+            override_num_blocks=1,
+            decoder=None,
+            expand_json=True,
+        ).take_all()
+
+
+def test_webdataset_preserves_single_element_list_without_expand_json(
+    ray_start_2_cpus, tmp_path
+):
+    import json
+
+    path = os.path.join(tmp_path, "list_000000.tar")
+    with TarWriter(path) as tf:
+        tf.write("0.json", json.dumps(["only_item"]).encode("utf-8"))
+        tf.write("1.json", json.dumps(["first", "second"]).encode("utf-8"))
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], override_num_blocks=1, expand_json=False
+    )
+    records = sorted(ds.take_all(), key=lambda r: r["__key__"])
+    assert list(records[0]["json"]) == ["only_item"]
+    assert list(records[1]["json"]) == ["first", "second"]
 
 
 def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
@@ -269,6 +303,8 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path, allow_unsafe_deserializat
     sample = {
         "__key__": "foo",
         "jpg": image,
+        "jpeg": image,
+        "PHOTO.JPG": image,
         "gray.png": gray,
         "mp": dstruct,
         "json": dstruct,
@@ -295,6 +331,10 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path, allow_unsafe_deserializat
         assert sample["__key__"] == "foo"
         assert isinstance(sample["jpg"], np.ndarray)
         assert sample["jpg"].shape == (100, 100, 3)
+        assert isinstance(sample["jpeg"], np.ndarray)
+        assert sample["jpeg"].shape == (100, 100, 3)
+        assert isinstance(sample["PHOTO.JPG"], np.ndarray)
+        assert sample["PHOTO.JPG"].shape == (100, 100, 3)
         assert isinstance(sample["gray.png"], np.ndarray)
         assert sample["gray.png"].shape == (100, 100)
         assert isinstance(sample["mp"], dict)
@@ -371,7 +411,7 @@ def test_write_min_rows_per_file(tmp_path, ray_start_2_cpus, min_rows_per_file):
 
 @pytest.mark.parametrize(
     "filename",
-    ["000000.pkl", "000000.pickle", "000000.pt", "000000.pth"],
+    ["000000.pkl", "000000.PKL", "000000.pickle", "000000.pt", "000000.pth"],
 )
 def test_default_decoder_rejects_unsafe_extensions(
     ray_start_2_cpus, tmp_path, filename
