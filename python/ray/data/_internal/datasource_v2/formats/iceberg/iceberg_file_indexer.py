@@ -18,8 +18,10 @@ sizes.
 Planning reads Iceberg metadata only. It prunes on ``read_iceberg``'s
 ``row_filter`` ANDed with the predicate the scanner accepted, in the planning
 form ``iceberg_filter_pushdown`` gives it. Each row is marked ``fully_matched``
-when ``iceberg_row_match`` proves every row of the file passes that filter. The
-Parquet footers are read once planning is done.
+when ``iceberg_row_match`` proves every row of the file passes that filter, and
+listing stops once those files hold the pushed limit's rows, as Parquet's
+footer indexer does. The listed Parquet files' footers are read once planning
+is done.
 
 When the table's REST catalog plans scans on its server, the task rebuilds the
 catalog from the properties the driver resolved (``ServerSidePlanning``) and
@@ -210,9 +212,9 @@ class IcebergFileIndexer(FileIndexer):
         file. ``predicate`` is the scanner's accepted predicate, planned with
         ``read_iceberg``'s ``row_filter``. ``projected_columns`` sizes each
         row, and with ``reads_footers`` its Parquet files' footers are read to
-        do so. ``limit`` is applied by the reader; stopping listing early from
-        Iceberg's per-file row counts is a follow-up. The other arguments
-        don't apply and are ignored.
+        do so. ``limit`` stops listing once the ``fully_matched`` files listed
+        so far hold that many rows; ``plan_files()`` still plans the whole
+        table first. The other arguments don't apply and are ignored.
         """
         scan, filters_after_read = self._data_scan(predicate)
         field_ids = _projected_field_ids(
@@ -228,11 +230,18 @@ class IcebergFileIndexer(FileIndexer):
         )
         tasks: List["FileScanTask"] = []
         matched: List[bool] = []
+        matched_rows = 0
         for task in scan.plan_files():
             if excluded_read_unit_ids and task.file.file_path in excluded_read_unit_ids:
                 continue
             tasks.append(task)
             matched.append(row_match.every_row_matches(task))
+            if matched[-1]:
+                matched_rows += task.file.record_count
+            if limit is not None and matched_rows >= limit:
+                # Only exact counts are summed, so the files listed so far
+                # hold at least ``limit`` rows.
+                break
         decoded_sizes = self._decoded_sizes(scan, projected_columns, tasks)
         for start in range(0, len(tasks), _FILES_PER_MANIFEST_BLOCK):
             end = start + _FILES_PER_MANIFEST_BLOCK
