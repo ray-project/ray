@@ -27,7 +27,11 @@ from ray.serve._private.common import (
     EndpointInfo,
     TargetCapacityDirection,
 )
-from ray.serve._private.config import DeploymentConfig, topology_spread_to_dicts
+from ray.serve._private.config import (
+    DeploymentConfig,
+    topology_spread_to_dicts,
+    validate_topology_spread_replicas,
+)
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
@@ -2097,6 +2101,10 @@ def override_deployment_info(
             )
 
         deployment_config = deployment_infos[deployment_name].deployment_config
+        validate_topology_spread_replicas(
+            deployment_infos[deployment_name].replica_config.topology_spread,
+            deployment_config,
+        )
         if (
             deployment_config.autoscaling_config is not None
             and deployment_config.max_ongoing_requests
