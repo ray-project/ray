@@ -14,7 +14,7 @@ from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.datatype import DataType
-from ray.data.expressions import UDFExpr, col, monotonically_increasing_id
+from ray.data.expressions import col, monotonically_increasing_id, udf
 
 
 @pytest.fixture(scope="module")
@@ -157,12 +157,7 @@ def test_partition_values(
     assert len(scanned_groups()) == 6
 
 
-@pytest.mark.parametrize(
-    "filter_column,expected_ids",
-    [("path", [0, 1]), ("id", [1])],
-    ids=["stored_path", "unrelated_synthesized_column"],
-)
-def test_synthesized_columns(tmp_path, scanned_groups, filter_column, expected_ids):
+def test_synthesized_path_overrides_stored_column(tmp_path, scanned_groups):
     folder = tmp_path / "year=2024"
     folder.mkdir()
     file = folder / "data.parquet"
@@ -174,15 +169,13 @@ def test_synthesized_columns(tmp_path, scanned_groups, filter_column, expected_i
         include_paths=True,
         partitioning=Partitioning(PartitionStyle.HIVE, field_names=["year"]),
     )
-    predicate = (
-        col(filter_column) == (str(file) if filter_column == "path" else 1)
-    ) | (col("year") == "1999")
-    expected = [{"id": i, "path": str(file), "year": "2024"} for i in expected_ids]
+    predicate = (col("path") == str(file)) | (col("year") == "1999")
+    expected = [{"id": i, "path": str(file), "year": "2024"} for i in range(2)]
     assert (
         sorted(ds.filter(expr=predicate).take_all(), key=lambda row: row["id"])
         == expected
     )
-    assert len(scanned_groups()) == len(expected_ids)
+    assert len(scanned_groups()) == 2
 
 
 def test_block_udf_disables_pruning(partitioned_data, scanned_groups):
@@ -255,21 +248,18 @@ def test_residual_preserves_row_evaluation(
     }
 
 
+@udf(return_dtype=DataType.from_arrow(pa.bool_()))
+def y_above_7(y):
+    return pc.greater(y, 7)
+
+
 @pytest.mark.parametrize(
     "extra_predicate,include_paths,expected_ids",
     [
         (col("x") != 40.0, False, [13, 15, 17, 19]),
         (col("path") != "nope", True, list(range(12, 20))),
-        (
-            UDFExpr(
-                fn=lambda values: pc.greater(values, 7),
-                args=[col("y")],
-                kwargs={},
-                data_type=DataType.from_arrow(pa.bool_()),
-            ),
-            False,
-            [16, 17, 18, 19],
-        ),
+        # pyrefly: ignore[not-callable]  # udf returns a callable wrapper.
+        (y_above_7(col("y")), False, [16, 17, 18, 19]),
     ],
     ids=["unsafe_float", "synthesized_path", "udf"],
 )

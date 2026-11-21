@@ -60,6 +60,11 @@ class ResidualPruning(NamedTuple):
     schema: pa.Schema
 
 
+class _ResidualPartitionFacts(NamedTuple):
+    expression: pc.Expression
+    columns: set[str]
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -342,9 +347,9 @@ class FooterReader:
         logical_schema = self.logical_schema
         if physical is not None and logical_schema is not None:
             unsafe = _get_unsafe_filter_columns(
-                schema.to_arrow_schema(),
-                logical_schema,
-                get_column_references(physical),
+                physical_schema=schema.to_arrow_schema(),
+                logical_schema=logical_schema,
+                columns=get_column_references(physical),
             )
             if unsafe:
                 safe = _split_predicate_by_columns(physical, unsafe)
@@ -425,9 +430,7 @@ class FooterReader:
             )
             return None
 
-    def _residual_partition_facts(
-        self, path: str
-    ) -> tuple[pc.Expression, set[str]] | None:
+    def _residual_partition_facts(self, path: str) -> _ResidualPartitionFacts | None:
         """Folder values for the columns the residual filter reads, as an Arrow
         expression, plus those column names. None if the path can't be parsed.
         """
@@ -442,7 +445,7 @@ class FooterReader:
                 for k, v in parser(path).items()
                 if k in self._residual_filter_columns
             }
-            table = _partition_table(values, pruning.schema)
+            table = _partition_table(values=values, schema=pruning.schema)
             partition_expression = pds.scalar(True)
             for name in values:
                 scalar = table[name][0]
@@ -452,7 +455,9 @@ class FooterReader:
                     else pds.field(name).is_null()
                 )
                 partition_expression = partition_expression & fact
-            return partition_expression, set(values)
+            return _ResidualPartitionFacts(
+                expression=partition_expression, columns=set(values)
+            )
         except Exception as e:
             logger.debug(
                 "Cannot bind residual partition facts for file %s: %s",
@@ -467,7 +472,7 @@ class FooterReader:
         fragment,
         schema: ParquetSchema,
         candidates: Iterable[int],
-        facts: tuple[pc.Expression, set[str]] | None,
+        facts: _ResidualPartitionFacts | None,
     ) -> list[int] | None:
         """Row groups the residual filter may match, or None to keep all candidates.
 
@@ -480,13 +485,12 @@ class FooterReader:
             return None
         try:
             pruning = self.residual_pruning
-            _, partition_columns = facts
             # Like the pushed filter, use bounds only for unchanged field types.
             # Partition values come from the path and override physical columns.
             if _get_unsafe_filter_columns(
-                schema.to_arrow_schema(),
-                pruning.schema,
-                self._residual_filter_columns - partition_columns,
+                physical_schema=schema.to_arrow_schema(),
+                logical_schema=pruning.schema,
+                columns=self._residual_filter_columns - facts.columns,
             ):
                 return None
             # Restrict residual statistics checks to the remaining row groups.
@@ -500,18 +504,21 @@ class FooterReader:
             )
             return None
         return self._try_split_by_row_group(
-            fragment, self._residual_filter, fragment.path, pruning.schema
+            fragment=fragment,
+            expr=self._residual_filter,
+            path=fragment.path,
+            schema=pruning.schema,
         )
 
     def _read_and_chunk(self, file: FileInfo) -> ChunkedFile:
         path = file.path
-        residual_facts = self._residual_partition_facts(path)
+        residual_facts = self._residual_partition_facts(path=path)
         # The listing's size spares the open a request for it (a HEAD on S3).
         fragment = self.file_format.make_fragment(
             path,
             filesystem=filesystem_for_sized_opens(self.filesystem),
             file_size=file.size,
-            partition_expression=residual_facts[0]
+            partition_expression=residual_facts.expression
             if residual_facts is not None
             else None,
         )
@@ -599,7 +606,10 @@ class FooterReader:
             fully_by_idx = dict.fromkeys(rg_indices, complete_filter)
 
         selected = self._residual_row_groups(
-            fragment, metadata.schema, rg_indices, residual_facts
+            fragment=fragment,
+            schema=metadata.schema,
+            candidates=rg_indices,
+            facts=residual_facts,
         )
         if selected is not None:
             possible = set(selected)

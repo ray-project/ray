@@ -26,8 +26,7 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     combine_predicate_chain,
     flatten_predicate_chain,
     float_column_names,
-    has_column_arithmetic,
-    is_statistics_safe,
+    is_parquet_pushdown_safe,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
@@ -252,10 +251,9 @@ class FooterFileIndexer(NonSamplingFileIndexer):
                     for conjunct in flatten_predicate_chain(residual, Operation.AND)
                     if conjunct._is_pyarrow_convertible()
                     and synthesized_columns.isdisjoint(get_column_references(conjunct))
-                    and is_statistics_safe(
+                    and is_parquet_pushdown_safe(
                         predicate=conjunct, float_columns=float_columns
                     )
-                    and not has_column_arithmetic(expr=conjunct)
                 ],
                 Operation.AND,
             )
