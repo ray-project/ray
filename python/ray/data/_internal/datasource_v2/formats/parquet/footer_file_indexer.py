@@ -235,8 +235,10 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             return self
         configured = copy.copy(self)
         configured._residual_pruning = None
+        # Pruning must not change the input rows of non-idempotent expressions.
         if (
             residual is not None
+            and residual.is_idempotent()
             and isinstance(scanner, ParquetScanner)
             and scanner.limit is None
             and scanner.partitioning is not None
