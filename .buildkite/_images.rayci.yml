@@ -42,7 +42,6 @@ steps:
     wanda: docker/base-deps/tpu.wanda.yaml
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"

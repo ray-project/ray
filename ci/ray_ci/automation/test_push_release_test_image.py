@@ -10,7 +10,10 @@ from ci.ray_ci.automation.push_release_test_image import (
     ReleaseTestImagePushContext,
     _annotate_pushed_image,
 )
-from ci.ray_ci.configs import DEFAULT_PYTHON_TAG_VERSION
+from ci.ray_ci.configs import (
+    DEFAULT_PYTHON_TAG_VERSION,
+    DEFAULT_TPU_PYTHON_TAG_VERSION,
+)
 from ci.ray_ci.docker_container import GPU_PLATFORM
 
 
@@ -219,6 +222,27 @@ class TestDestinationTags:
         assert "abc123-cu123" in tags
         assert "build-123-py311-cu123" in tags
         assert "build-123-cu123" in tags
+
+    def test_tpu_default_python_version_includes_empty_suffix(self):
+        """TPU uses DEFAULT_TPU_PYTHON_TAG_VERSION (3.12) for empty python suffix."""
+        assert DEFAULT_TPU_PYTHON_TAG_VERSION == "3.12"
+        tpu_default_tags = make_ctx(
+            python_version="3.12", platform="tpu", image_type="ray"
+        ).destination_tags()
+        assert tpu_default_tags == [
+            "abc123-py312-tpu",
+            "abc123-tpu",
+            "build-123-py312-tpu",
+            "build-123-tpu",
+        ]
+
+        tpu_py311_tags = make_ctx(
+            python_version="3.11", platform="tpu", image_type="ray"
+        ).destination_tags()
+        assert tpu_py311_tags == [
+            "abc123-py311-tpu",
+            "build-123-py311-tpu",
+        ]
 
     def test_cpu_ray_includes_empty_platform_suffix(self):
         """ray with cpu gets empty platform suffix."""

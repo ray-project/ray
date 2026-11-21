@@ -4,6 +4,7 @@ Validates ray-images.json is well-formed and internally consistent.
 
 import pytest
 
+from ci.ray_ci.configs import DEFAULT_TPU_PYTHON_TAG_VERSION
 from ci.ray_ci.supported_images import get_image_config, load_supported_images
 
 IMAGE_TYPES = list(load_supported_images().keys())
@@ -36,6 +37,16 @@ class TestRayImagesSchema:
             f"{image_type}: default python '{defaults['python']}' "
             f"not in supported {cfg['python']}"
         )
+        if "tpu_python" in defaults:
+            assert defaults["tpu_python"] in cfg["python"], (
+                f"{image_type}: default tpu_python '{defaults['tpu_python']}' "
+                f"not in supported {cfg['python']}"
+            )
+            assert defaults["tpu_python"] == DEFAULT_TPU_PYTHON_TAG_VERSION, (
+                f"{image_type}: default tpu_python '{defaults['tpu_python']}' "
+                f"does not match DEFAULT_TPU_PYTHON_TAG_VERSION "
+                f"'{DEFAULT_TPU_PYTHON_TAG_VERSION}'"
+            )
         assert defaults["gpu_platform"] in cfg["platforms"], (
             f"{image_type}: default gpu_platform '{defaults['gpu_platform']}' "
             f"not in supported {cfg['platforms']}"
@@ -44,6 +55,11 @@ class TestRayImagesSchema:
             f"{image_type}: default architecture '{defaults['architecture']}' "
             f"not in supported {cfg['architectures']}"
         )
+
+    def test_tpu_default_python_matches_config(self):
+        ray_cfg = get_image_config("ray")
+        assert "tpu" in ray_cfg["platforms"]
+        assert ray_cfg["defaults"]["tpu_python"] == DEFAULT_TPU_PYTHON_TAG_VERSION
 
     @pytest.mark.parametrize("image_type", IMAGE_TYPES)
     def test_no_empty_lists(self, image_type):

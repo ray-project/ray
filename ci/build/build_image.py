@@ -58,6 +58,7 @@ def _build_image_type_config() -> dict[str, dict]:
             "platforms": platforms,
             "architectures": yaml_cfg["architectures"],
             "default_python": defaults["python"],
+            "tpu_python": defaults.get("tpu_python"),
             "default_platform": "cpu"
             if "cpu" in platforms
             else defaults["gpu_platform"],
@@ -336,11 +337,26 @@ class ImageBuilder:
             raise BuildError(f"docker tag failed: {result.stderr.strip()}")
 
 
+def _default_python_for_platform(cfg: dict, platform: str) -> str:
+    """Return the default Python version for *platform* in *cfg*."""
+    if platform == "tpu" and cfg.get("tpu_python"):
+        return cfg["tpu_python"]
+    return cfg["default_python"]
+
+
 def _image_type_table() -> str:
     """Build an ASCII table of all image types from IMAGE_TYPE_CONFIG."""
 
-    def _tag_default(items, default):
-        return [f"{v} (default)" if v == default else v for v in items]
+    def _tag_default(items, default, tpu_default=None):
+        tagged = []
+        for v in items:
+            if v == default:
+                tagged.append(f"{v} (default)")
+            elif tpu_default and v == tpu_default:
+                tagged.append(f"{v} (tpu default)")
+            else:
+                tagged.append(v)
+        return tagged
 
     def _wrap(items, width):
         """Join items with ', ' and wrap into lines that fit in *width*."""
@@ -364,8 +380,15 @@ def _image_type_table() -> str:
         rows: list[tuple[str, str, list[str]]] = []
         for name in type_list:
             cfg = IMAGE_TYPE_CONFIG[name]
+            tpu_default = (
+                cfg.get("tpu_python") if (name, "tpu") in WANDA_SPEC_PATHS else None
+            )
             py_cell = ", ".join(
-                _tag_default(cfg["python_versions"], cfg["default_python"])
+                _tag_default(
+                    cfg["python_versions"],
+                    cfg["default_python"],
+                    tpu_default=tpu_default,
+                )
             )
             plat_lines = _wrap(
                 _tag_default(cfg["platforms"], cfg["default_platform"]),
@@ -429,6 +452,14 @@ def _build_examples() -> str:
     ray_plat = ray_cfg["default_platform"]
     alt_py = next((v for v in ray_cfg["python_versions"] if v != ray_py), None)
     alt_plat = next((p for p in ray_cfg["platforms"] if p != ray_plat), None)
+    alt_plat_py = (
+        _default_python_for_platform(ray_cfg, alt_plat) if alt_plat else ray_py
+    )
+    alt_plat_other_py = (
+        next((v for v in ray_cfg["python_versions"] if v != alt_plat_py), None)
+        if alt_plat
+        else None
+    )
 
     examples: list[tuple[str, str]] = []
     if alt_py:
@@ -437,11 +468,14 @@ def _build_examples() -> str:
         )
     if alt_plat:
         examples.append(
-            (f"ray --platform {alt_plat}", f"ray {alt_plat} py{ray_py}"),
+            (f"ray --platform {alt_plat}", f"ray {alt_plat} py{alt_plat_py}"),
         )
-    if alt_py and alt_plat:
+    if alt_plat_other_py and alt_plat:
         examples.append(
-            (f"ray -p {alt_py} --platform {alt_plat}", f"ray {alt_plat} py{alt_py}"),
+            (
+                f"ray -p {alt_plat_other_py} --platform {alt_plat}",
+                f"ray {alt_plat} py{alt_plat_other_py}",
+            ),
         )
 
     if not examples:
@@ -527,8 +561,10 @@ def main():
             print(f"  {p}{marker}")
         sys.exit(0)
 
-    python_version = args.python_version or cfg["default_python"]
     platform_choice = args.platform or cfg["default_platform"]
+    python_version = args.python_version or _default_python_for_platform(
+        cfg, platform_choice
+    )
 
     try:
         config = ImageBuildConfig.from_args(
