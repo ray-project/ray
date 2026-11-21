@@ -316,6 +316,9 @@ class RefBundle:
         """
         assert needed_rows > 0, "needed_rows must be positive."
         assert (
+            self.reconstruction_stamp is None
+        ), "Cannot slice a RefBundle with an active reconstruction_stamp."
+        assert (
             self.num_rows() is not None
         ), "Cannot slice a RefBundle with unknown number of rows."
         assert (
@@ -343,16 +346,16 @@ class RefBundle:
         rows_to_take = needed_rows
 
         for entry, block_slice in zip(self.blocks, block_slices):
+            if rows_to_take == 0:
+                remaining_blocks.append(entry)
+                remaining_slices.append(block_slice)
+                continue
             block_rows = block_slice.num_rows
             if rows_to_take >= block_rows:
                 consumed_blocks.append(entry)
                 consumed_slices.append(block_slice)
                 rows_to_take -= block_rows
             else:
-                if rows_to_take == 0:
-                    remaining_blocks.append(entry)
-                    remaining_slices.append(block_slice)
-                    continue
                 consume_slice = BlockSlice(
                     start_offset=block_slice.start_offset,
                     end_offset=block_slice.start_offset + rows_to_take,
@@ -376,6 +379,7 @@ class RefBundle:
             schema=self.schema,
             owns_blocks=False,
             slices=tuple(consumed_slices) if consumed_slices else None,
+            output_split_idx=self.output_split_idx,
         )
 
         remaining_bundle = RefBundle(
@@ -383,6 +387,7 @@ class RefBundle:
             schema=self.schema,
             owns_blocks=False,
             slices=tuple(remaining_slices) if remaining_slices else None,
+            output_split_idx=self.output_split_idx,
         )
 
         return sliced_bundle, remaining_bundle
