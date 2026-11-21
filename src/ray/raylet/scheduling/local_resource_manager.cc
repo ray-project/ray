@@ -419,6 +419,37 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   }
 }
 
+void LocalResourceManager::PopulateGcsPullerResourceInfo(
+    rpc::ResourcesData &resources_data) const {
+  auto &total = *resources_data.mutable_resources_total();
+  for (const auto &[resource_id, instances] : local_resources_.total.Resources()) {
+    const FixedPoint sum = FixedPoint::Sum(instances);
+    // A resource at its default value (1 for an implicit resource, 0 otherwise) is left
+    // out, as `NodeResourceSet` drops it.
+    if (sum != FixedPoint(resource_id.IsImplicitResource() ? 1 : 0)) {
+      total[resource_id.Binary()] = sum.Double();
+    }
+  }
+  // Available can be negative locally, but is reported as 0, as in
+  // PopulateResourceViewSyncMessage.
+  auto &available = *resources_data.mutable_resources_available();
+  for (const auto &[resource_id, instances] : local_resources_.available.Resources()) {
+    const FixedPoint sum = FixedPoint::Sum(instances);
+    if (sum != FixedPoint(resource_id.IsImplicitResource() ? 1 : 0)) {
+      available[resource_id.Binary()] = std::max(sum.Double(), 0.0);
+    }
+  }
+
+  auto idle_time = GetResourceIdleTime();
+  if (idle_time.has_value()) {
+    // The receiver treats 0 as "not idle", so report at least 1 ms for an idle node.
+    resources_data.set_idle_duration_ms(
+        std::max(static_cast<int64_t>(1),
+                 absl::ToInt64Milliseconds(clock_.Now() - idle_time.value())));
+  }
+  resources_data.set_is_draining(IsLocalNodeDraining());
+}
+
 std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
     int64_t after_version, syncer::MessageType message_type) const {
   RAY_CHECK_EQ(message_type, syncer::MessageType::RESOURCE_VIEW);
