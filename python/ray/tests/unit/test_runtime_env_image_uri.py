@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import sys
@@ -9,8 +10,14 @@ import pytest
 
 from ray._private.authentication_test_utils import reset_auth_token_state
 from ray._private.runtime_env.context import RuntimeEnvContext, expand_run_option
-from ray._private.runtime_env.image_uri import _modify_context_impl
+from ray._private.runtime_env.image_uri import (
+    _CACHE_SCHEMA_VERSION,
+    ImageMetadata,
+    ImageURIPlugin,
+    _modify_context_impl,
+)
 from ray.core.generated.common_pb2 import Language
+from ray.runtime_env import RuntimeEnv
 
 TOKEN = "secret-token-value"
 
@@ -53,7 +60,11 @@ def _launch(
         logging.getLogger(__name__),
         ray_tmp_dir,
     )
+    return _exec_worker(context)
 
+
+def _exec_worker(context: RuntimeEnvContext) -> Tuple[List[str], Dict[str, str]]:
+    """Returns the argv and env a modified context's worker is exec'd with."""
     # The worker launcher gets the context through serialize()/deserialize().
     context = RuntimeEnvContext.deserialize(context.serialize())
 
@@ -328,6 +339,136 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
         "fake-image",
         "/fake/default_worker.py",
     ]
+
+
+IMAGE_URI_CACHE_URI = "image-pip://cache-key"
+
+
+def _image_uri_plugin(tmp_path: Path) -> Tuple[ImageURIPlugin, str]:
+    """Returns a plugin with a resolved, published cache entry and its path."""
+    plugin = ImageURIPlugin(str(tmp_path / "ray"))
+    plugin.set_resources_dir(str(tmp_path / "resources"))
+    plugin._metadata_by_uri[IMAGE_URI_CACHE_URI] = ImageMetadata(
+        image_id="sha256:image",
+        image_digest="sha256:digest",
+        os="linux",
+        architecture="amd64",
+        python_executable="/usr/bin/python",
+        python_version="3.12.1",
+        python_implementation="CPython",
+        python_cache_tag="cpython-312",
+        python_soabi="cpython-312-x86_64-linux-gnu",
+        python_platform="linux-x86_64",
+        python_path="/image/bin",
+        ray_version="2.56.0",
+        ray_commit="commit",
+        worker_path="/image/default_worker.py",
+    )
+    cache_path = plugin._get_cache_path(IMAGE_URI_CACHE_URI)
+    virtualenv_python = Path(cache_path, "virtualenv", "bin", "python")
+    virtualenv_python.parent.mkdir(parents=True)
+    virtualenv_python.symlink_to("/usr/bin/python")
+    Path(cache_path, "manifest.json").write_text(
+        json.dumps(
+            {
+                "schema_version": _CACHE_SCHEMA_VERSION,
+                "uri": IMAGE_URI_CACHE_URI,
+                "has_pip": True,
+                "size_bytes": 0,
+            }
+        )
+    )
+    return plugin, cache_path
+
+
+def _image_uri_launch(
+    tmp_path: Path, runtime_env: RuntimeEnv, context: RuntimeEnvContext
+) -> Tuple[List[str], Dict[str, str], str]:
+    plugin, cache_path = _image_uri_plugin(tmp_path)
+    plugin.modify_context(
+        [IMAGE_URI_CACHE_URI], runtime_env, context, logging.getLogger(__name__)
+    )
+    return (*_exec_worker(context), cache_path)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="image_uri is Linux-only.")
+@pytest.mark.parametrize(
+    "job_path,path_suffix", [(None, ":/image/bin"), ("", ""), ("/job/bin", ":/job/bin")]
+)
+def test_image_uri_pip_worker_runs_cached_virtualenv(
+    auth_env, tmp_path, job_path, path_suffix
+):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    env_vars = {"JOB_VAR": "job value"}
+    if job_path is not None:
+        env_vars["PATH"] = job_path
+
+    argv, launcher_env, cache_path = _image_uri_launch(
+        tmp_path,
+        RuntimeEnv(image_uri="podman://example/image:tag", pip=["package==1"]),
+        RuntimeEnvContext(env_vars=env_vars),
+    )
+
+    virtualenv = os.path.join(cache_path, "virtualenv")
+    assert argv[0] == "podman"
+    assert "--rm" in argv
+    assert argv[argv.index(f"{cache_path}:{cache_path}:ro,z") - 1] == "-v"
+    assert f"VIRTUAL_ENV={virtualenv}" in argv
+    # One PATH: the virtualenv, then the job's PATH or else the image's.
+    paths = [arg for arg in argv if arg.startswith("PATH=")]
+    assert paths == [f"PATH={virtualenv}/bin{path_suffix}"]
+    # Job values still reach only the container.
+    assert "JOB_VAR=job value" in argv
+    assert "JOB_VAR" not in launcher_env
+    # The exact image the environment was built against.
+    assert argv[-4:] == [
+        "--entrypoint",
+        f"{virtualenv}/bin/python",
+        "sha256:image",
+        "/image/default_worker.py",
+    ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="image_uri is Linux-only.")
+def test_image_uri_worker_without_pip_uses_image_reference(auth_env, tmp_path):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+
+    argv, _, cache_path = _image_uri_launch(
+        tmp_path,
+        RuntimeEnv(image_uri="podman://example/image:tag"),
+        RuntimeEnvContext(),
+    )
+
+    assert cache_path not in " ".join(argv)
+    assert not any(arg.startswith(("VIRTUAL_ENV=", "PATH=")) for arg in argv)
+    # No cached state depends on the image, so podman can re-pull a pruned
+    # image by its reference.
+    assert argv[-4:] == [
+        "--entrypoint",
+        "/usr/bin/python",
+        "example/image:tag",
+        "/image/default_worker.py",
+    ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="image_uri is Linux-only.")
+@pytest.mark.parametrize("has_pip", [False, True])
+def test_image_uri_worker_mounts_token_file(auth_env, tmp_path, has_pip):
+    token_path = _write_default_token(tmp_path)
+    auth_env.setenv("RAY_AUTH_MODE", "token")
+    reset_auth_token_state()
+    runtime_env = RuntimeEnv(image_uri="example/image:tag")
+    if has_pip:
+        runtime_env = RuntimeEnv(image_uri="example/image:tag", pip=["package==1"])
+
+    argv, _, _ = _image_uri_launch(tmp_path, runtime_env, RuntimeEnvContext())
+
+    command = " ".join(argv)
+    assert f"-v {token_path}:{token_path}:ro" in command
+    assert f"--env RAY_AUTH_TOKEN_PATH={token_path}" in command
+    assert TOKEN not in command
 
 
 if __name__ == "__main__":
