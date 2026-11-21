@@ -25,6 +25,8 @@ from ray.data._internal.datasource_v2.common.schema_inference import (
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
+    INCLUDE_PATHS_COLUMN_NAME,
+    ROW_HASH_COLUMN_NAME,
     PathColumn,
     RowHashColumn,
 )
@@ -112,6 +114,22 @@ class ParquetDatasourceV2(FileDataSourceV2):
     :class:`ParquetScanner` and :class:`ParquetFileReader`. Schema
     inference merges the supplied file sample's footers and augments with
     partition/path columns as configured.
+
+    Args:
+        paths: Input file or directory paths.
+        filesystem: Filesystem used to resolve and read paths.
+        partitioning: Partition layout for path-derived columns.
+        file_extensions: File extensions to include, or None for all files.
+        ignore_missing_paths: Whether to ignore missing input paths.
+        skip_paths: Exact paths to exclude from the read.
+        include_paths: Whether to add paths, or a nonempty output column name.
+            An empty name or a name matching an enabled ``row_hash`` column
+            raises ValueError. Non-default names must not match partition fields.
+        include_row_hash: Whether to add deterministic row hashes.
+        shuffle: File or row-group shuffle configuration.
+        arrow_parquet_args: Parquet arguments retained by the datasource.
+        schema: Optional schema override for file columns.
+        parquet_format_kwargs: Options passed to the PyArrow Parquet format.
     """
 
     def __init__(
@@ -123,7 +141,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
         file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("parquet",),
         ignore_missing_paths: bool = False,
         skip_paths: Optional[Union[str, List[str]]] = None,
-        include_paths: bool = False,
+        include_paths: Union[bool, str] = False,
         include_row_hash: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
@@ -181,12 +199,30 @@ class ParquetDatasourceV2(FileDataSourceV2):
             self._skip_paths = frozenset(resolved_skip_paths)
         else:
             self._skip_paths = frozenset()
+        if isinstance(include_paths, str) and not include_paths:
+            raise ValueError("`include_paths` column name must be nonempty.")
+
+        path_column_name = (
+            include_paths
+            if isinstance(include_paths, str)
+            else INCLUDE_PATHS_COLUMN_NAME
+        )
+        self._custom_path_column_name = (
+            path_column_name
+            if isinstance(include_paths, str)
+            and path_column_name != INCLUDE_PATHS_COLUMN_NAME
+            else None
+        )
         # ``include_paths`` / ``include_row_hash`` become the columns the
         # reader appends to every batch; the scanner and reader only ever see
         # this tuple.
         synthesized_columns: List[SynthesizedColumn] = []
         if include_paths:
-            synthesized_columns.append(PathColumn())
+            if include_row_hash and path_column_name == ROW_HASH_COLUMN_NAME:
+                raise ValueError(
+                    "`include_paths` column name conflicts with `row_hash`."
+                )
+            synthesized_columns.append(PathColumn(name=path_column_name))
         if include_row_hash:
             synthesized_columns.append(RowHashColumn())
         self._synthesized_columns = tuple(synthesized_columns)
@@ -329,7 +365,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
         else:
 
             def _read_schema(path: str):
-                return _read_parquet_schema(path, filesystem, file_sizes[path])
+                return self._without_path_column(
+                    _read_parquet_schema(path, filesystem, file_sizes[path])
+                )
 
             schema = infer_schema_from_files(
                 sample_paths, _read_schema, format_name="Parquet"
@@ -355,10 +393,21 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ray_remote_args=ray_remote_args,
             supports_distributed_reads=self.supports_distributed_reads,
             read_schema_metadata=_read_parquet_schema_metadata,
+            transform_schema=self._without_path_column,
         )
         if schema is None:
             return self.infer_schema(sample)
         return self._augment_schema(schema, sample)
+
+    def _without_path_column(self, schema: pa.Schema) -> pa.Schema:
+        # A synthesized path replaces the physical column after reading, so
+        # its physical types need not be compatible across files.
+        for column in self._synthesized_columns:
+            if isinstance(column, PathColumn):
+                index = schema.get_field_index(column.name)
+                if index != -1:
+                    return schema.remove(index)
+        return schema
 
     def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
         resolved_partitioning = self.resolve_partitioning(sample)
@@ -381,8 +430,10 @@ class ParquetDatasourceV2(FileDataSourceV2):
             idx = schema.get_field_index(column.name)
             if idx == -1:
                 schema = schema.append(pa.field(column.name, column.type))
-            elif schema.field(idx).type != column.type:
-                schema = schema.set(idx, pa.field(column.name, column.type))
+            else:
+                # The reader appends synthesized columns after the file columns.
+                # Keep the inferred order consistent when a name collides.
+                schema = schema.remove(idx).append(pa.field(column.name, column.type))
 
         check_for_legacy_tensor_type(schema)
         return schema
@@ -398,6 +449,15 @@ class ParquetDatasourceV2(FileDataSourceV2):
         # datasource itself stays immutable — fall back to the
         # constructor-provided one for direct users of this API.
         partitioning = options.get("partitioning", self._partitioning)
+        if (
+            self._custom_path_column_name is not None
+            and partitioning is not None
+            and partitioning.field_names is not None
+            and self._custom_path_column_name in partitioning.field_names
+        ):
+            raise ValueError(
+                "`include_paths` column name conflicts with a partition column."
+            )
         return ParquetScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,

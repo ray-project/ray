@@ -157,6 +157,9 @@ def test_read_schema_appends_synthesized_columns_respecting_projection():
     assert _scanner(
         synthesized_columns=columns, columns=("id",)
     ).read_schema().names == ["id"]
+    assert _scanner(
+        synthesized_columns=(PathColumn(name="source_file"),)
+    ).read_schema().names == ["id", "source_file"]
 
     # In production ``infer_schema`` already advertises the columns, so the
     # scanner's schema carries them: not duplicated, and a projection that

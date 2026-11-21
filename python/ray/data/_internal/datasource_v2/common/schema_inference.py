@@ -161,6 +161,7 @@ def infer_full_schema_from_files(
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
     read_schema_metadata: Optional[Callable] = None,
+    transform_schema: Optional[Callable[[pa.Schema], pa.Schema]] = None,
 ) -> Optional[pa.Schema]:
     """Read schemas on workers and merge once in candidate order on the driver.
 
@@ -244,6 +245,8 @@ def infer_full_schema_from_files(
                     schema = pq.read_schema(pa.BufferReader(value))
                 else:
                     schema = pa.ipc.read_schema(pa.BufferReader(value))
+                if transform_schema is not None:
+                    schema = transform_schema(schema)
                 schemas.append((position, schema))
         schemas.sort(key=lambda item: item[0])
         return _merge_file_schemas(
