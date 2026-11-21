@@ -15,6 +15,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
+    DiskShuffleMap,
     Filter,
     FlatMap,
     InputData,
@@ -781,6 +782,8 @@ def test_disk_shuffle_map_remote_args_mismatch_refuses_fusion(
     map_op = dag.input_dependencies[0].input_dependencies[0]
     assert map_op.name == "DiskHashShuffleMap(keys=('id',), partitions=4)"
     assert map_op.input_dependencies[0].name == "MapBatches(<lambda>)"
+    # The writer carries its own logical op, not the Repartition's.
+    assert isinstance(map_op._logical_operators[0], DiskShuffleMap)
 
 
 def test_map_between_disk_shuffles_fuses_into_first_reduce(

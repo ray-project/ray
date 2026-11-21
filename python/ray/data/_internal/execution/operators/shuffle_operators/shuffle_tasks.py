@@ -130,8 +130,10 @@ def _encode_partition_ipc(
 
 
 def cap_polars_threads() -> None:
-    """Cap polars max threads to 1 so it don't over-sub, we set it
-    here instead of runtime env because we want to keep tasks fusiable.
+    """Cap polars at one thread so a one-CPU task doesn't oversubscribe.
+
+    Set here instead of through a runtime env so the map keeps the same remote
+    args as the upstream op and the two stay fusable.
     """
     os.environ.setdefault("POLARS_MAX_THREADS", "1")
 

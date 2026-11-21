@@ -63,6 +63,7 @@ from ray.data._internal.logical.interfaces import HashPartitioning
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
+    DiskShuffleMap,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
@@ -105,12 +106,12 @@ def plan_disk_hash_shuffle_map(
     transform partitions each input bundle into one local file and yields a
     one-row handle block for ``DiskHashShuffleRegroupOp``.
 
-    Being a plain task-pool map, the upstream read or map fuses into it through
-    the generic map-fusion rule, so one task reads, maps and writes its shuffle
-    file. The writer therefore adds no runtime env of its own; the polars
-    thread cap is set inside the task (``cap_polars_threads``), since a
-    runtime env would make its remote args differ from the upstream op's and
-    refuse fusion.
+    Being a plain task-pool map tagged with its own ``DiskShuffleMap`` logical
+    op, the upstream read or map fuses into it through the generic map-fusion
+    rule, so one task reads, maps and writes its shuffle file. The writer
+    therefore adds no runtime env of its own; the polars thread cap is set
+    inside the task (``cap_polars_threads``), since a runtime env would make
+    its remote args differ from the upstream op's and refuse fusion.
 
     Args:
         input_op: Upstream physical operator.
@@ -144,7 +145,7 @@ def plan_disk_hash_shuffle_map(
     )
     user_args = {k: v for k, v in (ray_remote_args or {}).items() if v is not None}
     remote_args: Dict[str, Any] = {"num_cpus": map_cpus, **user_args}
-    return MapOperator.create(
+    map_op = MapOperator.create(
         MapTransformer([BlockMapTransformFn(write_fn, disable_block_shaping=True)]),
         input_op,
         data_context,
@@ -152,6 +153,18 @@ def plan_disk_hash_shuffle_map(
         ray_remote_args=remote_args,
         on_start=on_start,
     )
+    # Tag the writer as a map of its own (the planner would tag it with the
+    # shuffle's logical op) so map fusion treats it like any other map. The
+    # input is already planned, hence tagged, when this runs.
+    input_logical_ops = input_op._logical_operators
+    map_op.set_logical_operators(
+        DiskShuffleMap(
+            name,
+            input_logical_ops[-1] if input_logical_ops else None,
+            ray_remote_args=remote_args,
+        )
+    )
+    return map_op
 
 
 def plan_disk_hash_shuffle_reduce(
