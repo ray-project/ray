@@ -1119,6 +1119,9 @@ redirects:
 - from: /train/user-guides/local-mode.html
   to: /train/user-guides/debugging.html
   type: page
+- from: /train/api/doc/ray.train.v2.jax.*
+  to: /train/api/doc/ray.train.jax.:splat
+  type: page
 - from: /train/api/*
   to: /train/api/api.html
   type: page

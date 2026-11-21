@@ -644,7 +644,7 @@ If your workers hit CUDA or XLA library load errors, clear `LD_LIBRARY_PATH` in 
 
 ```python
 from ray.train import RunConfig
-from ray.train.v2.jax import JaxTrainer
+from ray.train.jax import JaxTrainer
 ```
 
 

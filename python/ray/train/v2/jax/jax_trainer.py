@@ -47,7 +47,7 @@ class JaxTrainer(DataParallelTrainer):
         >>> from typing import Sequence
         >>> import ray
         >>> from ray.train import ScalingConfig, RunConfig
-        >>> from ray.train.v2.jax import JaxTrainer
+        >>> from ray.train.jax import JaxTrainer
         >>> from MaxText.train import main as maxtext_main
         >>> def train_loop_per_worker(config):
         ...     argv = config["argv"]

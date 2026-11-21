@@ -50,7 +50,7 @@ The following example configures elastic training with one or two `v6e` TPU slic
 
 ```python
 from ray.train import FailureConfig, RunConfig, ScalingConfig
-from ray.train.v2.jax import JaxTrainer
+from ray.train.jax import JaxTrainer
 
 def train_func():
     # Your JAX training code here.
