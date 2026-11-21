@@ -70,6 +70,7 @@ def _get_basic_autoscaling_config() -> dict:
             "disable_launch_config_check": True,
             "foreground_node_launch": True,
             "worker_liveness_check": False,
+            "max_concurrent_launches": sys.maxsize,
             "namespace": "default",
             "type": "kuberay",
         },
