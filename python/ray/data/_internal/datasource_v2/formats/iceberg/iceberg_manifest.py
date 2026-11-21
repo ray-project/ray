@@ -10,7 +10,9 @@ Each row's chunk metadata is the whole file as one ``FileChunk``, sized as the
 file's decoded bytes for the columns read, which is what ``OnlineBinPacker``
 budgets on, as it does Parquet's row groups. A Parquet file's size and decode
 peak come from its footer (``iceberg_footer_sizing``); any other file is sized
-from ``column_sizes`` (``_estimate_inmemory_file_size``) with no peak.
+from ``column_sizes`` (``_estimate_inmemory_file_size``) with no peak. Its
+``fully_matched`` flag says the file's ``record_count`` is exact after the
+filter (``iceberg_row_match``).
 
 Each manifest row also carries the planned PyIceberg ``FileScanTask``
 itself, pickled with Ray's ``cloudpickle`` as V1's read tasks are, and the
@@ -62,6 +64,7 @@ def manifest_from_scan_tasks(
     *,
     projected_field_ids: Optional[Set[int]] = None,
     decoded_sizes: Optional[Mapping[str, "DecodedSize"]] = None,
+    fully_matched: Optional[Sequence[bool]] = None,
 ) -> FileManifest:
     """Encode PyIceberg scan tasks as one manifest block, one row per task.
 
@@ -72,13 +75,17 @@ def manifest_from_scan_tasks(
         decoded_sizes: Sizes read from Parquet footers, by file path
             (``iceberg_footer_sizing``). A file without one is sized from its
             ``column_sizes`` and requests no memory.
+        fully_matched: Per task, whether every row passes the filter. ``None``
+            marks no task.
 
     Returns:
         A manifest with one row per task, in order.
     """
     decoded_sizes = decoded_sizes or {}
+    if fully_matched is None:
+        fully_matched = [False] * len(tasks)
     chunks: List[Optional[Dict[str, Any]]] = []
-    for task in tasks:
+    for task, matched in zip(tasks, fully_matched):
         decoded = decoded_sizes.get(task.file.file_path)
         # One unit per file: an Iceberg read unit is a whole file.
         chunks.append(
@@ -91,7 +98,7 @@ def manifest_from_scan_tasks(
                     else decoded.size_bytes
                 ),
                 memory_bytes=None if decoded is None else decoded.memory_bytes,
-                fully_matched=False,
+                fully_matched=matched,
             ).to_metadata()
         )
     return FileManifest.construct_manifest(

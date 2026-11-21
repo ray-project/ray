@@ -17,8 +17,9 @@ sizes.
 
 Planning reads Iceberg metadata only. It prunes on ``read_iceberg``'s
 ``row_filter`` ANDed with the predicate the scanner accepted, in the planning
-form ``iceberg_filter_pushdown`` gives it. The Parquet footers are read once
-planning is done.
+form ``iceberg_filter_pushdown`` gives it. Each row is marked ``fully_matched``
+when ``iceberg_row_match`` proves every row of the file passes that filter. The
+Parquet footers are read once planning is done.
 
 When the table's REST catalog plans scans on its server, the task rebuilds the
 catalog from the properties the driver resolved (``ServerSidePlanning``) and
@@ -54,6 +55,9 @@ from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing impo
 )
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     manifest_from_scan_tasks,
+)
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_row_match import (
+    RowMatchCheck,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileIndexer,
@@ -210,23 +214,33 @@ class IcebergFileIndexer(FileIndexer):
         Iceberg's per-file row counts is a follow-up. The other arguments
         don't apply and are ignored.
         """
-        scan = self._data_scan(predicate)
+        scan, filters_after_read = self._data_scan(predicate)
         field_ids = _projected_field_ids(
             projection=scan.projection(),
             columns=projected_columns,
             case_sensitive=scan.case_sensitive,
         )
+        row_match = RowMatchCheck(
+            schema=self._table_metadata.schema(),
+            row_filter=scan.row_filter,
+            case_sensitive=scan.case_sensitive,
+            filters_after_read=filters_after_read,
+        )
         tasks: List["FileScanTask"] = []
+        matched: List[bool] = []
         for task in scan.plan_files():
             if excluded_read_unit_ids and task.file.file_path in excluded_read_unit_ids:
                 continue
             tasks.append(task)
+            matched.append(row_match.every_row_matches(task))
         decoded_sizes = self._decoded_sizes(scan, projected_columns, tasks)
         for start in range(0, len(tasks), _FILES_PER_MANIFEST_BLOCK):
+            end = start + _FILES_PER_MANIFEST_BLOCK
             yield manifest_from_scan_tasks(
-                tasks=tasks[start : start + _FILES_PER_MANIFEST_BLOCK],
+                tasks=tasks[start:end],
                 projected_field_ids=field_ids,
                 decoded_sizes=decoded_sizes,
+                fully_matched=matched[start:end],
             )
 
     def _decoded_sizes(
@@ -270,13 +284,16 @@ class IcebergFileIndexer(FileIndexer):
         Unused: this only feeds schema sampling, and the schema comes from
         table metadata.
         """
-        for task in self._data_scan().plan_files():
+        scan, _ = self._data_scan()
+        for task in scan.plan_files():
             yield FileInfo(path=task.file.file_path, size=task.file.file_size_in_bytes)
 
-    def _data_scan(self, predicate: Optional["Expr"] = None) -> "DataScan":
+    def _data_scan(self, predicate: Optional["Expr"] = None) -> Tuple["DataScan", bool]:
+        """The scan to plan, and whether part of ``predicate`` runs after the read."""
         from pyiceberg.table import DataScan
 
         row_filter = self._row_filter
+        filters_after_read = False
         if predicate is not None:
             schema = self._table_metadata.schema()
             case_sensitive = self._scan_kwargs.get("case_sensitive", True)
@@ -294,6 +311,7 @@ class IcebergFileIndexer(FileIndexer):
                 case_sensitive=case_sensitive,
                 nan_safe=True,
             )
+            filters_after_read = bool(parts.after_read)
         # Not ``Table.scan``: the ``Table`` stays on the driver. A ``DataScan``
         # with a catalog that plans on its server asks it for the file list.
         planning_kwargs: Dict[str, Any] = {}
@@ -317,7 +335,7 @@ class IcebergFileIndexer(FileIndexer):
             self._snapshot_id,
             row_filter,
         )
-        return scan
+        return scan, filters_after_read
 
 
 def _projected_field_ids(
