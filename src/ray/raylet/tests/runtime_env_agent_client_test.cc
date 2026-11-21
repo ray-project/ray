@@ -30,6 +30,7 @@
 #include <thread>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
@@ -270,7 +271,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      bool has_worker_container) {
     ASSERT_TRUE(successful);
     ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
     ASSERT_TRUE(setup_error_message.empty());
@@ -324,7 +326,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      bool has_worker_container) {
     ASSERT_FALSE(successful);
     ASSERT_TRUE(serialized_runtime_env_context.empty());
     ASSERT_EQ(setup_error_message, "the server is not feeling well");
@@ -383,7 +386,8 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      bool has_worker_container) {
     ASSERT_TRUE(successful);
     ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
     ASSERT_TRUE(setup_error_message.empty());
@@ -445,7 +449,8 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
   size_t called_times = 0;
   auto callback = [&](bool successful,
                       const std::string &serialized_runtime_env_context,
-                      const std::string &setup_error_message) {
+                      const std::string &setup_error_message,
+                      bool has_worker_container) {
     ASSERT_TRUE(successful);
     ASSERT_EQ(serialized_runtime_env_context, "serialized_runtime_env_context");
     ASSERT_TRUE(setup_error_message.empty());
@@ -733,7 +738,8 @@ TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingRaylet) {
                                 ray::rpc::RuntimeEnvConfig(),
                                 [&](bool successful,
                                     const std::string &serialized_runtime_env_context,
-                                    const std::string &setup_error_message) {
+                                    const std::string &setup_error_message,
+                                    bool has_worker_container) {
                                   ASSERT_FALSE(successful);
                                   ASSERT_FALSE(setup_error_message.empty());
                                   called_times += 1;
@@ -922,6 +928,237 @@ TEST(RuntimeEnvAgentClientTest, BoundsConnectionsUnderLoad) {
   ioc.run();
   EXPECT_EQ(succeeded, kRequests);
   EXPECT_EQ(http_server_thread.accepts(), 10);
+}
+
+TEST(RuntimeEnvAgentClientTest, ContainerLifecycleReportsCancellationAcceptance) {
+  for (bool accepted : {false, true}) {
+    const auto worker_id = WorkerID::FromRandom();
+    const auto node_id = NodeID::FromRandom();
+    const auto job_id = JobID::FromInt(123);
+    const int port = GetFreePort();
+    HttpServerThread server(
+        [&](const http::request<http::string_body> &request,
+            http::response<http::string_body> &response) {
+          if (request.target() == "/register_worker_container") {
+            rpc::RegisterWorkerContainerRequest registration;
+            ASSERT_TRUE(registration.ParseFromString(request.body()));
+            EXPECT_EQ(registration.launch().launch_id(), worker_id.Hex());
+            EXPECT_EQ(registration.launch().session_id(), node_id.Hex());
+            EXPECT_EQ(registration.launch().job_id(), job_id.Hex());
+            rpc::RegisterWorkerContainerReply reply;
+            reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+            response.body() = reply.SerializeAsString();
+          } else {
+            EXPECT_EQ(request.target(), "/stop_worker_container");
+            rpc::StopWorkerContainerRequest stop;
+            ASSERT_TRUE(stop.ParseFromString(request.body()));
+            EXPECT_EQ(stop.launch().launch_id(), worker_id.Hex());
+            EXPECT_EQ(stop.launch().session_id(), node_id.Hex());
+            EXPECT_EQ(stop.launch().job_id(), job_id.Hex());
+            rpc::StopWorkerContainerReply reply;
+            reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+            reply.set_accepted(accepted);
+            response.body() = reply.SerializeAsString();
+          }
+          response.content_length(response.body().size());
+          response.result(http::status::ok);
+        },
+        "127.0.0.1",
+        port);
+    server.start();
+    instrumented_io_context ioc;
+    auto client = raylet::RuntimeEnvAgentClient::Create(
+        ioc, "127.0.0.1", port, delay_after(ioc), clock, 10000, 100, port);
+    int callbacks = 0;
+    client->RegisterWorkerContainer(
+        worker_id, node_id, job_id, 123456, [&](bool registered) {
+          EXPECT_TRUE(registered);
+          ++callbacks;
+        });
+    client->StopWorkerContainer(worker_id, node_id, job_id, 123456, [&](bool stopped) {
+      EXPECT_EQ(stopped, accepted);
+      ++callbacks;
+    });
+    ioc.run();
+    EXPECT_EQ(callbacks, 2);
+  }
+}
+
+TEST(RuntimeEnvAgentClientTest, ContainerEndpointIsDiscoveredFromRuntimeEnvReply) {
+  const int port = GetFreePort();
+  HttpServerThread server(AsyncHandler([&](std::shared_ptr<HttpConnection> conn) {
+                            if (conn->request_.target() == "/get_or_create_runtime_env") {
+                              rpc::GetOrCreateRuntimeEnvReply reply;
+                              reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+                              reply.set_serialized_runtime_env_context("opaque context");
+                              reply.set_worker_container_port(port);
+                              conn->response_.body() = reply.SerializeAsString();
+                            } else {
+                              EXPECT_EQ(conn->request_.target(),
+                                        "/register_worker_container");
+                              rpc::RegisterWorkerContainerReply reply;
+                              reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+                              conn->response_.body() = reply.SerializeAsString();
+                            }
+                            conn->response_.content_length(conn->response_.body().size());
+                            conn->response_.result(http::status::ok);
+                            conn->write_response();
+                          }),
+                          "127.0.0.1",
+                          port);
+  server.start();
+  instrumented_io_context ioc;
+  auto client = raylet::RuntimeEnvAgentClient::Create(
+      ioc, "127.0.0.1", port, delay_after(ioc), clock, 10000, 100);
+  bool granted = false;
+  client->GetOrCreateRuntimeEnv(
+      JobID::FromInt(1),
+      "{}",
+      rpc::RuntimeEnvConfig(),
+      [&](bool ok, const std::string &context, const std::string &, bool has_container) {
+        EXPECT_TRUE(ok);
+        EXPECT_TRUE(has_container);
+        EXPECT_EQ(context, "opaque context");
+        client->RegisterWorkerContainer(WorkerID::FromRandom(),
+                                        NodeID::FromRandom(),
+                                        JobID::FromInt(1),
+                                        123456,
+                                        [&](bool registered) { granted = registered; });
+      });
+  ioc.run();
+  EXPECT_TRUE(granted);
+}
+
+TEST(RuntimeEnvAgentClientTest, ContainerCleanupDoesNotBlockRuntimeEnvRequests) {
+  const int port = GetFreePort();
+  std::vector<std::shared_ptr<HttpConnection>> pending_stops;
+  bool setup_seen = false;
+  auto complete_stop = [](std::shared_ptr<HttpConnection> conn) {
+    rpc::StopWorkerContainerReply reply;
+    reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+    reply.set_accepted(true);
+    conn->response_.body() = reply.SerializeAsString();
+    conn->response_.content_length(conn->response_.body().size());
+    conn->response_.result(http::status::ok);
+    conn->write_response();
+  };
+  HttpServerThread server(
+      [&](std::shared_ptr<HttpConnection> conn) {
+        if (conn->request_.target() == "/stop_worker_container") {
+          if (setup_seen) {
+            complete_stop(conn);
+          } else {
+            pending_stops.push_back(conn);
+          }
+          return;
+        }
+        EXPECT_EQ(conn->request_.target(), "/get_or_create_runtime_env");
+        setup_seen = true;
+        rpc::GetOrCreateRuntimeEnvReply reply;
+        reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+        conn->response_.body() = reply.SerializeAsString();
+        conn->response_.content_length(conn->response_.body().size());
+        conn->response_.result(http::status::ok);
+        conn->write_response();
+        for (auto &stop : pending_stops) complete_stop(stop);
+        pending_stops.clear();
+      },
+      "127.0.0.1",
+      port);
+  server.start();
+  instrumented_io_context ioc;
+  auto client = raylet::RuntimeEnvAgentClient::Create(
+      ioc, "127.0.0.1", port, delay_after(ioc), clock, 10000, 100, port);
+  int callbacks = 0;
+  for (int i = 0; i < 10; ++i) {
+    client->StopWorkerContainer(WorkerID::FromRandom(),
+                                NodeID::FromRandom(),
+                                JobID::FromInt(1),
+                                123456,
+                                [&](bool stopped) {
+                                  EXPECT_TRUE(stopped);
+                                  ++callbacks;
+                                });
+  }
+  client->GetOrCreateRuntimeEnv(
+      JobID::FromInt(1),
+      "{}",
+      rpc::RuntimeEnvConfig(),
+      [&](bool ok, const std::string &, const std::string &, bool) {
+        EXPECT_TRUE(ok);
+        ++callbacks;
+      });
+  ioc.run();
+  EXPECT_EQ(callbacks, 11);
+}
+
+TEST(RuntimeEnvAgentClientTest, HungStopsCannotBlockGrantsAndHaveRealDeadlines) {
+  Clock real_clock;
+  const int port = GetFreePort();
+  std::vector<std::shared_ptr<HttpConnection>> pending;
+  HttpServerThread server(AsyncHandler([&](std::shared_ptr<HttpConnection> conn) {
+                            if (conn->request_.target() == "/stop_worker_container") {
+                              pending.push_back(conn);  // Deliberately never answer.
+                              return;
+                            }
+                            if (conn->request_.target() == "/register_worker_container") {
+                              rpc::RegisterWorkerContainerReply reply;
+                              reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+                              conn->response_.body() = reply.SerializeAsString();
+                            } else {
+                              rpc::GetOrCreateRuntimeEnvReply reply;
+                              reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+                              conn->response_.body() = reply.SerializeAsString();
+                            }
+                            conn->response_.content_length(conn->response_.body().size());
+                            conn->response_.result(http::status::ok);
+                            conn->write_response();
+                          }),
+                          "127.0.0.1",
+                          port);
+  server.start();
+  instrumented_io_context ioc;
+  auto client = raylet::RuntimeEnvAgentClient::Create(
+      ioc, "127.0.0.1", port, delay_after(ioc), real_clock, 1000, 10, port);
+  int stops = 0;
+  bool granted = false;
+  bool setup = false;
+  for (int i = 0; i < 4096; ++i) {
+    client->StopWorkerContainer(WorkerID::FromRandom(),
+                                NodeID::FromRandom(),
+                                JobID::FromInt(1),
+                                123456,
+                                [&](bool accepted) {
+                                  EXPECT_FALSE(accepted);
+                                  ++stops;
+                                });
+  }
+  client->RegisterWorkerContainer(WorkerID::FromRandom(),
+                                  NodeID::FromRandom(),
+                                  JobID::FromInt(1),
+                                  123456,
+                                  [&](bool accepted) {
+                                    EXPECT_TRUE(accepted);
+                                    EXPECT_EQ(stops, 0);
+                                    granted = true;
+                                  });
+  client->GetOrCreateRuntimeEnv(
+      JobID::FromInt(1),
+      "{}",
+      rpc::RuntimeEnvConfig(),
+      [&](bool ok, const std::string &, const std::string &, bool) { setup = ok; });
+  ioc.run_for(std::chrono::seconds(3));
+  EXPECT_TRUE(granted);
+  EXPECT_TRUE(setup);
+  EXPECT_EQ(stops, 4096);  // Includes requests queued behind the ten hung sockets.
+  // Destroy retained server-side sockets before their io_context.
+  std::promise<void> released;
+  net::post(server.ioc_, [&]() {
+    pending.clear();
+    released.set_value();
+  });
+  released.get_future().get();
+  ioc.stop();
 }
 
 }  // namespace ray
