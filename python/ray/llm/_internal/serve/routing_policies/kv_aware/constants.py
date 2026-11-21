@@ -50,16 +50,15 @@ DEFAULT_KV_INDEXER_THREADS = 4
 # KVTokenTracker publishes the snapshot via set_autoscaling_metrics_callback.
 OUTSTANDING_EFFECTIVE_PREFILL_TOKENS = "outstanding_effective_prefill_tokens"
 
+RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_LLM_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
+)
+
 # The engine's KV-event replay (ROUTER) socket sits this many ports above its PUB
 # port, a separate range so it never collides with the PUB ports of colocated
 # replicas (PORT_BASE + replica rank). Dynamo's selection service dials it to recover
 # events missed before its SUB connected.
 DEFAULT_KV_EVENTS_REPLAY_PORT_OFFSET = 1000
-
-# TTL for a request's lifecycle tracking on the KV router actor. A live
-# replica whose completion event was lost (e.g. a batch dropped on a
-# transient actor outage) would otherwise leave its entry tracked forever.
-REQUEST_TRACKING_TTL_S = 3600
 
 # Session pinning idle timeout in seconds.
 DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
@@ -68,6 +67,13 @@ DEFAULT_SESSION_AFFINITY_TTL_S = 1800.0
 # request's candidates; hard affinity would reject the request instead.
 SESSION_AFFINITY_MODE = "soft"
 
-# Bound best-effort lifecycle broadcast delivery so one slow ingress replica
-# cannot stall an engine replica's whole lifecycle-event queue indefinitely.
-LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S = 3
+# routing_stats keys for an LLMRouter's replica mesh endpoint and an LLMServer's
+# lifecycle event endpoint.
+KV_REPLICA_SYNC_METADATA_KEY = "kv_replica_sync_metadata"
+KV_LIFECYCLE_METADATA_KEY = "kv_lifecycle_metadata"
+
+# The selection service keys all worker, indexer, and load state by
+# (model_name, routing_group). Each LLMRouter serves one model, so one fixed key
+# scopes all of its workers. Lifecycle events must carry the same key.
+SELECTION_MODEL_NAME = "default"
+SELECTION_ROUTING_GROUP = "default"

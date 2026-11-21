@@ -20,9 +20,12 @@ from utils import (
 )
 
 APP_NAME = "lifecycle_tracking_gpu_test"
+# Token tracking reports Serve's canonical request id, matching the id used for
+# routing, even if vLLM derives a separate engine-level id internally.
 REQUEST_ID = "gpu-req-1"
 BLOCK_SIZE = 16
-MAX_TOKENS = 48
+# Long enough, with ignore_eos, to observe the request while it decodes.
+MAX_TOKENS = 512
 # A multi-block prompt so the engine caches retrievable KV blocks.
 PROMPT_TEXT = (
     "Repeat the following instruction carefully and then answer it in full "
@@ -30,9 +33,6 @@ PROMPT_TEXT = (
     "precipitation, and collection, giving a concrete real-world example for "
     "each of the four stages and how they connect."
 )
-# Token tracking reports Serve's canonical request id, matching the id used for
-# routing, even if vLLM derives a separate engine-level id internally.
-LIFECYCLE_REQUEST_ID = REQUEST_ID
 
 
 def num_prompt_blocks(token_ids):
@@ -57,10 +57,10 @@ def tokenize_chat(endpoint):
 
 
 class TestLifecycleTracking:
-    """The KVTokenTracker books request lifecycle events through the LLMRouter's
-    ``on_lifecycle_events`` handle method; the test ``LLMRouter`` subclass
-    records those events and exposes the tracker's state over the deployment
-    handle so the test can assert exact accounting."""
+    """The engine publishes each request's lifecycle events to every LLMRouter
+    replica, whose selection service applies them to its booking of the
+    request. The test ``LLMRouter`` subclass exposes each router's booked load
+    over the deployment handle so the test can assert exact accounting."""
 
     @pytest.fixture(scope="class")
     def deployed_handle(self):
@@ -75,8 +75,8 @@ class TestLifecycleTracking:
             request_router_class=_TestKVAwareRouter,
             kv_events_port_base=21600,
         )
-        # Swap the ingress for the introspection LLMRouter so booked lifecycle
-        # events and the tracker's state are reachable over the deployment handle.
+        # Swap the ingress for the introspection LLMRouter so each router's
+        # booked load is reachable over the deployment handle.
         with patch_ingress():
             handle = serve.run(build_kv_app(llm_config), name=APP_NAME)
         yield handle
@@ -94,54 +94,60 @@ class TestLifecycleTracking:
         raise AssertionError("replica backend HTTP endpoint never became available")
 
     async def _registered_worker(self, router, num_ingress_replicas):
-        """Wait for every ingress replica to see the worker as schedulable."""
+        """Wait for every ingress replica to see the worker as schedulable and
+        subscribe to its lifecycle events."""
 
         async def registered():
             per_replica = await router.broadcast(
                 "get_registered_worker_ids"
             ).results_async()
-            return len(per_replica) == num_ingress_replicas and all(
-                len(ids) == 1 for ids in per_replica
+            sources = await router.broadcast("get_lifecycle_sources").results_async()
+            return (
+                len(per_replica) == num_ingress_replicas
+                and all(len(ids) == 1 for ids in per_replica)
+                and all(len(endpoints) == 1 for endpoints in sources)
             )
 
         await async_wait_for_condition(registered, timeout=90, retry_interval_ms=1000)
+        # Subscriptions connect in the background.
+        await asyncio.sleep(1)
         return (await router.broadcast("get_registered_worker_ids").results_async())[0][
             0
         ]
 
     @pytest.mark.asyncio
-    async def test_exact_lifecycle_tracking(self, deployed_handle):
+    async def test_engine_lifecycle_reaches_every_router(self, deployed_handle):
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         host, port = await self._backend_endpoint(deployed_handle)
         replica_ids = await router.broadcast("get_replica_id").results_async()
         # The replica's worker must register before a request can book against it.
         worker_id = await self._registered_worker(router, len(replica_ids))
-        assert all(
-            active == 0
-            for active in await router.broadcast(
-                "get_worker_active_requests", worker_id
-            ).results_async()
-        )
+
+        async def loads():
+            return {
+                load["replica_id"]: (
+                    load["active_requests"],
+                    load["potential_prefill_tokens"],
+                )
+                for load in await router.broadcast(
+                    "get_load_snapshot", worker_id
+                ).results_async()
+            }
+
+        assert all(active == 0 for active, _ in (await loads()).values())
         prompt_token_ids = tokenize_chat((host, port))
         await router.select_worker.remote(
-            LIFECYCLE_REQUEST_ID,
-            prompt_token_ids,
-            [worker_id],
-            MAX_TOKENS,
+            REQUEST_ID, prompt_token_ids, [worker_id], MAX_TOKENS
         )
 
-        async def reservation_converged():
-            per_replica = await router.broadcast(
-                "get_lifecycle_snapshot", LIFECYCLE_REQUEST_ID, worker_id
-            ).results_async()
-            return len(per_replica) == len(replica_ids) and all(
-                reading["lifecycle"] is not None and reading["active_requests"] == 1
-                for reading in per_replica
+        # One ingress selects; every ingress books its load through the mesh.
+        async def booked():
+            readings = await loads()
+            return len(readings) == len(replica_ids) and all(
+                active == 1 and prefill > 0 for active, prefill in readings.values()
             )
 
-        await async_wait_for_condition(
-            reservation_converged, timeout=30, retry_interval_ms=100
-        )
+        await async_wait_for_condition(booked, timeout=30, retry_interval_ms=100)
 
         # X-Request-Id pins the engine request id; include_usage returns the
         # engine's own token counts as ground truth.
@@ -152,18 +158,21 @@ class TestLifecycleTracking:
             "stream": True,
             "stream_options": {"include_usage": True},
             "max_tokens": MAX_TOKENS,
+            "ignore_eos": True,
             "temperature": 0.0,
         }
-        headers = {"X-Request-Id": REQUEST_ID}
 
-        # Snapshot every tracker's view and the worker's tracked load after
-        # each streamed chunk: completion evicts the request, so its in-flight
-        # state is only observable while streaming.
+        # Sample every router's booked load after each streamed chunk: completion
+        # frees the request, so its in-flight state is only observable while
+        # streaming.
         usage = None
-        snapshots = defaultdict(list)
-        live_active_requests = defaultdict(list)
+        in_flight = defaultdict(set)
         with requests.post(
-            url, json=payload, headers=headers, stream=True, timeout=120
+            url,
+            json=payload,
+            headers={"X-Request-Id": REQUEST_ID},
+            stream=True,
+            timeout=120,
         ) as resp:
             assert resp.status_code == 200, resp.text
             for raw in resp.iter_lines():
@@ -178,86 +187,22 @@ class TestLifecycleTracking:
                 chunk = json.loads(data)
                 if chunk.get("usage"):
                     usage = chunk["usage"]
-                for reading in await router.broadcast(
-                    "get_lifecycle_snapshot", LIFECYCLE_REQUEST_ID, worker_id
-                ).results_async():
-                    replica_id = reading["replica_id"]
-                    if reading["lifecycle"] is not None:
-                        snapshots[replica_id].append(reading["lifecycle"])
-                    live_active_requests[replica_id].append(reading["active_requests"])
+                for replica_id, reading in (await loads()).items():
+                    in_flight[replica_id].add(reading)
 
         assert usage is not None, "expected a final usage chunk"
-        # The broadcast reached every tracker, not just the routing one.
-        assert set(snapshots) == set(
-            replica_ids
-        ), "request was never observed in flight on every ingress tracker"
-
-        # Every in-flight snapshot books the request on its worker, and prefill
-        # completion never reverts. Checked per replica: trackers apply a batch
-        # concurrently, so a peer can lag.
-        for replica_snapshots in snapshots.values():
-            prefill_completed = False
-            for snapshot in replica_snapshots:
-                assert snapshot["worker_id"] == worker_id
-                assert snapshot["prefill_completed"] or not prefill_completed
-                prefill_completed = snapshot["prefill_completed"]
-
-        # The request was booked as active load on its worker while in flight,
-        # and every hook's call into the live selection service succeeded.
-        assert all(
-            max(actives) >= 1 for actives in live_active_requests.values()
-        ), "request was never booked as active load"
-        assert all(
-            errors == []
-            for errors in await router.broadcast("get_errors").results_async()
-        )
-
-        # Completion frees the request from both the tracker view and the load
-        # tracker (no leaked active load to skew later scoring).
-        async def request_freed():
-            return all(
-                lifecycle is None
-                for lifecycle in await router.broadcast(
-                    "get_request_lifecycle", LIFECYCLE_REQUEST_ID
-                ).results_async()
-            )
-
-        await async_wait_for_condition(request_freed, timeout=15, retry_interval_ms=200)
-        assert all(
-            request_ids == []
-            for request_ids in await router.broadcast(
-                "get_active_request_ids"
-            ).results_async()
-        )
-
-        async def worker_load_cleared():
-            return all(
-                active == 0
-                for active in await router.broadcast(
-                    "get_worker_active_requests", worker_id
-                ).results_async()
-            )
-
-        await async_wait_for_condition(
-            worker_load_cleared, timeout=15, retry_interval_ms=200
-        )
-
-        # Every replica received the request's whole ordered event stream.
-        per_replica_events = [
-            [
-                (name, args)
-                for name, args in event_log
-                if args[0] == LIFECYCLE_REQUEST_ID
-            ]
-            for event_log in await router.broadcast("get_event_log").results_async()
-        ]
-        for events in per_replica_events:
-            assert [name for name, _ in events] == [
-                "on_prefill_complete",
-                "on_request_completed",
-            ]
-
         assert len(prompt_token_ids) == usage["prompt_tokens"]  # token ids booked
+        # Every router applied the engine's prefill completion to its own
+        # booking while the request decoded.
+        assert set(in_flight) == set(replica_ids)
+        assert all((1, 0) in readings for readings in in_flight.values()), in_flight
+
+        # The engine's completion frees the request on every router: no leaked
+        # active load to skew later scoring.
+        async def freed():
+            return all(reading == (0, 0) for reading in (await loads()).values())
+
+        await async_wait_for_condition(freed, timeout=15, retry_interval_ms=200)
 
         # The engine indexed the prompt's KV blocks; they show as cache overlap
         # on the worker (the prefix the next overlapping request would reuse).
@@ -278,9 +223,8 @@ class TestLifecycleTracking:
 
     @pytest.mark.asyncio
     async def test_booked_reservation_changes_scoring_load(self, deployed_handle):
-        """A reservation booked through the lifecycle hooks shows up as active
-        load on the worker (the value scoring consumes) and freeing it restores
-        baseline."""
+        """A booked reservation shows up as active load on the worker (the value
+        scoring consumes) on every router, and freeing it restores baseline."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         num_ingress_replicas = len(
             await router.broadcast("get_replica_id").results_async()
@@ -306,7 +250,7 @@ class TestLifecycleTracking:
             reservation_converged, timeout=30, retry_interval_ms=100
         )
 
-        await router.broadcast("on_request_completed", "probe").results_async()
+        await router.broadcast("free_reservation", "probe").results_async()
 
         async def worker_load_cleared():
             return all(active == 0 for active in await worker_active_requests())

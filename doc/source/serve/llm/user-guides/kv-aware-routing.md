@@ -155,8 +155,8 @@ Replica selection determines which `LLMServer` engine replica processes each req
 
 - **Replica discovery.** Ray Serve tracks which `LLMServer` replicas are running and which are eligible to receive traffic. The router only scores the available replicas.
 - **Request orchestration.** The ingress receives and tokenizes each request, selects a replica, and dispatches the request to it.
-- **Request lifecycle.** Engine replicas report prefill completion and request completion back to the ingress, which uses these updates to maintain its view of replica token load.
-- **Event transport and synchronization.** KV cache events are broadcast to all ingress replicas, while the ingress replicas synchronize token load updates with one another. This gives each ingress replica a consistent view of KV cache state and token load, enabling them to make consistent routing decisions.
+- **Request lifecycle.** Engine replicas publish prefill completion and request completion to every ingress replica, which uses these updates to maintain its view of replica token load.
+- **Event transport and synchronization.** KV cache events are broadcast to all ingress replicas, while the ingress replicas synchronize token load updates and session bindings with one another. This gives each ingress replica a consistent view of KV cache state and token load, enabling them to make consistent routing decisions.
 
 ```{figure} ../images/kv_aware_routing_flow.png
 ---
