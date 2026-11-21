@@ -6,16 +6,25 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pyarrow as pa
+import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
 import ray
 from ray.data._internal.datasource_v2.common import schema_inference as inference
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    ParquetDatasourceV2,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileManifest,
+    FileMetadata,
+)
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.data.tests.parquet_test_utils import write_map_with_empty_struct
 from ray.data.tests.schema_planning_utils import (
+    RecordingLocalFileSystem,
     read_schema_records as _records,
     recording_filesystem as _filesystem,
 )
@@ -28,18 +37,24 @@ def schema_files_dir(tmp_path):
 
 
 @pytest.mark.parametrize("empty_struct", [False, True])
+@pytest.mark.parametrize("schema_only", [False, True])
 def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     monkeypatch,
     tmp_path,
     schema_files_dir,
     ray_start_regular_shared_2_cpus,
     empty_struct,
+    schema_only,
 ):
     monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
     ctx = DataContext.get_current()
     monkeypatch.setattr(ctx, "use_datasource_v2", True)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
+    if schema_only:
+        monkeypatch.setattr(
+            inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 0
+        )
     values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
     table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
     paths = [schema_files_dir / f"map{i}.parquet" for i in range(3)]
@@ -74,10 +89,44 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     )
     records = _records(trace)
     assert Counter(r["path"] for r in records if r["pid"] != os.getpid()) == {
-        str(path): 1 + int(empty_struct and index < 2)
+        str(path): 1 + int(schema_only and empty_struct and index < 2)
         for index, path in enumerate(paths)
     }
     assert all(r["pid"] != os.getpid() for r in records)
+
+
+@pytest.mark.parametrize("budget", [0, 32])
+def test_driver_parquet_empty_struct_schema_with_metadata_budget(
+    monkeypatch, tmp_path, budget
+):
+    path = tmp_path / "map.parquet"
+    values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
+    write_map_with_empty_struct(path, pa.table({"attrs": values}))
+    expected = pq.read_schema(path)
+    assert expected.field("empty").type == pa.struct([])
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", budget
+    )
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 4096
+    )
+    raw = RecordingLocalFileSystem(skip_instance_cache=True)
+    fs = pafs.PyFileSystem(pafs.FSSpecHandler(raw))
+    sample = FileManifest.construct_manifest(
+        paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
+    )
+    result = ParquetDatasourceV2(
+        [str(path)], filesystem=fs
+    ).infer_full_schema_with_metadata(sample, ray_remote_args={"num_cpus": 0})
+    assert result.schema.equals(expected, check_metadata=True)
+    assert len(raw.opens) == 1
+    metadata = result.metadata
+    if budget == 0:
+        assert metadata is None
+    else:
+        assert metadata is not None
+        file_metadata = FileMetadata.from_metadata(metadata[0].as_py())
+        assert file_metadata.num_rows == pq.read_metadata(path).num_rows
 
 
 class _CustomType(pa.ExtensionType):

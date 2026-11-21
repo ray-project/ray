@@ -127,6 +127,15 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
     monkeypatch.setattr(inference, "cached_remote_fn", Mock(return_value=remote))
     distributed = Mock(wraps=module.infer_full_schema_from_files)
     monkeypatch.setattr(module, "infer_full_schema_from_files", distributed)
+    monkeypatch.setattr(
+        parquet_datasource_v2,
+        "infer_full_schema_with_metadata_from_files",
+        Mock(
+            return_value=inference.FullSchemaInferenceResult(
+                pa.schema([("other", pa.int64())])
+            )
+        ),
+    )
     sample = FileManifest.construct_manifest(
         paths=["unused"], sizes=[1], chunk_metadatas=[None]
     )
@@ -137,8 +146,21 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
 
     assert source.infer_full_schema(sample, ray_remote_args={}) is custom_schema
     hook.assert_called_once_with(sample)
+    result = source.infer_full_schema_with_metadata(sample, ray_remote_args={})
+    assert result.schema is custom_schema and result.metadata is None
+    assert hook.call_count == 2
     distributed.assert_not_called()
     remote.remote.assert_not_called()
+
+    full_hook = Mock(return_value=custom_schema)
+    full_type = type(
+        "FullSchemaSource", (source_type,), {"infer_full_schema": full_hook}
+    )
+    result = full_type(["unused"]).infer_full_schema_with_metadata(
+        sample, ray_remote_args={}
+    )
+    full_hook.assert_called_once_with(sample, ray_remote_args={})
+    assert result.schema is custom_schema and result.metadata is None
 
     inherited_type = type("InheritedSource", (source_type,), {})
     inherited = inherited_type(["unused"], filesystem=pafs.LocalFileSystem())

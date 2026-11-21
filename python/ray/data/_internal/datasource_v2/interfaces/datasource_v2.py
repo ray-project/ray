@@ -37,6 +37,9 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
+    from ray.data._internal.datasource_v2.common.schema_inference import (
+        FullSchemaInferenceResult,
+    )
     from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
         FilePartitioner,
         PartitionHints,
@@ -291,6 +294,21 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         implement this opt-in planning optimization.
         """
         return self.infer_schema(sample)
+
+    def infer_full_schema_with_metadata(
+        self,
+        sample: FileManifest,
+        *,
+        ray_remote_args: Dict[str, Any],
+    ) -> FullSchemaInferenceResult:
+        """Optionally retain planning metadata without changing the schema hook."""
+        from ray.data._internal.datasource_v2.common.schema_inference import (
+            FullSchemaInferenceResult,
+        )
+
+        return FullSchemaInferenceResult(
+            self.infer_full_schema(sample, ray_remote_args=ray_remote_args)
+        )
 
     @property
     @abstractmethod

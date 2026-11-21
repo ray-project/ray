@@ -21,7 +21,9 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
     resolve_partitioning,
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    FullSchemaInferenceResult,
     infer_full_schema_from_files,
+    infer_full_schema_with_metadata_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
@@ -70,7 +72,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
+def _read_parquet_metadata(
+    path: str,
+    filesystem: "FileSystem",
+    size: Optional[int],
+    *,
+    retried_io_errors: Optional[List[str]] = None,
+):
     import pyarrow.dataset as pds
     import pyarrow.parquet as pq
 
@@ -83,7 +91,11 @@ def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[i
     return call_with_retry(
         lambda: fragment.metadata,
         description=f"read Parquet footer for {path}",
-        match=DataContext.get_current().retried_io_errors,
+        match=(
+            DataContext.get_current().retried_io_errors
+            if retried_io_errors is None
+            else retried_io_errors
+        ),
     )
 
 
@@ -359,6 +371,36 @@ class ParquetDatasourceV2(FileDataSourceV2):
         if schema is None:
             return self.infer_schema(sample)
         return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema_with_metadata(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> FullSchemaInferenceResult:
+        # Cache settings must not bypass a subclass's schema hook.
+        if (
+            type(self).infer_full_schema is not ParquetDatasourceV2.infer_full_schema
+            or type(self).infer_schema is not ParquetDatasourceV2.infer_schema
+            or self._user_schema is not None
+            or not len(sample)
+        ):
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
+        result = infer_full_schema_with_metadata_from_files(
+            sample,
+            self._filesystem,
+            format_name="Parquet",
+            read_metadata=_read_parquet_metadata,
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if result is None:
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
+        return FullSchemaInferenceResult(
+            self._augment_schema(result.schema, sample), result.metadata
+        )
 
     def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
         resolved_partitioning = self.resolve_partitioning(sample)

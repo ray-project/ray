@@ -44,6 +44,11 @@ from ray.data.context import DataContext
 from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import Expr, col
+from ray.data.tests.schema_planning_utils import (
+    get_prelisted_blocks,
+    read_schema_records,
+    recording_filesystem,
+)
 
 
 def _write(path, table):
@@ -756,7 +761,8 @@ def test_read_parquet_v1_empty_skip_paths_is_noop(tmp_path, restore_ctx):
     assert _rows(ds) == [1, 2]
 
 
-def test_read_parquet_v2_reads_duplicated_paths(tmp_path, restore_ctx):
+@pytest.mark.parametrize("merge_schema", [False, True])
+def test_read_parquet_v2_reads_duplicated_paths(tmp_path, restore_ctx, merge_schema):
     # ``read_parquet([path] * k)`` deliberately multiplies the data; every
     # copy must be read (DATA-3723 regression: the bin packer unioned the
     # copies' row-group runs into one, silently dropping the repeats).
@@ -767,9 +773,19 @@ def test_read_parquet_v2_reads_duplicated_paths(tmp_path, restore_ctx):
     pq.write_table(table, path, row_group_size=100)
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet([str(path)] * 3)
+    trace = tmp_path / "duplicate-reads.jsonl"
+    filesystem = recording_filesystem(trace) if merge_schema else None
+    ds = ray.data.read_parquet(
+        [str(path)] * 3, merge_schema=merge_schema, filesystem=filesystem
+    )
+    before = read_schema_records(trace) if merge_schema else []
+    if merge_schema:
+        assert len(before) == 3
+        assert ds.count() == 3 * 1000
+        assert read_schema_records(trace) == before
     assert sorted(r["x"] for r in ds.take_all()) == sorted(list(range(1000)) * 3)
-    assert ds.count() == 3 * 1000
+    if not merge_schema:
+        assert ds.count() == 3 * 1000
 
 
 def test_read_parquet_v2_uses_footer_indexer_with_bin_packer(tmp_path, restore_ctx):
@@ -1018,7 +1034,7 @@ def _walk(op):
         yield from _walk(child)
 
 
-def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
+def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypatch):
     """``count()`` must not run the footer indexer.
 
     ``FooterFileIndexer`` subclasses ``NonSamplingFileIndexer`` but overrides
@@ -1031,10 +1047,20 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     )
     from ray.data._internal.logical.operators.map_operator import MapBatches
 
+    monkeypatch.delenv("RAY_METADATA_ACCESS", raising=False)
+    if not ray.is_initialized():
+        ray.init(num_cpus=2)
     _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet(str(tmp_path))
+    trace = tmp_path / "reads.jsonl"
+    monkeypatch.setenv("RAY_METADATA_ACCESS", "enabled")
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        filesystem=recording_filesystem(trace, require_env="RAY_METADATA_ACCESS"),
+        runtime_env={"env_vars": {"RAY_METADATA_ACCESS": "enabled"}},
+    )
+    before = read_schema_records(trace)
     list_files_before = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files_before, ListFiles)
     assert isinstance(list_files_before.file_indexer, FooterFileIndexer)
@@ -1049,6 +1075,10 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     # indexer through before.
     assert type(list_files_op.file_indexer) is NonSamplingFileIndexer
     assert list_files_op.file_partitioner is None
+    monkeypatch.delenv("RAY_METADATA_ACCESS")
+    assert ds.count() == 3
+    reads = read_schema_records(trace)[len(before) :]
+    assert reads and all(r["pid"] != os.getpid() for r in reads)
 
 
 @pytest.mark.parametrize(
@@ -1407,6 +1437,10 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     tmp_path, restore_ctx, monkeypatch
 ):
     from ray.data._internal.datasource_v2.common import listing_utils
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
+        FILE_METADATA_TYPE,
+    )
 
     monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
     first = tmp_path / "a.parquet"
@@ -1436,7 +1470,13 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     source = discovered_file_info_tables[0]
 
     assert len(blocks) == 2
-    assert all(block.schema == source.schema for block in blocks)
+    assert all(
+        block.select(source.column_names).schema == source.schema for block in blocks
+    )
+    assert all(
+        block.schema.field(FILE_METADATA_COLUMN_NAME).type == FILE_METADATA_TYPE
+        for block in blocks
+    )
     assert [path for block in blocks for path in block["__path"].to_pylist()] == source[
         "__path"
     ].to_pylist()
@@ -1702,6 +1742,52 @@ def test_merge_schema_lineage_retains_candidates(tmp_path, restore_ctx):
     _write(tmp_path / "b.parquet", pa.table({"id": [2]}))
 
     assert [row["id"] for row in restored.take_all()] == [1]
+
+
+def test_merge_schema_generated_id_binds_after_read(tmp_path, restore_ctx, monkeypatch):
+    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
+    )
+    from ray.data._internal.logical.rules.bind_generated_id_column import (
+        BindGeneratedIdColumn,
+    )
+    from ray.data.checkpoint import CheckpointConfig
+
+    first, last = tmp_path / "a.parquet", tmp_path / "z.parquet"
+    column = "late"
+    _write(first, pa.table({"id": [0, 1]}))
+    _write(last, pa.table({"id": [2, 3], column: [20, 30]}))
+    restore_ctx.use_datasource_v2 = True
+    monkeypatch.setattr(restore_ctx, "checkpoint_config", None)
+    dataset = ray.data.read_parquet(
+        [str(first), str(last)], merge_schema=True, override_num_blocks=1
+    )
+    blocks = get_prelisted_blocks(dataset._logical_plan.dag)
+    assert [
+        value["num_rows"]
+        for block in blocks
+        for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()
+    ] == [2, 2]
+    projected = dataset.select_columns(["id", column])
+    monkeypatch.setattr(
+        projected.context,
+        "checkpoint_config",
+        CheckpointConfig(
+            checkpoint_path=str(tmp_path / "checkpoints"),
+            generated_id_column="generated_id",
+        ),
+    )
+    bound = BindGeneratedIdColumn().apply(projected._logical_plan)
+    bound_read = next(
+        op for op in bound.dag.post_order_iter() if isinstance(op, ReadFiles)
+    )
+    bound_blocks = get_prelisted_blocks(bound_read)
+    assert len(bound_blocks) == len(blocks)
+    assert all(a.equals(b) for a, b in zip(blocks, bound_blocks))
+    rows = sorted(projected.take_all(), key=lambda row: row["id"])
+    assert [row["id"] for row in rows] == list(range(4))
+    assert [row["late"] for row in rows] == [None, None, 20, 30]
+    assert len({tuple(sorted(r["generated_id"].items())) for r in rows}) == 4
 
 
 def test_merge_schema_rejects_schema_override_and_v1(tmp_path, restore_ctx):

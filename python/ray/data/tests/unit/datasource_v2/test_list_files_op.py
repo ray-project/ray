@@ -5,6 +5,8 @@ Full physical-planning tests live in the CI parquet regression suite
 bundles). Here we exercise just the logical op shape and the shuffle
 factory semantics.
 """
+from dataclasses import replace
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -13,6 +15,8 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FILE_METADATA_COLUMN_NAME,
+    FILE_METADATA_TYPE,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
@@ -48,9 +52,22 @@ def _mk_list_files(tmp_path, num_files: int = 3, shuffle_seed=None):
 def test_list_files_infers_manifest_schema(tmp_path):
     op = _mk_list_files(tmp_path, num_files=1)
     schema = op.infer_schema()
+    assert schema is not None
     assert schema.names == [PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME]
     assert schema.field(PATH_COLUMN_NAME).type == pa.string()
     assert schema.field(FILE_SIZE_COLUMN_NAME).type == pa.int64()
+
+
+@pytest.mark.parametrize("kind", ["plain", "metadata", "empty"])
+def test_prelisted_files_have_unknown_output_schema(tmp_path, kind):
+    op = _mk_list_files(tmp_path, num_files=1)
+    block = pa.table({PATH_COLUMN_NAME: op.paths, FILE_SIZE_COLUMN_NAME: [1]})
+    if kind == "metadata":
+        block = block.append_column(
+            FILE_METADATA_COLUMN_NAME, pa.array([None], type=FILE_METADATA_TYPE)
+        )
+    prelisted = [] if kind == "empty" else [block]
+    assert replace(op, prelisted_file_infos=prelisted).infer_schema() is None
 
 
 def test_list_files_has_no_input_dependencies(tmp_path):

@@ -557,6 +557,7 @@ def _read_datasource_v2(
         FileDataSourceV2,
     )
     from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+        FILE_METADATA_COLUMN_NAME,
         FILE_SIZE_COLUMN_NAME,
         PATH_COLUMN_NAME,
     )
@@ -652,9 +653,14 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
+    planning_metadata = None
     if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
         assert sample is not None
-        schema = datasource.infer_full_schema(sample, ray_remote_args=ray_remote_args)
+        inference = datasource.infer_full_schema_with_metadata(
+            sample, ray_remote_args=ray_remote_args
+        )
+        schema = inference.schema
+        planning_metadata = inference.metadata
     else:
         schema = datasource.infer_schema(sample)
     schema_elapsed = (
@@ -668,6 +674,10 @@ def _read_datasource_v2(
         sample_block = sample.as_block()
         assert isinstance(sample_block, pa.Table)
         file_infos = sample_block.select([PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME])
+        if planning_metadata is not None:
+            file_infos = file_infos.append_column(
+                FILE_METADATA_COLUMN_NAME, planning_metadata
+            )
         prelisted_file_infos = []
         for i in builtins.range(
             0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
@@ -1878,8 +1888,10 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute schema I/O across Ray tasks. Execution reads
-        footer metadata again.
+        eligible reads distribute schema I/O across Ray tasks. When available
+        and valid, planning row counts may be reused for eligible counts;
+        otherwise, counting reads the footer again. Row-group indexing reads
+        footer metadata during execution.
         With more than 10,000 candidate files, the reader warns before schema
         merging. Retained path and size metadata adds O(files) data to serialized
         lineage.
