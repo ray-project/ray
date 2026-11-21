@@ -3823,5 +3823,330 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
             ray.util.tpu._tpu_subslice_cache.pop("slice-v7x", None)
 
 
+def _make_fake_slice_pg(
+    *,
+    num_slices: int = 1,
+    num_hosts: int = 4,
+    bundles_per_slice: int = 4,
+    pg_per_slice: bool = False,
+    tpu_per_bundle: int = 1,
+):
+    spg = object.__new__(ray.util.tpu.SlicePlacementGroup)
+    if pg_per_slice:
+        pgs = []
+        for _ in range(num_slices):
+            pg = MagicMock()
+            pg.bundle_specs = [{"TPU": tpu_per_bundle}] * bundles_per_slice
+            pg.bundle_count = bundles_per_slice
+            pgs.append(pg)
+        spg._managed_pgs = pgs
+    else:
+        pg = MagicMock()
+        pg.bundle_specs = [{"TPU": tpu_per_bundle}] * (num_slices * bundles_per_slice)
+        pg.bundle_count = num_slices * bundles_per_slice
+        spg._managed_pgs = [pg]
+    spg._head_pgs = []
+    spg._pg_per_slice = pg_per_slice
+    spg._num_slices = num_slices
+    spg._num_hosts = num_hosts
+    spg._num_bundles = num_slices * bundles_per_slice
+    return spg
+
+
+def _make_fake_subslice_pg(*, num_hosts: int = 2, bundle_count: int = 4, tpu: int = 1):
+    sub_pg = object.__new__(ray.util.tpu.SubslicePlacementGroup)
+    pg = MagicMock()
+    pg.bundle_count = bundle_count
+    pg.bundle_specs = [{"TPU": tpu}] * bundle_count
+    sub_pg._placement_group = pg
+    sub_pg._num_hosts = num_hosts
+    sub_pg._shutdown = False
+    return sub_pg
+
+
+def test_slice_actor_group_fate_shared_teardown_vfio_wait_and_restart():
+    """SliceActorGroup detects 1 actor death, kills all siblings with no_restart=True,
+    waits for VFIO release per bundle with TPU resource scoping, and recreates cleanly.
+    """
+    spg = _make_fake_slice_pg(num_slices=1, num_hosts=2, bundles_per_slice=4)
+
+    gen = {"n": 0}
+    dead_actors = set()
+
+    class FakeActor:
+        def __init__(self, generation, idx):
+            self.generation = generation
+            self.idx = idx
+            self.__ray_ready__ = MagicMock()
+            self.__ray_ready__.remote = lambda: (generation, idx)
+
+    def factory(slice_pg):
+        gen["n"] += 1
+        return [FakeActor(gen["n"], i) for i in range(4)]
+
+    group = ray.util.tpu.SliceActorGroup(spg, actor_factory=factory)
+    assert len(group.actors) == 4
+    assert group.restart_count == 0
+    assert group.slice_pg is spg
+    gen1_actors = group.actors
+
+    def fake_ray_get(ref_or_refs, timeout=None):
+        if isinstance(ref_or_refs, list):
+            return [None for _ in ref_or_refs]
+        if ref_or_refs in dead_actors:
+            raise ray.exceptions.RayActorError()
+        return None
+
+    with (
+        patch("ray.wait", side_effect=lambda refs, **kw: (list(refs), [])),
+        patch("ray.get", side_effect=fake_ray_get),
+    ):
+        assert group.check_health() == []
+
+        # Simulate actor 2 dying.
+        dead_actors.add((1, 2))
+        assert group.check_health() == [2]
+
+    killed = []
+    vfio_wait_calls = []
+
+    class FakeRemoteWaitFn:
+        def options(self, **opts):
+            class _Bound:
+                def remote(self, timeout_s):
+                    vfio_wait_calls.append(
+                        (
+                            opts["scheduling_strategy"].placement_group,
+                            opts["scheduling_strategy"].placement_group_bundle_index,
+                            opts.get("resources"),
+                            timeout_s,
+                        )
+                    )
+                    return f"vfio_ref_{len(vfio_wait_calls)}"
+
+            return _Bound()
+
+    with (
+        patch(
+            "ray.kill",
+            side_effect=lambda actor, no_restart=False: killed.append(
+                (actor, no_restart)
+            ),
+        ),
+        patch.object(
+            ray.util.tpu,
+            "_get_wait_tpu_vfio_remote_fn",
+            return_value=FakeRemoteWaitFn(),
+        ),
+        patch("ray.get", return_value=[None] * 4),
+    ):
+        new_actors = group.restart(vfio_ready_timeout_s=7.5)
+
+    # All 4 gen-1 siblings were torn down with no_restart=True.
+    assert [a for a, _ in killed] == gen1_actors
+    assert all(no_restart is True for _, no_restart in killed)
+    # VFIO wait ran per bundle [0, 1, 2, 3] requesting TPU=1.0 with timeout 7.5s.
+    pg0 = spg.slice_placement_group
+    assert vfio_wait_calls == [
+        (pg0, 0, {"TPU": 1.0}, 7.5),
+        (pg0, 1, {"TPU": 1.0}, 7.5),
+        (pg0, 2, {"TPU": 1.0}, 7.5),
+        (pg0, 3, {"TPU": 1.0}, 7.5),
+    ]
+    # Fresh generation-2 actors created.
+    assert group.restart_count == 1
+    assert all(a.generation == 2 for a in new_actors)
+
+    # run_with_restart catches RayActorError, restarts, and retries successfully.
+    calls = {"n": 0}
+
+    def flaky_step(actors):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ray.exceptions.RayActorError()
+        return [a.generation for a in actors]
+
+    with (
+        patch.object(group, "restart", wraps=group.restart) as spy_restart,
+        patch("ray.kill"),
+        patch.object(
+            ray.util.tpu,
+            "_get_wait_tpu_vfio_remote_fn",
+            return_value=FakeRemoteWaitFn(),
+        ),
+        patch("ray.get", return_value=[None] * 4),
+    ):
+        out = group.run_with_restart(flaky_step, max_restarts=1)
+        assert spy_restart.call_count == 1
+        assert out == [3, 3, 3, 3]
+
+    with patch("ray.kill"):
+        group.shutdown()
+        group.shutdown()  # idempotent
+    with pytest.raises(RuntimeError, match="shut-down"):
+        group.restart()
+    with pytest.raises(RuntimeError, match="shut-down"):
+        group.run_with_restart(lambda actors: actors)
+
+
+def test_slice_actor_group_validation_and_modes():
+    """Verify SliceActorGroup validation, Subslice, multi-slice, and lifecycle cases."""
+    spg = _make_fake_slice_pg(num_slices=1, num_hosts=1, bundles_per_slice=2)
+
+    # Invalid slice_pg type fails eagerly before calling actor_factory.
+    factory_called = False
+
+    def spy_factory(_):
+        nonlocal factory_called
+        factory_called = True
+        return []
+
+    with pytest.raises(TypeError, match="SlicePlacementGroup"):
+        ray.util.tpu.SliceActorGroup("not-a-pg", actor_factory=spy_factory)
+    assert not factory_called
+
+    # Missing both actor_factory and actors raises ValueError.
+    with pytest.raises(ValueError, match="Either actor_factory or actors"):
+        ray.util.tpu.SliceActorGroup(spg)
+
+    # Wrapping pre-created actors without actor_factory raises on restart().
+    wrapped = ray.util.tpu.SliceActorGroup(spg, actors=["a0", "a1"])
+    with pytest.raises(RuntimeError, match="actor_factory"):
+        wrapped.restart()
+
+    # SubslicePlacementGroup bundle targets and shut-down error.
+    sub_pg = _make_fake_subslice_pg(num_hosts=1, bundle_count=2, tpu=2)
+    sub_group = ray.util.tpu.SliceActorGroup(sub_pg, actors=["s0", "s1"])
+    assert sub_group._bundle_targets() == [
+        (sub_pg.placement_group, 0, 2.0),
+        (sub_pg.placement_group, 1, 2.0),
+    ]
+    sub_pg._placement_group = None
+    with pytest.raises(RuntimeError, match="SubslicePlacementGroup has been shut down"):
+        sub_group._bundle_targets()
+
+    # Multi-slice with pg_per_slice=False (single combined PG).
+    ms_combined = _make_fake_slice_pg(
+        num_slices=2, num_hosts=2, bundles_per_slice=2, pg_per_slice=False
+    )
+    ms_combined_group = ray.util.tpu.SliceActorGroup(ms_combined, actors=[])
+    cpg = ms_combined.slice_placement_group
+    assert ms_combined_group._bundle_targets() == [
+        (cpg, 0, 1.0),
+        (cpg, 1, 1.0),
+        (cpg, 2, 1.0),
+        (cpg, 3, 1.0),
+    ]
+
+    # Multi-slice with pg_per_slice=True (one PG per slice) + shut-down error.
+    ms_split = _make_fake_slice_pg(
+        num_slices=2, num_hosts=2, bundles_per_slice=2, pg_per_slice=True
+    )
+    ms_split_group = ray.util.tpu.SliceActorGroup(ms_split, actors=[])
+    pg_a, pg_b = ms_split.slice_placement_groups
+    assert ms_split_group._bundle_targets() == [
+        (pg_a, 0, 1.0),
+        (pg_a, 1, 1.0),
+        (pg_b, 0, 1.0),
+        (pg_b, 1, 1.0),
+    ]
+    ms_split._managed_pgs = []
+    with pytest.raises(RuntimeError, match="SlicePlacementGroup has been shut down"):
+        ms_split_group._bundle_targets()
+
+    # Context manager + shutdown(shutdown_slice_pg=True).
+    spg_ctx = _make_fake_slice_pg(num_slices=1, num_hosts=1, bundles_per_slice=1)
+    spg_ctx.shutdown = MagicMock()
+    with patch("ray.kill") as mock_kill:
+        with ray.util.tpu.SliceActorGroup(spg_ctx, actors=["x0"]) as ctx_group:
+            assert ctx_group.actors == ["x0"]
+        mock_kill.assert_called_once_with("x0", no_restart=True)
+        assert ctx_group._closed is True
+        spg_ctx.shutdown.assert_not_called()
+
+    spg_sd = _make_fake_slice_pg(num_slices=1, num_hosts=1, bundles_per_slice=1)
+    spg_sd.shutdown = MagicMock()
+    with patch("ray.kill"):
+        sd_group = ray.util.tpu.SliceActorGroup(spg_sd, actors=["y0"])
+        sd_group.shutdown(shutdown_slice_pg=True)
+        spg_sd.shutdown.assert_called_once()
+
+
+def test_slice_actor_group_health_wait_and_error_paths():
+    """Verify check_health, wait_for_failure, and run_with_restart error paths."""
+    spg = _make_fake_slice_pg(num_slices=1, num_hosts=1, bundles_per_slice=2)
+
+    # Custom health_check_fn with submit exception, not_ready timeout, and success.
+    def custom_probe(actor):
+        if actor == "submit_err":
+            raise RuntimeError("broken handle")
+        return f"ref_{actor}"
+
+    group = ray.util.tpu.SliceActorGroup(
+        spg,
+        actors=["ok", "slow", "submit_err"],
+        health_check_fn=custom_probe,
+    )
+    with (
+        patch("ray.wait", return_value=(["ref_ok"], ["ref_slow"])),
+        patch("ray.get", return_value=None),
+    ):
+        assert group.check_health(timeout_s=1.0) == [1, 2]
+
+    # wait_for_failure returns [] immediately when group has no actors or is closed.
+    empty_group = ray.util.tpu.SliceActorGroup(spg, actors=[])
+    assert empty_group.wait_for_failure(timeout_s=None) == []
+
+    # wait_for_failure detects failure on second poll and respects timeout deadline.
+    poll_results = [[], [1]]
+    with (
+        patch.object(group, "check_health", side_effect=poll_results),
+        patch("time.sleep") as mock_sleep,
+    ):
+        assert group.wait_for_failure(poll_interval_s=0.1, timeout_s=5.0) == [1]
+        assert mock_sleep.call_count == 1
+
+    # wait_for_failure clamps check_timeout_s and returns [] on deadline expiry.
+    seen_timeouts = []
+
+    def recording_health(timeout_s=5.0):
+        seen_timeouts.append(timeout_s)
+        return []
+
+    clock = iter([100.0, 100.0, 100.1, 100.25])
+    with (
+        patch.object(group, "check_health", side_effect=recording_health),
+        patch("time.monotonic", side_effect=lambda: next(clock)),
+        patch("time.sleep") as mock_sleep,
+    ):
+        assert (
+            group.wait_for_failure(
+                poll_interval_s=1.0, timeout_s=0.2, check_timeout_s=5.0
+            )
+            == []
+        )
+        assert seen_timeouts == [pytest.approx(0.2)]
+        mock_sleep.assert_called_once_with(pytest.approx(0.1))
+
+    # run_with_restart: negative max_restarts, exhaustion, and non-RayActorError.
+    restarting_group = ray.util.tpu.SliceActorGroup(spg, actor_factory=lambda _: ["a0"])
+    with pytest.raises(ValueError, match="max_restarts"):
+        restarting_group.run_with_restart(lambda a: a, max_restarts=-1)
+
+    with patch.object(restarting_group, "restart") as mock_restart:
+        with pytest.raises(KeyError):
+            restarting_group.run_with_restart(
+                lambda _: (_ for _ in ()).throw(KeyError("boom")), max_restarts=2
+            )
+        mock_restart.assert_not_called()
+
+        with pytest.raises(ray.exceptions.RayActorError):
+            restarting_group.run_with_restart(
+                lambda _: (_ for _ in ()).throw(ray.exceptions.RayActorError()),
+                max_restarts=2,
+            )
+        assert mock_restart.call_count == 2
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

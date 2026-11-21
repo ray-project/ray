@@ -5,7 +5,7 @@ import math
 import os
 import threading
 import time
-from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import ray
 from ray._common.network_utils import build_address, parse_address
@@ -16,6 +16,7 @@ from ray._private.accelerators.tpu import (
     DEFAULT_TORCH_TPU_SLICEBUILDER_PORT,
     DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
     DEFAULT_TPU_PROCESS_PORT,
+    DEFAULT_TPU_VFIO_READY_TIMEOUT_S,
     GKE_TPU_TOPOLOGY_ENV_VAR,
     TORCH_TPU_SLICEBUILDER_ADDRESSES_ENV_VAR,
     TORCH_TPU_TOPOLOGY_ENV_VAR,
@@ -40,6 +41,7 @@ from ray._private.accelerators.tpu import (
     normalize_torchtpu_topology,
     normalize_tpu_accelerator_type,
     reserve_tpu_slice,
+    wait_for_tpu_vfio_ready,
 )
 from ray._private.client_mode_hook import client_mode_wrap
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -2896,3 +2898,347 @@ def subslice_placement_group(
         _wait_for_slice_resources_freed(
             discovered_slice_name, head_reservation_timeout_s
         )
+
+
+def _wait_tpu_vfio_on_host(timeout_s: float) -> None:
+    """Remote helper: wait for kernel VFIO release on the assigned TPU bundle."""
+    wait_for_tpu_vfio_ready(timeout_s=timeout_s)
+
+
+_WAIT_TPU_VFIO_REMOTE_FN: Optional[Any] = None
+
+
+def _get_wait_tpu_vfio_remote_fn() -> Any:
+    """Lazily wrap ``_wait_tpu_vfio_on_host`` once to avoid import-time cycles."""
+    global _WAIT_TPU_VFIO_REMOTE_FN
+    if _WAIT_TPU_VFIO_REMOTE_FN is None:
+        _WAIT_TPU_VFIO_REMOTE_FN = ray.remote(num_cpus=0)(_wait_tpu_vfio_on_host)
+    return _WAIT_TPU_VFIO_REMOTE_FN
+
+
+@PublicAPI(stability="alpha")
+class SliceActorGroup:
+    """Fate-shared gang actor group for a TPU slice or subslice.
+
+    Manages a gang of Ray actors scheduled on a :class:`SlicePlacementGroup` or
+    :class:`SubslicePlacementGroup`. When any actor in the gang fails, all
+    sibling actors are torn down together (``ray.kill(..., no_restart=True)``),
+    every bundle waits for kernel TPU VFIO teardown via
+    ``wait_for_tpu_vfio_ready()`` so restarted actors do not hit ``EBUSY``, and
+    a fresh gang is created via ``actor_factory``.
+
+    Args:
+        slice_pg: The :class:`SlicePlacementGroup` or
+            :class:`SubslicePlacementGroup` hosting the actors.
+        actor_factory: Optional callable ``(slice_pg) -> Sequence[ActorHandle]``
+            used to create the initial gang (if ``actors`` is omitted) and to
+            recreate the gang on :meth:`restart`.
+        actors: Optional pre-created actor handles to wrap.
+        vfio_ready_timeout_s: Timeout in seconds passed to
+            ``wait_for_tpu_vfio_ready()`` on each bundle during :meth:`restart`.
+        health_check_fn: Optional callable ``(actor) -> ObjectRef`` used by
+            :meth:`check_health`. Defaults to calling ``actor.__ray_ready__.remote()``.
+    """
+
+    def __init__(
+        self,
+        slice_pg: Union[SlicePlacementGroup, SubslicePlacementGroup],
+        actor_factory: Optional[
+            Callable[
+                [Union[SlicePlacementGroup, SubslicePlacementGroup]], Sequence[Any]
+            ]
+        ] = None,
+        *,
+        actors: Optional[Sequence[Any]] = None,
+        vfio_ready_timeout_s: float = DEFAULT_TPU_VFIO_READY_TIMEOUT_S,
+        health_check_fn: Optional[Callable[[Any], "ray.ObjectRef"]] = None,
+    ):
+        if not isinstance(slice_pg, (SlicePlacementGroup, SubslicePlacementGroup)):
+            raise TypeError(
+                "slice_pg must be a SlicePlacementGroup or SubslicePlacementGroup, "
+                f"got {type(slice_pg).__name__!r}."
+            )
+        if actor_factory is None and actors is None:
+            raise ValueError(
+                "Either actor_factory or actors must be provided to SliceActorGroup."
+            )
+        self._slice_pg = slice_pg
+        self._actor_factory = actor_factory
+        self._vfio_ready_timeout_s = vfio_ready_timeout_s
+        self._health_check_fn = health_check_fn
+        self._restart_count = 0
+        self._closed = False
+        if actors is not None:
+            self._actors: List[Any] = list(actors)
+        else:
+            assert actor_factory is not None
+            self._actors = list(actor_factory(slice_pg))
+
+    @property
+    def actors(self) -> List[Any]:
+        """Current list of actor handles in the gang."""
+        return list(self._actors)
+
+    @property
+    def slice_pg(self) -> Union[SlicePlacementGroup, SubslicePlacementGroup]:
+        """Underlying TPU slice or subslice placement group."""
+        return self._slice_pg
+
+    @property
+    def restart_count(self) -> int:
+        """Number of times this gang has been restarted."""
+        return self._restart_count
+
+    def _bundle_targets(self) -> List[Tuple[PlacementGroup, int, float]]:
+        """Return ``(PlacementGroup, bundle_index, tpu_resources)`` for each bundle."""
+        targets: List[Tuple[PlacementGroup, int, float]] = []
+        if isinstance(self._slice_pg, SlicePlacementGroup):
+            pgs = (
+                self._slice_pg.slice_placement_groups
+                if self._slice_pg._pg_per_slice
+                else [self._slice_pg.slice_placement_group]
+            )
+            if not pgs or any(pg is None for pg in pgs):
+                raise RuntimeError("Underlying SlicePlacementGroup has been shut down.")
+            for s in range(self._slice_pg.num_slices):
+                pg = pgs[s] if self._slice_pg._pg_per_slice else pgs[0]
+                base = (
+                    0
+                    if self._slice_pg._pg_per_slice
+                    else s * self._slice_pg.bundles_per_slice
+                )
+                specs = pg.bundle_specs
+                for offset in range(self._slice_pg.bundles_per_slice):
+                    idx = base + offset
+                    tpu_qty = (
+                        float(specs[idx].get("TPU", 0)) if idx < len(specs) else 0.0
+                    )
+                    targets.append((pg, idx, tpu_qty))
+        elif isinstance(self._slice_pg, SubslicePlacementGroup):
+            pg = self._slice_pg.placement_group
+            if pg is None:
+                raise RuntimeError(
+                    "Underlying SubslicePlacementGroup has been shut down."
+                )
+            specs = pg.bundle_specs
+            for idx in range(pg.bundle_count):
+                tpu_qty = float(specs[idx].get("TPU", 0)) if idx < len(specs) else 0.0
+                targets.append((pg, idx, tpu_qty))
+        else:
+            raise TypeError(
+                "slice_pg must be a SlicePlacementGroup or SubslicePlacementGroup, "
+                f"got {type(self._slice_pg).__name__!r}."
+            )
+        return targets
+
+    def kill_all(self) -> None:
+        """Force-kill all actors in the gang with ``no_restart=True``."""
+        actors = self._actors
+        self._actors = []
+        for actor in actors:
+            try:
+                ray.kill(actor, no_restart=True)
+            except Exception:
+                logger.debug(
+                    "Ignoring error while killing gang actor %s",
+                    actor,
+                    exc_info=True,
+                )
+
+    def wait_for_vfio_ready(self, timeout_s: Optional[float] = None) -> None:
+        """Wait for TPU VFIO device release on every bundle in the slice.
+
+        Schedules a lightweight task into each placement group bundle requesting
+        the bundle's ``TPU`` resource (when present). Requesting the bundle's
+        ``TPU`` resource ensures the Raylet waits for killed actors to release
+        the bundle and sets ``TPU_VISIBLE_CHIPS`` to only this slice/subslice's
+        chips before probing ``/dev/vfio``.
+
+        Args:
+            timeout_s: Optional timeout in seconds passed to
+                ``wait_for_tpu_vfio_ready()`` on each bundle. Defaults to the
+                ``vfio_ready_timeout_s`` configured on this group.
+        """
+        resolved_timeout = (
+            self._vfio_ready_timeout_s if timeout_s is None else timeout_s
+        )
+        wait_task = _get_wait_tpu_vfio_remote_fn()
+        refs = []
+        for pg, bundle_idx, tpu_qty in self._bundle_targets():
+            opts: Dict[str, Any] = {
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    placement_group=pg,
+                    placement_group_bundle_index=bundle_idx,
+                ),
+            }
+            if tpu_qty > 0:
+                opts["resources"] = {"TPU": tpu_qty}
+            refs.append(wait_task.options(**opts).remote(resolved_timeout))
+        if refs:
+            ray.get(refs, timeout=resolved_timeout + 15.0)
+
+    def check_health(self, timeout_s: float = 5.0) -> List[int]:
+        """Probe every actor in the gang and return indices of failed actors.
+
+        Args:
+            timeout_s: Maximum time in seconds to wait for health check
+                responses from all actors.
+
+        Returns:
+            Sorted list of actor indices that failed or timed out.
+        """
+        if not self._actors:
+            return []
+        refs: List[Tuple[int, Any]] = []
+        failed: List[int] = []
+        for idx, actor in enumerate(self._actors):
+            try:
+                if self._health_check_fn is not None:
+                    ref = self._health_check_fn(actor)
+                else:
+                    ref = actor.__ray_ready__.remote()
+                refs.append((idx, ref))
+            except Exception:
+                failed.append(idx)
+
+        if not refs:
+            return failed
+
+        ref_list = [r for _, r in refs]
+        _, not_ready = ray.wait(ref_list, num_returns=len(ref_list), timeout=timeout_s)
+        not_ready_set = set(not_ready)
+        for idx, ref in refs:
+            if ref in not_ready_set:
+                failed.append(idx)
+                continue
+            try:
+                ray.get(ref)
+            except Exception:
+                failed.append(idx)
+        return sorted(set(failed))
+
+    def wait_for_failure(
+        self,
+        *,
+        poll_interval_s: float = 1.0,
+        timeout_s: Optional[float] = None,
+        check_timeout_s: float = 5.0,
+    ) -> List[int]:
+        """Block until at least one actor fails or ``timeout_s`` elapses.
+
+        Args:
+            poll_interval_s: Seconds to sleep between health check polls.
+            timeout_s: Optional overall timeout in seconds. If ``None``, polls
+                indefinitely until a failure is detected.
+            check_timeout_s: Maximum timeout in seconds for each individual
+                :meth:`check_health` call (clamped to remaining time when
+                ``timeout_s`` is set).
+
+        Returns:
+            Sorted list of failed actor indices, or an empty list if
+            ``timeout_s`` elapses or the group has no actors.
+        """
+        if self._closed or not self._actors:
+            return []
+        deadline = None if timeout_s is None else time.monotonic() + timeout_s
+        while True:
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return []
+                probe_timeout = min(check_timeout_s, remaining)
+            else:
+                probe_timeout = check_timeout_s
+            failed = self.check_health(timeout_s=probe_timeout)
+            if failed:
+                return failed
+            if self._closed or not self._actors:
+                return []
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return []
+                time.sleep(min(poll_interval_s, remaining))
+            else:
+                time.sleep(poll_interval_s)
+
+    def restart(self, *, vfio_ready_timeout_s: Optional[float] = None) -> List[Any]:
+        """Tear down all actors, wait for VFIO release on every bundle, and recreate.
+
+        Args:
+            vfio_ready_timeout_s: Optional timeout in seconds passed to
+                :meth:`wait_for_vfio_ready`. Defaults to the group's configured
+                ``vfio_ready_timeout_s``.
+
+        Returns:
+            The newly created list of actor handles.
+        """
+        if self._closed:
+            raise RuntimeError("Cannot restart a shut-down SliceActorGroup.")
+        if self._actor_factory is None:
+            raise RuntimeError(
+                "Cannot restart SliceActorGroup without an actor_factory."
+            )
+        self.kill_all()
+        self.wait_for_vfio_ready(timeout_s=vfio_ready_timeout_s)
+        self._actors = list(self._actor_factory(self._slice_pg))
+        self._restart_count += 1
+        return list(self._actors)
+
+    def run_with_restart(
+        self,
+        fn: Callable[[List[Any]], Any],
+        *,
+        max_restarts: int = 1,
+        vfio_ready_timeout_s: Optional[float] = None,
+    ) -> Any:
+        """Execute ``fn(self.actors)``; on actor failure, restart the gang and retry.
+
+        Args:
+            fn: Callable taking the current list of actor handles and returning
+                the step or job result.
+            max_restarts: Maximum number of gang restarts to attempt on
+                :class:`ray.exceptions.RayActorError` before re-raising.
+            vfio_ready_timeout_s: Optional timeout in seconds passed to
+                :meth:`restart`.
+
+        Returns:
+            The return value of ``fn(self.actors)``.
+        """
+        if self._closed:
+            raise RuntimeError("Cannot run on a shut-down SliceActorGroup.")
+        if max_restarts < 0:
+            raise ValueError(f"max_restarts must be >= 0, got {max_restarts}.")
+        attempts = 0
+        while True:
+            try:
+                return fn(self.actors)
+            except ray.exceptions.RayActorError:
+                if attempts >= max_restarts:
+                    raise
+                attempts += 1
+                logger.warning(
+                    "Gang actor failure detected (attempt %d/%d); "
+                    "restarting SliceActorGroup.",
+                    attempts,
+                    max_restarts,
+                )
+                self.restart(vfio_ready_timeout_s=vfio_ready_timeout_s)
+
+    def shutdown(self, *, shutdown_slice_pg: bool = False) -> None:
+        """Tear down all actors in the gang. Idempotent.
+
+        Args:
+            shutdown_slice_pg: If ``True``, also call ``shutdown()`` on the
+                underlying slice or subslice placement group.
+        """
+        self._closed = True
+        self.kill_all()
+        if shutdown_slice_pg:
+            self._slice_pg.shutdown()
+
+    def __enter__(self) -> "SliceActorGroup":
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.shutdown()
