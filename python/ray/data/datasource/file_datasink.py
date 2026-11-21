@@ -89,6 +89,10 @@ class _FileDatasink(Datasink[None]):
     def open_output_stream(self, path: str) -> "pyarrow.NativeFile":
         return self.filesystem.open_output_stream(path, **self.open_stream_args)
 
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        return False
+
     def on_write_start(self, schema: Optional["pyarrow.Schema"] = None) -> None:
         # Make idempotent - if already called, return early.
         if self._write_started:

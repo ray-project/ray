@@ -10,6 +10,10 @@ class SQLDatasink(Datasink[None]):
 
     _MAX_ROWS_PER_WRITE = 128
 
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        return False
+
     def __init__(self, sql: str, connection_factory: Callable[[], Connection]):
         self.sql = sql
         self.connection_factory = connection_factory

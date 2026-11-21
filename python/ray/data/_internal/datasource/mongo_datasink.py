@@ -14,6 +14,10 @@ logger = logging.getLogger(__name__)
 
 
 class MongoDatasink(Datasink[None]):
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        return False
+
     def __init__(self, uri: str, database: str, collection: str) -> None:
         _check_import(self, module="pymongo", package="pymongo")
         _check_import(self, module="pymongoarrow", package="pymongoarrow")
