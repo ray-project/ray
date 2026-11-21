@@ -1,9 +1,13 @@
 import errno
 import glob
+import importlib.util
 import itertools
+import json
 import logging
+import math
 import os
 import re
+import sys
 import time
 from functools import lru_cache
 from typing import Dict, List, Optional, Sequence, Set, Tuple
@@ -73,6 +77,7 @@ TPU_PROCESS_PORT_ENV_VAR = "TPU_PROCESS_PORT"
 DEFAULT_TPU_PROCESS_PORT = "8471"
 TPU_WORKER_HOSTNAMES_ENV_VAR = "TPU_WORKER_HOSTNAMES"
 TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
+TPU_CHIP_COORDINATES_ENV_VAR = "TPU_CHIP_COORDINATES"
 
 # By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
 # For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
@@ -418,12 +423,159 @@ def _get_physical_worker_id_from_coords(
     return _linear_index(worker_pos, worker_dims)
 
 
-def _query_local_tpu_chip_coordinates(num_hosts: int) -> List[List[int]]:
-    """Return one [x, y, z] coordinate list per local TPU chip, queried via JAX.
+def _parse_tpu_chip_coordinates_env(raw: str) -> List[List[int]]:
+    """Parse chip coordinates from a JSON list or semicolon-delimited string."""
+    raw = raw.strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"Invalid {TPU_CHIP_COORDINATES_ENV_VAR} JSON: {raw!r}"
+            ) from e
+        if not isinstance(parsed, list) or not all(
+            isinstance(c, list) and len(c) in (2, 3) and all(type(v) is int for v in c)
+            for c in parsed
+        ):
+            raise ValueError(f"Invalid {TPU_CHIP_COORDINATES_ENV_VAR} JSON: {raw!r}")
+        return [list(c) + [0] if len(c) == 2 else list(c) for c in parsed]
+    coords: List[List[int]] = []
+    for entry in raw.split(";"):
+        entry = entry.strip()
+        if not entry:
+            continue
+        parts = [int(p.strip()) for p in entry.split(",")]
+        if len(parts) not in (2, 3):
+            raise ValueError(f"Invalid chip coordinate entry: {entry!r}")
+        if len(parts) == 2:
+            parts.append(0)
+        coords.append(parts)
+    return coords
 
-    On a multi-host slice TPU_WORKER_HOSTNAMES must list all num_hosts hosts
-    so that PJRT reports slice-wide rather than host-local coordinates.
+
+def _compute_tpu_chip_coordinates_from_topology(
+    topology: str,
+    worker_id: int,
+    num_hosts: int,
+) -> List[List[int]]:
+    """Compute local [x, y, z] chip coordinates from topology and worker_id
+    without opening any TPU VFIO device.
     """
+    if num_hosts < 1:
+        raise ValueError(f"num_hosts must be >= 1, got {num_hosts}.")
+    chip_dims = _parse_topology_dims(topology)
+    if len(chip_dims) not in (2, 3) or any(d <= 0 for d in chip_dims):
+        raise ValueError(f"Invalid TPU topology '{topology}'.")
+    if num_hosts == 1:
+        block_dims = chip_dims
+        origin = tuple(0 for _ in chip_dims)
+    else:
+        worker_dims = _get_worker_dims_for_topology(topology)
+        total_workers = math.prod(worker_dims)
+        if num_hosts != total_workers:
+            raise ValueError(
+                f"num_hosts ({num_hosts}) does not match topology '{topology}' "
+                f"with {total_workers} workers."
+            )
+        if not (0 <= worker_id < total_workers):
+            raise ValueError(
+                f"Worker ID {worker_id} is out of bounds for topology "
+                f"'{topology}' with {total_workers} workers."
+            )
+        worker_pos = []
+        remainder = worker_id
+        for dim in worker_dims:
+            remainder, pos = divmod(remainder, dim)
+            worker_pos.append(pos)
+        block_dims = tuple(c // w for c, w in zip(chip_dims, worker_dims))
+        origin = tuple(pos * blk for pos, blk in zip(worker_pos, block_dims))
+
+    ranges = [range(o, o + b) for o, b in zip(origin, block_dims)]
+    coords = []
+    for pt in itertools.product(*ranges):
+        coord = list(pt)
+        if len(coord) == 2:
+            coord.append(0)
+        coords.append(coord)
+    return coords
+
+
+def _query_tpu_chip_coordinates_from_torch_tpu() -> Optional[List[List[int]]]:
+    """Query local TPU chip coordinates via torch_tpu if available.
+
+    Checks module availability without importing first so that
+    ``wait_for_tpu_vfio_ready()`` runs before importing ``torch_tpu``
+    (which may eagerly initialize the TPU runtime and open VFIO devices).
+    """
+    if "torch_tpu" in sys.modules:
+        if sys.modules["torch_tpu"] is None:
+            return None
+    elif importlib.util.find_spec("torch_tpu") is None:
+        return None
+
+    wait_for_tpu_vfio_ready()
+    try:
+        import torch_tpu  # type: ignore[import-not-found]
+    except ImportError:
+        return None
+
+    tpu_module = getattr(torch_tpu, "tpu", None)
+    getter = (
+        getattr(tpu_module, "get_chip_coordinates", None)
+        if tpu_module is not None
+        else None
+    )
+    if getter is None:
+        getter = getattr(torch_tpu, "get_chip_coordinates", None)
+    if getter is None:
+        return None
+
+    raw_coords = getter()
+    return [[int(v) for v in c] for c in raw_coords] if raw_coords else None
+
+
+def _query_local_tpu_chip_coordinates(num_hosts: int) -> List[List[int]]:
+    """Return one [x, y, z] coordinate list per local TPU chip.
+
+    Discovery order:
+    1. Explicit ``TPU_CHIP_COORDINATES`` environment variable (zero VFIO).
+    2. Single-host topology math when ``num_hosts == 1`` (zero VFIO).
+    3. JAX PJRT hardware coordinate discovery when JAX is installed
+       (waits for VFIO readiness first).
+    4. Zero-VFIO topology-math fallback from GKE/GCE TPU metadata
+       (``TPU_TOPOLOGY`` and ``TPU_WORKER_ID``). Intentionally preferred over
+       importing ``torch_tpu`` to avoid eagerly opening VFIO devices; logs a
+       warning because it assumes ``TPU_WORKER_ID`` matches physical mesh order.
+    5. ``torch_tpu`` coordinate discovery when topology metadata is unavailable
+       (waits for VFIO readiness before importing ``torch_tpu``).
+
+    On a multi-host slice ``TPU_WORKER_HOSTNAMES`` must list all ``num_hosts``
+    hosts so that PJRT reports slice-wide rather than host-local coordinates.
+    """
+    if num_hosts < 1:
+        raise ValueError(f"num_hosts must be >= 1, got {num_hosts}.")
+
+    # 1. Explicit coordinate metadata (zero VFIO).
+    env_coords = os.environ.get(TPU_CHIP_COORDINATES_ENV_VAR)
+    if env_coords:
+        parsed = _parse_tpu_chip_coordinates_env(env_coords)
+        if parsed:
+            return parsed
+
+    # 2. Single-host slice (zero VFIO, no JAX/torch_tpu needed).
+    if num_hosts == 1:
+        topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+        if topology:
+            try:
+                return _compute_tpu_chip_coordinates_from_topology(
+                    topology, worker_id=0, num_hosts=1
+                )
+            except ValueError:
+                pass
+        return [[0, 0, 0]]
+
     resolved_hosts = [
         h.strip()
         for h in os.environ.get(TPU_WORKER_HOSTNAMES_ENV_VAR, "").split(",")
@@ -431,22 +583,60 @@ def _query_local_tpu_chip_coordinates(num_hosts: int) -> List[List[int]]:
     ]
     # Without every peer's hostname, PJRT initializes as a single host and
     # reports host-local coordinates instead of global slice coordinates.
-    if num_hosts > 1 and len(resolved_hosts) < num_hosts:
+    if len(resolved_hosts) < num_hosts:
         raise RuntimeError(
             f"TPU chip coordinate discovery on a {num_hosts}-host slice requires "
             f"all worker hostnames in {TPU_WORKER_HOSTNAMES_ENV_VAR}, got "
             f"{len(resolved_hosts)}."
         )
 
+    # 3. JAX PJRT hardware coordinate discovery (if JAX is installed).
     try:
         import jax  # type: ignore[import-untyped]
-    except ImportError as e:
-        raise RuntimeError(
-            "JAX is required for TPU subslice discovery. "
-            "Install jax[tpu] on all TPU worker nodes."
-        ) from e
+    except ImportError:
+        jax = None
 
-    return [list(d.coords) for d in jax.local_devices(backend="tpu")]
+    if jax is not None:
+        wait_for_tpu_vfio_ready()
+        return [[int(v) for v in d.coords] for d in jax.local_devices(backend="tpu")]
+
+    # 4. Zero-VFIO topology-math fallback from GKE/GCE TPU metadata.
+    # Intentionally preferred over importing torch_tpu because importing
+    # torch_tpu can eagerly initialize the TPU runtime and open VFIO devices.
+    topology = TPUAcceleratorManager.get_current_node_tpu_topology()
+    worker_id = TPUAcceleratorManager.get_current_node_tpu_worker_id()
+    if topology is not None and worker_id is not None:
+        try:
+            coords = _compute_tpu_chip_coordinates_from_topology(
+                topology, worker_id=worker_id, num_hosts=num_hosts
+            )
+            logger.warning(
+                "JAX is not installed; deriving TPU chip coordinates from "
+                "topology metadata (topology=%s, worker_id=%d) without opening "
+                "VFIO devices. This assumes TPU_WORKER_ID matches physical "
+                "mesh order; set %s to override.",
+                topology,
+                worker_id,
+                TPU_CHIP_COORDINATES_ENV_VAR,
+            )
+            return coords
+        except ValueError as e:
+            logger.debug(
+                "Topology-math fallback failed for topology=%s worker_id=%s: %s",
+                topology,
+                worker_id,
+                e,
+            )
+
+    # 5. torch_tpu coordinate discovery fallback (when metadata is unavailable).
+    torch_tpu_coords = _query_tpu_chip_coordinates_from_torch_tpu()
+    if torch_tpu_coords:
+        return torch_tpu_coords
+
+    raise RuntimeError(
+        "Unable to discover TPU chip coordinates: neither JAX, torch_tpu, "
+        "nor TPU topology metadata (TPU_TOPOLOGY and TPU_WORKER_ID) is available."
+    )
 
 
 def _get_subslice_index(
