@@ -13,6 +13,7 @@ from ray.data.aggregate import (
     MissingValuePercentage,
     TopKUnique,
     Unique,
+    ValueCounter,
     ZeroPercentage,
     _to_hashable,
 )
@@ -782,10 +783,17 @@ class TestTopKUnique:
     @staticmethod
     def _as_counts(accumulator):
         """Order-insensitive {value: count} view (lists compare as tuples)."""
-        return {
-            tuple(v) if isinstance(v, list) else v: c
-            for v, c in zip(accumulator["values"], accumulator["counts"])
-        }
+        assert len(accumulator["values"]) == len(accumulator["counts"])
+        out = {}
+        for v, c in zip(accumulator["values"], accumulator["counts"]):
+            key = (
+                np.nan
+                if isinstance(v, float) and np.isnan(v)
+                else (tuple(v) if isinstance(v, list) else v)
+            )
+            assert key not in out, f"Duplicate key {key!r} in accumulator {accumulator}"
+            out[key] = c
+        return out
 
     @classmethod
     def _pairwise_merge(cls, agg, accumulators):
@@ -795,6 +803,11 @@ class TestTopKUnique:
                 merged = agg.combine(merged, accumulator)
         return merged
 
+    @pytest.mark.parametrize(
+        "agg",
+        [TopKUnique(on="v", k=2), ValueCounter(on="v")],
+        ids=["topk_unique", "value_counter"],
+    )
     @pytest.mark.parametrize(
         "blocks",
         [
@@ -816,8 +829,7 @@ class TestTopKUnique:
             ),
         ],
     )
-    def test_topk_unique_combine_column_matches_pairwise_combine(self, blocks):
-        agg = TopKUnique(on="v", k=2)
+    def test_topk_unique_combine_column_matches_pairwise_combine(self, agg, blocks):
         partials = [agg.aggregate_block(block) for block in blocks]
         # A null accumulator row (an empty group) must be tolerated.
         accumulators = [partials[0], None, *partials[1:]]
@@ -827,11 +839,15 @@ class TestTopKUnique:
 
         assert self._as_counts(vectorized) == self._as_counts(pairwise)
 
-    def test_topk_unique_combine_column_is_recombinable(self):
+    @pytest.mark.parametrize(
+        "agg",
+        [TopKUnique(on="v", k=1), ValueCounter(on="v")],
+        ids=["topk_unique", "value_counter"],
+    )
+    def test_topk_unique_combine_column_is_recombinable(self, agg):
         """The reduce side re-combines partially combined blocks (compaction)
         before finalizing, so `_combine_column` must keep counts and return a
         valid accumulator, not a pruned top-k."""
-        agg = TopKUnique(on="v", k=1)
         partials = [
             agg.aggregate_block(pa.table({"v": values}))
             for values in (
@@ -849,7 +865,8 @@ class TestTopKUnique:
 
         assert self._as_counts(compacted) == self._as_counts(one_shot)
         assert self._as_counts(one_shot) == {"a": 5, "b": 6, "c": 9, "d": 1}
-        assert agg.finalize(compacted) == ["c"]
+        if isinstance(agg, TopKUnique):
+            assert agg.finalize(compacted) == ["c"]
 
     def test_topk_unique_combine_column_whole_list_fallback(self):
         """Whole-list values can't be grouped by Arrow; the Python merge must
@@ -937,6 +954,34 @@ class TestTopKUnique:
         assert len(result) == num_groups
         for row in result:
             assert row["topk_unique(v)"] == [f"top{row['g']}", "common"]
+
+    def test_value_counter_groupby_and_nan(
+        self, ray_start_regular_shared_2_cpus, monkeypatch
+    ):
+        monkeypatch.setattr(
+            ray.data.DataContext.get_current(), "shuffle_input_batch_bytes", 0
+        )
+        data = [
+            {"g": "X", "v": float("nan")},
+            {"g": "X", "v": 1.0},
+            {"g": "Y", "v": 2.0},
+            {"g": "X", "v": float("nan")},
+            {"g": "X", "v": 1.0},
+            {"g": "Y", "v": float("nan")},
+        ]
+        ds = ray.data.from_items(data, override_num_blocks=2)
+
+        global_res = ds.aggregate(ValueCounter(on="v"))["value_counter(v)"]
+        assert self._as_counts(global_res) == {np.nan: 3, 1.0: 2, 2.0: 1}
+
+        grouped_res = ds.groupby("g").aggregate(ValueCounter(on="v")).take_all()
+        by_group = {
+            row["g"]: self._as_counts(row["value_counter(v)"]) for row in grouped_res
+        }
+        assert by_group == {
+            "X": {np.nan: 2, 1.0: 2},
+            "Y": {2.0: 1, np.nan: 1},
+        }
 
 
 if __name__ == "__main__":
