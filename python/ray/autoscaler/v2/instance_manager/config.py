@@ -1,5 +1,7 @@
 import copy
 import logging
+import os
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,6 +18,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
     RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -94,7 +97,9 @@ class InstanceReconcileConfig:
     ray_install_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_RAY_INSTALL_STATUS_TIMEOUT_S", 30 * 60
     )
-    # The timeout for waiting for a TERMINATING instance to be TERMINATED.
+    # The timeout for waiting for a TERMINATING instance to be TERMINATED, and
+    # for holding a solicited RAY_STOPPED worker in a multi-worker replica while
+    # siblings still run or drain Ray.
     terminating_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
     )
@@ -125,6 +130,24 @@ class InstanceReconcileConfig:
     )
 
 
+@dataclass(frozen=True)
+class WorkerReplicaConfig:
+    """Metadata for node types provisioned and terminated as multi-worker replicas."""
+
+    # Number of Ray worker nodes launched and terminated atomically per replica.
+    workers_per_replica: int = 1
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.workers_per_replica, int)
+            or isinstance(self.workers_per_replica, bool)
+            or self.workers_per_replica < 1
+        ):
+            raise ValueError(
+                f"workers_per_replica must be an int >= 1, got {self.workers_per_replica!r}"
+            )
+
+
 @dataclass
 class NodeTypeConfig:
     """NodeTypeConfig is the helper class to provide node type specific configs.
@@ -150,10 +173,28 @@ class NodeTypeConfig:
     # config, and the node's config in the `AutoscalingConfig` for the node
     # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
+    # Optional multi-worker replica metadata for atomic replica scaling.
+    replica_config: Optional[WorkerReplicaConfig] = None
 
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
         assert self.min_worker_nodes >= 0
+        if self.workers_per_replica > 1:
+            size = self.workers_per_replica
+            if self.min_worker_nodes % size != 0 or self.max_worker_nodes % size != 0:
+                raise ValueError(
+                    f"min_worker_nodes ({self.min_worker_nodes}) and max_worker_nodes "
+                    f"({self.max_worker_nodes}) for node type {self.name!r} must be "
+                    f"multiples of workers_per_replica ({size})."
+                )
+
+    @property
+    def workers_per_replica(self) -> int:
+        return (
+            self.replica_config.workers_per_replica
+            if self.replica_config is not None
+            else 1
+        )
 
 
 class AutoscalingConfig:
@@ -345,6 +386,7 @@ class AutoscalingConfig:
             return None
         node_type_configs = {}
         auth_config = self._configs.get("auth", {})
+        disable_launch_config_check = self.disable_launch_config_check()
         head_node_type = self.get_head_node_type()
         assert head_node_type
         for node_type, node_config in available_node_types.items():
@@ -355,6 +397,35 @@ class AutoscalingConfig:
             if head_node_type == node_type:
                 max_workers_nodes += 1
 
+            raw_replica = node_config.get("replica_config")
+            replica_config = None
+            if raw_replica is not None:
+                if not isinstance(raw_replica, dict):
+                    raise ValueError(
+                        f"replica_config for node type {node_type!r} must be a dict, "
+                        f"got {raw_replica!r}"
+                    )
+                unknown_keys = set(raw_replica) - {"workers_per_replica"}
+                if unknown_keys:
+                    raise ValueError(
+                        f"Unknown replica_config fields for node type {node_type!r}: "
+                        f"{sorted(unknown_keys)}"
+                    )
+                replica_config = WorkerReplicaConfig(
+                    workers_per_replica=raw_replica.get("workers_per_replica", 1),
+                )
+            if replica_config is not None and replica_config.workers_per_replica > 1:
+                if head_node_type == node_type:
+                    raise ValueError(
+                        f"Head node type {node_type} cannot set "
+                        f"workers_per_replica={replica_config.workers_per_replica} > 1."
+                    )
+                if not disable_launch_config_check:
+                    raise ValueError(
+                        f"Node type {node_type} has workers_per_replica="
+                        f"{replica_config.workers_per_replica} > 1, which requires "
+                        f"provider.{DISABLE_LAUNCH_CONFIG_CHECK_KEY} to be True."
+                    )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
@@ -364,6 +435,7 @@ class AutoscalingConfig:
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
                 launch_config_hash=launch_config_hash,
+                replica_config=replica_config,
             )
         return node_type_configs
 
@@ -396,6 +468,13 @@ class AutoscalingConfig:
         return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
 
     def get_max_concurrent_launches(self) -> int:
+        if "AUTOSCALER_MAX_CONCURRENT_LAUNCHES" in os.environ:
+            return env_integer(
+                "AUTOSCALER_MAX_CONCURRENT_LAUNCHES",
+                AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            )
+        if self.get_provider_config().get(FOREGROUND_NODE_LAUNCH_KEY, False):
+            return sys.maxsize
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
     def disable_node_updaters(self) -> bool:
