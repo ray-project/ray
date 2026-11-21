@@ -126,6 +126,10 @@ def test_repartition_e2e(
                 assert ds_stats.base_name == reduce_name
                 assert reduce_name in ds_stats.metadata
                 map_stats = ds_stats.parents[0]
+                if context.use_disk_based_hash_shuffle:
+                    # The disk reduce reads the writer through the regroup.
+                    assert map_stats.base_name == "DiskHashShuffleRegroup"
+                    map_stats = map_stats.parents[0]
                 assert map_stats.base_name == map_name
                 assert map_name in map_stats.metadata
                 return

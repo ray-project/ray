@@ -21,6 +21,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
     KubernetesHttpApiClient,
     _worker_group_index,
     _worker_group_max_replicas,
+    _worker_group_min_replicas,
     _worker_group_num_of_hosts,
     _worker_group_replicas,
     finalizer_patch,
@@ -180,6 +181,19 @@ class KubeRayProvider(ICloudInstanceProvider):
         while len(store) > self._max_tracked_request_entries:
             del store[next(iter(store))]
 
+    def _hosts_by_type(
+        self, ray_cluster: Optional[Dict[str, Any]] = None
+    ) -> Dict[NodeType, int]:
+        cluster = self._ray_cluster if ray_cluster is None else ray_cluster
+        if not cluster:
+            return {}
+        return {
+            wg["groupName"]: _worker_group_num_of_hosts(cluster, idx)
+            for idx, wg in enumerate(
+                cluster.get("spec", {}).get("workerGroupSpecs", [])
+            )
+        }
+
     def _claim_untracked_pre_step_in_flight(self) -> None:
         step = self._active_step
         if (
@@ -188,12 +202,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             or self._ray_cluster is None
         ):
             return
-        hosts_by_type = {
-            wg["groupName"]: _worker_group_num_of_hosts(self._ray_cluster, idx)
-            for idx, wg in enumerate(
-                self._ray_cluster.get("spec", {}).get("workerGroupSpecs", [])
-            )
-        }
+        hosts_by_type = self._hosts_by_type()
         active_pre_lids = {
             (nt, lid)
             for src in (step.pre_sh_in_flight, step.pre_mh_in_flight)
@@ -214,7 +223,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                     and lid not in self._requests
                     and (nt, lid) not in self._claimed_pre_step_lids
                 ):
-                    self._record_bounded_entry(self._claimed_pre_step_lids, (nt, lid))
+                    self._claimed_pre_step_lids[(nt, lid)] = None
                     self._external_unmaterialized[nt] = max(
                         0, self._external_unmaterialized.get(nt, 0) - cnt
                     )
@@ -226,7 +235,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                     and lid not in self._requests
                     and (nt, lid) not in self._claimed_pre_step_lids
                 ):
-                    self._record_bounded_entry(self._claimed_pre_step_lids, (nt, lid))
+                    self._claimed_pre_step_lids[(nt, lid)] = None
                     self._external_unmaterialized[nt] = max(
                         0, self._external_unmaterialized.get(nt, 0) - reps * hosts
                     )
@@ -336,10 +345,6 @@ class KubeRayProvider(ICloudInstanceProvider):
     def launch_many(self, requests: Dict[str, Dict[NodeType, int]]) -> None:
         if not requests:
             return
-        if len(requests) == 1:
-            req_id, shape = next(iter(requests.items()))
-            self.launch(shape=shape, request_id=req_id)
-            return
 
         # Sync once upfront before snapshotting transactional state for coalesced PATCH.
         try:
@@ -401,6 +406,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             resp = self._patch(f"rayclusters/{self._cluster_name}", final_patches)
             if isinstance(resp, dict) and "spec" in resp:
                 self._ray_cluster = resp
+            if self._ray_cluster is not None:
                 patched_types = {
                     self._ray_cluster["spec"]["workerGroupSpecs"][
                         int(p["path"].split("/")[3])
@@ -576,12 +582,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         step = self._active_step
         if step is None:
             return
-        hosts_by_type = {
-            wg["groupName"]: _worker_group_num_of_hosts(self._ray_cluster, idx)
-            for idx, wg in enumerate(
-                self._ray_cluster["spec"].get("workerGroupSpecs", [])
-            )
-        }
+        hosts_by_type = self._hosts_by_type()
         for node_type, req_w in shape.items():
             if req_w <= 0:
                 continue
@@ -642,10 +643,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         ) = self._get_workers_delete_info(ray_cluster, set(cur_instances.keys()))
 
         worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
-        hosts_by_type = {
-            wg["groupName"]: _worker_group_num_of_hosts(ray_cluster, idx)
-            for idx, wg in enumerate(worker_groups)
-        }
+        hosts_by_type = self._hosts_by_type(ray_cluster)
 
         to_delete_instances_by_type: Dict[NodeType, List[CloudInstance]] = defaultdict(
             list
@@ -854,11 +852,8 @@ class KubeRayProvider(ICloudInstanceProvider):
         # Collect patches for replica counts.
         for node_type, num_workers in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
-            group_min_replicas = (
-                raycluster["spec"]["workerGroupSpecs"][group_index].get("minReplicas")
-                or 0
-            )
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_min_replicas = _worker_group_min_replicas(raycluster, group_index)
             group_num_of_hosts = _worker_group_num_of_hosts(raycluster, group_index)
             if group_num_of_hosts <= 0:
                 if num_workers > 0:
@@ -873,7 +868,7 @@ class KubeRayProvider(ICloudInstanceProvider):
                 continue
             # the num_workers from the scale request is multiplied by numOfHosts, so we need to divide it back.
             unaligned_workers = num_workers % group_num_of_hosts
-            target_replicas = max(group_min_replicas, num_workers // group_num_of_hosts)
+            target_replicas = num_workers // group_num_of_hosts
             # Cap the replica count to maxReplicas.
             original_target_replicas = target_replicas
             if group_max_replicas is not None and group_max_replicas < target_replicas:
@@ -887,6 +882,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                 rejected_replicas = original_target_replicas - target_replicas
                 if rejected_replicas > 0:
                     rejected_nodes[node_type] = rejected_replicas * group_num_of_hosts
+            # Raise the replica count to minReplicas, matching KubeRay's clamp.
+            if group_min_replicas > target_replicas:
+                logger.info(
+                    "Autoscaler attempted to request "
+                    + "fewer than minReplicas pods of type {}.".format(node_type)
+                )
+                target_replicas = group_min_replicas
             if (
                 unaligned_workers > 0
                 and self._active_step is not None
@@ -951,7 +953,10 @@ class KubeRayProvider(ICloudInstanceProvider):
                     worker_groups[group_index].setdefault("scaleStrategy", {})[
                         "workersToDelete"
                     ] = list(worker_ids)
-            self._update_external_cr_capacity(autoscaler_patched_types=patched_types)
+            if self._deferred_patches is None:
+                self._update_external_cr_capacity(
+                    autoscaler_patched_types=patched_types
+                )
 
         return rejected_nodes
 

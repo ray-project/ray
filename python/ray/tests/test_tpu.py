@@ -3416,16 +3416,32 @@ def test_wait_for_slice_resources_freed_times_out():
     busy = {f"slice-stuck-w{i}": {"TPU": 4} for i in range(4)}
     busy["slice-stuck-w0"] = {"TPU": 0}
 
+    was_initialized = ray.is_initialized()
     with (
+        patch("ray.init", side_effect=AssertionError("unexpected ray.init")),
         patch("ray.nodes", return_value=nodes),
         patch(
             "ray._private.state.available_resources_per_node",
             return_value=busy,
         ),
-        patch("ray.util.tpu.time.sleep", return_value=None),
+        patch(
+            "ray.util.tpu._get_nodes_with_placed_tpu_bundles",
+            return_value=set(),
+        ),
+        patch("ray.util.tpu.time.sleep", return_value=None) as mock_sleep,
+        patch.object(ray.util.tpu.logger, "warning") as mock_warn,
     ):
         # Must return (not hang, not raise) once the deadline passes.
         ray.util.tpu._wait_for_slice_resources_freed("slice-stuck", timeout_s=0.0)
+
+    mock_sleep.assert_not_called()
+    mock_warn.assert_called_once()
+    warn_msg = mock_warn.call_args[0][0] % mock_warn.call_args[0][1:]
+    assert (
+        "Timed out after 0.0s waiting for the discovery reservation on slice 'slice-stuck'"
+        in warn_msg
+    )
+    assert ray.is_initialized() == was_initialized
 
 
 def test_wait_for_slice_resources_freed_ignores_dead_nodes():
@@ -3436,11 +3452,17 @@ def test_wait_for_slice_resources_freed_ignores_dead_nodes():
     nodes.append({**nodes[0], "NodeID": "slice-dead-w0-old", "Alive": False})
     free = {f"slice-dead-w{i}": {"TPU": 4} for i in range(4)}
 
+    was_initialized = ray.is_initialized()
     with (
+        patch("ray.init", side_effect=AssertionError("unexpected ray.init")),
         patch("ray.nodes", return_value=nodes),
         patch(
             "ray._private.state.available_resources_per_node",
             return_value=free,
+        ),
+        patch(
+            "ray.util.tpu._get_nodes_with_placed_tpu_bundles",
+            return_value=set(),
         ),
         patch("ray.util.tpu.time.sleep", return_value=None) as mock_sleep,
     ):
@@ -3449,6 +3471,7 @@ def test_wait_for_slice_resources_freed_ignores_dead_nodes():
         )
 
     mock_sleep.assert_not_called()
+    assert ray.is_initialized() == was_initialized
 
 
 def test_wait_for_slice_resources_freed_ignores_other_slices():

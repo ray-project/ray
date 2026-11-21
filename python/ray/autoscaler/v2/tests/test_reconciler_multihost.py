@@ -511,25 +511,27 @@ class TestReconcilerMultiHost:
                 status_times=[(Instance.QUEUED, ts)],
             )
 
+        def _ctl(*args):
+            return Reconciler._compute_to_launch(
+                InstanceManager(
+                    instance_storage=InstanceStorage(
+                        cluster_id="ctl_tmp", storage=InMemoryStorage()
+                    ),
+                    instance_status_update_subscribers=[],
+                ),
+                *args,
+            )
+
         r0_and_strays = [_q(f"r0-{i}", 1 + i) for i in range(4)] + [
             _q(f"s-{i}", 10 + i) for i in range(2)
         ]
         for max_c in (100, 5):
             assert [
                 i.instance_id
-                for i in Reconciler._compute_to_launch(
-                    r0_and_strays, [], [], 1.0, max_c, {"tpu16": 4}
-                )["tpu16"]
+                for i in _ctl(r0_and_strays, [], [], 1.0, max_c, {"tpu16": 4})["tpu16"]
             ] == [f"r0-{i}" for i in range(4)]
         stray_first = [_q("stray", 1)] + [_q(f"r0-{i}", 5 + i) for i in range(4)]
-        assert (
-            len(
-                Reconciler._compute_to_launch(
-                    stray_first, [], [], 1.0, 4, {"tpu16": 4}
-                )["tpu16"]
-            )
-            == 4
-        )
+        assert len(_ctl(stray_first, [], [], 1.0, 4, {"tpu16": 4})["tpu16"]) == 4
         req_old = create_instance(
             "old",
             status=Instance.REQUESTED,
@@ -537,26 +539,12 @@ class TestReconcilerMultiHost:
             launch_request_id="req-old",
             status_times=[(Instance.QUEUED, 1), (Instance.REQUESTED, 2)],
         )
-        assert (
-            Reconciler._compute_to_launch(
-                r0_and_strays[:4], [req_old], [], 1.0, 2, {"tpu16": 4}
-            )
-            == {}
-        )
-        assert (
-            len(
-                Reconciler._compute_to_launch(
-                    r0_and_strays[:4], [], [], 1.0, 2, {"tpu16": 4}
-                )["tpu16"]
-            )
-            == 4
-        )
+        assert _ctl(r0_and_strays[:4], [req_old], [], 1.0, 2, {"tpu16": 4}) == {}
+        assert len(_ctl(r0_and_strays[:4], [], [], 1.0, 2, {"tpu16": 4})["tpu16"]) == 4
         cpu_then_tpu = [_q(f"c{i}", 1 + i, "cpu") for i in range(4)] + [
             _q(f"t{i}", 10 + i) for i in range(4)
         ]
-        res_ct = Reconciler._compute_to_launch(
-            cpu_then_tpu, [], [], 4.0, 4, {"tpu16": 4}
-        )
+        res_ct = _ctl(cpu_then_tpu, [], [], 4.0, 4, {"tpu16": 4})
         assert [i.instance_id for i in res_ct["cpu"]] == [f"c{i}" for i in range(4)]
         assert "tpu16" not in res_ct
 
@@ -566,9 +554,7 @@ class TestReconcilerMultiHost:
             *(_q(f"a-{i}", 1 + i, "tpu_a") for i in range(4)),
             *(_q(f"b-{i}", 10 + i, "tpu_b") for i in range(4)),
         ]
-        res_two = Reconciler._compute_to_launch(
-            two_types, [], [], 1.0, 3, {"tpu_a": 4, "tpu_b": 4}
-        )
+        res_two = _ctl(two_types, [], [], 1.0, 3, {"tpu_a": 4, "tpu_b": 4})
         assert [i.instance_id for i in res_two["tpu_a"]] == [f"a-{i}" for i in range(4)]
         assert "tpu_b" not in res_two
 
@@ -581,9 +567,7 @@ class TestReconcilerMultiHost:
             for i in range(4)
         ]
         queued_8 = [_q(f"q-{i}", 1 + i) for i in range(8)]
-        res_up = Reconciler._compute_to_launch(
-            queued_8, [], running_4, 1.0, 100, {"tpu16": 4}
-        )
+        res_up = _ctl(queued_8, [], running_4, 1.0, 100, {"tpu16": 4})
         assert [i.instance_id for i in res_up["tpu16"]] == [f"q-{i}" for i in range(4)]
 
     @staticmethod
@@ -1430,6 +1414,28 @@ class TestReconcilerMultiHost:
             ],
         )
         cloud = self._replica_cloud({"rep-0": range(4), "rep-1": range(4, 8)})
+        pre_timeout_ns = expired_ns + (hold_timeout_s - 1) * 10**9
+        with mock.patch("time.time_ns", return_value=pre_timeout_ns):
+            cur_map, _ = store.get_instances()
+            sub_pre_store = InstanceStorage(
+                cluster_id="hold_timeout_pre", storage=InMemoryStorage()
+            )
+            for inst in cur_map.values():
+                cp = Instance()
+                cp.CopyFrom(inst)
+                sub_pre_store.upsert_instance(cp)
+            sub_pre = MockSubscriber()
+            sub_pre_im = InstanceManager(
+                instance_storage=sub_pre_store,
+                instance_status_update_subscribers=[sub_pre],
+            )
+            Reconciler._terminate_instances(
+                sub_pre_im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
+            )
+            assert sorted(
+                (e.instance_id, e.new_instance_status) for e in sub_pre.events
+            ) == [(f"w-{h}", Instance.TERMINATING) for h in range(4, 8)]
+
         sub.clear()
         Reconciler._terminate_instances(
             im, autoscaling_config=cfg, non_terminated_cloud_instances=cloud
@@ -10303,6 +10309,9 @@ class TestReconcilerMultiHost:
                 )
                 return MagicMock(status=reply.status, state=proxied_state)
 
+            def __getattr__(self, name):
+                return getattr(self._wrapped, name)
+
         class SpyScheduler(IResourceScheduler):
             def schedule(self, request):
                 captured_requests.append(request)
@@ -13189,6 +13198,74 @@ class TestReconcilerMultiHost:
             for inst in insts_q2.values()
         )
         assert cr_q["spec"]["workerGroupSpecs"][1]["replicas"] == 0
+
+    def test_extra_cloud_instance_adoption_counts_labeled_multihost_replicas(self):
+        """Labeled multi-host adoption cancels min-worker QUEUED rows in replica units."""
+        cfg = MockAutoscalingConfig(
+            configs={
+                "provider": Provider.KUBERAY,
+                "head_node_type": "head",
+                "node_type_configs": {
+                    "head": NodeTypeConfig(
+                        name="head",
+                        resources={"CPU": 2},
+                        min_worker_nodes=0,
+                        max_worker_nodes=0,
+                    ),
+                    "tpu": NodeTypeConfig(
+                        name="tpu",
+                        resources={"CPU": 4, "TPU": 4},
+                        min_worker_nodes=4,
+                        max_worker_nodes=16,
+                        replica_config=WorkerReplicaConfig(workers_per_replica=4),
+                    ),
+                },
+            }
+        )
+        store1 = InstanceStorage(cluster_id="l3_02_adoption", storage=InMemoryStorage())
+        sub1 = MockSubscriber()
+        im1 = InstanceManager(
+            instance_storage=store1, instance_status_update_subscribers=[sub1]
+        )
+        for h in range(4):
+            TestReconcilerMultiHost._add_instances(
+                store1,
+                [
+                    create_instance(
+                        f"qm-{h}", status=Instance.QUEUED, instance_type="tpu"
+                    )
+                ],
+            )
+        cloud_3 = self._replica_cloud({"rep-0": range(3)})
+        Reconciler._handle_extra_cloud_instances(
+            im1,
+            non_terminated_cloud_instances=cloud_3,
+            ray_nodes=[],
+            autoscaling_config=cfg,
+        )
+        insts1, _ = store1.get_instances()
+        assert [insts1[f"qm-{h}"].status for h in range(4)] == [Instance.TERMINATED] * 4
+
+        for h in range(4):
+            TestReconcilerMultiHost._add_instances(
+                store1,
+                [
+                    create_instance(
+                        f"qd-{h}", status=Instance.QUEUED, instance_type="tpu"
+                    )
+                ],
+            )
+        cloud_4 = self._replica_cloud({"rep-0": range(4)})
+        Reconciler._handle_extra_cloud_instances(
+            im1,
+            non_terminated_cloud_instances=cloud_4,
+            ray_nodes=[],
+            autoscaling_config=cfg,
+        )
+        insts1_after, _ = store1.get_instances()
+        assert [insts1_after[f"qd-{h}"].status for h in range(4)] == [
+            Instance.QUEUED
+        ] * 4
 
 
 if __name__ == "__main__":

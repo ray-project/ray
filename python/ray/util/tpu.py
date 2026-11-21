@@ -9,6 +9,7 @@ import warnings
 from dataclasses import dataclass
 from enum import Enum
 from typing import (
+    AbstractSet,
     Any,
     Collection,
     Dict,
@@ -705,7 +706,7 @@ def _get_nodes_with_placed_tpu_bundles() -> Set[str]:
 def _tpus_idle(
     nodes: Collection[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
-    pg_used_nodes: Set[str],
+    pg_used_nodes: AbstractSet[str],
 ) -> bool:
     """Return True iff every node in *nodes* has all its TPUs unreserved and no
     placed TPU placement-group bundles.
@@ -2117,7 +2118,7 @@ def _find_available_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
-    pg_used_nodes: Optional[Set[str]] = None,
+    pg_used_nodes: AbstractSet[str] = frozenset(),
 ) -> Tuple[Optional[List[str]], Optional[int]]:
     """Find an idle subslice of *subslice_topology* within *slice_name*.
 
@@ -2165,7 +2166,7 @@ def _find_available_subslice(
                 break
             subslice_nodes.append(node)
 
-        if subslice_nodes and _tpus_idle(subslice_nodes, avail, pg_used_nodes or set()):
+        if subslice_nodes and _tpus_idle(subslice_nodes, avail, pg_used_nodes):
             return worker_ids, idx
 
     return None, None
@@ -2477,7 +2478,7 @@ def _find_undiscovered_idle_slice(
     parent_topologies: List[str],
     nodes: List[Dict[str, Any]],
     avail: Dict[str, Dict[str, float]],
-    pg_used_nodes: Optional[Set[str]] = None,
+    pg_used_nodes: AbstractSet[str] = frozenset(),
     accelerator_version: Optional[str] = None,
 ) -> Optional[Tuple[str, str]]:
     """Return ``(parent_topology, slice_name)`` for the first undiscovered
@@ -2513,7 +2514,7 @@ def _find_undiscovered_idle_slice(
             if topo != parent_topology or sname in discovered:
                 continue
             if _is_slice_intact(sns, expected_tpus) and _tpus_idle(
-                sns, avail, pg_used_nodes or set()
+                sns, avail, pg_used_nodes
             ):
                 return parent_topology, sname
 
@@ -2527,7 +2528,7 @@ def _find_available_cached_subslice(
     avail: Dict[str, Dict[str, float]],
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
-    pg_used_nodes: Optional[Set[str]] = None,
+    pg_used_nodes: AbstractSet[str] = frozenset(),
     accelerator_version: Optional[str] = None,
 ) -> Optional[Tuple[List[str], int, str, str]]:
     """Return the first idle subslice across all cached slices of any valid

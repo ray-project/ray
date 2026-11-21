@@ -924,15 +924,12 @@ bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
 void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &node_id) {
   absl::MutexLock lock(&mutex_);
   for (auto it = object_id_refs_.begin(); it != object_id_refs_.end(); it++) {
-    const auto &object_id = it->first;
     if (it->second.pinned_at_node_id_.value_or(NodeID::Nil()) == node_id ||
         it->second.spilled_node_id == node_id) {
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/true);
       UnsetObjectPrimaryCopy(it);
       UpdateOwnedObjectCounters(it->first, it->second, /*decrement=*/false);
-      if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
-        objects_to_recover_.push_back(object_id);
-      }
+      MarkObjectForRecoveryInternal(it);
     }
     RemoveObjectLocationInternal(it, node_id);
   }
@@ -972,7 +969,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
         it->second.pinned_at_node_id_ = node_id;
       } else {
         UnsetObjectPrimaryCopy(it);
-        objects_to_recover_.push_back(object_id);
+        MarkObjectForRecoveryInternal(it);
       }
       // Increment counter for new state
       UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/false);
@@ -1601,7 +1598,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
         it->second.pinned_at_node_id_.value() == spilled_node_id) {
       UnsetObjectPrimaryCopy(it);
     }
-    objects_to_recover_.push_back(object_id);
+    MarkObjectForRecoveryInternal(it);
   }
 
   // Increment counter for new state
@@ -1886,8 +1883,76 @@ std::optional<std::string> ReferenceCounter::GetTensorTransport(
   return it->second.tensor_transport_;
 }
 
+void ReferenceCounter::MarkObjectForRecovery(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    RAY_LOG(WARNING).WithField(object_id)
+        << "Tried to mark object for recovery, but it was not in the reference table";
+    return;
+  }
+  MarkObjectForRecoveryInternal(it);
+}
+
+void ReferenceCounter::MarkObjectForRecoveryInternal(ReferenceTable::iterator it) {
+  if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
+    objects_to_recover_.push_back(it->first);
+  }
+}
+
 std::optional<MoveState> ReferenceCounter::GetMoveState(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
+  return GetMoveStateInternal(object_id);
+}
+
+std::vector<std::optional<MoveState>> ReferenceCounter::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  std::vector<std::optional<MoveState>> move_states;
+  move_states.reserve(object_ids.size());
+  // One lock for the whole list instead of acquiring/releasing the lock for every
+  // object. This function is used only for pre-checks that fail a bad task submission
+  // early. Granular locking might lead to more early failures, but in the happy path
+  // might degrade performance. Also, the arg list isn't expected to be super long - so
+  // holding the lock for the entire duration is fine.
+  absl::MutexLock lock(&mutex_);
+  for (const ObjectID &object_id : object_ids) {
+    move_states.push_back(GetMoveStateInternal(object_id));
+  }
+  return move_states;
+}
+
+StatusOr<std::vector<bool>> ReferenceCounter::TryCommitMoves(
+    const std::vector<ObjectID> &object_ids) {
+  absl::MutexLock lock(&mutex_);
+  // Validate every object before changing any, so a rejected task moves nothing.
+  // Acquire the lock for both validation and commit phases (without unlocking after
+  // validation) so that no two tasks can be validated successfully.
+  std::vector<bool> is_move;
+  is_move.reserve(object_ids.size());
+  for (const ObjectID &object_id : object_ids) {
+    std::optional<MoveState> move_state = GetMoveStateInternal(object_id);
+    if (move_state == MoveState::MOVED) {
+      return Status::InvalidArgument(absl::StrFormat(
+          "Object %s was created with _consume_once=True and was already passed to an "
+          "actor task.",
+          object_id.Hex()));
+    }
+    // Filled here, before the commit loop below changes any state, so that both
+    // entries of a repeated ID (e.g. f.remote(ref, ref)) are true. In the commit
+    // loop, the second entry would already read MOVED.
+    is_move.push_back(move_state == MoveState::MOVABLE);
+  }
+  for (const ObjectID &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it != object_id_refs_.end() && it->second.move_state_ == MoveState::MOVABLE) {
+      it->second.move_state_ = MoveState::MOVED;
+    }
+  }
+  return is_move;
+}
+
+std::optional<MoveState> ReferenceCounter::GetMoveStateInternal(
+    const ObjectID &object_id) const {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return std::nullopt;

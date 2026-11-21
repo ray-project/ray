@@ -1199,16 +1199,34 @@ def test_poll_probes_async_collects_each_rank():
     wg.shutdown()
 
 
-def test_poll_probe_results_times_out_unfinished_ranks():
+def test_an_on_demand_probe_still_running_at_the_timeout_times_out():
     signal = SignalActor.remote()
     wg = _default_inactive_worker_group()
     wg._start()
 
-    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=1, ranks=[0])
+    wg.poll_probes_async([BlockingProbe(signal), RankProbe()], timeout_s=1, ranks=[0])
 
     assert wg.poll_probe_results() is None
-    # The on-demand probe runs apart from poll_status, which still answers.
+    # The on-demand probes run apart from poll_status, which still answers.
     ray.get(wg.get_workers()[0].actor.poll_status.remote(), timeout=5)
+    results = _wait_for_probe_results(wg)
+    # The worker times out the probe itself, and still returns the others.
+    assert isinstance(results["BlockingProbe"][0].error, TimeoutError)
+    assert "within 1s" in str(results["BlockingProbe"][0].error)
+    assert results["RankProbe"][0].metrics == {"rank": 0.0}
+
+    ray.get(signal.send.remote())
+    wg.shutdown()
+
+
+def test_a_worker_that_does_not_answer_in_time_times_out():
+    signal = SignalActor.remote()
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=30, ranks=[0])
+    # As if the timeout passed while the worker still had nothing to report.
+    wg._on_demand_deadline = 0.0
     (result,) = _wait_for_probe_results(wg)["BlockingProbe"].values()
     assert isinstance(result.error, TimeoutError)
     assert "rank 0" in str(result.error)
@@ -1835,6 +1853,47 @@ def test_create_placement_group_tpu_multi_slice_label_selector(monkeypatch):
             }
             for worker_id in range(4)
         ]
+
+
+def test_create_placement_group_tpu_preserves_zero_cpu_per_worker(monkeypatch):
+    """Verify explicit CPU=0 in resources_per_worker does not revert to CPU=1 in SlicePlacementGroup bundles."""
+    from ray.util.placement_group import validate_placement_group
+
+    zero_cpu_cfg = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"TPU": 4, "CPU": 0},
+    )
+    zero_cpu_ctx = _default_worker_group_context(
+        num_workers=4,
+        resources_per_worker=zero_cpu_cfg._resources_per_worker_not_none,
+        label_selector=zero_cpu_cfg._label_selector_per_worker(
+            4, include_tpu_labels=False
+        ),
+        num_slices=1,
+    )
+    wg = _default_inactive_worker_group(
+        train_run_context=create_dummy_run_context(scaling_config=zero_cpu_cfg),
+        worker_group_context=zero_cpu_ctx,
+    )
+    pg_calls = []
+
+    def _fake_placement_group(*args, **kwargs):
+        pg_calls.append(kwargs)
+        return MagicMock(name="slice_pg_0")
+
+    monkeypatch.setattr("ray.util.tpu.placement_group", _fake_placement_group)
+    wg._create_placement_group(zero_cpu_cfg, zero_cpu_ctx)
+    assert len(pg_calls) == 1
+    call_kwargs = pg_calls[0]
+    assert call_kwargs["bundles"] == [{"CPU": 0, "TPU": 4}] * 4
+    validate_placement_group(
+        bundles=call_kwargs["bundles"],
+        bundle_label_selector=call_kwargs["bundle_label_selector"],
+        topology_strategy=call_kwargs["topology_strategy"],
+    )
 
 
 def test_assign_worker_ranks_tpu():

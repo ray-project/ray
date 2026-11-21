@@ -63,6 +63,7 @@ def test_default_handle_shutdown():
     assert handle.wait(timeout_seconds=10)
 
     handle.shutdown()
+    assert ray.util.placement_group_table(pg).get("state") == "REMOVED"
 
 
 # SlicePlacementGroupHandle tests

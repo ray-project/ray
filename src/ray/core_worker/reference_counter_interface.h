@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
@@ -589,6 +590,13 @@ class ReferenceCounterInterface {
   virtual std::vector<ObjectID> FlushObjectsToRecover() = 0;
 
   /**
+   * @brief Re-queue an object for recovery if it is still in scope.
+   *
+   * @param[in] object_id The object to mark for recovery.
+   */
+  virtual void MarkObjectForRecovery(const ObjectID &object_id) = 0;
+
+  /**
    * @brief Whether we have a reference to a particular ObjectID.
    *
    * @param[in] object_id The object ID to check for.
@@ -769,6 +777,29 @@ class ReferenceCounterInterface {
    * @return True if at least one object owned by this worker is MOVABLE or MOVED.
    */
   virtual bool HasConsumeOnceObjects() const = 0;
+
+  /**
+   * @brief Get the move states of the given objects, under a single lock.
+   *
+   * @return One entry per input ID, in the same order, as for GetMoveState.
+   */
+  virtual std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const = 0;
+
+  /**
+   * @brief Move the given objects to their consuming actor task: every MOVABLE
+   * object becomes MOVED. All-or-nothing: if any object is already MOVED, nothing
+   * changes. NOT_MOVABLE objects and IDs without a reference are left alone. An ID
+   * repeated in the list is moved once.
+   *
+   * @param object_ids The by-reference argument IDs of the consuming task.
+   * @return InvalidArgument naming the first object that is already MOVED.
+   * Otherwise, one entry per ID in object_ids: true if this call moved the object.
+   * Both entries of a repeated ID (for eg: f.remote(ref, ref), if ref is
+   * _consume_once) are true.
+   */
+  virtual StatusOr<std::vector<bool>> TryCommitMoves(
+      const std::vector<ObjectID> &object_ids) = 0;
 
   /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by

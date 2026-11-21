@@ -34,6 +34,7 @@ from ray.core.generated.autoscaler_pb2 import (
     AntiAffinityConstraint,
     AutoscalingState,
     ClusterResourceState,
+    GangResourceRequest,
     GetClusterStatusReply,
     NodeState,
     NodeStatus,
@@ -149,6 +150,13 @@ class ResourceRequestUtil(ProtobufUtil):
             reqs += [r.request] * r.count
 
         return reqs
+
+    @staticmethod
+    def get_gang_requests(gang_request: GangResourceRequest) -> List[ResourceRequest]:
+        """Extract bundle resource requests from a GangResourceRequest."""
+        if gang_request.bundle_selectors:
+            return list(gang_request.bundle_selectors[0].resource_requests)
+        return list(gang_request.requests)
 
     @staticmethod
     def to_resource_map(
@@ -766,11 +774,7 @@ class ClusterStatusParser:
             task_actor_demand.append(demand)
 
         for gang_request in state.pending_gang_resource_requests:
-            gang_reqs = gang_request.requests or (
-                gang_request.bundle_selectors[0].resource_requests
-                if gang_request.bundle_selectors
-                else []
-            )
+            gang_reqs = ResourceRequestUtil.get_gang_requests(gang_request)
             demand = PlacementGroupResourceDemand(
                 bundles_by_count=cls._aggregate_resource_requests_by_shape(gang_reqs),
                 details=gang_request.details,

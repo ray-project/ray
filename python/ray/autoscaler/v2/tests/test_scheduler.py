@@ -7815,6 +7815,9 @@ def test_kuberay_cr_to_scheduler_and_reconciler_full_stack_seam(monkeypatch):
         def update_instance_manager_state(self, request):
             return self._wrapped.update_instance_manager_state(request)
 
+        def __getattr__(self, name):
+            return getattr(self._wrapped, name)
+
     class _SeamCloudProvider(ICloudInstanceProvider):
         def __init__(self, instances: Dict[str, CloudInstance]):
             self._instances = instances
@@ -8212,6 +8215,9 @@ def test_kuberay_cr_shared_clique_and_kuberay_provider_seam():
 
         def update_instance_manager_state(self, request):
             return self._wrapped.update_instance_manager_state(request)
+
+        def __getattr__(self, name):
+            return getattr(self._wrapped, name)
 
     class _InMemoryK8sClient(IKubernetesHttpApiClient):
         def __init__(self, cr: Dict[str, Any], pods: List[Dict[str, Any]]):
@@ -20891,52 +20897,6 @@ def test_heterogeneous_domain_gang_refill_and_non_unlabeled_room_clamp():
     assert rep_with_tpu_task.infeasible_resource_requests == []
     assert _launch_and_terminate(rep_with_tpu_task) == ({"tpu": 3}, [])
 
-    # Direct room-clamp verification when an earlier unlabeled type materializes its gap
-    # and exhausts max_num_nodes before trailing non-unlabeled types in launch_order.
-    nt_labeled = NodeTypeConfig(
-        name="gpu-labeled",
-        resources={"CPU": 8, "GPU": 4},
-        min_worker_nodes=0,
-        max_worker_nodes=8,
-        runtime_label_keys=(_SLICE, _WID),
-        replica_config=WorkerReplicaConfig(
-            workers_per_replica=4,
-            domain_label_key=_SLICE,
-            domain_exclusive=True,
-            worker_index_label_key=_WID,
-        ),
-    )
-    insts_clamp = [
-        _run_node("tpu", f"un-{w}", {"CPU": 8, "TPU": 4}, {}, lid="Lun")
-        for w in range(2)
-    ]
-    req_clamp = SchedulingRequest(
-        disable_launch_config_check=True,
-        node_type_configs={
-            "tpu": _mh_tpu_cfg("tpu", max_w=8),
-            "single-helper": nt_helper,
-            "gpu-labeled": nt_labeled,
-        },
-        max_num_nodes=5,
-        current_instances=insts_clamp,
-        replica_view=_synthetic_replica_view(
-            {"tpu": _mh_tpu_cfg("tpu", max_w=8), "gpu-labeled": nt_labeled},
-            insts_clamp,
-        ),
-    )
-    ctx_clamp = ResourceDemandScheduler.ScheduleContext.from_schedule_request(req_clamp)
-    nodes_clamp = list(ctx_clamp.peek_nodes())
-    nodes_clamp.append(ctx_clamp._make_launch_node("tpu"))
-    nodes_clamp.append(ctx_clamp._make_launch_node("single-helper"))
-    nodes_clamp.extend(ctx_clamp.make_replica_nodes("gpu-labeled"))
-    ctx_clamp.update(nodes_clamp)
-    ctx_clamp.materialize_unlabeled_launch_gaps()
-    tl_counts: Dict[str, int] = {}
-    for n in ctx_clamp.peek_nodes():
-        if n.status == SchedulingNodeStatus.TO_LAUNCH:
-            tl_counts[n.node_type] = tl_counts.get(n.node_type, 0) + 1
-    assert tl_counts == {"tpu": 2, "single-helper": 1}
-
 
 def test_shared_domain_gang_packs_into_single_replica_without_straddling():
     """Shared-domain STRICT_PACK gangs keep bundles on one multi-host replica
@@ -21946,21 +21906,6 @@ def test_reconciler_capacity_parity_and_post_clamp_demand_conservation():
         )
     assert _launch_and_terminate(rep_exit) == ({}, [])
     assert len(rep_exit.infeasible_resource_requests) == 1
-
-    # 7. Direct ScheduleContext clamp returns truncated TO_LAUNCH nodes cleanly
-    # when room falls below remaining unlabeled gap.
-    insts_drop_ctx = [
-        _run_node("tpu", "t-ctx", {"CPU": 8, "TPU": 4}, {}, used={"TPU": 4}),
-    ]
-    ctx_drop = _mk_ctx({"tpu": cfgs_gap["tpu"]}, insts_drop_ctx, max_num_nodes=2)
-    nodes_drop = ctx_drop.get_nodes()
-    nodes_drop.append(ctx_drop._make_launch_node("tpu"))
-    ctx_drop.update(nodes_drop)
-    dropped = ctx_drop.materialize_unlabeled_launch_gaps()
-    assert len(dropped) == 3
-    assert not any(
-        n.status == SchedulingNodeStatus.TO_LAUNCH for n in ctx_drop.peek_nodes()
-    )
 
     # 8. ScheduleContext tracks draining non-QUEUED TO_TERMINATE backfill slots,
     # domain-inherited provider replicas, reconciler headroom and per-type
@@ -23328,9 +23273,7 @@ def test_steady_state_zero_deepcopies_and_deepcopy_field_isolation(monkeypatch):
         ResourceDemandScheduler.ScheduleContext, "get_nodes", real_get_nodes
     )
 
-    # SchedulingNode.__deepcopy__ must isolate every mutable field including _placed_gangs.
-    g1 = _tpu_gang((0, 1, 2, 3), pod_type="v6e-16")
-    g2 = _tpu_gang((0, 1, 2, 3), pod_type="v6e-16")
+    # SchedulingNode.__deepcopy__ must isolate every mutable field.
     tr = TerminationRequest(
         id="t1",
         instance_id="im-1",
@@ -23358,7 +23301,6 @@ def test_steady_state_zero_deepcopies_and_deepcopy_field_isolation(monkeypatch):
         desired_cpu=8,
         desired_memory=2048,
     )
-    orig._placed_gangs.append(g1)
     orig.sched_requests[ResourceRequestSource.PENDING_DEMAND].append(
         ResourceRequest(resources_bundle={"CPU": 1.0})
     )
@@ -23374,7 +23316,6 @@ def test_steady_state_zero_deepcopies_and_deepcopy_field_isolation(monkeypatch):
     cloned.labels[_SLICE] = "mutated"
     cloned.ippr_status.desired_cpu = 16
     cloned.termination_request.details = "mutated"
-    cloned._placed_gangs.append(g2)
 
     assert orig.total_resources["CPU"] == 8.0
     assert (
@@ -23385,7 +23326,189 @@ def test_steady_state_zero_deepcopies_and_deepcopy_field_isolation(monkeypatch):
     assert orig.labels[_SLICE] == "s0"
     assert orig.ippr_status.desired_cpu == 8
     assert orig.termination_request.details == "orig"
-    assert orig._placed_gangs == [g1]
+
+
+def test_max_num_nodes_cancels_only_needed_min_worker_launches():
+    node_type_configs = {
+        "head": NodeTypeConfig(
+            name="head", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=0
+        ),
+        "type_1": NodeTypeConfig(
+            name="type_1", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=5
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2", resources={"CPU": 1}, min_worker_nodes=2, max_worker_nodes=2
+        ),
+    }
+    instances = []
+    for i, (node_type, kind) in enumerate(
+        [("head", NodeKind.HEAD)] + [("type_1", NodeKind.WORKER)] * 4
+    ):
+        instances.append(
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type=node_type,
+                    status=Instance.RAY_RUNNING,
+                    instance_id=str(i),
+                    node_id=f"r{i}",
+                    node_kind=kind,
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name=node_type,
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 1},
+                    node_id=f"r{i}".encode(),
+                ),
+            )
+        )
+
+    # 5 nodes are running and type_2 needs 2 more, but the cluster holds at most 6.
+    request = sched_request(
+        node_type_configs=node_type_configs, max_num_nodes=6, instances=instances
+    )
+    reply = ResourceDemandScheduler(event_logger).schedule(request)
+
+    to_launch, to_terminate = _launch_and_terminate(reply)
+    assert to_launch == {"type_2": 1}
+    assert to_terminate == []
+
+
+def test_shared_domain_multiset_dedup_does_not_suppress_running_replica():
+    """Shared-domain STRICT_PACK gang search must prefer replicas with idle
+    RAY_RUNNING hosts over unbooted ALLOCATED hosts and must not multiset-collapse
+    multi-replica domains with differing replica ordering."""
+    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    cfg = NodeTypeConfig(
+        name="gpu_mh",
+        resources={"CPU": 8, "GPU": 4},
+        min_worker_nodes=0,
+        max_worker_nodes=16,
+        labels={"ray.io/accelerator-type": "H100"},
+        runtime_label_keys=("ray.io/rack",),
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=2,
+            domain_label_key="ray.io/rack",
+            domain_exclusive=False,
+        ),
+    )
+
+    def _run(im_id: str, cid: str, rep_id: str, rack: str, idle: bool):
+        return AutoscalerInstance(
+            im_instance=Instance(
+                instance_id=im_id,
+                instance_type="gpu_mh",
+                status=Instance.RAY_RUNNING,
+                node_kind=NodeKind.WORKER,
+                node_id=f"nid-{im_id}",
+                cloud_instance_id=cid,
+            ),
+            ray_node=NodeState(
+                node_id=f"nid-{im_id}".encode(),
+                instance_id=cid,
+                ray_node_type_name="gpu_mh",
+                status=NodeStatus.RUNNING,
+                total_resources={"CPU": 8, "GPU": 4},
+                available_resources={"CPU": 8, "GPU": 4}
+                if idle
+                else {"CPU": 0, "GPU": 0},
+                labels={"ray.io/accelerator-type": "H100", "ray.io/rack": rack},
+            ),
+            cloud_instance_id=cid,
+            cloud_instance_replica_id=rep_id,
+        )
+
+    def _alloc(im_id: str, cid: str, rep_id: str):
+        return AutoscalerInstance(
+            im_instance=Instance(
+                instance_id=im_id,
+                instance_type="gpu_mh",
+                status=Instance.ALLOCATED,
+                node_kind=NodeKind.WORKER,
+                cloud_instance_id=cid,
+            ),
+            cloud_instance_id=cid,
+            cloud_instance_replica_id=rep_id,
+        )
+
+    def _rack(rack: str, pend_first: bool):
+        rep_a = [
+            _run(f"{rack}-a0", f"pod-{rack}-a0", f"{rack}-rep-a", rack, idle=False),
+            _run(f"{rack}-a1-run", f"pod-{rack}-a1", f"{rack}-rep-a", rack, idle=True),
+        ]
+        rep_b = [
+            _run(f"{rack}-b0", f"pod-{rack}-b0", f"{rack}-rep-b", rack, idle=False),
+            _alloc(f"{rack}-b1-pend", f"pod-{rack}-b1", f"{rack}-rep-b"),
+        ]
+        rep_c = [
+            _run(f"{rack}-c0", f"pod-{rack}-c0", f"{rack}-rep-c", rack, idle=False),
+            _alloc(f"{rack}-c1-pend", f"pod-{rack}-c1", f"{rack}-rep-c"),
+        ]
+        return (rep_b + rep_c + rep_a) if pend_first else (rep_a + rep_b + rep_c)
+
+    bundles = [
+        ResourceRequestUtil.make(
+            {"CPU": 2, "GPU": 4},
+            label_selectors=[[("ray.io/accelerator-type", in_op, ["H100"])]],
+        )
+        for _ in range(2)
+    ]
+    bs = BundleSelector(resource_requests=bundles)
+    bs.locality_requirement.locality_constraint.label_name = "ray.io/rack"
+    bs.locality_requirement.locality_constraint.placement_strategy = (
+        PlacementStrategy.STRICT_PACK
+    )
+    gang = GangResourceRequest(bundle_selectors=[bs])
+
+    sched = ResourceDemandScheduler()
+    req = SchedulingRequest(
+        node_type_configs={"gpu_mh": cfg},
+        current_instances=_rack("rack-a", pend_first=True)
+        + _rack("rack-b", pend_first=False),
+        gang_resource_requests=[gang],
+        disable_launch_config_check=True,
+    )
+    ctx = sched._build_context_with_placeholder_ttl(req)
+    out, inf = sched._try_schedule_gang(ctx, gang)
+    assert not inf
+    placed = [
+        (n.im_instance_id, n.is_running) for n in out if any(n.sched_requests.values())
+    ]
+    assert sum(not is_run for _, is_run in placed) == 1
+
+    # Also verify trimmed status_history keeps im_created_lids via first_status_transition_time_ns_fn.
+    trimmed_im = Instance(
+        instance_id="sub-0",
+        instance_type="gpu_mh",
+        status=Instance.RAY_RUNNING,
+        node_kind=NodeKind.WORKER,
+        launch_request_id="L-sub",
+        node_id="nid-sub-0",
+        cloud_instance_id="pod-sub-0",
+    )
+    trimmed_inst = AutoscalerInstance(
+        im_instance=trimmed_im,
+        ray_node=NodeState(
+            node_id=b"nid-sub-0",
+            instance_id="pod-sub-0",
+            ray_node_type_name="gpu_mh",
+            status=NodeStatus.RUNNING,
+            total_resources={"CPU": 8, "GPU": 4},
+            available_resources={"CPU": 8, "GPU": 4},
+            labels={"ray.io/accelerator-type": "H100", "ray.io/rack": "r0"},
+        ),
+        cloud_instance_id="pod-sub-0",
+    )
+    ctx_trimmed = ResourceDemandScheduler.ScheduleContext.from_schedule_request(
+        SchedulingRequest(
+            node_type_configs={"gpu_mh": cfg},
+            current_instances=[trimmed_inst],
+            disable_launch_config_check=True,
+            first_status_transition_time_ns_fn=lambda inst, st: (
+                100 if st == Instance.QUEUED else None
+            ),
+        )
+    )
+    assert ctx_trimmed.is_completed_subreplica_batch("gpu_mh", "L-sub", 1, 2)
 
 
 if __name__ == "__main__":

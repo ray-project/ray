@@ -1,8 +1,10 @@
 import os
 import pickle
+from unittest.mock import Mock
 
 import lance
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
@@ -17,9 +19,11 @@ from ray.data._internal.datasource.lance_datasink import (
     _null_column,
     _write_fragment,
 )
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data.datasource import SaveMode
 from ray.data.datasource.path_util import _unwrap_protocol
+from ray.data.expressions import col
 
 # Skip tests for older pylance versions (<=0.3.19) due to incompatible lance API changes with pyarrow v9.0.0
 pytestmark = pytest.mark.skipif(
@@ -458,6 +462,17 @@ def test_lance_read_with_version(data_path, ray_start_regular_shared):
         [6, "g"],
     ]
 
+    ds_filtered = ray.data.read_lance(
+        path, version=initial_version, scanner_options={"filter": "one >= 3"}
+    )
+    count = ds_filtered.count()
+    train, test = ds_filtered.train_test_split(test_size=0.2)
+    train_ids = {row["one"] for row in train.take_all()}
+    test_ids = {row["one"] for row in test.take_all()}
+    assert (count, train.count(), test.count()) == (4, 3, 1)
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == {3, 4, 5, 6}
+
 
 @pytest.fixture
 def mock_lance_write(monkeypatch):
@@ -574,6 +589,125 @@ def test_read_lance_rejects_pickle_object_columns(tmp_path, ray_start_regular_sh
         ds.take_all()
 
     assert not marker.exists(), "pickle.load executed attacker code"
+
+
+@pytest.fixture
+def lance_count_dataset(tmp_path):
+    path = str(tmp_path / "counts.lance")
+    table = pa.table({"id": range(28)})
+    return lance.write_dataset(table, path, max_rows_per_file=7, max_rows_per_group=7)
+
+
+@pytest.mark.parametrize("filter_kind", ["argument", "arrow", "pushdown", "combined"])
+def test_lance_filtered_planning_does_not_scan(
+    lance_count_dataset, monkeypatch, filter_kind
+):
+    if filter_kind == "arrow":
+        source = LanceDatasource(
+            lance_count_dataset.uri,
+            scanner_options={"filter": pc.field("id") >= 21},
+        )
+    else:
+        source = LanceDatasource(
+            lance_count_dataset.uri,
+            filter=None if filter_kind == "pushdown" else "id >= 21",
+        )
+    if filter_kind in {"pushdown", "combined"}:
+        source = source.apply_predicate(col("id") < 27)
+
+    scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+    fragment_count = Mock(side_effect=AssertionError("Filtered count must be unknown"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+    monkeypatch.setattr(
+        type(lance_count_dataset.get_fragments()[0]), "count_rows", fragment_count
+    )
+    tasks = source.get_read_tasks(3)
+    assert tasks
+    assert all(task.metadata.num_rows is None for task in tasks)
+    scanner.assert_not_called()
+    fragment_count.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"limit": 3},
+        {"limit": 0},
+        {"nearest": {"column": "vector", "q": [0.0], "k": 1}},
+        {"future_row_set_option": True},
+        {"fast_search": True},
+        {"include_deleted_rows": True},
+        {"filter": {"expr_filter": "id > 0"}},
+    ],
+)
+def test_lance_row_set_options_have_unknown_count(lance_count_dataset, options):
+    source = LanceDatasource(lance_count_dataset.uri, scanner_options=dict(options))
+    tasks = source.get_read_tasks(1)
+    assert tasks
+    assert all(task.metadata.num_rows is None for task in tasks)
+
+
+def test_lance_unfiltered_count_uses_fragment_metadata(
+    lance_count_dataset, monkeypatch
+):
+    source = LanceDatasource(
+        lance_count_dataset.uri, scanner_options={"fast_search": False}
+    )
+    scanner = Mock(side_effect=AssertionError("Unfiltered count must not scan data"))
+    monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+    tasks = source.get_read_tasks(1)
+    assert [task.metadata.num_rows for task in tasks] == [28]
+    scanner.assert_not_called()
+
+
+@pytest.mark.parametrize("filter_kind", ["argument", "pushdown"])
+def test_lance_filtered_count_and_split(
+    lance_count_dataset, ray_start_regular_shared, monkeypatch, filter_kind
+):
+    scanner = None
+    if filter_kind == "pushdown":
+        scanner = Mock(side_effect=AssertionError("Planning must not scan data"))
+        monkeypatch.setattr(lance.LanceDataset, "scanner", scanner)
+        ds = ray.data.read_lance(lance_count_dataset.uri, override_num_blocks=4)
+        ds = ds.filter(expr=col("id") >= 21)
+        rows = ds.take(1)
+        assert len(rows) == 1 and rows[0]["id"] >= 21
+    else:
+        ds = ray.data.read_lance(
+            lance_count_dataset.uri, filter="id >= 21", override_num_blocks=4
+        )
+
+    count = ds.count()
+    train, test = ds.train_test_split(test_size=0.2)
+    train_ids = {row["id"] for row in train.take_all()}
+    test_ids = {row["id"] for row in test.take_all()}
+    assert (count, train.count(), test.count()) == (7, 5, 2)
+    assert (len(train_ids), len(test_ids)) == (5, 2)
+    assert train_ids.isdisjoint(test_ids)
+    assert train_ids | test_ids == set(range(21, 28))
+    if scanner is not None:
+        scanner.assert_not_called()
+    else:
+        assert (
+            ray.data.read_lance(lance_count_dataset.uri, filter="id > 100").count() == 0
+        )
+
+
+def test_lance_random_filter_split(tmp_path, ray_start_regular_shared):
+    # Use enough rows that either split is overwhelmingly likely to be non-empty.
+    path = str(tmp_path / "random.lance")
+    lance.write_dataset(pa.table({"id": range(1000)}), path)
+    ds = ray.data.read_lance(path, filter="random() < 0.5", override_num_blocks=1)
+    train, test = ds.train_test_split(test_size=0.2)
+    train_rows = train.take_all()
+    test_rows = test.take_all()
+    train_ids = {row["id"] for row in train_rows}
+    test_ids = {row["id"] for row in test_rows}
+    assert train_ids.isdisjoint(test_ids)
+    assert train.count() + test.count() == len(train_ids | test_ids)
+    total = len(train_ids | test_ids)
+    assert len(train_ids) == int(total * 0.8)
+    assert len(test_ids) == total - int(total * 0.8)
 
 
 if __name__ == "__main__":

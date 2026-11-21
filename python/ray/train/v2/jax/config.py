@@ -175,15 +175,14 @@ class _JaxBackend(Backend):
             num_slices = 1
 
         # Calculate the number of workers per slice for multi-slice env setup.
-        if backend_config.use_tpu and num_slices > 1:
-            # Handle the case where a user requests less workers than the total
-            # capacity of the TPU slice.
-            workers_per_slice = (
-                worker_group._train_run_context.scaling_config._workers_per_slice
-            )
-        else:
-            # Assume even distribution based on the requested number of workers.
-            workers_per_slice = max(1, len(worker_group) // num_slices)
+        scaling_config = getattr(
+            getattr(worker_group, "_train_run_context", None), "scaling_config", None
+        )
+        workers_per_slice = (
+            getattr(scaling_config, "_workers_per_slice", None)
+            if backend_config.use_tpu and num_slices > 1
+            else None
+        ) or max(1, len(worker_group) // num_slices)
 
         # Set up JAX distributed environment on all workers
         num_workers_total = len(worker_group)

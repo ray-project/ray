@@ -9,7 +9,7 @@ from typing_extensions import Annotated
 import ray
 import ray.util.accelerators.accelerators as accelerators
 from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
-from ray._private.accelerators.tpu import get_chips_per_host
+from ray._private.accelerators.tpu import _is_positive_number, get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import (
@@ -28,16 +28,6 @@ TPU_ACCELERATOR_VALUES = {
     for name, member in AcceleratorType.__members__.items()
     if name.startswith("GOOGLE_TPU")
 }
-
-
-def _is_positive_number(val: Any) -> bool:
-    """Return True if val is a finite positive non-boolean int or float."""
-    return (
-        not isinstance(val, bool)
-        and isinstance(val, (int, float))
-        and (isinstance(val, int) or math.isfinite(val))
-        and val > 0
-    )
 
 
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
@@ -333,7 +323,7 @@ class TPUAccelerator(AcceleratorBackend):
                     if (
                         isinstance(tpu_val, bool)
                         or not isinstance(tpu_val, (int, float))
-                        or not math.isfinite(tpu_val)
+                        or (isinstance(tpu_val, float) and not math.isfinite(tpu_val))
                     ):
                         raise ValueError(
                             f"TPU resource count must be a finite number, got {tpu_val!r}."
