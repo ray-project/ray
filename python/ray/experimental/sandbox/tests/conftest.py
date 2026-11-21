@@ -44,7 +44,8 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
     It advertises ``--tar`` and copies the tar it reads on stdin to the image
     path, so a cached ``rootfs.erofs`` is a tar the test can open and
     inspect, with the owners the real build would store. Its argv lands in
-    ``mkfs.args`` next to the script. Yields the directory holding both.
+    ``mkfs.args`` next to the script; ``-V`` only prints a version. Yields
+    the directory holding both.
     """
     from ray.experimental.sandbox._internal.image_utils import mkfs_erofs_path
 
@@ -54,9 +55,13 @@ def fake_mkfs_erofs(tmp_path, monkeypatch):
     script.write_text(
         "#!/bin/sh\n"
         'if [ "$1" = "--help" ]; then echo "  --tar=MODE  build from tarball"; exit 0; fi\n'
+        'if [ "$1" = "-V" ] || [ "$1" = "--version" ]; then\n'
+        '  echo "mkfs.erofs 1.8.5-fake"; exit 0\n'
+        "fi\n"
         'echo "$@" > "$(dirname "$0")/mkfs.args"\n'
-        "# args: --tar=f -b<page size> -E^inline_data OUT; the tar is on stdin\n"
-        'cat > "$4"\n'
+        "# args: [options...] OUT; the tar is on stdin\n"
+        'for arg in "$@"; do out_arg=$arg; done\n'
+        'cat > "$out_arg"\n'
     )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
