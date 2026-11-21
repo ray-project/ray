@@ -82,8 +82,9 @@ void ClusterResourceScheduler::Init(
       get_used_object_store_memory,
       get_pull_manager_at_capacity,
       shutdown_raylet_gracefully,
-      [this](const NodeResources &local_resource_update) {
-        cluster_resource_manager_->AddOrUpdateNode(local_node_id_, local_resource_update);
+      [this](NodeResources local_resource_update) {
+        cluster_resource_manager_->AddOrUpdateNode(local_node_id_,
+                                                   std::move(local_resource_update));
       },
       resource_usage_gauge,
       clock);
@@ -228,8 +229,9 @@ bool ClusterResourceScheduler::SubtractRemoteNodeAvailableResources(
   if (!IsSchedulable(resource_request, node_id)) {
     return false;
   }
-  return cluster_resource_manager_->SubtractNodeAvailableResources(node_id,
-                                                                   resource_request);
+  return cluster_resource_manager_
+      ->SubtractNodeAvailableResources(node_id, resource_request)
+      .has_value();
 }
 
 std::string ClusterResourceScheduler::DebugString(void) const {

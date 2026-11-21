@@ -18,6 +18,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
+#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray {
 
@@ -27,10 +28,10 @@ NodeResources CreateNodeResources(double available_cpu,
                                   double total_custom_resource = 0,
                                   bool object_pulls_queued = false) {
   NodeResources resources;
-  resources.SetAvailableResource(ResourceID::CPU(), available_cpu);
+  resources.SetAvailableResource(ResourceID::CPU(), {available_cpu});
   resources.total.Set(ResourceID::CPU(), total_cpu);
   resources.SetAvailableResource(scheduling::ResourceID("CUSTOM"),
-                                 available_custom_resource);
+                                 {available_custom_resource});
   resources.total.Set(scheduling::ResourceID("CUSTOM"), total_custom_resource);
   resources.object_pulls_queued = object_pulls_queued;
   return resources;
@@ -67,7 +68,9 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
   // Prepare a sync message with updated totals/available, labels and flags.
   syncer::ResourceViewSyncMessage payload;
   payload.mutable_resources_total()->insert({"CPU", 10.0});
-  payload.mutable_resources_available()->insert({"CPU", 5.0});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(5.0);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
   payload.mutable_labels()->insert({"zone", "us-east-1a"});
   payload.set_object_pulls_queued(true);
   payload.set_idle_duration_ms(42);
@@ -86,6 +89,33 @@ TEST_F(ClusterResourceManagerTest, UpdateNode) {
   ASSERT_TRUE(node_resources.is_draining);
   ASSERT_EQ(node_resources.draining_deadline_timestamp_ms, 123456);
   ASSERT_TRUE(node_resources.last_resource_update_time.has_value());
+}
+
+TEST_F(ClusterResourceManagerTest, UpdateNodeKeepsGpuInstances) {
+  // A raylet reporting GPUs [0.4, 0.4] must not look like it can fit a 0.6 GPU
+  // request, even though the aggregate is 0.8.
+  syncer::ResourceViewSyncMessage payload;
+  payload.mutable_resources_total()->insert({"CPU", 1.0});
+  payload.mutable_resources_total()->insert({"GPU", 2.0});
+  rpc::syncer::ResourceInstances cpu_instances;
+  cpu_instances.add_values(1.0);
+  (*payload.mutable_resources_available_instances())["CPU"] = cpu_instances;
+  rpc::syncer::ResourceInstances gpu_instances;
+  gpu_instances.add_values(0.4);
+  gpu_instances.add_values(0.4);
+  (*payload.mutable_resources_available_instances())["GPU"] = gpu_instances;
+  ASSERT_TRUE(manager->UpdateNode(node0, payload));
+
+  ASSERT_EQ(manager->GetNodeResources(node0).GetAvailableSum(ResourceID::GPU()),
+            FixedPoint(0.8));
+  ASSERT_FALSE(
+      manager->HasAvailableResources(node0,
+                                     ResourceMapToResourceRequest({{"GPU", 0.6}}, false),
+                                     /*ignore_object_store_memory_requirement=*/false));
+  ASSERT_TRUE(
+      manager->HasAvailableResources(node0,
+                                     ResourceMapToResourceRequest({{"GPU", 0.4}}, false),
+                                     /*ignore_object_store_memory_requirement=*/false));
 }
 
 TEST_F(ClusterResourceManagerTest, DebugStringTest) {
@@ -118,10 +148,13 @@ TEST_F(ClusterResourceManagerTest, HasFeasibleResourcesTest) {
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false)));
-  manager->SubtractNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(
+      manager
+          ->SubtractNodeAvailableResources(
+              node0,
+              ResourceMapToResourceRequest({{"CPU", 1}},
+                                           /*requires_object_store_memory=*/false))
+          .has_value());
   // node0 has no available CPU resource but it's still feasible.
   ASSERT_TRUE(manager->HasFeasibleResources(
       node0,
@@ -168,23 +201,21 @@ TEST_F(ClusterResourceManagerTest, SubtractAndAddNodeAvailableResources) {
   const auto &node_resources = manager->GetNodeResources(node0);
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
 
-  manager->SubtractNodeAvailableResources(
+  auto allocation = manager->SubtractNodeAvailableResources(
       node0,
       ResourceMapToResourceRequest({{"CPU", 1}},
                                    /*requires_object_store_memory=*/false));
-  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
-  // Subtract again and make sure the available == 0.
-  manager->SubtractNodeAvailableResources(
-      node0,
-      ResourceMapToResourceRequest({{"CPU", 1}},
-                                   /*requires_object_store_memory=*/false));
+  ASSERT_TRUE(allocation.has_value());
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
 
-  // Add resources back.
-  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
-  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
-  // Add again and make sure the available == 1 (<= total).
-  manager->AddNodeAvailableResources(node0, ResourceSet({{"CPU", FixedPoint(1)}}));
+  auto allocation2 = manager->SubtractNodeAvailableResources(
+      node0,
+      ResourceMapToResourceRequest({{"CPU", 1}},
+                                   /*requires_object_store_memory=*/false));
+  ASSERT_FALSE(allocation2.has_value());
+  ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 0);
+
+  manager->AddNodeAvailableResources(node0, allocation.value());
   ASSERT_EQ(node_resources.GetAvailableSum(ResourceID::CPU()), 1);
 }
 

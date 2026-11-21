@@ -64,7 +64,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       std::function<int64_t(void)> get_used_object_store_memory,
       std::function<bool(void)> get_pull_manager_at_capacity,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-      std::function<void(const NodeResources &)> resource_change_subscriber,
+      std::function<void(NodeResources)> resource_change_subscriber,
       ray::observability::MetricInterface &resource_usage_gauge,
       ClockInterface &clock);
 
@@ -268,7 +268,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
 
   /// Subscribes to resource changes.
-  std::function<void(const NodeResources &)> resource_change_subscriber_;
+  std::function<void(NodeResources)> resource_change_subscriber_;
 
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;

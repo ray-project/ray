@@ -939,6 +939,63 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultiplePgResourceAndNoBundle
   }
 }
 
+TEST_F(NodeResourceInstanceSetTest, TestCanAllocateMatchesTryAllocate) {
+  // The allocation logic in CanAllocate and TryAllocate must stay
+  // consistent, so this test enumerate several cases to make sure they do.
+  const std::vector<double> instance_values = {0, 0.3, 0.5, 0.7, 1};
+  const std::vector<double> demands = {
+      0.1, 0.3, 0.5, 0.7, 0.8, 1, 1.3, 1.5, 2, 2.3, 2.5, 3, 3.5};
+
+  // Single-instance resource.
+  for (double available : instance_values) {
+    for (double demand : demands) {
+      NodeResourceInstanceSet r;
+      r.Set(ResourceID("CPU"), std::vector<FixedPoint>({FixedPoint(available)}));
+      ResourceSet request({{"CPU", FixedPoint(demand)}});
+      NodeResourceInstanceSet copy = r;
+      ASSERT_EQ(r.CanAllocate(request), copy.TryAllocate(request).has_value())
+          << "available=" << available << " demand=" << demand;
+    }
+  }
+
+  // Multi-instance unit resource with three instances.
+  for (double a : instance_values) {
+    for (double b : instance_values) {
+      for (double c : instance_values) {
+        for (double demand : demands) {
+          NodeResourceInstanceSet r;
+          r.Set(ResourceID("GPU"),
+                std::vector<FixedPoint>({FixedPoint(a), FixedPoint(b), FixedPoint(c)}));
+          ResourceSet request({{"GPU", FixedPoint(demand)}});
+          NodeResourceInstanceSet copy = r;
+          ASSERT_EQ(r.CanAllocate(request), copy.TryAllocate(request).has_value())
+              << "available=[" << a << ", " << b << ", " << c << "] demand=" << demand;
+        }
+      }
+    }
+  }
+
+  // Multiple resources in one request.
+  for (double a : instance_values) {
+    for (double b : instance_values) {
+      for (double cpu_demand : demands) {
+        for (double gpu_demand : demands) {
+          NodeResourceInstanceSet r;
+          r.Set(ResourceID("CPU"), std::vector<FixedPoint>({FixedPoint(2)}));
+          r.Set(ResourceID("GPU"),
+                std::vector<FixedPoint>({FixedPoint(a), FixedPoint(b)}));
+          ResourceSet request(
+              {{"CPU", FixedPoint(cpu_demand)}, {"GPU", FixedPoint(gpu_demand)}});
+          NodeResourceInstanceSet copy = r;
+          ASSERT_EQ(r.CanAllocate(request), copy.TryAllocate(request).has_value())
+              << "GPU=[" << a << ", " << b << "] cpu_demand=" << cpu_demand
+              << " gpu_demand=" << gpu_demand;
+        }
+      }
+    }
+  }
+}
+
 TEST_F(NodeResourceInstanceSetTest, TestFree) {
   NodeResourceInstanceSet r1;
   r1.Set(ResourceID("GPU"), std::vector<FixedPoint>({FixedPoint(1), FixedPoint(0.3)}));
