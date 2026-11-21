@@ -13,7 +13,18 @@ import zlib
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Set, TypeVar, Union, cast
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Set,
+    TypeGuard,
+    TypeVar,
+    Union,
+    cast,
+)
 
 import requests  # type: ignore[import-untyped]
 
@@ -767,6 +778,14 @@ def is_running_in_asyncio_loop() -> bool:
         return False
 
 
+def is_capacity_limited(target_capacity: Optional[float]) -> TypeGuard[float]:
+    """Whether `target_capacity` limits the number of replicas.
+
+    Unset and 100% mean no limit.
+    """
+    return target_capacity is not None and target_capacity < 100
+
+
 def get_capacity_adjusted_num_replicas(
     num_replicas: int, target_capacity: Optional[float]
 ) -> int:
@@ -778,7 +797,7 @@ def get_capacity_adjusted_num_replicas(
     Rather than using the default `round` behavior in Python, which rounds half to
     even, uses the `decimal` module to round half up (standard rounding behavior).
     """
-    if target_capacity is None or target_capacity == 100:
+    if not is_capacity_limited(target_capacity):
         return num_replicas
 
     if target_capacity == 0 or num_replicas == 0:
