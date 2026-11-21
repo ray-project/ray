@@ -774,8 +774,11 @@ class PopulationBasedTraining(FIFOScheduler):
         policy = [
             trial_name,
             trial_to_clone_name,
-            trial.last_result.get(TRAINING_ITERATION, 0),
-            trial_to_clone.last_result.get(TRAINING_ITERATION, 0),
+            # The scheduler runs before ``trial.last_result`` is updated, and the
+            # clone may have trained past its checkpoint. Log the iterations of
+            # the results PBT recorded, which match the exploited checkpoint.
+            trial_state.last_result.get(TRAINING_ITERATION, 0),
+            new_state.last_result.get(TRAINING_ITERATION, 0),
             trial_to_clone.config,
             new_config,
         ]
