@@ -29,7 +29,8 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
     ExperimentalActorPoolMapOperator,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    ExperimentalActorPoolScalingRequest,
+    DrainReason,
+    ScaleUpRequest,
     _ExperimentalActorState,
 )
 from ray.data.block import Block, BlockMetadata
@@ -197,11 +198,7 @@ def _add_ready_actor_on(
     node_id: str,
 ) -> ActorHandle:
     """Scale one actor onto ``node_id`` and drive it pending -> running."""
-    num = pool.scale(
-        ExperimentalActorPoolScalingRequest(
-            delta=1, reason="test", target_nodes_to_scale_actors_on=(node_id,)
-        )
-    )
+    num = pool.scale(ScaleUpRequest.on_nodes((node_id,), reason="test"))
     assert num == 1
     actor, ready_ref = created[-1]
     ray.get(ready_ref)
@@ -358,14 +355,7 @@ def test_committed_usage_tracked_incrementally(two_node_cluster):
         node_b = _node_id("node_b")
 
         # (1) Pending (not yet ready): committed at the target node.
-        assert (
-            pool.scale(
-                ExperimentalActorPoolScalingRequest(
-                    delta=1, reason="test", target_nodes_to_scale_actors_on=(node_a,)
-                )
-            )
-            == 1
-        )
+        assert pool.scale(ScaleUpRequest.on_nodes((node_a,), reason="test")) == 1
         assert pool.committed_usage_by_node == _recompute_committed_usage_by_node(pool)
         assert pool.committed_usage_by_node[node_a].cpu == 1
 
@@ -383,7 +373,7 @@ def test_committed_usage_tracked_incrementally(two_node_cluster):
         # (4) Downscale one (idle) actor: it drains and is killed on the next
         # tick, dropping its node entry (no stale zero).
         id_b = pool.get_actor_logical_id(b_actor)
-        assert pool._downscale_actor_by_id(id_b) is True
+        assert pool._downscale_actor_by_id(id_b, DrainReason.RESIZE) is True
         pool.process_draining_actors()
         committed = pool.committed_usage_by_node
         assert committed == _recompute_committed_usage_by_node(pool)
@@ -405,7 +395,7 @@ def test_downscale_specific_actor_by_id(two_node_cluster):
 
         # Remove exactly actor `a` (idle: drains and is killed this tick);
         # `b` is untouched.
-        assert pool._downscale_actor_by_id(id_a) is True
+        assert pool._downscale_actor_by_id(id_a, DrainReason.RESIZE) is True
         pool.process_draining_actors()
         assert not pool.has_actor(id_a)
         assert pool.has_actor(id_b)
@@ -425,7 +415,7 @@ def test_drain_one_actor_pool_keeps_serving(two_node_cluster):
         a = _add_ready_actor_on(pool, created, _node_id("node_a"))
         b = _add_ready_actor_on(pool, created, _node_id("node_b"))
 
-        pool.begin_draining(a)
+        pool.begin_draining(a, reason=DrainReason.RESIZE)
         assert pool.num_draining_actors() == 1
         assert pool._running_actors[a].status == ActorStatus.DRAINING
         # `a` is excluded from the serving count (out of the scheduling heaps,
@@ -458,7 +448,7 @@ def test_drain_waits_for_inflight_tasks(two_node_cluster):
 
         bundle = _make_bundle()
         pool.on_task_submitted(a, bundle)
-        pool.begin_draining(a)
+        pool.begin_draining(a, reason=DrainReason.RESIZE)
 
         # In-flight task -> not fully drained -> not killed (waits indefinitely).
         assert pool.process_draining_actors() == 0
@@ -503,15 +493,15 @@ def test_drained_actor_released_without_kill(two_node_cluster, monkeypatch):
         g0 = pool.draining_generation
         assert pool.draining_generation == g0  # reading never bumps
 
-        pool.begin_draining(a)  # idle: fully drained immediately
+        pool.begin_draining(a, reason=DrainReason.RESIZE)  # idle: fully drained at once
         g1 = pool.draining_generation
         assert g1 > g0  # add -> bump
 
-        assert pool.reclaim_draining_actors(1) == 1
+        assert pool.reclaim_draining_actors(limit=1) == 1
         g2 = pool.draining_generation
         assert g2 > g1  # reclaim -> bump
 
-        pool.begin_draining(a)
+        pool.begin_draining(a, reason=DrainReason.RESIZE)
         g3 = pool.draining_generation
         assert g3 > g2  # re-add -> bump
 
@@ -543,7 +533,7 @@ def test_drain_waits_for_outstanding_outputs(two_node_cluster):
         # actor until downstream consumes them), then finishes.
         bank.live_by_actor[id_a] = LiveObjStore(num_pulled_output_blocks=2)
         pool.on_task_completed(a, bundle)
-        pool.begin_draining(a)
+        pool.begin_draining(a, reason=DrainReason.RESIZE)
 
         # No in-flight tasks but 2 outstanding outputs -> NOT released.
         assert pool.process_draining_actors() == 0
@@ -569,18 +559,11 @@ def test_drain_pending_victim_is_dropped(two_node_cluster):
     pool, created = _build_pool(_ProbeWorker)
     try:
         node_a = _node_id("node_a")
-        assert (
-            pool.scale(
-                ExperimentalActorPoolScalingRequest(
-                    delta=1, reason="test", target_nodes_to_scale_actors_on=(node_a,)
-                )
-            )
-            == 1
-        )
+        assert pool.scale(ScaleUpRequest.on_nodes((node_a,), reason="test")) == 1
         assert pool.num_pending_actors() == 1
         pending_id = pool.pending_ids_by_target_node()[node_a][0]
 
-        assert pool._downscale_actor_by_id(pending_id) is True
+        assert pool._downscale_actor_by_id(pending_id, DrainReason.RESIZE) is True
         assert pool.num_pending_actors() == 0
         assert not pool.has_actor(pending_id)
     finally:
@@ -617,7 +600,7 @@ def test_stalled_drain_warns_debounced_and_never_kills(two_node_cluster, monkeyp
         id_a = pool.get_actor_logical_id(a)
         # A task that never completes -> the drain can never finish.
         pool.on_task_submitted(a, _make_bundle())
-        pool.begin_draining(a)  # since == 1000.0
+        pool.begin_draining(a, reason=DrainReason.RESIZE)  # since == 1000.0
 
         # Below the stall threshold: no warning fired (debounce ts untouched).
         clock.t = 1050.0

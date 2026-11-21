@@ -13,6 +13,7 @@ from typing import Any, Dict, Optional, cast
 
 import pytest
 
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
     SIZER_DOWNSCALE_HYSTERESIS,
@@ -36,6 +37,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
     prev_actor_pool_ops,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+    DrainReason,
     _DrainingActorInfo,
 )
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
@@ -80,6 +82,7 @@ from ray.data._internal.experimental.execution.sizer.scale_how_many import (
     OpSizingPolicy,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
+    place_downscales,
     resolve_evictions,
 )
 from ray.data._internal.experimental.execution.sizer.scaling_guard import OpScalingGuard
@@ -644,7 +647,7 @@ def test_initial_sizing_request_creates_untargeted_in_scarcity_order():
     for op in scaled_ops:
         (req,) = op._pool.scaled
         assert req.delta == op._pool.initial_size()
-        assert not getattr(req, "target_nodes_to_scale_actors_on", ())
+        assert not getattr(req, "nodes", ())
         # The optional wait_for_min_actors_s wait runs here, since start() no
         # longer creates the actors it would wait on.
         assert op.waited_for_min_actors
@@ -1727,7 +1730,7 @@ def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
         _FakePool(min_size=1, max_size=500, cpu=1, running=10, in_flight=1),
         inputs=[up],
         node=None,
-        reclaimable=3,  # sink (processed first, sink-most) revives these for free
+        reclaimable=3,  # sink (processed first, sink-most) reclaims these for free
     )
     sizer, topo = _bootstrapped(up, sink, enqueued=100_000, view=view, warm=True)
     req = _tick(sizer, topo)
@@ -1802,8 +1805,8 @@ def test_ledger_is_per_node_and_constraint_aware():
 
 
 def test_ledger_reclaimable_accounting():
-    # A node with room for 4 actors + 3 draining actors this op can revive:
-    # max_upscale_delta = 4 + 3. Granting the 3 reclaimable revives them from
+    # A node with room for 4 actors + 3 draining actors this op can reclaim:
+    # max_upscale_delta = 4 + 3. Granting the 3 reclaimable takes them back from
     # their held slots and consumes ZERO free, so a peer contending for the
     # same node still sees the full 4; granting past them debits free.
     op = cast(Any, _LedgerOp(reclaimable=3))
@@ -1814,7 +1817,7 @@ def test_ledger_reclaimable_accounting():
     assert ledger.max_upscale_delta(op) == 7
     ledger.grant(op, 3)
     assert ledger.max_upscale_delta(peer) == 4
-    ledger.grant(op, 5)  # 3 revived + 2 new
+    ledger.grant(op, 5)  # 3 reclaimed + 2 new
     assert ledger.max_upscale_delta(peer) == 2
 
 
@@ -2239,17 +2242,65 @@ def _evictable_ops(*, cpu_running, cpu_pending=(), gpu_running=()):
 
 
 def test_resolve_evictions_cheapest_first_cross_op():
-    """Victims are chosen pending-then-running, across ops, only until each
+    """Actors are shed pending-then-running, across ops, only until each
     over-allocated node fits again; ops whose shape cannot reduce the overage
     (wrong dimension) are skipped."""
     cpu_op, gpu_op, profiles = _evictable_ops(
         cpu_running=["r1", "r2"], cpu_pending=["p1"], gpu_running=["g1"]
     )
-    victims = resolve_evictions(
+    shed = resolve_evictions(
         nodes_to_reclaim={"n1": ExecutionResources(cpu=2)}, profiles=profiles
     )
-    # 2 CPU over -> pending p1 then running r1; r2 untouched; gpu_op skipped.
-    assert victims == {cpu_op: ["p1", "r1"]}
+    # 2 CPU over -> shed two of cpu_op's three on n1 (the pool takes the
+    # pending first); gpu_op skipped.
+    assert shed == {cpu_op: ["n1", "n1"]}
+
+
+class _PickFirstNodes:
+    """Downscale placement that sheds from "n1"."""
+
+    def pick_downscale_nodes(self, view, *, count, favored_nodes):
+        return ["n1"] * count
+
+
+@pytest.mark.parametrize(
+    "completed,delta,expected_pending,expected_nodes",
+    [
+        # Untargeted pendings hold no node's capacity: shed them first, then
+        # let placement pick the node for the rest.
+        pytest.param(False, -3, ("p1", "p2"), ("n1",), id="untargeted-first"),
+        pytest.param(False, -1, ("p1",), (), id="untargeted-cover-it"),
+        # A completed op releases everything, untargeted pendings included.
+        pytest.param(True, -4, ("p1", "p2"), ("n1", "n1"), id="completed-release"),
+    ],
+)
+def test_place_downscales_sheds_untargeted_pendings_by_id(
+    completed, delta, expected_pending, expected_nodes
+):
+    op = _FakeOp(
+        "pg_op", _FakePool(min_size=1, max_size=10, cpu=1), completed=completed
+    )
+    view = replace(
+        _placement_view(
+            per_actor=ExecutionResources(cpu=1),
+            victim_ids_by_node={"n1": ["r1", "r2"]},
+        ),
+        untargeted_pending_ids=["p1", "p2"],
+    )
+    placed: Dict[Any, Any] = {}
+    place_downscales(
+        placed=placed,
+        request={op: ActorPoolScalingRequest(delta=delta)},
+        views={op: view},
+        favored=set(),
+        free={},
+        placement=cast(Any, _PickFirstNodes()),
+        evicted_ops=set(),
+    )
+    req = placed[op]
+    assert req.delta == delta
+    assert req.pending_ids == expected_pending
+    assert req.nodes == expected_nodes
 
 
 def test_resolve_evictions_mixed_overage_takes_one_actor_per_dimension():
@@ -2259,10 +2310,10 @@ def test_resolve_evictions_mixed_overage_takes_one_actor_per_dimension():
     cpu_op, gpu_op, profiles = _evictable_ops(
         cpu_running=["r1", "r2", "r3"], gpu_running=["g1"]
     )
-    victims = resolve_evictions(
+    shed = resolve_evictions(
         nodes_to_reclaim={"n1": ExecutionResources(cpu=1, gpu=1)}, profiles=profiles
     )
-    assert victims == {cpu_op: ["r1"], gpu_op: ["g1"]}
+    assert shed == {cpu_op: ["n1"], gpu_op: ["n1"]}
 
 
 # --- profiles and telemetry ----------------------------------------------------
@@ -2403,6 +2454,7 @@ def test_build_op_placement_view():
             "n3": {"t2": _actor_state(2, status=ActorStatus.DRAINING)},
         },
         pending_ids_by_target_node=lambda: {"n2": ["p1"]},
+        untargeted_pending_ids=lambda: ["u1"],
         per_actor_resource_usage=lambda: ExecutionResources(cpu=1),
         max_tasks_in_flight_per_actor=lambda: 4,
     )
@@ -2426,6 +2478,8 @@ def test_build_op_placement_view():
     assert counts.actors_by_node == full.actors_by_node == {"n1": 2, "n2": 3}
     assert counts.idle_actors_by_node == full.idle_actors_by_node == {"n1": 1, "n2": 2}
     assert counts.pending_ids_by_node == full.pending_ids_by_node == {"n2": ["p1"]}
+    # Untargeted pendings belong to no node: listed by id, not counted per node.
+    assert counts.untargeted_pending_ids == full.untargeted_pending_ids == ["u1"]
     assert full.victim_ids_by_node == {"n1": ["a", "b"], "n2": ["c", "d"]}
     assert full.victim_drain_cost_by_node == {
         "n1": [(0, 0), (3, 0)],
@@ -2443,28 +2497,36 @@ def test_build_op_placement_view():
     assert (full.upstream_edge_weight, full.downstream_edge_weight) == (0.75, 0.25)
 
 
-def test_reclaimable_node_ids_follow_revival_order():
-    """reclaimable_node_ids(limit=k) returns the nodes of the first k draining actors
-    in the same (insertion) order reclaim_draining_actors revives them, so the
-    sizer's pre-placement view adjustment matches what apply does."""
+def test_reclaimable_node_ids_follow_reclaim_order():
+    """reclaimable_node_ids(limit=k) returns the nodes of the first k draining
+    actors in the order reclaim_draining_actors reclaims them -- busiest first,
+    then drain-start order -- so the sizer's pre-placement view adjustment
+    matches what apply does."""
     pool = SimpleNamespace(
         _draining_actors={
-            "a1": _DrainingActorInfo(since=0.0),
-            "a2": _DrainingActorInfo(since=0.0),
-            "a3": _DrainingActorInfo(since=0.0),
+            "a1": _DrainingActorInfo(since=0.0, reason=DrainReason.RESIZE),
+            "a2": _DrainingActorInfo(since=0.0, reason=DrainReason.RESIZE),
+            "a3": _DrainingActorInfo(since=0.0, reason=DrainReason.RESIZE),
         },
         _running_actors={
-            "a1": SimpleNamespace(actor_location="n1"),
-            "a2": SimpleNamespace(actor_location="n2"),
-            "a3": SimpleNamespace(actor_location="n1"),
+            "a1": SimpleNamespace(actor_location="n1", num_tasks_in_flight=0),
+            "a2": SimpleNamespace(actor_location="n2", num_tasks_in_flight=0),
+            "a3": SimpleNamespace(actor_location="n3", num_tasks_in_flight=2),
         },
+        _num_outstanding_outputs=lambda state: 0,
+    )
+    pool._reclaimable_draining_actors = (
+        lambda: _ExperimentalActorPool._reclaimable_draining_actors(cast(Any, pool))
     )
     reclaimable_node_ids = _ExperimentalActorPool.reclaimable_node_ids
-    assert reclaimable_node_ids(cast(Any, pool), limit=2) == ["n1", "n2"]
-    assert reclaimable_node_ids(cast(Any, pool), limit=99) == ["n1", "n2", "n1"]
-    # Evicted (non-reclaimable) actors are skipped.
-    pool._draining_actors["a2"] = _DrainingActorInfo(since=0.0, reclaimable=False)
-    assert reclaimable_node_ids(cast(Any, pool), limit=99) == ["n1", "n1"]
+    # a3 is busiest; a1 and a2 tie and keep drain-start order.
+    assert reclaimable_node_ids(cast(Any, pool), limit=2) == ["n3", "n1"]
+    assert reclaimable_node_ids(cast(Any, pool), limit=99) == ["n3", "n1", "n2"]
+    # Actors losing their node (non-reclaimable) are skipped.
+    pool._draining_actors["a3"] = _DrainingActorInfo(
+        since=0.0, reason=DrainReason.ALLOC_SHRINK
+    )
+    assert reclaimable_node_ids(cast(Any, pool), limit=99) == ["n1", "n2"]
 
 
 if __name__ == "__main__":
