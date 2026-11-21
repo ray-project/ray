@@ -51,6 +51,9 @@ from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     SupportsMetadata,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 from ray.data.block import BlockMetadata
 from ray.util.annotations import DeveloperAPI
 
@@ -192,14 +195,22 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         limit: Optional[int],
         delete_io: Optional["FileIO"] = None,
     ) -> Iterator[pa.RecordBatch]:
+        from pyiceberg.io.pyarrow import schema_to_pyarrow
+
         # The listing routes only reads of at least one column.
         assert not self._drop_all_columns
+        columns = [field.name for field in self._projected_schema.columns]
+        names = set(columns)
+        if self._scan_predicate is not None:
+            names.update(get_column_references(self._scan_predicate))
+        schema = self._table_metadata.schema().select(*sorted(names))
         return read_routed_rows(
             rows,
             io=self._io,
             delete_io=self._io if delete_io is None else delete_io,
             table_location=self._table_metadata.location,
-            columns=[field.name for field in self._projected_schema.columns],
+            columns=columns,
+            schema=schema_to_pyarrow(schema, include_field_ids=False),
             predicate=self._scan_predicate,
             limit=limit,
         )

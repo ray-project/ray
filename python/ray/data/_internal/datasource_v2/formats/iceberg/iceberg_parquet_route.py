@@ -17,8 +17,12 @@ it when:
   case-sensitive and it reads at least one column;
 - the table has no name mapping, which files added without field IDs need;
 - every column the read or its filter uses is a top-level primitive column
-  with the same field ID, name and type in every schema the table has had,
-  so every data file stores it under that name and type.
+  that no schema the table has had renamed or gave to another field ID, so a
+  data file stores it under its name or not at all. Its type may have widened
+  (``int`` to ``long``, ``float`` to ``double``, a decimal's precision), and
+  it may have been added after a file was written if it has no initial
+  default: Ray's Parquet reader is given the current types, so it widens the
+  old values and reads a missing column as nulls, as ``ArrowScan`` does.
 
 A file then takes it when it is Parquet, lives on the filesystem of the table's
 location and has no delete files but position deletes. Every other file, such
@@ -123,7 +127,7 @@ class IcebergParquetRoute:
             or table_metadata.name_mapping() is not None
         ):
             return None
-        if not all(_same_in_every_schema(table_metadata, name) for name in columns):
+        if not all(_readable_by_name(table_metadata, name) for name in columns):
             return None
         scheme, netloc, _ = PyArrowFileIO.parse_location(table_metadata.location)
         return cls(
@@ -222,6 +226,7 @@ def read_routed_rows(
     delete_io: "FileIO",
     table_location: str,
     columns: List[str],
+    schema: pa.Schema,
     predicate: Optional["Expr"],
     limit: Optional[int],
 ) -> Iterator[pa.RecordBatch]:
@@ -233,6 +238,8 @@ def read_routed_rows(
         delete_io: The ``FileIO`` to read delete files through.
         table_location: The table's location, whose filesystem holds the rows.
         columns: The columns to read.
+        schema: The current types of ``columns`` and the predicate's columns,
+            which older files' values are widened to.
         predicate: The filter ``list_files`` pruned with.
         limit: The most rows to read.
 
@@ -251,7 +258,11 @@ def read_routed_rows(
             return
         if task is None:
             tables = _parquet_reader(
-                filesystem, columns=columns, predicate=predicate, limit=remaining
+                filesystem,
+                columns=columns,
+                schema=schema,
+                predicate=predicate,
+                limit=remaining,
             ).read(rows)
         else:
             tables = _read_with_position_deletes(
@@ -260,6 +271,7 @@ def read_routed_rows(
                 filesystem=filesystem,
                 delete_io=delete_io,
                 columns=columns,
+                schema=schema,
                 predicate=predicate,
                 limit=remaining,
             )
@@ -314,6 +326,7 @@ def _read_with_position_deletes(
     filesystem: "FileSystem",
     delete_io: "FileIO",
     columns: List[str],
+    schema: pa.Schema,
     predicate: Optional["Expr"],
     limit: Optional[int],
 ) -> Iterator[pa.Table]:
@@ -321,6 +334,7 @@ def _read_with_position_deletes(
     reader = _parquet_reader(
         filesystem,
         columns=columns + [_FilePosition.name],
+        schema=schema,
         predicate=None,
         synthesized_columns=[_FilePosition()],
     )
@@ -363,19 +377,55 @@ def _read_deletes_function() -> Optional[Callable]:
     return _read_deletes
 
 
-def _same_in_every_schema(table_metadata: "TableMetadata", name: str) -> bool:
+def _readable_by_name(table_metadata: "TableMetadata", name: str) -> bool:
+    """Whether every data file stores column ``name`` under that name, if at
+    all, at a type that widens to the current one."""
     current = _top_level_field(table_metadata.schema(), name)
-    if current is None or not current.field_type.is_primitive:
+    if (
+        current is None
+        or not current.field_type.is_primitive
+        or current.initial_default is not None
+    ):
         return False
     for schema in table_metadata.schemas:
-        field = _top_level_field(schema, name)
-        if (
-            field is None
-            or field.field_id != current.field_id
-            or field.field_type != current.field_type
-        ):
+        by_name = _top_level_field(schema, name)
+        if by_name is not None and by_name.field_id != current.field_id:
+            # The name belonged to another column, which old files hold.
+            return False
+        by_id = next(
+            (field for field in schema.columns if field.field_id == current.field_id),
+            None,
+        )
+        if by_id is None:
+            # Added later; files written before it read as nulls.
+            continue
+        if by_id.name != name or not _widens_to(by_id.field_type, current.field_type):
             return False
     return True
+
+
+def _widens_to(old, new) -> bool:
+    """Whether Iceberg's type promotion takes ``old`` values to ``new``."""
+    from pyiceberg.types import (
+        DecimalType,
+        DoubleType,
+        FloatType,
+        IntegerType,
+        LongType,
+    )
+
+    if old == new:
+        return True
+    if isinstance(old, IntegerType) and isinstance(new, LongType):
+        return True
+    if isinstance(old, FloatType) and isinstance(new, DoubleType):
+        return True
+    return (
+        isinstance(old, DecimalType)
+        and isinstance(new, DecimalType)
+        and old.scale == new.scale
+        and old.precision <= new.precision
+    )
 
 
 def _top_level_field(schema, name: str):
