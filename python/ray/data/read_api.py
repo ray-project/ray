@@ -1775,6 +1775,12 @@ def read_parquet(
         `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
         pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
+    With DataSource V2, each parallel read task uses at most 64 Python fragment
+    workers by default. To override the limit, set
+    ``RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS`` to the same integer in all
+    worker environments before importing Ray Data. Values of 1 or less
+    scan fragments sequentially.
+
     Args:
         paths: A single file path, directory, a list of file paths, or a table name
             (when used with ``catalog``). Multiple directories/tables are not supported.
@@ -3070,6 +3076,12 @@ def read_orc(
         setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
         Ray. This shared setting also affects ``read_parquet()``.
+
+        DataSource V2 parallel reads use at most 64 Python fragment workers
+        per task by default. To override the limit, set
+        ``RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS`` to the same integer in
+        all worker environments before importing Ray Data. Values of 1 or
+        less scan fragments sequentially.
 
     Examples:
         Read an ORC file in remote storage or local storage.
