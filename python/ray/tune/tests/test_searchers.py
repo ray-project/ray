@@ -871,6 +871,28 @@ class BayesOptConvergenceWarningTest(unittest.TestCase):
         )
 
 
+class BayesOptRegisterAnalysisTest(unittest.TestCase):
+    def testSkipsTrialsWithoutResults(self):
+        """Results must stay paired with their own config when a trial has none."""
+        pytest.importorskip("bayes_opt")
+        from ray.tune.search.bayesopt import BayesOptSearch
+
+        class _Analysis:
+            # Trial "a" never reported, so `dataframe` leaves it out, as the real
+            # `ExperimentAnalysis` does for a trial with an empty result file.
+            def dataframe(self, metric=None, mode=None):
+                return pandas.DataFrame({"trial_id": ["b", "c"], "score": [20, 30]})
+
+            def get_all_configs(self, prefix=False):
+                return {"a": {"x": 1.0}, "b": {"x": 2.0}, "c": {"x": 3.0}}
+
+        searcher = BayesOptSearch(
+            space={"x": (0.0, 5.0)}, metric="score", mode="max", analysis=_Analysis()
+        )
+        registered = {r["params"]["x"]: r["target"] for r in searcher.optimizer.res}
+        self.assertEqual(registered, {2.0: 20.0, 3.0: 30.0})
+
+
 if __name__ == "__main__":
     import sys
 
