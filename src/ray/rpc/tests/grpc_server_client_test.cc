@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <cstdint>
 #include <memory>
 #include <thread>
 
@@ -243,6 +244,52 @@ TEST_F(TestGrpcServerClientFixture, TestNotIdleWhileCallInFlight) {
   test_service_handler_.frozen = false;
   while (!done) {
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+}
+
+// Regression test for grpc/grpc#38454: a reused client channel must continue entering
+// IDLE after GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS on subsequent idle cycles, not only the
+// first cycle.
+TEST_F(TestGrpcServerClientFixture, TestChannelIdleTimeoutMultipleCycles) {
+  const int64_t prev_idle_timeout_ms =
+      ::RayConfig::instance().grpc_client_idle_timeout_ms();
+  struct RestoreIdleTimeout {
+    int64_t prev;
+    ~RestoreIdleTimeout() {
+      ::RayConfig::instance().grpc_client_idle_timeout_ms() = prev;
+    }
+  } restore_idle_timeout{prev_idle_timeout_ms};
+  // 1000ms is gRPC's minimum unclamped client idle timeout. Configure it via RayConfig
+  // because gRPC keeps the first value when a channel argument key is set twice.
+  ::RayConfig::instance().grpc_client_idle_timeout_ms() = 1000;
+  grpc_client_ = std::make_unique<GrpcClient<TestService>>(
+      "127.0.0.1", grpc_server_->GetPort(), *client_call_manager_);
+
+  auto send_ping_and_wait = [this]() {
+    PingRequest request;
+    std::atomic<bool> done(false);
+    Ping(request, [&done](const Status &status, const PingReply &reply) {
+      EXPECT_TRUE(status.ok()) << status.ToString();
+      done = true;
+    });
+    while (!done) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+  };
+
+  auto wait_until_idle = [this]() {
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (!grpc_client_->IsChannelIdleAfterRPCs() &&
+           std::chrono::steady_clock::now() < deadline) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return grpc_client_->IsChannelIdleAfterRPCs();
+  };
+
+  for (int cycle = 0; cycle < 3; ++cycle) {
+    send_ping_and_wait();
+    ASSERT_FALSE(grpc_client_->IsChannelIdleAfterRPCs());
+    ASSERT_TRUE(wait_until_idle()) << "Channel failed to enter IDLE on cycle " << cycle;
   }
 }
 
