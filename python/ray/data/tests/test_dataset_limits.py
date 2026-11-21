@@ -1,11 +1,21 @@
+import asyncio
 import sys
 import time
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Optional
 
 import pandas as pd
 import pyarrow as pa
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.interfaces.physical_operator import DataOpTask
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -17,6 +27,368 @@ from ray.data.tests.conftest import (
 )
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
+
+
+class _ReadFunctionsDatasource(Datasource):
+    def __init__(
+        self, reads: list[Callable[[], Iterator[pa.Table]]], rows_per_read: int = 1
+    ) -> None:
+        self.reads = reads
+        self.rows_per_read = rows_per_read
+
+    def estimate_inmemory_data_size(self) -> int:
+        return len(self.reads) * self.rows_per_read * 8
+
+    def get_read_tasks(
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional[DataContext] = None,
+    ) -> list[ReadTask]:
+        return [
+            ReadTask(
+                read,
+                BlockMetadata(
+                    num_rows=self.rows_per_read,
+                    size_bytes=self.rows_per_read * 8,
+                    input_files=None,
+                    exec_stats=None,
+                ),
+                schema=pa.schema([("id", pa.int64())]),
+            )
+            for read in self.reads
+        ]
+
+
+@ray.remote(num_cpus=0)
+class _LimitCancellationSignals:
+    def __init__(self) -> None:
+        self.events: dict[str, asyncio.Event] = {}
+
+    async def wait(self, name: str) -> None:
+        await self.events.setdefault(name, asyncio.Event()).wait()
+
+    async def signal(self, name: str) -> None:
+        self.events.setdefault(name, asyncio.Event()).set()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "include_dashboard": True}], indirect=True
+)
+@pytest.mark.parametrize(
+    ("limit", "preserve_order", "slow_first", "unfused"),
+    [
+        (1, False, False, False),
+        (1, True, False, False),
+        (1, False, False, True),
+        (2, False, False, True),
+        (1, True, True, True),
+    ],
+)
+def test_limit_with_inflight_read(
+    ray_start_regular: object,
+    monkeypatch: pytest.MonkeyPatch,
+    limit: int,
+    preserve_order: bool,
+    slow_first: bool,
+    unfused: bool,
+) -> None:
+    """Cancel only a read that is outside the selected result."""
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", preserve_order
+    )
+    monkeypatch.setattr(
+        DataContext.get_current(), "op_resource_reservation_enabled", False
+    )
+
+    gate = _LimitCancellationSignals.remote()
+
+    def fast_read() -> Iterator[pa.Table]:
+        ray.get(gate.wait.remote("read_started"))
+        ray.get(gate.signal.remote("fast_read_ready"))
+        yield pa.table({"id": [0]})
+
+    def slow_read() -> Iterator[pa.Table]:
+        try:
+            ray.get(gate.signal.remote("read_started"))
+            released = gate.wait.remote("release_read")
+            while not ray.wait([released], timeout=0.1)[0]:
+                pass
+            raise ValueError("injected second-read failure")
+        finally:
+            ray.get(gate.signal.remote("cleanup"), timeout=5)
+
+    def keep_row(row: dict[str, int]) -> bool:
+        return row["id"] >= 0
+
+    def hold_output(batch: pa.Table) -> pa.Table:
+        ray.get(gate.signal.remote("downstream_started"))
+        ray.get(gate.wait.remote("release_downstream"))
+        return batch
+
+    reads = [slow_read, fast_read] if slow_first else [fast_read, slow_read]
+    read_args = {"max_retries": 3} if unfused else None
+    ds = (
+        ray.data.read_datasource(
+            _ReadFunctionsDatasource(reads),
+            override_num_blocks=2,
+            ray_remote_args=read_args,
+        )
+        .filter(keep_row)
+        .limit(limit)
+        .map_batches(hold_output, batch_format="pyarrow", batch_size=None)
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(ds.take_all)
+        try:
+            ray.get(gate.wait.remote("fast_read_ready"), timeout=25)
+            if not slow_first:
+                ray.get(gate.wait.remote("downstream_started"), timeout=25)
+            if limit == 1 and not slow_first:
+                # The only way out of the read before its gate is released is
+                # cancellation. Its finally must run while the UDF is blocked.
+                ray.get(gate.wait.remote("cleanup"), timeout=15)
+                assert not result.done()
+            else:
+                ray.get(gate.signal.remote("release_read"), timeout=5)
+                with pytest.raises(
+                    ray.exceptions.RayTaskError, match="injected second-read failure"
+                ):
+                    result.result(timeout=15)
+        finally:
+            ray.get(gate.signal.remote("release_read"), timeout=5)
+            ray.get(gate.signal.remote("release_downstream"), timeout=5)
+    if limit == 1 and not slow_first:
+        assert result.result(timeout=5) == [{"id": 0}]
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "include_dashboard": True}], indirect=True
+)
+@pytest.mark.parametrize("tail_error", [False, True])
+@pytest.mark.parametrize("cleanup_stage", [None, "read", "filter"])
+def test_limit_does_not_wait_for_already_producing_read(
+    ray_start_regular: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tail_error: bool,
+    cleanup_stage: Optional[str],
+    tmp_path: Path,
+) -> None:
+    """Stop consuming an emitted read while a read or unfused filter cleans up."""
+    pending_cleanup = cleanup_stage is not None
+    gate = _LimitCancellationSignals.remote()
+    cleanup_started = tmp_path / "cleanup_started"
+    cleanup_release = tmp_path / "cleanup_release"
+    cleanup_done = tmp_path / "cleanup_done"
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "target_max_block_size", 1)
+    monkeypatch.setattr(ctx, "op_resource_reservation_enabled", False)
+
+    class ObserveCompletion(ExecutionCallback):
+        def __init__(self) -> None:
+            self.read_completed: Optional[ray.ObjectRef] = None
+
+        def on_execution_step(self, executor: StreamingExecutor) -> None:
+            if pending_cleanup:
+                assert executor._topology is not None
+                for op in executor._topology:
+                    if not op.name.startswith("Read"):
+                        continue
+                    for task in op.get_active_tasks():
+                        if (
+                            isinstance(task, DataOpTask)
+                            and task._last_block_meta is not None
+                        ):
+                            self.read_completed = task._streaming_gen.completed()
+                if (
+                    self.read_completed is not None
+                    and ray.wait([self.read_completed], timeout=0, fetch_local=False)[0]
+                ):
+                    ray.get(gate.signal.remote("tail_ready"), timeout=5)
+
+    monkeypatch.setattr(ctx, "custom_execution_callback_classes", [ObserveCompletion])
+
+    def read_selected() -> Iterator[pa.Table]:
+        if pending_cleanup:
+            ray.get(gate.wait.remote("slow_started"), timeout=25)
+        yield pa.table({"id": [0]})
+        released = gate.wait.remote("release_tail")
+        while not ray.wait([released], timeout=0.1)[0]:
+            pass
+        if tail_error:
+            raise ValueError("unused tail after selected block")
+        yield pa.table({"id": [1]})
+
+    def hold_unneeded_work() -> None:
+        try:
+            ray.get(gate.signal.remote("slow_started"), timeout=5)
+            released = gate.wait.remote("release_slow")
+            while not ray.wait([released], timeout=0.1)[0]:
+                pass
+        finally:
+            cleanup_started.touch()
+            while not cleanup_release.exists():
+                time.sleep(0.05)
+            cleanup_done.touch()
+
+    def read_other() -> Iterator[pa.Table]:
+        if cleanup_stage == "read":
+            hold_unneeded_work()
+        yield pa.table({"id": [2]})
+
+    def keep_row(row: dict[str, int]) -> bool:
+        if cleanup_stage == "filter" and row["id"] == 2:
+            hold_unneeded_work()
+        return row["id"] >= 0
+
+    def identity(batch: pa.Table) -> pa.Table:
+        ray.get(gate.signal.remote("downstream_started"), timeout=5)
+        ray.get(gate.wait.remote("release_downstream"), timeout=25)
+        return batch
+
+    reads = [read_selected, read_other] if pending_cleanup else [read_selected]
+    ds = (
+        ray.data.read_datasource(
+            _ReadFunctionsDatasource(reads, rows_per_read=2),
+            override_num_blocks=len(reads),
+            ray_remote_args={"max_retries": 3} if cleanup_stage == "filter" else None,
+        )
+        .filter(keep_row)
+        .limit(1)
+        .map_batches(identity, batch_format="pyarrow", batch_size=None)
+    )
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        result = pool.submit(ds.take_all)
+        try:
+            ray.get(gate.wait.remote("downstream_started"), timeout=25)
+            if pending_cleanup:
+                wait_for_condition(cleanup_started.exists, timeout=15)
+                ray.get(gate.signal.remote("release_tail"), timeout=5)
+                # The tail output/error is available to the executor, not just imminent.
+                tail_ready = gate.wait.remote("tail_ready")
+                wait_for_condition(
+                    lambda: result.done() or bool(ray.wait([tail_ready], timeout=0)[0]),
+                    timeout=15,
+                )
+                if result.done():
+                    result.result()  # Surface an unexpected tail error before cleanup.
+                assert not result.done(), "downstream is still blocked"
+            ray.get(gate.signal.remote("release_downstream"), timeout=5)
+            assert result.result(timeout=10) == [{"id": 0}]
+            if pending_cleanup:
+                assert not cleanup_done.exists()
+                cleanup_release.touch()
+                wait_for_condition(cleanup_done.exists, timeout=5)
+            wait_for_condition(lambda: ray.available_resources().get("CPU", 0) == 4)
+        finally:
+            cleanup_release.touch()
+            for name in ("release_tail", "release_slow", "release_downstream"):
+                ray.get(gate.signal.remote(name), timeout=5)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 1}], indirect=True)
+@pytest.mark.parametrize("tail_error", [False, True])
+@pytest.mark.timeout(30)
+def test_limit_drains_read_with_saturated_cpu(
+    ray_start_regular: object,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    tail_error: bool,
+) -> None:
+    """An emitted read must release the only CPU so downstream work can start."""
+    limit_reached = tmp_path / "limit_reached"
+    cleanup_done = tmp_path / "cleanup_done"
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "target_max_block_size", 1)
+
+    class ObserveLimit(ExecutionCallback):
+        def on_execution_step(self, executor: StreamingExecutor) -> None:
+            assert executor._topology is not None
+            if any(
+                isinstance(op, LimitOperator) and op.has_execution_finished()
+                for op in executor._topology
+            ):
+                limit_reached.touch()
+
+    monkeypatch.setattr(ctx, "custom_execution_callback_classes", [ObserveLimit])
+
+    def read() -> Iterator[pa.Table]:
+        try:
+            yield pa.table({"id": [0]})
+            # A local gate keeps the CPU reserved; ray.get/wait would yield it.
+            wait_for_condition(limit_reached.exists, timeout=15)
+            for i in range(1, 20):
+                yield pa.table({"id": [i]})
+            if tail_error:
+                raise ValueError("unused tail after selected block")
+        finally:
+            cleanup_done.touch()
+
+    rows = (
+        ray.data.read_datasource(
+            _ReadFunctionsDatasource([read], rows_per_read=20), override_num_blocks=1
+        )
+        .filter(lambda row: True)
+        .limit(1)
+        .map_batches(lambda batch: batch, batch_size=None)
+        .take_all()
+    )
+    assert rows == [{"id": 0}]
+    assert cleanup_done.exists()
+    wait_for_condition(lambda: ray.available_resources().get("CPU", 0) == 1)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "include_dashboard": True}], indirect=True
+)
+def test_limit_cancels_nested_read_task(
+    ray_start_regular: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Cancelling an unused read must also clean up the child it started."""
+    gate = _LimitCancellationSignals.remote()
+    release = tmp_path / "release_child"
+    monkeypatch.setattr(
+        DataContext.get_current(), "op_resource_reservation_enabled", False
+    )
+
+    @ray.remote(num_cpus=1, max_retries=0)
+    def child() -> int:
+        try:
+            ray.get(gate.signal.remote("child_started"), timeout=5)
+            # Model interruptible blocking IO without ray.wait yielding the CPU.
+            while not release.exists():
+                time.sleep(0.05)
+            return 1
+        finally:
+            ray.get(gate.signal.remote("child_cleanup"), timeout=5)
+
+    def slow_read() -> Iterator[pa.Table]:
+        result = child.remote()
+        while not ray.wait([result], timeout=0.1)[0]:
+            pass
+        yield pa.table({"id": [ray.get(result)]})
+
+    def fast_read() -> Iterator[pa.Table]:
+        ray.get(gate.wait.remote("child_started"), timeout=25)
+        yield pa.table({"id": [0]})
+
+    def keep_row(row: dict[str, int]) -> bool:
+        return row["id"] >= 0
+
+    try:
+        rows = (
+            ray.data.read_datasource(
+                _ReadFunctionsDatasource([fast_read, slow_read]), override_num_blocks=2
+            )
+            .filter(keep_row)
+            .limit(1)
+            .take_all()
+        )
+        assert rows == [{"id": 0}]
+        ray.get(gate.wait.remote("child_cleanup"), timeout=10)
+        wait_for_condition(lambda: ray.available_resources().get("CPU", 0) == 4)
+    finally:
+        release.touch()
 
 
 def test_limit_execution(ray_start_regular):
