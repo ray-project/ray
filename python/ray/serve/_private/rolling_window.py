@@ -1,6 +1,7 @@
 import threading
 import time
-from typing import List, Optional
+from collections import deque
+from typing import Any, Optional
 
 
 class _ThreadBuckets:
@@ -18,13 +19,50 @@ class _ThreadBuckets:
         self.last_rotation_time = time.time()
 
 
+class _ThreadDequeData:
+    """Per-thread monotonic deque storage for RollingWindowMax and RollingWindowMin.
+
+    Separates the "current bucket" accumulation from the committed deque so that
+    the deque is bounded to O(num_buckets) entries regardless of how many values
+    are added per bucket, rather than O(num_values_in_window).
+
+    Attributes:
+        deque: Monotonic deque of ``(bucket_seq, bucket_value)`` pairs. Each
+            ``bucket_seq`` appears at most once because values within the same
+            bucket are pre-aggregated into ``current_bucket_val`` before being
+            committed here when the bucket rolls over.
+            For RollingWindowMax values are in descending order (front = max).
+            For RollingWindowMin values are in ascending order (front = min).
+        current_seq: Sequence number of the bucket currently being accumulated.
+            ``-1`` means no value has been added yet.
+        current_bucket_val: Running max (or min) for the current ``current_seq``
+            bucket.  Initialized to ``float('-inf')`` for max or ``float('inf')``
+            for min so that any real value overwrites it on the first add(), and
+            so that get_max()/get_min() safely ignore it until an actual value
+            has been recorded.
+    """
+
+    __slots__ = ("deque", "current_seq", "current_bucket_val", "lock")
+
+    def __init__(self, sentinel: float) -> None:
+        """Initialize the thread deque data.
+
+        Args:
+            sentinel: Initial value for the current bucket's running scalar.
+        """
+        self.deque: deque = deque()
+        self.current_seq: int = -1
+        self.current_bucket_val: float = sentinel
+        self.lock = threading.Lock()
+
+
 class _ThreadLocalRef(threading.local):
     """Thread-local reference to the thread's _ThreadBuckets instance."""
 
     def __init__(self) -> None:
         super().__init__()
         # by using threading.local, each thread gets its own instance of _ThreadBuckets.
-        self.data: Optional[_ThreadBuckets] = None
+        self.data: Optional[object] = None
 
 
 class _RollingWindowBase:
@@ -54,12 +92,15 @@ class _RollingWindowBase:
         self._window_duration_s = window_duration_s
         self._num_buckets = num_buckets
         self._bucket_duration_s = window_duration_s / num_buckets
+        self._start_time = time.time()
 
         # Thread-local reference to per-thread bucket data
         self._local = _ThreadLocalRef()
 
-        # Track all per-thread bucket instances for aggregation
-        self._all_thread_data: List[_ThreadBuckets] = []
+        # Track all per-thread bucket instances for aggregation.
+        # Type is intentionally unparameterized: RollingWindowAccumulator stores
+        # _ThreadBuckets while RollingWindowMax/Min store _ThreadDequeData.
+        self._all_thread_data: list = []
         self._registry_lock = threading.Lock()
 
     @property
@@ -77,7 +118,7 @@ class _RollingWindowBase:
         """The duration of each bucket in seconds."""
         return self._bucket_duration_s
 
-    def _ensure_initialized(self) -> _ThreadBuckets:
+    def _ensure_initialized(self) -> Any:
         """Ensure thread-local storage is initialized for the current thread.
 
         This is called on every add() but the fast path (already initialized)
@@ -99,6 +140,22 @@ class _RollingWindowBase:
             self._all_thread_data.append(data)
 
         return data
+
+    def _get_current_seq(self, now: float) -> int:
+        """Return the monotonic bucket sequence number for the given timestamp.
+
+        Sequence numbers increase monotonically as time advances, with one new
+        sequence number assigned per ``bucket_duration_s`` interval. Used by
+        RollingWindowMax and RollingWindowMin to identify which bucket a value
+        belongs to and to detect bucket roll-overs without mutable shared state.
+
+        Args:
+            now: Current time in seconds (e.g. from time.time()).
+
+        Returns:
+            A non-negative integer bucket sequence number.
+        """
+        return int((now - self._start_time) / self._bucket_duration_s)
 
     def _rotate_buckets_if_needed(self, data: _ThreadBuckets) -> None:
         """Rotate buckets for the given thread's storage.
@@ -219,9 +276,11 @@ class RollingWindowAccumulator(_RollingWindowBase):
 class RollingWindowMax(_RollingWindowBase):
     """Tracks the maximum value over a rolling time window.
 
-    Uses the same bucketed rolling window approach as RollingWindowAccumulator,
-    but each bucket stores the maximum observed value instead of a cumulative
-    sum. Querying returns the max across all non-expired buckets.
+    Uses a bucketed rolling window approach with a monotonic deque for O(1)
+    max query per thread. Within each bucket period, only the maximum value is
+    tracked via a per-thread scalar accumulator. When the bucket rolls over that
+    maximum is committed to a monotonic descending deque, bounding per-thread
+    memory to O(num_buckets) regardless of how many values are added per bucket.
 
     Example:
         # Create a 30-second rolling window with 6 buckets (5s each)
@@ -239,25 +298,70 @@ class RollingWindowMax(_RollingWindowBase):
         maximum = tracker.get_max()  # returns 500.0
 
     Thread Safety:
-        - add() is lock-free after the first call from each thread
-        - get_max() acquires a lock to aggregate across threads
+        - add() acquires a per-thread lock to ensure thread safety
+        - get_max() acquires a global registry lock to aggregate across threads,
+          and per-thread locks to safely read and evict expired entries
         - Safe to call from multiple threads concurrently
     """
 
-    def add(self, value: float) -> None:
-        """Record a value, updating the current bucket's max if exceeded.
+    def _ensure_initialized(self) -> Any:
+        """Ensure thread-local deque data is initialized for the current thread."""
+        data = self._local.data
+        if data is not None:
+            return data
 
-        This operation is lock-free for the calling thread after the first call.
+        # sentinel = float('-inf') so that any real add() value overwrites it.
+        data = _ThreadDequeData(sentinel=float("-inf"))
+        self._local.data = data
+
+        with self._registry_lock:
+            self._all_thread_data.append(data)
+
+        return data
+
+    def add(self, value: float) -> None:
+        """Record a value, updating the current bucket's running maximum.
+
+        This operation acquires a per-thread lock to ensure thread safety.
         Safe to call from multiple threads concurrently.
+
+        Within each bucket period only the maximum value is tracked via a scalar
+        accumulator. When the bucket rolls over, that maximum is committed to the
+        monotonic deque, keeping deque size bounded to O(num_buckets) across the
+        window regardless of call frequency.
 
         Args:
             value: The value to record.
         """
         data = self._ensure_initialized()
+        now = time.time()
+        seq = self._get_current_seq(now)
 
-        self._rotate_buckets_if_needed(data)
-        if value > data.buckets[data.current_bucket_idx]:
-            data.buckets[data.current_bucket_idx] = value
+        with data.lock:
+            if seq <= data.current_seq:
+                # Same bucket or time rolled backwards: just track the running max — no deque modification.
+                if value > data.current_bucket_val:
+                    data.current_bucket_val = value
+                return
+
+            # Bucket has advanced: commit the previous bucket's max to the deque.
+            if data.current_seq >= 0:
+                bucket_val = data.current_bucket_val
+                # Maintain monotonic descending order; pop entries that are now
+                # dominated by the new bucket's max (they can never be the future max
+                # while this newer, higher value is still in the window).
+                while data.deque and data.deque[-1][1] <= bucket_val:
+                    data.deque.pop()
+                data.deque.append((data.current_seq, bucket_val))
+
+            # Evict expired committed buckets from the front.
+            min_valid_seq = seq - self._num_buckets + 1
+            while data.deque and data.deque[0][0] < min_valid_seq:
+                data.deque.popleft()
+
+            # Start accumulating the new bucket.
+            data.current_seq = seq
+            data.current_bucket_val = value
 
     def get_max(self) -> float:
         """Get max value across all non-expired buckets in the window.
@@ -271,18 +375,153 @@ class RollingWindowMax(_RollingWindowBase):
         """
         result = 0.0
         now = time.time()
+        seq = self._get_current_seq(now)
+        min_valid_seq = seq - self._num_buckets + 1
 
         with self._registry_lock:
             for data in self._all_thread_data:
-                elapsed = now - data.last_rotation_time
-                buckets_expired = int(elapsed / self._bucket_duration_s)
+                with data.lock:
+                    # Evict expired committed buckets from the front.
+                    while data.deque and data.deque[0][0] < min_valid_seq:
+                        data.deque.popleft()
+                    # Max from committed buckets (front of monotonic descending deque).
+                    if data.deque and data.deque[0][1] > result:
+                        result = data.deque[0][1]
+                    # Also consider the uncommitted current bucket if it is still
+                    # within the valid window. This bucket has not yet been committed
+                    # to the deque because no newer bucket has arrived yet.
+                    if (
+                        data.current_seq >= 0
+                        and data.current_seq >= min_valid_seq
+                        and data.current_bucket_val > result
+                    ):
+                        result = data.current_bucket_val
 
-                if buckets_expired >= self._num_buckets:
-                    continue
+        return result
 
-                for i in range(self._num_buckets - buckets_expired):
-                    idx = (data.current_bucket_idx - i) % self._num_buckets
-                    if data.buckets[idx] > result:
-                        result = data.buckets[idx]
+
+class RollingWindowMin(_RollingWindowBase):
+    """Tracks the minimum value over a rolling time window.
+
+    Uses a bucketed rolling window approach with a monotonic deque for O(1)
+    min query per thread. Within each bucket period, only the minimum value is
+    tracked via a per-thread scalar accumulator. When the bucket rolls over that
+    minimum is committed to a monotonic ascending deque, bounding per-thread
+    memory to O(num_buckets) regardless of how many values are added per bucket.
+
+    Example:
+        # Create a 30-second rolling window with 6 buckets (5s each)
+        tracker = RollingWindowMin(
+            window_duration_s=30.0,
+            num_buckets=6,
+        )
+
+        # Record values (lock-free, safe from multiple threads)
+        tracker.add(100.0)
+        tracker.add(50.0)
+        tracker.add(500.0)
+
+        # Get min in the window (aggregates across all threads)
+        minimum = tracker.get_min()  # returns 50.0
+
+    Thread Safety:
+        - add() acquires a per-thread lock to ensure thread safety
+        - get_min() acquires a global registry lock to aggregate across threads,
+          and per-thread locks to safely read and evict expired entries
+        - Safe to call from multiple threads concurrently
+    """
+
+    def _ensure_initialized(self) -> Any:
+        """Ensure thread-local deque data is initialized for the current thread."""
+        data = self._local.data
+        if data is not None:
+            return data
+
+        # sentinel = float('inf') so that any real add() value overwrites it.
+        data = _ThreadDequeData(sentinel=float("inf"))
+        self._local.data = data
+
+        with self._registry_lock:
+            self._all_thread_data.append(data)
+
+        return data
+
+    def add(self, value: float) -> None:
+        """Record a value, updating the current bucket's running minimum.
+
+        This operation acquires a per-thread lock to ensure thread safety.
+        Safe to call from multiple threads concurrently.
+
+        Within each bucket period only the minimum value is tracked via a scalar
+        accumulator. When the bucket rolls over, that minimum is committed to the
+        monotonic deque, keeping deque size bounded to O(num_buckets) across the
+        window regardless of call frequency.
+
+        Args:
+            value: The value to record.
+        """
+        data = self._ensure_initialized()
+        now = time.time()
+        seq = self._get_current_seq(now)
+
+        with data.lock:
+            if seq <= data.current_seq:
+                # Same bucket or time rolled backwards: just track the running min — no deque modification.
+                if value < data.current_bucket_val:
+                    data.current_bucket_val = value
+                return
+
+            # Bucket has advanced: commit the previous bucket's min to the deque.
+            if data.current_seq >= 0:
+                bucket_val = data.current_bucket_val
+                # Maintain monotonic ascending order; pop entries that are now
+                # dominated by the new bucket's min (they can never be the future min
+                # while this newer, lower value is still in the window).
+                while data.deque and data.deque[-1][1] >= bucket_val:
+                    data.deque.pop()
+                data.deque.append((data.current_seq, bucket_val))
+
+            # Evict expired committed buckets from the front.
+            min_valid_seq = seq - self._num_buckets + 1
+            while data.deque and data.deque[0][0] < min_valid_seq:
+                data.deque.popleft()
+
+            # Start accumulating the new bucket.
+            data.current_seq = seq
+            data.current_bucket_val = value
+
+    def get_min(self) -> Optional[float]:
+        """Get min value across all non-expired buckets in the window.
+
+        This aggregates values from all threads that have called add().
+        Expired buckets (older than window_duration_s) are not included.
+
+        Returns:
+            The minimum value observed in the rolling window, or None
+            if no values have been recorded.
+        """
+        result: Optional[float] = None
+        now = time.time()
+        seq = self._get_current_seq(now)
+        min_valid_seq = seq - self._num_buckets + 1
+
+        with self._registry_lock:
+            for data in self._all_thread_data:
+                with data.lock:
+                    # Evict expired committed buckets from the front.
+                    while data.deque and data.deque[0][0] < min_valid_seq:
+                        data.deque.popleft()
+                    # Min from committed buckets (front of monotonic ascending deque).
+                    if data.deque:
+                        val = data.deque[0][1]
+                        if result is None or val < result:
+                            result = val
+                    # Also consider the uncommitted current bucket if it is still
+                    # within the valid window. This bucket has not yet been committed
+                    # to the deque because no newer bucket has arrived yet.
+                    if data.current_seq >= 0 and data.current_seq >= min_valid_seq:
+                        val = data.current_bucket_val
+                        if result is None or val < result:
+                            result = val
 
         return result
