@@ -1710,8 +1710,9 @@ def _find_valid_parent_topologies(
     """Return cluster topologies able to parent *subslice_topology*, smallest-first.
 
     Consults actual node labels (not a static table) so the result reflects
-    what is physically present. A topology is a valid parent when each of its
-    worker grid dimensions is a multiple of the subslice's.
+    what is physically present. A topology is a valid parent when it has
+    strictly more chips than *subslice_topology* and each of its worker grid
+    dimensions is a multiple of the subslice's.
     """
     sub_worker_dims = _get_worker_dims_for_topology(subslice_topology)
 
@@ -1723,6 +1724,8 @@ def _find_valid_parent_topologies(
         is not None
     }
 
+    sub_chips = get_num_chips_from_topology(subslice_topology)
+
     candidates: List[Tuple[str, Tuple[int, ...]]] = []
     for topo in cluster_topologies:
         if topo == subslice_topology:
@@ -1731,6 +1734,8 @@ def _find_valid_parent_topologies(
             topo_worker_dims = _get_worker_dims_for_topology(topo)
         except ValueError:
             continue  # topology not in the known dims map; skip
+        if get_num_chips_from_topology(topo) <= sub_chips:
+            continue
         if len(topo_worker_dims) != len(sub_worker_dims):
             continue  # dimensionality mismatch
         if all(pd % sd == 0 for pd, sd in zip(topo_worker_dims, sub_worker_dims)):
@@ -2109,9 +2114,14 @@ def _find_available_subslice(
     slice_worker_to_node: Dict[Tuple[str, str], Any],
     subslice_index: Optional[int] = None,
 ) -> Tuple[Optional[List[str]], Optional[int]]:
-    """Find an idle subslice of *subslice_topology* within *slice_name*.
+    """Find an available subslice of *subslice_topology* within *slice_name*.
 
-    An idle subslice has all of its workers' full TPU resources available.
+    Multi-host subslices require all workers in the subslice to have their full
+    TPU capacity available. Single-host / sub-host subslices (e.g. ``"1x1"`` on
+    a 4-chip host, or ``"2x2"`` on an 8-chip host) only require the host to have
+    enough free TPU resources for the subslice's chips, allowing multiple
+    sub-host subslices to share a host.
+
     Returns ``(target_worker_ids, subslice_index)`` or ``(None, None)``.
     *slice_worker_to_node* (``(slice_name, worker_id) -> node``) should be
     built once by the caller and reused across calls.
@@ -2128,6 +2138,11 @@ def _find_available_subslice(
         subslice_workers.setdefault(idx, []).append(worker_id)
 
     expected_host_count = math.prod(_get_worker_dims_for_topology(subslice_topology))
+    needed_tpus_per_host = (
+        get_num_chips_from_topology(subslice_topology) * get_tpu_resource_per_chip()
+        if expected_host_count == 1
+        else None
+    )
 
     for idx in sorted(subslice_workers):
         worker_ids = subslice_workers[idx]
@@ -2159,7 +2174,10 @@ def _find_available_subslice(
             avail_tpus = (
                 avail[node_id].get("TPU", 0) if node_id in avail else total_tpus
             )
-            if avail_tpus < total_tpus:
+            required_tpus = (
+                needed_tpus_per_host if needed_tpus_per_host is not None else total_tpus
+            )
+            if total_tpus <= 0 or avail_tpus < required_tpus:
                 all_idle = False
                 break
 
@@ -2769,9 +2787,9 @@ def subslice_placement_group(
     worker's physical position, and releases unused workers. Subsequent calls
     reuse the cached data.
 
-    A subslice claims whole hosts: a host that already runs one subslice is
-    not considered for another, even if the first subslice uses only part of
-    that host's chips.
+    Multi-host subslices claim whole hosts; sub-host subslices (such as
+    ``"1x1"`` on a 4-chip host or ``"2x2"`` on an 8-chip host) can share a host
+    as long as enough TPU chips remain available on that host.
 
     Args:
         subslice_topology: Desired subslice topology (e.g. ``"2x4"``).

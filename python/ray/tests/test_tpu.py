@@ -3170,6 +3170,177 @@ def test_physical_worker_ordering_in_subslice():
     assert worker_ids == ["3", "1"]
 
 
+def test_find_available_subslice_allows_subhost_sharing_1x1_and_2x2(monkeypatch):
+    """Sub-host subslices ('1x1' on 4-chip host, '2x2' on 8-chip host) can share
+    a host when sufficient free TPU chips remain, while multi-host subslices
+    still require whole hosts.
+    """
+    monkeypatch.delenv("RAY_TPU_RESOURCE_PER_CHIP", raising=False)
+
+    # 1. Two '1x1' subslices sharing a 4-chip host in a 4x4 slice.
+    nodes_4x4 = _make_dummy_nodes("slice-4x4", "4x4", 4)
+    w_phys_4x4 = {str(i): i for i in range(4)}
+    lookup_4x4 = ray.util.tpu._build_slice_worker_to_node(nodes_4x4)
+    # Worker 0 already has 1 chip used (3 free); workers 1..3 are busy (0 free).
+    avail_partial = {
+        "node_0": {"TPU": 3},
+        "node_1": {"TPU": 0},
+        "node_2": {"TPU": 0},
+        "node_3": {"TPU": 0},
+    }
+    wids, idx = ray.util.tpu._find_available_subslice(
+        "slice-4x4", "4x4", "1x1", w_phys_4x4, avail_partial, lookup_4x4
+    )
+    assert wids == ["0"]
+    assert idx == 0
+
+    # A multi-host '2x4' subslice must NOT schedule onto partially-used worker 0.
+    avail_multihost_partial = {
+        "node_0": {"TPU": 3},
+        "node_1": {"TPU": 4},
+        "node_2": {"TPU": 4},
+        "node_3": {"TPU": 4},
+    }
+    wids_2x4, idx_2x4 = ray.util.tpu._find_available_subslice(
+        "slice-4x4", "4x4", "2x4", w_phys_4x4, avail_multihost_partial, lookup_4x4
+    )
+    # Subslice 0 (workers 0, 2) is skipped because worker 0 has 3 < 4 TPUs;
+    # subslice 1 (workers 1, 3) is chosen instead.
+    assert idx_2x4 == 1
+    assert wids_2x4 == ["1", "3"]
+
+    # 2. Two '2x2' subslices sharing an 8-chip single-host '2x4' v6e node.
+    node_8chip = [
+        {
+            "NodeID": "node_8",
+            "Alive": True,
+            "Resources": {"TPU": 8},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-8chip",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x4",
+            },
+        }
+    ]
+    lookup_8 = ray.util.tpu._build_slice_worker_to_node(node_8chip)
+    wids_8, idx_8 = ray.util.tpu._find_available_subslice(
+        "slice-8chip", "2x4", "2x2", {"0": 0}, {"node_8": {"TPU": 4}}, lookup_8
+    )
+    assert wids_8 == ["0"]
+    assert idx_8 == 0
+
+    # Fewer than 4 free TPUs cannot fit another '2x2' subslice.
+    wids_none, idx_none = ray.util.tpu._find_available_subslice(
+        "slice-8chip", "2x4", "2x2", {"0": 0}, {"node_8": {"TPU": 3}}, lookup_8
+    )
+    assert (wids_none, idx_none) == (None, None)
+
+    # 3. Node advertising total TPU == 0 is never considered available.
+    node_zero_tpu = [
+        {
+            "NodeID": "node_zero",
+            "Alive": True,
+            "Resources": {"TPU": 0},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-zero",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
+            },
+        }
+    ]
+    lookup_zero = ray.util.tpu._build_slice_worker_to_node(node_zero_tpu)
+    assert ray.util.tpu._find_available_subslice(
+        "slice-zero", "4x4", "1x1", {"0": 0}, {"node_zero": {"TPU": 4}}, lookup_zero
+    ) == (None, None)
+
+    # 4. RAY_TPU_RESOURCE_PER_CHIP=2 scales required logical TPUs for single-host
+    # subslices (e.g. '2x2x1' requires 8 TPUs, '1x1' requires 2 TPUs).
+    monkeypatch.setenv("RAY_TPU_RESOURCE_PER_CHIP", "2")
+    node_v7x = [
+        {
+            "NodeID": "node_v7x_0",
+            "Alive": True,
+            "Resources": {"TPU": 8},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-v7x",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x2x2",
+            },
+        },
+        {
+            "NodeID": "node_v7x_1",
+            "Alive": True,
+            "Resources": {"TPU": 8},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-v7x",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "1",
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x2x2",
+            },
+        },
+    ]
+    lookup_v7x = ray.util.tpu._build_slice_worker_to_node(node_v7x)
+    w_phys_v7x = {"0": 0, "1": 1}
+    assert ray.util.tpu._find_available_subslice(
+        "slice-v7x",
+        "2x2x2",
+        "2x2x1",
+        w_phys_v7x,
+        {"node_v7x_0": {"TPU": 7}, "node_v7x_1": {"TPU": 8}},
+        lookup_v7x,
+    ) == (["1"], 1)
+    assert ray.util.tpu._find_available_subslice(
+        "slice-v7x",
+        "2x2x2",
+        "2x2x1",
+        w_phys_v7x,
+        {"node_v7x_0": {"TPU": 7}, "node_v7x_1": {"TPU": 7}},
+        lookup_v7x,
+    ) == (None, None)
+    assert ray.util.tpu._find_available_subslice(
+        "slice-4x4",
+        "4x4",
+        "1x1",
+        w_phys_4x4,
+        {
+            "node_0": {"TPU": 1},
+            "node_1": {"TPU": 2},
+            "node_2": {"TPU": 0},
+            "node_3": {"TPU": 0},
+        },
+        lookup_4x4,
+    ) == (["1"], 1)
+
+
+def test_find_valid_parent_topologies_for_1x1_and_excludes_smaller():
+    """'1x1' accepts larger 2D parents, '1x1' is never a parent of '2x2', and
+    malformed topology labels are skipped safely.
+    """
+    nodes = [
+        {
+            "NodeID": "n0",
+            "Alive": True,
+            "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "invalid"},
+        },
+        {
+            "NodeID": "n1",
+            "Alive": True,
+            "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "1x1"},
+        },
+        {
+            "NodeID": "n2",
+            "Alive": True,
+            "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x2"},
+        },
+        {
+            "NodeID": "n3",
+            "Alive": True,
+            "Labels": {ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4"},
+        },
+    ]
+    assert ray.util.tpu._find_valid_parent_topologies("1x1", nodes) == ["2x2", "4x4"]
+    assert ray.util.tpu._find_valid_parent_topologies("2x2", nodes) == ["4x4"]
+
+
 def test_subslice_placement_group_jax_env_vars(monkeypatch):
     """SubslicePlacementGroup.get_jax_env_vars defaults process bounds to the
     subslice's host grid, chip bounds to its chips on one host, and the port to
