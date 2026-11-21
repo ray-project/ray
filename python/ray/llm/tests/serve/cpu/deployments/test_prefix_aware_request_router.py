@@ -207,6 +207,32 @@ class TestPow2FallbackBehavior:
             chosen = await prefix_request_router._choose_replica_for_request(req)
             assert chosen == r1
 
+    @pytest.mark.asyncio
+    async def test_fallback_when_arg_has_no_prompt_or_messages(
+        self, prefix_request_router
+    ):
+        """Args carrying no messages/prompt, as on the Python proxy path,
+        fall back to the least busy replica instead of raising."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(5)
+        prefix_request_router.update_replicas([r1, r2])
+
+        req = PendingRequest(
+            args=[object()],
+            kwargs={},
+            metadata=RequestMetadata(
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
+                multiplexed_model_id="",
+            ),
+            created_at=time.time(),
+        )
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            assert chosen == r1
+
     @pytest.mark.parametrize(
         "prefix_request_router", [{"imbalanced_threshold": 2}], indirect=True
     )
@@ -683,9 +709,26 @@ class TestPromptNormalization:
         normalized = prefix_request_router._extract_text_from_request(req)
         assert normalized == ""
 
-    def test_extract_raises_when_no_prompt_or_messages(self, prefix_request_router):
-        with pytest.raises(ValueError):
-            _ = prefix_request_router._extract_text_from_request(fake_pending_request())
+    def test_extract_returns_none_when_no_prompt_or_messages(
+        self, prefix_request_router
+    ):
+        assert (
+            prefix_request_router._extract_text_from_request(fake_pending_request())
+            is None
+        )
+        # The Python proxy path passes the raw request args, which carry
+        # neither attribute.
+        req = PendingRequest(
+            args=[object()],
+            kwargs={},
+            metadata=RequestMetadata(
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
+                multiplexed_model_id="",
+            ),
+            created_at=time.time(),
+        )
+        assert prefix_request_router._extract_text_from_request(req) is None
 
     @pytest.mark.parametrize(
         "prefix_request_router",
