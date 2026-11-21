@@ -972,6 +972,51 @@ def test_report_stats_gpu_without_power_temperature(tmp_path):
     assert len(temp_records) == 0
 
 
+def test_report_stats_gpu_energy(tmp_path):
+    """Test that GPU energy is reported only for GPUs that expose it."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    raylet_client = MagicMock()
+    agent = ReporterAgent(dashboard_agent, raylet_client)
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-aaa",
+            "name": "NVIDIA L4",
+            "utilization_gpu": 90,
+            "memory_used": 100,
+            "memory_total": 1024,
+            "processes": [],
+            "energy_mj": 5123456789,
+        },
+        {
+            "index": 1,
+            "uuid": "GPU-bbb",
+            "name": "NVIDIA L4",
+            "utilization_gpu": 0,
+            "memory_used": 0,
+            "memory_total": 1024,
+            "processes": [],
+            "energy_mj": None,
+        },
+    ]
+
+    records = agent._to_records(stats, {})
+
+    energy_records = [
+        r for r in records if r.gauge.name == "node_gpu_energy_millijoules"
+    ]
+    assert len(energy_records) == 1
+    assert energy_records[0].value == 5123456789
+    assert energy_records[0].tags["GpuIndex"] == "0"
+    assert energy_records[0].tags["GpuUuid"] == "GPU-aaa"
+
+
 def test_get_tpu_usage(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
