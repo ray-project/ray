@@ -141,8 +141,8 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         assert self._sizer is not None
         assert self._actor_only_metrics is not None
 
-        # One cluster read for this whole step, shared by the bank and the
-        # sizer, so they never disagree about capacity within a step.
+        # Share the allocation between the bank and sizer. A rejected actor
+        # placement below forces a refresh before making new sizing decisions.
         cluster_view = self._resource_reporter.get_cluster_view(
             include_labels=True, include_draining_nodes=True
         )
@@ -158,6 +158,8 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
+
+        self._handle_failed_placements(topology=topology)
 
         self._maybe_run_escape_hatch()
 
@@ -186,6 +188,23 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         self._cluster_autoscaler.try_trigger_scaling()
 
         return self._finalize_scheduling_loop_step(topology)
+
+    def _handle_failed_placements(self, topology: Topology):
+        failed_placements = [
+            op
+            for op in topology
+            if isinstance(op, ExperimentalActorPoolMapOperator)
+            and op.actor_placement_failed
+        ]
+        if failed_placements:
+            assert self._resource_reporter is not None
+            cluster_view = self._resource_reporter.get_cluster_view(
+                include_labels=True, include_draining_nodes=True, recompute=True
+            )
+            assert self._resource_bank is not None
+            self._resource_bank.set_node_view(node_view=cluster_view.reserved_by_node)
+            for op in failed_placements:
+                op.actor_placement_failed = False
 
     @staticmethod
     def _expire_pending_actors(topology: Topology) -> None:

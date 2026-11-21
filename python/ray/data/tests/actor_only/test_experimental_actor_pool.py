@@ -2473,6 +2473,45 @@ def test_output_backpressured_actors_counts_serving_actors_only():
         assert op.output_backpressured_actors() == (1, 2)
 
 
+@pytest.mark.parametrize("target", [None, "lost-node"])
+@pytest.mark.parametrize(
+    "pool_cls", [_ExperimentalActorPool, pool_mod._NodeAwareExperimentalActorPool]
+)
+def test_unschedulable_startup_recovery(
+    target, pool_cls, monkeypatch, restore_data_context
+):
+    """Placement failures release claims and request a shared allocation refresh."""
+    restore_data_context.max_consecutive_actor_init_deaths = 0
+    op = _make_actor_op({"num_cpus": 1})
+    pool = pool_cls(create_actor_fn=mock.Mock(), config=op.actor_pool._config)
+    actor, ready_ref = mock.Mock(), mock.Mock()
+    pool._actor_to_id[actor] = "actor1"
+    pool.record_resource_request(actor, {"CPU": 1})
+    pool._add_pending_actor(
+        actor, ready_ref, ExecutionResources(cpu=1), target_node_id=target
+    )
+    original = ray.exceptions.ActorUnschedulableError("hard affinity rejected")
+    monkeypatch.setattr(ray, "get", mock.Mock(side_effect=original))
+    membership = mock.Mock(side_effect=AssertionError("no per-actor node lookup"))
+    monkeypatch.setattr(ray, "nodes", membership)
+    with pytest.raises(ray.exceptions.ActorUnschedulableError) as caught:
+        pool.pending_to_running(ready_ref)
+    assert caught.value is original
+    assert not pool._pending_actors
+    assert not pool._pending_actor_info
+    assert not pool._actor_to_id
+    assert not pool._actor_resource_usage
+    assert not pool.get_resource_requests()
+    assert not pool.committed_usage_by_node
+    assert pool.current_logical_usage() == ExecutionResources.zero()
+    assert pool.pending_logical_usage() == ExecutionResources.zero()
+    assert not op.actor_placement_failed
+    op._on_actor_init_death(caught.value)
+    assert op.actor_placement_failed
+    assert op._consecutive_actor_init_deaths == 0
+    membership.assert_not_called()
+
+
 if __name__ == "__main__":
     import sys
 

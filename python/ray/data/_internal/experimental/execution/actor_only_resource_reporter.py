@@ -135,15 +135,24 @@ class ActorOnlyResourceReporter:
 
     def _get_split_reserved_by_node(
         self,
+        *,
+        recompute: bool = False,
     ) -> Tuple[
         Dict[NodeIdStr, ExecutionResources], Dict[NodeIdStr, ExecutionResources]
     ]:
         """Read the coordinator allocation once.
 
+        Args:
+            recompute: Wait for a fresh coordinator allocation instead of its cache.
+
         Returns:
             The whole allocation per node, and the placement-group part of it.
         """
-        split = self._autoscaling_coordinator.get_reserved_resources()
+        split = (
+            self._autoscaling_coordinator.get_reserved_resources(recompute=True)
+            if recompute
+            else self._autoscaling_coordinator.get_reserved_resources()
+        )
         alloc = {
             node_id: ExecutionResources.from_resource_dict(resources)
             for node_id, resources in split.total().items()
@@ -203,9 +212,12 @@ class ActorOnlyResourceReporter:
         include_labels: bool = False,
         include_pg_bundles: bool = False,
         include_draining_nodes: bool = False,
+        recompute: bool = False,
     ) -> DatasetAllocationView:
-        """Snapshot of the cluster as visible to this dataset right now."""
-        reserved_by_node, pg_reserved_by_node = self._get_split_reserved_by_node()
+        """Snapshot of this dataset's allocation; optionally force recomputation."""
+        reserved_by_node, pg_reserved_by_node = self._get_split_reserved_by_node(
+            recompute=recompute
+        )
         return DatasetAllocationView(
             reserved_by_node=reserved_by_node,
             labels_by_node=get_alive_node_labels() if include_labels else {},

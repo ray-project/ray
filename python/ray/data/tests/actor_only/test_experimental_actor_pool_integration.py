@@ -7,6 +7,7 @@ import pytest
 from typing_extensions import override
 
 import ray
+import ray.exceptions
 from ray.actor import ActorHandle
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
     AutoscalingActorConfig,
@@ -686,6 +687,87 @@ def test_output_limits_tolerate_released_actor(two_node_cluster):
         assert pool.output_count_limit("does-not-exist") == float("inf")
     finally:
         pool.shutdown(force=True)
+
+
+@pytest.mark.parametrize("remove_before_submit", [True, False])
+def test_lost_placement_replaced_on_surviving_node(
+    ray_start_cluster, remove_before_submit
+):
+    """Hard pins rejected before/after submission release capacity for retry."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        _system_config={
+            "health_check_initial_delay_ms": 0,
+            "health_check_period_ms": 100,
+            "health_check_timeout_ms": 1000,
+            "health_check_failure_threshold": 2,
+        },
+    )
+    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=4, resources={"node_a": 1})
+    cluster.add_node(num_cpus=4, resources={"node_b": 1})
+    cluster.wait_for_nodes()
+    target = _node_id("node_a")
+    survivor = _node_id("node_b")
+    target_node = next(n for n in cluster.list_all_nodes() if n.node_id == target)
+    pool, created = _build_pool(_ProbeWorker)
+    # Occupy the whole target so the new actor cannot start before node removal.
+    blocker = (
+        cast(Any, _ProbeWorker)
+        .options(
+            num_cpus=4,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(target, soft=False),
+        )
+        .remote()
+    )
+    ray.get(blocker.ping.remote(), timeout=30)
+
+    def remove_target():
+        cluster.remove_node(target_node, allow_graceful=False)
+        wait_for_condition(
+            lambda: not any(n["NodeID"] == target and n["Alive"] for n in ray.nodes())
+        )
+
+    try:
+        if remove_before_submit:
+            remove_target()
+        assert pool.scale(ScaleUpRequest.on_nodes((target,), reason="test")) == 1
+        _, ready_ref = created[-1]
+        if not remove_before_submit:
+            assert not ray.wait([ready_ref], timeout=0.2)[0]
+            remove_target()
+        assert ray.wait([ready_ref], timeout=30)[0]
+        expected = (
+            ray.exceptions.ActorUnschedulableError,
+            ray.exceptions.ActorDiedError,
+        )
+        with pytest.raises(expected) as caught:
+            pool.pending_to_running(ready_ref)
+        if remove_before_submit:
+            assert isinstance(caught.value, ray.exceptions.ActorUnschedulableError)
+        # Drive the same startup handler used by the readiness callback.
+        op = cast(Any, object.__new__(ExperimentalActorPoolMapOperator))
+        op._name = "test"
+        op._additional_split_factor = None
+        op._consecutive_actor_init_deaths = 0
+        op._on_actor_init_death(caught.value)
+        assert op._consecutive_actor_init_deaths == 0
+        assert not pool.committed_usage_by_node
+        assert not pool._pending_actors
+        assert not pool._actor_to_id
+        assert pool.current_logical_usage() == ExecutionResources.zero()
+        # The executor refreshes the allocation before choosing a survivor.
+        if isinstance(caught.value, ray.exceptions.ActorUnschedulableError):
+            assert op.actor_placement_failed
+        actor = _add_ready_actor_on(pool, created, survivor)
+        assert ray.get(actor.ping.remote(), timeout=30) == "ok"
+    finally:
+        for actor, _ in created:
+            ray.kill(actor)
 
 
 if __name__ == "__main__":
