@@ -1,9 +1,12 @@
 """Real HiveServer2 tests, enabled with RAY_HIVE_TEST_HOST."""
 
+import base64
 import os
 import socket
+import ssl
+import time
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional, TypedDict, cast
@@ -16,9 +19,14 @@ import ray.data
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
 )
+from ray.data.tests.datasource._hive_test_utils import (
+    _make_auth_factory,
+    _read_evidence,
+)
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
+_TLS_CASES = ("table", "untrusted_ca_driver", "hostname_worker")
 
 pytestmark = pytest.mark.skipif(
     not _HOST,
@@ -301,7 +309,132 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
         _connect(untrusted_ca_options)
 
 
+def _verification_code(host, ca_path):
+    context = ssl.create_default_context(cafile=ca_path)
+    with socket.create_connection((host, 10000), timeout=30) as transport:
+        with pytest.raises(ssl.SSLCertVerificationError) as error:
+            context.wrap_socket(transport, server_hostname=host)
+    assert isinstance(error.value.verify_code, int)
+    return error.value.verify_code
+
+
+@pytest.mark.timeout(180)
+@pytest.mark.skipif(
+    not os.environ.get("RAY_HIVE_CA_PEM_B64"),
+    reason="Set RAY_HIVE_CA_PEM_B64 to run the Hive TLS integration suite",
+)
+@pytest.mark.parametrize("scenario", _TLS_CASES, ids=_TLS_CASES)
+def test_hive_tls(scenario, tmp_path, ray_start_regular_shared):
+    ca = tmp_path / "ca.pem"
+    ca.write_bytes(base64.b64decode(os.environ["RAY_HIVE_CA_PEM_B64"], validate=True))
+    options = _connection_options()
+    assert options["host"] == "hiveserver2" and options["use_ssl"]
+    options["ca_cert"] = str(ca)
+    assert socket.gethostbyname("hiveserver2") == socket.gethostbyname(
+        "wrong-hiveserver2"
+    )
+
+    # TCP readiness is not enough: wait for a verified TLS SQL query.
+    deadline = time.monotonic() + 120
+    while True:
+        try:
+            with closing(_make_connection_factory(options)()) as connection:
+                with closing(connection.cursor()) as cursor:
+                    cursor.execute("SELECT 1")
+                    assert cursor.fetchall() == [(1,)]
+            break
+        except Exception:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(2)
+
+    driver_pid = os.getpid()
+    schema = pa.schema([("id", pa.int64()), ("name", pa.string())])
+    with _temporary_table(
+        options, "id BIGINT, name STRING", "VALUES (1, 'a'), (2, 'b')"
+    ) as (table, _):
+        failing_options = options.copy()
+        code: int | None = None
+        if scenario == "untrusted_ca_driver":
+            import certifi
+
+            failing_options["ca_cert"] = certifi.where()
+            code = _verification_code("hiveserver2", certifi.where())
+        elif scenario == "hostname_worker":
+            failing_options["host"] = "wrong-hiveserver2"
+            code = _verification_code("wrong-hiveserver2", str(ca))
+        events = tmp_path / "events"
+        events.mkdir()
+        factory = _make_auth_factory(
+            _make_connection_factory(failing_options), str(events)
+        )
+
+        def read():
+            if scenario == "hostname_worker":
+                return ray.data.read_hive(
+                    query=f"SELECT id, name FROM `{table}`",
+                    schema=schema,
+                    connection_factory=factory,
+                ).take_all()
+            dataset = ray.data.read_hive(table, connection_factory=factory)
+            rows = dataset.take_all()
+            assert dataset.schema().base_schema == schema
+            return rows
+
+        if scenario == "table":
+            assert sorted((dict(row) for row in read()), key=lambda row: row["id"]) == [
+                {"id": 1, "name": "a"},
+                {"id": 2, "name": "b"},
+            ]
+            records = _read_evidence(events)
+            assert any(r["pid"] == driver_pid for r in records)
+            assert any(r["pid"] != driver_pid for r in records)
+            assert all(r["connected"] and not r["certificate_error"] for r in records)
+        else:
+            with pytest.raises(Exception, match="HiveServer2"):
+                read()
+            records = _read_evidence(events)
+            assert all(
+                (r["pid"] == driver_pid) == (scenario == "untrusted_ca_driver")
+                for r in records
+            )
+            assert all(not r["connected"] and r["certificate_error"] for r in records)
+            if scenario == "untrusted_ca_driver":
+                assert all(r["verify_code"] == code for r in records)
+            else:
+                # Thrift performs hostname matching after the TLS handshake.
+                assert all(r["hostname_mismatch"] for r in records)
+
+
+class _EnsureCases:
+    def __init__(self):
+        self.expected = {f"test_hive_tls[{case}]" for case in _TLS_CASES}
+        self.executed: set[str] = set()
+        self.skipped = False
+
+    def pytest_collection_finish(self, session):
+        if {item.name for item in session.items} != self.expected:
+            raise pytest.UsageError(
+                "TLS suite did not collect exactly the expected cases"
+            )
+
+    def pytest_runtest_logreport(self, report):
+        if report.when == "call":
+            self.executed.add(report.nodeid.rsplit("::", 1)[-1])
+        self.skipped |= report.skipped
+
+    def pytest_sessionfinish(self, session, exitstatus):
+        if session.exitstatus == pytest.ExitCode.OK and (
+            self.skipped or self.executed != self.expected
+        ):
+            session.exitstatus = pytest.ExitCode.TESTS_FAILED
+
+
 if __name__ == "__main__":
     import sys
 
+    if os.environ.get("RAY_HIVE_TLS_SUITE") == "1":
+        sys.exit(
+            pytest.main(["-v", f"{__file__}::test_hive_tls"], plugins=[_EnsureCases()])
+        )
     sys.exit(pytest.main(["-v", __file__]))

@@ -10,7 +10,7 @@ external credentials are needed.
 
 The client uses `PLAIN` and the server uses `NONE`. The `hive` password is a
 non-secret placeholder required by the client. This covers table/query reads,
-limits, scalar types, and timestamps. The TLS-specific test remains skipped
+limits, scalar types, and timestamps. The TLS-specific tests remain skipped
 because this fixture does not configure TLS.
 
 The script preserves a failing test command's exit status, saves server and readiness
@@ -36,3 +36,24 @@ RAY_HIVE_TEST_HOST=127.0.0.1 RAY_HIVE_TEST_PORT=10000 \
   RAY_HIVE_TEST_AUTH=PLAIN HIVE_TEST_PASSWORD=hive \
   python -m pytest -v python/ray/data/tests/datasource/test_hive_integration.py
 ```
+
+To run the explicit TLS-only security check, use a RayCI-compatible Linux
+environment with Docker, Bazel, a checkout available as `/ray`, and
+`RAYCI_CHECKOUT_DIR` set to the checkout path on the Docker host. The RayCI
+runner also needs AWS credentials for its Amazon Elastic Container Registry (ECR)
+login and access to the
+`datamongobuild-py3.10`, Ray Core, and dashboard build images. This command
+uses the RayCI image build and isn't a standalone local `pytest` invocation:
+
+```bash
+export RAY_HIVE_LOG_DIR="$(mktemp -d)"
+echo "$RAY_HIVE_LOG_DIR"
+bash ci/ray_ci/data/run_hive_integration.sh --tls
+```
+
+This uses the same Hive image and Data test environment with an ephemeral CA.
+It checks verified table reads, rejection of an untrusted CA on the driver, and
+rejection of a hostname mismatch on a read worker. The driver and worker are
+separate processes on one Ray node and share its filesystem. This manual security
+check doesn't run as part of the default checks before merging. It doesn't
+validate `GSSAPI`, `NOSASL`, or zero data RPCs after a TLS failure.
