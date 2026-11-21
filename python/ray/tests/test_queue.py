@@ -1,3 +1,4 @@
+import asyncio
 import sys
 import time
 
@@ -124,6 +125,30 @@ async def test_put_async(ray_start_regular_shared):
 
     with pytest.raises(Full):
         await q.put_async(1, timeout=0.2)
+
+
+@pytest.mark.asyncio
+async def test_cancelled_get_async_does_not_take_item(ray_start_regular_shared):
+    q = Queue()
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(q.get_async(), timeout=0.5)
+
+    await q.put_async(0)
+    assert await q.get_async(timeout=5) == 0
+
+
+@pytest.mark.asyncio
+async def test_cancelled_put_async_does_not_add_item(ray_start_regular_shared):
+    q = Queue(1)
+    await q.put_async(0)
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(q.put_async(1), timeout=0.5)
+
+    assert await q.get_async() == 0
+    with pytest.raises(Empty):
+        await q.get_async(timeout=0.5)
 
 
 def test_concurrent_get(ray_start_regular_shared):

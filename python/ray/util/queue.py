@@ -175,7 +175,7 @@ class Queue:
             if timeout is not None and timeout < 0:
                 raise ValueError("'timeout' must be a non-negative number")
             else:
-                await self.actor.put.remote(item, timeout)
+                await self._await_blocking_call(self.actor.put.remote(item, timeout))
 
     def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
         """Gets an item from the queue.
@@ -244,7 +244,25 @@ class Queue:
             if timeout is not None and timeout < 0:
                 raise ValueError("'timeout' must be a non-negative number")
             else:
-                return await self.actor.get.remote(timeout)
+                return await self._await_blocking_call(self.actor.get.remote(timeout))
+
+    async def _await_blocking_call(self, ref: ray.ObjectRef) -> Any:
+        """Awaits a blocking put or get, cancelling it if the caller is cancelled.
+
+        Cancelling the await alone leaves the call waiting in the actor, where
+        it later adds or removes an item that no caller sees.
+        """
+        try:
+            return await ref
+        except asyncio.CancelledError:
+            ray.cancel(ref)
+            # Wait until the actor has cancelled the call, so that the
+            # caller's next put or get cannot reach the actor first.
+            try:
+                await ref
+            except Exception:
+                pass
+            raise
 
     def put_nowait(self, item: Any) -> None:
         """Equivalent to put(item, block=False).
