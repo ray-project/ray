@@ -576,9 +576,14 @@ class _Bracket:
         self._r *= self._eta
         self._r = int(min(self._r, self._max_t_attr))
         self._cumul_r = self._r
-        sorted_trials = sorted(
-            self._live_trials, key=lambda t: metric_op * self._live_trials[t][metric]
-        )
+
+        def score(trial: Trial) -> float:
+            # NaN compares false against everything, so it would corrupt the sort.
+            # Rank it worst, so a trial with a NaN metric is halved away.
+            value = metric_op * self._live_trials[trial][metric]
+            return -np.inf if np.isnan(value) else value
+
+        sorted_trials = sorted(self._live_trials, key=score)
 
         good, bad = sorted_trials[-self._n :], sorted_trials[: -self._n]
         return good, bad
