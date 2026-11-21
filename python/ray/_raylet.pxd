@@ -128,6 +128,7 @@ cdef class ActorID(BaseID):
 cdef class CoreWorker:
     cdef:
         c_bool is_driver
+        c_bool _is_shut_down
         object async_thread
         object async_event_loop
         object job_config
