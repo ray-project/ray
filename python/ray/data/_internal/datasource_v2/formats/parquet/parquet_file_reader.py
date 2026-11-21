@@ -11,6 +11,7 @@ from typing import (
     Optional,
     Sequence,
     Set,
+    Tuple,
 )
 
 import pyarrow as pa
@@ -23,6 +24,9 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_block import (
+    _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+)
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -51,7 +55,10 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     _resolve_read_columns,
     _row_group_uncompressed_size,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
@@ -66,6 +73,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -172,6 +180,34 @@ def _estimate_batch_size_from_metadata(
     return target_batch_size
 
 
+def _empty_projection_stub(num_rows: int) -> pa.Table:
+    """An all-null, zero-buffer table that keeps zero-column reads from losing
+    their rows in ``pa.concat_tables``."""
+    return pa.table({_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(num_rows)})
+
+
+def _split_stubbed(manifest: FileManifest) -> Tuple[int, FileManifest]:
+    """Split a manifest into the row count of its stubbed runs and the rows
+    still to read."""
+    stub_rows = 0
+    to_read: List[int] = []
+    for idx, chunk_metadata in enumerate(manifest.file_chunk_metadatas):
+        if chunk_metadata is None:
+            to_read.append(idx)
+            continue
+        chunk = FileChunk.from_metadata(chunk_metadata)
+        if chunk.fully_matched and chunk.size_bytes == 0:
+            stub_rows += chunk.num_rows
+        else:
+            to_read.append(idx)
+
+    if len(to_read) == len(manifest):
+        return stub_rows, manifest
+
+    read_mask = pa.array(to_read, type=pa.int64())
+    return stub_rows, FileManifest(manifest.as_block().take(read_mask))
+
+
 def _estimate_batch_size_from_chunk_stats(
     uncompressed_size: int,
     num_rows: int,
@@ -197,6 +233,22 @@ def _estimate_batch_size_from_chunk_stats(
         return None
     # Never request more rows than the chunk actually contains.
     return min(math.ceil(target_block_size / estimated_in_mem_row_size), num_rows)
+
+
+def _is_exact_count_read(
+    *,
+    predicate: Optional[Expr],
+    limit: Optional[int],
+    columns: Optional[Sequence[str]],
+) -> bool:
+    """Whether a scan needs only surviving row counts: a pushed predicate, no
+    limit, and an empty projection."""
+    return (
+        predicate is not None
+        and limit is None
+        and columns is not None
+        and len(columns) == 0
+    )
 
 
 @DeveloperAPI
@@ -747,6 +799,20 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         return kwargs
 
     @override
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Answer zero-priced matched runs from their row counts on an
+        exact-count read; read everything else."""
+        if _is_exact_count_read(
+            predicate=self._predicate,
+            limit=self._limit,
+            columns=self._columns,
+        ):
+            stub_rows, input_split = _split_stubbed(input_split)
+            if stub_rows:
+                yield _empty_projection_stub(stub_rows)
+        yield from super().read(input_split)
+
+    @override
     def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
         """Yield one ``BlockMetadata`` per file, with ``num_rows`` from the footer.
 
@@ -757,7 +823,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         from pyarrow.fs import LocalFileSystem
 
         from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
-        from ray.data.context import DataContext
 
         filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors

@@ -49,6 +49,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.expressions import col
 
 ROW_GROUP_SIZE = 25
@@ -242,9 +243,56 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             "partitioning": None,
             "partition_pruner": None,
             "logical_schema": None,
+            "stub_fully_matched": False,
         }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
+
+
+def test_footer_indexer_keeps_real_sizes_for_row_group_shuffle(tmp_path, monkeypatch):
+    """A row-group shuffle clears the listing limit but not the scanner's, so
+    the listing keeps the real size and the reader opens the run."""
+    import ray
+
+    _write_file(tmp_path / "data.parquet")
+    actor_kwargs = []
+
+    class _FakeActor:
+        def __init__(self):
+            self.read_footers = self
+
+        def remote(self, batch, **_kwargs):
+            return []
+
+    class _FakeActorClass:
+        @staticmethod
+        def options(**_kwargs):
+            class _Builder:
+                @staticmethod
+                def remote(*_args, **kwargs):
+                    actor_kwargs.append(kwargs)
+                    return _FakeActor()
+
+            return _Builder
+
+    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
+    monkeypatch.setattr(footer_file_indexer, "FooterReaderActor", _FakeActorClass)
+    monkeypatch.setattr(ray, "kill", lambda _actor: None)
+
+    indexer = FooterFileIndexer(ignore_missing_paths=False)
+    list(
+        list_files_for_each_block(
+            [pa.table({PATH_COLUMN_NAME: [str(tmp_path)]})],
+            _task_context(),
+            indexer=indexer,
+            filesystem=LocalFileSystem(),
+            predicate=col("id") >= 0,
+            projected_columns=[],
+            shuffle_config=FileShuffleConfig(seed=1, small_chunks_shuffle=True),
+        )
+    )
+
+    assert actor_kwargs[0]["stub_fully_matched"] is False
 
 
 @pytest.mark.parametrize(

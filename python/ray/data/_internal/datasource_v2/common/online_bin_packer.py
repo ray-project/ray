@@ -333,6 +333,36 @@ def _group_disjoint_runs(runs: List[FileChunk]) -> List[List[FileChunk]]:
     return groups
 
 
+def _is_stubbed(run: FileChunk) -> bool:
+    """Whether the Parquet footer listing priced this matched run at zero
+    because ``ParquetFileReader`` answers it from ``num_rows``."""
+    return run.fully_matched and run.size_bytes == 0
+
+
+def _merge_runs_by_stub(disjoint_runs: List[FileChunk]) -> List[FileChunk]:
+    """Merge a copy's runs into at most one stubbed row and one read row.
+
+    Stubbed runs cost no read bytes and are answered from metadata; every
+    other run merges into one row, so each file is opened once. Only the
+    zero-column count path prices runs at zero, so row order does not matter.
+    """
+    stubbed = [run for run in disjoint_runs if _is_stubbed(run)]
+    read = [run for run in disjoint_runs if not _is_stubbed(run)]
+    merged: List[FileChunk] = []
+    for span in (stubbed, read):
+        if not span:
+            continue
+        merged.append(
+            FileChunk(
+                unit_ids=tuple(sorted(i for run in span for i in run.unit_ids)),
+                num_rows=sum(run.num_rows for run in span),
+                size_bytes=sum(run.size_bytes for run in span),
+                fully_matched=all(run.fully_matched for run in span),
+            )
+        )
+    return merged
+
+
 class OnlineBinPacker(FilePartitioner):
     """Streaming coloured bin packer over listing rows.
 
@@ -473,14 +503,12 @@ class OnlineBinPacker(FilePartitioner):
     def _bin_to_manifest(bin_: Bin) -> FileManifest:
         # A whole-file item is one manifest row with no chunk metadata, as it
         # came in; items repeating a path stay separate rows, one per listed
-        # copy. A file's runs are unioned into one row per group of
-        # pairwise-disjoint unit ranges: runs of a file listed once never
-        # overlap, so they collapse to a single row, while a file the user
-        # listed N times carries each unit id N times across its runs and
-        # gets one row per copy — unioning those would silently drop the
-        # repeats (the reader scans each row's unit set once). Every row
-        # keeps the on-disk file size the listing gave it; a run's bytes
-        # live in its chunk metadata.
+        # copy. A file's runs are separated into groups of pairwise-disjoint
+        # unit ids, one group for a file listed once and N groups for a path
+        # listed N times, since the reader scans each row's unit set once.
+        # Each group's runs are then merged into one stubbed row and one read
+        # row. Every row keeps the on-disk file size the listing gave it; a
+        # run's bytes live in its chunk metadata.
         files: List[FileInfo] = []
         chunk_metadatas: List[Optional[ChunkMetadata]] = []
         extra_columns: List[Optional[pa.Table]] = []
@@ -500,17 +528,10 @@ class OnlineBinPacker(FilePartitioner):
 
         for file, runs in runs_by_file.items():
             for disjoint_runs in _group_disjoint_runs(runs):
-                merged = FileChunk(
-                    unit_ids=tuple(
-                        sorted(i for run in disjoint_runs for i in run.unit_ids)
-                    ),
-                    num_rows=sum(run.num_rows for run in disjoint_runs),
-                    size_bytes=sum(run.size_bytes for run in disjoint_runs),
-                    fully_matched=all(run.fully_matched for run in disjoint_runs),
-                )
-                files.append(file)
-                chunk_metadatas.append(merged.to_metadata())
-                extra_columns.append(extra_columns_by_file[file])
+                for merged in _merge_runs_by_stub(disjoint_runs):
+                    files.append(file)
+                    chunk_metadatas.append(merged.to_metadata())
+                    extra_columns.append(extra_columns_by_file[file])
         sizes: List[int] = []
         for file in files:
             assert file.size is not None

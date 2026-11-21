@@ -130,6 +130,7 @@ class FooterReader:
         partitioning: Partitioning | None = None,
         partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
+        stub_fully_matched: bool = False,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -160,6 +161,9 @@ class FooterReader:
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
+        # The bin packer reads a zero size on a matched run as "the reader will
+        # answer this from num_rows", so zero only the read-byte estimate.
+        self._stub_fully_matched = stub_fully_matched
         self._partition_value_parser = (
             _PartitionValueParser(self.partitioning)
             if self.partitioning is not None and self._predicate is not None
@@ -230,10 +234,11 @@ class FooterReader:
         # tasks, which is the failure this whole path exists to avoid. Shares
         # the V1 helper so the three call sites cannot drift.
         uncompressed = _row_group_uncompressed_size(row_group, leaf_indices)
+        stubbed = fully_matched and self._stub_fully_matched
         return FileChunk(
             unit_ids=(rg_idx,),
             num_rows=row_group.num_rows,
-            size_bytes=uncompressed,
+            size_bytes=0 if stubbed else uncompressed,
             fully_matched=fully_matched,
         )
 

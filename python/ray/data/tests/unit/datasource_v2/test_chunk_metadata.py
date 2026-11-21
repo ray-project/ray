@@ -45,6 +45,27 @@ def test_file_chunk_round_trips_through_a_manifest():
     assert FileChunk.from_metadata(manifest.file_chunk_metadatas[0]) == run
 
 
+def test_split_stubbed_requires_a_zero_size():
+    """Only a run the listing priced at zero is skipped; the default flag is
+    not enough, or an indexer that never set it would be counted unfiltered."""
+    from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+        _split_stubbed,
+    )
+
+    priced = FileChunk(unit_ids=(0,), num_rows=5, size_bytes=0, fully_matched=True)
+    real = FileChunk(unit_ids=(1,), num_rows=3, size_bytes=10, fully_matched=True)
+    manifest = FileManifest.construct_manifest(
+        paths=["priced", "real"],
+        sizes=[10, 10],
+        chunk_metadatas=[priced.to_metadata(), real.to_metadata()],
+    )
+
+    stub_rows, to_read = _split_stubbed(manifest)
+
+    assert stub_rows == 5
+    assert to_read.paths.tolist() == ["real"]
+
+
 if __name__ == "__main__":
     import sys
 
