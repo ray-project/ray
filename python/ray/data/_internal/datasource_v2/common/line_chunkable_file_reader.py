@@ -65,7 +65,7 @@ Design decisions:
   override, so JSONL carries nothing for it.
 """
 
-from typing import Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -85,7 +85,22 @@ from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnitFragment,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import NumBytes
+from ray.data._internal.util import NumBytes, RetryingPyFileSystem
+from ray.data.datasource.file_based_datasource import _decompress_snappy
+
+if TYPE_CHECKING:
+    from pyarrow.fs import FileSystem
+
+
+def read_snappy_buffer(path: str, filesystem: "FileSystem") -> pa.Buffer:
+    """Return a whole Snappy file decompressed, since pyarrow can't read it."""
+    if isinstance(filesystem, RetryingPyFileSystem):
+        # Unwrap the retry wrapper, as V1 does, so ``_decompress_snappy``
+        # sees the ``HadoopFileSystem`` underneath and applies Hadoop framing.
+        filesystem = filesystem.unwrap()
+    with filesystem.open_input_stream(path, compression=None) as file:
+        return pa.py_buffer(_decompress_snappy(file, filesystem).getbuffer())
+
 
 # pyarrow's ``ReadOptions.block_size`` is a 32-bit int.
 _MAX_BLOCK_SIZE = 2**31 - 1
