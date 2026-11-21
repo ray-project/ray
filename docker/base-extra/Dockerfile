@@ -115,7 +115,7 @@ sudo mkdir -p /var/run/sshd
 echo Port $SSH_PORT | sudo tee -a /etc/ssh/sshd_config
 
 if [[ ! -d /usr/local/cuda ]]; then
-    EFA_VERSION="1.42.0"
+    EFA_VERSION="1.51.0"
     GDRCOPY_VERSION=""
     AWS_OFI_NCCL_VERSION=""
 elif [[ -d "/usr/local/cuda-11" ]]; then

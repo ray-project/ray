@@ -50,6 +50,7 @@ from ray.train.v2.api.validation_config import ValidationTaskConfig
 if TYPE_CHECKING:
     from ray.data import DataIterator
     from ray.train import BackendConfig, Checkpoint, DataConfig
+    from ray.train.health._internal.probe_utils import OnDemandPolls
     from ray.train.v2._internal.data_integration.interfaces import (
         DatasetShardMetadata,
         DatasetShardProvider,
@@ -146,8 +147,8 @@ class TrainContext:
     report_call_index: int = 0
     # Identifies which collective a call to the `SynchronizationActor` belongs to.
     collective_seq: int = 0
-    # The thread launcher that runs the latest on-demand probes.
-    on_demand_probe_runner: Optional["ThreadRunner"] = None
+    # The polls of the latest on-demand probes.
+    on_demand_polls: Optional["OnDemandPolls"] = None
     report_order_condition: threading.Condition = threading.Condition()
     checkpoint_upload_threadpool: ThreadPoolExecutor = ThreadPoolExecutor(
         max_workers=MAX_CHECKPOINT_UPLOAD_THREADS

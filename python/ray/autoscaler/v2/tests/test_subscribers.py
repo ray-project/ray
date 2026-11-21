@@ -182,7 +182,7 @@ class TestCloudInstanceUpdater:
                 ),
             ]
         )
-        mock_provider.launch.assert_not_called()
+        mock_provider.launch_many.assert_not_called()
 
     def test_launch_new_instances(self):
         mock_provider = mock.MagicMock()
@@ -213,11 +213,8 @@ class TestCloudInstanceUpdater:
         )
 
         def verify():
-            mock_provider.launch.assert_has_calls(
-                [
-                    mock.call(shape={"type-1": 2}, request_id="1"),
-                    mock.call(shape={"type-1": 1, "type-2": 1}, request_id="2"),
-                ]
+            mock_provider.launch_many.assert_called_once_with(
+                {"1": {"type-1": 2}, "2": {"type-1": 1, "type-2": 1}}
             )
             return True
 
@@ -248,11 +245,11 @@ class TestCloudInstanceUpdater:
         )
 
         def verify():
-            assert mock_provider.launch.call_count == 2
-            mock_provider.launch.assert_has_calls(
+            assert mock_provider.launch_many.call_count == 2
+            mock_provider.launch_many.assert_has_calls(
                 [
-                    mock.call(shape={"type-1": 1}, request_id="1"),
-                    mock.call(shape={"type-1": 1}, request_id="2"),
+                    mock.call({"1": {"type-1": 1}}),
+                    mock.call({"2": {"type-1": 1}}),
                 ]
             )
             return True
@@ -456,9 +453,28 @@ class TestCloudInstanceUpdater:
         ]
         assert typed_provider.single_calls == []
 
-        duck_provider = mock.MagicMock()
-        CloudInstanceUpdater(duck_provider).notify(events)
-        assert duck_provider.launch.call_count == 2
+        class _DefaultBatchProvider(ICloudInstanceProvider):
+            def __init__(self):
+                self.single_calls = []
+
+            def get_non_terminated(self):
+                return {}
+
+            def terminate(self, ids, request_id):
+                return None
+
+            def launch(self, shape, request_id):
+                self.single_calls.append((request_id, dict(shape)))
+
+            def poll_errors(self):
+                return []
+
+        default_provider = _DefaultBatchProvider()
+        CloudInstanceUpdater(default_provider).notify(events)
+        assert default_provider.single_calls == [
+            ("req-a", {"type-1": 2}),
+            ("req-b", {"type-1": 1, "type-2": 1}),
+        ]
 
 
 class TestReadOnlyProvider:

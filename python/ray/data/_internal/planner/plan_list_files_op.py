@@ -30,9 +30,6 @@ from ray.data._internal.datasource_v2.common.listing_utils import (
     partition_files,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import PATH_COLUMN_NAME
-from ray.data._internal.execution.execution_flags import (
-    actor_only_backend_enabled,
-)
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -72,20 +69,6 @@ def _num_listing_tasks(num_paths: int, should_parallelize: bool) -> int:
     if should_parallelize and num_paths:
         return min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, num_paths)
     return 1
-
-
-def _list_files_ray_remote_args() -> dict:
-    ray_remote_args = {
-        "_generator_backpressure_num_objects": -1,
-    }
-    if actor_only_backend_enabled():
-        # The actor-only backend runs ListFiles as an actor pool, which is
-        # additionally subject to the actor-wide generator cap under core
-        # actor backpressure; opt out of that too. Actor-creation-only
-        # option, so it is set only when ops run as actors (task option
-        # validation rejects it on the task path).
-        ray_remote_args["_actor_generator_backpressure_num_objects"] = -1
-    return ray_remote_args
 
 
 def plan_list_files_op(
@@ -161,12 +144,12 @@ def plan_list_files_op(
         ),
         data_context,
         name="ListFiles",
+        # Listing is extremely fast; default backpressure would starve the
+        # downstream reader of inputs.
+        generator_backpressure_disabled=True,
         # One worker per listing block; never the sizer's equal share (see
         # num_list_tasks above).
         compute_strategy=TaskPoolStrategy(size=num_list_tasks),
-        # Listing is extremely fast and moves no data; default backpressure
-        # would starve the downstream reader of inputs.
-        ray_remote_args=_list_files_ray_remote_args(),
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,

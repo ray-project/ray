@@ -8,6 +8,7 @@ const DEPLOYMENT: ServeDeployment = {
   name: "MyServeDeployment",
   deployment_config: {} as any,
   message: "Running",
+  target_num_replicas: 0,
   replicas: [],
   status: ServeDeploymentStatus.HEALTHY,
 };

@@ -759,36 +759,6 @@ def _seed_tmp(rootfs_dir: str) -> None:
         pass
 
 
-# Mount points runsc needs in the root filesystem: its mandatory mounts plus
-# the ones Ray's OCI spec adds. A read-only root gets no overlay (runsc drops
-# it for spec.root.readonly), so an immutable EROFS image must ship them.
-_MOUNTPOINT_DIRS = ("proc", "sys", "dev", "dev/pts", "dev/shm", "run", "tmp")
-_MOUNTPOINT_FILES = ("etc/resolv.conf", "etc/hosts", "etc/hostname")
-
-
-def _seed_mountpoints(rootfs_dir: str) -> None:
-    """Create the mount points runsc expects, where the image lacks them.
-
-    Each parent is resolved inside the tree (``_resolve_in_root``), so an
-    image whose ``etc`` or ``dev`` is a symlink to a host directory gets its
-    seeds where the sandbox will look for them, never on the host. A last
-    component that already exists, as a symlink included, is left alone.
-    """
-    for rel in _MOUNTPOINT_DIRS + _MOUNTPOINT_FILES:
-        try:
-            parent, _ = _resolve_in_root(rootfs_dir, os.path.dirname(rel))
-            path = os.path.join(parent, os.path.basename(rel))
-            if os.path.lexists(path):
-                continue
-            if rel in _MOUNTPOINT_DIRS:
-                os.makedirs(path, mode=0o755)
-            else:
-                os.makedirs(parent, exist_ok=True)
-                _create_nofollow(path)
-        except OSError:
-            pass
-
-
 def _stream_tree(tar: tarfile.TarFile, path: str, arcname: str, owner_filter) -> None:
     """Add ``path`` and everything under it to ``tar`` and delete each file
     once its bytes are in the stream.
@@ -1273,7 +1243,6 @@ def pull_and_extract_container_image(
                     image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
                 )
                 _seed_tmp(tmp_rootfs_dir)
-                _seed_mountpoints(tmp_rootfs_dir)
                 build_erofs_image(
                     tmp_rootfs_dir,
                     ownership,

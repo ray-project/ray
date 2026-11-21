@@ -203,6 +203,10 @@ class ThreadedMetadataFetcher(MetadataFetcher):
         self._results: Dict["ray.ObjectRef", Any] = {}
         self._results_lock = threading.Lock()
 
+        # Unexpected failures of the background fetch thread.
+        self._thread_failure: Optional[Exception] = None
+        self._thread_failure_lock = threading.Lock()
+
         # Executor-thread-only state below.
         # Pairs deferred by ``in_data_ready_get_object_size`` for the current operator,
         # flushed into the FIFOs by ``submit``.
@@ -312,10 +316,17 @@ class ThreadedMetadataFetcher(MetadataFetcher):
                 self._drained_tasks.add(task)
 
     def emit_ready_and_fire_done_callbacks(self) -> List[Tuple[str, BaseException]]:
-        """Emit whatever's ready (per-op order) then fire postponed done
-        callbacks. Returns ``(operator_name, exception)`` for each pair whose
-        metadata fetch failed, for the caller's ``max_errored_blocks``
-        accounting. Must run on the executor thread."""
+        """Emit ready metadata and fire postponed task callbacks.
+
+        Block-level errors are returned for error accounting. Unexpected
+        background thread failures are raised to abort execution.
+        """
+        with self._thread_failure_lock:
+            failure = self._thread_failure
+
+        if failure is not None:
+            raise RuntimeError("Ray Data metadata prefetch thread failed.") from failure
+
         return self._emit_ready() + self._fire_done_callbacks()
 
     def _emit_ready(self) -> List[Tuple[str, BaseException]]:
@@ -390,6 +401,18 @@ class ThreadedMetadataFetcher(MetadataFetcher):
             return self._results.pop(ref, _Signal.NOT_READY)
 
     def _run(self) -> None:
+        try:
+            self._run_inner()
+        except Exception as exc:  # noqa: BLE001
+            with self._thread_failure_lock:
+                self._thread_failure = exc
+
+            # Propagate unexpected thread failures to the executor.
+            logger.exception(
+                "Ray Data metadata prefetch thread terminated unexpectedly."
+            )
+
+    def _run_inner(self) -> None:
         # Fetch-thread loop: accumulate requested meta_refs into a pending set
         # and hand them to ``_fetch``, which fetches the locally-available ones
         # and returns those still in flight.

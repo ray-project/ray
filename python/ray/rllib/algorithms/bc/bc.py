@@ -54,6 +54,9 @@ class BCConfig(MARWILConfig):
         >>> print("[ignore]"); results = tune.Tuner(
         ...     "BC",
         ...     param_space=config.to_dict(),
+        ...     # Run one trial at a time so each trial's offline data
+        ...     # pipeline can get the CPUs it needs.
+        ...     tune_config=tune.TuneConfig(max_concurrent_trials=1),
         ...     run_config=tune.RunConfig(stop={"training_iteration": 1}),
         ... ).fit()  # doctest: +ELLIPSIS
         [ignore]...

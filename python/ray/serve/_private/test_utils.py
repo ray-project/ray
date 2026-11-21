@@ -9,6 +9,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
+from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 from unittest.mock import Mock
 
@@ -74,6 +75,16 @@ STORAGE_ACTOR_NAME = "storage"
 # Created by serve_instance_with_signal in ray/serve/tests/conftest.py.
 SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+def passthrough_decorator(func):
+    """A user decorator that wraps an async function with ``functools.wraps``."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
 
 
 def skip_if_haproxy(reason: str):
@@ -522,6 +533,8 @@ class MockReplicaActorWrapper:
         self.status = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
+        # Will be set when `reconfigure()` starts an update.
+        self._reconfigure_start_time: Optional[float] = None
         # Expected to be set in the test.
         self.done_stopping = False
         self.killed = False
@@ -641,7 +654,7 @@ class MockReplicaActorWrapper:
 
     @property
     def reconfigure_start_time(self) -> Optional[float]:
-        return None
+        return self._reconfigure_start_time
 
     @property
     def last_health_check_latency_ms(self) -> Optional[float]:
@@ -737,11 +750,22 @@ class MockReplicaActorWrapper:
         rank: Optional[ReplicaRank] = None,
     ):
         self.started = True
-        updating = self.version.requires_actor_reconfigure(version)
+        # Mirror ActorReplicaWrapper.reconfigure: a rank change also updates.
+        updating = self.version.requires_actor_reconfigure(version) or (
+            self._rank != rank
+        )
+        if updating:
+            self._reconfigure_start_time = time.time()
         self.version = version
         self._rank = rank
         replica_rank_context[self._replica_id.unique_id] = rank
         return updating
+
+    def check_reconfigure_done(self) -> Tuple[bool, Optional[str]]:
+        # Driven by the same set_ready()/set_failed_to_start() as check_ready().
+        if self.status == ReplicaStartupStatus.FAILED:
+            return True, "reconfigure failed"
+        return self.status == ReplicaStartupStatus.SUCCEEDED, None
 
     def recover(self, ingress: bool = False, scheduling_constraints: str = ""):
         if self.replica_id in dead_replicas_context:

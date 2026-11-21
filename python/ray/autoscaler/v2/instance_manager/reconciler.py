@@ -524,9 +524,10 @@ class Reconciler:
             )
             return (
                 1 if is_partial_vanished else 0,
-                InstanceUtil.get_status_transition_times_ns(
+                instance_manager.get_first_status_transition_time_ns(
                     instance, IMInstance.REQUESTED
-                ),
+                )
+                or 0,
             )
 
         instances_with_launch_requests.sort(key=_alloc_sort_key)
@@ -1139,14 +1140,16 @@ class Reconciler:
     def _handle_instances_launch(
         instance_manager: InstanceManager,
         autoscaling_config: AutoscalingConfig,
-        cloud_provider: ICloudInstanceProvider,
-        replica_sizes: Dict[NodeType, int],
+        cloud_provider: Optional[ICloudInstanceProvider] = None,
+        replica_sizes: Optional[Dict[NodeType, int]] = None,
         non_terminated_cloud_instances: Optional[
             Dict[CloudInstanceId, CloudInstance]
         ] = None,
         view_cache: Optional[_ReplicaViewCache] = None,
         _logger: logging.Logger = logger,
     ):
+        if replica_sizes is None:
+            replica_sizes = Reconciler._get_multihost_replica_sizes(autoscaling_config)
         instances, version = Reconciler._get_im_instances(instance_manager)
 
         queued_instances = []
@@ -1206,6 +1209,7 @@ class Reconciler:
             }
 
         to_launch = Reconciler._compute_to_launch(
+            instance_manager,
             queued_instances,
             requested_instances,
             running_instances,
@@ -1253,16 +1257,20 @@ class Reconciler:
         Reconciler._update_instance_manager(instance_manager, version, updates)
 
     @staticmethod
-    def _queued_fifo_key(instance: IMInstance) -> Tuple[List[int], str]:
+    def _queued_fifo_key(
+        instance_manager: InstanceManager, instance: IMInstance
+    ) -> Tuple[int, str]:
         return (
-            sorted(
-                InstanceUtil.get_status_transition_times_ns(instance, IMInstance.QUEUED)
-            ),
+            instance_manager.get_first_status_transition_time_ns(
+                instance, IMInstance.QUEUED
+            )
+            or 0,
             instance.instance_id,
         )
 
     @staticmethod
     def _compute_to_launch(
+        instance_manager: InstanceManager,
         queued_instances: List[IMInstance],
         requested_instances: List[IMInstance],
         running_instances: List[IMInstance],
@@ -1278,7 +1286,10 @@ class Reconciler:
             return instances_by_type
 
         queued_instances_by_type = {
-            nt: sorted(insts, key=Reconciler._queued_fifo_key)
+            nt: sorted(
+                insts,
+                key=lambda inst: Reconciler._queued_fifo_key(instance_manager, inst),
+            )
             for nt, insts in _group_by_type(queued_instances).items()
         }
         requested_instances_by_type = _group_by_type(requested_instances)
@@ -1290,7 +1301,9 @@ class Reconciler:
         for instance_type in sorted(
             queued_instances_by_type,
             key=lambda nt: (
-                Reconciler._queued_fifo_key(queued_instances_by_type[nt][0])[0],
+                Reconciler._queued_fifo_key(
+                    instance_manager, queued_instances_by_type[nt][0]
+                )[0],
                 nt,
             ),
         ):
@@ -1477,6 +1490,7 @@ class Reconciler:
                 ].append(instance)
                 continue
             update = Reconciler._handle_stuck_requested_instance(
+                instance_manager,
                 instance,
                 reconcile_config.request_status_timeout_s,
                 reconcile_config.max_num_retry_request_to_allocate,
@@ -1850,6 +1864,7 @@ class Reconciler:
                 skipped_requested,
             )
 
+        align_view = pre_view
         if replica_sizes:
             pre_overrides = {iid: ev.new_instance_status for iid, ev in updates.items()}
             align_view = (
@@ -1872,7 +1887,9 @@ class Reconciler:
                         and inst.status == IMInstance.QUEUED
                         and inst.instance_id not in updates
                     ),
-                    key=Reconciler._queued_fifo_key,
+                    key=lambda inst: Reconciler._queued_fifo_key(
+                        instance_manager, inst
+                    ),
                 )
                 if not rem_queued:
                     continue
@@ -1900,19 +1917,12 @@ class Reconciler:
             # this tick's updates (including draining multi-worker replicas and
             # whole active replicas) so queued launches stay whole-replica aligned
             # and within configured limits until draining slots actually free.
+            # Sub-replica QUEUED->TERMINATED updates above carry no cloud_instance_id,
+            # so `align_view` already reflects all view-relevant overrides.
             status_overrides = {
                 iid: ev.new_instance_status for iid, ev in updates.items()
             }
-            view = (
-                _MultiHostReplicaView.build(
-                    im_instances,
-                    cloud_instances,
-                    replica_sizes,
-                    status_overrides=status_overrides,
-                )
-                if status_overrides
-                else pre_view
-            )
+            view = align_view
             active_by_type: Dict[NodeType, int] = defaultdict(int)
             queued_by_type: Dict[NodeType, int] = defaultdict(int)
             seen_multihost_cids: Set[Tuple[NodeType, CloudInstanceId]] = set()
@@ -2408,11 +2418,15 @@ class Reconciler:
 
     @staticmethod
     def _handle_stuck_requested_instance(
-        instance: IMInstance, timeout_s: int, max_num_retry_request_to_allocate: int
+        instance_manager: InstanceManager,
+        instance: IMInstance,
+        timeout_s: int,
+        max_num_retry_request_to_allocate: int,
     ) -> Optional[IMInstanceUpdateEvent]:
         """Fail the cloud instance allocation if it's stuck in the REQUESTED state.
 
         Args:
+            instance_manager: The instance manager tracking lifetime transitions.
             instance: The instance to handle.
             timeout_s: The timeout in seconds.
             max_num_retry_request_to_allocate: The maximum number of times an instance
@@ -2428,19 +2442,17 @@ class Reconciler:
             # Not timeout yet, be patient.
             return None
 
-        all_request_times_ns = sorted(
-            InstanceUtil.get_status_transition_times_ns(
-                instance, select_instance_status=IMInstance.REQUESTED
-            )
+        num_requests = instance_manager.get_status_transition_count(
+            instance, IMInstance.REQUESTED
         )
         # Fail the allocation if we have tried too many times.
-        if len(all_request_times_ns) > max_num_retry_request_to_allocate:
+        if num_requests > max_num_retry_request_to_allocate:
             return IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.ALLOCATION_FAILED,
                 details=(
                     "failed to allocate cloud instance after "
-                    f"{len(all_request_times_ns)} attempts > "
+                    f"{num_requests} attempts > "
                     f"max_num_retry_request_to_allocate={max_num_retry_request_to_allocate}"  # noqa
                 ),
             )
@@ -2527,6 +2539,10 @@ class Reconciler:
         )
         before_ids: Set[str] = set()
         active_before: Counter = Counter()
+        known_reps_by_type: Dict[NodeType, Set[str]] = defaultdict(set)
+        active_reps_before_by_type: Dict[NodeType, Set[str]] = defaultdict(set)
+        requested_before: Counter = Counter()
+        unlabeled_active_before: Counter = Counter()
         queued_by_type: Dict[NodeType, List[IMInstance]] = defaultdict(list)
         if autoscaling_config is not None:
             instances_before, _ = Reconciler._get_im_instances(instance_manager)
@@ -2534,10 +2550,25 @@ class Reconciler:
                 before_ids.add(inst.instance_id)
                 if inst.node_kind == NodeKind.HEAD:
                     continue
+                nt = inst.instance_type
+                c_inst = (
+                    non_terminated_cloud_instances.get(inst.cloud_instance_id)
+                    if inst.cloud_instance_id
+                    else None
+                )
+                rep_id = c_inst.replica_id if c_inst is not None else None
+                if rep_id and inst.status not in _TERMINAL_INSTANCE_STATUSES:
+                    known_reps_by_type[nt].add(rep_id)
                 if inst.status == IMInstance.QUEUED and not inst.launch_request_id:
-                    queued_by_type[inst.instance_type].append(inst)
+                    queued_by_type[nt].append(inst)
                 elif inst.status in active_statuses:
-                    active_before[inst.instance_type] += 1
+                    active_before[nt] += 1
+                    if inst.status == IMInstance.REQUESTED:
+                        requested_before[nt] += 1
+                    elif rep_id:
+                        active_reps_before_by_type[nt].add(rep_id)
+                    else:
+                        unlabeled_active_before[nt] += 1
 
         Reconciler._handle_extra_cloud_instances_from_ray_nodes(
             instance_manager, ray_nodes
@@ -2549,25 +2580,55 @@ class Reconciler:
 
         if autoscaling_config is not None and any(queued_by_type.values()):
             instances_after, version = Reconciler._get_im_instances(instance_manager)
-            adopted_by_type: Counter = Counter(
-                inst.instance_type
-                for inst in instances_after
-                if inst.instance_id not in before_ids
-                and inst.node_kind == NodeKind.WORKER
-                and inst.cloud_instance_id in non_terminated_cloud_instances
-            )
+            adopted_insts_by_type: Dict[NodeType, List[IMInstance]] = defaultdict(list)
+            for inst in instances_after:
+                if (
+                    inst.instance_id not in before_ids
+                    and inst.node_kind == NodeKind.WORKER
+                    and inst.cloud_instance_id in non_terminated_cloud_instances
+                ):
+                    adopted_insts_by_type[inst.instance_type].append(inst)
             cancel_updates = {}
             node_type_configs = autoscaling_config.get_node_type_configs() or {}
-            for nt, adopted in adopted_by_type.items():
+            for nt, adopted_insts in adopted_insts_by_type.items():
                 cfg = node_type_configs.get(nt)
                 q_list = queued_by_type.get(nt)
-                if cfg is None or not q_list or adopted <= 0:
+                if cfg is None or not q_list or not adopted_insts:
                     continue
-                min_deficit = max(0, cfg.min_worker_nodes - active_before[nt])
-                to_cancel = min(adopted, min_deficit, len(q_list))
+                size = getattr(cfg, "workers_per_replica", 1)
+                if size > 1:
+                    new_reps = {
+                        non_terminated_cloud_instances[
+                            inst.cloud_instance_id
+                        ].replica_id
+                        for inst in adopted_insts
+                        if non_terminated_cloud_instances[
+                            inst.cloud_instance_id
+                        ].replica_id
+                    } - known_reps_by_type[nt]
+                    newly_adopted_unlabeled = sum(
+                        1
+                        for inst in adopted_insts
+                        if not non_terminated_cloud_instances[
+                            inst.cloud_instance_id
+                        ].replica_id
+                    )
+                    adopted_slots = len(new_reps) * size + newly_adopted_unlabeled
+                    active_slots_before = (
+                        len(active_reps_before_by_type[nt]) * size
+                        + requested_before[nt]
+                        + unlabeled_active_before[nt]
+                    )
+                else:
+                    adopted_slots = len(adopted_insts)
+                    active_slots_before = active_before[nt]
+                min_deficit = max(0, cfg.min_worker_nodes - active_slots_before)
+                to_cancel = min(adopted_slots, min_deficit, len(q_list))
                 if to_cancel <= 0:
                     continue
-                q_list.sort(key=Reconciler._queued_fifo_key)
+                q_list.sort(
+                    key=lambda inst: Reconciler._queued_fifo_key(instance_manager, inst)
+                )
                 for q_inst in q_list[:to_cancel]:
                     cancel_updates[q_inst.instance_id] = IMInstanceUpdateEvent(
                         instance_id=q_inst.instance_id,
