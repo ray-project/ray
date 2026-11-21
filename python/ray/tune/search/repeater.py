@@ -162,6 +162,7 @@ class Repeater(Searcher):
                 "Trial {} not in group; cannot report score. "
                 "Seen trials: {}".format(trial_id, list(self._trial_id_to_group))
             )
+            return
         trial_group = self._trial_id_to_group[trial_id]
         if not result or self.searcher.metric not in result:
             score = np.nan
@@ -171,11 +172,22 @@ class Repeater(Searcher):
 
         if trial_group.finished_reporting():
             scores = trial_group.scores()
-            self.searcher.on_trial_complete(
-                trial_group.primary_trial_id,
-                result={self.searcher.metric: np.nanmean(scores)},
-                **kwargs
-            )
+            finite_scores = [s for s in scores if not np.isnan(s)]
+            kwargs.pop("error", None)
+            if finite_scores:
+                self.searcher.on_trial_complete(
+                    trial_group.primary_trial_id,
+                    result={self.searcher.metric: float(np.mean(finite_scores))},
+                    error=False,
+                    **kwargs,
+                )
+            else:
+                self.searcher.on_trial_complete(
+                    trial_group.primary_trial_id,
+                    result=None,
+                    error=True,
+                    **kwargs,
+                )
 
     def get_state(self) -> Dict:
         self_state = self.__dict__.copy()
