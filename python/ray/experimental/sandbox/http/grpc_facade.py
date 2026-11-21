@@ -95,6 +95,11 @@ _WAIT_MAX_SECONDS = 55.0
 # actor that is not answering before reporting "still running".
 _POLL_GRACE_SECONDS = 0.5
 _SCHEDULING_GRACE_SECONDS = 10.0
+# How long SandboxGetTaskId holds a call for a sandbox that is still booting,
+# and how much longer it waits for the host to answer. Together they stay
+# under the 15 s route timeout that Envoy applies by default.
+_TASK_ID_HOLD_SECONDS = 5.0
+_TASK_ID_GRACE_SECONDS = 5.0
 _PULL_TIMEOUT_SECONDS = 1800.0
 _START_TIMEOUT_SECONDS = 120.0
 _READ_BOUND_SECONDS = 600.0
@@ -712,8 +717,15 @@ class _ControlServicer(ModalClientServicer):
     async def SandboxGetTaskId(self, request: Any, grpc_context: Any) -> Any:
         handle = await self._state.require_handle(request.sandbox_id)
         try:
+            # The SDK sleeps half a second after every empty answer, so hold
+            # the call until the sandbox runs or fails rather than answer on
+            # each step of its boot.
             info = await _bounded(
-                handle.describe.remote(wait_seconds=1.0), extra_wait=1.0
+                handle.describe.remote(
+                    wait_seconds=_TASK_ID_HOLD_SECONDS, until_booted=True
+                ),
+                extra_wait=_TASK_ID_HOLD_SECONDS,
+                grace=_TASK_ID_GRACE_SECONDS,
             )
         except _RpcError as exc:
             if exc.code != StatusCode.UNAVAILABLE:
