@@ -9,6 +9,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import warnings
 from types import SimpleNamespace
@@ -1627,6 +1628,192 @@ def test_middleware_with_httpserver_for_proxy_server_with_ray_start(
     response = request_with_auth_token("GET", f"{webui_url}{target_path}")
     assert response.json() == mock_response
     assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_proxy_server_timeout_validation(monkeypatch, caplog):
+    """Test env var and constructor validation for dashboard proxy server timeout."""
+    from ray.dashboard.http_server_head import HttpServerDashboardHead
+
+    monkeypatch.setattr(logging.getLogger("ray"), "propagate", True)
+    monkeypatch.delenv(dashboard_consts.PROXY_SERVER_TIMEOUT_ENV_VAR, raising=False)
+    assert (
+        dashboard_consts.get_proxy_server_timeout()
+        == dashboard_consts.DEFAULT_PROXY_SERVER_TIMEOUT
+    )
+
+    for raw_valid, expected in [("0.25", 0.25), ("120", 120.0)]:
+        monkeypatch.setenv(dashboard_consts.PROXY_SERVER_TIMEOUT_ENV_VAR, raw_valid)
+        assert dashboard_consts.get_proxy_server_timeout() == expected
+
+    for raw_invalid in ["0", "-5", "inf", "-inf", "nan", "abc"]:
+        caplog.clear()
+        monkeypatch.setenv(dashboard_consts.PROXY_SERVER_TIMEOUT_ENV_VAR, raw_invalid)
+        with caplog.at_level(logging.WARNING):
+            assert (
+                dashboard_consts.get_proxy_server_timeout()
+                == dashboard_consts.DEFAULT_PROXY_SERVER_TIMEOUT
+            )
+        assert dashboard_consts.PROXY_SERVER_TIMEOUT_ENV_VAR in caplog.text
+
+    for invalid_timeout in [
+        0,
+        -5,
+        0.0,
+        -0.1,
+        float("inf"),
+        float("-inf"),
+        float("nan"),
+        True,
+        False,
+        "abc",
+    ]:
+        with pytest.raises(ValueError, match="proxy_server_timeout"):
+            HttpServerDashboardHead(
+                ip="127.0.0.1",
+                http_host="127.0.0.1",
+                http_port=8265,
+                http_port_retries=0,
+                gcs_address="127.0.0.1:6379",
+                session_name="test_session",
+                metrics=MagicMock(),
+                proxy_server_url="http://127.0.0.1:8080",
+                proxy_server_timeout=invalid_timeout,
+            )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_proxy_server_http_session_reuse_and_cleanup():
+    """Test dedicated proxy ClientSession reuse, DummyCookieJar isolation, and cleanup."""
+    import aiohttp
+
+    from ray.dashboard.http_server_head import HttpServerDashboardHead
+
+    head = HttpServerDashboardHead(
+        ip="127.0.0.1",
+        http_host="127.0.0.1",
+        http_port=8265,
+        http_port_retries=0,
+        gcs_address="127.0.0.1:6379",
+        session_name="test_session",
+        metrics=MagicMock(),
+        proxy_server_url="http://127.0.0.1:8080",
+        proxy_server_timeout=4.5,
+    )
+    try:
+        assert head._proxy_http_session is None
+        session = head._get_proxy_http_session()
+        assert session is head._get_proxy_http_session()
+        assert session is not head.http_session
+        assert isinstance(session.cookie_jar, aiohttp.DummyCookieJar)
+        assert session.timeout.total == 4.5
+        assert not session.closed
+
+        await head.cleanup()
+        assert session.closed
+    finally:
+        if not head.http_session.closed:
+            await head.http_session.close()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server_timeout(
+    monkeypatch, shutdown_only, httpserver
+):
+    """
+    Test that the dashboard middleware respects RAY_DASHBOARD_PROXY_SERVER_TIMEOUT,
+    reuses its proxy session without leaking upstream Set-Cookie headers across
+    requests, and falls back to the local dashboard handler on timeout.
+    """
+    from werkzeug.wrappers import Response
+
+    monkeypatch.setenv("RAY_DASHBOARD_PROXY_SERVER_TIMEOUT", "1.0")
+
+    mock_slow_response = {"offset": "proxy", "value": "proxy"}
+    entered_slow = threading.Event()
+    release_slow = threading.Event()
+    done_slow = threading.Event()
+
+    def fast_handler(req):
+        payload = {
+            "status": "success",
+            "source": "proxy",
+            "seen_cookie": req.headers.get("Cookie", ""),
+        }
+        resp = Response(json.dumps(payload), content_type="application/json")
+        if req.args.get("set_cookie"):
+            resp.set_cookie("ray_cluster_id", req.args["set_cookie"])
+        return resp
+
+    def slow_handler(_request):
+        entered_slow.set()
+        try:
+            release_slow.wait(timeout=10.0)
+            return Response(
+                json.dumps(mock_slow_response), content_type="application/json"
+            )
+        finally:
+            done_slow.set()
+
+    httpserver.expect_request("/api/fast").respond_with_handler(fast_handler)
+    httpserver.expect_request("/timezone").respond_with_handler(slow_handler)
+
+    address_info = ray.init(
+        num_cpus=1,
+        include_dashboard=True,
+        proxy_server_url=httpserver.url_for("/"),
+    )
+    assert wait_until_server_available(address_info["webui_url"]) is True
+    webui_url = format_web_url(address_info["webui_url"])
+
+    fast_resp_a = request_with_auth_token(
+        "GET",
+        f"{webui_url}/api/fast?set_cookie=clusterA",
+        headers={"Cookie": "ray_cluster_id=clientA"},
+    )
+    assert fast_resp_a.status_code == 200
+    assert fast_resp_a.json() == {
+        "status": "success",
+        "source": "proxy",
+        "seen_cookie": "ray_cluster_id=clientA",
+    }
+    assert "ray_cluster_id=clusterA" in fast_resp_a.headers.get("Set-Cookie", "")
+
+    fast_resp_b = request_with_auth_token(
+        "GET",
+        f"{webui_url}/api/fast",
+        headers={"Cookie": "ray_cluster_id=clientB"},
+    )
+    assert fast_resp_b.status_code == 200
+    assert fast_resp_b.json()["seen_cookie"] == "ray_cluster_id=clientB"
+
+    fast_resp_c = request_with_auth_token("GET", f"{webui_url}/api/fast")
+    assert fast_resp_c.status_code == 200
+    assert fast_resp_c.json()["seen_cookie"] == ""
+
+    start = time.monotonic()
+    try:
+        slow_resp = request_with_auth_token("GET", f"{webui_url}/timezone")
+        elapsed = time.monotonic() - start
+    finally:
+        release_slow.set()
+        assert done_slow.wait(timeout=5.0)
+
+    assert entered_slow.is_set()
+    assert slow_resp.status_code == 200
+    assert slow_resp.json() != mock_slow_response
+    assert "offset" in slow_resp.json()
+    assert elapsed < 5.0
 
 
 def test_dashboard_not_included_ray_init(shutdown_only, capsys):
