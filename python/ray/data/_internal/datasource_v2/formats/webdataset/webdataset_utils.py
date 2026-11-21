@@ -1,6 +1,10 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0
-"""WebDataset read helpers shared by the V2 WebDataset datasource and reader."""
+"""WebDataset read helpers shared by the V2 WebDataset datasource and reader.
+
+The legacy ``WebDatasetDatasource`` and ``WebDatasetDatasink`` also import
+some of these helpers. Each such function says so in its docstring.
+"""
 
 import fnmatch
 import io
@@ -68,6 +72,8 @@ def _apply_list(
 ) -> Any:
     """Apply a list of functions to a sample.
 
+    Also called by the legacy ``WebDatasetDatasource`` and ``WebDatasetDatasink``.
+
     Args:
         f: function or list of functions
         sample: sample to be modified
@@ -124,6 +130,8 @@ def _tar_file_iterator(
 ) -> Iterator[Dict[str, Any]]:
     """Iterate over tar file, yielding filename, content pairs for the given tar stream.
 
+    Also called by the legacy ``WebDatasetDatasource``.
+
     Args:
         fileobj: file object
         fileselect: patterns or function selecting
@@ -166,6 +174,8 @@ def _group_by_keys(
     meta: Optional[dict] = None,
 ) -> Iterator[Dict[str, Any]]:
     """Return function over iterator that groups key, value pairs into samples.
+
+    Also called by the legacy ``WebDatasetDatasource``.
 
     The WebDataset specification requires entries that share a sample key to be
     contiguous in the tar archive. This function relies on that invariant: it
@@ -238,6 +248,8 @@ def _default_decoder(
     expand_grayscale: bool = False,
 ):
     """A default decoder for webdataset.
+
+    Also called by the legacy ``WebDatasetDatasource``.
 
     This handles common file extensions: .txt, .cls, .cls2,
         .jpg, .png, .json, .npy, .mp, .pt, .pth, .pickle, .pkl.

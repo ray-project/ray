@@ -95,9 +95,7 @@ class WebDatasetReader(Reader[FileManifest]):
                 ``DataContext.streaming_read_buffer_size``.
             synthesized_columns: Columns computed from the read position, such
                 as the path column.
-            target_block_size: Estimated bytes per yielded table. A table is
-                cut at this size or at ``WEBDATASET_READ_CHUNK_SIZE`` rows,
-                whichever comes first. ``None`` cuts by row count only.
+            target_block_size: Estimated bytes per yielded table.
         """
         self._filesystem = filesystem
         self._open_stream_args = open_stream_args or {}
@@ -178,6 +176,7 @@ class WebDatasetReader(Reader[FileManifest]):
         decompressed = io.BytesIO()
         with self._filesystem.open_input_stream(path, **open_args) as file:
             if isinstance(filesystem, HadoopFileSystem):
+                # pyrefly: ignore[missing-attribute]
                 snappy.hadoop_snappy.stream_decompress(src=file, dst=decompressed)
             else:
                 snappy.stream_decompress(src=file, dst=decompressed)
