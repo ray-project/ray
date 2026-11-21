@@ -173,5 +173,55 @@ def test_invalid_cooldown_duration(duration):
         LLMTokenAutoscalingPolicy(10, duration)
 
 
+def test_queue_time_profile_matches_explicit_target():
+    policy = LLMTokenAutoscalingPolicy(
+        queue_time_slo_ms=100,
+        slope_ms_per_token=0.05047051172820032,
+        intercept_ms=-89.07620411833966,
+    )
+    assert policy.target_prefill_tokens_per_replica == 3746
+    for load, replicas in [(3746, 1), (3747, 2)]:
+        server, contexts = _cooldown_contexts(200, load)
+        assert (
+            policy(contexts)
+            == LLMTokenAutoscalingPolicy(3746)(contexts)
+            == ({server: replicas}, {})
+        )
+
+
+@pytest.mark.parametrize(
+    "kwargs,match",
+    [
+        ({}, "all three"),
+        ({"queue_time_slo_ms": 10}, "all three"),
+        ({"target_prefill_tokens_per_replica": 5, "intercept_ms": 0}, "either"),
+    ],
+)
+def test_queue_time_target_configuration(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        LLMTokenAutoscalingPolicy(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "slo,slope,intercept,match",
+    [
+        (0, 1, 0, "queue_time_slo_ms"),
+        (float("inf"), 1, 0, "queue_time_slo_ms"),
+        (10, 0, 0, "slope_ms_per_token"),
+        (10, -1, 0, "slope_ms_per_token"),
+        (10, float("nan"), 0, "slope_ms_per_token"),
+        (10, 1, float("inf"), "intercept_ms"),
+        (10, 2, 9, "at least one token"),
+        (10, 1, 11, "at least one token"),
+        (1e308, 1e-308, 0, "finite target"),
+    ],
+)
+def test_invalid_queue_time_fit(slo, slope, intercept, match):
+    with pytest.raises(ValueError, match=match):
+        LLMTokenAutoscalingPolicy(
+            queue_time_slo_ms=slo, slope_ms_per_token=slope, intercept_ms=intercept
+        )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

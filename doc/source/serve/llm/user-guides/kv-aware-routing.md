@@ -214,6 +214,30 @@ Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRE
 
 Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
 
+### Set the token autoscaling target from an offline profile
+
+Profile one engine replica with the model and hardware you plan to deploy.
+Fit engine queue time at request arrival against the outstanding prefill tokens
+ahead of that request: `queue_ms = intercept_ms + slope_ms_per_token * load_tokens`.
+Pass the fitted coefficients and your engine queue-time objective in the
+application's autoscaling policy configuration:
+
+```yaml
+autoscaling_policy:
+  policy_function: ray.llm._internal.serve.routing_policies.kv_aware.autoscaling_policy.LLMTokenAutoscalingPolicy
+  policy_kwargs:
+    queue_time_slo_ms: 100
+    slope_ms_per_token: 0.05047051172820032
+    intercept_ms: -89.07620411833966
+```
+
+At initialization the policy computes
+`floor((queue_time_slo_ms - intercept_ms) / slope_ms_per_token)`. This example
+gives 3,746 outstanding prefill tokens per replica. The slope and SLO must be
+positive, and the fit must allow at least one token. For a manually chosen
+target, supply `target_prefill_tokens_per_replica` alone. The queue-time SLO sets
+a target under the fitted model. Observed queue times can vary.
+
 ## Router availability
 
 If the ingress router fails to route a request, Ray Serve LLM can send it to an available model replica. These requests may not follow KV-aware routing, reducing cache reuse until the router recovers. Fallback is automatic. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to monitor router failures and fallback requests.
