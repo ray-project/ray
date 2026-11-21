@@ -24,6 +24,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
+    COMPACTION_SCAN_INTERVAL_S,
     AvailableNodeResources,
     CompactingNodeInfo,
     DeploymentDownscaleRequest,
@@ -4868,6 +4869,278 @@ def test_rule_metrics_report_covered_domains_next_to_the_floor():
     }
     scheduler._covered_domains_gauge.set.assert_called_with(1, tags=tags)
     scheduler._floor_domains_gauge.set.assert_called_with(2, tags=tags)
+
+
+class TestRebalancePlan:
+    def test_moves_a_doubled_up_replica_to_a_node_that_joined(self):
+        w1, w2, w3 = _hex(1), _hex(2), _hex(3)
+        scheduler, d_id = _rules_scheduler(
+            {w1: (4, {}), w2: (4, {}), w3: (4, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 3)],
+        )
+        scheduler.on_replica_running(ReplicaID("r1", d_id), w1)
+        scheduler.on_replica_running(ReplicaID("r2", d_id), w2)
+        scheduler.on_replica_running(ReplicaID("r3", d_id), w1)
+
+        move = scheduler.plan_rebalance_move(d_id)
+        assert move.replica_id == ReplicaID("r1", d_id)
+        assert (move.source_node_id, move.target_node_id) == (w1, w3)
+
+    def test_no_move_once_floors_hold(self):
+        w1, w2, w3 = _hex(1), _hex(2), _hex(3)
+        scheduler, d_id = _rules_scheduler(
+            {w1: (4, {}), w2: (4, {}), w3: (4, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 3)],
+        )
+        for i, node_id in enumerate((w1, w2, w3, w1)):
+            scheduler.on_replica_running(ReplicaID(f"r{i}", d_id), node_id)
+        assert scheduler.plan_rebalance_move(d_id) is None
+
+    def test_never_trades_an_earlier_rule_for_a_later_one(self):
+        a1, a2, b1 = _hex(1), _hex(2), _hex(3)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), a2: (4, {ZONE: "a"}), b1: (1, {ZONE: "b"})},
+            [
+                MinTopologyDomainsConstraint(ZONE, 2),
+                MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 3),
+            ],
+        )
+        scheduler.on_replica_running(ReplicaID("a", d_id), a1)
+        scheduler.on_replica_running(ReplicaID("b", d_id), b1)
+        assert scheduler.plan_rebalance_move(d_id) is None
+
+        scheduler.on_replica_running(ReplicaID("c", d_id), a1)
+        move = scheduler.plan_rebalance_move(d_id)
+        assert (move.source_node_id, move.target_node_id) == (a1, a2)
+
+    def test_needs_room_on_the_target(self):
+        w1, w2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {w1: (4, {}), w2: (0, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("r1", d_id), w1)
+        scheduler.on_replica_running(ReplicaID("r2", d_id), w1)
+        assert scheduler.plan_rebalance_move(d_id) is None
+
+    def test_deployments_without_rules_never_move(self):
+        w1, w2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler({w1: (4, {}), w2: (4, {})}, [])
+        scheduler.on_replica_running(ReplicaID("r1", d_id), w1)
+        scheduler.on_replica_running(ReplicaID("r2", d_id), w1)
+        assert scheduler.plan_rebalance_move(d_id) is None
+
+
+class TestRebalanceMoves:
+    @staticmethod
+    def _two_node_move():
+        w1, w2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {w1: (4, {}), w2: (4, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("r1", d_id), w1)
+        scheduler.on_replica_running(ReplicaID("r2", d_id), w1)
+        move = scheduler.plan_rebalance_move(d_id)
+        assert (move.replica_id, move.target_node_id) == (ReplicaID("r1", d_id), w2)
+        return scheduler, d_id, move
+
+    def test_replacement_goes_to_the_planned_node(self):
+        scheduler, d_id, move = self._two_node_move()
+        scheduler.start_rebalance_move(move)
+        assert scheduler.get_replicas_to_move() == {d_id: {move.replica_id}}
+
+        replacement = _request(ReplicaID("r3", d_id))
+        scheduler.schedule(upscales={d_id: [replacement]}, downscales={})
+        assert _target_node(replacement) == move.target_node_id
+        assert _actor_options(replacement)["label_selector"] == {
+            RAY_NODE_ID_LABEL: move.target_node_id
+        }
+
+        scheduler.on_replica_running(ReplicaID("r3", d_id), move.target_node_id)
+        scheduler.on_replica_stopping(move.replica_id)
+        assert scheduler.get_replicas_to_move() == {}
+        assert not scheduler._num_failed_moves[d_id]
+
+    def test_replacement_keeps_the_replicas_fallbacks(self):
+        scheduler, d_id, move = self._two_node_move()
+        scheduler.start_rebalance_move(move)
+        replacement = _request(ReplicaID("r3", d_id))
+        replacement.actor_options = {
+            "label_selector": {MARKET: "spot"},
+            "fallback_strategy": [{"label_selector": {MARKET: "on-demand"}}],
+        }
+        scheduler.schedule(upscales={d_id: [replacement]}, downscales={})
+        options = _actor_options(replacement)
+        pin = {RAY_NODE_ID_LABEL: move.target_node_id}
+        assert options["label_selector"] == {MARKET: "spot", **pin}
+        assert options["fallback_strategy"] == [
+            {"label_selector": {MARKET: "on-demand", **pin}}
+        ]
+
+    def test_full_target_cancels_the_move(self):
+        scheduler, d_id, move = self._two_node_move()
+        scheduler.start_rebalance_move(move)
+        scheduler._cluster_node_info_cache.set_available_resources_per_node(
+            move.target_node_id, {"CPU": 0}
+        )
+        replacement = _request(ReplicaID("r3", d_id))
+        scheduler.schedule(upscales={d_id: [replacement]}, downscales={})
+
+        assert scheduler.get_replicas_to_move() == {}
+        assert scheduler._num_failed_moves[d_id] == 1
+        assert scheduler._next_move_timestamp_s[d_id] > 0
+
+    def test_move_times_out(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            scheduler, d_id, move = self._two_node_move()
+            scheduler.start_rebalance_move(move)
+            timer.advance(RAY_SERVE_COMPACTION_TIMEOUT_S)
+            scheduler.schedule(upscales={}, downscales={})
+            assert scheduler.get_replicas_to_move() == {}
+            assert scheduler._next_move_timestamp_s[d_id] == timer.time() + 2
+
+    def test_replacement_stopping_first_cancels_the_move(self):
+        scheduler, d_id, move = self._two_node_move()
+        scheduler.start_rebalance_move(move)
+        scheduler.schedule(
+            upscales={d_id: [_request(ReplicaID("r3", d_id))]}, downscales={}
+        )
+        scheduler.on_replica_stopping(ReplicaID("r3", d_id))
+        assert scheduler.get_replicas_to_move() == {}
+        assert scheduler._num_failed_moves[d_id] == 1
+
+
+class TestRebalance:
+    @staticmethod
+    def _doubled_up():
+        w1, w2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {w1: (4, {}), w2: (4, {})},
+            [MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("r1", d_id), w1)
+        scheduler.on_replica_running(ReplicaID("r2", d_id), w1)
+        return scheduler, d_id
+
+    def test_starts_one_move_per_deployment(self):
+        scheduler, d_id = self._doubled_up()
+        scheduler.rebalance([d_id])
+        assert scheduler.get_replicas_to_move() == {d_id: {ReplicaID("r1", d_id)}}
+        scheduler.rebalance([d_id])
+        assert scheduler.get_replicas_to_move() == {d_id: {ReplicaID("r1", d_id)}}
+
+    def test_a_fruitless_scan_waits_before_the_next(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            scheduler, d_id = self._doubled_up()
+            scheduler._cluster_node_info_cache.set_available_resources_per_node(
+                _hex(2), {"CPU": 0}
+            )
+            scheduler.rebalance([d_id])
+            assert scheduler.get_replicas_to_move() == {}
+
+            scheduler._cluster_node_info_cache.set_available_resources_per_node(
+                _hex(2), {"CPU": 4}
+            )
+            scheduler.rebalance([d_id])
+            assert scheduler.get_replicas_to_move() == {}
+            timer.advance(COMPACTION_SCAN_INTERVAL_S)
+            scheduler.rebalance([d_id])
+            assert scheduler.get_replicas_to_move() == {d_id: {ReplicaID("r1", d_id)}}
+
+    def test_a_failed_move_only_pauses_its_own_deployment(self):
+        scheduler, d_id = self._doubled_up()
+        other_id = DeploymentID(name="other")
+        scheduler.on_deployment_created(other_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            other_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+        scheduler._deployments[other_id].rules = (
+            MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2),
+        )
+        scheduler.on_replica_running(ReplicaID("o1", other_id), _hex(1))
+        scheduler.on_replica_running(ReplicaID("o2", other_id), _hex(1))
+
+        scheduler.rebalance([d_id])
+        scheduler._fail_move(ReplicaID("r1", d_id), "test")
+        scheduler.rebalance([d_id, other_id])
+        assert scheduler.get_replicas_to_move() == {
+            other_id: {ReplicaID("o1", other_id)}
+        }
+
+    def test_waits_out_the_backoff_after_a_failed_move(self):
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            scheduler, d_id = self._doubled_up()
+            scheduler.rebalance([d_id])
+            scheduler._fail_move(ReplicaID("r1", d_id), "test")
+
+            scheduler.rebalance([d_id])
+            assert scheduler.get_replicas_to_move() == {}
+            timer.advance(2)
+            scheduler.rebalance([d_id])
+            assert scheduler.get_replicas_to_move() == {d_id: {ReplicaID("r1", d_id)}}
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+def test_held_replicas_dont_hold_back_compaction():
+    a1, a2 = _hex(1), _hex(2)
+    scheduler, d_id = _rules_scheduler(
+        {a1: (4, {ZONE: "a"}), a2: (4, {ZONE: "a"})},
+        [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+    )
+    other_id = DeploymentID(name="other")
+    scheduler.on_deployment_created(other_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(
+        other_id, rconfig(ray_actor_options={"num_cpus": 1})
+    )
+    scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+    scheduler.on_replica_running(ReplicaID("o0", other_id), a2)
+
+    scheduler.schedule(
+        upscales={d_id: [_request(ReplicaID("r1", d_id))]}, downscales={}
+    )
+    assert scheduler.get_held_replicas() == {d_id: {ReplicaID("r1", d_id)}}
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True) is not None
+
+
+def test_outdated_replica_in_a_needed_domain_stops_first():
+    a1, b1, b2 = _hex(1), _hex(2), _hex(3)
+    scheduler, d_id = _rules_scheduler(
+        {a1: (4, {ZONE: "a"}), b1: (1, {ZONE: "b"}), b2: (1, {ZONE: "b"})},
+        [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+    )
+    cache = scheduler._cluster_node_info_cache
+    scheduler.on_replica_running(ReplicaID("new_a", d_id), a1)
+    scheduler.on_replica_running(ReplicaID("old_b", d_id), b1)
+    scheduler.on_replica_running(ReplicaID("old_b2", d_id), b2)
+    scheduler.on_replicas_outdated(
+        d_id, {ReplicaID("old_b", d_id), ReplicaID("old_b2", d_id)}
+    )
+
+    request = _request(ReplicaID("new_b", d_id))
+    scheduler.schedule(upscales={d_id: [request]}, downscales={})
+    assert not request.on_scheduled.called
+    assert scheduler.get_outdated_replicas_to_stop() == {
+        d_id: {ReplicaID("old_b", d_id)}
+    }
+
+    scheduler.on_replica_stopping(ReplicaID("old_b", d_id))
+    cache.set_available_resources_per_node(b1, {"CPU": 0})
+    cache.set_available_resources_per_node(b2, {"CPU": 0})
+    scheduler.schedule(upscales={}, downscales={})
+    assert not request.on_scheduled.called
+    assert scheduler.get_outdated_replicas_to_stop() == {}
+
+    cache.set_available_resources_per_node(b1, {"CPU": 1})
+    scheduler.schedule(upscales={}, downscales={})
+    assert _target_node(request) == b1
+    assert scheduler.get_outdated_replicas_to_stop() == {}
 
 
 if __name__ == "__main__":

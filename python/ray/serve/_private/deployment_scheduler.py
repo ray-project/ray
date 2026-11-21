@@ -13,6 +13,7 @@ from typing import (
     Callable,
     DefaultDict,
     Dict,
+    Iterable,
     List,
     Optional,
     Sequence,
@@ -51,6 +52,7 @@ from ray.serve._private.scheduling_rules import (
     MinTopologyDomainsConstraint,
     SchedulingConstraint,
     SchedulingContext,
+    label_value,
     merge_selectors,
     rule_tiers,
 )
@@ -394,6 +396,25 @@ class LaunchingReplicaInfo:
     target_labels: Optional[Dict[str, Any]] = None
 
 
+@dataclass(frozen=True)
+class RebalanceMove:
+    """A planned move of a running replica to a node where it holds more rules."""
+
+    replica_id: ReplicaID
+    source_node_id: str
+    target_node_id: str
+    reason: str
+
+
+@dataclass
+class MoveInfo:
+    """A rebalance move in progress."""
+
+    target_node_id: str
+    start_timestamp_s: float
+    replacement_id: Optional[ReplicaID] = None
+
+
 @dataclass
 class CompactingNodeInfo:
     target_node_id: str
@@ -646,6 +667,11 @@ class DeploymentScheduler:
         self._create_domain_probe_fn = create_domain_probe_fn or DomainProbe
         self._probes: Dict[DeploymentID, Any] = {}
         self._unmet_rules: Dict[DeploymentID, List[str]] = {}
+        self._outdated_to_stop: Dict[DeploymentID, Set[ReplicaID]] = {}
+        self._stopped_for_held: Dict[ReplicaID, ReplicaID] = {}
+        self._moves: Dict[ReplicaID, MoveInfo] = {}
+        self._num_failed_moves: DefaultDict[DeploymentID, int] = defaultdict(int)
+        self._next_move_timestamp_s: Dict[DeploymentID, float] = {}
 
         # Not checkpointed: a restarted controller reconciles first, then
         # re-detects compaction opportunities.
@@ -759,7 +785,12 @@ class DeploymentScheduler:
         self._running_replicas.pop(deployment_id, None)
 
         self._outdated_replicas.pop(deployment_id, None)
+        self._num_failed_moves.pop(deployment_id, None)
+        self._next_move_timestamp_s.pop(deployment_id, None)
         self._held_replicas.pop(deployment_id, None)
+        for held_id in list(self._stopped_for_held):
+            if held_id.deployment_id == deployment_id:
+                del self._stopped_for_held[held_id]
         self._unmet_rules.pop(deployment_id, None)
         self._stop_probe(deployment_id)
 
@@ -775,6 +806,8 @@ class DeploymentScheduler:
         self._outdated_replicas[deployment_id].discard(replica_id)
         self._held_replicas[deployment_id].discard(replica_id)
         self._held_since.pop(replica_id, None)
+        self._stopped_for_held.pop(replica_id, None)
+        self._on_move_replica_stopping(replica_id)
         self._logged_pack_placement_failures.discard(replica_id)
 
     def on_replicas_outdated(
@@ -811,6 +844,7 @@ class DeploymentScheduler:
     ):
         deployment_id = replica_id.deployment_id
         self._held_since.pop(replica_id, None)
+        self._stopped_for_held.pop(replica_id, None)
         self._launching_replicas[deployment_id][replica_id] = LaunchingReplicaInfo(
             target_node_id=target_node_id, target_labels=target_labels
         )
@@ -1265,6 +1299,7 @@ class DeploymentScheduler:
                 stacklevel=2,
             )
 
+        self._update_moves()
         self._schedule_pending_replicas()
         self._update_rule_status()
 
@@ -1458,6 +1493,10 @@ class DeploymentScheduler:
     ) -> Optional[str]:
         """Places one replica. Returns its target node, or None if Serve picked none."""
         deployment_id = scheduling_request.replica_id.deployment_id
+        if self._bind_move_replacement(scheduling_request, view):
+            return self._launching_replicas[deployment_id][
+                scheduling_request.replica_id
+            ].target_node_id
         rules = self._rules_for(deployment_id)
         if not (scorer.picks_nodes or self._deployments[deployment_id].rules):
             self._schedule_replica(
@@ -1809,6 +1848,14 @@ class DeploymentScheduler:
         if probe is not None:
             probe.kill()
 
+    def get_outdated_replicas_to_stop(self) -> Dict[DeploymentID, Set[ReplicaID]]:
+        """Outdated replicas that fill a domain a held replica needs."""
+        return {d: set(ids) for d, ids in self._outdated_to_stop.items() if ids}
+
+    def get_held_replicas(self) -> Dict[DeploymentID, Set[ReplicaID]]:
+        """Replicas held for required floors in the last update."""
+        return {d: set(ids) for d, ids in self._held_replicas.items() if ids}
+
     def get_unmet_rules(self, deployment_id: DeploymentID) -> List[str]:
         """The deployment's unmet topology rules as of the last update."""
         return list(self._unmet_rules.get(deployment_id, []))
@@ -1816,6 +1863,7 @@ class DeploymentScheduler:
     def _update_rule_status(self) -> None:
         """Records each deployment's unmet rules and keeps probes."""
         view: Optional[ClusterView] = None
+        self._outdated_to_stop.clear()
         for deployment_id in sorted(self._deployments, key=str):
             info = self._deployments[deployment_id]
             floors = [
@@ -1850,6 +1898,10 @@ class DeploymentScheduler:
                 (rule for rule in floors if rule.required and not rule.is_met(ctx)),
                 None,
             )
+            if unmet is not None:
+                self._outdated_to_stop[
+                    deployment_id
+                ] = self._outdated_in_missing_domains(deployment_id, unmet, ctx)
             probe = self._probes.get(deployment_id)
             if unmet is None:
                 if probe is not None:
@@ -1916,6 +1968,42 @@ class DeploymentScheduler:
             ):
                 return False
         return True
+
+    def _outdated_in_missing_domains(
+        self,
+        deployment_id: DeploymentID,
+        rule: MinTopologyDomainsConstraint,
+        ctx: SchedulingContext,
+    ) -> Set[ReplicaID]:
+        """One outdated replica per missing domain for each held replica."""
+        waiting = sorted(
+            (
+                held_id
+                for held_id in self._held_replicas.get(deployment_id, ())
+                if held_id not in self._stopped_for_held
+            ),
+            key=str,
+        )
+        num_held = len(waiting)
+        outdated = self._outdated_replicas.get(deployment_id, set())
+        if not num_held or not outdated:
+            return set()
+        covered = rule.covered_domains(ctx)
+        chosen: Set[ReplicaID] = set()
+        chosen_domains: Set[str] = set()
+        for replica_id in sorted(outdated, key=str):
+            node_id = self._running_replicas[deployment_id].get(replica_id)
+            if node_id is None:
+                continue
+            domain = label_value(node_id, rule.label_key, ctx.node_labels)
+            if domain is None or domain in covered or domain in chosen_domains:
+                continue
+            self._stopped_for_held[waiting[len(chosen)]] = replica_id
+            chosen.add(replica_id)
+            chosen_domains.add(domain)
+            if len(chosen) == num_held:
+                break
+        return chosen
 
     @staticmethod
     def _unmet_required_floors(
@@ -2008,7 +2096,21 @@ class DeploymentScheduler:
         view: ClusterView,
     ) -> Optional[str]:
         """Picks a node under the strictest tier of rules some node passes."""
-        for tier in rule_tiers(rules):
+        chosen = self._select_node_in_tiers(
+            placement_candidates, rule_tiers(rules), ctx, scorer, view
+        )
+        return chosen[0] if chosen else None
+
+    def _select_node_in_tiers(
+        self,
+        placement_candidates: List[Tuple[RequestedResources, List[Dict[str, str]]]],
+        tiers: Sequence[Tuple[SchedulingConstraint, ...]],
+        ctx: SchedulingContext,
+        scorer: NodeScorer,
+        view: ClusterView,
+    ) -> Optional[Tuple[str, int]]:
+        """The node picked under the first tier some node passes, and that tier."""
+        for index, tier in enumerate(tiers):
             for required_resources, required_labels in placement_candidates:
                 target_node = scorer.choose(
                     required_resources,
@@ -2019,8 +2121,229 @@ class DeploymentScheduler:
                     ctx,
                 )
                 if target_node:
-                    return target_node
+                    return target_node, index
         return None
+
+    @staticmethod
+    def _tier_of_node(
+        node_id: str,
+        tiers: Sequence[Tuple[SchedulingConstraint, ...]],
+        ctx: SchedulingContext,
+    ) -> int:
+        """The index of the strictest tier whose rules all allow the node."""
+        for index, tier in enumerate(tiers):
+            if all(rule.allowed_nodes({node_id}, ctx) for rule in tier):
+                return index
+        return len(tiers)
+
+    @staticmethod
+    def _coverage(
+        rules: Sequence[SchedulingConstraint], ctx: SchedulingContext
+    ) -> Tuple[int, ...]:
+        """Covered domains per floor, capped at the floor, required floors first."""
+        floors = [r for r in rules if isinstance(r, MinTopologyDomainsConstraint)]
+        ordered = [r for r in floors if r.required] + [
+            r for r in floors if not r.required
+        ]
+        return tuple(
+            min(len(rule.covered_domains(ctx)), rule.effective_floor(ctx))
+            for rule in ordered
+        )
+
+    def start_rebalance_move(self, move: RebalanceMove) -> None:
+        """Starts moving a replica to its planned node."""
+        self._moves[move.replica_id] = MoveInfo(
+            target_node_id=move.target_node_id, start_timestamp_s=time.time()
+        )
+        logger.info(
+            f"Moving {move.replica_id} from node {move.source_node_id} to node "
+            f"{move.target_node_id}, because {move.reason}. A replacement starts "
+            "there first, and the old replica stops once it runs."
+        )
+
+    def rebalance(self, deployment_ids: Iterable[DeploymentID]) -> None:
+        """Starts at most one move per settled deployment."""
+        now = time.time()
+        moving = {replica_id.deployment_id for replica_id in self._moves}
+        for deployment_id in sorted(deployment_ids, key=str):
+            if (
+                deployment_id in moving
+                or deployment_id not in self._deployments
+                or now < self._next_move_timestamp_s.get(deployment_id, 0)
+            ):
+                continue
+            move = self.plan_rebalance_move(deployment_id)
+            if move is None:
+                self._next_move_timestamp_s[deployment_id] = (
+                    now + COMPACTION_SCAN_INTERVAL_S
+                )
+                continue
+            self.start_rebalance_move(move)
+
+    def get_replicas_to_move(self) -> Dict[DeploymentID, Set[ReplicaID]]:
+        """Replicas with a move in progress."""
+        replicas: DefaultDict[DeploymentID, Set[ReplicaID]] = defaultdict(set)
+        for replica_id in self._moves:
+            replicas[replica_id.deployment_id].add(replica_id)
+        return dict(replicas)
+
+    def _bind_move_replacement(
+        self, scheduling_request: ReplicaSchedulingRequest, view: ClusterView
+    ) -> bool:
+        """Binds a replacement to its move's planned node. Returns whether it did.
+
+        Cancels the move if the node has no room.
+        """
+        deployment_id = scheduling_request.replica_id.deployment_id
+        moving = next(
+            (
+                (replica_id, info)
+                for replica_id, info in sorted(
+                    self._moves.items(), key=lambda m: str(m[0])
+                )
+                if replica_id.deployment_id == deployment_id
+                and info.replacement_id is None
+            ),
+            None,
+        )
+        if moving is None:
+            return False
+        moving_id, info = moving
+        available = view.available_resources.get(info.target_node_id)
+        if available is None or not available.can_fit(
+            scheduling_request.requested_resources
+        ):
+            self._fail_move(moving_id, "the target node no longer has room")
+            return False
+        if not self._schedule_replica(
+            scheduling_request,
+            default_scheduling_strategy="DEFAULT",
+            target_node_id=info.target_node_id,
+            label_selector_chain=(
+                None
+                if scheduling_request.placement_group_bundles is not None
+                else self._pinned_selector_chain(
+                    scheduling_request, info.target_node_id
+                )
+            ),
+        ):
+            return False
+        info.replacement_id = scheduling_request.replica_id
+        return True
+
+    @staticmethod
+    def _pinned_selector_chain(
+        scheduling_request: ReplicaSchedulingRequest, node_id: str
+    ) -> List[Dict[str, str]]:
+        """The replica's selector and fallbacks, each pinned to one node."""
+        options = scheduling_request.actor_options
+        own_selectors = [options.get("label_selector") or {}] + [
+            fallback.get("label_selector") or {}
+            for fallback in options.get("fallback_strategy") or []
+        ]
+        chain: List[Dict[str, str]] = []
+        for own_selector in own_selectors:
+            selector = merge_selectors([own_selector, {RAY_NODE_ID_LABEL: node_id}])
+            if selector not in chain:
+                chain.append(selector)
+        return chain
+
+    def _on_move_replica_stopping(self, replica_id: ReplicaID) -> None:
+        if replica_id in self._moves:
+            info = self._moves.pop(replica_id)
+            if info.replacement_id is not None:
+                logger.info(f"Moved {replica_id} to node {info.target_node_id}.")
+                self._num_failed_moves.pop(replica_id.deployment_id, None)
+            return
+        for moving_id, info in list(self._moves.items()):
+            if info.replacement_id == replica_id:
+                self._fail_move(moving_id, f"its replacement {replica_id} stopped")
+
+    def _fail_move(self, replica_id: ReplicaID, reason: str) -> None:
+        info = self._moves.pop(replica_id, None)
+        if info is None:
+            return
+        deployment_id = replica_id.deployment_id
+        self._num_failed_moves[deployment_id] += 1
+        backoff_s = min(
+            2 ** self._num_failed_moves[deployment_id],
+            RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S,
+        )
+        self._next_move_timestamp_s[deployment_id] = time.time() + backoff_s
+        logger.info(
+            f"Canceling the move of {replica_id} to node {info.target_node_id}, "
+            f"because {reason}. Moves of {deployment_id} resume in {backoff_s} "
+            "seconds."
+        )
+
+    def _update_moves(self) -> None:
+        """Fails moves whose replacement didn't run in time."""
+        now = time.time()
+        for replica_id, info in list(self._moves.items()):
+            if now - info.start_timestamp_s >= RAY_SERVE_COMPACTION_TIMEOUT_S:
+                self._fail_move(
+                    replica_id,
+                    f"it didn't finish in {RAY_SERVE_COMPACTION_TIMEOUT_S} seconds",
+                )
+
+    def plan_rebalance_move(
+        self, deployment_id: DeploymentID
+    ) -> Optional[RebalanceMove]:
+        """The move that best raises the deployment's coverage, or None.
+
+        A replica only moves to a stricter tier than its node's, so it never
+        trades an earlier rule for a later one.
+        """
+        info = self._deployments[deployment_id]
+        if not info.rules or info.is_gang or info.pins_replicas:
+            return None
+        placement_candidates = self._get_deployment_placement_candidates(info)
+        if placement_candidates is None:
+            return None
+
+        view = self._cluster_view()
+        layout = view.replicas_per_node[deployment_id]
+        tiers = rule_tiers(self._rules_for(deployment_id))
+        scorer = self._node_scorer()
+        current = self._coverage(
+            info.rules, self._context_for(deployment_id, placement_candidates, view)
+        )
+        outdated = self._outdated_replicas.get(deployment_id, set())
+
+        best: Optional[Tuple[Tuple[int, ...], RebalanceMove]] = None
+        for replica_id, node_id in sorted(
+            self._running_replicas[deployment_id].items(), key=lambda r: str(r[0])
+        ):
+            if node_id not in view.available_resources or replica_id in outdated:
+                continue
+            layout[node_id] -= 1
+            ctx = self._context_for(deployment_id, placement_candidates, view)
+            source_tier = self._tier_of_node(node_id, tiers, ctx)
+            chosen = self._select_node_in_tiers(
+                placement_candidates, tiers[:source_tier], ctx, scorer, view
+            )
+            if chosen is not None:
+                target_node, target_tier = chosen
+                layout[target_node] += 1
+                coverage = self._coverage(info.rules, ctx)
+                layout[target_node] -= 1
+                if coverage > current and (best is None or coverage > best[0]):
+                    gained = [
+                        rule.describe()
+                        for rule in tiers[target_tier]
+                        if source_tier >= len(tiers) or rule not in tiers[source_tier]
+                    ]
+                    best = (
+                        coverage,
+                        RebalanceMove(
+                            replica_id=replica_id,
+                            source_node_id=node_id,
+                            target_node_id=target_node,
+                            reason=f"node {target_node} holds {gained}",
+                        ),
+                    )
+            layout[node_id] += 1
+        return best[1] if best else None
 
     def _filter_candidate_nodes(
         self,
@@ -2238,7 +2561,10 @@ class DeploymentScheduler:
         if (
             now < self._next_allowed_compaction_timestamp_s
             or now < self._next_compaction_scan_timestamp_s
-            or any(self._pending_replicas.values())
+            or any(
+                set(pending) - self._held_replicas.get(deployment_id, set())
+                for deployment_id, pending in self._pending_replicas.items()
+            )
             or any(self._launching_replicas.values())
             or any(self._recovering_replicas.values())
         ):

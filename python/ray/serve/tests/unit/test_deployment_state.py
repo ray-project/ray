@@ -1540,6 +1540,91 @@ def test_unmet_rules_message_keeps_other_messages(mock_deployment_state_manager)
     assert ds.curr_status_info.message == "Something else."
 
 
+def test_moved_replica_runs_until_its_replacement_does(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+    moving = ds._replicas.get(states=[ReplicaState.RUNNING])[0].replica_id
+
+    ds.migrate_replicas_on_draining_nodes({}, migrating_replicas={moving})
+    pending = ds._replicas.get(states=[ReplicaState.PENDING_MIGRATION])
+    assert [r.replica_id for r in pending] == [moving]
+
+    ds.migrate_replicas_on_draining_nodes({}, migrating_replicas=set())
+    assert moving in {
+        r.replica_id for r in ds._replicas.get(states=[ReplicaState.RUNNING])
+    }
+
+
+class TestRebalanceGate:
+    @staticmethod
+    def _settled(mock_deployment_state_manager):
+        create_dsm, timer, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm()
+        _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="1")
+        calls = []
+        dsm._deployment_scheduler.rebalance = lambda ids: calls.append(list(ids))
+        return dsm, timer, calls
+
+    def test_moves_wait_for_the_deployment_to_settle(
+        self, mock_deployment_state_manager
+    ):
+        dsm, timer, calls = self._settled(mock_deployment_state_manager)
+        dsm.update()
+        assert calls[-1] == []
+
+        timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S)
+        dsm.update()
+        assert calls[-1] == [TEST_DEPLOYMENT_ID]
+
+    def test_a_deploy_restarts_the_wait(self, mock_deployment_state_manager):
+        dsm, timer, calls = self._settled(mock_deployment_state_manager)
+        dsm.update()
+        timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S)
+
+        info_2, _ = deployment_info(num_replicas=1, version="2")
+        dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+        dsm.update()
+        assert calls[-1] == []
+
+    def test_no_moves_while_a_node_drains(self, mock_deployment_state_manager):
+        dsm, timer, calls = self._settled(mock_deployment_state_manager)
+        dsm.update()
+        timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S)
+        dsm._cluster_node_info_cache.get_draining_nodes = lambda: {"node": 0}
+        dsm.update()
+        assert calls == [[]]
+
+    def test_env_var_turns_moves_off(self, mock_deployment_state_manager):
+        dsm, timer, calls = self._settled(mock_deployment_state_manager)
+        timer.advance(RAY_SERVE_NODE_COMPACTION_DELAY_S)
+        with patch(
+            "ray.serve._private.deployment_state.RAY_SERVE_REBALANCE_RULES", False
+        ):
+            dsm.update()
+            dsm.update()
+        assert calls == []
+
+
+@pytest.mark.parametrize(
+    "status,running,total,held,settled",
+    [
+        (DeploymentStatus.HEALTHY, 3, 3, 0, True),
+        (DeploymentStatus.UPSCALING, 2, 3, 0, False),
+        (DeploymentStatus.UPSCALING, 2, 3, 1, True),
+        (DeploymentStatus.UPSCALING, 1, 3, 1, False),
+        (DeploymentStatus.UNHEALTHY, 2, 3, 1, False),
+    ],
+)
+def test_held_replicas_dont_unsettle_compaction(status, running, total, held, settled):
+    ds = Mock()
+    ds.curr_status_info.status = status
+    ds.target_num_replicas = 3
+    ds.get_num_running_replicas.return_value = running
+    ds._replicas.count.return_value = total
+    assert DeploymentStateManager._settled_for_compaction(ds, held) is settled
+
+
 def test_redeploy_different_num_replicas(mock_deployment_state_manager):
     """Tests status changes when redeploying with different num_replicas.
 

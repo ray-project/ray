@@ -85,6 +85,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
     RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_NODE_COMPACTION_DELAY_S,
+    RAY_SERVE_REBALANCE_RULES,
     RAY_SERVE_RETAINED_DEAD_REPLICAS,
     RAY_SERVE_SHUTDOWN_TIER_TIMEOUT_S,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
@@ -6446,7 +6447,12 @@ class DeploymentState:
         self,
         draining_nodes: Mapping[str, float],
         compacting_node_id: Optional[str] = None,
+        migrating_replicas: Optional[Set[ReplicaID]] = None,
     ):
+        """Migrates replicas off draining nodes, and replicas the scheduler moves."""
+        migrating_replicas = migrating_replicas or set()
+        if self._is_gang_deployment:
+            migrating_replicas = set()
         # Compaction only moves RUNNING replicas of ordinary deployments. The
         # scheduler never compacts a node that runs a gang, and a gang that lands
         # on the compacting node while starting cancels the compaction once it's
@@ -6473,6 +6479,7 @@ class DeploymentState:
         # with _in_transition already False, so check for them explicitly.
         if (
             not draining_nodes
+            and not migrating_replicas
             and not self._in_transition
             and self._replicas.count_state(ReplicaState.PENDING_MIGRATION) == 0
         ):
@@ -6504,7 +6511,10 @@ class DeploymentState:
         else:
 
             def still_draining(r):
-                return r.actor_node_id in draining_nodes
+                return (
+                    r.actor_node_id in draining_nodes
+                    or r.replica_id in migrating_replicas
+                )
 
         for replica in pending_migration_replicas:
             if still_draining(replica):
@@ -6540,7 +6550,10 @@ class DeploymentState:
         else:
 
             def needs_migration(r):
-                return r.actor_node_id in draining_nodes
+                return (
+                    r.actor_node_id in draining_nodes
+                    or r.replica_id in migrating_replicas
+                )
 
         for replica in all_replicas:
             if not needs_migration(replica):
@@ -6557,12 +6570,15 @@ class DeploymentState:
             # For RUNNING replicas, migrate them safely by starting
             # a replacement replica first.
             elif replica.actor_details.state == ReplicaState.RUNNING:
-                logger.info(
-                    f"Migrating {replica.replica_id} from draining node "
-                    f"'{replica.actor_node_id}'. A new replica will be "
-                    "created on another node."
-                )
+                if replica.replica_id not in migrating_replicas:
+                    logger.info(
+                        f"Migrating {replica.replica_id} from draining node "
+                        f"'{replica.actor_node_id}'. A new replica will be "
+                        "created on another node."
+                    )
                 self._replicas.add(ReplicaState.PENDING_MIGRATION, replica)
+            elif replica.replica_id in migrating_replicas:
+                self._replicas.add(replica.actor_details.state, replica)
             # Ray Core placed this replica on the compacting node while it was
             # starting. Leave it alone: once it's RUNNING the scheduler sees a
             # new replica on the target and cancels the compaction. Stopping it
@@ -6934,6 +6950,7 @@ class DeploymentStateManager:
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
         self._all_deployments_healthy: bool = False
         self._last_became_stable_at: Optional[float] = None
+        self._healthy_since: Dict[DeploymentID, float] = {}
         # Monotonic counter bumped whenever an ingress deployment's running-replica
         # set (node/ports included) changes; the controller gates the direct-ingress port
         # reconcile on it, skipping the O(replicas) pass on ticks with no change.
@@ -7560,16 +7577,10 @@ class DeploymentStateManager:
         draining_nodes: Mapping[
             str, float
         ] = self._cluster_node_info_cache.get_draining_nodes()
+        held_replicas = self._deployment_scheduler.get_held_replicas()
         all_deployments_healthy = all(
-            ds.curr_status_info.status == DeploymentStatus.HEALTHY
-            # TODO(zcin): Make sure that status should never be healthy if
-            # the number of running replicas at target version is not at
-            # target number, so we can remove this defensive check.
-            and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
-            # To be extra conservative, only actively compact if there
-            # are no non-running replicas
-            and ds._replicas.count() == ds.target_num_replicas
-            for ds in self._deployment_states.values()
+            self._settled_for_compaction(ds, len(held_replicas.get(deployment_id, ())))
+            for deployment_id, ds in self._deployment_states.items()
         )
         if all_deployments_healthy and not self._all_deployments_healthy:
             self._last_became_stable_at = time.time()
@@ -7598,9 +7609,15 @@ class DeploymentStateManager:
                 compacting_node_id = target_node_id
                 draining_nodes = {**draining_nodes, target_node_id: deadline}
 
+        self._rebalance_settled_deployments(
+            draining=bool(draining_nodes) or compacting_node_id is not None
+        )
+        replicas_to_move = self._deployment_scheduler.get_replicas_to_move()
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.migrate_replicas_on_draining_nodes(
-                draining_nodes, compacting_node_id=compacting_node_id
+                draining_nodes,
+                compacting_node_id=compacting_node_id,
+                migrating_replicas=replicas_to_move.get(deployment_id),
             )
 
         # STEP 3: Reserve gang placement groups
@@ -7638,6 +7655,17 @@ class DeploymentStateManager:
         )
         for deployment_id, replicas_to_stop in deployment_to_replicas_to_stop.items():
             self._deployment_states[deployment_id].stop_replicas(replicas_to_stop)
+        for (
+            deployment_id,
+            outdated_to_stop,
+        ) in self._deployment_scheduler.get_outdated_replicas_to_stop().items():
+            if deployment_id in self._deployment_states:
+                logger.info(
+                    f"Stopping outdated replicas {sorted(map(str, outdated_to_stop))} "
+                    "first, because new replicas of the deployment need the "
+                    "domains they fill."
+                )
+                self._deployment_states[deployment_id].stop_replicas(outdated_to_stop)
         for deployment_id, deployment_state in self._deployment_states.items():
             deployment_state.update_unmet_rules_message(
                 self._deployment_scheduler.get_unmet_rules(deployment_id)
@@ -7797,6 +7825,47 @@ class DeploymentStateManager:
             ):
                 num_gpu_deployments += 1
         ServeUsageTag.NUM_GPU_DEPLOYMENTS.record(str(num_gpu_deployments))
+
+    @staticmethod
+    def _settled_for_compaction(ds: DeploymentState, num_held: int) -> bool:
+        """Whether the deployment lets a compaction start. Held replicas don't count."""
+        if num_held:
+            return (
+                ds.curr_status_info.status
+                not in (DeploymentStatus.UNHEALTHY, DeploymentStatus.DEPLOY_FAILED)
+                and ds.get_num_running_replicas(ds.target_version) + num_held
+                == ds.target_num_replicas
+                and ds._replicas.count() == ds.target_num_replicas
+            )
+        return (
+            ds.curr_status_info.status == DeploymentStatus.HEALTHY
+            # TODO(zcin): Make sure that status should never be healthy if
+            # the number of running replicas at target version is not at
+            # target number, so we can remove this defensive check.
+            and ds.get_num_running_replicas(ds.target_version) == ds.target_num_replicas
+            # To be extra conservative, only actively compact if there
+            # are no non-running replicas
+            and ds._replicas.count() == ds.target_num_replicas
+        )
+
+    def _rebalance_settled_deployments(self, draining: bool) -> None:
+        """Lets the scheduler move replicas of settled deployments."""
+        now = time.time()
+        for deployment_id, deployment_state in self._deployment_states.items():
+            if deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY:
+                self._healthy_since.setdefault(deployment_id, now)
+            else:
+                self._healthy_since.pop(deployment_id, None)
+        for deployment_id in list(self._healthy_since):
+            if deployment_id not in self._deployment_states:
+                del self._healthy_since[deployment_id]
+        if not RAY_SERVE_REBALANCE_RULES or draining:
+            return
+        self._deployment_scheduler.rebalance(
+            deployment_id
+            for deployment_id, since in self._healthy_since.items()
+            if now - since >= RAY_SERVE_NODE_COMPACTION_DELAY_S
+        )
 
     def _reserve_gang_placement_groups(
         self,
