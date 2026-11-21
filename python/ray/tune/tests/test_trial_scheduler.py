@@ -491,6 +491,31 @@ class HyperbandSuite(unittest.TestCase):
             cur_units = int(cur_units * sched._eta)
         self.assertEqual(len(big_bracket.current_trials()), 1)
 
+    def testLastRungIsMaxT(self):
+        """Rung i of bracket s trains to max_t / eta**(s - i) (HyperBand paper,
+        Alg. 1), so every bracket ends at max_t even if it is not a power of eta."""
+        sched = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=50, reduction_factor=3
+        )
+        rungs = []
+        for s in range(sched._s_max_1):
+            if sched._get_r0(s) == 0:
+                continue
+            bracket = sched._create_bracket(s)
+            milestones = [bracket._cumul_r]
+            for _ in range(s):
+                bracket.successive_halving("episode_reward_mean", 1.0)
+                milestones.append(bracket._cumul_r)
+            rungs.append(milestones)
+        self.assertEqual(rungs, [[50], [16, 50], [5, 16, 50], [1, 5, 16, 50]])
+
+        # Rounding must not drop a bracket: 729 * 3**-6 == 0.9999999999999999.
+        sched = HyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=729, reduction_factor=3
+        )
+        r0 = [sched._get_r0(s) for s in range(sched._s_max_1)]
+        self.assertEqual(r0, [729, 243, 81, 27, 9, 3, 1])
+
     def testHalvingStop(self):
         stats = self.default_statistics()
         num_trials = stats[str(0)]["n"] + stats[str(1)]["n"]
