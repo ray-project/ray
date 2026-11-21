@@ -242,6 +242,7 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
             "partitioning": None,
             "partition_pruner": None,
             "logical_schema": None,
+            "residual_pruning": None,
         }
     ]
     assert footer_batches == [[FileInfo(path_b, size_b)]]
