@@ -39,7 +39,7 @@ def main(args):
     )
 
     num_rows = ds.count()
-    if args.early_stop is not None:
+    if args.early_stop:
         max_rows_to_read_per_worker = num_rows // 2 // args.num_workers
     else:
         max_rows_to_read_per_worker = None
