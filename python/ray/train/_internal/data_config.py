@@ -150,9 +150,7 @@ class DataConfig:
 
             if name in datasets_to_split:
                 for i, split in enumerate(
-                    ds.streaming_split(
-                        world_size, equal=True, locality_hints=locality_hints
-                    )
+                    self._streaming_split(ds, world_size, locality_hints)
                 ):
                     output[i][name] = split
             else:
@@ -160,6 +158,48 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
+
+    def _use_push_based_streaming_split(self) -> bool:
+        """Whether to shard datasets with the push-based streaming split.
+
+        Ray Train V2 uses the push-based split by default. Set the
+        ``RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT=0`` environment variable to
+        use the pull-based ``Dataset.streaming_split``. Ray Train V1 always
+        uses the pull-based split, because only V2 workers can receive pushed
+        blocks.
+        """
+        from ray._private.ray_constants import env_bool
+        from ray.train.v2._internal.constants import (
+            DEFAULT_USE_PUSH_BASED_STREAMING_SPLIT,
+            USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR,
+            is_v2_enabled,
+        )
+
+        return is_v2_enabled() and env_bool(
+            USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR,
+            DEFAULT_USE_PUSH_BASED_STREAMING_SPLIT,
+        )
+
+    def _streaming_split(
+        self,
+        ds: "Dataset",
+        world_size: int,
+        locality_hints: Optional[List["NodeIdStr"]],
+    ) -> List["DataIterator"]:
+        """Split ``ds`` into one equal shard per Train worker."""
+        if self._use_push_based_streaming_split():
+            from ray.data._internal.iterator.push_split_iterator import (
+                streaming_split_push_based,
+            )
+
+            return list(
+                streaming_split_push_based(
+                    ds, world_size, equal=True, locality_hints=locality_hints
+                )
+            )
+        return list(
+            ds.streaming_split(world_size, equal=True, locality_hints=locality_hints)
+        )
 
     @staticmethod
     def default_ingest_options() -> "ExecutionOptions":

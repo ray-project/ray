@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from abc import abstractmethod
@@ -156,14 +157,13 @@ class RayDataLoaderFactory(BaseDataLoaderFactory):
                     generate_id_column=True,
                 )
             }
-        if dataloader_config.ray_data_push_based_split:
-            # Push-based streaming split (coordinator pushes
-            # blocks to train workers instead of workers pulling).
-            from ray.train._internal.push_based_data_config import (
-                PushBasedDataConfig,
-            )
-
-            return PushBasedDataConfig(**data_config_kwargs)
+        # Ray Train V2 uses the push-based streaming split by default
+        # (the coordinator pushes blocks to train workers instead of workers
+        # pulling). Set the variable for both cases, so that the flag decides
+        # and not the default. Ray Train sends it to the controller.
+        os.environ["RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT"] = (
+            "1" if dataloader_config.ray_data_push_based_split else "0"
+        )
         return ray.train.DataConfig(**data_config_kwargs)
 
     def supports_mid_epoch_resume(self) -> bool:

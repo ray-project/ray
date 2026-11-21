@@ -15,9 +15,11 @@ from ray.data import (
     ExecutionResources,
     FileShuffleConfig,
 )
+from ray.data._internal.iterator.push_split_iterator import PushBasedDataIterator
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
+from ray.train.v2._internal.constants import USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
@@ -56,11 +58,9 @@ def test_dataset_sharding_across_workers(ray_start_4_cpus, num_workers):
 
 
 @pytest.mark.parametrize("push_based", [False, True])
-def test_dataset_shard_materialize(ray_start_4_cpus, push_based):
+def test_dataset_shard_materialize(ray_start_4_cpus, push_based, monkeypatch):
     """Workers can materialize their shards, as the XGBoost and LightGBM
     examples do, with the pull split and the push split."""
-    from ray.train._internal.push_based_data_config import PushBasedDataConfig
-
     NUM_ROWS = 1000
     NUM_WORKERS = 2
 
@@ -69,11 +69,12 @@ def test_dataset_shard_materialize(ray_start_4_cpus, push_based):
         ids = [row["id"] for row in shard.materialize().take_all()]
         assert len(set(ids)) == NUM_ROWS // NUM_WORKERS
 
-    data_config = PushBasedDataConfig() if push_based else ray.train.DataConfig()
+    monkeypatch.setenv(
+        USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR, "1" if push_based else "0"
+    )
     trainer = DataParallelTrainer(
         train_fn,
         datasets={"train": ray.data.range(NUM_ROWS)},
-        dataset_config=data_config,
         scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
     )
     trainer.fit()
@@ -162,8 +163,11 @@ def test_datasets_callback(ray_start_4_cpus):
         DatasetShardMetadata(dataset_name="valid", world_rank=0)
     )
 
-    assert isinstance(processed_train_ds, StreamSplitDataIterator)
-    assert not isinstance(processed_valid_ds, StreamSplitDataIterator)
+    # The push-based split is the default; the unsplit dataset uses neither.
+    assert isinstance(processed_train_ds, PushBasedDataIterator)
+    assert not isinstance(
+        processed_valid_ds, (PushBasedDataIterator, StreamSplitDataIterator)
+    )
 
     # Under the V2 cluster autoscaler (default), the scaling policy registers training resources
     # with the AutoscalingCoordinator, so exclude_resources should not be set.
@@ -209,12 +213,21 @@ def test_default_ingest_options_inherited_from_context():
 
 
 @pytest.mark.parametrize("enable_shard_locality", [True, False])
-def test_configure_locality(enable_shard_locality):
+@pytest.mark.parametrize("push_based", [True, False])
+def test_configure_locality(enable_shard_locality, push_based, monkeypatch):
+    monkeypatch.setenv(
+        USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR, "1" if push_based else "0"
+    )
     data_config = ray.train.DataConfig(enable_shard_locality=enable_shard_locality)
 
     mock_ds = MagicMock()
-    mock_ds.streaming_split = MagicMock()
+    mock_ds.streaming_split = MagicMock(return_value=[])
     mock_ds.copy = MagicMock(return_value=mock_ds)
+    mock_push_split = MagicMock(return_value=[])
+    monkeypatch.setattr(
+        "ray.data._internal.iterator.push_split_iterator.streaming_split_push_based",
+        mock_push_split,
+    )
     world_size = 2
     worker_handles = [MagicMock() for _ in range(world_size)]
     worker_node_ids = ["node" + str(i) for i in range(world_size)]
@@ -224,12 +237,17 @@ def test_configure_locality(enable_shard_locality):
         worker_handles=worker_handles,
         worker_node_ids=worker_node_ids,
     )
-    mock_ds.streaming_split.assert_called_once()
-    mock_ds.streaming_split.assert_called_with(
-        world_size,
-        equal=True,
-        locality_hints=worker_node_ids if enable_shard_locality else None,
-    )
+    locality_hints = worker_node_ids if enable_shard_locality else None
+    if push_based:
+        mock_ds.streaming_split.assert_not_called()
+        mock_push_split.assert_called_once_with(
+            mock_ds, world_size, equal=True, locality_hints=locality_hints
+        )
+    else:
+        mock_push_split.assert_not_called()
+        mock_ds.streaming_split.assert_called_once_with(
+            world_size, equal=True, locality_hints=locality_hints
+        )
 
 
 @pytest.mark.parametrize("cache_random_preprocessing", [True, False])

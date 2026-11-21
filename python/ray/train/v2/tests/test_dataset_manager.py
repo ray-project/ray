@@ -6,11 +6,16 @@ import pytest
 import ray
 import ray.data
 from ray.data import DataContext
+from ray.data._internal.iterator.push_split_iterator import PushBasedDataIterator
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.train.v2._internal.data_integration.dataset_manager import (
     DatasetManager,
     DatasetShardMetadata,
 )
+
+# Split datasets use the push-based split by default and the pull-based
+# split when RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT=0.
+SPLIT_ITERATOR_CLASSES = (PushBasedDataIterator, StreamSplitDataIterator)
 
 
 async def get_dataset_shard_for_worker(
@@ -70,7 +75,7 @@ async def test_get_multiple_datasets_serially(ray_start_4_cpus):
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "sharded_1", NUM_TRAIN_WORKERS
     )
-    assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+    assert all(isinstance(shard, SPLIT_ITERATOR_CLASSES) for shard in shards)
     assert all(
         shard._get_dataset_tag()["dataset"].startswith("sharded_1_") for shard in shards
     )
@@ -78,7 +83,7 @@ async def test_get_multiple_datasets_serially(ray_start_4_cpus):
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "sharded_2", NUM_TRAIN_WORKERS
     )
-    assert all(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+    assert all(isinstance(shard, SPLIT_ITERATOR_CLASSES) for shard in shards)
     assert all(
         shard._get_dataset_tag()["dataset"].startswith("sharded_2_") for shard in shards
     )
@@ -86,7 +91,7 @@ async def test_get_multiple_datasets_serially(ray_start_4_cpus):
     shards = await get_dataset_shard_for_all_workers(
         dataset_manager, "unsharded", NUM_TRAIN_WORKERS
     )
-    assert not any(isinstance(shard, StreamSplitDataIterator) for shard in shards)
+    assert not any(isinstance(shard, SPLIT_ITERATOR_CLASSES) for shard in shards)
     assert all(
         shard._get_dataset_tag()["dataset"].startswith("unsharded_") for shard in shards
     )
@@ -125,7 +130,7 @@ async def test_get_multiple_datasets_interleaved(ray_start_4_cpus):
         get_dataset_shard_for_worker(dataset_manager, "valid", 0),
     ]
     iterators = await asyncio.gather(*tasks)
-    assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
+    assert all(isinstance(iterator, SPLIT_ITERATOR_CLASSES) for iterator in iterators)
     expected_names = ["train", "valid", "train", "valid"]
     assert all(
         it._get_dataset_tag()["dataset"].startswith(f"{name}_")
@@ -163,7 +168,7 @@ async def test_get_multiple_datasets_rank_specific(ray_start_4_cpus):
     iterators = await get_dataset_shard_for_all_workers(
         dataset_manager, "train", NUM_TRAIN_WORKERS
     )
-    assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
+    assert all(isinstance(iterator, SPLIT_ITERATOR_CLASSES) for iterator in iterators)
     assert all(
         it._get_dataset_tag()["dataset"].startswith("train_") for it in iterators
     )
@@ -171,14 +176,14 @@ async def test_get_multiple_datasets_rank_specific(ray_start_4_cpus):
     # if world_rank == 0:
     #     ray.train.get_dataset_shard("valid")
     iterator = await get_dataset_shard_for_worker(dataset_manager, "valid", 0)
-    assert not isinstance(iterator, StreamSplitDataIterator)
+    assert not isinstance(iterator, SPLIT_ITERATOR_CLASSES)
     assert iterator._get_dataset_tag()["dataset"].startswith("valid_")
 
     # ray.train.get_dataset_shard("train")
     iterators = await get_dataset_shard_for_all_workers(
         dataset_manager, "train", NUM_TRAIN_WORKERS
     )
-    assert all(isinstance(iterator, StreamSplitDataIterator) for iterator in iterators)
+    assert all(isinstance(iterator, SPLIT_ITERATOR_CLASSES) for iterator in iterators)
     assert all(
         it._get_dataset_tag()["dataset"].startswith("train_") for it in iterators
     )
@@ -262,6 +267,66 @@ async def test_push_based_split_coordinators_are_cleaned_up(ray_start_4_cpus):
     assert dataset_manager._coordinator_actors == [shards[0]._coord_actor]
 
     dataset_manager.shutdown_data_executors()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "env_value, v2_enabled, expect_push",
+    [
+        (None, True, True),
+        ("0", True, False),
+        ("1", True, True),
+        # Ray Train V1 workers can't receive pushed blocks.
+        ("1", False, False),
+    ],
+)
+async def test_push_based_split_env_var(
+    ray_start_4_cpus, monkeypatch, env_value, v2_enabled, expect_push
+):
+    """The default DataConfig uses the push-based split on Ray Train V2, unless
+    RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT turns it off."""
+    from ray.data._internal.iterator.push_split_iterator import (
+        PushBasedDataIterator,
+    )
+    from ray.train import DataConfig
+    from ray.train.v2._internal.constants import (
+        USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR,
+        V2_ENABLED_ENV_VAR,
+    )
+
+    if env_value is None:
+        monkeypatch.delenv(USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR, env_value)
+    monkeypatch.setenv(V2_ENABLED_ENV_VAR, "1" if v2_enabled else "0")
+
+    NUM_TRAIN_WORKERS = 2
+    dataset_manager = DatasetManager(
+        datasets={"train": ray.data.range(100)},
+        data_config=DataConfig(),
+        data_context=DataContext.get_current(),
+        world_size=NUM_TRAIN_WORKERS,
+        worker_node_ids=None,
+    )
+
+    shards = await get_dataset_shard_for_all_workers(
+        dataset_manager, "train", NUM_TRAIN_WORKERS
+    )
+    expected_cls = PushBasedDataIterator if expect_push else StreamSplitDataIterator
+    assert all(isinstance(shard, expected_cls) for shard in shards)
+
+    dataset_manager.shutdown_data_executors()
+
+
+def test_push_based_split_env_var_is_propagated(monkeypatch):
+    """The driver's setting must reach the controller, which creates the split."""
+    from ray.train.v2._internal.constants import (
+        USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR,
+        get_env_vars_to_propagate,
+    )
+
+    monkeypatch.setenv(USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR, "1")
+    assert get_env_vars_to_propagate()[USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR] == "1"
 
 
 if __name__ == "__main__":
