@@ -1,4 +1,5 @@
 import json
+import logging
 import sys
 from unittest.mock import patch
 
@@ -450,6 +451,72 @@ def test_respect_configured_num_gpus():
     )
     # Accelerator type key should be set in resources.
     assert spec.resources.get("accelerator_type:A100") == 1
+
+
+@pytest.mark.parametrize("resource_name", ["GPU", "TPU"])
+@pytest.mark.parametrize("detection_error", [False, True])
+def test_warns_if_configured_accelerators_cannot_be_detected(
+    resource_name, detection_error, caplog, propagate_logs
+):
+    caplog.set_level(logging.WARNING, logger="ray._private.resource_and_label_spec")
+    manager = FakeAcceleratorManager(resource_name, None, 0)
+    spec = ResourceAndLabelSpec(
+        num_gpus=2 if resource_name == "GPU" else None,
+        resources={resource_name: 2} if resource_name != "GPU" else {},
+    )
+    error = RuntimeError("accelerator discovery failed") if detection_error else None
+
+    with mock_accelerator_detection(manager), patch.object(
+        manager, "get_current_process_visible_accelerator_ids", return_value=None
+    ), patch.object(
+        manager, "get_current_node_num_accelerators", return_value=0, side_effect=error
+    ):
+        spec.resolve(is_head=False)
+
+    assert spec.resolved()
+    assert spec.to_resource_dict()[resource_name] == 2
+    assert len(caplog.records) == 1
+    warning = caplog.records[0]
+    assert warning.levelno == logging.WARNING
+    assert f"configured with 2 {resource_name} resources" in warning.getMessage()
+    if detection_error:
+        assert warning.exc_info[1] is error
+    else:
+        assert "auto-detection found no accelerators" in warning.getMessage()
+
+
+@pytest.mark.parametrize("resource_name", ["GPU", "TPU"])
+@pytest.mark.parametrize(
+    "configured_count,detected_count,expected_count",
+    [(None, 0, 0), (0, 0, 0), (0, 2, 0), (2, 2, 2), (3, 2, 3), (None, 2, 2)],
+)
+def test_accelerator_detection_preserves_resource_counts_without_warning(
+    resource_name,
+    configured_count,
+    detected_count,
+    expected_count,
+    caplog,
+    propagate_logs,
+):
+    caplog.set_level(logging.WARNING, logger="ray._private.resource_and_label_spec")
+    manager = FakeAcceleratorManager(resource_name, None, detected_count)
+    spec = ResourceAndLabelSpec(
+        num_gpus=configured_count if resource_name == "GPU" else None,
+        resources=(
+            {resource_name: configured_count}
+            if resource_name != "GPU" and configured_count is not None
+            else {}
+        ),
+    )
+
+    with mock_accelerator_detection(manager), patch.object(
+        manager, "get_current_process_visible_accelerator_ids", return_value=None
+    ):
+        spec.resolve(is_head=False)
+
+    assert spec.resolved()
+    assert spec.to_resource_dict().get(resource_name, 0) == expected_count
+    assert not caplog.records
 
 
 def test_resolve_sets_non_gpu_accelerator():
