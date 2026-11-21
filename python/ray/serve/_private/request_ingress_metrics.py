@@ -1,8 +1,21 @@
-from typing import Dict
+from typing import Dict, Tuple
 
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import REQUEST_LATENCY_BUCKETS_MS
 from ray.util import metrics
+
+# Canonical tag orders for each metric family. The cached path in the replica
+# keys its buffers by a tuple of values in these orders, which avoids building a
+# dict + frozenset per request; the dict is rebuilt once per tag set at flush.
+REQUEST_TAG_KEYS = ("route", "method", "application", "status_code")
+REQUEST_ERROR_TAG_KEYS = ("route", "method", "application", "error_code")
+DEPLOYMENT_REQUEST_ERROR_TAG_KEYS = (
+    "route",
+    "method",
+    "application",
+    "error_code",
+    "deployment",
+)
 
 
 class RequestIngressMetrics:
@@ -105,6 +118,44 @@ class RequestIngressMetrics:
             "application": application,
             "status_code": status_code,
         }
+
+    @staticmethod
+    def request_tags_key(
+        *, route: str, method: str, application: str, status_code: str
+    ) -> Tuple[str, ...]:
+        """Cached-buffer key for ``request_tags``, in ``REQUEST_TAG_KEYS`` order."""
+        return (route, method, application, status_code)
+
+    @staticmethod
+    def request_error_tags_key(
+        *, route: str, method: str, application: str, status_code: str
+    ) -> Tuple[str, ...]:
+        """Cached-buffer key for ``request_error_tags``."""
+        return (route, method, application, status_code)
+
+    @staticmethod
+    def deployment_error_tags_key(
+        *,
+        route: str,
+        method: str,
+        application: str,
+        status_code: str,
+        deployment: str,
+    ) -> Tuple[str, ...]:
+        """Cached-buffer key for ``deployment_error_tags``."""
+        return (route, method, application, status_code, deployment)
+
+    @staticmethod
+    def tags_from_key(
+        key: Tuple[str, ...], tag_keys: Tuple[str, ...]
+    ) -> Dict[str, str]:
+        """Rebuild a tag dict from a cached key and its canonical key order."""
+        if len(key) != len(tag_keys):
+            raise ValueError(
+                f"Key has {len(key)} values but {len(tag_keys)} tag keys "
+                f"are expected: {key!r} for {tag_keys!r}."
+            )
+        return dict(zip(tag_keys, key))
 
     @staticmethod
     def request_error_tags(
