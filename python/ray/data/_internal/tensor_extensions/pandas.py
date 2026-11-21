@@ -49,6 +49,7 @@ from ray.data._internal.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
+from ray.data.datatype import DataType
 from ray.util.annotations import PublicAPI
 
 try:
@@ -941,7 +942,8 @@ class TensorArray(
         Returns:
             A boolean NumPy array with one entry per tensor. For object tensors, an
             entry is ``True`` if the tensor is ``None``. For string tensors, it's
-            ``True`` if every element is an empty string. For other tensors, it's
+            ``True`` if every element is an empty Unicode string. Byte strings
+            and raw records have no missing value. For numeric tensors, it's
             ``True`` if every element is NaN.
         """
         if self._tensor.dtype.type is np.object_:
@@ -952,6 +954,9 @@ class TensorArray(
             )
         elif self._tensor.dtype.type is np.str_:
             return np.all(self._tensor == "", axis=tuple(range(1, self._tensor.ndim)))
+        elif self._tensor.dtype.kind in ("S", "V"):
+            # Byte strings and raw records have no missing-value representation.
+            return np.zeros(len(self), dtype=bool)
         else:
             return np.all(
                 np.isnan(self._tensor), axis=tuple(range(1, self._tensor.ndim))
@@ -1234,21 +1239,23 @@ class TensorArray(
             A numeric NumPy dtype returns an ndarray with the shape of the dense
             tensor data. A pandas Series cannot hold this result when it has
             more than one dimension. String dtypes return a one-dimensional
-            array of formatted rows. Nullable string dtypes preserve null
-            rows in the requested pandas extension array. Object dtype returns
-            a one-dimensional object array. A TensorDtype returns a TensorArray.
+            array of formatted rows. Nullable string dtypes preserve missing
+            rows. Object dtype returns a one-dimensional object array.
+            A TensorDtype returns a TensorArray.
         """
         dtype = pd.api.types.pandas_dtype(dtype)
 
         if isinstance(dtype, TensorDtype):
             values = TensorArray(self._tensor.copy()) if copy else self
-        elif pd.api.types.is_string_dtype(dtype) and not pd.api.types.is_object_dtype(
-            dtype
+        elif isinstance(dtype, pd.StringDtype) or (
+            isinstance(dtype, pd.ArrowDtype)
+            and DataType.from_arrow(dtype.pyarrow_dtype).is_string_type()
         ):
-            strings = [None if t is None else str(t) for t in self._tensor]
-            if isinstance(dtype, pd.api.extensions.ExtensionDtype):
-                return pd.array(strings, dtype=dtype)
-            return np.array(strings, dtype=dtype)
+            return pd.array(self._string_rows(None), dtype=dtype)
+        elif isinstance(dtype, np.dtype) and dtype.kind in ("S", "U", "T"):
+            if hasattr(dtype, "na_object"):
+                return np.array(self._string_rows(dtype.na_object), dtype=dtype)
+            return np.array([str(row) for row in self._tensor], dtype=dtype)
         elif pd.api.types.is_object_dtype(dtype):
             # Interpret astype(object) as "cast to an array of numpy arrays"
             values = np.empty(len(self), dtype=object)
@@ -1257,6 +1264,12 @@ class TensorArray(
         else:
             values = self._tensor.astype(dtype, copy=copy)
         return values
+
+    def _string_rows(self, na_value):
+        return [
+            na_value if missing else str(row)
+            for row, missing in zip(self._tensor, self.isna())
+        ]
 
     def any(
         self,

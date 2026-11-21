@@ -139,6 +139,52 @@ def test_tensor_array_astype_nullable_string_preserves_null_rows(dtype):
     )
 
 
+@pytest.mark.parametrize("dtype", [pd.StringDtype(), pd.ArrowDtype(pa.large_string())])
+def test_tensor_series_astype_string_after_reindex(dtype):
+    series = pd.Series(TensorArray(np.array([[1.0, np.nan]]))).reindex([0, 1])
+
+    result = series.astype(dtype)
+
+    pd.testing.assert_series_equal(result, pd.Series(["[ 1. nan]", None], dtype=dtype))
+    pd.testing.assert_series_equal(result.isna(), series.isna())
+
+
+def test_tensor_array_astype_arrow_string_view():
+    if not hasattr(pa, "string_view"):
+        pytest.skip("string_view requires PyArrow 16")
+    dtype = pd.ArrowDtype(pa.string_view())
+    tensor_array = TensorArray([np.arange(2), None])
+
+    result = tensor_array.astype(dtype)
+    assert result.dtype == dtype
+    assert result.__arrow_array__().to_pylist() == ["[0 1]", None]
+
+
+@pytest.mark.parametrize("dtype", ["S2", [("value", "i4")]])
+def test_tensor_array_astype_nullable_string_without_missing_values(dtype):
+    rows = np.zeros((2, 1), dtype=dtype)
+    result = TensorArray(rows).astype(pd.StringDtype())
+    assert result.tolist() == [str(row) for row in rows]
+
+
+def test_tensor_array_astype_numpy_variable_width_string():
+    if not hasattr(getattr(np, "dtypes", None), "StringDType"):
+        pytest.skip("variable-width strings require NumPy 2")
+    tensor_array = TensorArray([np.arange(2), None])
+    for dtype, missing in (
+        (np.dtypes.StringDType(), "None"),
+        (np.dtypes.StringDType(na_object=None), None),
+    ):
+        result = tensor_array.astype(dtype)
+        assert result.dtype == dtype
+        assert result.tolist() == ["[0 1]", missing]
+
+    dense = TensorArray(np.arange(4).reshape(2, 2))
+    dtype = np.dtypes.StringDType()
+    assert dense.astype(dtype).tolist() == ["[0 1]", "[2 3]"]
+    assert pd.Series(dense).astype(dtype).tolist() == ["[0 1]", "[2 3]"]
+
+
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
