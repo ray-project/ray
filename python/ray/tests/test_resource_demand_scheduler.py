@@ -159,11 +159,14 @@ def test_gpu_node_util_score():
     ) == (True, 1, 0.0, 0.5)
     # Explicit zero GPU demand (e.g. request_resources({"CPU": 1, "GPU": 0}))
     # should not be treated as a GPU task.
-    assert _resource_based_utilization_scorer(
-        {"GPU": 1, "CPU": 1},
-        [{"CPU": 1, "GPU": 0}],
-        node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
-    )[0] is False
+    assert (
+        _resource_based_utilization_scorer(
+            {"GPU": 1, "CPU": 1},
+            [{"CPU": 1, "GPU": 0}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )[0]
+        is False
+    )
 
 
 def test_zero_resource():
