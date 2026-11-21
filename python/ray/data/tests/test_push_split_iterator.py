@@ -2,8 +2,8 @@
 
 import threading
 import time
+from types import SimpleNamespace
 from typing import Any, List, Optional
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -133,15 +133,17 @@ class _Consumer(PushSplitReceiverMixin):
         def _run():
             try:
                 rows = 0
+                ids = []
                 for batch in self._it.iter_batches(
                     batch_size=batch_size, prefetch_batches=prefetch_batches
                 ):
                     rows += len(batch["id"])
+                    ids.extend(batch["id"].tolist())
                     if delay_s:
                         time.sleep(delay_s)
                     if max_rows is not None and rows >= max_rows:
                         break
-                self._result = {"rows": rows}
+                self._result = {"rows": rows, "ids": ids}
             except BaseException as e:  # noqa: BLE001 - surfaced via epoch_result
                 self._result = e
 
@@ -156,6 +158,10 @@ class _Consumer(PushSplitReceiverMixin):
         if isinstance(result, BaseException):
             raise result
         return result
+
+    def checkpointer_calls(self):
+        checkpointer = self._it._checkpointer
+        return checkpointer.events, checkpointer.recorded_ids
 
     def num_receivers(self) -> int:
         # Imported here so this reads the worker process's registry; a
@@ -278,12 +284,46 @@ def test_push_split_materialize_not_supported(ray_start_regular_shared):
         iterators[0].materialize()
 
 
-def test_push_split_checkpointing_not_supported(ray_start_regular_shared):
-    ds = ray.data.range(100)
-    iterators = streaming_split_push_based(ds, 1)
-    iterators[0]._enable_checkpointing(MagicMock())
-    with pytest.raises(NotImplementedError, match="checkpointing"):
-        next(iter(iterators[0].iter_batches(batch_size=10)))
+def test_push_split_checkpointing_records_yielded_row_ids(ray_start_regular_shared):
+    # Define the class in the test so cloudpickle sends it by value. The
+    # consumer actor can't import this test module.
+    class _RecordingCheckpointer:
+        """Stands in for ``RowIDBasedDataIteratorCheckpointer``. It records the
+        calls that ``CheckpointingBatchIterator`` makes, in the consumer actor."""
+
+        def __init__(self):
+            self._id_column = "id"
+            self._checkpoint_config = SimpleNamespace(generate_id_column=False)
+            self.events: List[str] = []
+            self.recorded_ids: List[int] = []
+
+        def start_epoch(self) -> None:
+            self.events.append("start_epoch")
+
+        def end_epoch(self) -> None:
+            self.events.append("end_epoch")
+
+        def record_yielded_batch(self, batch) -> None:
+            self.recorded_ids.extend(batch.metadata.row_ids.column("id").to_pylist())
+
+    ds = ray.data.range(1000, override_num_blocks=20)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
+    for it in iterators:
+        it._enable_checkpointing(
+            _RecordingCheckpointer()  # pyrefly: ignore[bad-argument-type]
+        )
+    consumers = _make_consumers(iterators)
+
+    results = _run_epochs(consumers)
+
+    all_ids = []
+    for consumer, result in zip(consumers, results):
+        events, recorded_ids = ray.get(consumer.checkpointer_calls.remote())
+        assert events == ["start_epoch", "end_epoch"]
+        # Each split records exactly the row IDs it yielded, in order.
+        assert recorded_ids == result["ids"]
+        all_ids.extend(recorded_ids)
+    assert sorted(all_ids) == list(range(1000))
 
 
 def test_push_split_requires_actor_host(ray_start_regular_shared):

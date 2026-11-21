@@ -23,7 +23,6 @@ from typing import (
 
 import ray
 from ray.data._internal.block_batching.interfaces import ResolvedBlock
-from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
     ReceiverKey,
@@ -35,6 +34,7 @@ from ray.data._internal.iterator.push_split_coordinator import (
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_streaming_split_dataset
 from ray.data.block import Block
+from ray.data.checkpoint.iterator import CheckpointingBatchIterator
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator, _BatchSource
 
@@ -203,9 +203,15 @@ class PushSplitReceiverMixin:
             receiver.deliver_error(epoch_id, error)
 
 
-class _MaterializedBatchIterator(BatchIterator):
+class _MaterializedBatchIterator(CheckpointingBatchIterator):
     """BatchIterator over already-materialized blocks: skips the ref-level
-    prefetch/resolve stages, inherits everything else unchanged."""
+    prefetch/resolve stages, inherits everything else unchanged.
+
+    It extends ``CheckpointingBatchIterator`` so that a split with a
+    checkpointer records the row IDs of each batch it yields, like the
+    pull-based split. Without a checkpointer, it behaves like a plain
+    ``BatchIterator``.
+    """
 
     def __init__(self, blocks: Iterator[ResolvedBlock], **kwargs):
         # BatchIterator stores its input and hands it to _pipeline, which
@@ -293,11 +299,6 @@ class PushBasedDataIterator(DataIterator):
                 "from a background thread (as Ray Train does) or give the "
                 "actor max_concurrency > 1."
             )
-        if self._checkpointer is not None:
-            raise NotImplementedError(
-                "Data checkpointing isn't supported for push-based streaming "
-                "splits yet."
-            )
         # Capture the prefetch window before iteration starts; _iter_blocks
         # reads it lazily on its first next().
         self._prefetch_batches = batch_iterator_kwargs.get("prefetch_batches", 1)
@@ -305,6 +306,7 @@ class PushBasedDataIterator(DataIterator):
         dataset_tags = self._get_dataset_tag()
         batch_iterator = _MaterializedBatchIterator(
             self._iter_blocks(),
+            checkpointer=self._checkpointer,
             stats=self._iter_stats,
             dataset_tags=dataset_tags,
             **batch_iterator_kwargs,

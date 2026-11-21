@@ -13,10 +13,16 @@ import ray.train
 import ray.train.collective
 from ray.data.datasource import FileShuffleConfig
 from ray.train import DataConfig, DatasetCheckpointConfig
+from ray.train._internal.push_based_data_config import PushBasedDataConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.util import create_dummy_run_context
+
+
+def make_data_config(push_based: bool, **kwargs) -> DataConfig:
+    """Shard with the push-based split if ``push_based``, else the pull-based one."""
+    return PushBasedDataConfig(**kwargs) if push_based else DataConfig(**kwargs)
 
 
 def filter_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -41,10 +47,15 @@ def read_checkpoint_files_for_state_dict(
     return checkpointed_row_ids
 
 
+@pytest.mark.parametrize("push_based", [False, True])
 @pytest.mark.parametrize("restore_from_end_of_epoch", [True, False])
 @pytest.mark.parametrize("generate_id_column", [True, False])
 def test_e2e_with_ray_train(
-    ray_start_4_cpus, tmp_path, restore_from_end_of_epoch, generate_id_column
+    ray_start_4_cpus,
+    tmp_path,
+    restore_from_end_of_epoch,
+    generate_id_column,
+    push_based,
 ):
     """Test that the checkpointing works end-to-end with Ray Train.
 
@@ -220,14 +231,15 @@ def test_e2e_with_ray_train(
             storage_path=str(train_checkpoint_path),
             failure_config=ray.train.FailureConfig(max_failures=2),
         ),
-        dataset_config=ray.train.DataConfig(
+        dataset_config=make_data_config(
+            push_based,
             dataset_checkpoint_configs={
                 "train": DatasetCheckpointConfig(
                     checkpoint_path=str(data_checkpoint_path),
                     id_column=id_column,
                     generate_id_column=generate_id_column,
                 )
-            }
+            },
         ),
     )
     trainer.fit()
@@ -375,7 +387,8 @@ def test_data_config_validation():
         )
 
 
-def test_execution_idx_restored_from_checkpoint(ray_start_4_cpus, tmp_path):
+@pytest.mark.parametrize("push_based", [False, True])
+def test_execution_idx_restored_from_checkpoint(ray_start_4_cpus, tmp_path, push_based):
     """Test that data_context._execution_idx is correctly restored from checkpoint.
 
     This test verifies that when a training job fails and restores from a checkpoint,
@@ -506,13 +519,14 @@ def test_execution_idx_restored_from_checkpoint(ray_start_4_cpus, tmp_path):
                 storage_path=str(train_checkpoint_path),
                 failure_config=ray.train.FailureConfig(max_failures=2),
             ),
-            dataset_config=ray.train.DataConfig(
+            dataset_config=make_data_config(
+                push_based,
                 dataset_checkpoint_configs={
                     "train": DatasetCheckpointConfig(
                         checkpoint_path=str(data_checkpoint_path),
                         id_column="id",
                     )
-                }
+                },
             ),
         )
         trainer.fit()
