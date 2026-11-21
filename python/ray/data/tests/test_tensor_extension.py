@@ -91,9 +91,10 @@ def test_tensor_array_astype_string_and_object():
     tensor_array = TensorArray(np.arange(4).reshape(2, 2))
     expected_strings = ["[0 1]", "[2 3]"]
 
-    numpy_string_result = tensor_array.astype(str)
-    assert numpy_string_result.dtype.kind == "U"
-    assert numpy_string_result.tolist() == expected_strings
+    for dtype in (str, np.str_):
+        result = tensor_array.astype(dtype)
+        assert result.dtype.kind == pd.api.types.pandas_dtype(dtype).kind
+        assert result.tolist() == expected_strings
 
     pandas_string_result = tensor_array.astype(pd.StringDtype())
     assert pandas_string_result.dtype == pd.StringDtype()
@@ -113,17 +114,29 @@ def test_tensor_array_astype_string_and_object():
 def test_tensor_array_astype_empty_string():
     tensor_array = TensorArray(np.empty((0, 2), dtype=np.int64))
 
-    for dtype in (str, np.str_):
-        result = tensor_array.astype(dtype)
-        assert isinstance(result, np.ndarray)
-        assert result.dtype.kind == "U"
-        assert result.shape == (0,)
+    result = tensor_array.astype(np.str_)
+    assert isinstance(result, np.ndarray)
+    assert result.dtype.kind == "U"
+    assert result.shape == (0,)
 
     for dtype in (pd.StringDtype(), pd.ArrowDtype(pa.string())):
         result = tensor_array.astype(dtype)
         assert isinstance(result, dtype.construct_array_type())
         assert result.dtype == dtype
         assert result.tolist() == []
+
+
+@pytest.mark.parametrize(
+    "dtype", [pd.StringDtype("python"), pd.ArrowDtype(pa.string())]
+)
+def test_tensor_array_astype_nullable_string_preserves_null_rows(dtype):
+    tensor_array = TensorArray([np.arange(2), None])
+
+    result = tensor_array.astype(dtype)
+
+    pd.testing.assert_extension_array_equal(
+        result, pd.array(["[0 1]", None], dtype=dtype)
+    )
 
 
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):

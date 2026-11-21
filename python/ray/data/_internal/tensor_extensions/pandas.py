@@ -1223,16 +1223,20 @@ class TensorArray(
         return self._tensor.size
 
     def astype(self, dtype: Dtype, copy: bool = True):
-        """Cast to a NumPy array with ``dtype``.
+        """Cast the tensor values to the requested dtype.
 
         Args:
             dtype: Typecode or data-type to which the array is cast.
-            copy: Whether to copy the data, even if not necessary. If False,
-                a copy is made only if the old dtype does not match the new
-                dtype.
+            copy: Whether to copy the data. If False, the result may share storage
+                with this array.
 
         Returns:
-            NumPy ndarray with ``dtype`` for its dtype.
+            A numeric NumPy dtype returns an ndarray with the shape of the dense
+            tensor data. A pandas Series cannot hold this result when it has
+            more than one dimension. String dtypes return a one-dimensional
+            array of formatted rows. Nullable string dtypes preserve null
+            rows in the requested pandas extension array. Object dtype returns
+            a one-dimensional object array. A TensorDtype returns a TensorArray.
         """
         dtype = pd.api.types.pandas_dtype(dtype)
 
@@ -1241,17 +1245,10 @@ class TensorArray(
         elif pd.api.types.is_string_dtype(dtype) and not pd.api.types.is_object_dtype(
             dtype
         ):
-            values = np.array(
-                [str(t) for t in self._tensor],
-                dtype=object
-                if isinstance(dtype, pd.api.extensions.ExtensionDtype)
-                else dtype,
-            )
+            strings = [None if t is None else str(t) for t in self._tensor]
             if isinstance(dtype, pd.api.extensions.ExtensionDtype):
-                return dtype.construct_array_type()._from_sequence(
-                    values, dtype=dtype, copy=False
-                )
-            return values
+                return pd.array(strings, dtype=dtype)
+            return np.array(strings, dtype=dtype)
         elif pd.api.types.is_object_dtype(dtype):
             # Interpret astype(object) as "cast to an array of numpy arrays"
             values = np.empty(len(self), dtype=object)
