@@ -975,6 +975,7 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   }
 
   failed_nodes_cache_.insert(node_id);
+  ray_syncer_.RemoveDeadNode(node_id.Binary());
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(node_id);
 
