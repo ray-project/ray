@@ -1112,5 +1112,40 @@ def test_pb2_custom_explore_fn_lambda():
     cloudpickle.dumps(pb2)
 
 
+def test_pb2_optimize_acq_fallback_shape():
+    """Test that optimize_acq returns hyperparameter-only dimensions (excluding fixed
+    [Time, R_before] features) even when all acquisition evaluations return <= -999
+    (e.g. -9999 on GP prediction ValueError)."""
+    from ray.tune.schedulers.pb2_utils import optimize_acq
+
+    num_f = 2
+    num_hparams = 3
+    dummy_m = MagicMock()
+    # X_train_ has shape (N, num_f + num_hparams)
+    dummy_m.X_train_ = np.array([[0.5, 0.2, 0.1, 0.4, 0.9]])
+    dummy_m1 = MagicMock()
+    dummy_m1.X_train_ = np.array([[0.5, 0.2, 0.3, 0.6, 0.8]])
+
+    # Force UCB to raise ValueError inside m.predict -> UCB returns mean=-9999, var=0
+    dummy_m.predict.side_effect = ValueError("singular covariance")
+    dummy_m1.predict.side_effect = ValueError("singular covariance")
+
+    fixed = np.array([[0.5, 0.2]])
+    x_best = optimize_acq(
+        UCB,
+        dummy_m,
+        dummy_m1,
+        fixed,
+        num_f=num_f,
+    )
+    assert x_best.shape == (num_hparams,)
+    np.testing.assert_allclose(x_best, dummy_m1.X_train_[0, num_f:])
+    base_vals = np.array([[1.0, 2.0, 4.0], [2.0, 4.0, 10.0]])
+    rescaled = x_best * (
+        np.max(base_vals, axis=0) - np.min(base_vals, axis=0)
+    ) + np.min(base_vals, axis=0)
+    assert rescaled.shape == (num_hparams,)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -155,7 +155,7 @@ def optimize_acq(func, m, m1, fixed, num_f):
 
     T = 10
     best_value = -999
-    best_theta = m1.X_train_[0, :]
+    best_theta = m1.X_train_[0, num_f:]
 
     bounds = [(0, 1) for _ in range(m.X_train_.shape[1] - num_f)]
 
@@ -187,10 +187,10 @@ def select_length(Xraw, yraw, bounds, num_f):
     else:
         length = min_len - 10
         scores = []
+        base_vals = np.array(list(bounds.values())).T
         while length + 10 <= Xraw.shape[0]:
             length += 10
 
-            base_vals = np.array(list(bounds.values())).T
             X_len = Xraw[-length:, :]
             y_len = yraw[-length:]
             oldpoints = X_len[:, :num_f]
