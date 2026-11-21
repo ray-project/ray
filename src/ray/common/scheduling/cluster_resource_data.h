@@ -416,7 +416,7 @@ class NodeResourceInstances {
 };
 
 struct Node {
-  explicit Node(const NodeResources &resources) : local_view_(resources) {}
+  explicit Node(NodeResources resources) : local_view_(std::move(resources)) {}
 
   NodeResources *GetMutableLocalView() {
     local_view_modified_ts_ = absl::Now();

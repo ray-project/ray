@@ -34,7 +34,7 @@ LocalResourceManager::LocalResourceManager(
     std::function<int64_t(void)> get_used_object_store_memory,
     std::function<bool(void)> get_pull_manager_at_capacity,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-    std::function<void(const NodeResources &)> resource_change_subscriber,
+    std::function<void(NodeResources)> resource_change_subscriber,
     ray::observability::MetricInterface &resource_usage_gauge,
     ClockInterface &clock)
     : local_node_id_(local_node_id),

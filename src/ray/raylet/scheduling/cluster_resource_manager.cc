@@ -64,18 +64,18 @@ void ClusterResourceManager::AddOrUpdateNode(
     const absl::flat_hash_map<std::string, double> &resources_available) {
   NodeResources node_resources =
       ResourceMapToNodeResources(resources_total, resources_available);
-  AddOrUpdateNode(node_id, node_resources);
+  AddOrUpdateNode(node_id, std::move(node_resources));
 }
 
 void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
-                                             const NodeResources &node_resources) {
+                                             NodeResources node_resources) {
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
-    nodes_.emplace(node_id, node_resources);
+    nodes_.emplace(node_id, std::move(node_resources));
   } else {
     // This node exists, so update its resources.
-    it->second = Node(node_resources);
+    it->second = Node(std::move(node_resources));
   }
 }
 
