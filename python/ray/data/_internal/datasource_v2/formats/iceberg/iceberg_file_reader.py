@@ -17,8 +17,9 @@ files share is fetched once and kept for the unit
 (``iceberg_delete_file_cache``). ``IcebergConfig.read_file_tasks_sequentially
 = False`` passes the whole unit in one call instead, as V1 does.
 
-Row-group runs the listing sent through ``iceberg_parquet_route`` carry no scan
-task and are read with Ray's Parquet reader, in the same pipeline.
+Row-group runs the listing sent through ``iceberg_parquet_route`` are read
+with Ray's Parquet reader, in the same pipeline; their position deletes come
+through the same delete-file cache.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from ray.data._internal.arrow_block import (
     ArrowBlockAccessor,
 )
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+    scan_tasks_by_row,
     scan_tasks_from_manifest,
 )
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_parquet_route import (
@@ -158,27 +160,44 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         # Neither reader counts the after-read filter, so neither gets a limit
         # then; ``read`` stops instead.
         limit = self._limit if self._after_read_filter is None else None
+        delete_io = self._delete_io(input_split)
         rows_read = 0
         for rows, routed in _split_by_route(input_split):
             remaining = None if limit is None else limit - rows_read
             if remaining is not None and remaining <= 0:
                 return
             if routed:
-                record_batches = self._read_routed(rows, limit=remaining)
+                record_batches = self._read_routed(
+                    rows, limit=remaining, delete_io=delete_io
+                )
             else:
-                record_batches = self._arrow_scan(rows, limit=remaining)
+                record_batches = self._arrow_scan(rows, limit=remaining, io=delete_io)
             for record_batch in record_batches:
                 rows_read += record_batch.num_rows
                 yield record_batch
 
+    def _delete_io(self, manifest: FileManifest) -> "FileIO":
+        """The ``FileIO`` that fetches a delete file the unit's files share once."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_delete_file_cache import (  # noqa: E501
+            with_shared_delete_files_cached,
+        )
+
+        tasks = [task for task in scan_tasks_by_row(manifest) if task is not None]
+        return with_shared_delete_files_cached(self._io, tasks)
+
     def _read_routed(
-        self, rows: FileManifest, *, limit: Optional[int]
+        self,
+        rows: FileManifest,
+        *,
+        limit: Optional[int],
+        delete_io: Optional["FileIO"] = None,
     ) -> Iterator[pa.RecordBatch]:
         # The listing routes only reads of at least one column.
         assert not self._drop_all_columns
         return read_routed_rows(
             rows,
             io=self._io,
+            delete_io=self._io if delete_io is None else delete_io,
             table_location=self._table_metadata.location,
             columns=[field.name for field in self._projected_schema.columns],
             predicate=self._scan_predicate,
@@ -186,7 +205,7 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         )
 
     def _arrow_scan(
-        self, rows: FileManifest, *, limit: Optional[int]
+        self, rows: FileManifest, *, limit: Optional[int], io: "FileIO"
     ) -> Iterator[pa.RecordBatch]:
         from ray.data.context import DataContext
 
@@ -196,11 +215,6 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
             # holds every file's batches. A list, since PyIceberg iterates twice.
             yield from self._scan(limit=limit).to_record_batches(tasks)
             return
-        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_delete_file_cache import (  # noqa: E501
-            with_shared_delete_files_cached,
-        )
-
-        io = with_shared_delete_files_cached(self._io, tasks)
         rows_read = 0
         for task in tasks:
             remaining = None if limit is None else limit - rows_read

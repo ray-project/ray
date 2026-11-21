@@ -4456,6 +4456,117 @@ class TestIcebergDatasourceV2:
         assert rows_same(routed.to_pandas(), arrow_scan_only.to_pandas())
         assert sorted(routed["col_a"].to_pylist()) == [1, 2]
 
+    @pytest.mark.parametrize(
+        "predicate,expected",
+        [(None, [0, 2, 3, 5]), (col("col_a") >= 2, [2, 3, 5])],
+        ids=["no_filter", "prunes_a_row_group"],
+    )
+    def test_parquet_route_applies_position_deletes(
+        self, clean_table, tmp_path, predicate, expected
+    ):
+        """Position deletes drop the same rows on the route as on ``ArrowScan``,
+        including in row groups after a pruned one."""
+        from pyiceberg.manifest import DataFileContent
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2 import (  # noqa: E501
+            IcebergDatasourceV2,
+        )
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+        )
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_parquet_route import (  # noqa: E501
+            IcebergParquetRoute,
+        )
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FileChunk,
+        )
+
+        _, table = clean_table
+        with table.transaction() as transaction:
+            transaction.set_properties({"write.parquet.row-group-limit": "2"})
+        table = self._load_table()
+        _append_files(
+            table, [{"col_a": value, "col_b": "a", "col_c": 1} for value in range(6)]
+        )
+        (task,) = table.scan().plan_files()
+
+        def delete_file(content, positions):
+            path = tmp_path / f"{content.name}.parquet"
+            pq.write_table(
+                pa.table(
+                    {
+                        "file_path": [task.file.file_path] * len(positions),
+                        "pos": pa.array(positions, pa.int64()),
+                    }
+                ),
+                path,
+            )
+            return DataFile.from_args(
+                content=content,
+                file_path=f"file://{path}",
+                file_format=FileFormat.PARQUET,
+                partition=task.file.partition,
+                record_count=len(positions),
+                file_size_in_bytes=path.stat().st_size,
+            )
+
+        dirty = FileScanTask(
+            task.file,
+            delete_files={delete_file(DataFileContent.POSITION_DELETES, [1, 4])},
+        )
+        route = IcebergParquetRoute.create(
+            table_metadata=table.metadata,
+            io=table.io,
+            row_filter=pyi_expr.AlwaysTrue(),
+            case_sensitive=True,
+            columns=[field.name for field in table.schema().columns],
+        )
+        equality = FileScanTask(
+            task.file,
+            delete_files={delete_file(DataFileContent.EQUALITY_DELETES, [0])},
+        )
+        assert route.file_path(equality) is None
+
+        manifests = list(
+            route.list_files(
+                [dirty],
+                predicate=predicate,
+                projected_columns=None,
+                limit=None,
+                excluded_read_unit_ids=None,
+                exact_counts=True,
+            )
+        )
+        datasource = IcebergDatasourceV2(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        scanner = datasource.create_scanner(datasource.infer_schema(None))
+        if predicate is not None:
+            scanner, _ = scanner.push_filters(predicate)
+        reader = scanner.create_reader()
+        routed = pa.concat_tables(
+            [table for manifest in manifests for table in reader.read(manifest)]
+        )
+        arrow_scan_only = pa.concat_tables(
+            list(reader.read(manifest_from_scan_tasks([dirty])))
+        )
+
+        assert sorted(routed["col_a"].to_pylist()) == expected
+        assert rows_same(routed.to_pandas(), arrow_scan_only.to_pandas())
+        chunks = [
+            FileChunk.from_metadata(chunk)
+            for manifest in manifests
+            for chunk in manifest.file_chunk_metadatas
+        ]
+        assert not any(chunk.fully_matched for chunk in chunks)
+        counted = sum(
+            metadata.num_rows
+            for manifest in manifests
+            for metadata in reader.read_metadata(manifest)
+        )
+        assert counted == len(expected)
+
     def test_parquet_route_is_off_under_a_row_filter(self):
         """``read_iceberg``'s ``row_filter`` has no Ray form, so it keeps every
         file on ``ArrowScan``."""
