@@ -223,8 +223,15 @@ def _explore(
             # Use the type from the old config. Like this types
             # should be passed on from the first config downwards.
             type_ = type(config[col])
-            new_config[col] = type_(new[i])
-            values.append(type_(new[i]))
+            value = new[i]
+            if isinstance(config[col], (int, np.integer)) and not isinstance(
+                config[col], bool
+            ):
+                # Round first, as casting to an integer type truncates.
+                value = round(value)
+            casted_value = type_(value)
+            new_config[col] = casted_value
+            values.append(casted_value)
 
         new_T = df[df["Trial"] == str(base)].iloc[-1, :]["Time"]
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
