@@ -1,0 +1,709 @@
+import asyncio
+import ctypes
+import json
+import os
+import secrets
+import select
+import shlex
+import signal
+import subprocess
+import sys
+import textwrap
+import time
+from contextlib import contextmanager
+from pathlib import Path
+from unittest.mock import AsyncMock, Mock
+
+import pytest
+
+import psutil
+
+os.environ["RAY_AUTH_MODE"] = "token"
+os.environ.setdefault("RAY_AUTH_TOKEN", secrets.token_hex(32))
+
+from ray.dashboard.modules.job.job_process import JobProcess
+
+pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux Jobs cleanup")
+
+
+def wait_for(predicate, timeout=10):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return
+        time.sleep(0.02)
+    raise AssertionError("Timed out waiting for process state")
+
+
+def running(pid):
+    try:
+        return psutil.Process(pid).status() != psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return False
+
+
+@contextmanager
+def job_subreaper():
+    # Adopt orphaned job descendants, but only clean registered job groups.
+    # Other fixtures and plugins may start children during the test as well.
+    libc = ctypes.CDLL(None, use_errno=True)
+    previous = ctypes.c_int()
+    assert libc.prctl(37, ctypes.byref(previous), 0, 0, 0) == 0
+    assert libc.prctl(36, 1, 0, 0, 0) == 0
+    groups = set()
+
+    def job_children():
+        children = []
+        for child in psutil.Process().children():
+            try:
+                if os.getpgid(child.pid) in groups:
+                    children.append(child)
+            except ProcessLookupError:
+                pass
+        return children
+
+    try:
+        yield groups
+    finally:
+        try:
+            for _ in range(100):
+                adopted = job_children()
+                if not adopted:
+                    break
+                for child in adopted:
+                    try:
+                        child.kill()
+                        os.waitpid(child.pid, os.WNOHANG)
+                    except (psutil.NoSuchProcess, ChildProcessError):
+                        pass
+                time.sleep(0.02)
+            assert not job_children()
+        finally:
+            assert libc.prctl(36, previous.value, 0, 0, 0) == 0
+
+
+@pytest.fixture(autouse=True)
+def reap_children():
+    with job_subreaper() as groups:
+        yield groups
+
+
+def test_reaper_preserves_unrelated_child():
+    unrelated = None
+    try:
+        with job_subreaper() as groups:
+            owned = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                start_new_session=True,
+            )
+            groups.add(owned.pid)
+            unrelated = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                start_new_session=True,
+            )
+        assert not psutil.pid_exists(owned.pid)
+        assert unrelated.poll() is None
+        owned.wait(timeout=5)
+    finally:
+        if unrelated is not None:
+            unrelated.kill()
+            unrelated.wait(timeout=5)
+
+
+def command(code):
+    return "exec " + shlex.join([sys.executable, "-c", textwrap.dedent(code)])
+
+
+@pytest.fixture
+def launch(tmp_path, reap_children):
+    processes = []
+
+    def start(code, env=None):
+        groups = []
+
+        def register(pid):
+            groups.append(pid)
+            reap_children.add(pid)
+
+        def cleanup():
+            if groups:
+                os.killpg(groups.pop(), signal.SIGKILL)
+
+        process = JobProcess(register, cleanup)
+        processes.append(process)
+        with (tmp_path / "job.log").open("a") as log:
+            process.start(command(code), env or os.environ.copy(), log)
+        return process
+
+    yield start
+    for process in processes:
+        process.close()
+
+
+def test_driver_pid_reserved_until_cleanup(launch):
+    process = launch("pass")
+    poller = select.poll()
+    poller.register(process._helper.stdout, select.POLLIN)
+    assert poller.poll(5000)
+    driver = psutil.Process(process.pid)
+    assert driver.status() == psutil.STATUS_ZOMBIE
+    assert driver.ppid() == process._helper.pid
+    wait_for(lambda: process.poll() is not None)
+    assert process.returncode == 0
+    assert driver.status() == psutil.STATUS_ZOMBIE
+    assert driver.ppid() == process._helper.pid
+    process.close(reap_driver=True)
+    assert not psutil.pid_exists(process.pid)
+
+
+@pytest.mark.parametrize("sig", [signal.SIGTERM, signal.SIGINT])
+@pytest.mark.parametrize("handle_signal", [False, True])
+def test_group_stop_signal(launch, tmp_path, sig, handle_signal):
+    ready = tmp_path / "ready"
+    process = launch(
+        f"""
+        import signal
+        import sys
+        import time
+        from pathlib import Path
+
+        def stop(*args):
+            time.sleep(0.2)
+            sys.exit(7)
+
+        if {handle_signal!r}:
+            signal.signal({int(sig)}, stop)
+        Path({str(ready)!r}).touch()
+        time.sleep(60)
+        """,
+        env=dict(os.environ, RAY_JOB_STOP_SIGNAL=sig.name),
+    )
+    wait_for(ready.exists)
+    os.killpg(process._helper.pid, sig)
+    wait_for(lambda: process.poll() is not None)
+    assert process.returncode == (7 if handle_signal else -sig)
+
+
+def test_high_file_descriptors(launch):
+    import resource
+
+    if resource.getrlimit(resource.RLIMIT_NOFILE)[0] < 1100:
+        pytest.skip("Requires at least 1100 file descriptors")
+    descriptors = []
+    try:
+        while not descriptors or descriptors[-1] < 1024:
+            descriptors.append(os.open(os.devnull, os.O_RDONLY))
+        process = launch("pass")
+        assert process._helper.stdout.fileno() > 1024
+        wait_for(lambda: process.poll() is not None)
+        assert process.returncode == 0
+    finally:
+        for fd in descriptors:
+            os.close(fd)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cleanup_failures", [0, 1, 2])
+@pytest.mark.parametrize(
+    "exit_code, stop_mode",
+    [(0, None), (7, None), (None, "graceful"), (0, "graceful"), (None, "force")],
+    ids=["success", "failure", "stop", "stop_after_exit", "force_stop"],
+)
+async def test_supervisor_result_and_cleanup(
+    launch, tmp_path, monkeypatch, exit_code, stop_mode, cleanup_failures
+):
+    import ray.dashboard.modules.job.job_supervisor as module
+    from ray.job_submission import JobErrorType, JobStatus
+
+    monkeypatch.setenv("RAY_JOB_STOP_SIGNAL", "SIGTERM")
+    if exit_code is None:
+        ready = tmp_path / "ready"
+        process = launch(
+            f"""
+            import signal
+            import time
+            from pathlib import Path
+
+            if {stop_mode == "force"!r}:
+                signal.signal(signal.SIGTERM, signal.SIG_IGN)
+            Path({str(ready)!r}).touch()
+            time.sleep(60)
+            """
+        )
+        wait_for(ready.exists)
+    else:
+        process = launch(f"raise SystemExit({exit_code})")
+        # Make exit and a requested stop ready together before run() schedules
+        # the polling task. Reading the exit must still reserve the driver's PID.
+        poller = select.poll()
+        poller.register(process._helper.stdout, select.POLLIN)
+        assert poller.poll(5000)
+    if stop_mode == "force":
+        monkeypatch.setenv("RAY_JOB_STOP_WAIT_TIME_S", "0")
+
+    helper = process._helper
+    control_fd = process._control_write
+    cleanup_group = process._cleanup_group
+
+    def cleanup():
+        assert process._helper is helper
+        assert helper.returncode is None
+        assert not helper.stdout.closed
+        os.fstat(control_fd)
+        assert (
+            os.waitid(os.P_PID, helper.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+            is None
+        )
+        if cleanup_mock.call_count <= cleanup_failures:
+            raise OSError("injected cleanup failure")
+        cleanup_group()
+
+    cleanup_mock = Mock(side_effect=cleanup)
+    monkeypatch.setattr(process, "_cleanup_group", cleanup_mock)
+    reap_driver = Mock(wraps=process._reap_driver)
+    monkeypatch.setattr(process, "_reap_driver", reap_driver)
+    supervisor = object.__new__(module.JobSupervisor)
+    supervisor._job_id = "result-and-cleanup"
+    supervisor._entrypoint = "unused"
+    supervisor._job_process = process
+    supervisor._win32_job_object = None
+    supervisor._stop_event = asyncio.Event()
+    if stop_mode is not None:
+        supervisor._stop_event.set()
+    supervisor._logger = Mock()
+
+    async def put_status(job_id, status, **kwargs):
+        if status.is_terminal():
+            # Exactly one cleanup attempt must precede the terminal status.
+            assert cleanup_mock.call_count == 1
+            if cleanup_failures == 0:
+                assert not running(process.pid)
+                assert not psutil.pid_exists(helper.pid)
+            else:
+                assert process._helper is helper
+                assert helper.returncode is None
+                assert not helper.stdout.closed
+                os.fstat(control_fd)
+
+    supervisor._job_info_client = Mock(
+        get_info=AsyncMock(return_value=Mock(status=JobStatus.PENDING, message=None)),
+        put_status=AsyncMock(side_effect=put_status),
+    )
+    supervisor._log_client = Mock()
+    supervisor._log_client.get_log_file_path.return_value = str(tmp_path / "job.log")
+    supervisor._log_client.get_last_n_log_lines = AsyncMock(
+        return_value="driver-output"
+    )
+    supervisor._exec_entrypoint = Mock(return_value=process)
+    supervisor._get_driver_env_vars = Mock(return_value={"RAY_ADDRESS": "local"})
+    monkeypatch.setattr(module.ray, "get_runtime_context", Mock())
+    monkeypatch.setattr(
+        module.ray._private.worker.global_worker,
+        "node",
+        Mock(node_ip_address="127.0.0.1", dashboard_agent_listen_port=1234),
+    )
+    monkeypatch.setattr(module.ray.actor, "exit_actor", Mock())
+    monkeypatch.setattr(module, "submission_job_events_enabled", lambda: False)
+    try:
+        await asyncio.wait_for(supervisor.run(), timeout=5)
+        if stop_mode is not None:
+            expected_status = JobStatus.STOPPED
+        else:
+            expected_status = (
+                JobStatus.SUCCEEDED if exit_code == 0 else JobStatus.FAILED
+            )
+            assert process.returncode == exit_code
+        assert supervisor._job_info_client.put_status.await_count == 2
+        terminal = supervisor._job_info_client.put_status.await_args
+        assert terminal.args == (supervisor._job_id, expected_status)
+        if stop_mode is not None:
+            assert terminal.kwargs == {}
+        else:
+            assert terminal.kwargs["driver_exit_code"] == exit_code
+            if exit_code != 0:
+                assert (
+                    terminal.kwargs["error_type"]
+                    == JobErrorType.JOB_ENTRYPOINT_COMMAND_ERROR
+                )
+                assert f"exit code {exit_code}" in terminal.kwargs["message"]
+                assert "driver-output" in terminal.kwargs["message"]
+            else:
+                assert terminal.kwargs.get("error_type") is None
+        supervisor._logger.error.assert_not_called()
+        assert supervisor._logger.exception.call_count == cleanup_failures
+        assert cleanup_mock.call_count == (2 if cleanup_failures else 1)
+        assert reap_driver.call_count == (0 if stop_mode == "force" else 1)
+        if cleanup_failures == 2:
+            assert process._helper is helper
+            assert helper.returncode is None
+            assert not helper.stdout.closed
+            os.fstat(control_fd)
+        else:
+            assert process._helper is None
+            assert helper.stdout.closed
+            assert not psutil.pid_exists(helper.pid)
+            with pytest.raises(OSError):
+                os.fstat(control_fd)
+    finally:
+        # Persistent failure must retain the identity for a later cleanup retry.
+        monkeypatch.setattr(process, "_cleanup_group", cleanup_group)
+        process.close()
+
+
+@pytest.mark.asyncio
+async def test_graceful_stop_waits_only_for_live_processes(launch):
+    from ray.dashboard.modules.job.job_supervisor import JobSupervisor
+
+    process = launch("pass")
+    wait_for(lambda: not running(process.pid))
+    driver = psutil.Process(process.pid)
+    live_process = launch("import time; time.sleep(60)")
+    supervisor = object.__new__(JobSupervisor)
+    task = asyncio.create_task(
+        supervisor._poll_all([driver, psutil.Process(live_process.pid)])
+    )
+    try:
+        await asyncio.sleep(0.15)
+        assert not task.done()
+        os.kill(live_process.pid, signal.SIGTERM)
+        await asyncio.wait_for(task, timeout=2)
+    finally:
+        task.cancel()
+        await asyncio.gather(task, return_exceptions=True)
+
+
+@pytest.mark.parametrize("exit_code", [0, 7])
+def test_driver_status_and_remaining_child(launch, tmp_path, exit_code):
+    child_file = tmp_path / "child"
+    process = launch(
+        f"""
+        import subprocess
+        import sys
+        from pathlib import Path
+
+        child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)'])
+        Path({str(child_file)!r}).write_text(str(child.pid))
+        print('driver-output', flush=True)
+        sys.exit({exit_code})
+    """
+    )
+    wait_for(lambda: process.poll() is not None)
+    assert process.returncode == exit_code
+    process.close(reap_driver=True)
+    wait_for(lambda: not running(int(child_file.read_text())))
+    assert "driver-output" in (tmp_path / "job.log").read_text()
+    process.close()
+    assert process.poll() == exit_code
+
+
+def test_registration_failure_prevents_entrypoint(tmp_path):
+    marker = tmp_path / "started"
+    groups = []
+
+    def reject(pid):
+        groups.append(pid)
+        raise RuntimeError("worker is shutting down")
+
+    with (tmp_path / "job.log").open("w") as log:
+        with pytest.raises(RuntimeError, match="worker is shutting down"):
+            JobProcess(reject, lambda: pytest.fail("Registration failed")).start(
+                command(f"from pathlib import Path; Path({str(marker)!r}).touch()"),
+                os.environ.copy(),
+                log,
+            )
+    assert not marker.exists()
+    assert not psutil.pid_exists(groups[0])
+
+
+def test_watchdog_failure_cleans_driver(launch):
+    process = launch("import time; time.sleep(60)")
+    os.kill(process._helper.pid, signal.SIGKILL)
+    with pytest.raises(RuntimeError, match="watchdog exited"):
+        wait_for(lambda: process.poll() is not None)
+    wait_for(lambda: not running(process.pid))
+
+
+def test_reap_timeout_preserves_exit_code_and_retries_wait(launch, monkeypatch):
+    process = launch("raise SystemExit(7)")
+    helper = process._helper
+    control_fd = process._control_write
+    wait = helper.wait
+    wait_mock = Mock(wraps=wait, side_effect=subprocess.TimeoutExpired(helper.args, 5))
+    cleanup = Mock(wraps=process._cleanup_group)
+    monkeypatch.setattr(helper, "wait", wait_mock)
+    monkeypatch.setattr(process, "_cleanup_group", cleanup)
+    try:
+        wait_for(lambda: process.poll() is not None)
+        assert process.returncode == 7
+        process.close(reap_driver=True)
+        assert process._helper is helper
+        assert helper.stdout.closed
+        with pytest.raises(OSError):
+            os.fstat(control_fd)
+        wait_mock.side_effect = None
+        process.close()
+        assert process._helper is None
+        assert wait_mock.call_count == 2
+        cleanup.assert_called_once()
+    finally:
+        wait_mock.side_effect = None
+        wait(timeout=5)
+
+
+def test_missing_reap_acknowledgment_falls_back_to_group_cleanup(launch, monkeypatch):
+    process = launch("raise SystemExit(7)")
+    helper_pid = process._helper.pid
+    poller = select.poll()
+    poller.register(process._helper.stdout, select.POLLIN)
+    assert poller.poll(5000)
+    read_message = process._read_message
+
+    def read_without_acknowledgment(timeout):
+        return read_message(timeout=0) if timeout == 0 else None
+
+    monkeypatch.setattr(process, "_read_message", read_without_acknowledgment)
+    assert process.poll() == 7
+    process.close(reap_driver=True)
+    assert not psutil.pid_exists(helper_pid)
+
+
+def test_start_failure_preserved_when_group_cleanup_fails(
+    tmp_path, monkeypatch, reap_children
+):
+    groups = []
+
+    def register(pid):
+        groups.append(pid)
+        reap_children.add(pid)
+
+    def kill_group():
+        os.killpg(groups[0], signal.SIGKILL)
+
+    cleanup_attempts = iter([RuntimeError("native cleanup failed"), None])
+
+    def cleanup():
+        if error := next(cleanup_attempts):
+            raise error
+        kill_group()
+
+    process = JobProcess(register, cleanup)
+    monkeypatch.setattr(
+        process, "_read_message", Mock(side_effect=RuntimeError("startup failed"))
+    )
+    with (tmp_path / "job.log").open("w") as log:
+        with pytest.raises(RuntimeError, match="startup failed"):
+            process.start(
+                command("import time; time.sleep(60)"), os.environ.copy(), log
+            )
+    helper = process._helper
+    assert helper.pid == groups[0]
+    assert not helper.stdout.closed
+    assert helper.returncode is None
+    process.close()
+    assert helper.returncode == -signal.SIGKILL
+    assert not psutil.pid_exists(helper.pid)
+
+
+def test_watchdog_imports_are_isolated(launch, tmp_path, monkeypatch):
+    (tmp_path / "signal.py").write_text("raise RuntimeError('shadowed signal')")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))
+    process = launch("print('driver-output')")
+    wait_for(lambda: process.poll() is not None)
+    assert process.returncode == 0
+
+
+def test_driver_environment_and_stop_signal(launch, tmp_path):
+    ready = tmp_path / "ready"
+    env = dict(os.environ, RAY_JOB_STOP_SIGNAL="SIGINT", JOB_TEST_VALUE="value")
+    process = launch(
+        f"""
+        import os
+        import signal
+        import sys
+        import time
+        from pathlib import Path
+
+        assert os.environ['JOB_TEST_VALUE'] == 'value'
+        signal.signal(signal.SIGINT, lambda *args: sys.exit(3))
+        Path({str(ready)!r}).touch()
+        time.sleep(60)
+        """,
+        env=env,
+    )
+    wait_for(ready.exists)
+    os.kill(process.pid, signal.SIGINT)
+    wait_for(lambda: process.poll() is not None)
+    assert process.returncode == 3
+
+
+@pytest.mark.parametrize("stage", ["registration", "driver_running", "driver_exited"])
+def test_supervisor_process_loss(tmp_path, stage, reap_children):
+    # The supervisor runs in a separate interpreter so its death closes the
+    # lifetime pipe without calling JobProcess.close().
+    import ray.dashboard.modules.job.job_process as module
+
+    ready = tmp_path / "ready"
+    marker = tmp_path / "driver-started"
+    driver_code = f"""
+        from pathlib import Path
+        import time
+        Path({str(marker)!r}).touch()
+        if {stage != "driver_exited"!r}:
+            time.sleep(60)
+    """
+    supervisor_code = f"""
+import json, os, runpy, select, signal, time
+from pathlib import Path
+JobProcess = runpy.run_path({module.__file__!r})['JobProcess']
+groups = []
+def register(pid):
+    groups.append(pid)
+    if {stage == "registration"!r}:
+        Path({str(ready)!r}).write_text(json.dumps([None, pid]))
+        time.sleep(60)
+process = JobProcess(register, lambda: os.killpg(groups[0], signal.SIGKILL))
+with open({str(tmp_path / 'job.log')!r}, 'w') as log:
+    process.start({command(driver_code)!r}, os.environ.copy(), log)
+if {stage == "driver_exited"!r}:
+    poller = select.poll()
+    poller.register(process._helper.stdout, select.POLLIN)
+    assert poller.poll(5000)
+    assert process._read_message(timeout=0) == {{"returncode": 0}}
+tmp = Path({str(ready)!r}).with_suffix(".tmp")
+tmp.write_text(json.dumps([process.pid, groups[0]]))
+tmp.rename({str(ready)!r})
+time.sleep(60)
+"""
+    supervisor = subprocess.Popen([sys.executable, "-I", "-c", supervisor_code])
+    try:
+        wait_for(ready.exists)
+        driver, helper = json.loads(ready.read_text())
+        reap_children.add(helper)
+        if driver is not None:
+            wait_for(marker.exists)
+        supervisor.kill()
+        supervisor.wait(timeout=5)
+        wait_for(lambda: not running(helper))
+        if driver is not None:
+            wait_for(lambda: not running(driver))
+            if stage == "driver_exited":
+                wait_for(lambda: not psutil.pid_exists(driver))
+        else:
+            assert not marker.exists()
+    finally:
+        if supervisor.poll() is None:
+            supervisor.kill()
+        supervisor.wait(timeout=5)
+
+
+@pytest.mark.parametrize("close_before_register", [False, True])
+def test_native_group_registration(close_before_register):
+    import ray
+
+    ray.init(address="local", num_cpus=0, include_dashboard=False)
+    try:
+        core_worker = ray._private.worker.global_worker.core_worker
+        assert core_worker.supports_job_process_group_cleanup()
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            start_new_session=True,
+        )
+        try:
+            if close_before_register:
+                core_worker.cleanup_job_process_group()
+                with pytest.raises(Exception, match="cleanup already started"):
+                    core_worker.register_job_process_group(child.pid)
+                assert child.poll() is None
+            else:
+                with pytest.raises(Exception, match="own process group"):
+                    core_worker.register_job_process_group(os.getpid())
+                core_worker.register_job_process_group(child.pid)
+                core_worker.cleanup_job_process_group()
+                assert child.wait(timeout=5) == -signal.SIGKILL
+                core_worker.cleanup_job_process_group()
+                with pytest.raises(Exception, match="cleanup already started"):
+                    core_worker.register_job_process_group(child.pid)
+        finally:
+            # A registered identity has been retired before any wait/poll here.
+            if child.poll() is None:
+                child.kill()
+            child.wait(timeout=5)
+    finally:
+        ray.shutdown()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["ray.kill", "os.kill", "stop"])
+@pytest.mark.parametrize("legacy_cleanup", [False, True])
+async def test_job_supervisor_cleans_descendants(
+    tmp_path, mode, legacy_cleanup, reap_children
+):
+    # This test exercises the compiled CoreWorker bindings and shutdown path.
+    import ray
+    from ray._common.test_utils import async_wait_for_condition
+    from ray.dashboard.modules.job.job_manager import JobManager
+    from ray.job_submission import JobErrorType, JobStatus
+
+    pid_file = tmp_path / "pids.json"
+    driver_file = tmp_path / "driver.py"
+    driver_file.write_text(
+        "import os, subprocess, sys, time\n"
+        "from pathlib import Path\n"
+        "role = int(sys.argv[1])\n"
+        "if role < 2:\n"
+        "    subprocess.Popen([sys.executable, __file__, str(role + 1)])\n"
+        f"Path({str(pid_file)!r} + str(role)).write_text(str(os.getpid()))\n"
+        "time.sleep(60)\n"
+    )
+    ray.init(
+        address="local",
+        num_cpus=1,
+        include_dashboard=False,
+        _system_config={
+            "kill_child_processes_on_worker_exit": legacy_cleanup,
+            "process_group_cleanup_enabled": True,
+            "kill_child_processes_on_worker_exit_with_raylet_subreaper": False,
+        },
+    )
+    try:
+        manager = JobManager(
+            ray._private.worker.global_worker.gcs_client, str(tmp_path)
+        )
+        manager.JOB_MONITOR_LOOP_PERIOD_S = 0.01
+        job_id = await manager.submit_job(
+            entrypoint="exec " + shlex.join([sys.executable, str(driver_file), "0"])
+        )
+        files = [Path(str(pid_file) + str(role)) for role in range(3)]
+        await async_wait_for_condition(lambda: all(path.exists() for path in files))
+        pids = [int(path.read_text()) for path in files]
+        helper = psutil.Process(pids[0]).ppid()
+        reap_children.add(helper)
+        supervisor_pid = psutil.Process(helper).ppid()
+        assert os.getpgid(helper) == helper
+        assert all(os.getpgid(pid) == helper for pid in pids)
+        if mode == "ray.kill":
+            ray.kill(manager._get_actor_for_job(job_id), no_restart=True)
+        elif mode == "os.kill":
+            os.kill(supervisor_pid, signal.SIGKILL)
+        else:
+            assert manager.stop_job(job_id)
+
+        async def finished():
+            info = await manager.get_job_info(job_id)
+            expected = JobStatus.STOPPED if mode == "stop" else JobStatus.FAILED
+            if info.status != expected:
+                return False
+            if mode == "stop":
+                assert not psutil.pid_exists(pids[0])
+            else:
+                assert info.error_type == JobErrorType.JOB_SUPERVISOR_ACTOR_DIED
+            return all(not running(pid) for pid in [*pids, helper])
+
+        await async_wait_for_condition(finished)
+    finally:
+        ray.shutdown()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

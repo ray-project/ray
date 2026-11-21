@@ -15,6 +15,7 @@
 #include "ray/core_worker/core_worker.h"
 
 #include <algorithm>
+#include <cerrno>
 #include <cstdint>
 #include <deque>
 #include <functional>
@@ -31,6 +32,11 @@
 
 #ifndef _WIN32
 #include <unistd.h>
+#endif
+
+#ifdef __linux__
+#include <signal.h>
+#include <sys/wait.h>
 #endif
 
 #include <google/protobuf/util/json_util.h>
@@ -768,7 +774,68 @@ void CoreWorker::Disconnect(
   }
 }
 
+bool CoreWorker::SupportsJobProcessGroupCleanup() const {
+#ifdef __linux__
+  struct sigaction action {};
+  return !RayConfig::instance()
+              .kill_child_processes_on_worker_exit_with_raylet_subreaper() &&
+         sigaction(SIGCHLD, nullptr, &action) == 0 && action.sa_handler == SIG_DFL &&
+         (action.sa_flags & SA_NOCLDWAIT) == 0;
+#else
+  return false;
+#endif
+}
+
+Status CoreWorker::RegisterJobProcessGroup(int64_t pid) {
+  absl::MutexLock lock(&job_process_group_mutex_);
+  if (job_process_cleanup_started_ || job_process_group_.has_value()) {
+    return Status::Invalid(
+        "Jobs process cleanup already started or a group is registered");
+  }
+  if (!SupportsJobProcessGroupCleanup()) {
+    return Status::Invalid("Jobs process-group cleanup requires waitable Linux children");
+  }
+#ifdef __linux__
+  if (pid <= 1 || static_cast<int64_t>(static_cast<pid_t>(pid)) != pid ||
+      pid == getpgrp() || getpgid(static_cast<pid_t>(pid)) != pid) {
+    return Status::Invalid("Jobs helper must lead its own process group");
+  }
+  // Confirm this is our child without reaping it. Python retains its Popen handle
+  // and must not poll/wait it until group cleanup has retired this registration.
+  siginfo_t info{};
+  if (waitid(P_PID, static_cast<id_t>(pid), &info, WEXITED | WNOHANG | WNOWAIT) != 0) {
+    return Status::Invalid("Jobs helper must be an owned, unreaped child");
+  }
+  job_process_group_ = pid;
+#endif
+  return Status::OK();
+}
+
+Status CoreWorker::CleanupJobProcessGroup() {
+  absl::MutexLock lock(&job_process_group_mutex_);
+  job_process_cleanup_started_ = true;
+  if (!job_process_group_.has_value()) {
+    return Status::OK();
+  }
+#ifdef __linux__
+  const auto result = KillProcessGroup(*job_process_group_, SIGKILL);
+  if (!result.has_value()) {
+    return Status::Invalid("Jobs process-group cleanup is unsupported on this platform");
+  }
+  if (*result && result->value() != ESRCH) {
+    return Status::IOError("Failed to clean Jobs process group: " + result->message());
+  }
+  // The caller can now reap the helper. Later cleanup calls cannot use its PGID.
+  job_process_group_.reset();
+#endif
+  return Status::OK();
+}
+
 void CoreWorker::KillChildProcs() {
+  const auto job_cleanup_status = CleanupJobProcessGroup();
+  if (!job_cleanup_status.ok()) {
+    RAY_LOG(ERROR) << job_cleanup_status;
+  }
   // There are cases where worker processes can "leak" child processes.
   // Basically this means that the worker process (either itself, or via
   // code in a task or actor) spawned a process and did not kill it on termination.

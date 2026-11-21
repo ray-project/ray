@@ -250,6 +250,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool GetCurrentTaskRetryExceptions()
         CPlacementGroupID GetCurrentPlacementGroupId() const
         CWorkerID GetWorkerID()
+        c_bool SupportsJobProcessGroupCleanup() const
+        CRayStatus RegisterJobProcessGroup(int64_t pid)
+        CRayStatus CleanupJobProcessGroup()
         c_bool ShouldCaptureChildTasksInPlacementGroup()
         CActorID GetActorId() const
         const c_string GetActorName()

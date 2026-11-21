@@ -7,7 +7,7 @@ import subprocess
 import sys
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -28,6 +28,7 @@ from ray.dashboard.modules.job.common import (
     submission_job_events_enabled,
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
+from ray.dashboard.modules.job.job_process import JobProcess
 from ray.job_submission import JobErrorType, JobStatus
 
 import psutil
@@ -96,6 +97,7 @@ class JobSupervisor:
         # Event used to signal that a job should be stopped.
         # Set in the `stop_job` method.
         self._stop_event = asyncio.Event()
+        self._job_process: Optional[JobProcess] = None
 
         # Windows Job Object used to handle stopping the child processes.
         self._win32_job_object = None
@@ -158,14 +160,16 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(
+        self, env: dict, logs_path: str
+    ) -> Union[subprocess.Popen, JobProcess]:
         """Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
 
-        Unix systems:
-        Meanwhile we start a demon process and group driver
-        subprocess in same pgid, such that if job actor dies, entire process
-        group also fate share with it.
+        Linux with native job-group cleanup uses a helper that leads the
+        driver's process group. Core Worker cleans that group before its
+        direct-child cleanup. The helper also cleans it on supervisor loss.
+        Other Unix configurations use a detached watcher for supervisor loss.
 
         Windows systems:
         A jobObject is created to enable fate sharing for the entire process group.
@@ -175,8 +179,8 @@ class JobSupervisor:
             logs_path: File path on head node's local disk to store driver
                 command's stdout & stderr.
         Returns:
-            child_process: Child process that runs the driver command. Can be
-                terminated or killed upon user calling stop().
+            Process handle exposing the driver PID and exit status. JobProcess
+            also owns final cleanup of the driver's process group.
         """
         # Open in append mode to avoid overwriting runtime_env setup logs for the
         # supervisor actor, which are also written to the same file.
@@ -184,6 +188,18 @@ class JobSupervisor:
             logs_file.write(
                 f"Running entrypoint for job {self._job_id}: {self._entrypoint}\n"
             )
+            core_worker = ray._private.worker.global_worker.core_worker
+            if (
+                sys.platform == "linux"
+                and core_worker.supports_job_process_group_cleanup()
+            ):
+                logs_file.flush()
+                self._job_process = JobProcess(
+                    core_worker.register_job_process_group,
+                    core_worker.cleanup_job_process_group,
+                )
+                self._job_process.start(self._entrypoint, env, logs_file)
+                return self._job_process
             child_process = subprocess.Popen(
                 self._entrypoint,
                 shell=True,
@@ -291,7 +307,7 @@ class JobSupervisor:
             "PYTHONUNBUFFERED": "1",
         }
 
-    async def _polling(self, child_process: subprocess.Popen) -> int:
+    async def _polling(self, child_process: Union[subprocess.Popen, JobProcess]) -> int:
         while child_process is not None:
             return_code = child_process.poll()
             if return_code is not None:
@@ -305,10 +321,17 @@ class JobSupervisor:
         """Poll processes until all are completed."""
         while True:
             (_, alive) = psutil.wait_procs(processes, timeout=0)
-            if len(alive) == 0:
-                return
+            for proc in alive:
+                try:
+                    # JobProcess keeps the exited driver waitable to reserve
+                    # its PID until the supervisor finishes group cleanup.
+                    if proc.status() != psutil.STATUS_ZOMBIE:
+                        break
+                except psutil.NoSuchProcess:
+                    pass
             else:
-                await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
+                return
+            await asyncio.sleep(self.SUBPROCESS_POLL_PERIOD_S)
 
     def _kill_processes(self, processes: List[psutil.Process], sig: signal.Signals):
         """Ensure each process is already finished or send a kill signal."""
@@ -318,6 +341,14 @@ class JobSupervisor:
             except ProcessLookupError:
                 # Process is already dead
                 pass
+
+    def _cleanup_job_process(self, *, reap_driver: bool = False):
+        if self._job_process is not None:
+            try:
+                self._job_process.close(reap_driver=reap_driver)
+            except Exception:
+                # Keep the helper waitable for a retry in finally or native shutdown.
+                self._logger.exception("Failed to clean the Jobs process group")
 
     async def run(
         self,
@@ -392,9 +423,10 @@ class JobSupervisor:
 
             if self._stop_event.is_set():
                 polling_task.cancel()
+                reap_driver = True
                 if sys.platform == "win32" and self._win32_job_object:
                     win32job.TerminateJobObject(self._win32_job_object, -1)
-                elif sys.platform != "win32":
+                elif sys.platform != "win32" and child_process.poll() is None:
                     stop_signal = os.environ.get("RAY_JOB_STOP_SIGNAL", "SIGTERM")
                     if stop_signal not in self.VALID_STOP_SIGNALS:
                         self._logger.warning(
@@ -430,7 +462,10 @@ class JobSupervisor:
                             "force-killed with SIGKILL."
                         )
                         self._kill_processes(proc_to_kill, signal.SIGKILL)
+                        reap_driver = False
 
+                # Attempt cleanup before publishing the terminal job status.
+                self._cleanup_job_process(reap_driver=reap_driver)
                 await self._job_info_client.put_status(self._job_id, JobStatus.STOPPED)
             else:
                 # Child process finished execution and no stop event is set
@@ -438,6 +473,7 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
+                self._cleanup_job_process(reap_driver=True)
                 self._logger.info(
                     f"Job {self._job_id} entrypoint command "
                     f"exited with code {return_code}"
@@ -487,6 +523,7 @@ class JobSupervisor:
                     f"Exception: {traceback.format_exc()}"
                 )
         finally:
+            self._cleanup_job_process()
             # Flush any remaining events before the actor exits.
             if submission_job_events_enabled():
                 try:
