@@ -1,10 +1,12 @@
 import copy
 import logging
+import os
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -16,6 +18,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
     RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -94,7 +97,9 @@ class InstanceReconcileConfig:
     ray_install_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_RAY_INSTALL_STATUS_TIMEOUT_S", 30 * 60
     )
-    # The timeout for waiting for a TERMINATING instance to be TERMINATED.
+    # The timeout for waiting for a TERMINATING instance to be TERMINATED, and
+    # for holding a solicited RAY_STOPPED worker in a multi-worker replica while
+    # siblings still run or drain Ray.
     terminating_status_timeout_s: int = env_integer(
         "RAY_AUTOSCALER_RECONCILE_TERMINATING_STATUS_TIMEOUT_S", 300
     )
@@ -125,6 +130,90 @@ class InstanceReconcileConfig:
     )
 
 
+def _normalize_non_empty_str_tuple(values: Any, field_name: str) -> Tuple[str, ...]:
+    """Validate a list/tuple of non-empty strings and deduplicate preserving order."""
+    if not isinstance(values, (tuple, list)):
+        raise ValueError(
+            f"{field_name} must be a list or tuple of non-empty strings, "
+            f"got {values!r}"
+        )
+    normalized: List[str] = []
+    seen = set()
+    for item in values:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(
+                f"{field_name} entries must be non-empty strings, got {item!r}"
+            )
+        if item not in seen:
+            seen.add(item)
+            normalized.append(item)
+    return tuple(normalized)
+
+
+@dataclass(frozen=True)
+class WorkerReplicaConfig:
+    """Metadata for worker node types with replica sizing or locality domains."""
+
+    # Number of Ray worker nodes launched and terminated atomically per replica.
+    workers_per_replica: int = 1
+    # Runtime label key shared across all workers of a locality domain / replica.
+    domain_label_key: Optional[str] = None
+    # True if each autoscaled replica gets its own fresh domain value (e.g. TPU
+    # slice); False if workers can join an existing shared domain (e.g. NVLink clique).
+    domain_exclusive: bool = True
+    # Runtime label key stamped with "0"..str(workers_per_replica - 1), if injected.
+    worker_index_label_key: Optional[str] = None
+    # Resource keys in NodeTypeConfig.resources advertised only on worker index 0.
+    head_resources: Tuple[str, ...] = ()
+
+    def __post_init__(self):
+        if (
+            not isinstance(self.workers_per_replica, int)
+            or isinstance(self.workers_per_replica, bool)
+            or self.workers_per_replica < 1
+        ):
+            raise ValueError(
+                f"workers_per_replica must be an int >= 1, got {self.workers_per_replica!r}"
+            )
+        if self.domain_label_key is not None and (
+            not isinstance(self.domain_label_key, str)
+            or not self.domain_label_key.strip()
+        ):
+            raise ValueError(
+                "domain_label_key must be None or a non-empty string, "
+                f"got {self.domain_label_key!r}"
+            )
+        if not isinstance(self.domain_exclusive, bool):
+            raise ValueError(
+                f"domain_exclusive must be a bool, got {self.domain_exclusive!r}"
+            )
+        if self.worker_index_label_key is not None and (
+            not isinstance(self.worker_index_label_key, str)
+            or not self.worker_index_label_key.strip()
+        ):
+            raise ValueError(
+                "worker_index_label_key must be None or a non-empty string, "
+                f"got {self.worker_index_label_key!r}"
+            )
+        if (
+            self.domain_label_key is not None
+            and self.worker_index_label_key is not None
+            and self.domain_label_key == self.worker_index_label_key
+        ):
+            raise ValueError(
+                "domain_label_key and worker_index_label_key must be distinct, "
+                f"got {self.domain_label_key!r}"
+            )
+        object.__setattr__(
+            self,
+            "head_resources",
+            _normalize_non_empty_str_tuple(self.head_resources, "head_resources"),
+        )
+
+
+_DEFAULT_PLAIN_REPLICA_CONFIG = WorkerReplicaConfig(domain_exclusive=False)
+
+
 @dataclass
 class NodeTypeConfig:
     """NodeTypeConfig is the helper class to provide node type specific configs.
@@ -146,14 +235,63 @@ class NodeTypeConfig:
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
     labels: Dict[str, str] = field(default_factory=dict)
+    # Label keys whose values are injected at runtime by the host or accelerator
+    # environment rather than configured statically in `labels`.
+    runtime_label_keys: Tuple[str, ...] = ()
     # The node config's launch config hash. It's calculated from the auth
     # config, and the node's config in the `AutoscalingConfig` for the node
     # type when launching the node. It's used to detect config changes.
     launch_config_hash: str = ""
+    # Optional multi-worker replica metadata for atomic replica scaling.
+    replica_config: Optional[WorkerReplicaConfig] = None
 
     def __post_init__(self):
         assert self.min_worker_nodes <= self.max_worker_nodes
         assert self.min_worker_nodes >= 0
+        self.runtime_label_keys = _normalize_non_empty_str_tuple(
+            self.runtime_label_keys, "runtime_label_keys"
+        )
+        if self.is_multi_worker_replica:
+            size = self.workers_per_replica
+            if self.min_worker_nodes % size != 0 or self.max_worker_nodes % size != 0:
+                raise ValueError(
+                    f"min_worker_nodes ({self.min_worker_nodes}) and max_worker_nodes "
+                    f"({self.max_worker_nodes}) for node type {self.name!r} must be "
+                    f"multiples of workers_per_replica ({size})."
+                )
+
+    @property
+    def effective_replica_config(self) -> WorkerReplicaConfig:
+        """Return `replica_config`, or single-host non-exclusive defaults when unset."""
+        return self.replica_config or _DEFAULT_PLAIN_REPLICA_CONFIG
+
+    @property
+    def workers_per_replica(self) -> int:
+        return self.effective_replica_config.workers_per_replica
+
+    @property
+    def is_multi_worker_replica(self) -> bool:
+        return self.workers_per_replica > 1
+
+    @property
+    def domain_label_key(self) -> Optional[str]:
+        return self.effective_replica_config.domain_label_key
+
+    @property
+    def domain_exclusive(self) -> bool:
+        return self.effective_replica_config.domain_exclusive
+
+    @property
+    def is_exclusive_domain(self) -> bool:
+        return bool(self.domain_label_key and self.domain_exclusive)
+
+    @property
+    def worker_index_label_key(self) -> Optional[str]:
+        return self.effective_replica_config.worker_index_label_key
+
+    @property
+    def head_resources(self) -> Tuple[str, ...]:
+        return self.effective_replica_config.head_resources
 
 
 class AutoscalingConfig:
@@ -345,6 +483,7 @@ class AutoscalingConfig:
             return None
         node_type_configs = {}
         auth_config = self._configs.get("auth", {})
+        disable_launch_config_check = self.disable_launch_config_check()
         head_node_type = self.get_head_node_type()
         assert head_node_type
         for node_type, node_config in available_node_types.items():
@@ -355,6 +494,45 @@ class AutoscalingConfig:
             if head_node_type == node_type:
                 max_workers_nodes += 1
 
+            raw_replica = node_config.get("replica_config")
+            replica_config = None
+            if raw_replica is not None:
+                if not isinstance(raw_replica, dict):
+                    raise ValueError(
+                        f"Node type {node_type!r} replica_config must be a dict, "
+                        f"got {raw_replica!r}"
+                    )
+                unknown_keys = set(raw_replica) - {
+                    "workers_per_replica",
+                    "domain_label_key",
+                    "domain_exclusive",
+                    "worker_index_label_key",
+                    "head_resources",
+                }
+                if unknown_keys:
+                    raise ValueError(
+                        f"Unknown replica_config fields for node type {node_type!r}: "
+                        f"{sorted(unknown_keys)}"
+                    )
+                replica_config = WorkerReplicaConfig(
+                    workers_per_replica=raw_replica.get("workers_per_replica", 1),
+                    domain_label_key=raw_replica.get("domain_label_key"),
+                    domain_exclusive=raw_replica.get("domain_exclusive", True),
+                    worker_index_label_key=raw_replica.get("worker_index_label_key"),
+                    head_resources=raw_replica.get("head_resources", ()),
+                )
+            if replica_config is not None and replica_config.workers_per_replica > 1:
+                if head_node_type == node_type:
+                    raise ValueError(
+                        f"Head node type {node_type} cannot set "
+                        f"workers_per_replica={replica_config.workers_per_replica} > 1."
+                    )
+                if not disable_launch_config_check:
+                    raise ValueError(
+                        f"Node type {node_type} has workers_per_replica="
+                        f"{replica_config.workers_per_replica} > 1, which requires "
+                        f"provider.{DISABLE_LAUNCH_CONFIG_CHECK_KEY} to be True."
+                    )
             node_type_configs[node_type] = NodeTypeConfig(
                 name=node_type,
                 min_worker_nodes=node_config.get("min_workers", 0),
@@ -363,7 +541,9 @@ class AutoscalingConfig:
                 priority=node_config.get("priority", 0),
                 resources=node_config.get("resources", {}),
                 labels=node_config.get("labels", {}),
+                runtime_label_keys=node_config.get("runtime_label_keys", ()),
                 launch_config_hash=launch_config_hash,
+                replica_config=replica_config,
             )
         return node_type_configs
 
@@ -396,6 +576,13 @@ class AutoscalingConfig:
         return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
 
     def get_max_concurrent_launches(self) -> int:
+        if "AUTOSCALER_MAX_CONCURRENT_LAUNCHES" in os.environ:
+            return env_integer(
+                "AUTOSCALER_MAX_CONCURRENT_LAUNCHES",
+                AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            )
+        if self.get_provider_config().get(FOREGROUND_NODE_LAUNCH_KEY, False):
+            return sys.maxsize
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
     def disable_node_updaters(self) -> bool:

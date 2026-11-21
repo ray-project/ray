@@ -312,7 +312,7 @@ def _worker_group_max_replicas(
 
 def _worker_group_min_replicas(raycluster: Dict[str, Any], group_index: int):
     # 0 is the default minReplicas value used by the KubeRay operator
-    return raycluster["spec"]["workerGroupSpecs"][group_index].get("minReplicas", 0)
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("minReplicas") or 0
 
 
 def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
@@ -322,7 +322,8 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
 
 def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
     # 1 is the default numOfHosts value used by the KubeRay operator
-    return raycluster["spec"]["workerGroupSpecs"][group_index].get("numOfHosts", 1)
+    wg = raycluster["spec"]["workerGroupSpecs"][group_index]
+    return 1 if (h := wg.get("numOfHosts")) is None else h
 
 
 class IKubernetesHttpApiClient(ABC):

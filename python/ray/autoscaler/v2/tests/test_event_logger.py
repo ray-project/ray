@@ -8,6 +8,7 @@ from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.tests.util import MockEventLogger
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
+    BundleSelector,
     ClusterResourceConstraint,
     GangResourceRequest,
 )
@@ -122,6 +123,37 @@ def test_log_scheduling_updates_without_cluster_shape():
         "No available node types can fulfill resource requests {'CPU': 4.0}*1. Add suitable node types to this cluster to resolve this issue."
     ]
     assert mock_logger.get_logs("debug") == []
+
+
+def test_log_infeasible_gang_bundle_selectors_and_summary():
+    from ray.autoscaler.v2.utils import ClusterStatusParser
+    from ray.core.generated.autoscaler_pb2 import ClusterResourceState
+
+    mock_logger = MockEventLogger(logger)
+    event_logger = AutoscalerEventLogger(mock_logger, log_cluster_shape=False)
+    bundle_reqs = [ResourceRequestUtil.make({"TPU": 4}) for _ in range(4)]
+    gang_bs_only = GangResourceRequest(
+        details="pg_slice:STRICT_PACK|PENDING",
+        bundle_selectors=[BundleSelector(resource_requests=bundle_reqs)],
+    )
+    event_logger.log_cluster_scheduling_update(
+        infeasible_gang_requests=[gang_bs_only],
+        cluster_resources={"CPU": 4},
+    )
+    assert mock_logger.get_logs("warning") == [
+        "No available node types can fulfill placement group requests "
+        "(detail=pg_slice:STRICT_PACK|PENDING): {'TPU': 4.0}*4. "
+        "Add suitable node types to this cluster to resolve this issue."
+    ]
+
+    summary = ClusterStatusParser._parse_resource_demands(
+        ClusterResourceState(pending_gang_resource_requests=[gang_bs_only])
+    )
+    pg_demand = summary.placement_group_demand
+    assert len(pg_demand) == 1
+    assert len(pg_demand[0].bundles_by_count) == 1
+    assert pg_demand[0].bundles_by_count[0].count == 4
+    assert dict(pg_demand[0].bundles_by_count[0].bundle) == {"TPU": 4.0}
 
 
 if __name__ == "__main__":

@@ -82,6 +82,7 @@ class InstanceUtilTest(unittest.TestCase):
         assert g[Instance.RAY_STOP_REQUESTED] == {
             Instance.RAY_STOPPING,
             Instance.RAY_STOPPED,
+            Instance.TERMINATING,
             Instance.TERMINATED,
             Instance.RAY_RUNNING,
         }
@@ -345,6 +346,84 @@ class InstanceUtilTest(unittest.TestCase):
                 f"reachable_from({s}) = {InstanceUtil.get_reachable_statuses(s)} "
                 f"!= {expected}"
             )
+
+    def test_is_solicited_stop(self):
+        # Positive 1: RAY_STOP_REQUESTED -> RAY_STOPPED.
+        inst_direct = InstanceUtil.new_instance("i-1", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_direct, Instance.RAY_STOP_REQUESTED)
+        assert InstanceUtil.set_status(inst_direct, Instance.RAY_STOPPED)
+        assert InstanceUtil.is_solicited_stop(inst_direct)
+
+        # Positive 2: RAY_STOP_REQUESTED -> RAY_STOPPING -> RAY_STOPPED.
+        inst_draining = InstanceUtil.new_instance("i-2", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_draining, Instance.RAY_STOP_REQUESTED)
+        assert InstanceUtil.set_status(inst_draining, Instance.RAY_STOPPING)
+        assert InstanceUtil.set_status(inst_draining, Instance.RAY_STOPPED)
+        assert InstanceUtil.is_solicited_stop(inst_draining)
+
+        # Negative 1: Unsolicited crash (RAY_RUNNING -> RAY_STOPPED).
+        inst_crash = InstanceUtil.new_instance("i-3", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_crash, Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_crash)
+
+        # Negative 2: Unsolicited RAY_STOPPING -> RAY_STOPPED (no RAY_STOP_REQUESTED).
+        inst_unsolicited_drain = InstanceUtil.new_instance(
+            "i-4", "tpu", Instance.RAY_RUNNING
+        )
+        assert InstanceUtil.set_status(inst_unsolicited_drain, Instance.RAY_STOPPING)
+        assert InstanceUtil.set_status(inst_unsolicited_drain, Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_unsolicited_drain)
+
+        # Negative 3: Still RAY_STOP_REQUESTED / RAY_STOPPING (not RAY_STOPPED yet).
+        inst_pending = InstanceUtil.new_instance("i-5", "tpu", Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_pending, Instance.RAY_STOP_REQUESTED)
+        assert not InstanceUtil.is_solicited_stop(inst_pending)
+
+        # Negative 4: Single-entry RAY_STOPPED history.
+        inst_short = InstanceUtil.new_instance("i-6", "tpu", Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_short)
+
+        # Negative 5: Rejected drain (RAY_STOP_REQUESTED -> RAY_RUNNING) followed by
+        # an unsolicited crash (-> RAY_STOPPED) must not count as a solicited stop.
+        inst_rejected_drain = InstanceUtil.new_instance(
+            "i-7", "tpu", Instance.RAY_RUNNING
+        )
+        assert InstanceUtil.set_status(inst_rejected_drain, Instance.RAY_STOP_REQUESTED)
+        assert InstanceUtil.set_status(inst_rejected_drain, Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_rejected_drain, Instance.RAY_STOPPED)
+        assert not InstanceUtil.is_solicited_stop(inst_rejected_drain)
+
+        # Trimmed status_history (MAX_STATUS_HISTORY_LENGTH) preserves solicited-stop
+        # classification at the tail for both solicited and rejected-then-crashed cases.
+        from ray.autoscaler.v2.instance_manager.common import MAX_STATUS_HISTORY_LENGTH
+
+        inst_trimmed_solicited = InstanceUtil.new_instance(
+            "i-8", "tpu", Instance.RAY_RUNNING
+        )
+        for _ in range(MAX_STATUS_HISTORY_LENGTH + 5):
+            assert InstanceUtil.set_status(
+                inst_trimmed_solicited, Instance.RAY_STOP_REQUESTED
+            )
+            assert InstanceUtil.set_status(inst_trimmed_solicited, Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(
+            inst_trimmed_solicited, Instance.RAY_STOP_REQUESTED
+        )
+        assert InstanceUtil.set_status(inst_trimmed_solicited, Instance.RAY_STOPPING)
+        assert InstanceUtil.set_status(inst_trimmed_solicited, Instance.RAY_STOPPED)
+        assert len(inst_trimmed_solicited.status_history) == MAX_STATUS_HISTORY_LENGTH
+        assert InstanceUtil.is_solicited_stop(inst_trimmed_solicited)
+
+        inst_trimmed_crashed = InstanceUtil.new_instance(
+            "i-9", "tpu", Instance.RAY_RUNNING
+        )
+        for _ in range(MAX_STATUS_HISTORY_LENGTH + 5):
+            assert InstanceUtil.set_status(
+                inst_trimmed_crashed, Instance.RAY_STOP_REQUESTED
+            )
+            assert InstanceUtil.set_status(inst_trimmed_crashed, Instance.RAY_RUNNING)
+        assert InstanceUtil.set_status(inst_trimmed_crashed, Instance.RAY_STOPPED)
+        assert len(inst_trimmed_crashed.status_history) == MAX_STATUS_HISTORY_LENGTH
+        assert not InstanceUtil.is_solicited_stop(inst_trimmed_crashed)
 
 
 if __name__ == "__main__":

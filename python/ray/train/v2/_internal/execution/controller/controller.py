@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import os
 import uuid
 from dataclasses import dataclass
@@ -98,8 +99,6 @@ from ray.train.v2.api.validation_config import ValidationConfig
 if TYPE_CHECKING:
     from ray.train.v2._internal.execution.preemption import PreemptionInfo
     from ray.train.v2.api.reported_checkpoint import ReportedCheckpoint
-
-from ray.util.tpu import get_tpu_num_slices_for_workers
 
 logger = logging.getLogger(__name__)
 
@@ -503,29 +502,29 @@ class TrainController:
         placement_strategy = self._scaling_policy.scaling_config.placement_strategy
         scaling_config = self._train_run_context.scaling_config
 
-        # Check for `label_selector` to influence WorkerGroup scheduling.
-        label_selector = scaling_config._label_selector_per_worker(num_workers)
-        for callback in self._controller_callbacks:
-            selector = callback.on_controller_start_worker_group(
-                scaling_config=scaling_config, num_workers=num_workers
+        # Resolve worker group label_selector across ScalingConfig, callbacks,
+        # and generated TPU hardware labels.
+        callback_selectors = (
+            (
+                type(callback).__name__,
+                callback.on_controller_start_worker_group(
+                    scaling_config=scaling_config, num_workers=num_workers
+                ),
             )
-            if selector:
-                if label_selector:
-                    logger.warning(
-                        f"Overriding `ScalingConfig.label_selector` {label_selector} "
-                        f"with label_selector returned by user-specified callback {selector}"
-                    )
-                label_selector = [selector.copy() for _ in range(num_workers)]
+            for callback in self._controller_callbacks
+        )
+        label_selector = scaling_config._resolve_worker_group_label_selector(
+            num_workers=num_workers,
+            callback_selectors=callback_selectors,
+        )
 
         # Calculate num_slices for the worker group if using TPU.
-        num_slices = 1
-        if scaling_config.use_tpu:
-            num_slices = get_tpu_num_slices_for_workers(
-                topology=scaling_config.topology,
-                accelerator_type=scaling_config.accelerator_type,
-                num_workers=num_workers,
-                resources_per_worker=resources_per_worker,
-            )
+        workers_per_slice = scaling_config._workers_per_slice
+        num_slices = (
+            max(1, math.ceil(num_workers / workers_per_slice))
+            if workers_per_slice
+            else 1
+        )
 
         worker_group_context = WorkerGroupContext(
             run_attempt_id=self._get_run_attempt_id(),

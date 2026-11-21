@@ -146,9 +146,8 @@ class AutoscalerEventLogger:
                         details=gang_request.details
                     )
                 )
-                requests_by_count = ResourceRequestUtil.group_by_count(
-                    gang_request.requests
-                )
+                gang_reqs = ResourceRequestUtil.get_gang_requests(gang_request)
+                requests_by_count = ResourceRequestUtil.group_by_count(gang_reqs)
                 for idx, req_count in enumerate(requests_by_count):
                     resource_map = ResourceRequestUtil.to_resource_map(
                         req_count.request

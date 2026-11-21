@@ -2,10 +2,22 @@ import logging
 from dataclasses import dataclass
 from functools import cached_property
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pyarrow.fs
 
+import ray
+from ray._private.accelerators.tpu import TPUAcceleratorManager
 from ray.air.config import (
     FailureConfig as FailureConfigV1,
     ScalingConfig as ScalingConfigV1,
@@ -19,7 +31,7 @@ from ray.train.v2._internal.migration_utils import (
 )
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import PublicAPI
-from ray.util.tpu import get_tpu_worker_resources
+from ray.util.tpu import get_tpu_version_from_type, get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
@@ -88,6 +100,9 @@ class ScalingConfig(ScalingConfigV1):
             auto-detected for TPUs and added as Ray node labels. This arg enables
             SPMD execution of the training workload. This field is required
             when `use_tpu` is True and `num_workers` is greater than 1.
+        chips_per_vm: [Experimental] Optional override for the number of physical TPU
+            chips per VM when ``use_tpu=True`` (for example, ``chips_per_vm=4`` for a
+            two-VM ``2x4`` TPU v6e slice).
     """
 
     num_workers: Union[int, Tuple[int, int]] = 1
@@ -97,6 +112,7 @@ class ScalingConfig(ScalingConfigV1):
     # Accelerator specific fields.
     use_tpu: Union[bool] = False
     topology: Optional[str] = None
+    chips_per_vm: Optional[int] = None
 
     # Elasticity specific fields.
     elastic_resize_monitor_interval_s: float = 60.0
@@ -174,23 +190,104 @@ class ScalingConfig(ScalingConfigV1):
             else self.num_workers[1]
         )
 
+    @property
+    def _uses_slice_placement_group(self) -> bool:
+        """Return True when TPU reservation uses SlicePlacementGroup."""
+        return bool(self.use_tpu and self.topology and self.accelerator_type)
+
+    def _tpu_label_selector(self) -> Dict[str, str]:
+        """Return generated TPU node labels for this ScalingConfig."""
+        tpu_selector: Dict[str, str] = {}
+        if not self.use_tpu:
+            return tpu_selector
+        if self.accelerator_type:
+            tpu_version = get_tpu_version_from_type(self.accelerator_type)
+            tpu_selector[
+                ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY
+            ] = f"TPU-{tpu_version.upper()}"
+        if self.topology:
+            tpu_selector[
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY
+            ] = self.topology.strip().lower()
+        return tpu_selector
+
     def _label_selector_per_worker(
-        self, num_workers: int
+        self, num_workers: int, include_tpu_labels: bool = True
     ) -> Optional[List[Dict[str, str]]]:
         """Normalize ``label_selector`` into a per-worker list of length ``num_workers``.
 
-        - ``None`` -> ``None`` (no constraint; downstream consumers — the
-          placement-group path and the autoscaling coordinator — both
-          accept ``None`` and treat it as "no label requirement").
-        - ``Dict`` -> the same dict replicated for each worker
-        - ``List`` -> the first ``num_workers`` entries (validated to be
-          ``max_workers`` long in ``__post_init__``)
+        When ``use_tpu=True`` and ``include_tpu_labels=True``, TPU
+        ``accelerator_type`` and ``topology`` labels are generated and merged
+        into each worker's label selector.
+
+        - ``None`` -> ``None`` when no TPU labels are generated (no constraint;
+          downstream consumers, including the placement-group path and the
+          autoscaling coordinator, accept ``None`` and treat it as "no label
+          requirement"), or the generated TPU labels replicated for each worker.
+        - ``Dict`` -> the same dict (merged with any TPU labels) replicated for
+          each worker
+        - ``List`` -> the first ``num_workers`` entries (merged with any TPU
+          labels; validated to be ``max_workers`` long in ``__post_init__``)
         """
+        tpu_selector = self._tpu_label_selector() if include_tpu_labels else {}
+
         if isinstance(self.label_selector, list):
-            return [s.copy() for s in self.label_selector[:num_workers]]
+            return [{**tpu_selector, **s} for s in self.label_selector[:num_workers]]
         if isinstance(self.label_selector, dict):
-            return [self.label_selector.copy() for _ in range(num_workers)]
+            return [{**tpu_selector, **self.label_selector} for _ in range(num_workers)]
+        if tpu_selector:
+            return [tpu_selector.copy() for _ in range(num_workers)]
         return None
+
+    def _resolve_worker_group_label_selector(
+        self,
+        num_workers: int,
+        callback_selectors: Iterable[Tuple[str, Any]] = (),
+    ) -> Optional[List[Dict[str, str]]]:
+        """Resolve per-worker label selectors across config, callbacks, and TPU labels.
+
+        Keeps user and callback selectors separate from generated TPU hardware
+        labels so callbacks cleanly override ``ScalingConfig.label_selector``
+        and earlier callbacks without dropping TPU hardware labels on the
+        non-SlicePlacementGroup TPU path. When ``SlicePlacementGroup`` is used,
+        it generates the single-host or multi-host TPU labels directly.
+        """
+        tpu_base_selector = (
+            {} if self._uses_slice_placement_group else self._tpu_label_selector()
+        )
+        user_label_selector = self._label_selector_per_worker(
+            num_workers, include_tpu_labels=False
+        )
+        has_callback_selector = False
+        for callback_name, selector in callback_selectors:
+            if not selector:
+                continue
+            if not isinstance(selector, dict):
+                raise TypeError(
+                    f"Callback {callback_name} returned invalid "
+                    f"`label_selector` of type {type(selector).__name__}; "
+                    "expected dict."
+                )
+            normalized_selector = [selector.copy() for _ in range(num_workers)]
+
+            if user_label_selector and any(user_label_selector):
+                source = (
+                    "previous callback `label_selector`"
+                    if has_callback_selector
+                    else "`ScalingConfig.label_selector`"
+                )
+                logger.warning(
+                    f"Overriding {source} {user_label_selector} "
+                    f"with label_selector returned by user-specified callback {selector}"
+                )
+            user_label_selector = normalized_selector
+            has_callback_selector = True
+
+        if tpu_base_selector:
+            if user_label_selector is not None:
+                return [{**tpu_base_selector, **s} for s in user_label_selector]
+            return [tpu_base_selector.copy() for _ in range(num_workers)]
+        return user_label_selector
 
     @property
     def total_resources(self):
@@ -207,12 +304,17 @@ class ScalingConfig(ScalingConfigV1):
 
     def _validate_tpu_config(self):
         """Validates configuration specifically for TPU usage."""
+        self._workers_per_slice: Optional[int] = None
         max_workers = self.max_workers
 
         if self.use_gpu and self.use_tpu:
             raise ValueError("Cannot specify both `use_gpu=True` and `use_tpu=True`.")
 
         if not self.use_tpu:
+            if self.chips_per_vm is not None:
+                raise ValueError(
+                    "`chips_per_vm` can only be specified when `use_tpu=True`."
+                )
             if self.num_tpus_per_worker > 0:
                 raise ValueError(
                     "`use_tpu` is False but `TPU` was found in "
@@ -221,6 +323,11 @@ class ScalingConfig(ScalingConfigV1):
                 )
             # If not using TPU, we are done validating TPU-specific logic.
             return
+
+        if self.chips_per_vm is not None and (
+            type(self.chips_per_vm) is not int or self.chips_per_vm <= 0
+        ):
+            raise ValueError("`chips_per_vm` must be a positive integer.")
 
         if self.num_tpus_per_worker == 0:
             raise ValueError(
@@ -241,20 +348,26 @@ class ScalingConfig(ScalingConfigV1):
                     "`accelerator_type` must be specified in ScalingConfig when "
                     "`use_tpu=True` and `num_workers` > 1."
                 )
-            if self.label_selector:
-                raise ValueError(
-                    "Cannot set `label_selector` when `use_tpu=True` because "
-                    "Ray Train automatically reserves a TPU slice with a predefined label."
-                )
 
         # Validate TPU resources when both topology and accelerator type are specified.
         if self.topology and self.accelerator_type:
+            tpu_version = get_tpu_version_from_type(self.accelerator_type.strip())
+            norm_topology = self.topology.strip().lower()
+            if not TPUAcceleratorManager.is_valid_tpu_accelerator_topology(
+                tpu_accelerator_version=tpu_version,
+                tpu_topology=norm_topology,
+            ):
+                raise ValueError(
+                    f"Invalid accelerator topology: '{norm_topology}' for "
+                    f"accelerator version: '{tpu_version}'"
+                )
             try:
                 workers_per_slice, tpu_resources = get_tpu_worker_resources(
                     topology=self.topology,
                     accelerator_type=self.accelerator_type,
                     resources_per_worker=self.resources_per_worker,
                     num_slices=1,
+                    chips_per_vm=self.chips_per_vm,
                 )
             except Exception as e:
                 raise ValueError(
@@ -278,14 +391,28 @@ class ScalingConfig(ScalingConfigV1):
                     "across all slices to function correctly."
                 )
 
-            if self.resources_per_worker is None:
-                self.resources_per_worker = tpu_resources
+            self._workers_per_slice = workers_per_slice
+            self.resources_per_worker = tpu_resources
+        elif self.accelerator_type:
+            get_tpu_version_from_type(self.accelerator_type)
 
     @property
     def _resources_per_worker_not_none(self):
-        if self.resources_per_worker is None:
-            if self.use_tpu:
+        if self.use_tpu:
+            # Unlike V1 ScalingConfig, V2 intentionally omits `accelerator_type:TPU-*: 0.001`
+            # from bundle resources because KubeRay autoscaler node types derive
+            # `ray.io/accelerator-type` node labels rather than `accelerator_type:*`
+            # custom resources (which would block scale-from-zero and resource checks).
+            if self.resources_per_worker is None:
                 return {"TPU": 1}
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
+            # Check `self.resources_per_worker` (before filtering zeros) so an explicit
+            # `{"TPU": 0}` remains absent and fails `_validate_tpu_config`.
+            if "TPU" not in self.resources_per_worker:
+                resources_per_worker["TPU"] = 1
+            return resources_per_worker
 
         return super()._resources_per_worker_not_none
 

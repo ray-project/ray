@@ -61,7 +61,6 @@ def ray_tpu_cluster():
             resources={
                 "TPU": 8,
                 "accelerator_type:TPU-V6E": 1,
-                "TPU-v6e-8-head": 1,
             },
             env_vars={
                 "TPU_NAME": f"slice-single-{i}",
@@ -73,6 +72,8 @@ def ray_tpu_cluster():
                 "ray.io/tpu-slice-name": f"slice-single-{i}",
                 "ray.io/tpu-worker-id": "0",
                 "ray.io/tpu-pod-type": "v6e-8",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/accelerator-type": "TPU-V6E",
             },
         )
 
@@ -90,13 +91,13 @@ def ray_tpu_cluster():
             "ray.io/tpu-slice-name": "slice-A",
             "ray.io/tpu-worker-id": str(i),
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V6E",
         }
         resources = {
             "TPU": 4,
             "accelerator_type:TPU-V6E": 1,
         }
-        if i == 0:
-            resources[f"TPU-{pod_type}-head"] = 1
 
         cluster.add_node(
             num_cpus=4,
@@ -358,10 +359,14 @@ def test_setup_tpu_multislice():
 
     # Verify topology-capacity resolution when num_workers (12) does not fill
     # every reserved slice (2 slices of 2x4 TPU-V6E = 8 workers per slice).
+    from ray.train.v2.api.config import ScalingConfig as ScalingConfigV2
+
     worker_group.reset_mock()
     worker_group.__len__.return_value = 12
     worker_group._train_run_context = MagicMock(
-        scaling_config=MagicMock(
+        scaling_config=ScalingConfigV2(
+            num_workers=16,
+            use_tpu=True,
             topology="2x4",
             accelerator_type="TPU-V6E",
             resources_per_worker={"TPU": 1},
@@ -378,6 +383,30 @@ def test_setup_tpu_multislice():
     for rank, call_args in enumerate(worker_group.execute_single_async.call_args_list):
         tpu_env_vars = call_args.kwargs["tpu_env_vars"]
         assert tpu_env_vars["MEGASCALE_SLICE_ID"] == ("0" if rank < 8 else "1")
+
+    # Also verify chips_per_vm=8 on 4x4 (2 workers per slice across 2 slices = 4 workers).
+    worker_group.reset_mock()
+    worker_group.__len__.return_value = 4
+    worker_group._train_run_context = MagicMock(
+        scaling_config=ScalingConfigV2(
+            num_workers=4,
+            use_tpu=True,
+            topology="4x4",
+            accelerator_type="TPU-V6E",
+            chips_per_vm=8,
+        )
+    )
+    with patch.object(ray, "get"):
+        backend._setup_tpu_multislice(
+            worker_group=worker_group,
+            master_addr="10.0.0.1",
+            num_slices=2,
+        )
+
+    assert [
+        c.kwargs["tpu_env_vars"]["MEGASCALE_SLICE_ID"]
+        for c in worker_group.execute_single_async.call_args_list
+    ] == ["0", "0", "1", "1"]
 
 
 def test_set_tpu_multislice_env_vars():
