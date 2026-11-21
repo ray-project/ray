@@ -879,15 +879,7 @@ class TestReadFootersBatching:
 
 
 def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
-    """A plain comparison is pruned in one pass, and skips the rewrite.
-
-    The rewrite returns forms PyArrow can already evaluate unchanged, so the
-    pruning split runs on the plain filter alone. Regression for two costs:
-    a redundant second ``split_by_row_group`` run -- the same expression used
-    to be evaluated against the same statistics twice -- and the statistics
-    rewrite, whose per-file schema conversion ran for every file on a filter
-    it has nothing to add to.
-    """
+    """A plain comparison is pruned in one pass, and skips the rewrite."""
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
     split_calls = []

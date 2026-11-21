@@ -295,7 +295,9 @@ class FooterReader:
             return _FileFilter(
                 file_filter=self.filter,
                 prune_filter=self._prune_expression(
-                    self._predicate, self.filter, schema
+                    predicate=self._predicate,
+                    plain=self.filter,
+                    schema=schema,
                 ),
                 filter_columns=self.filter_columns,
                 complete_filter=True,
@@ -353,7 +355,10 @@ class FooterReader:
         return _FileFilter(
             file_filter=expression,
             prune_filter=self._prune_expression(
-                physical, expression, schema, physical_schema
+                predicate=physical,
+                plain=expression,
+                schema=schema,
+                physical_schema=physical_schema,
             ),
             filter_columns=set(get_column_references(physical)),
             complete_filter=complete,
