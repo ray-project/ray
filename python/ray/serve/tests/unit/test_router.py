@@ -3434,38 +3434,126 @@ class TestRequestRoutingTimeout:
         [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
         indirect=True,
     )
-    async def test_drops_request_queued_behind_pending_one(
+    async def test_drops_queued_requests_once_timeouts_fill_half_the_queue(
         self, setup_router: Tuple[AsyncioRouter, RequestRouter]
     ):
-        """A timed-out request queued behind a still-pending one is dropped."""
+        """Timed-out requests queued behind a pending one are dropped in bulk,
+        once timeouts could fill half of the queue."""
         router, request_router = setup_router
         loop = get_or_create_event_loop()
 
-        # Head request assigned before the timeout was set: it waits indefinitely.
-        head_task = loop.create_task(
-            router.assign_request(
-                RequestMetadata(request_id="head", internal_request_id="head")
+        # Head requests assigned before the timeout was set: they wait indefinitely.
+        head_tasks = [
+            loop.create_task(
+                router.assign_request(
+                    RequestMetadata(
+                        request_id=f"head{i}", internal_request_id=f"head{i}"
+                    )
+                )
             )
-        )
+            for i in range(3)
+        ]
         await async_wait_for_condition(
-            lambda: request_router.num_pending_requests == 1, retry_interval_ms=1
+            lambda: request_router.num_pending_requests == 3, retry_interval_ms=1
         )
 
         router.update_deployment_config(_routing_timeout_config(0.05))
-        with pytest.raises(RequestRoutingTimeoutError):
-            await asyncio.wait_for(
-                router.assign_request(dummy_request_metadata()), timeout=5
-            )
+        queues = (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        )
+        for expected_len in (4, 5, 3):
+            with pytest.raises(RequestRoutingTimeoutError):
+                await asyncio.wait_for(
+                    router.assign_request(dummy_request_metadata()), timeout=5
+                )
+            for queue in queues:
+                assert len(queue) == expected_len
+                # Done entries never replace a pending one at the front.
+                assert [pr.metadata.request_id for pr in list(queue)[:3]] == [
+                    "head0",
+                    "head1",
+                    "head2",
+                ]
+        for queue in queues:
+            assert not any(pr.future.done() for pr in queue)
+
+        for task in head_tasks:
+            task.cancel()
+        for task in head_tasks:
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
+        indirect=True,
+    )
+    async def test_pops_done_prefix_immediately(
+        self, setup_router: Tuple[AsyncioRouter, RequestRouter]
+    ):
+        """A timed-out request at the front of the queue is popped right away,
+        without waiting for compaction, and routing skips done entries."""
+        _, request_router = setup_router
+        timed_out = PendingRequest(
+            args=[], kwargs={}, metadata=dummy_request_metadata()
+        )
+        pending = [
+            PendingRequest(args=[], kwargs={}, metadata=dummy_request_metadata())
+            for _ in range(3)
+        ]
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            queue.extend([timed_out, *pending])
+
+        request_router._drop_timed_out_request(timed_out)
 
         for queue in (
             request_router._pending_requests_to_fulfill,
             request_router._pending_requests_to_route,
         ):
-            assert [pr.metadata.request_id for pr in queue] == ["head"]
+            assert list(queue) == pending
 
-        head_task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await head_task
+    @pytest.mark.parametrize(
+        "setup_router",
+        [{"request_router_cls": PowerOfTwoChoicesRequestRouter}],
+        indirect=True,
+    )
+    async def test_routing_skips_timed_out_request_behind_pending_one(
+        self, setup_router: Tuple[AsyncioRouter, RequestRouter]
+    ):
+        """A timed-out request that stays queued until compaction is never routed."""
+        _, request_router = setup_router
+        pending = [
+            PendingRequest(args=[], kwargs={}, metadata=dummy_request_metadata())
+            for _ in range(3)
+        ]
+        timed_out = PendingRequest(
+            args=[], kwargs={}, metadata=dummy_request_metadata()
+        )
+        for queue in (
+            request_router._pending_requests_to_fulfill,
+            request_router._pending_requests_to_route,
+        ):
+            queue.extend([pending[0], timed_out, pending[1], pending[2]])
+
+        request_router._drop_timed_out_request(timed_out)
+        assert timed_out in request_router._pending_requests_to_route
+
+        assert request_router._get_next_pending_request_to_route() is pending[0]
+        assert request_router._get_next_pending_request_to_route() is pending[1]
+        assert request_router._get_next_pending_request_to_route() is pending[2]
+        assert request_router._get_next_pending_request_to_route() is None
+
+        replica = FakeRunningReplica("r1")
+        request_router._fulfill_next_pending_request(replica, None)
+        # pending[0] is first in the fulfill queue; the timed-out one is skipped.
+        assert pending[0].future.result() is replica
+        request_router._fulfill_next_pending_request(replica, None)
+        assert pending[1].future.result() is replica
+        assert timed_out.future.cancelled()
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -3476,7 +3564,7 @@ class TestRequestRoutingTimeout:
         self, setup_router: Tuple[AsyncioRouter, RequestRouter]
     ):
         """A rejected request is re-queued while its earlier entry is still there;
-        removing it must drop both copies."""
+        compaction must drop both copies."""
         _, request_router = setup_router
         timed_out = PendingRequest(
             args=[], kwargs={}, metadata=dummy_request_metadata()
@@ -3488,7 +3576,7 @@ class TestRequestRoutingTimeout:
         ):
             queue.extend([timed_out, other, timed_out])
 
-        request_router._remove_pending_request_from_queues(timed_out)
+        request_router._drop_timed_out_request(timed_out)
 
         for queue in (
             request_router._pending_requests_to_fulfill,
@@ -3566,8 +3654,16 @@ class TestRequestRoutingTimeout:
         with pytest.raises(RequestRoutingTimeoutError):
             await asyncio.wait_for(pick(), timeout=5)
 
+    # The two classes are distinct only before Python 3.11.
+    @pytest.mark.parametrize(
+        "timeout_error_cls",
+        [TimeoutError, asyncio.TimeoutError],
+        ids=["TimeoutError", "asyncio.TimeoutError"],
+    )
     async def test_request_router_timeout_error_propagates(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeRequestRouter],
+        timeout_error_cls: type,
     ):
         """A `TimeoutError` the request router raises before the deadline isn't
         reported as a routing timeout."""
@@ -3588,12 +3684,14 @@ class TestRequestRoutingTimeout:
         fake_request_router._replicas = {replica.replica_id: replica}
 
         async def choose_replicas(candidate_replicas, pending_request=None):
-            raise TimeoutError("Request router timed out.")
+            raise timeout_error_cls("Request router timed out.")
 
         fake_request_router.choose_replicas = choose_replicas
         router.update_deployment_config(_routing_timeout_config(5))
 
-        with pytest.raises(TimeoutError, match="Request router timed out.") as exc_info:
+        with pytest.raises(
+            timeout_error_cls, match="Request router timed out."
+        ) as exc_info:
             async with router.choose_replica(dummy_request_metadata(), _reserve=False):
                 pytest.fail("No replica should be selected.")
         assert not isinstance(exc_info.value, RequestRoutingTimeoutError)

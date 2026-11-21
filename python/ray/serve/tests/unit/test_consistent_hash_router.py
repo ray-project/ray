@@ -618,6 +618,43 @@ async def test_cancelled_request_stops_its_routing_task(router):
 
 
 @pytest.mark.asyncio
+async def test_cancelled_routing_tasks_are_replaced_for_queued_request(router):
+    """A request still queued when the tasks routing the others are cancelled
+    gets a replacement routing task, so it's routed once the replica is free."""
+    loop = get_or_create_event_loop()
+
+    replica = FakeRunningReplica("r0")
+    replica.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    router.update_replicas([replica])
+
+    routing = [
+        loop.create_task(router._choose_replica_for_request(_make_request(s)))
+        for s in ("a", "b")
+    ]
+    await async_wait_for_condition(
+        lambda: len(router._routing_task_by_pending_request_future) == 2,
+        retry_interval_ms=1,
+    )
+    waiting = loop.create_task(router._choose_replica_for_request(_make_request("c")))
+    await async_wait_for_condition(
+        lambda: router.num_pending_requests == 3, retry_interval_ms=1
+    )
+    assert len(router._pending_requests_to_route) == 1
+
+    for task in routing:
+        task.cancel()
+    for task in routing:
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    replica.set_queue_len_response(0)
+    assert await asyncio.wait_for(waiting, timeout=2) is replica
+    await async_wait_for_condition(
+        lambda: router.curr_num_routing_tasks == 0, retry_interval_ms=1
+    )
+
+
+@pytest.mark.asyncio
 async def test_two_routers_route_same_session_to_same_replica(router):
     """Two independent routers with the same replica set must pick the same
     replica for the same session_id."""

@@ -6,7 +6,6 @@ due to backpressure, the router falls back to the next replica in the ring,
 with at most DEFAULT_NUM_FALLBACK_REPLICAS replicas before backing off the request.
 """
 
-import asyncio
 import bisect
 import logging
 import time
@@ -295,30 +294,16 @@ class ConsistentHashRouter(RequestRouter):
                     # from the front of the fulfill deque first so that
                     # ``num_pending_requests`` accurately reflects active
                     # work for the next round of task accounting.
-                    while (
-                        len(self._pending_requests_to_fulfill) > 0
-                        and self._pending_requests_to_fulfill[0].future.done()
-                    ):
-                        self._pending_requests_to_fulfill.popleft()
+                    self._drop_done_pending_requests()
                     return
                 request_metadata = pending_request.metadata
-                # Register so a request that's cancelled or times out cancels
-                # this task instead of leaving it routing a done request.
-                routing_task = asyncio.current_task(loop=self._event_loop)
-                assert routing_task is not None
-                self._routing_task_by_pending_request_future[
-                    pending_request.future
-                ] = routing_task
+                routing_task = self._register_routing_task(pending_request)
                 gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
                     pending_request
                 )
                 try:
                     async for candidates in gen_choose_replicas_with_backoff:
-                        while (
-                            len(self._pending_requests_to_fulfill) > 0
-                            and self._pending_requests_to_fulfill[0].future.done()
-                        ):
-                            self._pending_requests_to_fulfill.popleft()
+                        self._drop_done_pending_requests()
 
                         # Note: unlike the base class, we deliberately do NOT
                         # break on `len(routing_tasks) > target` here when our
@@ -350,23 +335,10 @@ class ConsistentHashRouter(RequestRouter):
                             )
                             logger.warning(warning_log)
                 finally:
-                    if (
-                        self._routing_task_by_pending_request_future.get(
-                            pending_request.future
-                        )
-                        is routing_task
-                    ):
-                        self._routing_task_by_pending_request_future.pop(
-                            pending_request.future
-                        )
+                    self._unregister_routing_task(pending_request, routing_task)
                     await gen_choose_replicas_with_backoff.aclose()
 
         except Exception:
             logger.exception("Unexpected error in _fulfill_pending_requests.")
         finally:
-            self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
-            self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
-            # Requests may still be queued after this task is cancelled.
-            # Start replacement tasks if routing work remains.
-            if self._pending_requests_to_route:
-                self._maybe_start_routing_tasks()
+            self._finish_routing_task()

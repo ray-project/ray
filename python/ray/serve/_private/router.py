@@ -1536,16 +1536,20 @@ class AsyncioRouter:
                 if not timeout.expired():
                     raise
         else:
+            # `wait_for` raises `asyncio.TimeoutError` for its own deadline, but
+            # so can the awaited step. Only the deadline cancels the task.
+            task = asyncio.ensure_future(aw)
             try:
                 return await asyncio.wait_for(
-                    aw, routing_context.routing_deadline - loop.time()
+                    task, routing_context.routing_deadline - loop.time()
                 )
             except asyncio.TimeoutError:
                 # Before Python 3.11, this is distinct from the builtin
                 # `TimeoutError`.
-                pass
+                if not task.cancelled():
+                    raise
 
-        self._active_request_router._remove_pending_request_from_queues(pr)
+        self._active_request_router._drop_timed_out_request(pr)
         raise RequestRoutingTimeoutError(
             f"Request wasn't assigned to a replica of {self.deployment_id} "
             f"within {timeout_s}s."
