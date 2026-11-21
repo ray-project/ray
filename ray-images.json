@@ -2,6 +2,7 @@
   "ray": {
     "defaults": {
       "python": "3.11",
+      "tpu_python": "3.12",
       "gpu_platform": "cu12.1.1-cudnn8",
       "architecture": "x86_64"
     },

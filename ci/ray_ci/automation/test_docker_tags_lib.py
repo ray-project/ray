@@ -524,6 +524,22 @@ def test_backup_release_tags(
                 "test-tpu",
             ],
         ),
+        (
+            "test",
+            "ray",
+            ["3.11"],
+            ["tpu"],
+            ["x86_64"],
+            ["test-py311-tpu"],
+        ),
+        (
+            "test",
+            "ray",
+            ["3.12"],
+            ["tpu"],
+            ["x86_64"],
+            ["test-py312-tpu", "test-tpu"],
+        ),
     ],
 )
 def test_list_image_tags(

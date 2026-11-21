@@ -151,7 +151,8 @@ uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-ma
 sudo apt-get autoremove -y cmake zlib1g-dev
 
 if [[ "${PYTHON_DEPSET}" == *tpu* ]]; then
-    sudo apt-get install -y --no-install-recommends libgoogle-perftools-dev libomp-dev
+    sudo apt-get update -y
+    sudo apt-get install -y --no-install-recommends libgoogle-perftools4
 fi
 
 # We keep g++ on GPU and TPU images

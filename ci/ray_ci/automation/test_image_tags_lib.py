@@ -67,8 +67,9 @@ class TestGetPythonSuffixes:
     def test_tpu_default_python_version_includes_empty(self):
         """TPU uses DEFAULT_TPU_PYTHON_TAG_VERSION (3.12) for the empty suffix."""
         assert DEFAULT_TPU_PYTHON_TAG_VERSION == "3.12"
-        assert get_python_suffixes("3.10", "tpu") == ["-py310"]
+        assert get_python_suffixes("3.11", "tpu") == ["-py311"]
         assert get_python_suffixes("3.12", "tpu") == ["-py312", ""]
+        assert get_python_suffixes("3.12", "cpu") == ["-py312"]
 
 
 class TestGetPlatformSuffixes:

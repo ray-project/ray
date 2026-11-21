@@ -115,7 +115,6 @@ steps:
     wanda: ci/docker/ray-image-tpu.wanda.yaml
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
@@ -143,10 +142,9 @@ steps:
       - aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
       - docker run --rm
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-ray-py{{array.python}}-tpu
-        /bin/bash -c "pip check && python -c \"import sys, ray, jax, libtpu, flax, optax, orbax.checkpoint, tpu_info.version; (__import__('torch'), __import__('torchvision'), __import__('torch_tpu')) if sys.version_info >= (3, 12) else None; print('ray', ray.__version__, 'jax', jax.__version__)\""
+        /bin/bash -c "test -e /usr/lib/x86_64-linux-gnu/libtcmalloc.so.4 && ! pip show cupy-cuda12x fastrlock cuda-pathfinder >/dev/null 2>&1 && pip check && LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc.so.4 python -c \"import importlib.metadata, sys, ray, jax, libtpu, flax, optax, orbax.checkpoint, tpu_info; extra = () if sys.version_info < (3, 12) else (__import__('torch'), __import__('torchvision'), __import__('torch_tpu')); print('ray', ray.__version__, 'jax', jax.__version__, 'tpu-info', importlib.metadata.version('tpu-info'), *(['torch-tpu', importlib.metadata.version('torch-tpu')] if extra else []))\""
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"

@@ -128,7 +128,7 @@ class TestPythonSuffixes:
                 ["-py" + DEFAULT_PYTHON_TAG_VERSION.replace(".", ""), ""],
             ),  # default gets empty suffix too
             ("3.99", "cpu", ["-py399"]),  # non-default gets no empty suffix
-            ("3.10", "tpu", ["-py310"]),
+            ("3.11", "tpu", ["-py311"]),  # non-default for TPU gets no empty suffix
             ("3.12", "tpu", ["-py312", ""]),
         ],
     )

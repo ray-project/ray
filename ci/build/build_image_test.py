@@ -16,6 +16,8 @@ from build_image import (
     ImageBuildConfig,
     RayImage,
     RayImageError,
+    _build_examples,
+    _image_type_table,
     main,
 )
 
@@ -447,6 +449,84 @@ class TestHelpOutput(unittest.TestCase):
             with self.assertRaises(SystemExit) as ctx:
                 main()
         self.assertEqual(ctx.exception.code, 0)
+
+    def test_tpu_platform_defaults_to_python_312(self):
+        with (
+            mock.patch(
+                "build_image.sys.argv", ["build_image", "ray", "--platform", "tpu"]
+            ),
+            mock.patch("build_image.ImageBuildConfig.from_args") as mock_from_args,
+            mock.patch("build_image.ImageBuilder") as mock_builder,
+        ):
+            mock_from_args.return_value = _config(python_version="3.12", platform="tpu")
+            mock_builder.return_value.build.return_value = (
+                "cr.ray.io/rayproject/ray-py3.12-tpu"
+            )
+            main()
+        mock_from_args.assert_called_once_with(
+            "ray",
+            "3.12",
+            "tpu",
+            no_java=False,
+            no_dashboard=False,
+        )
+
+    def test_cpu_platform_defaults_to_python_311(self):
+        with (
+            mock.patch("build_image.sys.argv", ["build_image", "ray"]),
+            mock.patch("build_image.ImageBuildConfig.from_args") as mock_from_args,
+            mock.patch("build_image.ImageBuilder") as mock_builder,
+        ):
+            mock_from_args.return_value = _config(python_version="3.11", platform="cpu")
+            mock_builder.return_value.build.return_value = (
+                "cr.ray.io/rayproject/ray-py3.11-cpu"
+            )
+            main()
+        mock_from_args.assert_called_once_with(
+            "ray",
+            "3.11",
+            "cpu",
+            no_java=False,
+            no_dashboard=False,
+        )
+
+    def test_tpu_explicit_python_overrides_default(self):
+        with (
+            mock.patch(
+                "build_image.sys.argv",
+                ["build_image", "ray", "-p", "3.11", "--platform", "tpu"],
+            ),
+            mock.patch("build_image.ImageBuildConfig.from_args") as mock_from_args,
+            mock.patch("build_image.ImageBuilder") as mock_builder,
+        ):
+            mock_from_args.return_value = _config(python_version="3.11", platform="tpu")
+            mock_builder.return_value.build.return_value = (
+                "cr.ray.io/rayproject/ray-py3.11-tpu"
+            )
+            main()
+        mock_from_args.assert_called_once_with(
+            "ray",
+            "3.11",
+            "tpu",
+            no_java=False,
+            no_dashboard=False,
+        )
+
+    def test_help_table_and_examples_reflect_tpu_default_python(self):
+        table = _image_type_table()
+        ray_row = next(line for line in table.splitlines() if line.startswith("ray "))
+        ray_extra_row = next(
+            line for line in table.splitlines() if line.startswith("ray-extra ")
+        )
+        self.assertIn("3.11 (default)", ray_row)
+        self.assertIn("3.12 (tpu default)", ray_row)
+        self.assertNotIn("(tpu default)", ray_extra_row)
+
+        examples = _build_examples()
+        self.assertIn("./build-image.sh ray --platform tpu", examples)
+        self.assertIn("# ray tpu py3.12", examples)
+        self.assertIn("./build-image.sh ray -p 3.11 --platform tpu", examples)
+        self.assertIn("# ray tpu py3.11", examples)
 
 
 if __name__ == "__main__":
