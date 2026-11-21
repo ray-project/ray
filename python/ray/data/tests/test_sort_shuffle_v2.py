@@ -15,12 +15,22 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.shuffle_operators import (
+    disk_shuffle_tasks,
+)
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
     DiskHashShuffleRegroupOp,
+    DiskRangeShuffleRegroupOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
-    handle_from_block,
+    _KeyRangeSources,
+    _read_ipc,
+    handle_to_block,
+)
+from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
+    DiskSortRunWriteFn,
+    _write_disk_sort_run,
 )
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
@@ -34,10 +44,12 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_sampling_oper
     SortSamplingOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_operator import (  # noqa: E501
-    SortRangePartitioner,
     SortShuffleMapOp,
 )
-from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
+from ray.data._internal.execution.operators.sort_shuffle import (
+    make_sort_reduce_fn,
+    plan_range_partitions,
+)
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
@@ -252,33 +264,15 @@ def test_sort_sampling_handles_all_empty_blocks(
     assert op.has_completed()
 
 
-def _disk_sort_writer(input_op, ctx, *, num_partitions, sort_key):
-    """The disk sort writer as ``_plan_sort_v2`` builds it."""
-    partitioner = SortRangePartitioner(sort_key, num_partitions, input_op, ctx)
-
-    def resolve_boundaries(schema):
-        partitioner.partition_fn_for(schema, input_op)
-
-    return plan_disk_hash_shuffle_map(
-        input_op,
-        ctx,
-        num_partitions=num_partitions,
-        partition_fn=partitioner,
-        on_start=resolve_boundaries,
-    )
-
-
-@pytest.mark.parametrize("build_map_op", [SortShuffleMapOp, _disk_sort_writer])
 def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     ray_start_regular_shared_2_cpus,
     restore_data_context,
-    build_map_op,
 ):
     ctx = DataContext.get_current()
     # One map task per input bundle so the task is visible right after add_input.
     ctx.shuffle_input_batch_bytes = 0
     bundle = make_ref_bundles([[3, 1, 2]])[0]
-    op = build_map_op(
+    op = SortShuffleMapOp(
         InputDataBuffer(ctx, []),
         ctx,
         num_partitions=2,
@@ -288,8 +282,7 @@ def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
 
     op.add_input(bundle, 0)
 
-    if isinstance(op, SortShuffleMapOp):
-        assert op.boundaries == [(2,)]
+    assert op.boundaries == [(2,)]
     assert len(op.get_active_tasks()) == 1
 
     op.all_inputs_done()
@@ -298,13 +291,271 @@ def test_sort_shuffle_map_uses_user_boundaries_without_sampling(
     while op.has_next():
         outputs.append(op.get_next())
     assert op.has_completed()
-    if not isinstance(op, SortShuffleMapOp):
-        # The disk writer's handle reports the rows per range: [1] and [2, 3].
-        (handle_bundle,) = outputs
-        handle = handle_from_block(ray.get(handle_bundle.block_refs[0]))
-        assert list(handle["num_rows"]) == [1, 2]
     for bundle in outputs:
         bundle.destroy_if_owned()
+
+
+# --- Disk sort: sorted runs cut by the reducers (late-cut) --------------------
+
+
+def _write_sort_run(blocks, sort_key, out_dir, node_id="n", **kwargs):
+    """``_write_disk_sort_run`` without a cluster."""
+    params = dict(
+        num_partitions=2,
+        sample_rows=100,
+        max_chunk_bytes=1 << 20,
+        map_id=0,
+        shuffle_id="shuffle",
+        compression="lz4",
+    )
+    params.update(kwargs)
+    with mock.patch.object(disk_shuffle_tasks.ray, "get_runtime_context") as ctx:
+        ctx.return_value.get_node_id.return_value = node_id
+        return _write_disk_sort_run(
+            blocks, sort_key=sort_key, out_dir=out_dir, **params
+        )
+
+
+def _read_chunks(handle, ranges):
+    with open(handle["path"], "rb") as f:
+        tables = []
+        for off, length in ranges:
+            f.seek(off)
+            tables.append(_read_ipc(f.read(length), handle["compression"]))
+    return tables
+
+
+def _fetch_range(handle, sort_key, lower, upper):
+    """The keys a reducer for ``[lower, upper)`` gets from one mapper file."""
+    selector = _KeyRangeSources(sort_key, lower, upper)
+    tables = selector.trim(_read_chunks(handle, selector.ranges_for(handle)))
+    return [
+        k
+        for table in tables
+        for k in table.column(sort_key.get_columns()[0]).to_pylist()
+    ]
+
+
+def test_disk_sort_run_writer_sorts_and_chunks(tmp_path):
+    """The run is sorted across input blocks and written in chunks whose
+    index gives each chunk's first key; the key sample is a random subset."""
+    sort_key = SortKey("k")
+    blocks = [
+        pa.table({"k": [42, 7, 19, 88], "v": [1, 2, 3, 4]}),
+        pa.table({"k": [3, 55, 61, 10], "v": [5, 6, 7, 8]}),
+    ]
+    with mock.patch.object(disk_shuffle_tasks, "_sort_run_chunk_rows", return_value=3):
+        handle = _write_sort_run(blocks, sort_key, str(tmp_path), sample_rows=4)
+
+    run = pa.concat_tables(_read_chunks(handle, handle["chunk_index"].tolist()))
+    assert run.column("k").to_pylist() == [3, 7, 10, 19, 42, 55, 61, 88]
+    assert run.column("v").to_pylist() == [5, 2, 8, 3, 1, 6, 7, 4]
+    assert handle["chunk_num_rows"].tolist() == [3, 3, 2]
+    assert handle["chunk_first_keys"].column("k").to_pylist() == [3, 19, 61]
+    sample = handle["key_sample"].column("k").to_pylist()
+    assert len(sample) == 4 and sample == sorted(sample)
+    assert set(sample) < set(run.column("k").to_pylist())
+    # Positions differ between map tasks, so pooled samples cover the key range.
+    other = _write_sort_run(blocks, sort_key, str(tmp_path), sample_rows=4, map_id=1)
+    assert other["key_sample"].column("k").to_pylist() != sample
+    assert handle["run_num_rows"] == 8
+    assert handle["total_bytes"] == int(handle["chunk_index"][-1].sum())
+    assert handle["schema"] == blocks[0].schema
+
+
+def test_disk_sort_run_chunk_rows():
+    """Chunks are about 1/8 of a partition's share of the run, within the
+    64 KiB floor and the block size cap."""
+    chunk_rows = disk_shuffle_tasks._sort_run_chunk_rows
+    kib = 1024
+    # 8 MiB run, 4 partitions: 8 MiB / 32 = 256 KiB chunks of 1 KiB rows.
+    assert chunk_rows(8192, 8192 * kib, 4, 128 * 1024 * kib) == 256
+    # A small run hits the floor: 64 KiB chunks.
+    assert chunk_rows(8192, 512 * kib, 4, 128 * 1024 * kib) == 1024
+    # A huge run hits the cap.
+    assert chunk_rows(8192, 8192 * kib, 1, 1024 * kib) == 1024
+    assert chunk_rows(5, 0, 4, 1024 * kib) == 5
+    assert chunk_rows(0, 0, 4, 1024 * kib) == 1
+    # No block size cap (target_max_block_size=None): the 1/8 rule alone.
+    assert chunk_rows(8192, 8192 * kib, 1, None) == 1024
+
+
+@pytest.mark.parametrize(
+    "descending, boundary, expected",
+    [
+        # Ascending, boundary inside a chunk: both reducers fetch it and trim.
+        (False, 20, ([3, 7, 10, 14, 19], [27, 42, 55, 61, 70, 88, 90])),
+        # Boundary equal to a chunk's first key: equal keys go above it.
+        (False, 42, ([3, 7, 10, 14, 19, 27], [42, 55, 61, 70, 88, 90])),
+        # Descending: equal keys go below the boundary, as the partitioner does.
+        (True, 42, ([90, 88, 70, 61, 55, 42], [27, 19, 14, 10, 7, 3])),
+    ],
+)
+def test_key_range_sources_fetch_overlapping_chunks_and_trim(
+    tmp_path, descending, boundary, expected
+):
+    sort_key = SortKey("k", descending=descending)
+    blocks = [
+        pa.table({"k": [42, 7, 19, 88]}),
+        pa.table({"k": [3, 55, 61, 10]}),
+        pa.table({"k": [27, 90, 14, 70]}),
+    ]
+    with mock.patch.object(disk_shuffle_tasks, "_sort_run_chunk_rows", return_value=2):
+        handle = _write_sort_run(blocks, sort_key, str(tmp_path))
+    num_chunks = len(handle["chunk_index"])
+    assert num_chunks == 6
+
+    below = _KeyRangeSources(sort_key, None, (boundary,))
+    above = _KeyRangeSources(sort_key, (boundary,), None)
+    # Only the chunks that can hold the range are read, and the chunk
+    # holding the boundary is read by both sides.
+    assert len(below.ranges_for(handle)) < num_chunks
+    assert len(above.ranges_for(handle)) < num_chunks
+    assert len(below.ranges_for(handle)) + len(above.ranges_for(handle)) >= num_chunks
+
+    assert _fetch_range(handle, sort_key, None, (boundary,)) == expected[0]
+    assert _fetch_range(handle, sort_key, (boundary,), None) == expected[1]
+    assert _fetch_range(handle, sort_key, None, None) == expected[0] + expected[1]
+    # Repeated boundaries: an empty range reads nothing.
+    assert _KeyRangeSources(sort_key, (boundary,), (boundary,)).ranges_for(handle) == []
+
+
+def test_key_range_sources_multi_column_and_nulls(tmp_path):
+    sort_key = SortKey(["a", "b"], descending=[False, True])
+    block = pa.table(
+        {"a": [1, None, 2, 1, 2, None], "b": [5, 1, 3, 9, None, 2]},
+    )
+    with mock.patch.object(disk_shuffle_tasks, "_sort_run_chunk_rows", return_value=2):
+        handle = _write_sort_run([block], sort_key, str(tmp_path), num_partitions=3)
+    rows = lambda lower, upper: [  # noqa: E731
+        tuple(r.values())
+        for t in _KeyRangeSources(sort_key, lower, upper).trim(
+            _read_chunks(
+                handle, _KeyRangeSources(sort_key, lower, upper).ranges_for(handle)
+            )
+        )
+        for r in t.to_pylist()
+    ]
+    # Nulls sort last in both columns; the boundary (2, 3) is in the run.
+    assert rows(None, (2, 3)) == [(1, 9), (1, 5)]
+    assert rows((2, 3), None) == [(2, 3), (2, None), (None, 2), (None, 1)]
+    assert rows((2, None), (None, 2)) == [(2, None)]
+
+
+def test_plan_range_partitions_weights_samples_by_run_size():
+    sort_key = SortKey("k")
+    # Run A: 90 rows sampled every 10th; run B: 10 rows sampled every 1st.
+    sample_a = pa.table({"k": list(range(0, 90, 10))})
+    sample_b = pa.table({"k": list(range(90, 100))})
+
+    boundaries, rows, nbytes = plan_range_partitions(
+        [sample_a, sample_b], [10.0, 1.0], [80.0, 8.0], sort_key, 2
+    )
+
+    # Balanced by rows (50/50), not by sample count (9 vs 10).
+    assert boundaries == [(50,)]
+    assert rows.tolist() == [50, 50]
+    assert nbytes.tolist() == [400, 400]
+
+    # User boundaries are kept; the estimates follow them.
+    boundaries, rows, _ = plan_range_partitions(
+        [sample_a, sample_b],
+        [10.0, 1.0],
+        [80.0, 8.0],
+        sort_key,
+        3,
+        boundaries=[(90,), (95,)],
+    )
+    assert boundaries == [(90,), (95,)]
+    assert rows.tolist() == [90, 5, 5]
+
+    # Descending keys.
+    boundaries, rows, _ = plan_range_partitions(
+        [sample_a, sample_b], [10.0, 1.0], [80.0, 8.0], SortKey("k", descending=True), 2
+    )
+    assert boundaries == [(50,)]
+    assert rows.tolist() == [50, 50]
+
+    # Nothing sampled: every partition is empty.
+    boundaries, rows, _ = plan_range_partitions(
+        [pa.table({"k": pa.array([], pa.int64())})], [0.0], [0.0], sort_key, 3
+    )
+    assert boundaries == [(None,), (None,)]
+    assert rows.tolist() == [0, 0, 0]
+
+    # A null boundary is None, not the NaN ``to_numpy`` renders it as, so the
+    # descending insertion search puts it after the non-null keys.
+    nulls = pa.table({"k": [5, 4, 3, None, None, None]})
+    boundaries, rows, _ = plan_range_partitions(
+        [nulls], [1.0], [1.0], SortKey("k", descending=True), 3
+    )
+    assert boundaries == [(4,), (None,)]
+    # Descending: a key equal to the boundary goes below it, so 4 joins 5.
+    assert rows.tolist() == [2, 1, 3]
+
+    # A sort column named like a weight column does not collide with it.
+    taken = pa.table({"__sort_sample_rows__": [1, 2, 3, 4]})
+    boundaries, rows, _ = plan_range_partitions(
+        [taken], [1.0], [1.0], SortKey("__sort_sample_rows__"), 2
+    )
+    assert boundaries == [(3,)]
+    assert rows.tolist() == [2, 2]
+
+
+def test_disk_range_regroup_computes_boundaries_from_handles(
+    ray_start_regular_shared_2_cpus, tmp_path
+):
+    """The regroup pools the writers' key samples into boundaries and size
+    estimates, and hands each reduce task its key range."""
+    ctx = DataContext.get_current()
+    sort_key = SortKey("k")
+    # The regroup pins a file server to each handle's node, so use a real one.
+    node_id = ray.get_runtime_context().get_node_id()
+    handles = [
+        _write_sort_run(
+            [pa.table({"k": list(range(i, 40, 2))})],
+            sort_key,
+            str(tmp_path),
+            node_id=node_id,
+            map_id=i,
+        )
+        for i in range(2)
+    ]
+    regroup = DiskRangeShuffleRegroupOp(
+        InputDataBuffer(ctx, []), ctx, num_partitions=4, sort_key=sort_key
+    )
+    regroup.start(ExecutionOptions(), noop_counter())
+    for handle in handles:
+        block = handle_to_block(handle)
+        bundle = RefBundle(
+            (
+                BlockEntry(
+                    ray.put(block),  # pyrefly: ignore[bad-argument-type]
+                    BlockAccessor.for_block(block).get_metadata(),
+                ),
+            ),
+            owns_blocks=True,
+            schema=block.schema,
+        )
+        regroup._add_input_inner(bundle, 0)
+    assert not regroup.partition_sizes_exact
+    regroup.all_inputs_done()
+
+    assert regroup.boundaries == [(10,), (20,), (30,)]
+    assert regroup.num_output_rows_total() == 40
+    bundles = []
+    while regroup.has_next():
+        bundles.append(regroup.get_next())
+    assert [b.blocks[0].metadata.num_rows for b in bundles] == [10, 10, 10, 10]
+    assert all(b.schema == handles[0]["schema"] for b in bundles)
+    selectors = [regroup.source_selector(p) for p in range(4)]
+    bounds = [
+        (s._lower, s._upper) for s in selectors if isinstance(s, _KeyRangeSources)
+    ]
+    assert len(bounds) == 4
+    assert bounds[1] == ((10,), (20,))
+    assert bounds[0][0] is None and bounds[3][1] is None
+    regroup.teardown()
 
 
 @pytest.mark.parametrize(
@@ -437,14 +688,23 @@ def test_sort_planner_routes_to_shuffle_v2(
     map_op = _sort_map_op(dag, use_disk)
     assert isinstance(map_op, map_cls)
     assert map_op.name.startswith(f"{prefix}SortShuffleMap")
-    sampling_op = map_op.input_dependencies[0]
-    assert isinstance(sampling_op, SortSamplingOp)
-    assert not sampling_op.supports_fusion()
-    assert (
-        sampling_op._sample_rows_per_block
-        == SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
-    )
     assert dag._num_partitions == 2
+    if use_disk:
+        # The writers sort and write their input whole; the regroup computes
+        # the boundaries from their key samples, so nothing holds the input.
+        assert isinstance(dag.input_dependencies[0], DiskRangeShuffleRegroupOp)
+        assert not isinstance(map_op.input_dependencies[0], SortSamplingOp)
+        write_fn = map_op._map_transformer._transform_fns[0]._fn
+        assert isinstance(write_fn, DiskSortRunWriteFn)
+        assert write_fn._sample_rows == SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
+    else:
+        sampling_op = map_op.input_dependencies[0]
+        assert isinstance(sampling_op, SortSamplingOp)
+        assert not sampling_op.supports_fusion()
+        assert (
+            sampling_op._sample_rows_per_block
+            == SortTaskSpec.SORT_SAMPLE_POINTS_PER_PARTITION
+        )
 
     read_op_cls = type(ds._logical_plan.dag.input_dependencies[0])
     with mock.patch.object(read_op_cls, "estimated_num_outputs", return_value=None):
@@ -528,6 +788,39 @@ def test_sort_shuffle_v2_end_to_end(
     )
 
     assert result == sorted(rows, key=lambda row: (row["a"], -row["b"]))
+
+
+@pytest.mark.parametrize("use_disk", _USE_DISK)
+@pytest.mark.parametrize("descending", [False, True])
+def test_sort_shuffle_v2_duplicate_and_null_keys(
+    ray_start_regular_shared_2_cpus,
+    restore_data_context,
+    use_disk,
+    descending,
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = use_disk
+
+    # Few distinct keys, so sampled boundaries repeat and partitions split on
+    # ties; nulls sort last in both directions.
+    rows = [{"k": i % 3 if i % 7 else None, "i": i} for i in range(60)]
+    random.Random(1).shuffle(rows)
+    result = (
+        ray.data.from_items(rows, override_num_blocks=6)
+        .sort("k", descending=descending)
+        .materialize()
+    )
+
+    got = [row["k"] for row in result.iter_rows()]
+    keys = sorted((r["k"] for r in rows if r["k"] is not None), reverse=descending)
+    assert got == keys + [None] * 9
+    assert sorted(row["i"] for row in result.iter_rows()) == list(range(60))
+    # One partition per input block; repeated boundaries leave some empty.
+    assert result.num_blocks() == 6
+
+    # An empty input with no columns sorts to nothing.
+    assert ray.data.from_arrow(pa.table({})).sort("k").take_all() == []
 
 
 def test_sort_reduce_fn_keeps_schema_for_empty_partition():

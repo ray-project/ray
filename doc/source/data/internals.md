@@ -198,6 +198,8 @@ Range-partitioning shuffle is also a classical algorithm. It splits the dataset 
 1. **Partition phase:** Ray Data sorts every block and splits it into partitions based on the *range boundaries* from the previous step.
 1. **Reduce phase:** Ray Data recombines the individual partitions within the same range to produce the resulting block.
 
+With the disk-based {ref}`shuffle v2 <shuffle-v2>` (`use_disk_based_hash_shuffle`), the partition phase doesn't wait for the boundaries. Each map task sorts its input, writes the sorted run to local disk in chunks, and records every chunk's first key and a sample of the run's keys. Ray Data computes the range boundaries from those samples once all map tasks finish, and each reduce task then fetches only the chunks that overlap its range and trims them to it. Because no map task waits for the boundaries, the input doesn't have to be held in the object store while sampling runs.
+
 (operators-plans-and-planning)=
 
 ### How does Ray Data plan execution?

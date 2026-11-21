@@ -479,7 +479,7 @@ def test_order_tables_by_source_undoes_node_grouping():
     groups = _group_by_server([s0, s1, s2])
     t0, t1a, t1b, t2 = [pa.table({"v": [i]}) for i in range(4)]
 
-    ordered = _order_tables_by_source(groups, [[t0, t2], [t1a, t1b]])
+    ordered = _order_tables_by_source(groups, [[[t0], [t2]], [[t1a, t1b]]])
 
     assert ordered == [t0, t1a, t1b, t2]
 
