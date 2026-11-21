@@ -489,8 +489,7 @@ class FooterReader:
                 self._residual_filter_columns - partition_columns,
             ):
                 return None
-            # Share the already-read metadata, but give the residual filter its
-            # own statistics cache when binding against the reader's logical schema.
+            # Restrict residual statistics checks to the remaining row groups.
             fragment = fragment.subset(row_group_ids=candidates)
         except Exception as e:
             logger.debug(
