@@ -113,7 +113,7 @@ class _FilterLeaves(NamedTuple):
 
 
 class _FileFilter(NamedTuple):
-    """The filter forms one file's schema is read with.
+    """The filters used to prune one file's row groups.
 
     ``file_filter`` is the physical predicate as PyArrow evaluates it;
     ``prune_filter`` is the form row groups are pruned with (see
@@ -322,6 +322,7 @@ class FooterReader:
                     is True
                 )
         physical = split.data_predicate
+        physical_schema: pa.Schema | None = None
         logical_schema = self.logical_schema
         if physical is not None and logical_schema is not None:
             physical_schema = schema.to_arrow_schema()
@@ -351,7 +352,9 @@ class FooterReader:
         )
         return _FileFilter(
             file_filter=expression,
-            prune_filter=self._prune_expression(physical, expression, schema),
+            prune_filter=self._prune_expression(
+                physical, expression, schema, physical_schema
+            ),
             filter_columns=set(get_column_references(physical)),
             complete_filter=complete,
         )
@@ -361,6 +364,7 @@ class FooterReader:
         predicate: "Expr" | None,
         plain: "pc.Expression" | None,
         schema: ParquetSchema,
+        physical_schema: pa.Schema | None = None,
     ) -> "pc.Expression" | None:
         """Lower the per-file physical predicate to the PyArrow pruning form.
 
@@ -369,11 +373,15 @@ class FooterReader:
         evaluate do the pruning. Predicates without such a leaf, and rewrite
         failures, lower unchanged: ``plain`` is returned as-is, so identity
         with ``file_filter`` marks "the rewrite added nothing".
+        ``physical_schema`` is the Arrow form of ``schema`` when the caller
+        already converted it, so the file's schema is not converted twice.
         """
         if not self._has_modelable_leaves:
             return plain
         try:
-            bounds = _add_statistics_bounds(predicate, schema.to_arrow_schema())
+            if physical_schema is None:
+                physical_schema = schema.to_arrow_schema()
+            bounds = _add_statistics_bounds(predicate, physical_schema)
             return plain if bounds is predicate else bounds.to_pyarrow()
         except Exception as e:
             logger.debug(
