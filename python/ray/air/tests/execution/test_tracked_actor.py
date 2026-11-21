@@ -3,6 +3,7 @@ import threading
 import time
 from collections import Counter
 from typing import Any, Optional, Type
+from unittest import mock
 
 import pytest
 
@@ -11,6 +12,7 @@ from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import Barrier
 from ray.air.execution._internal.actor_manager import RayActorManager
+from ray.exceptions import OutOfMemoryError
 
 
 def _raise(exception_type: Type[Exception] = RuntimeError, msg: Optional[str] = None):
@@ -244,6 +246,52 @@ def test_actor_fail(ray_start_4_cpus, cleanup, resource_manager_cls, where):
 
     assert stats["failed_actor"] == 1
     assert stats["failed_task"] == bool(where != "init")
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_actor_oom_kill(ray_start_4_cpus, cleanup, resource_manager_cls):
+    """Test that an out-of-memory kill is handled like an actor failure.
+
+    - Start an actor and schedule a task on it
+    - Fail the task with an OutOfMemoryError
+    - Assert that the actor and task callbacks are called and the actor is removed
+    """
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
+
+    stats = Counter()
+
+    def fail_callback_actor(tracked_actor, exception):
+        assert isinstance(exception, OutOfMemoryError)
+        stats["failed_actor"] += 1
+
+    def fail_callback_task(tracked_actor, exception):
+        assert isinstance(exception, OutOfMemoryError)
+        stats["failed_task"] += 1
+
+    tracked_actor = actor_manager.add_actor(
+        cls=Actor,
+        kwargs={},
+        resource_request=ResourceRequest([{"CPU": 1}]),
+        on_error=fail_callback_actor,
+    )
+
+    # Wait until it is started
+    actor_manager.next()
+
+    actor_manager.schedule_actor_task(
+        tracked_actor, "task", args=(1,), on_error=fail_callback_task
+    )
+
+    with mock.patch(
+        "ray.get", side_effect=OutOfMemoryError("Worker killed by the memory monitor")
+    ):
+        actor_manager.next()
+
+    assert stats["failed_actor"] == 1
+    assert stats["failed_task"] == 1
+    assert tracked_actor not in actor_manager.live_actors
 
 
 @pytest.mark.parametrize(

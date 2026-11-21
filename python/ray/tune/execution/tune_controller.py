@@ -15,7 +15,7 @@ from ray.air import ResourceRequest
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.exceptions import RayActorError, RayTaskError
+from ray.exceptions import OutOfMemoryError, RayActorError, RayTaskError
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.tune import CheckpointConfig
@@ -1236,7 +1236,9 @@ class TuneController:
             def _on_error(tracked_actor: TrackedActor, exception: Exception):
                 # If the actor failed, it has already been cleaned up.
                 if tracked_actor not in self._actor_to_trial:
-                    assert isinstance(exception, RayActorError), type(exception)
+                    assert isinstance(
+                        exception, (RayActorError, OutOfMemoryError)
+                    ), type(exception)
                 else:
                     assert trial == self._actor_to_trial[tracked_actor]
 

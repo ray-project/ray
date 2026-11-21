@@ -6,6 +6,8 @@ import pytest
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.air.execution._internal.actor_manager import RayActorManager
+from ray.exceptions import OutOfMemoryError
 from ray.train.tests.util import mock_storage_context
 from ray.tune import CheckpointConfig, PlacementGroupFactory, TuneError
 from ray.tune.execution.tune_controller import TuneController
@@ -149,6 +151,78 @@ def test_failure_recovery(
         assert trials[0].num_failures == 1
         assert len(searchalg.errored_trials) == 0
         assert len(scheduler.errored_trials) == 1
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.parametrize("max_failures", [0, 1])
+def test_oom_kill_is_a_trial_failure(
+    ray_start_4_cpus_2_gpus_extra, monkeypatch, resource_manager_cls, max_failures
+):
+    """An out-of-memory kill of a trial's worker is a trial failure.
+
+    The trial is retried up to `max_failures` times. The controller keeps running
+    instead of raising, and the trial ends in ERROR once it runs out of retries.
+    """
+    searchalg, scheduler = create_mock_components()
+
+    # Fail the first train future with the error the memory monitor leads to.
+    oom_futures = []
+    scheduled_train = []
+    real_schedule = RayActorManager.schedule_actor_task
+    real_get = ray.get
+
+    def schedule_actor_task(self, *args, **kwargs):
+        if kwargs.get("method_name") in ("train", "train_buffered") and not (
+            scheduled_train
+        ):
+            scheduled_train.append(True)
+            requested = kwargs.get("_return_future", False)
+            kwargs["_return_future"] = True
+            future = real_schedule(self, *args, **kwargs)
+            oom_futures.append(future)
+            return future if requested else None
+        return real_schedule(self, *args, **kwargs)
+
+    def get(refs, *args, **kwargs):
+        if isinstance(refs, ray.ObjectRef) and refs in oom_futures:
+            oom_futures.remove(refs)
+            raise OutOfMemoryError("Worker killed by the memory monitor")
+        return real_get(refs, *args, **kwargs)
+
+    monkeypatch.setattr(RayActorManager, "schedule_actor_task", schedule_actor_task)
+    monkeypatch.setattr(ray, "get", get)
+
+    runner = TuneController(
+        search_alg=searchalg,
+        scheduler=scheduler,
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+    )
+    runner.add_trial(
+        Trial(
+            MOCK_TRAINABLE_NAME,
+            placement_group_factory=PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
+            stopping_criterion={"training_iteration": 2},
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+            max_failures=max_failures,
+            storage=STORAGE,
+        )
+    )
+    trial = runner.get_trials()[0]
+
+    while not runner.is_finished():
+        runner.step()
+
+    assert trial.num_failures == 1
+    assert len(scheduler.errored_trials) == 1
+    if max_failures:
+        assert trial.status == Trial.TERMINATED
+        assert len(searchalg.errored_trials) == 0
+    else:
+        assert trial.status == Trial.ERROR
+        assert len(searchalg.errored_trials) == 1
 
 
 @pytest.mark.parametrize(
