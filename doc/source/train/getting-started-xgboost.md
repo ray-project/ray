@@ -8,6 +8,9 @@ myst:
 
 # Get started with distributed training using XGBoost
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 This tutorial shows how to convert an existing XGBoost script to use Ray Train.
 
 In this tutorial, you learn how to do the following:

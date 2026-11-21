@@ -10,6 +10,9 @@ myst:
 
 # Ray Train overview
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 To use Ray Train effectively, understand the following four main concepts:
 
 * {ref}`Training function <train-overview-training-function>`: A Python function that contains your model training logic.

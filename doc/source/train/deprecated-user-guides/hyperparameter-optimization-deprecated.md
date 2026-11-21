@@ -6,6 +6,9 @@ orphan: true
 
 # Hyperparameter Tuning with Ray Tune (Deprecated API)
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 :::{important}
 This user guide covers the deprecated Train + Tune integration. See {ref}`train-tune` for the new API user guide.
 

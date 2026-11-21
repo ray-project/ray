@@ -8,6 +8,9 @@ myst:
 
 # Get started with distributed training using Hugging Face Transformers
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 This tutorial shows you how to convert an existing Hugging Face Transformers script to use Ray Train for distributed training.
 
 In this guide, you learn how to do the following:
