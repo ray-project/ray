@@ -24,47 +24,40 @@ class LLMServer(InternalLLMServer):
     through `serve.deployment` function.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            from ray import serve
-            from ray.serve.llm import LLMConfig
-            from ray.serve.llm.deployment import LLMServer
-
-            # Configure the model
-            llm_config = LLMConfig(
-                model_loading_config=dict(
-                    served_model_name="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=8,
-                    )
-                ),
-            )
-
-            # Build the deployment directly
-            serve_options = LLMServer.get_deployment_options(llm_config)
-            llm_app = serve.deployment(LLMServer).options(
-                **serve_options).bind(llm_config)
-
-            model_handle = serve.run(llm_app)
-
-            # Query the model via `chat` api
-            from ray.serve.llm.openai_api_models import ChatCompletionRequest
-            request = ChatCompletionRequest(
-                model="llama-3.1-8b",
-                messages=[
-                    {
-                        "role": "user",
-                        "content": "Hello, world!"
-                    }
-                ]
-            )
-            response = ray.get(model_handle.chat(request))
-            print(response)
+        >>> from ray import serve  # doctest: +SKIP_EXAMPLE
+        >>> from ray.serve.llm import LLMConfig
+        >>> from ray.serve.llm.deployment import LLMServer
+        >>> # Configure the model
+        >>> llm_config = LLMConfig(
+        ...     model_loading_config=dict(
+        ...         served_model_name="llama-3.1-8b",
+        ...         model_source="meta-llama/Llama-3.1-8b-instruct",
+        ...     ),
+        ...     deployment_config=dict(
+        ...         autoscaling_config=dict(
+        ...             min_replicas=1,
+        ...             max_replicas=8,
+        ...         )
+        ...     ),
+        ... )
+        >>> # Build the deployment directly
+        >>> serve_options = LLMServer.get_deployment_options(llm_config)
+        >>> llm_app = serve.deployment(LLMServer).options(
+        ...     **serve_options).bind(llm_config)
+        >>> model_handle = serve.run(llm_app)
+        >>> # Query the model via `chat` api
+        >>> from ray.serve.llm.openai_api_models import ChatCompletionRequest
+        >>> request = ChatCompletionRequest(
+        ...     model="llama-3.1-8b",
+        ...     messages=[
+        ...         {
+        ...             "role": "user",
+        ...             "content": "Hello, world!"
+        ...         }
+        ...     ]
+        ... )
+        >>> response = ray.get(model_handle.chat(request))
+        >>> print(response)
     """
 
     pass
@@ -109,32 +102,26 @@ class DPServer(_DPServer):
     through `serve.deployment` function.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            from ray import serve
-            from ray.serve.llm import LLMConfig, build_dp_deployment
-
-            # Configure the model
-            llm_config = LLMConfig(
-                model_loading_config=dict(
-                    model_id="Qwen/Qwen2.5-0.5B-Instruct",
-                ),
-                engine_kwargs=dict(
-                    data_parallel_size=2,
-                    tensor_parallel_size=1,
-                ),
-                experimental_configs=dict(
-                    dp_size_per_node=2,
-                ),
-                accelerator_type="A10G",
-            )
-
-            # Build the deployment
-            dp_app = build_dp_deployment(llm_config)
-
-            # Deploy the application
-            model_handle = serve.run(dp_app)
+        >>> from ray import serve  # doctest: +SKIP_EXAMPLE
+        >>> from ray.serve.llm import LLMConfig, build_dp_deployment
+        >>> # Configure the model
+        >>> llm_config = LLMConfig(
+        ...     model_loading_config=dict(
+        ...         model_id="Qwen/Qwen2.5-0.5B-Instruct",
+        ...     ),
+        ...     engine_kwargs=dict(
+        ...         data_parallel_size=2,
+        ...         tensor_parallel_size=1,
+        ...     ),
+        ...     experimental_configs=dict(
+        ...         dp_size_per_node=2,
+        ...     ),
+        ...     accelerator_type="A10G",
+        ... )
+        >>> # Build the deployment
+        >>> dp_app = build_dp_deployment(llm_config)
+        >>> # Deploy the application
+        >>> model_handle = serve.run(dp_app)
     """
 
     pass
