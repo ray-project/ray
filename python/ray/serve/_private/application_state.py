@@ -27,7 +27,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     TargetCapacityDirection,
 )
-from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.config import DeploymentConfig, topology_spread_to_dicts
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
@@ -1987,6 +1987,12 @@ def override_deployment_info(
             "placement_group_fallback_strategy",
             replica_config.placement_group_fallback_strategy,
         )
+        if "topology_spread" in options:
+            override_topology_spread = topology_spread_to_dicts(
+                options.pop("topology_spread")
+            )
+        else:
+            override_topology_spread = replica_config.topology_spread
 
         # Record telemetry for container runtime env feature at deployment level
         if override_actor_options.get("runtime_env") and (
@@ -2011,6 +2017,7 @@ def override_deployment_info(
             max_replicas_per_node=override_max_replicas_per_node,
             placement_group_bundle_label_selector=override_bundle_label_selector,
             placement_group_fallback_strategy=override_fallback_strategy,
+            topology_spread=override_topology_spread,
         )
         override_options["replica_config"] = replica_config
 
@@ -2079,6 +2086,15 @@ def override_deployment_info(
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
         deployment_infos[deployment_name] = info.update(**override_options)
+        updated_info = deployment_infos[deployment_name]
+        if (
+            updated_info.deployment_config.gang_scheduling_config is not None
+            and updated_info.replica_config.topology_spread
+        ):
+            raise ValueError(
+                f"Deployment '{deployment_name}': setting topology_spread is not "
+                "allowed when gang_scheduling_config is provided."
+            )
 
         deployment_config = deployment_infos[deployment_name].deployment_config
         if (

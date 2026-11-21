@@ -196,6 +196,48 @@ class TestDeploymentOptions:
         with pytest.raises(ValueError):
             f.options(max_surge_percent=101)
 
+    def test_topology_spread(self):
+        from ray.serve.config import TopologySpread
+
+        zones = TopologySpread(label_key="ray.io/availability-zone", min_domains=2)
+
+        @serve.deployment(topology_spread=[zones])
+        def f():
+            pass
+
+        zone_rule = {"label_key": "ray.io/availability-zone", "min_domains": 2}
+        assert f._replica_config.topology_spread == [zone_rule]
+        assert "topology_spread" in f._deployment_config.user_configured_option_names
+
+        node_rule = {"label_key": "ray.io/node-id", "min_domains": 3}
+        g = f.options(topology_spread=[node_rule])
+        assert g._replica_config.topology_spread == [node_rule]
+        assert f.options(num_replicas=2)._replica_config.topology_spread == [zone_rule]
+        assert f.options(topology_spread=[])._replica_config.topology_spread == []
+
+        with pytest.raises(ValueError):
+            f.options(topology_spread=[{"label_key": "x", "min_domains": 0}])
+
+    def test_topology_spread_rejected_with_gang_scheduling(self):
+        rules = [{"label_key": "ray.io/node-id", "min_domains": 2}]
+        gang = {"gang_size": 2}
+
+        with pytest.raises(ValueError, match="topology_spread is not allowed"):
+
+            @serve.deployment(
+                num_replicas=2, gang_scheduling_config=gang, topology_spread=rules
+            )
+            def f():
+                pass
+
+        @serve.deployment(num_replicas=2, topology_spread=rules)
+        def g():
+            pass
+
+        with pytest.raises(ValueError, match="topology_spread is not allowed"):
+            g.options(gang_scheduling_config=gang)
+        g.options(gang_scheduling_config=gang, topology_spread=[])
+
     def test_typed_options_match_deployment_signature(self):
         """_DeploymentOptions must list every keyword option deployment() takes."""
         from ray.serve.api import _DeploymentOptions, deployment

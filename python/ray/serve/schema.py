@@ -50,6 +50,7 @@ from ray.serve.config import (
     GangSchedulingConfig,
     ProxyLocation,
     RequestRouterConfig,
+    TopologySpread,
 )
 from ray.util.annotations import PublicAPI
 
@@ -536,6 +537,14 @@ class DeploymentSchema(BaseModel):
             "[1, 100]. "
         ),
     )
+    topology_spread: Optional[List[TopologySpread]] = Field(
+        default=DEFAULT.VALUE,
+        description=(
+            "An ordered list of rules, each a floor on how many distinct values "
+            "of a node label (such as nodes or zones) the replicas cover. "
+            "Earlier rules take precedence."
+        ),
+    )
     logging_config: LoggingConfig = Field(
         default=DEFAULT.VALUE,
         description="Logging config for configuring serve deployment logs.",
@@ -716,6 +725,20 @@ class DeploymentSchema(BaseModel):
         return self
 
     @model_validator(mode="after")
+    def validate_topology_spread_and_gang_scheduling_config(self):
+        if self.topology_spread not in [
+            DEFAULT.VALUE,
+            None,
+            [],
+        ] and self.gang_scheduling_config not in [DEFAULT.VALUE, None]:
+            raise ValueError(
+                "Setting topology_spread is not allowed when "
+                "gang_scheduling_config is provided."
+            )
+
+        return self
+
+    @model_validator(mode="after")
     def validate_placement_group_strategy_and_gang_scheduling_config(self):
         placement_group_strategy = self.placement_group_strategy
         gang_scheduling_config = self.gang_scheduling_config
@@ -820,6 +843,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
     if info.replica_config.max_replicas_per_node is not None:
         schema.max_replicas_per_node = info.replica_config.max_replicas_per_node
+
+    topology_spread = getattr(info.replica_config, "topology_spread", None)
+    if topology_spread is not None:
+        schema.topology_spread = [TopologySpread(**rule) for rule in topology_spread]
 
     return schema
 

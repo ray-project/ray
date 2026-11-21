@@ -655,6 +655,8 @@ RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S = get_env_float(
     "RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S", 3600.0
 )
 
+RAY_SERVE_MIN_REPLICA_NODES = get_env_int_positive("RAY_SERVE_MIN_REPLICA_NODES", 1)
+
 # Comma-separated list of custom resources prioritized in scheduling. Sorted from highest to lowest priority.
 # Example: "customx,customy"
 RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES: List[str] = str_to_list(

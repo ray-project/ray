@@ -725,6 +725,25 @@ class BackpressureConfig(BaseModel):
     retry_after_s: Optional[NonNegativeFloat] = Field(default=None, allow_inf_nan=False)
 
 
+@PublicAPI(stability="alpha")
+class TopologySpread(BaseModel):
+    """A floor on how many values of a node label a deployment's replicas cover.
+
+    Rules apply in list order, and the last listed rule gives way first. A
+    floor is best effort: it is capped at the replica count and at the
+    domains the replica can use.
+
+    Args:
+        label_key: The node label whose values are the domains.
+        min_domains: How many domains the replicas should cover.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    label_key: str = Field(min_length=1)
+    min_domains: int = Field(ge=1, strict=True)
+
+
 @PublicAPI(stability="stable")
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler.

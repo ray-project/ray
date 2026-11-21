@@ -971,6 +971,96 @@ class TestReplicaConfig:
         )
         assert config.placement_group_fallback_strategy == [{"bundles": [{"CPU": 1}]}]
 
+    def test_topology_spread_validation(self):
+        class Class:
+            pass
+
+        rules = [
+            {"label_key": "ray.io/availability-zone", "min_domains": 2},
+            {"label_key": "ray.io/node-id", "min_domains": 3},
+        ]
+        assert ReplicaConfig.create(Class, topology_spread=rules).topology_spread == (
+            rules
+        )
+        assert ReplicaConfig.create(Class, topology_spread=[]).topology_spread == []
+        assert ReplicaConfig.create(Class).topology_spread is None
+
+        with pytest.raises(TypeError, match="must be a list"):
+            ReplicaConfig.create(Class, topology_spread={"label_key": "a"})
+        with pytest.raises(TypeError, match="must be a dictionary"):
+            ReplicaConfig.create(Class, topology_spread=["ray.io/node-id"])
+        with pytest.raises(ValueError, match="unknown keys"):
+            ReplicaConfig.create(
+                Class,
+                topology_spread=[
+                    {"label_key": "ray.io/node-id", "min_domains": 2, "max_skew": 1}
+                ],
+            )
+        for label_key in (None, "", 3):
+            with pytest.raises(ValueError, match="non-empty string label_key"):
+                ReplicaConfig.create(
+                    Class,
+                    topology_spread=[{"label_key": label_key, "min_domains": 2}],
+                )
+        for min_domains in (None, 0, -1, 1.5, True):
+            with pytest.raises(ValueError, match="positive integer"):
+                ReplicaConfig.create(
+                    Class,
+                    topology_spread=[
+                        {"label_key": "ray.io/node-id", "min_domains": min_domains}
+                    ],
+                )
+
+    def test_config_from_an_older_checkpoint_has_no_topology_spread(self):
+        class Class:
+            pass
+
+        config = ReplicaConfig.create(Class)
+        del config.__dict__["topology_spread"]
+        assert config.topology_spread is None
+        assert (
+            ReplicaConfig.from_proto_bytes(config.to_proto_bytes()).topology_spread
+            is None
+        )
+
+    def test_topology_spread_needs_a_strict_pack_placement_group(self):
+        class Class:
+            pass
+
+        rules = [{"label_key": "ray.io/node-id", "min_domains": 2}]
+        ReplicaConfig.create(
+            Class,
+            placement_group_bundles=[{"CPU": 1}],
+            placement_group_strategy="STRICT_PACK",
+            topology_spread=rules,
+        )
+        ReplicaConfig.create(
+            Class, placement_group_bundles=[{"CPU": 1}], topology_spread=[]
+        )
+        for strategy in (None, "PACK", "SPREAD", "STRICT_SPREAD"):
+            with pytest.raises(ValueError, match="STRICT_PACK"):
+                ReplicaConfig.create(
+                    Class,
+                    placement_group_bundles=[{"CPU": 1}],
+                    placement_group_strategy=strategy,
+                    topology_spread=rules,
+                )
+
+    def test_topology_spread_proto_round_trip(self):
+        class Class:
+            pass
+
+        for rules in (
+            None,
+            [],
+            [{"label_key": "ray.io/availability-zone", "min_domains": 2}],
+        ):
+            config = ReplicaConfig.create(Class, topology_spread=rules)
+            assert (
+                ReplicaConfig.from_proto_bytes(config.to_proto_bytes()).topology_spread
+                == rules
+            )
+
 
 class TestAutoscalingConfig:
     def test_target_ongoing_requests(self):
