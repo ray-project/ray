@@ -1379,6 +1379,40 @@ def test_report_per_component_stats(tmp_path):
     assert isinstance(stats_payload, str)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="num_fds is not collected on Windows.",
+)
+def test_report_per_component_stats_num_fds_access_denied(tmp_path):
+    """`num_fds` is None when psutil raises AccessDenied (e.g. another user's
+    process on Linux); the agent must count it as 0 instead of crashing the
+    whole node stats record."""
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+
+    test_stats = copy.deepcopy(STATS_TEMPLATE)
+    # Simulate psutil.AccessDenied for the worker's num_fds: as_dict() puts
+    # None in place of the attribute.
+    test_stats["workers"][0]["num_fds"] = None
+
+    records = agent._to_records(test_stats, {})
+    num_fds_records = [
+        record for record in records if record.gauge.name == "component_num_fds"
+    ]
+    assert num_fds_records
+    for record in num_fds_records:
+        # The worker's num_fds is None (AccessDenied), counted as 0. Components
+        # whose stats were fully read (gcs, raylet, agent) are unaffected.
+        if record.tags["Component"] == "ray::IDLE":
+            assert record.value == 0
+        else:
+            assert record.value != 0
+
+
 @pytest.mark.parametrize("enable_k8s_disk_usage", [True, False])
 def test_enable_k8s_disk_usage(enable_k8s_disk_usage: bool):
     """Test enabling display of K8s node disk usage when in a K8s pod."""
