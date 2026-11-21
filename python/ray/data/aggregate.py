@@ -1678,8 +1678,7 @@ class MissingValuePercentage(VectorizedAggregateFnV2[List[int], float]):
                 null_count = int(arrow_compatible.to_pandas().isna().sum())
             else:
                 null_count = (
-                    pc.sum(pc.is_null(arrow_compatible, nan_is_null=True)).as_py()
-                    or 0
+                    pc.sum(pc.is_null(arrow_compatible, nan_is_null=True)).as_py() or 0
                 )
         else:
             non_null_count = int(column_accessor.count(ignore_nulls=True) or 0)
