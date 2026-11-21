@@ -39,7 +39,7 @@ The `serve.multiplexed` API also has a `max_num_models_per_replica` parameter. U
 :::
 
 :::{tip}
-This code example uses the PyTorch Model object. You can also define your own model class and use it here. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__del__` method to release resources when the model is evicted.
+This code example uses the PyTorch Model object. You can also define your own model class and use it here. To release resources when the model is evicted, implement the `__del__` method. Ray Serve internally calls the `__del__` method to release resources when the model is evicted. Ray Serve calls `__del__` once per evicted model. To keep Python from calling it again when the model is garbage collected, Ray Serve then changes the evicted model's class to a subclass of your model class whose `__del__` does nothing. Code that still holds an evicted model sees that subclass as the model's type.
 :::
 
 
