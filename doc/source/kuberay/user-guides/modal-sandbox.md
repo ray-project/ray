@@ -18,9 +18,9 @@ Ray Sandboxes is an {ref}`alpha <api-stability-alpha>` library in the `ray.exper
 
 ## How the service works
 
-When you deploy the gRPC facade with a KubeRay RayService, the `modal` Python client connects to Ray Serve's gRPC proxy over HTTP/2 on port 9000 and authenticates each request with a shared bearer token. The proxy routes incoming `ModalClient` and `TaskCommandRouter` RPCs to `RaySandboxGrpcFacade`, a single-replica Ray Serve deployment built by `ray.experimental.sandbox.http.grpc_app:build_app`.
+When you deploy the gRPC facade with a KubeRay RayService, the `modal` Python client connects to Ray Serve's gRPC proxy over HTTP/2 on port 9000 and authenticates each request with a shared bearer token. The proxy routes incoming `ModalClient` and `TaskCommandRouter` RPCs to `RaySandboxGrpcFacade`, a Ray Serve deployment built by `ray.experimental.sandbox.http.grpc_app:build_app`.
 
-The facade translates Modal SDK calls into Ray Sandbox operations and tracks active command executions in memory. For each sandbox, the facade schedules a named, detached `SandboxHost` actor on a worker Pod, and that actor manages one gVisor container through `SandboxRuntime`.
+The facade translates Modal SDK calls into Ray Sandbox operations and keeps no state of its own. It places each sandbox on a worker Pod, where a detached Ray actor runs the sandbox's gVisor container through `SandboxRuntime` and records its command executions, so any replica of the facade can serve any call. By default, one actor on each worker Pod hosts every sandbox placed on that Pod. See [Scale the service](#scale-the-service) for the other mode, which gives each sandbox an actor of its own.
 
 ## Prerequisites
 
@@ -269,7 +269,7 @@ Key parts of this configuration include the following:
 * `grpc_options`: Starts Ray Serve's gRPC proxy on port 9000 and registers `ray.experimental.sandbox.http.grpc_facade.add_servicers_to_server`, which exposes the `modal.client.ModalClient` and `modal.task_command_router.TaskCommandRouter` gRPC services.
 * `import_path` and `args`: Deploys `ray.experimental.sandbox.http.grpc_app:build_app` at `/` as the sole application on the Serve instance. Setting `advertise_url` to `http://127.0.0.1:9000` tells the facade to return that local URL as the command-router endpoint when you connect through `kubectl port-forward`.
 * `serve` and `serve-grpc` container ports: KubeRay uses the `serve` port 8000 to check the health of Ray Serve's proxy and exposes any port named `serve` or prefixed with `serve-` on the `rayservice-modal-sandbox-serve-svc` Kubernetes Service.
-* `num-cpus: "0"` on the head Pod: Prevents Ray from scheduling `SandboxHost` actors onto the head Pod, keeping untrusted sandboxes on worker Pods.
+* `num-cpus: "0"` on the head Pod: Keeps untrusted sandboxes on worker Pods, because the facade places sandboxes only on Ray nodes that have CPUs.
 * `securityContext` and `/dev/net/tun` on worker Pods: Sets `seccompProfile` and `appArmorProfile` to `Unconfined` so rootless `runsc` and `slirp4netns` can create user and network namespaces inside the worker container, and mounts `/dev/net/tun` from the node so `slirp4netns` can attach network interfaces for `network="public"` sandboxes.
 
 Apply the manifest:
@@ -365,7 +365,7 @@ result_bytes = sb.filesystem.read_bytes("/workspace/result.txt")
 print("Read from /workspace/result.txt:")
 print(result_bytes.decode("utf-8"), end="")
 
-# Terminate the sandbox and release its Ray actor reservation.
+# Terminate the sandbox and release the CPUs Ray reserved for it.
 sb.terminate()
 ```
 
@@ -490,11 +490,81 @@ spec:
       connectionIdleTimeout: 1h
 ```
 
+## Scale the service
+
+The configuration in this guide suits trying out the service. Before you run many sandboxes at once or measure how fast the service creates them, consider the following:
+
+* **Host sandboxes on one actor per node**: With `host_mode: node` in the application's `args`, each worker Pod runs one actor that hosts every sandbox placed on that Pod. With `host_mode: actor`, each sandbox gets a Ray actor of its own, which is a Ray worker process of about 130 MiB that Ray schedules through its Global Control Service. Creates then go only as fast as Ray starts actors, however many Pods you add or facade replicas you run.
+* **Run several facade replicas**: The facade keeps no state, so you can raise `num_replicas` for the `RaySandboxGrpcFacade` deployment, for example under `deployments` in `serveConfigV2`. Plan for about one replica for every 300 creates per second.
+* **Spread sandboxes over many Pods**: A sandbox's boot takes about a third of a CPU-second, and boots get slower as a machine hosts more sandboxes. Many worker Pods with a few hundred sandboxes each start a burst faster than a few Pods with thousands each.
+* **Keep sandboxes booted for bursts**: With `host_mode: node`, the `warm_pool` argument keeps sandboxes booted on every worker Pod, and a matching create takes one at once. See {ref}`Ray Sandboxes <ray-core-sandboxes>` for the profile format.
+* **Pull images before bursts**: The first sandbox of an image on each worker Pod pulls and converts it, and later sandboxes on that Pod reuse the cached copy. To keep that pull out of a burst, list the image in `warm_pool`, which boots sandboxes of it on every worker Pod ahead of time.
+* **Raise the limits of Serve's HAProxy**: With Serve's {ref}`HAProxy ingress <serve-haproxy>`, set these environment variables on the Pods that run it:
+
+  ```yaml
+  env:
+    # The client SDK keeps a connection open for each sandbox it runs
+    # commands in. The default is 4096 connections.
+    - name: RAY_SERVE_HAPROXY_MAXCONN
+      value: "1000000"
+    # The default is 4 threads.
+    - name: RAY_SERVE_HAPROXY_NBTHREAD
+      value: "16"
+    # The default is 100 calls in flight on each connection.
+    - name: RAY_SERVE_HAPROXY_H2_FE_MAX_CONCURRENT_STREAMS
+      value: "10000"
+    - name: RAY_SERVE_HAPROXY_H2_BE_MAX_CONCURRENT_STREAMS
+      value: "10000"
+    # A replica that's busy during a burst can fail two health checks in
+    # a row, the default, and stop receiving traffic.
+    - name: RAY_SERVE_HAPROXY_HEALTH_CHECK_FALL
+      value: "6"
+    - name: RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER
+      value: 10s
+  ```
+
+* **Raise the limits of the gateway**: Envoy Gateway stops sending a backend more than 1,024 requests at once by default and fails the others with `reset reason: overflow`, and it allows 100 calls in flight on each client connection. Raise both on the Gateway from [Optional: Expose the service behind a TLS Gateway](#optional-expose-the-service-behind-a-tls-gateway):
+
+  ```yaml
+  apiVersion: gateway.envoyproxy.io/v1alpha1
+  kind: BackendTrafficPolicy
+  metadata:
+    name: sandbox-facade-limits
+  spec:
+    targetRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: <your-gateway-name>
+    circuitBreaker:
+      maxConnections: 1000000
+      maxPendingRequests: 1000000
+      maxParallelRequests: 1000000
+  ---
+  apiVersion: gateway.envoyproxy.io/v1alpha1
+  kind: ClientTrafficPolicy
+  metadata:
+    name: sandbox-facade-streams
+  spec:
+    targetRefs:
+      - group: gateway.networking.k8s.io
+        kind: Gateway
+        name: <your-gateway-name>
+    http2:
+      maxConcurrentStreams: 10000
+  ```
+
+* **Run load generators next to the service**: `kubectl port-forward` tunnels every RPC through the Kubernetes API server, which limits throughput. Point load generators at a gateway, or run them in a Pod of the cluster. The client SDK talks plaintext only to `localhost`, so in a Pod, forward a local port to the Serve Service and use `http://127.0.0.1:9000` as the server URL:
+
+  ```bash
+  socat TCP-LISTEN:9000,fork,reuseaddr TCP:rayservice-modal-sandbox-serve-svc:9000 &
+  ```
+
+  Each client process creates a few hundred sandboxes per second, so a large burst needs several processes.
+
 ## Limitations
 
 Keep the following constraints in mind when using the Modal-compatible gRPC facade:
 
-* **Single replica**: The facade stores active command execution records in memory, so `RaySandboxGrpcFacade` always runs with `num_replicas=1`. Setting `num_replicas` greater than one raises a `ValueError`. If the replica restarts, running sandboxes keep running because a detached `SandboxHost` actor hosts each sandbox, and the restart loses only in-flight `exec` handles.
 * **Single Serve application**: Keep `sandbox-facade` as the only application in `serveConfigV2`. The Modal client SDK doesn't send Ray Serve's `application` routing metadata header.
 * **Prebuilt registry images only**: Use `modal.Image.from_registry("<image>")`. The facade rejects multi-stage `Dockerfile` definitions and server-side build steps such as `.pip_install()` or `.run_commands()`. To pull from private registries such as Artifact Registry, configure credentials on the worker Pods as described in {ref}`Ray Sandboxes <ray-core-sandboxes>`.
 * **CIDR allowlists only**: The facade rejects `outbound_domain_allowlist` with `INVALID_ARGUMENT` because Ray Sandboxes filter egress by IP address and port with `nftables` rather than a TLS-inspecting proxy.
