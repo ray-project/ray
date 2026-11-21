@@ -96,15 +96,29 @@ class _SGLangTask:
 
     @classmethod
     def build_tokenize_stage(
-        cls, config: "SGLangEngineProcessorConfig", stage_cfg: TokenizerStageConfig
+        cls,
+        config: "SGLangEngineProcessorConfig",
+        stage_cfg: TokenizerStageConfig,
+        add_special_tokens: bool = True,
     ) -> StatefulStage:
-        """Build the tokenize stage. By default, it tokenizes the prompt."""
+        """Build the tokenize stage. By default, it tokenizes the prompt.
+
+        Args:
+            config: The processor config.
+            stage_cfg: The resolved tokenize stage config.
+            add_special_tokens: Whether the tokenizer adds special tokens such
+                as BOS. False when the chat template stage already added them.
+
+        Returns:
+            The tokenize stage.
+        """
         from ray.llm._internal.batch.stages import TokenizeStage
 
         return TokenizeStage(
             fn_constructor_kwargs=dict(
                 model=stage_cfg.model_source,
                 trust_remote_code=config.engine_kwargs.get("trust_remote_code", False),
+                add_special_tokens=add_special_tokens,
             ),
             map_batches_kwargs=build_cpu_stage_map_kwargs(stage_cfg),
         )

@@ -165,7 +165,14 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if tokenize_stage_cfg.enabled:
-        stages.append(task_cls.build_tokenize_stage(config, tokenize_stage_cfg))
+        stages.append(
+            task_cls.build_tokenize_stage(
+                config,
+                tokenize_stage_cfg,
+                # The chat template already adds BOS and other special tokens.
+                add_special_tokens=not chat_template_stage_cfg.enabled,
+            )
+        )
 
     # Core stage -- the SGLang engine.
     engine_stage_kwargs = dict(

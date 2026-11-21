@@ -66,7 +66,8 @@ class VLLMTokenize:
 
     async def __call__(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         all_tokenized: List[List[int]] = [
-            self.tokenizer.encode(prompt) for prompt in batch["prompt"]
+            self.tokenizer.encode(prompt, add_special_tokens=False)
+            for prompt in batch["prompt"]
         ]
 
         return {
