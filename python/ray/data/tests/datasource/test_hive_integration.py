@@ -1,5 +1,6 @@
 """Real HiveServer2 tests, enabled with RAY_HIVE_TEST_HOST."""
 
+import json
 import os
 import socket
 import uuid
@@ -16,6 +17,7 @@ import ray.data
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
 )
+from ray.data.expressions import col
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
@@ -85,6 +87,48 @@ def _connect(options: _ConnectionOptions):
     return connect_read_hive(_make_connection_factory(options))
 
 
+def _traced_factory(options, trace_path):
+    base_factory = _make_connection_factory(options)
+    path = str(trace_path)
+
+    def factory():
+        class Cursor:
+            def __init__(self, cursor):
+                self.cursor = cursor
+
+            def __getattr__(self, name):
+                return getattr(self.cursor, name)
+
+            def execute(self, statement):
+                with open(path, "a") as stream:
+                    stream.write(json.dumps(statement) + "\n")
+                return self.cursor.execute(statement)
+
+        class Connection:
+            def __init__(self, connection):
+                self.connection = connection
+
+            def cursor(self, *, user):
+                return Cursor(self.connection.cursor(user=user))
+
+            def close(self):
+                return self.connection.close()
+
+        return Connection(base_factory())
+
+    return factory
+
+
+def _data_statements(trace_path):
+    if not trace_path.exists():
+        return []
+    return [
+        sql
+        for sql in map(json.loads, trace_path.read_text().splitlines())
+        if sql.startswith("SELECT")
+    ]
+
+
 @contextmanager
 def _temporary_table(options, columns, insert_clause, storage_clause=""):
     connection = _connect(options)
@@ -143,6 +187,8 @@ def test_hive_table_query_limit_and_ignored_block_hint():
                 user=options["user"],
             )
             assert sorted(row["id"] for row in query.take_all()) == [1, 2]
+            selected = query.filter(expr=col("id") == 2).select_columns(["id"]).limit(1)
+            assert selected.take_all() == [{"id": 2}]
 
             assert (
                 ray.data.read_hive(
@@ -262,6 +308,148 @@ def test_hive_timestamps_over_real_hs2():
                 assert sorted(result.take_all(), key=lambda row: row["id"]) == expected
         finally:
             ray.shutdown()
+
+
+@pytest.mark.usefixtures("class_ray_instance")
+class TestHiveTablePushdown:
+    def test_hive_projection_limit_and_filter_order_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        values = "SELECT 1, 'a' UNION ALL SELECT 2, 'b' UNION ALL SELECT 3, 'c' UNION ALL SELECT 4, 'd' UNION ALL SELECT 5, 'e'"
+        with _temporary_table(options, "id BIGINT, name STRING", values) as (table, _):
+
+            def source(trace, limit=None):
+                return ray.data.read_hive(
+                    table,
+                    limit=limit,
+                    connection_factory=_traced_factory(options, trace),
+                )
+
+            trace = tmp_path / "projection.jsonl"
+            rows = (
+                source(trace, limit=5)
+                .select_columns(["name"])
+                .limit(2**31)
+                .limit(2)
+                .take_all()
+            )
+            assert len(rows) == 2 and all(set(row) == {"name"} for row in rows)
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and sql[0].startswith("SELECT `name`")
+            assert sql[0].endswith(" LIMIT 2")
+
+            trace = tmp_path / "branches.jsonl"
+            dataset = source(trace)
+            for column, expected in (("id", [1, 2, 3, 4, 5]), ("name", list("abcde"))):
+                rows = dataset.select_columns([column]).take_all()
+                assert sorted(row[column] for row in rows) == expected
+            assert [sql.split(" FROM ")[0] for sql in _data_statements(trace)] == [
+                "SELECT `id`",
+                "SELECT `name`",
+            ]
+
+            for source_limit in (True, False):
+                trace = tmp_path / f"source-filter-limit-{source_limit}.jsonl"
+                dataset = source(trace, limit=5 if source_limit else None)
+                if not source_limit:
+                    dataset = dataset.limit(5)
+                rows = dataset.filter(expr=col("id") >= 3).limit(2).take_all()
+                assert len(rows) == 2 and all(row["id"] >= 3 for row in rows)
+                sql = _data_statements(trace)
+                assert len(sql) == 1 and sql[0].endswith(" LIMIT 5")
+                assert " WHERE " not in sql[0]
+
+            for limit in (None, 2**31):
+                trace = tmp_path / f"filter-limit-{limit}.jsonl"
+                dataset = source(trace)
+                if limit is not None:
+                    dataset = dataset.limit(limit)
+                rows = (
+                    dataset.filter(expr=col("id") >= 3)
+                    .select_columns(["name"])
+                    .limit(2)
+                    .take_all()
+                )
+                assert len(rows) == 2 and all(
+                    set(row) == {"name"} and row["name"] in ("c", "d", "e")
+                    for row in rows
+                )
+                sql = _data_statements(trace)
+                assert (
+                    len(sql) == 1
+                    and " WHERE " not in sql[0]
+                    and " LIMIT " not in sql[0]
+                )
+
+            trace = tmp_path / "empty.jsonl"
+            result = source(trace).select_columns([]).materialize()
+            assert result.count() == 5 and result.schema().names == []
+            sql = _data_statements(trace)
+            assert len(sql) == 1 and "1 AS `__ray_hive_row`" in sql[0]
+
+            trace = tmp_path / "zero.jsonl"
+            assert source(trace).limit(0).take_all() == []
+            assert _data_statements(trace) == []
+
+    def test_hive_dataset_limit_boundaries_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
+        with _temporary_table(options, "id BIGINT", values) as (table, _):
+            for limit, expected_count, sql_limit in (
+                (True, 1, None),
+                (False, 0, None),
+                (2**31 - 1, 3, 2**31 - 1),
+                (2**31, 3, None),
+            ):
+                trace = tmp_path / f"limit-{limit}.jsonl"
+                dataset = ray.data.read_hive(
+                    table, connection_factory=_traced_factory(options, trace)
+                ).limit(limit)
+                rows = dataset.take_all()
+                assert len(rows) == expected_count
+                assert all(row["id"] in (1, 2, 3) for row in rows)
+                if expected_count == 3:
+                    assert sorted(row["id"] for row in rows) == [1, 2, 3]
+                statements = _data_statements(trace)
+                if limit is False:
+                    assert statements == []
+                else:
+                    assert len(statements) == 1
+                    if sql_limit is None:
+                        assert " LIMIT " not in statements[0]
+                    else:
+                        assert statements[0].endswith(f" LIMIT {sql_limit}")
+
+            trace = tmp_path / "source-limit-boolean.jsonl"
+            dataset = ray.data.read_hive(
+                table, limit=2, connection_factory=_traced_factory(options, trace)
+            ).limit(True)
+            assert len(dataset.take_all()) == 1
+            statements = _data_statements(trace)
+            assert len(statements) == 1 and statements[0].endswith(" LIMIT 2")
+
+    def test_hive_projection_quoted_columns_over_real_hs2(self, tmp_path):
+        options = _connection_options()
+        value = "O'Reilly\\line\n\t\x00中文"
+        encoded = value.encode("utf-8").hex()
+        values = f"SELECT 1, decode(unhex('{encoded}'), 'UTF-8'), '标签', 'tick', 2"
+        with _temporary_table(
+            options,
+            "id BIGINT, `select` STRING, `类别` STRING, `a``b` STRING, spare BIGINT",
+            values,
+            storage_clause="STORED AS ORC",
+        ) as (table, _):
+            trace = tmp_path / "quoted.jsonl"
+            columns = ["select", "类别", "a`b", "id"]
+            dataset = ray.data.read_hive(
+                table, connection_factory=_traced_factory(options, trace)
+            ).select_columns(columns)
+            assert [dict(row) for row in dataset.take_all()] == [
+                {"select": value, "类别": "标签", "a`b": "tick", "id": 1}
+            ]
+            assert dataset.schema().names == columns
+            statements = _data_statements(trace)
+            assert len(statements) == 1 and " WHERE " not in statements[0]
+            assert statements[0].startswith("SELECT `select`, `类别`, `a``b`, `id`")
 
 
 def test_hive_tls_rejects_untrusted_or_mismatched_server():

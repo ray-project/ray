@@ -4390,9 +4390,10 @@ def read_hive(
         needs it on the driver before the read worker executes the query.
         See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
         for optional schema inference from the same query execution.
-        Table reads select every column. In HS2 mode, if a table has
-        unsupported column types, use ``query`` to select supported columns
-        and provide a matching schema.
+        In HS2 mode, table schema inference checks every column before Dataset
+        optimization. If a table has unsupported column types, use ``query``
+        to select supported columns and provide a matching schema, even when
+        you need only a subset of the table columns.
 
         In ``read_mode="hs2"``, each Dataset execution runs at most one
         HiveServer2 data query in one Ray task. Ray doesn't retry failed
@@ -4400,8 +4401,10 @@ def read_hive(
         tolerance, a read error or worker loss fails that Dataset execution.
         This API preserves ``DataContext.max_errored_blocks``. If you allow
         block errors, execution can skip failed output and return an
-        incomplete result. This scanner doesn't push
-        Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
+        incomplete result. For table reads, Ray pushes required columns and
+        ``Dataset.limit()`` into HiveServer2 when the operation order permits.
+        Dataset filters run in Ray and prevent a later limit from moving ahead
+        of them. Ray sends query SQL unchanged.
         The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
         The HiveServer2 reader ignores ``override_num_blocks`` with a warning
         to preserve streaming. Output blocks follow Ray's normal block-sizing
@@ -4412,6 +4415,10 @@ def read_hive(
         can force Ray to stop the read worker before Python cleanup runs.
         Immediate operation cancellation or explicit connection cleanup isn't
         guaranteed.
+
+        Special column names use Hive's default
+        ``hive.support.quoted.identifiers=column`` mode. Special-name projection
+        isn't supported in the ``none`` mode.
 
     Notes:
         Direct reads retain Hive's schema. Widening supports only signed

@@ -6,11 +6,13 @@ from typing import Any, Callable, Iterator, List, Optional, Tuple
 
 import pyarrow as pa
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
 )
 
 _FETCH_ROWS = 1024
+_EMPTY_PROJECTION_COLUMN = "__ray_hive_row"
 _DECIMAL = re.compile(r"decimal\((\d+),(\d+)\)\Z", re.IGNORECASE)
 _CHAR = re.compile(r"(?:var)?char\(\d+\)\Z", re.IGNORECASE)
 _HIVE_TYPES = {
@@ -209,9 +211,16 @@ def _to_arrow(rows, schema: pa.Schema) -> pa.Table:
         ) from exc
 
 
-def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table]:
+def read_hs2_batches(
+    spec: HiveReadSpec,
+    schema: pa.Schema,
+    *,
+    statement: Optional[str] = None,
+    limit: Optional[int] = None,
+    empty_projection: bool = False,
+) -> Iterator[pa.Table]:
     """Execute one statement and yield bounded Arrow batches."""
-    if spec.limit == 0:
+    if spec.limit == 0 or limit == 0:
         yield pa.Table.from_batches([], schema=schema)
         return
 
@@ -220,13 +229,18 @@ def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table
     try:
         try:
             cursor = connection.cursor(user=spec.user)
-            cursor.execute(_statement(spec))
+            cursor.execute(_statement(spec) if statement is None else statement)
             description = cursor.description
         except Exception as exc:
             raise RuntimeError("HiveServer2 read failed") from exc
         table_identifier = spec.table_identifier
         table_name = table_identifier[1] if table_identifier is not None else None
-        _check_result_schema(description, schema, table_name)
+        result_schema = (
+            pa.schema([(_EMPTY_PROJECTION_COLUMN, pa.int32())])
+            if empty_projection
+            else schema
+        )
+        _check_result_schema(description, result_schema, table_name)
         while True:
             try:
                 rows = cursor.fetchmany(_FETCH_ROWS)
@@ -234,7 +248,15 @@ def read_hs2_batches(spec: HiveReadSpec, schema: pa.Schema) -> Iterator[pa.Table
                 raise RuntimeError("HiveServer2 read failed") from exc
             if not rows:
                 break
-            yield _to_arrow(rows, schema)
+            table = _to_arrow(rows, result_schema)
+            if empty_projection:
+                # Zero-column blocks count as zero rows in Ray. Keep its existing
+                # physical stub; Scanner.read_schema() exposes the logical schema.
+                table = pa.table(
+                    {_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(table.num_rows)},
+                    metadata=schema.metadata,
+                )
+            yield table
     finally:
         if cursor is not None:
             with suppress(Exception):
