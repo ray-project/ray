@@ -1698,6 +1698,65 @@ def test_encoders_fit_via_aggregation():
         assert encoder.has_stats(), f"{type(encoder).__name__} should have stats"
 
 
+def test_encoder_arrow_and_inverse_label_caching(monkeypatch):
+    """Verify OrdinalEncoder, OneHotEncoder, and LabelEncoder cache lookup structures
+    across batches, invalidate on refit, and exclude caches when pickled."""
+    import pickle
+
+    import ray.data.preprocessors.encoder as encoder_mod
+
+    calls = []
+    orig_fn = encoder_mod._get_unique_value_arrow_arrays
+
+    def counting_fn(stats, col):
+        calls.append(col)
+        return orig_fn(stats, col)
+
+    monkeypatch.setattr(encoder_mod, "_get_unique_value_arrow_arrays", counting_fn)
+
+    ds_abc = ray.data.from_pandas(pd.DataFrame({"cat": ["a", "b", "c"]}))
+    ds_xy = ray.data.from_pandas(pd.DataFrame({"cat": ["x", "y"]}))
+
+    for cls in (OrdinalEncoder, OneHotEncoder):
+        calls.clear()
+        enc = cls(columns=["cat"])
+        enc.fit(ds_abc)
+        assert type(enc.stats_["unique_values(cat)"]) is dict
+
+        batch = pa.table({"cat": ["a", "b", "c", "a"]})
+        out1 = enc.transform_batch(batch)
+        out2 = enc.transform_batch(batch)
+        assert out1.equals(out2)
+        assert calls == ["cat"]
+
+        # Refitting invalidates the cache
+        enc.fit(ds_xy)
+        out3 = enc.transform_batch(pa.table({"cat": ["y", "x"]}))
+        assert calls == ["cat", "cat"]
+        if cls is OrdinalEncoder:
+            assert out3.column("cat").to_pylist() == [1, 0]
+        else:
+            assert out3.column("cat").to_pylist() == [[0, 1], [1, 0]]
+
+        # Pickling excludes transient cache and preserves plain dict stats_
+        restored = pickle.loads(pickle.dumps(enc))
+        assert "_arrow_arrays_cache" not in restored.__dict__
+        assert type(restored.stats_["unique_values(cat)"]) is dict
+
+    label_enc = LabelEncoder(label_column="label", output_column="encoded")
+    label_enc.fit(ray.data.from_pandas(pd.DataFrame({"label": ["cat", "dog"]})))
+    assert type(label_enc.stats_["unique_values(label)"]) is dict
+
+    encoded_ds = ray.data.from_pandas(pd.DataFrame({"encoded": [1, 0, 1]}))
+    inv1 = label_enc.inverse_transform(encoded_ds).to_pandas()
+    assert inv1["label"].tolist() == ["dog", "cat", "dog"]
+
+    # Refitting invalidates the inverse label mapping
+    label_enc.fit(ray.data.from_pandas(pd.DataFrame({"label": ["bird", "fish"]})))
+    inv2 = label_enc.inverse_transform(encoded_ds).to_pandas()
+    assert inv2["label"].tolist() == ["fish", "bird", "fish"]
+
+
 @pytest.mark.parametrize(
     "make_encoder",
     [
