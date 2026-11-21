@@ -30,6 +30,7 @@ Utility
    ray.util.tpu.slice_placement_group
    ray.util.tpu.SubslicePlacementGroup
    ray.util.tpu.subslice_placement_group
+   ray.util.tpu.TPUHostInfo
    ray.util.tpu.run_on_slice
    ray.util.tpu.dispatch
 

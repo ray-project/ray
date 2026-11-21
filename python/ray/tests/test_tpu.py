@@ -3823,5 +3823,304 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
             ray.util.tpu._tpu_subslice_cache.pop("slice-v7x", None)
 
 
+def test_slice_and_subslice_hosts_accessor(monkeypatch):
+    """TPUHostInfo and .hosts return hosts in deterministic physical NODE_RANK order."""
+    slice_name = "slice-hosts-4x4"
+    nodes = [
+        {
+            "NodeID": f"node-{i}",
+            "Alive": True,
+            "NodeManagerAddress": f"10.0.1.{10 + i}",
+            "Resources": {"TPU": 4, "CPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: slice_name,
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "4x4",
+            },
+        }
+        for i in range(4)
+    ]
+    monkeypatch.setattr("ray.nodes", lambda: nodes)
+
+    # Mock a 4x4 SlicePlacementGroup with 4 bundles per host (16 bundles total).
+    spg = object.__new__(ray.util.tpu.SlicePlacementGroup)
+    mock_pg = MagicMock()
+    spg._managed_pgs = [mock_pg]
+    spg._head_pgs = []
+    spg._pg_per_slice = False
+    spg._num_slices = 1
+    spg._num_hosts = 4
+    spg._num_bundles = 16
+    spg._topology = "4x4"
+
+    monkeypatch.setattr(
+        "ray.util.tpu.placement_group_table",
+        lambda pg: {
+            "bundles_to_node_id": {
+                h * 4 + b: f"node-{h}" for h in range(4) for b in range(4)
+            }
+        },
+    )
+
+    # 1. Without physical cache, hosts fall back to deterministic tpu-worker-id order.
+    with ray.util.tpu._tpu_subslice_cache_lock:
+        ray.util.tpu._tpu_subslice_cache.pop(slice_name, None)
+    hosts_default = spg.hosts
+    assert len(hosts_default) == 4
+    assert [h.rank for h in hosts_default] == [0, 1, 2, 3]
+    assert [h.tpu_worker_id for h in hosts_default] == [0, 1, 2, 3]
+    assert [h.ip for h in hosts_default] == [
+        "10.0.1.10",
+        "10.0.1.11",
+        "10.0.1.12",
+        "10.0.1.13",
+    ]
+    assert [h.bundle_index for h in hosts_default] == [0, 4, 8, 12]
+    assert [h.coords for h in hosts_default] == [(0, 0), (1, 0), (0, 1), (1, 1)]
+    assert all(h.slice_name == slice_name for h in hosts_default)
+
+    # 2. With physical discovery cache where worker IDs are permuted relative to
+    #    physical grid (worker 0->pos 3, 1->pos 1, 2->pos 0, 3->pos 2),
+    #    .hosts sorts by physical position (x varying fastest).
+    with ray.util.tpu._tpu_subslice_cache_lock:
+        ray.util.tpu._tpu_subslice_cache[slice_name] = {
+            "0": 3,
+            "1": 1,
+            "2": 0,
+            "3": 2,
+        }
+    try:
+        hosts_phys = spg.hosts
+        assert [h.rank for h in hosts_phys] == [0, 1, 2, 3]
+        assert [h.tpu_worker_id for h in hosts_phys] == [2, 1, 3, 0]
+        assert [h.node_id for h in hosts_phys] == [
+            "node-2",
+            "node-1",
+            "node-3",
+            "node-0",
+        ]
+        assert [h.bundle_index for h in hosts_phys] == [8, 4, 12, 0]
+        assert [h.coords for h in hosts_phys] == [(0, 0), (1, 0), (0, 1), (1, 1)]
+
+        # 3. SubslicePlacementGroup.hosts returns subslice hosts in physical order.
+        sub_pg = MagicMock(bundle_count=2)
+        monkeypatch.setattr(
+            "ray.util.tpu.placement_group_table",
+            lambda pg: {"bundles_to_node_id": {0: "node-3", 1: "node-2"}},
+        )
+        sg = ray.util.tpu.SubslicePlacementGroup(
+            placement_group=sub_pg,
+            parent_topology="4x4",
+            subslice_topology="2x4",
+            subslice_index=0,
+            slice_name=slice_name,
+            num_hosts=2,
+            chips_per_host=4,
+            bundle_resources={"CPU": 4, "TPU": 4},
+            accelerator_version="v6e",
+        )
+        sg_hosts = sg.hosts
+        assert [h.rank for h in sg_hosts] == [0, 1]
+        assert [h.tpu_worker_id for h in sg_hosts] == [2, 3]
+        assert [h.coords for h in sg_hosts] == [(0, 0), (0, 1)]
+        assert [h.bundle_index for h in sg_hosts] == [1, 0]
+
+        with patch("ray.util.tpu.remove_placement_group"):
+            sg.shutdown()
+            spg.shutdown()
+        with pytest.raises(RuntimeError, match="shut down"):
+            _ = sg.hosts
+        with pytest.raises(RuntimeError, match="shut down"):
+            _ = spg.hosts
+        with pytest.raises(RuntimeError, match="shut down"):
+            _ = spg.get_hosts(0)
+    finally:
+        with ray.util.tpu._tpu_subslice_cache_lock:
+            ray.util.tpu._tpu_subslice_cache.pop(slice_name, None)
+
+
+@pytest.mark.parametrize("pg_per_slice", [False, True])
+def test_slice_hosts_multislice_and_bounds(monkeypatch, pg_per_slice):
+    """Multi-slice .hosts uses slice-major ranks and validates slice_index bounds."""
+    nodes = [
+        {
+            "NodeID": f"s{s}-n{i}",
+            "Alive": True,
+            "NodeManagerAddress": f"10.0.{s}.{10 + i}",
+            "Resources": {"TPU": 4, "CPU": 4},
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: f"slice-{s}",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: str(i),
+                ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: "2x4",
+            },
+        }
+        for s in range(2)
+        for i in range(2)
+    ]
+    nodes_calls = 0
+
+    def _fake_nodes():
+        nonlocal nodes_calls
+        nodes_calls += 1
+        return nodes
+
+    monkeypatch.setattr("ray.nodes", _fake_nodes)
+
+    spg = object.__new__(ray.util.tpu.SlicePlacementGroup)
+    spg._head_pgs = []
+    spg._pg_per_slice = pg_per_slice
+    spg._num_slices = 2
+    spg._num_hosts = 4
+    spg._num_bundles = 4
+    spg._topology = "2x4"
+
+    if pg_per_slice:
+        pg0, pg1 = MagicMock(name="pg0"), MagicMock(name="pg1")
+        spg._managed_pgs = [pg0, pg1]
+        tables = {
+            pg0: {"bundles_to_node_id": {0: "s0-n1", 1: "s0-n0"}},
+            pg1: {"bundles_to_node_id": {0: "s1-n1", 1: "s1-n0"}},
+        }
+    else:
+        pg0 = MagicMock(name="pg0")
+        spg._managed_pgs = [pg0]
+        tables = {
+            pg0: {
+                "bundles_to_node_id": {
+                    0: "s0-n1",
+                    1: "s0-n0",
+                    2: "s1-n1",
+                    3: "s1-n0",
+                }
+            }
+        }
+
+    pg_table_calls = 0
+
+    def _fake_pg_table(pg):
+        nonlocal pg_table_calls
+        pg_table_calls += 1
+        return tables[pg]
+
+    monkeypatch.setattr("ray.util.tpu.placement_group_table", _fake_pg_table)
+
+    all_hosts = spg.hosts
+    assert nodes_calls == 1
+    assert pg_table_calls == (2 if pg_per_slice else 1)
+    assert [h.rank for h in all_hosts] == [0, 1, 2, 3]
+    assert [h.node_id for h in all_hosts] == ["s0-n0", "s0-n1", "s1-n0", "s1-n1"]
+    assert [h.slice_name for h in all_hosts] == [
+        "slice-0",
+        "slice-0",
+        "slice-1",
+        "slice-1",
+    ]
+
+    s1_hosts = spg.get_hosts(1)
+    assert [h.rank for h in s1_hosts] == [0, 1]
+    assert [h.node_id for h in s1_hosts] == ["s1-n0", "s1-n1"]
+
+    with pytest.raises(ValueError, match="out of range"):
+        spg.get_hosts(-1)
+    with pytest.raises(ValueError, match="out of range"):
+        spg.get_hosts(2)
+
+
+def test_hosts_unplaced_dead_and_missing_labels(monkeypatch):
+    """Unplaced bundles, dead nodes, and non-numeric worker IDs return None coords
+    and sort after placed hosts."""
+    nodes = [
+        {
+            "NodeID": "node-alive",
+            "Alive": True,
+            "NodeManagerAddress": "10.0.2.1",
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-edge",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "2",
+            },
+        },
+        {
+            "NodeID": "node-dead",
+            "Alive": False,
+            "NodeManagerAddress": "10.0.2.2",
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-edge",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "0",
+            },
+        },
+        {
+            "NodeID": "node-bad-wid",
+            "Alive": True,
+            "NodeManagerAddress": "10.0.2.3",
+            "Labels": {
+                ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY: "slice-edge",
+                ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY: "not-an-int",
+            },
+        },
+    ]
+    monkeypatch.setattr("ray.nodes", lambda: nodes)
+    monkeypatch.setattr(
+        "ray.util.tpu.placement_group_table",
+        lambda pg: {
+            "bundles_to_node_id": {
+                0: "",  # unplaced bundle reported as empty string
+                # 1 missing entirely (unplaced)
+                2: "node-dead",
+                3: "node-bad-wid",
+                4: "node-alive",
+            }
+        },
+    )
+
+    hosts = ray.util.tpu._resolve_hosts_from_pg(
+        pg=MagicMock(),
+        bundle_indices=[0, 1, 2, 3, 4],
+        topology="4x4",
+    )
+    assert [h.rank for h in hosts] == [0, 1, 2, 3, 4]
+    # Placed node with numeric tpu_worker_id sorts first.
+    assert hosts[0].node_id == "node-alive"
+    assert hosts[0].tpu_worker_id == 2
+    assert hosts[0].coords == (0, 1)
+    # Remaining entries (unplaced "", missing, dead, non-numeric wid) sort after
+    # in bundle order with coords=None.
+    assert [h.bundle_index for h in hosts[1:]] == [0, 1, 2, 3]
+    for h in hosts[1:4]:
+        assert h.node_id is None
+        assert h.ip is None
+        assert h.tpu_worker_id is None
+        assert h.coords is None
+    assert hosts[4].node_id == "node-bad-wid"
+    assert hosts[4].ip == "10.0.2.3"
+    assert hosts[4].tpu_worker_id is None
+    assert hosts[4].coords is None
+
+
+def test_coords_from_linear_worker_id_and_frozen_host_info():
+    """Verify 2D/3D/single-host coordinate mapping, bounds checks, and immutability."""
+    from dataclasses import FrozenInstanceError
+
+    assert ray.util.tpu._coords_from_linear_worker_id(0, "1x1") == (0, 0)
+    assert ray.util.tpu._coords_from_linear_worker_id(1, "1x1") is None
+    assert ray.util.tpu._coords_from_linear_worker_id(0, "2x2x4") == (0, 0, 0)
+    assert ray.util.tpu._coords_from_linear_worker_id(3, "2x2x4") == (0, 0, 3)
+    assert ray.util.tpu._coords_from_linear_worker_id(4, "2x2x4") is None
+    assert ray.util.tpu._coords_from_linear_worker_id(-1, "4x4") is None
+    assert ray.util.tpu._coords_from_linear_worker_id(4, "4x4") is None
+    assert ray.util.tpu._coords_from_linear_worker_id(0, "2") is None
+
+    info = ray.util.tpu.TPUHostInfo(
+        rank=0,
+        node_id="n0",
+        ip="10.0.0.1",
+        tpu_worker_id=0,
+        slice_name="s0",
+        bundle_index=0,
+        coords=(0, 0),
+    )
+    with pytest.raises(FrozenInstanceError):
+        info.rank = 1  # type: ignore[misc]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
