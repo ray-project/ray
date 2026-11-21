@@ -866,6 +866,62 @@ def test_add_partitions_to_table_null_partition(in_data, matches):
     assert result["grp"].to_pylist() == [None, None]
 
 
+def test_read_json_pandas_null_partition_is_in(ray_start_regular_shared, tmp_path):
+    for year in ["1970", HIVE_DEFAULT_PARTITION]:
+        path = os.path.join(tmp_path, f"year={year}", "data.jsonl")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as f:
+            f.write(json.dumps({"number": 0}))
+
+    # `lines=True` reads with pandas, so the null partition's column is all None.
+    ds = ray.data.read_json(
+        tmp_path,
+        lines=True,
+        partitioning=Partitioning("hive", null_fallback=HIVE_DEFAULT_PARTITION),
+    )
+    # Converted to Arrow, an all-None pandas column is null-typed.
+    ds = ds.map_batches(lambda batch: batch, batch_format="pyarrow")
+
+    assert ds.filter(expr=col("year").is_null()).count() == 1
+    assert ds.filter(expr=col("year").is_in(["1970"])).count() == 1
+
+
+@pytest.mark.parametrize(
+    "in_data, matches",
+    [
+        ([None], True),
+        ([True], False),
+        ([False], False),
+        ([None, True], False),
+        ([1], False),
+    ],
+)
+def test_read_json_pandas_null_partition_column_in_data(
+    ray_start_regular_shared, tmp_path, in_data, matches
+):
+    """A null partition value matches a file column only if it is all null.
+
+    Same rule as ``_add_partitions_to_table``, for pandas blocks.
+    """
+    path = os.path.join(tmp_path, f"grp={HIVE_DEFAULT_PARTITION}", "data.jsonl")
+    os.makedirs(os.path.dirname(path))
+    with open(path, "w") as f:
+        f.write("\n".join(json.dumps({"grp": value, "number": 0}) for value in in_data))
+
+    # `lines=True` reads with pandas.
+    ds = ray.data.read_json(
+        tmp_path,
+        lines=True,
+        partitioning=Partitioning("hive", null_fallback=HIVE_DEFAULT_PARTITION),
+    )
+
+    if not matches:
+        with pytest.raises(ValueError, match="different from in-data values"):
+            ds.take_all()
+        return
+    assert ds.take_all() == [{"grp": None, "number": 0}]
+
+
 @pytest.mark.parametrize(
     "fs,base_dir",
     [

@@ -922,6 +922,84 @@ def test_disk_regroup_emits_one_bundle_per_partition(
     assert [c.args[0] for c in submit.call_args_list] == [0, 2]
 
 
+def test_disk_regroup_op_owns_file_servers(ray_start_regular_shared_2_cpus):
+    """The regroup op, not the writer task, creates the per-node
+    ``ShuffleFileServer``: none exists after the writer ran, exactly one
+    (this node) exists once the regroup ingests the first handle, and it is
+    gone after the reduce op shuts down."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
+        _SHUFFLE_FILE_SERVER_NAMESPACE,
+        _file_server_name,
+    )
+    from ray.data._internal.stats import Timer
+
+    ctx = DataContext.get_current()
+    writer = plan_disk_hash_shuffle_map(
+        InputDataBuffer(ctx, []), ctx, num_partitions=2, partition_fn=lambda t: {}
+    )
+    reduce_op = plan_disk_hash_shuffle_reduce(
+        writer, ctx, num_partitions=2, reduce_fn=lambda *args: []
+    )
+    regroup_op = reduce_op.input_dependencies[0]
+    writer.start(ExecutionOptions(), noop_counter())
+    regroup_op.start(ExecutionOptions(), noop_counter())
+    reduce_op.start(ExecutionOptions(), noop_counter())
+    for bundle in make_ref_bundles([[0], [1]]):
+        writer.add_input(bundle, 0)
+    writer.all_inputs_done()
+    run_op_tasks_sync(writer)
+
+    handle_bundles = []
+    while writer.has_next():
+        handle_bundles.append(writer.get_next())
+    handle = handle_from_block(ray.get(handle_bundles[0].block_refs[0]))
+    key = (handle["shuffle_id"], handle["node_id"])
+    assert key[1] == ray.get_runtime_context().get_node_id()
+
+    def _server_registered() -> bool:
+        try:
+            ray.get_actor(
+                _file_server_name(*key), namespace=_SHUFFLE_FILE_SERVER_NAMESPACE
+            )
+            return True
+        except ValueError:
+            return False
+
+    # Writer done, nothing ingested by the regroup yet: no server.
+    assert not _server_registered()
+    assert regroup_op._file_servers == {}
+
+    for bundle in handle_bundles:
+        regroup_op.add_input(bundle, 0)
+    assert list(regroup_op._file_servers) == [key]
+    assert _server_registered()
+
+    regroup_op.all_inputs_done()
+    reduce_op.shutdown(Timer(), force=True)
+    assert regroup_op._file_servers == {}
+    wait_for_condition(lambda: not _server_registered())
+
+
+def test_disk_shuffle_leaves_no_file_server_actors(
+    ray_start_regular_shared_2_cpus, data_context_shuffle_v2
+):
+    """File servers are owned by the regroup op and killed at executor
+    shutdown, so none survive a finished dataset execution."""
+    from ray._common.test_utils import wait_for_condition
+    from ray.util.state import list_actors
+
+    DataContext.get_current().use_disk_based_hash_shuffle = True
+
+    def _alive_file_servers():
+        return list_actors(
+            filters=[("class_name", "=", "ShuffleFileServer"), ("state", "=", "ALIVE")]
+        )
+
+    assert ray.data.range(200).repartition(4, keys=["id"]).count() == 200
+    wait_for_condition(lambda: not _alive_file_servers())
+
+
 def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_cpus):
     """The regroup is a synchronization barrier, like ``ShuffleMapOp``: during
     the map phase the writer is the only operator eligible for resources, and
@@ -1014,7 +1092,7 @@ def _make_multi_input_reduce_op(reduce_fn, num_inputs=2, num_partitions=2):
     )
 
 
-def _drain_reduce_op_bundles(op, feed):
+def _drain_reduce_op_bundles(op, feed) -> list[list[pa.Table]]:
     """Run `op` over `feed` (bundle, input_index) pairs and return each output
     bundle's tables."""
     op.start(ExecutionOptions(), noop_counter())
@@ -1022,7 +1100,7 @@ def _drain_reduce_op_bundles(op, feed):
         op.add_input(bundle, input_index)
     op.all_inputs_done()
     run_op_tasks_sync(op)
-    bundles = []
+    bundles: list[list[pa.Table]] = []
     while op.has_next():
         bundles.append([ray.get(ref) for ref in op.get_next().block_refs])
     return bundles
@@ -1174,6 +1252,60 @@ def test_reduce_num_output_rows_total_unknown_with_block_transformer(
     assert reduce_op.num_output_rows_total() is None
 
 
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp])
+def test_map_num_outputs_total_is_num_partitions(map_op_cls):
+    assert _make_map_op(map_op_cls).num_outputs_total() == 2
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp])
+def test_map_num_outputs_total_is_zero_without_input(
+    ray_start_regular_shared_2_cpus, map_op_cls
+):
+    """No map task ever ran, so no partition bundle is emitted."""
+    op = _make_map_op(map_op_cls)
+    op.start(ExecutionOptions(), noop_counter())
+    op.all_inputs_done()
+    assert not op.has_next()
+    assert op.num_outputs_total() == 0
+
+
+@pytest.mark.parametrize("map_op_cls", [ShuffleMapOp])
+def test_map_op_records_task_metrics_and_stats(
+    ray_start_regular_shared_2_cpus, map_op_cls
+):
+    ctx = DataContext.get_current()
+    op = map_op_cls(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {0: table},
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    op.add_input(make_ref_bundles([[1, 2, 3]])[0], 0)
+    # Inputs are batched per node; the final flush happens once inputs are done.
+    op.all_inputs_done()
+    assert op.metrics.num_tasks_submitted == 1
+    run_op_tasks_sync(op)
+
+    outputs = []
+    while op.has_next():
+        outputs.append(op.get_next())
+    assert len(outputs) == 2
+
+    d = op.metrics.as_dict()
+    assert d["num_tasks_finished"] == 1
+    assert d["num_tasks_running"] == 0
+    assert d["num_outputs_taken"] == 2
+    # The map task's own wall time reaches the operator (it used to be dropped).
+    assert op.metrics.task_worker_completion_time_s > 0
+
+    # One stats row per map task, under the phase name, stamped with its index.
+    stats = op.get_stats()
+    assert list(stats) == ["map"]
+    (block_stats,) = stats["map"]
+    assert block_stats.exec_stats.task_idx == 0
+
+
 @pytest.mark.parametrize("map_op_cls,reduce_op_cls", _V2_OP_CLASSES)
 def test_reduce_num_output_rows_total_borrows_map_total(map_op_cls, reduce_op_cls):
     map_op = _make_map_op(map_op_cls, upstream_total_rows=100)
@@ -1198,6 +1330,119 @@ def test_reduce_num_output_rows_total_unknown_when_row_count_not_preserved(
     )
 
     assert reduce_op.num_output_rows_total() is None
+
+
+def test_reduce_op_estimates_totals_from_finished_tasks(
+    ray_start_regular_shared_2_cpus,
+):
+    """With the row count not preserved, totals come from finished reducers."""
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, make_ref_bundles([[0]])),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda t: {},
+    )
+    op = ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=2,
+        reduce_fn=_concat_inputs_reduce_fn(),
+        disallow_block_splitting=True,
+        preserves_row_count=False,
+    )
+    assert op.num_outputs_total() is None
+    assert op.num_output_rows_total() is None
+
+    feed = [
+        (_ipc_shard_bundle(0, pa.table({"v": [1, 2]})), 0),
+        (_ipc_shard_bundle(1, pa.table({"v": [3, 4, 5, 6]})), 0),
+    ]
+    tables = _drain_reduce_op(op, feed)
+    assert sum(t.num_rows for t in tables) == 6
+
+    assert op.num_outputs_total() == 2
+    assert op.num_output_rows_total() == 6
+    d = op.metrics.as_dict()
+    assert d["num_tasks_submitted"] == d["num_tasks_finished"] == 2
+    assert d["num_tasks_running"] == 0
+    assert d["row_outputs_taken"] == 6
+    stats = op.get_stats()
+    assert list(stats) == ["reduce"]
+    assert len(stats["reduce"]) == 2
+
+
+def _make_single_input_reduce_op(num_partitions, **kwargs):
+    ctx = DataContext.get_current()
+    map_op = ShuffleMapOp(
+        InputDataBuffer(ctx, make_ref_bundles([[0]])),
+        ctx,
+        num_partitions=num_partitions,
+        partition_fn=lambda t: {},
+    )
+    return ShuffleReduceOp(
+        map_op,
+        ctx,
+        num_partitions=num_partitions,
+        reduce_fn=_concat_inputs_reduce_fn(),
+        disallow_block_splitting=True,
+        preserves_row_count=False,
+        **kwargs,
+    )
+
+
+_EMPTY_TABLE = pa.table({"v": pa.array([], pa.int64())})
+
+
+@pytest.mark.parametrize("should_emit_empty_partitions", [True, False])
+def test_reduce_op_totals_converge_with_empty_partitions(
+    ray_start_regular_shared_2_cpus, should_emit_empty_partitions
+):
+    """Empty partitions skip the reduce task, so the finished-task average must
+    not be scaled over them."""
+    op = _make_single_input_reduce_op(
+        4, should_emit_empty_partitions=should_emit_empty_partitions
+    )
+    op.start(ExecutionOptions(), noop_counter())
+    op.add_input(_ipc_shard_bundle(1, pa.table({"v": [1]})), 0)
+    run_op_tasks_sync(op)
+    # One reducer finished and nothing is known about the other three
+    # partitions yet, so the estimate assumes one bundle and one row each.
+    assert op.num_outputs_total() == 4
+    assert op.num_output_rows_total() == 4
+
+    for partition_id in (0, 2, 3):
+        op.add_input(_ipc_shard_bundle(partition_id, _EMPTY_TABLE), 0)
+    op.all_inputs_done()
+    num_empty_bundles = 3 if should_emit_empty_partitions else 0
+    assert op.num_outputs_total() == 1 + num_empty_bundles
+    assert op.num_output_rows_total() == 1
+    outputs = []
+    while op.has_next():
+        outputs.append(op.get_next())
+    assert len(outputs) == 1 + num_empty_bundles
+    assert op.metrics.num_tasks_submitted == op.metrics.num_tasks_finished == 1
+
+
+@pytest.mark.parametrize("should_emit_empty_partitions", [True, False])
+def test_reduce_op_totals_resolve_when_every_partition_is_empty(
+    ray_start_regular_shared_2_cpus, should_emit_empty_partitions
+):
+    op = _make_single_input_reduce_op(
+        2, should_emit_empty_partitions=should_emit_empty_partitions
+    )
+    tables = _drain_reduce_op(
+        op,
+        [
+            (_ipc_shard_bundle(0, _EMPTY_TABLE), 0),
+            (_ipc_shard_bundle(1, _EMPTY_TABLE), 0),
+        ],
+    )
+    expected = 2 if should_emit_empty_partitions else 0
+    assert len(tables) == expected
+    assert op.num_outputs_total() == expected
+    assert op.num_output_rows_total() == 0
+    assert op.metrics.num_tasks_submitted == 0
 
 
 def test_reduce_op_none_target_emits_blocks_as_is(ray_start_regular_shared_2_cpus):
