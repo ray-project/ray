@@ -14,7 +14,7 @@ from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.datatype import DataType
-from ray.data.expressions import UDFExpr, col
+from ray.data.expressions import UDFExpr, col, monotonically_increasing_id
 
 
 @pytest.fixture(scope="module")
@@ -297,6 +297,19 @@ def test_safe_conjunct_still_prunes(
     )
     assert sorted(row["id"] for row in rows) == expected_ids
     assert scanned_groups() == {(str(file), i) for i in range(6, 10)}
+
+
+def test_non_idempotent_residual_keeps_row_positions(tmp_path, scanned_groups):
+    file = tmp_path / "p=other" / "data.parquet"
+    file.parent.mkdir()
+    pq.write_table(pa.table({"y": range(10)}), file, row_group_size=1)
+    predicate = ((col("p") == "keep") | (col("y") > 5)) & (
+        monotonically_increasing_id() >= 6
+    )
+    # This small file fits in one read task, so IDs match the row positions.
+    rows = ray.data.read_parquet(str(tmp_path)).filter(expr=predicate).take_all()
+    assert sorted(row["y"] for row in rows) == [6, 7, 8, 9]
+    assert scanned_groups() == {(str(file), i) for i in range(10)}
 
 
 if __name__ == "__main__":
