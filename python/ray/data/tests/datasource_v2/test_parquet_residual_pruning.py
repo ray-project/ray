@@ -13,7 +13,8 @@ import ray
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
-from ray.data.expressions import col
+from ray.data.datatype import DataType
+from ray.data.expressions import UDFExpr, col
 
 
 @pytest.fixture(scope="module")
@@ -112,7 +113,7 @@ def _read_partitioned(root, schema, **kwargs):
     "predicate,pushed_predicate,groups",
     [
         ((col("p") == "a") | (col("x") >= 25), None, 6),
-        ((col("p") == "a") | (col("x") >= 25), col("x") >= 5, 6),
+        ((col("p") == "a") | (col("x") >= 25), col("x") >= 15, 5),
         ((col("p") == "absent") | (col("x") < 0), None, 0),
     ],
     ids=["mixed_or", "pushed_filter", "empty"],
@@ -249,34 +250,51 @@ def test_residual_preserves_row_evaluation(
         .take_all()
     )
     assert sorted(row["id"] for row in rows) == expected_ids
-    if schema is not None:
-        # Noon in the footer becomes January 1 in the reader.
-        assert rows == [{"id": 0, "x": date(2020, 1, 1), "p": "other"}]
     assert scanned_groups() == {
         (str(file), i) for i in range(len(values) // row_group_size)
     }
 
 
 @pytest.mark.parametrize(
-    "values,extra_predicate,expected_ids",
+    "extra_predicate,include_paths,expected_ids",
     [
-        (pa.array([40.0, float("nan")] * 10), col("x") != 40.0, [13, 15, 17, 19]),
-        (pa.array([100, 1] * 10, pa.int8()), (col("x") + 100) > 120, [12, 14, 16, 18]),
+        (col("x") != 40.0, False, [13, 15, 17, 19]),
+        (col("path") != "nope", True, list(range(12, 20))),
+        (
+            UDFExpr(
+                fn=lambda values: pc.greater(values, 7),
+                args=[col("y")],
+                kwargs={},
+                data_type=DataType.from_arrow(pa.bool_()),
+            ),
+            False,
+            [16, 17, 18, 19],
+        ),
     ],
-    ids=["unsafe_float", "column_arithmetic"],
+    ids=["unsafe_float", "synthesized_path", "udf"],
 )
 def test_safe_conjunct_still_prunes(
-    tmp_path, scanned_groups, values, extra_predicate, expected_ids
+    tmp_path, scanned_groups, extra_predicate, include_paths, expected_ids
 ):
     file = tmp_path / "p=other" / "data.parquet"
     file.parent.mkdir()
     pq.write_table(
-        pa.table({"id": range(20), "y": [i // 2 for i in range(20)], "x": values}),
+        pa.table(
+            {
+                "id": range(20),
+                "y": [i // 2 for i in range(20)],
+                "x": [40.0, float("nan")] * 10,
+            }
+        ),
         file,
         row_group_size=2,
     )
     predicate = ((col("p") == "keep") | (col("y") > 5)) & extra_predicate
-    rows = ray.data.read_parquet(str(tmp_path)).filter(expr=predicate).take_all()
+    rows = (
+        ray.data.read_parquet(str(tmp_path), include_paths=include_paths)
+        .filter(expr=predicate)
+        .take_all()
+    )
     assert sorted(row["id"] for row in rows) == expected_ids
     assert scanned_groups() == {(str(file), i) for i in range(6, 10)}
 

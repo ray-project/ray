@@ -241,16 +241,16 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             and isinstance(scanner, ParquetScanner)
             and scanner.limit is None
             and scanner.partitioning is not None
-            and scanner._synthesized_column_names().isdisjoint(
-                get_column_references(residual)
-            )
         ):
+            synthesized_columns = scanner._synthesized_column_names()
             float_columns = float_column_names(scanner.schema)
             safe_predicate = combine_predicate_chain(
                 [
                     conjunct
                     for conjunct in flatten_predicate_chain(residual, Operation.AND)
-                    if is_statistics_safe(
+                    if conjunct._is_pyarrow_convertible()
+                    and synthesized_columns.isdisjoint(get_column_references(conjunct))
+                    and is_statistics_safe(
                         predicate=conjunct, float_columns=float_columns
                     )
                     and not has_column_arithmetic(expr=conjunct)
