@@ -1174,6 +1174,231 @@ def test_nixl_memory_pool_multi_tensor_e2e(ray_start_regular):
     assert result == [[1.0, 2.0], [3.0, 4.0, 5.0]]
 
 
+@pytest.mark.parametrize("device", ["cpu", "cuda"])
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool(ray_start_regular, device):
+    """
+    Test receiver-side NIXL memory pool: incoming tensors are read into the
+    pre-registered pool and then copied out, so the tensor handed to the user
+    does not alias the pool and the block is returned right after the transfer.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class RecvPoolActor:
+        def __init__(self, pool_device, pool_size):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(pool_size, torch.device(pool_device))
+            self._held_tensors = []
+
+        def consume_one(self, refs, device):
+            tensor = ray.get(refs[0])
+            assert tensor.device.type == device
+            transport = get_tensor_transport_manager("NIXL")
+            pool = transport._memory_pool
+            # The received tensor is a copy, so it does not alias the pool.
+            assert (
+                tensor.untyped_storage().data_ptr()
+                != pool.get_pool_tensor().untyped_storage().data_ptr()
+            )
+            # The block is back in the pool even though the tensor is alive.
+            assert self._pool_free_bytes() == pool.pool_size
+            value = tensor.sum().item()
+            self._held_tensors.append(tensor)
+            return value
+
+        def _pool_free_bytes(self):
+            transport = get_tensor_transport_manager("NIXL")
+            pool = transport._memory_pool
+            return sum(block.size for block in pool._free_blocks)
+
+        def get_pool_free_bytes(self):
+            return self._pool_free_bytes()
+
+    src_actor = GPUTestActor.remote()
+    # Each int64 tensor [1,2,3] is 24 bytes, so the pool holds exactly one.
+    dst_actor = RecvPoolActor.remote(device, 24)
+
+    # Receives totaling more than the pool succeed, because each block is
+    # freed once its data has been copied out, even though the receiver keeps
+    # every tensor alive.
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 6
+
+    refs = src_actor.produce.remote([torch.tensor([4, 5, 6]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 15
+
+    refs = src_actor.produce.remote([torch.tensor([7, 8, 9]).to(device)])
+    assert ray.get(dst_actor.consume_one.remote(refs, device)) == 24
+
+    # A single transfer that doesn't fit in the pool still fails.
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3, 4, 5, 6]).to(device)])
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.consume_one.remote(refs, device))
+    assert "NixlOutOfMemoryError" in str(excinfo.value) and "out of memory" in str(
+        excinfo.value
+    )
+
+    # The failed transfer left the pool intact.
+    assert ray.get(dst_actor.get_pool_free_bytes.remote()) == 24
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool_packed_group(ray_start_regular):
+    """A sender-packed group is received into one pool region and unpacked.
+
+    The sender packs both tensors into a single descriptor, so the receiver
+    allocates one pool region for the whole group and recovers the individual
+    tensors from it. Mixed dtypes make the packed offsets non-trivial.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolSrc:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def put_list(self):
+            tensors = [
+                torch.tensor([1], dtype=torch.int8).to("cuda"),
+                torch.tensor([2.0, 3.0], dtype=torch.float32).to("cuda"),
+                torch.tensor([4.0, 5.0], dtype=torch.float64).to("cuda"),
+            ]
+            ref = ray.put(tensors, _tensor_transport="nixl")
+            meta = get_tensor_transport_manager("NIXL")._get_meta(ref.hex())
+            descs = (
+                get_tensor_transport_manager("NIXL")
+                .get_nixl_agent()
+                .deserialize_descs(meta.nixl_serialized_descs)
+            )
+            return ref, descs.descCount()
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PoolDst:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def consume(self, refs):
+            tensors = ray.get(refs[0])
+            pool = get_tensor_transport_manager("NIXL")._memory_pool
+            pool_ptr = pool.get_pool_tensor().untyped_storage().data_ptr()
+            for tensor in tensors:
+                assert tensor.untyped_storage().data_ptr() != pool_ptr
+            # The region is back even though every tensor is still alive.
+            assert sum(b.size for b in pool._free_blocks) == pool.pool_size
+            return [t.cpu().tolist() for t in tensors]
+
+    src = PoolSrc.remote()
+    dst = PoolDst.remote()
+    ref, desc_count = ray.get(src.put_list.remote())
+    assert desc_count == 1
+    assert ray.get(dst.consume.remote([ref])) == [[1], [2.0, 3.0], [4.0, 5.0]]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool_failed_transfer(ray_start_regular):
+    """A receive that fails after taking its buffers from the pool gives them back
+    and leaves the pool registered with NIXL, so the next receive still works.
+
+    The pool is registered as a whole, never region by region, so cleaning up the
+    failed transfer must not deregister anything.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class RecvPoolActor:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def pool_state(self):
+            transport = get_tensor_transport_manager("NIXL")
+            pool = transport._memory_pool
+            pool_ptr = pool.get_pool_tensor().untyped_storage().data_ptr()
+            return (
+                sum(block.size for block in pool._free_blocks),
+                pool_ptr in transport._tensor_desc_cache,
+                transport._nixl_agent_meta_version,
+            )
+
+        def consume_with_failed_transfer(self, refs):
+            agent = get_tensor_transport_manager("NIXL").get_nixl_agent()
+            # Fail the transfer after its receive buffers came out of the pool.
+            agent.check_xfer_state = lambda handle: "ERR"
+            try:
+                ray.get(refs[0])
+            except Exception as e:
+                return str(e)
+            finally:
+                del agent.check_xfer_state
+            return "The transfer did not fail."
+
+        def consume(self, refs):
+            return ray.get(refs[0]).cpu().tolist()
+
+    src_actor = GPUTestActor.remote()
+    dst_actor = RecvPoolActor.remote()
+    free_bytes, pool_in_desc_cache, meta_version = ray.get(
+        dst_actor.pool_state.remote()
+    )
+    assert free_bytes == 1024
+    assert not pool_in_desc_cache
+
+    refs = src_actor.produce.remote([torch.tensor([1, 2, 3]).to("cuda")])
+    error = ray.get(dst_actor.consume_with_failed_transfer.remote(refs))
+    assert "NIXL transfer got to Error state" in error
+
+    # The blocks are back, and the pool was neither added to the registration
+    # cache nor deregistered, which would have bumped the metadata version.
+    assert ray.get(dst_actor.pool_state.remote()) == (1024, False, meta_version)
+
+    refs = src_actor.produce.remote([torch.tensor([4, 5, 6]).to("cuda")])
+    assert ray.get(dst_actor.consume.remote(refs)) == [4, 5, 6]
+    assert ray.get(dst_actor.pool_state.remote()) == (1024, False, meta_version)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_nixl_recv_memory_pool_empty_tensor(ray_start_regular):
+    """An object with an empty tensor arrives the same with a receive pool.
+
+    NIXL can't find a zero-length descriptor inside the pool's registration, so
+    such an object skips the pool.
+    """
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class PutActor:
+        def put(self, tensors):
+            return [ray.put([t.to("cuda") for t in tensors], _tensor_transport="nixl")]
+
+    @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
+    class RecvPoolActor:
+        def __init__(self):
+            from ray.experimental import register_nixl_memory_pool
+
+            register_nixl_memory_pool(1024, torch.device("cuda"))
+
+        def consume(self, refs):
+            tensors = ray.get(refs[0])
+            pool = get_tensor_transport_manager("NIXL")._memory_pool
+            assert sum(b.size for b in pool._free_blocks) == pool.pool_size
+            return [t.cpu().tolist() for t in tensors]
+
+    src_actor = PutActor.remote()
+    dst_actor = RecvPoolActor.remote()
+    for tensors, expected in [
+        ([torch.empty(0)], [[]]),
+        (
+            [torch.tensor([1.0, 2.0]), torch.empty(0), torch.tensor([3.0])],
+            [[1.0, 2.0], [], [3.0]],
+        ),
+    ]:
+        refs = ray.get(src_actor.put.remote(tensors))
+        assert ray.get(dst_actor.consume.remote(refs)) == expected
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_set_nixl_cuda_stream(ray_start_regular):
     """set_nixl_cuda_stream restricts the pre-registration sync to the given

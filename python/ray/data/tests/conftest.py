@@ -275,6 +275,20 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def datasource_v2(request, restore_data_context):
+    """Run a test once through the V1 reader and once through DataSourceV2.
+
+    The value is ``DataContext.use_datasource_v2`` for that run. For a
+    V2-only test, write
+    ``@pytest.mark.parametrize("datasource_v2", [True], indirect=True)``.
+    For every test in a module, set
+    ``pytestmark = pytest.mark.usefixtures("datasource_v2")``.
+    """
+    restore_data_context.use_datasource_v2 = request.param
+    return request.param
+
+
 def _get_supported_tensor_formats():
     """Get the list of supported tensor formats."""
     from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
