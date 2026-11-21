@@ -12,7 +12,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.air import ResourceRequest
-from ray.air.constants import TIME_THIS_ITER_S
+from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.air.execution import PlacementGroupResourceManager, ResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
 from ray.exceptions import RayActorError, RayTaskError
@@ -1427,7 +1427,13 @@ class TuneController:
                 return
             elif trial.status in [Trial.PENDING, Trial.PAUSED]:
                 self._scheduler_alg.on_trial_remove(self, trial)
-                self._search_alg.on_trial_complete(trial.trial_id)
+                # Pass the last result if the trial reported one, e.g. a PAUSED
+                # trial stopped by HyperBand, so the searcher can learn from it.
+                last_result = trial.last_result
+                result = None
+                if TRAINING_ITERATION in last_result:
+                    result = flatten_dict(last_result)
+                self._search_alg.on_trial_complete(trial.trial_id, result=result)
             elif trial.status is Trial.RUNNING:
                 # By this time trial.last_result should have been
                 # updated already.

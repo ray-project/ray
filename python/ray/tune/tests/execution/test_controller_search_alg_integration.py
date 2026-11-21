@@ -134,6 +134,73 @@ def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manag
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+def test_search_alg_scheduler_stop_paused(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that stopping a PAUSED trial passes its last result to the searcher.
+
+    HyperBandScheduler stops paused trials this way, e.g. rung losers.
+    """
+
+    class _MockScheduler(FIFOScheduler):
+        def on_trial_result(self, *args, **kwargs):
+            return TrialScheduler.PAUSE
+
+    experiment_spec = {"run": MOCK_TRAINABLE_NAME, "stop": {"training_iteration": 5}}
+    experiments = [Experiment.from_json("test", experiment_spec)]
+    search_alg = _MockSuggestionAlgorithm()
+    searcher = search_alg.searcher
+    search_alg.add_configurations(experiments)
+
+    runner = TestTuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        search_alg=search_alg,
+        scheduler=_MockScheduler(),
+    )
+
+    trials = runner.get_trials()
+
+    while not trials or trials[0].status != Trial.PAUSED:
+        runner.step()
+
+    runner.stop_trial(trials[0])
+
+    while not runner.is_finished():
+        runner.step()
+
+    assert trials[0].status == Trial.TERMINATED
+    assert searcher.counter["complete"] == 1
+    # The searcher gets the paused trial's last result, not None.
+    assert len(searcher.final_results) == 1
+    assert searcher.final_results[0][TRAINING_ITERATION] == 1
+
+
+def test_search_alg_stop_pending(ray_start_4_cpus_2_gpus_extra):
+    """Check that a trial stopped before it reported passes no result."""
+    experiment_spec = {"run": MOCK_TRAINABLE_NAME, "stop": {"training_iteration": 5}}
+    experiments = [Experiment.from_json("test", experiment_spec)]
+    search_alg = _MockSuggestionAlgorithm()
+    searcher = search_alg.searcher
+    search_alg.add_configurations(experiments)
+
+    runner = TestTuneController(search_alg=search_alg)
+
+    trials = runner.get_trials()
+
+    while not trials:
+        runner.step()
+
+    assert trials[0].status == Trial.PENDING
+    runner.stop_trial(trials[0])
+
+    assert trials[0].status == Trial.TERMINATED
+    assert searcher.counter["complete"] == 1
+    assert searcher.final_results == []
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
 def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Checks that runner and searcher state is maintained when stalled.
 
