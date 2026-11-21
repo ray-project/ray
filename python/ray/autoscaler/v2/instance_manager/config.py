@@ -282,6 +282,10 @@ class NodeTypeConfig:
         return self.effective_replica_config.domain_exclusive
 
     @property
+    def is_exclusive_domain(self) -> bool:
+        return bool(self.domain_label_key and self.domain_exclusive)
+
+    @property
     def worker_index_label_key(self) -> Optional[str]:
         return self.effective_replica_config.worker_index_label_key
 

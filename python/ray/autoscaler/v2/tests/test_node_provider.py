@@ -1,3 +1,4 @@
+import copy
 import logging
 import os
 import sys
@@ -510,6 +511,72 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
                     "workersToDelete": [
                         "raycluster-autoscaler-worker-small-group-dkz2r"
                     ]
+                },
+            },
+        ]
+
+    def test_terminate_node_at_min_replicas(self):
+        # KubeRay keeps minReplicas Pods, so terminating a Pod at minReplicas
+        # only lists it in workersToDelete and keeps replicas unchanged.
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["minReplicas"] = 1
+        self.provider.terminate(
+            ids=["raycluster-autoscaler-worker-small-group-dkz2r"], request_id="term-1"
+        )
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": [
+                        "raycluster-autoscaler-worker-small-group-dkz2r"
+                    ]
+                },
+            },
+        ]
+
+    def test_terminate_nodes_below_min_replicas(self):
+        # Terminating several Pods at once doesn't take replicas below
+        # minReplicas either.
+        raycluster_cr = get_basic_ray_cr()
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        raycluster_cr["spec"]["workerGroupSpecs"][0]["minReplicas"] = 1
+        mock_client = MockKubernetesHttpApiClient(
+            _get_test_yaml("podlist2.yaml"), raycluster_cr
+        )
+        provider = KubeRayProvider(
+            cluster_name="test",
+            provider_config={
+                "namespace": "default",
+                "head_node_type": "headgroup",
+            },
+            gcs_client=MagicMock(),
+            k8s_api_client=mock_client,
+        )
+        provider._sync_with_api_server()
+        pods_to_terminate = [
+            instance_id
+            for instance_id, instance in provider.instances.items()
+            if instance.node_type == "small-group"
+        ]
+        assert len(pods_to_terminate) == 2
+
+        provider.terminate(ids=pods_to_terminate, request_id="term-2")
+
+        patches = mock_client.get_patches(f"rayclusters/{provider._cluster_name}")
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": 1,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": pods_to_terminate,
                 },
             },
         ]
@@ -2548,8 +2615,8 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         )
         with prov.reconcile_step(step_ctx):
             assert prov._external_unmaterialized["tpu"] == 0
-            assert len(prov._claimed_pre_step_lids) == 3
-            assert ("tpu", "lid-a") not in prov._claimed_pre_step_lids
+            assert len(prov._claimed_pre_step_lids) == 4
+            assert ("tpu", "lid-a") in prov._claimed_pre_step_lids
             assert ("tpu", "lid-d") in prov._claimed_pre_step_lids
             prov.update_reconcile_step(
                 ReconcileStepContext(
@@ -2811,6 +2878,127 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         assert mix_errs[0].request_id == "cap-0"
         assert mix_errs[0].node_type == "capped"
         assert mix_errs[0].count == 4
+
+    def test_active_pre_step_lids_exceeding_cap_and_single_request_launch_many(self):
+        """Active pre-step LIDs are never FIFO-evicted and single-request launch_many
+        preserves untargeted worker groups."""
+        # 1. RG-1: > _max_tracked_request_entries active pre-step LIDs must not re-claim
+        # external capacity during launch_many or sequential launch.
+        wgs_rg1 = [
+            {
+                "groupName": "ga",
+                "replicas": 1,
+                "minReplicas": 0,
+                "maxReplicas": 6,
+                "numOfHosts": 2,
+                "template": {"spec": {"containers": [{}]}},
+            },
+            {
+                "groupName": "gb",
+                "replicas": 3,
+                "minReplicas": 0,
+                "maxReplicas": 3,
+                "numOfHosts": 8,
+                "template": {"spec": {"containers": [{}]}},
+            },
+        ]
+        pods_rg1 = [
+            self._make_multihost_pod(f"pa-0-{h}", group="ga", rep="ga-r0")
+            for h in range(2)
+        ] + [
+            self._make_multihost_pod(f"pb-{r}-{h}", group="gb", rep=f"gb-r{r}")
+            for r in range(3)
+            for h in range(8)
+        ]
+        p_fast, c_fast = self._make_kuberay_provider(
+            worker_groups=copy.deepcopy(wgs_rg1), pods=copy.deepcopy(pods_rg1)
+        )
+        p_seq, c_seq = self._make_kuberay_provider(
+            worker_groups=copy.deepcopy(wgs_rg1), pods=copy.deepcopy(pods_rg1)
+        )
+        p_fast._max_tracked_request_entries = 3
+        p_seq._max_tracked_request_entries = 3
+        known = set(p_fast.get_non_terminated())
+        p_seq.get_non_terminated()
+
+        ctx1 = ReconcileStepContext(
+            known_cloud_instance_ids=known,
+            unclaimed_replicas_by_lid={"ga": {"pre-a-0": 1, "pre-a-1": 1}, "gb": {}},
+        )
+        with p_fast.reconcile_step(ctx1), p_seq.reconcile_step(ctx1):
+            pass
+
+        c_fast._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 5
+        c_seq._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 5
+        known = set(p_fast.get_non_terminated())
+        p_seq.get_non_terminated()
+        assert p_fast._external_unmaterialized["ga"] == 8
+        assert p_seq._external_unmaterialized["ga"] == 8
+
+        ctx2 = ReconcileStepContext(
+            known_cloud_instance_ids=known,
+            unclaimed_replicas_by_lid={
+                "ga": {"pre-a-0": 1, "pre-a-1": 1},
+                "gb": {"pre-b-0": 1, "pre-b-1": 1},
+            },
+        )
+        batch = {
+            "pre-a-0": {"ga": 2},
+            "pre-a-1": {"ga": 2},
+            "req-2-0": {"ga": 2},
+            "req-2-1": {"gb": 16},
+            "req-2-2": {"gb": 8},
+        }
+        with p_fast.reconcile_step(ctx2):
+            p_fast.launch_many(batch)
+        with p_seq.reconcile_step(ctx2):
+            for rid, sh in batch.items():
+                p_seq.launch(shape=sh, request_id=rid)
+        assert p_fast._external_unmaterialized["ga"] == 8
+        assert p_seq._external_unmaterialized["ga"] == 8
+
+        # 2. RG-4: standalone 1-request launch_many matches >=2-request launch_many
+        # without scaling down untargeted worker groups.
+        wgs_rg4 = [
+            {
+                "groupName": "ga",
+                "replicas": 2,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "numOfHosts": 2,
+                "template": {"spec": {"containers": [{}]}},
+            },
+            {
+                "groupName": "gb",
+                "replicas": 0,
+                "minReplicas": 0,
+                "maxReplicas": 4,
+                "numOfHosts": 4,
+                "template": {"spec": {"containers": [{}]}},
+            },
+        ]
+        pods_rg4 = [
+            self._make_multihost_pod(f"pa-0-{h}", group="ga", rep="ga-r0")
+            for h in range(2)
+        ]
+        p1, c1 = self._make_kuberay_provider(
+            worker_groups=copy.deepcopy(wgs_rg4), pods=copy.deepcopy(pods_rg4)
+        )
+        p2, c2 = self._make_kuberay_provider(
+            worker_groups=copy.deepcopy(wgs_rg4), pods=copy.deepcopy(pods_rg4)
+        )
+        known_rg4 = set(p1.get_non_terminated())
+        p2.get_non_terminated()
+        ctx_rg4 = ReconcileStepContext(
+            known_cloud_instance_ids=known_rg4,
+            unclaimed_replicas_by_lid={"ga": {"pre-a": 1}, "gb": {}},
+        )
+        with p1.reconcile_step(ctx_rg4), p2.reconcile_step(ctx_rg4):
+            pass
+        p1.launch_many({"r1": {"gb": 4}})
+        p2.launch_many({"r1": {"gb": 4}, "r2": {"gb": 4}})
+        assert c1._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 2
+        assert c2._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 2
 
 
 if __name__ == "__main__":

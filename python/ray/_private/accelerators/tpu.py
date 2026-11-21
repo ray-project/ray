@@ -921,20 +921,7 @@ def _resolve_gke_tpu_node_group(
             )
         return None
 
-    try:
-        pod_type = infer_tpu_pod_type_from_topology(topology, generation)
-    except ValueError:
-        if log_once(
-            _gke_tpu_log_once_key("invalid_topology", group_name, accelerator, topology)
-        ):
-            logger.warning(
-                f"Invalid GKE TPU topology '{_truncate_for_log(topology)}' for "
-                f"accelerator '{accelerator}'{group_ctx}; skipping default TPU "
-                "labels and head resource."
-            )
-        return None
-    if not pod_type or len(pod_type) > _MAX_GKE_TPU_TOPOLOGY_LEN:
-        return None
+    pod_type = infer_tpu_pod_type_from_topology(topology, generation)
     return generation, topology, pod_type
 
 
@@ -1495,15 +1482,17 @@ class TPUAcceleratorManager(AcceleratorManager):
                     total_tpus != total_chips
                     and total_tpus != total_chips * cores_per_chip
                 ):
+                    group_ctx = f" '{group_name}'" if group_name else ""
                     if log_once(
-                        f"tpu_topology_workers_mismatch_{generation}_{topology}_"
-                        f"{tpu_per_host}_{workers_per_replica}"
+                        f"tpu_topology_workers_mismatch_{group_name}_{generation}_"
+                        f"{topology}_{tpu_per_host}_{workers_per_replica}"
                     ):
                         logger.warning(
-                            "TPU node group specifies topology '%s' (%d chips for %s) "
+                            "TPU node group%s specifies topology '%s' (%d chips for %s) "
                             "with %d TPU per worker and workers_per_replica=%d "
                             "(total %d). Keeping workers_per_replica=%d; verify "
                             "numOfHosts and TPU topology match.",
+                            group_ctx,
                             topology,
                             total_chips,
                             generation,

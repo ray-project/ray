@@ -22,6 +22,7 @@ from ray.serve.schema import (
     LoggingConfig,
     ProxyStatus,
     ServeInstanceDetails,
+    TracingConfig,
 )
 
 
@@ -187,6 +188,7 @@ def test_callback_fail(ray_instance):
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
+        tracing_config=TracingConfig(),
         long_poll_client="fake_client",
     )
     with pytest.raises(RayActorError, match="this is from raise_error_callback"):
@@ -222,6 +224,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         node_ip_address="127.0.0.1",
         node_id="123",
         logging_config=LoggingConfig(),
+        tracing_config=TracingConfig(),
         long_poll_client="fake_client",
     )
     with pytest.raises(

@@ -121,10 +121,4 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
                 request_shape[event.instance_type] += 1
             shapes_by_id[launch_request_id] = request_shape
 
-        if isinstance(self._cloud_provider, ICloudInstanceProvider):
-            self._cloud_provider.launch_many(shapes_by_id)
-        else:
-            for launch_request_id, request_shape in shapes_by_id.items():
-                self._cloud_provider.launch(
-                    shape=request_shape, request_id=launch_request_id
-                )
+        self._cloud_provider.launch_many(shapes_by_id)
