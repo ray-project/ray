@@ -326,6 +326,7 @@ def get_current_placement_group() -> Optional[PlacementGroup]:
     return PlacementGroup(pg_id)
 
 
+@DeveloperAPI
 def check_placement_group_index(
     placement_group: PlacementGroup, bundle_index: int
 ) -> None:
@@ -355,6 +356,7 @@ def _derive_node_level_strategy(
     return strategy if strategy is not None else "PACK"
 
 
+@DeveloperAPI
 def validate_placement_group(
     bundles: List[Dict[str, float]],
     strategy: Optional[str] = None,

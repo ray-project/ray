@@ -1,10 +1,19 @@
+import importlib
+import inspect
+import types
 from typing import Dict, List, Union
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.services import get_node_instance_id, get_node_ip_address
-from ray.util import accelerators, debugpy as ray_debugpy, iter, rpdb as pdb
+from ray.util import (
+    accelerators,
+    debugpy as ray_debugpy,
+    iter,
+    placement_group as _placement_group_module,
+    rpdb as pdb,
+)
 from ray.util.actor_pool import ActorPool
 from ray.util.annotations import PublicAPI
 from ray.util.check_serialize import inspect_serializability
@@ -14,11 +23,41 @@ from ray.util.helpers import as_completed, map_unordered
 from ray.util.placement_group import (
     get_current_placement_group,
     get_placement_group,
-    placement_group,
     placement_group_table,
     remove_placement_group,
 )
 from ray.util.serialization import deregister_serializer, register_serializer
+
+
+class _CallablePlacementGroupModule(types.ModuleType):
+    """Module subclass for ``ray.util.placement_group`` that remains callable.
+
+    Binding ``ray.util.placement_group`` to the ``placement_group`` function
+    shadows the ``ray.util.placement_group`` submodule, breaking attribute
+    lookups like ``ray.util.placement_group.PlacementGroup`` and
+    ``unittest.mock.patch("ray.util.placement_group.placement_group")``.
+    Making the module object itself callable preserves backwards compatibility
+    for ``ray.util.placement_group(...)`` while exposing all submodule symbols.
+    """
+
+    def __call__(self, *args, **kwargs):
+        return self.placement_group(*args, **kwargs)
+
+    @property
+    def __signature__(self):
+        return inspect.signature(self.placement_group)
+
+    def __reduce__(self):
+        return (importlib.import_module, (self.__name__,))
+
+
+if not isinstance(_placement_group_module, _CallablePlacementGroupModule):
+    _placement_group_module.__class__ = _CallablePlacementGroupModule
+
+if _placement_group_module.__doc__ is None:
+    _placement_group_module.__doc__ = _placement_group_module.placement_group.__doc__
+
+placement_group = _placement_group_module
 
 
 @PublicAPI(stability="beta")

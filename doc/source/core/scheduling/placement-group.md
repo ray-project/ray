@@ -31,7 +31,7 @@ A *placement group* reserves resources from the cluster. To use the reserved res
 
 ## Create a placement group (reserve resources)
 
-Create a placement group with {func}`ray.util.placement_group`. Placement groups take a list of bundles and a {ref}`placement strategy <pgroup-strategy>`.
+Create a placement group with {func}`ray.util.placement_group.placement_group`. Placement groups take a list of bundles and a {ref}`placement strategy <pgroup-strategy>`.
 
 Bundles are specified by a list of dictionaries, e.g., `[{"CPU": 1}, {"CPU": 1, "GPU": 1}]`).
 
@@ -695,7 +695,7 @@ Topology strategy scheduling solves this problem. You express a topology strateg
 
 ### How it works
 
-To use topology strategy placement, pass `topology_strategy=` to {func}`ray.util.placement_group`. The argument is a dict that maps a label key to the placement strategy for that level.
+To use topology strategy placement, pass `topology_strategy=` to {func}`ray.util.placement_group.placement_group`. The argument is a dict that maps a label key to the placement strategy for that level.
 
 Currently, `topology_strategy` is a dictionary that can contain up to two keys:
 
