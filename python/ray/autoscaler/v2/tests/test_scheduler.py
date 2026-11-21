@@ -7754,7 +7754,7 @@ def test_generic_worker_replica_config_and_locality_invariants(case):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="KubeRay config skipped on Windows")
-def test_kuberay_cr_to_scheduler_and_reconciler_full_stack_seam():
+def test_kuberay_cr_to_scheduler_and_reconciler_full_stack_seam(monkeypatch):
     """Unmocked seam test: `get_basic_ray_cr` -> `_derive_autoscaling_config_from_ray_cr`
     -> `AutoscalingConfig` -> `ResourceDemandScheduler` -> `Reconciler`."""
     from collections import Counter, defaultdict
@@ -7890,6 +7890,10 @@ def test_kuberay_cr_to_scheduler_and_reconciler_full_stack_seam():
     acfg = AutoscalingConfig(
         configs=_derive_autoscaling_config_from_ray_cr(ray_cr), skip_content_hash=True
     )
+    monkeypatch.delenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES", raising=False)
+    assert acfg.get_max_concurrent_launches() == sys.maxsize
+    monkeypatch.setenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES", "10")
+    assert acfg.get_max_concurrent_launches() == 10
     nt_cfgs = acfg.get_node_type_configs()
     assert nt_cfgs["v6e-16"].replica_config == WorkerReplicaConfig(
         workers_per_replica=4,
@@ -22858,6 +22862,530 @@ def test_global_max_workers_canceling_unlabeled_min_launches_preserves_valid_que
     rep_t2 = _sched(cfgs, tick2_insts, gangs=[gang_b], max_nodes=8)
     assert rep_t2.infeasible_gang_resource_requests == []
     assert _launch_and_terminate(rep_t2) == ({}, [])
+
+
+def test_gang_domain_search_multiset_dedup_fallback_memo_and_counter_cases(monkeypatch):
+    """Verify Gap S1 O(S) multiset deduplication on UUID-permuted booting slices and
+    fallback-tier running slices, plus soundness counter-cases (multi-bundle packing,
+    overlapping multi-value IN selectors, draining/leaving domain isolation, mixed IPPR
+    signatures, and default schedule_in_domain signature)."""
+    import random
+    import uuid
+
+    from ray.autoscaler.v2.scheduler import _GangSearch
+    from ray.autoscaler.v2.schema import IPPRGroupSpec, IPPRStatus
+
+    rng = random.Random(20261121)
+    cfgs_8h = {
+        "v6e-32": NodeTypeConfig(
+            name="v6e-32",
+            resources={"CPU": 8, "TPU": 4, "TPU-v6e-32-head": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=640,
+            labels={
+                _ACC: "TPU-V6E",
+                _TOPO: "4x8",
+                "ray.io/tpu-pod-type": "v6e-32",
+            },
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=8,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=("TPU-v6e-32-head",),
+            ),
+        )
+    }
+
+    # 1. 60 booting 8-host KubeRay replicas with random UUID im_instance_ids -> O(S)=60 calls.
+    boot_instances = []
+    for rep_idx in range(60):
+        rep_name = f"v6e-32-rep-{rep_idx}"
+        for host_idx in range(8):
+            uid = str(uuid.UUID(int=rng.getrandbits(128)))
+            inst = make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id=uid,
+                    instance_type="v6e-32",
+                    status=Instance.ALLOCATED,
+                    cloud_instance_id=f"{rep_name}-pod-{host_idx}",
+                    node_kind=NodeKind.WORKER,
+                ),
+                cloud_instance_id=f"{rep_name}-pod-{host_idx}",
+            )
+            inst.cloud_instance_replica_id = rep_name
+            boot_instances.append(inst)
+    gangs_8h = [_tpu_gang(tuple(range(8)), pod_type="v6e-32") for _ in range(60)]
+
+    real_sched_in_dom = _GangSearch.schedule_in_domain
+    dom_calls = []
+
+    def _spy_sched_in_dom(*args, **kwargs):
+        dom_calls.append(1)
+        return real_sched_in_dom(*args, **kwargs)
+
+    monkeypatch.setattr(
+        _GangSearch, "schedule_in_domain", staticmethod(_spy_sched_in_dom)
+    )
+    sched = ResourceDemandScheduler()
+    rep_boot = sched.schedule(
+        SchedulingRequest(
+            node_type_configs=cfgs_8h,
+            current_instances=boot_instances,
+            gang_resource_requests=gangs_8h,
+            disable_launch_config_check=True,
+        )
+    )
+    assert rep_boot.infeasible_gang_resource_requests == []
+    assert rep_boot.to_launch == []
+    assert len(dom_calls) == 60
+
+    # 2. 60 running fallback-tier 4-host slices (preferred tier=gold, fallback tier=silver) -> O(S)=60 calls.
+    cfgs_fb = {
+        "v6e-16": NodeTypeConfig(
+            name="v6e-16",
+            resources={"CPU": 8, "TPU": 4, "TPU-v6e-16-head": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=320,
+            labels={_ACC: "TPU-V6E", _TOPO: "4x4", "tier": "silver"},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=("TPU-v6e-16-head",),
+            ),
+        )
+    }
+    run_fb_instances = []
+    for rep_idx in range(60):
+        sname = f"slice-fb-{rep_idx:03d}"
+        for w in range(4):
+            nid = f"fb-{rep_idx:03d}-{w}".encode().ljust(28, b"0")
+            cid = f"pod-fb-{rep_idx:03d}-{w}"
+            inst = make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id=f"im-{cid}",
+                    instance_type="v6e-16",
+                    status=Instance.RAY_RUNNING,
+                    node_id=nid.hex(),
+                    cloud_instance_id=cid,
+                    node_kind=NodeKind.WORKER,
+                ),
+                ray_node=NodeState(
+                    node_id=nid,
+                    instance_id=cid,
+                    ray_node_type_name="v6e-16",
+                    status=NodeStatus.RUNNING,
+                    total_resources={
+                        "CPU": 8.0,
+                        "TPU": 4.0,
+                        **({"TPU-v6e-16-head": 1.0} if w == 0 else {}),
+                    },
+                    available_resources={
+                        "CPU": 8.0,
+                        "TPU": 4.0,
+                        **({"TPU-v6e-16-head": 1.0} if w == 0 else {}),
+                    },
+                    labels={
+                        _ACC: "TPU-V6E",
+                        _TOPO: "4x4",
+                        "tier": "silver",
+                        _SLICE: sname,
+                        _WID: str(w),
+                    },
+                ),
+                cloud_instance_id=cid,
+            )
+            inst.cloud_instance_replica_id = sname
+            run_fb_instances.append(inst)
+    # Build 60 fallback-tier locality gangs using _tpu_gang's BundleSelector idiom.
+    fb_gangs = []
+    for _ in range(60):
+        g = _tpu_gang((0, 1, 2, 3), pod_type="v6e-16")
+        for w, b_req in enumerate(g.bundle_selectors[0].resource_requests):
+            del b_req.label_selectors[:]
+            s_pref = b_req.label_selectors.add()
+            c1 = s_pref.label_constraints.add()
+            c1.label_key, c1.operator = _WID, _IN
+            c1.label_values.append(str(w))
+            c2 = s_pref.label_constraints.add()
+            c2.label_key, c2.operator = "tier", _IN
+            c2.label_values.append("gold")
+            s_fb = b_req.label_selectors.add()
+            c3 = s_fb.label_constraints.add()
+            c3.label_key, c3.operator = _WID, _IN
+            c3.label_values.append(str(w))
+            c4 = s_fb.label_constraints.add()
+            c4.label_key, c4.operator = "tier", _IN
+            c4.label_values.append("silver")
+        fb_gangs.append(g)
+
+    dom_calls.clear()
+    rep_fb = sched.schedule(
+        SchedulingRequest(
+            node_type_configs=cfgs_fb,
+            current_instances=run_fb_instances,
+            gang_resource_requests=fb_gangs,
+            disable_launch_config_check=True,
+        )
+    )
+    assert rep_fb.infeasible_gang_resource_requests == []
+    assert rep_fb.to_launch == []
+    assert len(dom_calls) == 60
+    monkeypatch.setattr(
+        _GangSearch, "schedule_in_domain", staticmethod(real_sched_in_dom)
+    )
+
+    # 3. Counter-case Trap 1: multi-bundle packing on booting domains prefers fewer pending hosts (2 vs 3).
+    cfgs_pack = {
+        "gpu-4h": NodeTypeConfig(
+            name="gpu-4h",
+            resources={"CPU": 8, "GPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=16,
+            runtime_label_keys=("rack",),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key="rack",
+                domain_exclusive=False,
+            ),
+        )
+    }
+    ctx_pack = ResourceDemandScheduler.ScheduleContext.from_schedule_request(
+        SchedulingRequest(
+            node_type_configs=cfgs_pack,
+            current_instances=[],
+            disable_launch_config_check=True,
+        )
+    )
+    # Seed rack-frag (free GPUs: 2, 2, 2, 4 -> needs 3 pending hosts for 4x{GPU:2})
+    # before rack-dense (free GPUs: 4, 4, 4, 4 -> packs onto 2 pending hosts).
+    frag_nodes = [
+        SchedulingNode(
+            node_type="gpu-4h",
+            total_resources={"CPU": 8.0, "GPU": 4.0},
+            available_resources={"CPU": 8.0, "GPU": float(g)},
+            labels={"rack": "rack-a"},
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            im_instance_id=f"frag-{i}",
+            im_instance_status=Instance.ALLOCATED,
+        )
+        for i, g in enumerate([2, 2, 2, 4])
+    ]
+    dense_nodes = [
+        SchedulingNode(
+            node_type="gpu-4h",
+            total_resources={"CPU": 8.0, "GPU": 4.0},
+            available_resources={"CPU": 8.0, "GPU": 4.0},
+            labels={"rack": "rack-b"},
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            im_instance_id=f"dense-{i}",
+            im_instance_status=Instance.ALLOCATED,
+        )
+        for i in range(4)
+    ]
+    ctx_pack.update(frag_nodes + dense_nodes)
+    pack_gang = _tpu_gang((0, 1, 2, 3), pod_type="v6e-16")
+    pack_gang.bundle_selectors[
+        0
+    ].locality_requirement.locality_constraint.label_name = "rack"
+    del pack_gang.bundle_selectors[
+        0
+    ].locality_requirement.label_selector.label_constraints[:]
+    del pack_gang.bundle_selectors[0].resource_requests[:]
+    for _ in range(4):
+        pack_gang.bundle_selectors[0].resource_requests.append(
+            ResourceRequest(resources_bundle={"GPU": 2.0})
+        )
+    after_pack, inf_pack = ResourceDemandScheduler._try_schedule_gang(
+        ctx_pack, pack_gang
+    )
+    assert inf_pack == []
+    placed_racks = {
+        n.labels["rack"]
+        for n in after_pack
+        if n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+    }
+    assert placed_racks == {"rack-b"}
+
+    # 4. Counter-case Trap 2: overlapping multi-value IN selectors must NOT multiset-collapse.
+    ctx_ord = ResourceDemandScheduler.ScheduleContext.from_schedule_request(
+        SchedulingRequest(
+            node_type_configs=cfgs_pack,
+            current_instances=[],
+            disable_launch_config_check=True,
+        )
+    )
+    # Domain "dom-0" has order ["0", "1"] (Bundle 0 with 2 constraints grabs "0", starving Bundle 1).
+    # Domain "dom-1" has order ["1", "0"] (Bundle 0 grabs "1", Bundle 1 grabs "0" -> succeeds!).
+    dom0 = [
+        SchedulingNode(
+            node_type="gpu-4h",
+            total_resources={"CPU": 8.0, "GPU": 4.0},
+            available_resources={"CPU": 8.0, "GPU": 4.0},
+            labels={"rack": "dom-0", "slot": s, "tag": "ok"},
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            im_instance_id=f"d0-{i}",
+            im_instance_status=Instance.RAY_RUNNING,
+            ray_node_id=f"rn0-{i}",
+        )
+        for i, s in enumerate(["0", "1"])
+    ]
+    dom1 = [
+        SchedulingNode(
+            node_type="gpu-4h",
+            total_resources={"CPU": 8.0, "GPU": 4.0},
+            available_resources={"CPU": 8.0, "GPU": 4.0},
+            labels={"rack": "dom-1", "slot": s, "tag": "ok"},
+            status=SchedulingNodeStatus.SCHEDULABLE,
+            im_instance_id=f"d1-{i}",
+            im_instance_status=Instance.RAY_RUNNING,
+            ray_node_id=f"rn1-{i}",
+        )
+        for i, s in enumerate(["1", "0"])
+    ]
+    # Also test Trap 3 (mixed IPPRStatus tuple vs None) and Defect D6 (leaving node in shared domain).
+    dom0[0].ippr_status = IPPRStatus(
+        cloud_instance_id="p0",
+        spec=IPPRGroupSpec(
+            min_cpu=4, max_cpu=16, min_memory=1024, max_memory=4096, resize_timeout=60
+        ),
+        current_cpu=8,
+        current_memory=2048,
+        desired_cpu=12,
+        desired_memory=2048,
+    )
+    leaving_in_dom1 = SchedulingNode(
+        node_type="gpu-4h",
+        total_resources={"CPU": 8.0, "GPU": 4.0},
+        available_resources={"CPU": 8.0, "GPU": 4.0},
+        labels={"rack": "dom-1", "slot": "9", "tag": "ok"},
+        status=SchedulingNodeStatus.SCHEDULABLE,
+        im_instance_id="d1-leaving",
+        im_instance_status=Instance.RAY_STOP_REQUESTED,
+        ray_node_id="rn1-leaving",
+    )
+    ctx_ord.update(dom0 + dom1 + [leaving_in_dom1])
+    ord_gang = _tpu_gang((0, 1), pod_type="v6e-8")
+    ord_gang.bundle_selectors[
+        0
+    ].locality_requirement.locality_constraint.label_name = "rack"
+    del ord_gang.bundle_selectors[
+        0
+    ].locality_requirement.label_selector.label_constraints[:]
+    del ord_gang.bundle_selectors[0].resource_requests[:]
+    ord_gang.bundle_selectors[0].resource_requests.extend(
+        [
+            _mk_req(
+                {"GPU": 4.0},
+                [],
+                [[("slot", _IN, ["0", "1"]), ("tag", _IN, ["ok"])]],
+            ),
+            _mk_req(
+                {"GPU": 4.0},
+                [],
+                [[("slot", _IN, ["0"])]],
+            ),
+        ]
+    )
+    after_ord, inf_ord = ResourceDemandScheduler._try_schedule_gang(ctx_ord, ord_gang)
+    assert inf_ord == []
+    assert {
+        n.labels["rack"]
+        for n in after_ord
+        if n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)
+    } == {"dom-1"}
+
+    # Trap 4: default schedule_in_domain(return_delta=False) returns List[SchedulingNode].
+    direct_res = _GangSearch.schedule_in_domain(
+        ctx_ord,
+        ctx_ord.peek_nodes(),
+        dom1,
+        dom1,
+        [],
+        list(ord_gang.bundle_selectors[0].resource_requests),
+        "rack",
+        "dom-1",
+    )
+    assert isinstance(direct_res, list)
+
+
+def test_steady_state_zero_deepcopies_and_deepcopy_field_isolation(monkeypatch):
+    """Verify Gap S2 eliminates full-cluster get_nodes() deepcopies on steady-state
+    production ticks (even with pending_idle_timeout_s enabled), preserves over-cap
+    placeholder trimming and reconciler_rem+align caps, and isolates all mutable
+    SchedulingNode fields in __deepcopy__ (including _placed_gangs)."""
+    from ray.autoscaler.v2.schema import IPPRGroupSpec, IPPRStatus
+
+    cfgs = {
+        "head": NodeTypeConfig(
+            name="head",
+            resources={"CPU": 0},
+            min_worker_nodes=0,
+            max_worker_nodes=0,
+        ),
+        "v6e-16": NodeTypeConfig(
+            name="v6e-16",
+            resources={"CPU": 8, "TPU": 4, "TPU-v6e-16-head": 1},
+            min_worker_nodes=0,
+            max_worker_nodes=160,
+            idle_timeout_s=300.0,
+            labels={_ACC: "TPU-V6E", _TOPO: "4x4"},
+            runtime_label_keys=(_SLICE, _WID),
+            replica_config=WorkerReplicaConfig(
+                workers_per_replica=4,
+                domain_label_key=_SLICE,
+                domain_exclusive=True,
+                worker_index_label_key=_WID,
+                head_resources=("TPU-v6e-16-head",),
+            ),
+        ),
+    }
+    hnid = b"h".ljust(28, b"0")
+    instances = [
+        make_autoscaler_instance(
+            im_instance=Instance(
+                instance_id="im-head",
+                instance_type="head",
+                status=Instance.RAY_RUNNING,
+                node_id=hnid.hex(),
+                cloud_instance_id="pod-head",
+                node_kind=NodeKind.HEAD,
+            ),
+            ray_node=NodeState(
+                node_id=hnid,
+                instance_id="pod-head",
+                ray_node_type_name="head",
+                status=NodeStatus.RUNNING,
+                total_resources={"CPU": 0.0},
+                available_resources={"CPU": 0.0},
+            ),
+            cloud_instance_id="pod-head",
+        )
+    ]
+    for s in range(30):
+        sname = f"slice-{s:02d}"
+        for w in range(4):
+            nid = f"n-{s:02d}-{w}".encode().ljust(28, b"0")
+            cid = f"pod-{s:02d}-{w}"
+            inst = make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_id=f"im-{cid}",
+                    instance_type="v6e-16",
+                    status=Instance.RAY_RUNNING,
+                    node_id=nid.hex(),
+                    cloud_instance_id=cid,
+                    node_kind=NodeKind.WORKER,
+                ),
+                ray_node=NodeState(
+                    node_id=nid,
+                    instance_id=cid,
+                    ray_node_type_name="v6e-16",
+                    status=NodeStatus.RUNNING,
+                    total_resources={"CPU": 8.0, "TPU": 4.0},
+                    available_resources={"CPU": 4.0, "TPU": 0.0},
+                    idle_duration_ms=0,
+                    labels={
+                        _ACC: "TPU-V6E",
+                        _TOPO: "4x4",
+                        _SLICE: sname,
+                        _WID: str(w),
+                    },
+                ),
+                cloud_instance_id=cid,
+            )
+            inst.cloud_instance_replica_id = sname
+            instances.append(inst)
+
+    real_get_nodes = ResourceDemandScheduler.ScheduleContext.get_nodes
+    get_nodes_calls = []
+
+    def _spy_get_nodes(self_ctx):
+        get_nodes_calls.append(1)
+        return real_get_nodes(self_ctx)
+
+    monkeypatch.setattr(
+        ResourceDemandScheduler.ScheduleContext, "get_nodes", _spy_get_nodes
+    )
+    sched = ResourceDemandScheduler()
+    rep = sched.schedule(
+        SchedulingRequest(
+            node_type_configs=cfgs,
+            max_num_nodes=161,
+            idle_timeout_s=300.0,
+            pending_idle_timeout_s=900.0,
+            disable_launch_config_check=True,
+            current_instances=instances,
+        )
+    )
+    assert rep.to_launch == []
+    assert rep.to_terminate == []
+    assert len(get_nodes_calls) == 0
+    monkeypatch.setattr(
+        ResourceDemandScheduler.ScheduleContext, "get_nodes", real_get_nodes
+    )
+
+    # SchedulingNode.__deepcopy__ must isolate every mutable field including _placed_gangs.
+    g1 = _tpu_gang((0, 1, 2, 3), pod_type="v6e-16")
+    g2 = _tpu_gang((0, 1, 2, 3), pod_type="v6e-16")
+    tr = TerminationRequest(
+        id="t1",
+        instance_id="im-1",
+        instance_type="v6e-16",
+        cause=TerminationRequest.Cause.IDLE,
+        details="orig",
+    )
+    orig = SchedulingNode(
+        node_type="v6e-16",
+        total_resources={"CPU": 8.0, "TPU": 4.0},
+        available_resources={"CPU": 8.0, "TPU": 4.0},
+        labels={_SLICE: "s0", _WID: "0"},
+        status=SchedulingNodeStatus.SCHEDULABLE,
+        im_instance_id="im-1",
+        im_instance_status=Instance.RAY_RUNNING,
+        termination_request=tr,
+    )
+    orig.ippr_status = IPPRStatus(
+        cloud_instance_id="p0",
+        spec=IPPRGroupSpec(
+            min_cpu=4, max_cpu=16, min_memory=1024, max_memory=4096, resize_timeout=60
+        ),
+        current_cpu=8,
+        current_memory=2048,
+        desired_cpu=8,
+        desired_memory=2048,
+    )
+    orig._placed_gangs.append(g1)
+    orig.sched_requests[ResourceRequestSource.PENDING_DEMAND].append(
+        ResourceRequest(resources_bundle={"CPU": 1.0})
+    )
+
+    cloned = copy.deepcopy(orig)
+    cloned.total_resources["CPU"] = 99.0
+    cloned.available_resources_for_sched[ResourceRequestSource.PENDING_DEMAND][
+        "TPU"
+    ] = 0.0
+    cloned.sched_requests[ResourceRequestSource.PENDING_DEMAND].append(
+        ResourceRequest(resources_bundle={"CPU": 2.0})
+    )
+    cloned.labels[_SLICE] = "mutated"
+    cloned.ippr_status.desired_cpu = 16
+    cloned.termination_request.details = "mutated"
+    cloned._placed_gangs.append(g2)
+
+    assert orig.total_resources["CPU"] == 8.0
+    assert (
+        orig.available_resources_for_sched[ResourceRequestSource.PENDING_DEMAND]["TPU"]
+        == 4.0
+    )
+    assert len(orig.sched_requests[ResourceRequestSource.PENDING_DEMAND]) == 1
+    assert orig.labels[_SLICE] == "s0"
+    assert orig.ippr_status.desired_cpu == 8
+    assert orig.termination_request.details == "orig"
+    assert orig._placed_gangs == [g1]
 
 
 if __name__ == "__main__":

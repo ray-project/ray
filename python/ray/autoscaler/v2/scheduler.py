@@ -6,7 +6,7 @@ import time
 import uuid
 from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
@@ -464,6 +464,29 @@ class SchedulingNode:
         self._placed_gangs: List[GangResourceRequest] = []
         self._gang_req_cnt: int = 0
         self._sched_mark_len: int = 0
+
+    def __deepcopy__(self, memo: Dict[int, object]) -> "SchedulingNode":
+        cls = self.__class__
+        out = cls.__new__(cls)
+        memo[id(self)] = out
+        d = out.__dict__
+        d.update(self.__dict__)
+        d["total_resources"] = dict(self.total_resources)
+        d["available_resources_for_sched"] = {
+            k: dict(v) for k, v in self.available_resources_for_sched.items()
+        }
+        d["sched_requests"] = defaultdict(
+            list, ((k, list(v)) for k, v in self.sched_requests.items())
+        )
+        d["labels"] = dict(self.labels)
+        d["_placed_gangs"] = list(self._placed_gangs)
+        if getattr(self, "ippr_status", None) is not None:
+            d["ippr_status"] = replace(self.ippr_status)
+        if self.termination_request is not None:
+            tr = TerminationRequest()
+            tr.CopyFrom(self.termination_request)
+            d["termination_request"] = tr
+        return out
 
     def get_available_resources(self, resource_request_source: ResourceRequestSource):
         """Get the available resources for the given resource request source."""
@@ -1487,49 +1510,100 @@ class _GangSearch:
         )
 
     def _consider(
-        self, nodes: List[SchedulingNode], target_domain: str, prior_score: float = 0.0
+        self,
+        nodes: Optional[List[SchedulingNode]],
+        target_domain: str,
+        prior_score: float = 0.0,
+        added: Optional[List[SchedulingNode]] = None,
+        replaced: Optional[List[SchedulingNode]] = None,
     ) -> bool:
         label_score_fn = ResourceDemandScheduler._node_label_score
-        domain_nodes = [
-            n
-            for n in nodes
-            if n.labels.get(self.locality_label) == target_domain
-            and n.status != SchedulingNodeStatus.TO_TERMINATE
-        ]
-        num_to_launch = len(nodes) - len(self.all_nodes)
-        used_pending = (
-            sum(
+        if added is not None and replaced is not None:
+            domain_nodes = [
+                n
+                for n in added
+                if n.labels.get(self.locality_label) == target_domain
+                and n.status != SchedulingNodeStatus.TO_TERMINATE
+                and not n.is_leaving
+            ]
+            num_to_launch = len(added) - len(replaced)
+            used_pending = sum(
                 not n.is_running
                 and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
-                for n in nodes
+                for n in added
+            ) - sum(
+                not n.is_running
+                and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+                for n in replaced
             )
-            - self.orig_used_pending
-        )
+            used_placeholders = sum(
+                n._is_backfill_placeholder
+                and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+                for n in added
+            ) - sum(
+                n._is_backfill_placeholder
+                and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+                for n in replaced
+            )
+            launch_neg_rank = (0.0, 0, 0.0)
+            if num_to_launch > 0:
+                launched = Counter(
+                    n.node_type
+                    for n in added
+                    if n.status == SchedulingNodeStatus.TO_LAUNCH
+                ) - Counter(
+                    n.node_type
+                    for n in replaced
+                    if n.status == SchedulingNodeStatus.TO_LAUNCH
+                )
+                launch_neg_rank = tuple(
+                    -x for x in min(map(self.node_type_rank, launched))
+                )
+        else:
+            assert nodes is not None
+            domain_nodes = [
+                n
+                for n in nodes
+                if n.labels.get(self.locality_label) == target_domain
+                and n.status != SchedulingNodeStatus.TO_TERMINATE
+                and not n.is_leaving
+            ]
+            num_to_launch = len(nodes) - len(self.all_nodes)
+            used_pending = (
+                sum(
+                    not n.is_running
+                    and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+                    for n in nodes
+                )
+                - self.orig_used_pending
+            )
+            used_placeholders = (
+                sum(
+                    n._is_backfill_placeholder
+                    and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+                    for n in nodes
+                )
+                - self.orig_used_placeholders
+            )
+            launch_neg_rank = (0.0, 0, 0.0)
+            if num_to_launch > 0:
+                launched = (
+                    Counter(
+                        n.node_type
+                        for n in nodes
+                        if n.status == SchedulingNodeStatus.TO_LAUNCH
+                    )
+                    - self.orig_to_launch
+                )
+                launch_neg_rank = tuple(
+                    -x for x in min(map(self.node_type_rank, launched))
+                )
         label_score = (
             math.fsum(label_score_fn(n) for n in domain_nodes) - prior_score
             if self.max_label_score
             else 0.0
         )
         has_running = any(n.is_running for n in domain_nodes)
-        launch_neg_rank = (0.0, 0, 0.0)
-        if num_to_launch > 0:
-            launched = (
-                Counter(
-                    n.node_type
-                    for n in nodes
-                    if n.status == SchedulingNodeStatus.TO_LAUNCH
-                )
-                - self.orig_to_launch
-            )
-            launch_neg_rank = tuple(-x for x in min(map(self.node_type_rank, launched)))
-        used_placeholders = (
-            sum(
-                n._is_backfill_placeholder
-                and bool(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
-                for n in nodes
-            )
-            - self.orig_used_placeholders
-        )
         tail = (
             launch_neg_rank,
             used_placeholders,
@@ -1549,6 +1623,12 @@ class _GangSearch:
             else:
                 is_better = tail < best_tail
         if is_better:
+            if nodes is None:
+                assert added is not None and replaced is not None
+                rep_ids = {id(n) for n in replaced}
+                nodes = [n for n in self.all_nodes if id(n) not in rep_ids] + list(
+                    added
+                )
             self.best = ((num_to_launch, label_score, tail), nodes)
         return (
             num_to_launch == 0
@@ -1647,7 +1727,8 @@ class _GangSearch:
         requests: List[ResourceRequest],
         locality_label: str,
         domain_val: str,
-    ) -> Optional[List[SchedulingNode]]:
+        return_delta: bool = False,
+    ):
         """Schedule `requests` within a single dynamic domain and any booting
         `pending_siblings` without launching new nodes. Returns the updated node
         list, or None if the gang does not fit."""
@@ -1683,6 +1764,8 @@ class _GangSearch:
                     else 0.0
                 )
                 if ls_run >= max_ls - _LABEL_SCORE_TOL:
+                    if return_delta:
+                        return cand_run, list(replaced)
                     rep_ids = {id(n) for n in replaced}
                     return [n for n in all_nodes if id(n) not in rep_ids] + cand_run
                 run_fit = (cand_run, ls_run)
@@ -1730,6 +1813,8 @@ class _GangSearch:
                 _GangSearch._restore_unused_sibling_labels(scheduled, locality_label)
         if infeasible:
             return None
+        if return_delta:
+            return scheduled, list(replaced)
         rep_ids = {id(n) for n in replaced}
         return [n for n in all_nodes if id(n) not in rep_ids] + scheduled
 
@@ -1952,8 +2037,28 @@ class _GangSearch:
     ) -> bool:
         """Evaluate existing domains and launch candidates; return True on optimal hit."""
         label_score_fn = ResourceDemandScheduler._node_label_score
-        seen_pending_domain_sigs: Set[Tuple] = set()
-        failed_dynamic_sigs: Set[Tuple] = set()
+        seen_domain_sigs: Set[Tuple] = set()
+        uniform_in_keys: Optional[Tuple[str, ...]] = None
+        if self.requests and all(
+            len(r.label_selectors) <= 1 and not r.placement_constraints
+            for r in self.requests
+        ):
+            req_key_sets = set()
+            valid_in = True
+            for r in self.requests:
+                if r.label_selectors:
+                    cs = r.label_selectors[0].label_constraints
+                    if any(
+                        c.operator != _LABEL_OPERATOR_IN or len(c.label_values) != 1
+                        for c in cs
+                    ):
+                        valid_in = False
+                        break
+                    req_key_sets.add(tuple(sorted(c.label_key for c in cs)))
+                else:
+                    req_key_sets.add(())
+            if valid_in and len(req_key_sets) == 1:
+                uniform_in_keys = next(iter(req_key_sets))
 
         for domain_val, cand_nodes, cand_originals in [
             (dom_val, [], []) for dom_val in existing_domains
@@ -1966,16 +2071,6 @@ class _GangSearch:
                     if cand_nodes
                     else (self.domains[domain_val], self.domains[domain_val])
                 )
-                is_pending_domain = not cand_nodes and domain_val.startswith(
-                    _PENDING_DOMAIN_PREFIX
-                )
-                if is_pending_domain:
-                    pending_sig = ResourceDemandScheduler._pending_domain_signature(
-                        domain_nodes, self.locality_label
-                    )
-                    if pending_sig in seen_pending_domain_sigs:
-                        continue
-                    seen_pending_domain_sigs.add(pending_sig)
                 pending_siblings = (
                     []
                     if cand_nodes
@@ -1996,19 +2091,39 @@ class _GangSearch:
                     )
                 ):
                     continue
-                dynamic_sig: Optional[Tuple] = None
                 if (
                     not cand_nodes
-                    and not is_pending_domain
-                    and not self.pinned
                     and not pending_siblings
-                    and not self.requests_ref_locality
+                    and (
+                        domain_val.startswith(_PENDING_DOMAIN_PREFIX)
+                        or (not self.pinned and not self.requests_ref_locality)
+                    )
                 ):
-                    dynamic_sig = ResourceDemandScheduler._pending_domain_signature(
+                    raw_sig = ResourceDemandScheduler._pending_domain_signature(
                         domain_nodes, self.locality_label
                     )
-                    if dynamic_sig in failed_dynamic_sigs:
+                    use_multiset = False
+                    if uniform_in_keys is not None:
+                        if len(self.shapes) <= 1:
+                            use_multiset = True
+                        else:
+                            seen_cls: Dict[Tuple, Tuple] = {}
+                            use_multiset = True
+                            for dn, nsig in zip(domain_nodes, raw_sig):
+                                cls_k = tuple(dn.labels.get(k) for k in uniform_in_keys)
+                                prev_sig = seen_cls.get(cls_k)
+                                if prev_sig is not None and prev_sig != nsig:
+                                    use_multiset = False
+                                    break
+                                seen_cls[cls_k] = nsig
+                    domain_sig = (
+                        (True, frozenset(Counter(raw_sig).items()))
+                        if use_multiset
+                        else (False, raw_sig)
+                    )
+                    if domain_sig in seen_domain_sigs:
                         continue
+                    seen_domain_sigs.add(domain_sig)
                 prior_score = (
                     math.fsum(
                         label_score_fn(n)
@@ -2017,7 +2132,7 @@ class _GangSearch:
                     if self.max_label_score
                     else 0.0
                 )
-                nodes = _GangSearch.schedule_in_domain(
+                dom_res = _GangSearch.schedule_in_domain(
                     self.gang_ctx,
                     self.all_nodes,
                     domain_nodes,
@@ -2026,10 +2141,12 @@ class _GangSearch:
                     self.requests,
                     self.locality_label,
                     domain_val,
+                    return_delta=True,
                 )
-                if nodes is None and dynamic_sig is not None:
-                    failed_dynamic_sigs.add(dynamic_sig)
-                if nodes is not None and cand_nodes:
+                if dom_res is None:
+                    continue
+                added_nodes, replaced_nodes = dom_res
+                if cand_nodes:
                     cand_nt = cand_nodes[-1].node_type
                     used_refill = sum(
                         1
@@ -2040,9 +2157,21 @@ class _GangSearch:
                         self.gang_ctx.get_unbacked_refill_gap(cand_nt) - used_refill
                     )
                     if rem_rg > 0:
-                        nodes = nodes + self.gang_ctx.make_refill_nodes(
-                            cand_nt, rem_rg, live_nodes=nodes
+                        rep_ids = {id(n) for n in replaced_nodes}
+                        live_preview = [
+                            n for n in self.all_nodes if id(n) not in rep_ids
+                        ] + added_nodes
+                        added_nodes = added_nodes + self.gang_ctx.make_refill_nodes(
+                            cand_nt, rem_rg, live_nodes=live_preview
                         )
+                if self._consider(
+                    None,
+                    domain_val,
+                    prior_score,
+                    added=added_nodes,
+                    replaced=replaced_nodes,
+                ):
+                    return True
             else:
                 prior_score = (
                     math.fsum(
@@ -2050,6 +2179,7 @@ class _GangSearch:
                         for n in self.all_nodes
                         if n.labels.get(self.locality_label) == domain_val
                         and n.status != SchedulingNodeStatus.TO_TERMINATE
+                        and not n.is_leaving
                     )
                     if self.max_label_score
                     else 0.0
@@ -2069,11 +2199,8 @@ class _GangSearch:
                 nodes, infeasible = ResourceDemandScheduler._try_schedule(
                     self.gang_ctx, domain_reqs, ResourceRequestSource.PENDING_DEMAND
                 )
-                if infeasible:
-                    nodes = None
-
-            if nodes is not None and self._consider(nodes, domain_val, prior_score):
-                return True
+                if not infeasible and self._consider(nodes, domain_val, prior_score):
+                    return True
         return False
 
     def evaluate_shared_domains_with_launches(
@@ -6633,10 +6760,33 @@ class ResourceDemandScheduler(IResourceScheduler):
         )
 
         # Schedule the tasks/actor resource requests
-        infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
-            ctx,
-            ResourceRequestUtil.ungroup_by_count(request.resource_requests),
-        )
+        if request.resource_requests or any(
+            n.ippr_status is not None and n.ippr_status.is_in_progress()
+            for n in ctx.peek_nodes()
+        ):
+            infeasible_requests = ResourceDemandScheduler._sched_resource_requests(
+                ctx,
+                ResourceRequestUtil.ungroup_by_count(request.resource_requests),
+            )
+        else:
+            infeasible_requests = []
+            peek_nodes = ctx.peek_nodes()
+            sched_peek = [
+                n
+                for n in peek_nodes
+                if n.status != SchedulingNodeStatus.TO_TERMINATE
+                and not n._is_draining_replica
+                and n.im_instance_status != Instance.RAY_RUNNING
+            ]
+            if sched_peek and len(sched_peek) < len(peek_nodes):
+                exh_peek = [
+                    n
+                    for n in peek_nodes
+                    if n.status == SchedulingNodeStatus.TO_TERMINATE
+                    or n._is_draining_replica
+                    or n.im_instance_status == Instance.RAY_RUNNING
+                ]
+                ctx.update(sched_peek + exh_peek)
 
         # Pending nodes not needed by the resource demands are considered idle.
         if ctx.get_pending_idle_timeout_s() is not None:
@@ -6704,7 +6854,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ctx: "ResourceDemandScheduler.ScheduleContext",
     ) -> None:
         """Enforce the max number of workers for each node type."""
-        all_nodes = ctx.get_nodes()
+        all_nodes = ctx.peek_nodes()
 
         non_terminating_nodes_by_type = defaultdict(list)
         terminating_nodes = []
@@ -6766,7 +6916,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ctx: "ResourceDemandScheduler.ScheduleContext",
     ) -> None:
         """Enforce the max number of workers for the entire cluster."""
-        all_nodes = ctx.get_nodes()
+        all_nodes = ctx.peek_nodes()
 
         terminating_nodes = []
         non_terminating_nodes = []
@@ -6890,6 +7040,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         if not _over_cap():
             return [], nodes
 
+        nodes = [copy.deepcopy(n) for n in nodes]
         head_node = None
         worker_nodes = list(nodes)
         for i, node in enumerate(worker_nodes):
@@ -7009,6 +7160,16 @@ class ResourceDemandScheduler(IResourceScheduler):
         # incomplete replicas recreated by the cluster manager).
         count_by_node_type = ctx.get_cluster_shape()
         missing_backfill = ctx.get_missing_replica_backfill_slots()
+        if not any(
+            (
+                count_by_node_type.get(nt, 0)
+                + missing_backfill.get(nt, 0)
+                + ctx.get_unattributed_open_slots(nt)
+            )
+            < cfg.min_worker_nodes
+            for nt, cfg in ctx.get_node_type_configs().items()
+        ):
+            return
         existing_nodes = ctx.get_nodes()
 
         new_nodes = []
@@ -7610,6 +7771,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     n.status,
                     n.is_running,
                     n._is_backfill_placeholder,
+                    n._is_draining_replica,
                     tuple(sorted(n.total_resources.items())),
                     tuple(
                         sorted(
@@ -8598,11 +8760,43 @@ class ResourceDemandScheduler(IResourceScheduler):
         Args:
             ctx: The schedule context.
         """
-        nodes = ctx.get_nodes()
-
         if ctx.is_launch_config_check_disabled():
             # Outdated nodes check through launch config check is disabled.
             return
+
+        nt_configs = ctx.get_node_type_configs()
+        has_outdated_worker = any(
+            n.status == SchedulingNodeStatus.SCHEDULABLE
+            and not n._is_backfill_placeholder
+            and n.node_kind != NodeKind.HEAD
+            and (
+                nt_configs.get(n.node_type) is None
+                or (
+                    n.is_running
+                    and bool(nt_configs[n.node_type].launch_config_hash)
+                    and nt_configs[n.node_type].launch_config_hash
+                    != n.launch_config_hash
+                )
+            )
+            for n in ctx.peek_nodes()
+        )
+        if not has_outdated_worker:
+            for n in ctx.peek_nodes():
+                if (
+                    n.status == SchedulingNodeStatus.SCHEDULABLE
+                    and not n._is_backfill_placeholder
+                    and n.node_kind == NodeKind.HEAD
+                ):
+                    logger.warning(
+                        f"Head node {n.im_instance_id}(ray={n.ray_node_id}) is "
+                        "outdated with node config changes. "
+                        "Please check the node's config or restart the cluster or restart "
+                        "the head node. Autoscaler is not able to shutdown the outdated "
+                        "head node"
+                    )
+            return
+
+        nodes = ctx.get_nodes()
 
         def _mark_outdated(target: SchedulingNode) -> None:
             target.status = SchedulingNodeStatus.TO_TERMINATE
@@ -8679,6 +8873,14 @@ class ResourceDemandScheduler(IResourceScheduler):
         replica_sizes = ctx.get_multihost_replica_sizes()
         if not replica_sizes:
             return
+        if not any(
+            n.node_type in replica_sizes
+            and n.node_kind != NodeKind.HEAD
+            and n.status == SchedulingNodeStatus.SCHEDULABLE
+            and n.im_instance_status == Instance.QUEUED
+            for n in ctx.peek_nodes()
+        ):
+            return
         nodes = ctx.get_nodes()
         canceled = False
         for node_type, size in replica_sizes.items():
@@ -8733,6 +8935,19 @@ class ResourceDemandScheduler(IResourceScheduler):
             ctx: The schedule context, after all resource demands are scheduled.
         """
         now_s = time.monotonic()
+        peek_nodes = ctx.peek_nodes()
+        if not any(
+            n.status == SchedulingNodeStatus.SCHEDULABLE
+            and not n._is_backfill_placeholder
+            and n.node_kind != NodeKind.HEAD
+            and n.im_instance_status
+            in ResourceDemandScheduler.PENDING_TERMINABLE_STATUSES
+            and not any(n.sched_requests.values())
+            for n in peek_nodes
+        ):
+            self._pending_unneeded_since_s = {}
+            self._pending_node_since_s = {}
+            return
         nodes = ctx.get_nodes()
         node_type_configs = ctx.get_node_type_configs()
         replica_sizes = ctx.get_multihost_replica_sizes()
@@ -8920,7 +9135,7 @@ class ResourceDemandScheduler(IResourceScheduler):
         ctx: "ResourceDemandScheduler.ScheduleContext",
     ) -> None:
         """Drop the idle durations taken by the pending nodes being idle terminated."""
-        for node in ctx.get_nodes():
+        for node in ctx.peek_nodes():
             if (
                 not node._is_sub_replica_queued_canceled
                 and node.termination_request is not None
@@ -9370,8 +9585,14 @@ class ResourceDemandScheduler(IResourceScheduler):
     ) -> None:
         """Enforce idle termination for nodes not needed by demands or constraints.
         Multi-worker replica node types terminate only as whole idle replicas."""
-        count_by_node_type = ctx.get_cluster_shape()
         node_type_configs = ctx.get_node_type_configs()
+        if not any(
+            ResourceDemandScheduler._idle_timeout_for_node(n, ctx, node_type_configs)
+            is not None
+            for n in ctx.peek_nodes()
+        ):
+            return
+        count_by_node_type = ctx.get_cluster_shape()
         replica_sizes = ctx.get_multihost_replica_sizes()
         pinned_domains = ctx.get_pinned_domains()
         terminate_nodes_by_type: Dict[NodeType, int] = defaultdict(int)
