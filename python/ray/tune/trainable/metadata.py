@@ -63,12 +63,15 @@ class _TrainingRunMetadata:
                 self.metric_n_steps[metric][str(n)] = deque([value], maxlen=n)
         else:
             step = step or 1
-            self.metric_analysis[metric]["max"] = max(
-                value, self.metric_analysis[metric]["max"]
-            )
-            self.metric_analysis[metric]["min"] = min(
-                value, self.metric_analysis[metric]["min"]
-            )
+            # A NaN value must not replace max/min: `max(nan, x)` returns nan, and
+            # the next finite value would then overwrite the earlier best one.
+            if value == value:
+                self.metric_analysis[metric]["max"] = max(
+                    value, self.metric_analysis[metric]["max"]
+                )
+                self.metric_analysis[metric]["min"] = min(
+                    value, self.metric_analysis[metric]["min"]
+                )
             self.metric_analysis[metric]["avg"] = (
                 1 / step * (value + (step - 1) * self.metric_analysis[metric]["avg"])
             )
