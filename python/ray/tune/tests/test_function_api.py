@@ -235,6 +235,22 @@ class FunctionApiTest(unittest.TestCase):
         self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4)
         self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8)
 
+    def testReturnAnonymousZero(self):
+        def train_fn(config):
+            return config["a"] ** 2
+
+        analysis = tune.run(
+            train_fn,
+            config={"a": tune.grid_search([-1, 0, 2])},
+            metric=DEFAULT_METRIC,
+            mode="min",
+        )
+
+        self.assertEqual(
+            [t.last_result.get(DEFAULT_METRIC) for t in analysis.trials], [1, 0, 4]
+        )
+        self.assertEqual(analysis.best_config["a"], 0)
+
     def testReturnSpecific(self):
         def train_fn(config):
             return {"m": config["a"]}
@@ -257,6 +273,16 @@ class FunctionApiTest(unittest.TestCase):
 
         self.assertEqual(trial_1.last_result[DEFAULT_METRIC], 4 + 9)
         self.assertEqual(trial_2.last_result[DEFAULT_METRIC], 8 + 9)
+
+    def testYieldAnonymousZero(self):
+        def train_fn(config):
+            for i in range(3):
+                yield config["a"] + i
+
+        (trial,) = tune.run(train_fn, config={"a": 0}).trials
+
+        self.assertEqual(trial.last_result[DEFAULT_METRIC], 2)
+        self.assertEqual(trial.last_result[TRAINING_ITERATION], 3)
 
     def testYieldSpecific(self):
         def train_fn(config):
