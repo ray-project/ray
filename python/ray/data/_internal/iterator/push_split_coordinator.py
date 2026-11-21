@@ -44,9 +44,6 @@ Overview::
 
 This module holds the coordinator; the consumer side lives in
 ``push_split_iterator.py``.
-
-In the next PRs: stats/metrics export, locality-aware pushing, mid-epoch
-consumer replacement.
 """
 
 import collections
@@ -599,7 +596,8 @@ class PushSplitCoordinator:
         except StopIteration:
             if not stop.is_set():
                 logger.debug(
-                    f"Split {split_idx} epoch {epoch_id} exhausted; sending EOF."
+                    f"Split {split_idx} epoch {epoch_id} finished, dispatched "
+                    f"{flow.rows_pushed} rows; sending EOF."
                 )
                 # EOF is sequenced too, so it cannot overtake blocks that
                 # are still fetching their args.
@@ -609,7 +607,10 @@ class PushSplitCoordinator:
             return
         except Exception as e:
             if not stop.is_set():
-                logger.warning(f"Split {split_idx} epoch {epoch_id} pusher failed: {e}")
+                logger.warning(
+                    f"Split {split_idx} epoch {epoch_id} pusher failed after "
+                    f"{flow.rows_pushed} rows: {e}"
+                )
                 try:
                     error = _ExecutorError(e)
                     consumer._push_split_deliver_error.remote(key, epoch_id, error)
