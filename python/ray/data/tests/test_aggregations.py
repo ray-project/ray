@@ -174,9 +174,15 @@ class TestMissingValuePercentage:
         self, series, expected_acc
     ):
         """Pandas object columns with np.nan and nullable extension dtypes with pd.NA."""
+        from ray.data.block import BlockAccessor
+
         agg = MissingValuePercentage(on="value")
         block = pd.DataFrame({"value": series})
         assert agg.aggregate_block(block) == expected_acc
+        assert (
+            agg.aggregate_block(BlockAccessor.for_block(block).to_arrow())
+            == expected_acc
+        )
 
     def test_missing_value_percentage_combine_column_and_output_field(self):
         """Vectorized _combine_column must match pairwise combine and handle nulls."""

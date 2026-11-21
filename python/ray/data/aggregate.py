@@ -33,6 +33,7 @@ from ray.data._internal.arrow_aggregation import (
     sum_spec,
     zero_pct_spec,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import is_null
 from ray.data.block import (
     AggType,
@@ -1596,7 +1597,11 @@ def _combine_two_element_accumulator_column(
     combine_fn: Callable[[List[int], List[int]], List[int]],
 ) -> List[int]:
     if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
-        non_null = pc.drop_null(accumulator_col)
+        non_null = (
+            pc.drop_null(accumulator_col)
+            if accumulator_col.null_count
+            else accumulator_col
+        )
         if len(non_null) == 0:
             return [0, 0]
         flat = pc.list_flatten(non_null).to_numpy(zero_copy_only=False)
@@ -1669,9 +1674,13 @@ class MissingValuePercentage(VectorizedAggregateFnV2[List[int], float]):
 
         arrow_compatible = column_accessor._to_arrow_compatible_container()
         if isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
-            null_count = (
-                pc.sum(pc.is_null(arrow_compatible, nan_is_null=True)).as_py() or 0
-            )
+            if isinstance(arrow_compatible.type, ArrowPythonObjectType):
+                null_count = int(arrow_compatible.to_pandas().isna().sum())
+            else:
+                null_count = (
+                    pc.sum(pc.is_null(arrow_compatible, nan_is_null=True)).as_py()
+                    or 0
+                )
         else:
             non_null_count = int(column_accessor.count(ignore_nulls=True) or 0)
             null_count = total_count - non_null_count
