@@ -269,7 +269,7 @@ multi-app config of format `ServeDeploySchema`. If you are using the REST API, y
 the multi-app API endpoint `/api/serve/applications/`.
 ```
 
-To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify `rayVersion` which has no effect when the Ray version is 2.0.0 or later to 2.100.0. This will trigger a new RayCluster preparation instead of an in-place update.
+To resolve this issue, you can replace `serveConfig` with `serveConfigV2` and modify another field in `spec.rayClusterConfig`, such as a resource limit. This will trigger a new RayCluster preparation instead of an in-place update.
 
 If, after following the steps above, you still see the error message and GCS fault tolerance is enabled, it may be due to the `ray.io/external-storage-namespace` annotation being the same for both old and new RayClusters. You can remove the annotation and KubeRay will automatically generate a unique key for each RayCluster custom resource. See [kuberay#1297](https://github.com/kuberay-project/kuberay/issues/1297) for more details.
 
