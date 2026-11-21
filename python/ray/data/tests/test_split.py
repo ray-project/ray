@@ -976,6 +976,83 @@ def test_streaming_train_test_split_wrong_params(
         )
 
 
+@pytest.mark.parametrize("replicate", [False, True])
+def test_streaming_split_downstream_capacity(
+    ray_start_regular_shared_2_cpus, replicate
+):
+    ds = ray.data.range(16, override_num_blocks=16)
+    readers = (
+        ds.streaming_split(1, consumers_per_split=2)
+        if replicate
+        else ds.streaming_split(2)
+    )
+    coord = readers[0]._coord_actor
+    epoch, _ = ray.get([coord.start_epoch.remote(i) for i in range(2)], timeout=30)
+
+    def get(slot, window_bytes=0):
+        return ray.get(coord.get.remote(epoch, slot, window_bytes), timeout=30)
+
+    def capacity():
+        return ray.get(
+            coord.__ray_call__.remote(lambda c: c._get_total_prefetched_bytes())
+        )
+
+    try:
+        first, second = get(0), get(1)
+        block_bytes = first.size_bytes()
+        assert second.size_bytes() == block_bytes
+        assert (first.block_refs == second.block_refs) == replicate
+        get(0, block_bytes)
+        get(1, block_bytes)
+        assert capacity() == block_bytes * (1 if replicate else 2)
+
+        # Reader 1 advances by one block. Its window is now disjoint from 0's.
+        get(1, block_bytes)
+        assert capacity() == 2 * block_bytes
+        # Reader 0 holds its first two blocks. Its second overlaps 1's if replicated.
+        get(0, 2 * block_bytes)
+        assert capacity() == block_bytes * (2 if replicate else 3)
+    finally:
+        ray.get([coord.notify_split_finished.remote(epoch, i) for i in range(2)])
+
+
+@pytest.mark.parametrize("failure", [None, StopIteration, RuntimeError])
+def test_late_split_get_does_not_change_next_epoch(
+    ray_start_regular_shared_2_cpus, failure
+):
+    (reader,) = ray.data.range(8, override_num_blocks=8).streaming_split(1)
+
+    def check(coord):
+        epoch = coord.start_epoch(0)
+        old_get = coord._output_iterator.get_next
+
+        def finish_during_get(slot):
+            bundle = old_get(slot)
+            # The reader exits and the next epoch starts while the get is in flight.
+            coord.notify_split_finished(epoch, slot)
+            new_epoch = coord.start_epoch(slot)
+            first = coord.get(new_epoch, slot)
+            coord.get(new_epoch, slot, first.size_bytes())
+            if failure is not None:
+                raise failure("late read")
+            return bundle
+
+        with patch.object(coord._output_iterator, "get_next", finish_during_get):
+            if failure is RuntimeError:
+                with pytest.raises(RuntimeError, match="late read"):
+                    coord.get(epoch, 0)
+            else:
+                assert coord.get(epoch, 0) is None
+
+        assert coord._num_rows_dispatched[0] == 2
+        assert coord.get_client_prefetched_bytes() == {0: 8}
+        with pytest.raises(ValueError, match="moved on to another epoch"):
+            coord.get(epoch, 0)
+        coord.notify_split_finished(coord._cur_epoch, 0)
+
+    ray.get(reader._coord_actor.__ray_call__.remote(check), timeout=30)
+
+
 def test_streaming_split_materialize_reports_to_executor(
     ray_start_regular_shared_2_cpus,
 ):
@@ -987,6 +1064,11 @@ def test_streaming_split_materialize_reports_to_executor(
     """
     (shard,) = ray.data.range(200, override_num_blocks=10).streaming_split(1)
     materialized = shard.materialize()
+    assert shard._iter_stats.iter_prefetched_bytes == materialized.size_bytes()
+
+    # Reading the materialized dataset must preserve the shard's progress.
+    assert len(materialized.take_all()) == 200
+    assert shard._iter_stats.iter_rows_total == 200
     assert shard._iter_stats.iter_prefetched_bytes == materialized.size_bytes()
 
     materialized_again = shard.materialize()

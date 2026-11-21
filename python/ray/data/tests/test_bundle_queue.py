@@ -1,3 +1,4 @@
+import weakref
 from typing import Any
 
 import pyarrow as pa
@@ -132,9 +133,13 @@ def test_add_and_remove_duplicates():
 
 def test_clear():
     queue = create_bundle_queue()
-    queue.add(_create_bundle("test1"))
+    bundle = _create_bundle("test1")
+    ref = weakref.ref(bundle)
+    queue.add(bundle)
+    del bundle
     queue.add(_create_bundle("test11"))
     queue.clear()
+    assert ref() is None
     assert len(queue) == 0
     assert queue.estimate_size_bytes() == 0
     assert queue.num_blocks() == 0

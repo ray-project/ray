@@ -2781,29 +2781,32 @@ class Dataset:
         self,
         n: int,
         *,
+        consumers_per_split: int = 1,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
     ) -> List[DataIterator]:
-        """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
-        be used to read disjoint subsets of the dataset in parallel.
+        """Stream ``n`` disjoint splits to one or more consumers per split.
 
         This method is the recommended way to consume :class:`Datasets <Dataset>` for
         distributed training.
 
         Streaming split works by delegating the execution of this :class:`Dataset` to a
         coordinator actor. The coordinator pulls block references from the executed
-        stream, and divides those blocks among ``n`` output iterators. Iterators pull
+        stream, and divides those blocks among ``n`` logical splits. Iterators pull
         blocks from the coordinator actor to return to their caller on ``next``.
 
-        The returned iterators are also repeatable; each iteration will trigger a
-        new execution of the Dataset. There is an implicit barrier at the start of
-        each iteration, which means that `next` must be called on all iterators before
-        the iteration starts.
+        Each epoch starts a new shared execution when all iterators begin
+        reading. After all consumers finish an epoch, you can pass the same
+        iterators to another group of the same size to read from the beginning.
 
         .. warning::
 
             Because iterators are pulling blocks from the same :class:`Dataset`
             execution, if one iterator falls behind, other iterators may be stalled.
+            A worker that permanently stops reading can stall the remaining readers.
+            With replicated splits, filling a batch on one logical split can require
+            buffering blocks for another beyond the object-store budget. Sustained
+            differences in rows consumed per step can stall a training barrier.
 
         Examples:
 
@@ -2813,12 +2816,21 @@ class Dataset:
 
             Consume data from iterators in parallel.
 
-            >>> @ray.remote
+            >>> @ray.remote(num_cpus=0)
             ... def consume(it):
             ...     for batch in it.iter_batches():
             ...         pass
             >>> ray.get([consume.remote(it1), consume.remote(it2)])
             [None, None]
+
+            Share one execution between two training trials with two workers
+            each. Workers with the same rank in each trial read the same split.
+
+            >>> a0, b0, a1, b1 = ds.streaming_split(2, consumers_per_split=2)
+            >>> trial_a, trial_b = (a0, a1), (b0, b1)
+            >>> ray.get([consume.remote(it) for trial in (trial_a, trial_b)
+            ...          for it in trial])
+            [None, None, None, None]
 
             You can loop over the iterators multiple times (multiple epochs).
 
@@ -2837,19 +2849,24 @@ class Dataset:
             >>> ray.get(train.remote(it1))  # doctest: +SKIP
 
         Args:
-            n: Number of output iterators to return.
+            n: Number of disjoint data splits.
+            consumers_per_split: Number of independent iterators receiving the same
+                blocks from each split. Assign each iterator to one consumer per epoch.
+                Values greater than one are experimental and require the default
+                Ray Data execution backend.
             equal: If ``True``, each output iterator sees an exactly equal number
                 of rows, dropping data if necessary. If ``False``, some iterators may
                 see slightly more or less rows than others, but no data is dropped.
-            locality_hints: Specify the node ids corresponding to each iterator
-                location. Dataset will try to minimize data movement based on the
-                iterator output locations. This list must have length ``n``. You can
+            locality_hints: Specify one preferred node id per logical split. Dataset
+                will try to minimize data movement based on those locations.
+                This list must have length ``n``. You can
                 get the current node id of a task or actor by calling
                 ``ray.get_runtime_context().get_node_id()``.
 
         Returns:
-            The output iterator splits. These iterators are Ray-serializable and can
-            be freely passed to any Ray task or actor.
+            A flat list of ``n * consumers_per_split`` Ray-serializable iterators.
+            Iterator ``split_id * consumers_per_split + consumer_id`` reads
+            logical split ``split_id`` and can be passed to a Ray task or actor.
 
         .. seealso::
 
@@ -2857,10 +2874,18 @@ class Dataset:
                 Unlike :meth:`~Dataset.streaming_split`, :meth:`~Dataset.split`
                 materializes the dataset in memory.
         """
+        if type(consumers_per_split) is not int or consumers_per_split < 1:
+            raise ValueError("consumers_per_split must be a positive integer")
         split_dataset = create_streaming_split_dataset(
-            self, n, equal=equal, locality_hints=locality_hints
+            self,
+            n,
+            equal=equal,
+            locality_hints=locality_hints,
+            consumers_per_split=consumers_per_split,
         )
-        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
+        return StreamSplitDataIterator.create(
+            split_dataset, n * consumers_per_split, locality_hints
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)

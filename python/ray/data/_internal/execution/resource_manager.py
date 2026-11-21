@@ -156,6 +156,21 @@ class ResourceManager:
         self._external_consumer_bytes = num_bytes
         self._has_external_consumer = True
 
+    def can_drain_for_replica(self, op: PhysicalOperator) -> bool:
+        """Admit one idle stage to fill a replica's batch within cluster limits."""
+        sink = self._topology[self._output_operator]
+        state = self._topology[op]
+        return (
+            sink.has_replicated_outputs
+            and op.num_active_tasks() == 0
+            and state.has_pending_bundles()
+            and not state.output_queue
+            and sink.has_replica_demand()
+            and self.get_global_usage()
+            .add(op.incremental_resource_usage())
+            .satisfies_limit(self.get_global_limits(), ignore_object_store_memory=True)
+        )
+
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
         return self._external_consumer_bytes
@@ -825,7 +840,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Return whether the given operator can submit a new task based on budget.
 
-        CPU/GPU/memory limits are always enforced. When only the object-store
+        Cluster CPU/GPU/memory limits are always enforced. A starving replica may
+        need an idle stage to run outside its operator share. When only the object-store
         output budget is exhausted, an idle operator holding queued input is
         allowed one task, so it drains what it holds instead of upstream being
         relaxed to push more into an already-full store.
@@ -836,7 +852,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return True
 
         if not op.incremental_resource_usage().satisfies_limit(budget):
-            return False
+            return self._resource_manager.can_drain_for_replica(op)
 
         # The estimate is None until the op's first output, so admit the task then.
         expected_output_bytes = (
@@ -861,9 +877,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         #       indefinitely, defeating object-store backpressure on the default
         #       path (see `test_input_backpressure_e2e`).
         #
-        # Pressure check first: it short-circuits on the default path, where the
-        # threshold is unset.
-        return (
+        return self._resource_manager.can_drain_for_replica(op) or (
             self._is_execution_object_store_under_pressure()
             and op.num_active_tasks() == 0
             and self._topology[op].total_enqueued_input_blocks() > 0

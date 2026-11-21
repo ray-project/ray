@@ -1,4 +1,5 @@
 import abc
+import copy
 import time
 import warnings
 from typing import (
@@ -280,6 +281,10 @@ class DataIterator(abc.ABC):
             **kwargs,
         )
 
+    def _to_batch_ref_bundle_iterator(self):
+        """Return blocks for batching; subclasses can omit empty deliveries."""
+        return self._to_ref_bundle_iterator()
+
     def _create_batch_source(self, **batch_iterator_kwargs) -> _BatchSource:
         """Start a pass over this iterator's data and wrap it in a
         BatchIterator.
@@ -288,7 +293,7 @@ class DataIterator(abc.ABC):
         Iterators whose data doesn't arrive as RefBundles override this
         instead.
         """
-        ref_bundles_iterator, stats, executor = self._to_ref_bundle_iterator()
+        ref_bundles_iterator, stats, executor = self._to_batch_ref_bundle_iterator()
 
         dataset_tags = self._get_dataset_tag()
 
@@ -1360,13 +1365,15 @@ class DataIterator(abc.ABC):
         ref_bundles = []
         for ref_bundle in ref_bundles_iter:
             stats.iter_prefetched_bytes += ref_bundle.size_bytes()
+            stats.iter_rows_total += ref_bundle.num_rows() or 0
             ref_bundles.append(ref_bundle)
         context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
             context,
         )
-        return MaterializedDataset(logical_plan, context, stats)
+        # Reads of this dataset can overlap the source iterator's next epoch.
+        return MaterializedDataset(logical_plan, context, copy.copy(stats))
 
 
 # Backwards compatibility alias.

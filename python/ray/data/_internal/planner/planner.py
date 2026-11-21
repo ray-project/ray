@@ -304,6 +304,7 @@ def plan_streaming_split_op(
     return OutputSplitter(
         physical_children[0],
         n=logical_op.num_splits,
+        consumers_per_split=logical_op.consumers_per_split,
         equal=logical_op.equal,
         data_context=data_context,
         locality_hints=logical_op.locality_hints,

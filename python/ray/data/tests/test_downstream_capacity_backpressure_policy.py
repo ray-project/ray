@@ -175,6 +175,7 @@ class TestDownstreamCapacityBackpressurePolicy:
     ):
         """Helper to create a resource manager mock with common settings."""
         rm = MagicMock()
+        rm.can_drain_for_replica.return_value = False
         # Bind real methods from ResourceManager
         rm.is_op_eligible = types.MethodType(ResourceManager.is_op_eligible, rm)
         rm._get_downstream_ineligible_ops = types.MethodType(
