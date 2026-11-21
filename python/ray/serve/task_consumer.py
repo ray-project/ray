@@ -150,11 +150,24 @@ def task_consumer(*, task_processor_config: TaskProcessorConfig):
                     logger.error(f"Failed to start task consumer: {e}")
                     raise
 
-            def __del__(self):
-                self._adapter.stop_consumer()
+            def _serve_graceful_shutdown(self, timeout_s: Optional[float] = None):
+                # Explicit shutdown and Python finalization share one cleanup attempt.
+                if getattr(self, "_serve_shutdown_called", False):
+                    return
+                self._serve_shutdown_called = True
 
-                if hasattr(target_cls, "__del__"):
-                    target_cls.__del__(self)
+                try:
+                    if hasattr(self, "_adapter"):
+                        if timeout_s is None:
+                            self._adapter.stop_consumer()
+                        else:
+                            self._adapter.stop_consumer(timeout=timeout_s)
+                finally:
+                    if hasattr(target_cls, "__del__"):
+                        target_cls.__del__(self)
+
+            def __del__(self):
+                self._serve_graceful_shutdown()
 
         copy_class_metadata(_TaskConsumerWrapper, target_cls)
 
