@@ -1608,7 +1608,10 @@ class TestDataOpTask:
         with pytest.raises(ObjectLostError):
             while not data_op_task.has_finished:
                 ray.wait([streaming_gen], fetch_local=False)
-                data_op_task.on_data_ready(None, InlineMetadataFetcher())
+                data_op_task.on_data_ready(
+                    max_to_read=TaskPullRequest.inf(),
+                    metadata_fetcher=InlineMetadataFetcher(),
+                )
 
         if data_op_task.is_lineage_tracked:
             assert not data_op_task.has_finished
