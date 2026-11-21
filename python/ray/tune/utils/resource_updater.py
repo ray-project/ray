@@ -77,8 +77,10 @@ class _Resources(
         extra_custom_resources: Optional[dict] = None,
         has_placement_group: bool = False,
     ):
-        custom_resources = custom_resources or {}
-        extra_custom_resources = extra_custom_resources or {}
+        custom_resources = dict(custom_resources) if custom_resources else {}
+        extra_custom_resources = (
+            dict(extra_custom_resources) if extra_custom_resources else {}
+        )
         leftovers = set(custom_resources) ^ set(extra_custom_resources)
 
         for value in leftovers:
@@ -179,7 +181,16 @@ class _Resources(
         return self.custom_resources.get(key, 0)
 
     def is_nonnegative(self):
-        all_values = [self.cpu, self.gpu, self.extra_cpu, self.extra_gpu]
+        all_values = [
+            self.cpu,
+            self.gpu,
+            self.memory,
+            self.object_store_memory,
+            self.extra_cpu,
+            self.extra_gpu,
+            self.extra_memory,
+            self.extra_object_store_memory,
+        ]
         all_values += list(self.custom_resources.values())
         all_values += list(self.extra_custom_resources.values())
         return all(v >= 0 for v in all_values)
@@ -256,22 +267,21 @@ class _ResourceUpdater:
         ):
             return
         logger.debug("Checking Ray cluster resources.")
-        resources = None
+        resources = {}
         for i in range(num_retries):
             if i > 0:
                 logger.warning(
                     f"Cluster resources not detected or are 0. Attempt #{i + 1}...",
                 )
                 time.sleep(0.5)
-            resources = ray.cluster_resources()
+            resources = ray.cluster_resources() or {}
             if resources:
                 break
 
         if not resources:
             # NOTE: This hides the possibility that Ray may be waiting for
             # clients to connect.
-            resources.setdefault("CPU", 0)
-            resources.setdefault("GPU", 0)
+            resources = {"CPU": 0, "GPU": 0}
             logger.warning(
                 "Cluster resources cannot be detected or are 0. "
                 "You can resume this experiment by passing in `resume=True` to `run`."
