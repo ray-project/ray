@@ -351,13 +351,20 @@ class VariantGeneratorTest(unittest.TestCase):
                 "sub_choice": tune.choice([{"x": 1}, {"x": 2}]),
                 "sub_grid": grid_search([{"a": 1}, {"a": 2}]),
                 "other": grid_search([10, 20]),
+                "sub_eval": {"eval": "spec.config.other * 2"},
             },
         }
         self.assertEqual(_count_variants(spec), 8)
         self.assertEqual(
             _count_variants(
                 spec,
-                presets=[{"sub_choice": {"x": 1}, "sub_grid": {"a": 1}}],
+                presets=[
+                    {
+                        "sub_choice": {"x": 1},
+                        "sub_grid": {"a": 1},
+                        "sub_eval": {"x": 1},
+                    }
+                ],
             ),
             6,
         )

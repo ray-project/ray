@@ -221,6 +221,7 @@ def _count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
                 isinstance(v, Mapping)
                 and isinstance(existing, Mapping)
                 and "grid_search" not in existing
+                and "eval" not in existing
             ):
                 d[k] = deep_update(existing, v)
             else:
