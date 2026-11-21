@@ -137,7 +137,8 @@ def test_write_sql(temp_database: str):
     connection = sqlite3.connect(temp_database)
     connection.cursor().execute("CREATE TABLE test(string, number)")
     dataset = ray.data.from_items(
-        [{"string": "spam", "number": 0}, {"string": "ham", "number": 1}]
+        [{"string": "spam", "number": 0}, {"number": 1, "string": "ham"}],
+        override_num_blocks=2,
     )
 
     dataset.write_sql(
