@@ -10,6 +10,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     Union,
@@ -298,7 +299,537 @@ class _RemoteMethod9(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, 
         ...
 
 
+class _RemoteMethodOptional0(Generic[_Ret, _T0]):
+    def remote(
+        self, __arg0: "Union[_T0, ObjectRef[_T0]]" = ..., *args: Any, **kwargs: Any
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(self, __arg0: _T0 = ..., *args: Any, **kwargs: Any) -> Any:
+        ...
+
+
+class _RemoteMethodOptional1(Generic[_Ret, _T0, _T1]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional2(Generic[_Ret, _T0, _T1, _T2]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional3(Generic[_Ret, _T0, _T1, _T2, _T3]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional4(Generic[_Ret, _T0, _T1, _T2, _T3, _T4]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional5(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional6(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional7(Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional8(
+    Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]
+):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _RemoteMethodOptional9(
+    Generic[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]
+):
+    def remote(
+        self,
+        __arg0: "Union[_T0, ObjectRef[_T0]]",
+        __arg1: "Union[_T1, ObjectRef[_T1]]",
+        __arg2: "Union[_T2, ObjectRef[_T2]]",
+        __arg3: "Union[_T3, ObjectRef[_T3]]",
+        __arg4: "Union[_T4, ObjectRef[_T4]]",
+        __arg5: "Union[_T5, ObjectRef[_T5]]",
+        __arg6: "Union[_T6, ObjectRef[_T6]]",
+        __arg7: "Union[_T7, ObjectRef[_T7]]",
+        __arg8: "Union[_T8, ObjectRef[_T8]]",
+        __arg9: "Union[_T9, ObjectRef[_T9]]" = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> "ObjectRef[_Ret]":
+        ...
+
+    def bind(
+        self,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9 = ...,
+        *args: Any,
+        **kwargs: Any,
+    ) -> Any:
+        ...
+
+
+class _MethodWithOptionalArg0(Protocol[_Ret, _T0]):
+    def __call__(self, __self: Any, __arg0: _T0 = ...) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg1(Protocol[_Ret, _T0, _T1]):
+    def __call__(self, __self: Any, __arg0: _T0, __arg1: _T1 = ...) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg2(Protocol[_Ret, _T0, _T1, _T2]):
+    def __call__(
+        self, __self: Any, __arg0: _T0, __arg1: _T1, __arg2: _T2 = ...
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg3(Protocol[_Ret, _T0, _T1, _T2, _T3]):
+    def __call__(
+        self, __self: Any, __arg0: _T0, __arg1: _T1, __arg2: _T2, __arg3: _T3 = ...
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg4(Protocol[_Ret, _T0, _T1, _T2, _T3, _T4]):
+    def __call__(
+        self,
+        __self: Any,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4 = ...,
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg5(Protocol[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]):
+    def __call__(
+        self,
+        __self: Any,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5 = ...,
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg6(Protocol[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]):
+    def __call__(
+        self,
+        __self: Any,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6 = ...,
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg7(Protocol[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]):
+    def __call__(
+        self,
+        __self: Any,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7 = ...,
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg8(
+    Protocol[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]
+):
+    def __call__(
+        self,
+        __self: Any,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8 = ...,
+    ) -> _Ret:
+        ...
+
+
+class _MethodWithOptionalArg9(
+    Protocol[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]
+):
+    def __call__(
+        self,
+        __self: Any,
+        __arg0: _T0,
+        __arg1: _T1,
+        __arg2: _T2,
+        __arg3: _T3,
+        __arg4: _T4,
+        __arg5: _T5,
+        __arg6: _T6,
+        __arg7: _T7,
+        __arg8: _T8,
+        __arg9: _T9 = ...,
+    ) -> _Ret:
+        ...
+
+
 class _MethodDecorator:
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg0[Awaitable[_Ret], _T0]
+    ) -> _RemoteMethodOptional0[_Ret, _T0]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg0[_Ret, _T0]
+    ) -> _RemoteMethodOptional0[_Ret, _T0]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg1[Awaitable[_Ret], _T0, _T1]
+    ) -> _RemoteMethodOptional1[_Ret, _T0, _T1]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg1[_Ret, _T0, _T1]
+    ) -> _RemoteMethodOptional1[_Ret, _T0, _T1]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg2[Awaitable[_Ret], _T0, _T1, _T2]
+    ) -> _RemoteMethodOptional2[_Ret, _T0, _T1, _T2]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg2[_Ret, _T0, _T1, _T2]
+    ) -> _RemoteMethodOptional2[_Ret, _T0, _T1, _T2]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg3[Awaitable[_Ret], _T0, _T1, _T2, _T3]
+    ) -> _RemoteMethodOptional3[_Ret, _T0, _T1, _T2, _T3]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg3[_Ret, _T0, _T1, _T2, _T3]
+    ) -> _RemoteMethodOptional3[_Ret, _T0, _T1, _T2, _T3]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg4[Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4],
+    ) -> _RemoteMethodOptional4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg4[_Ret, _T0, _T1, _T2, _T3, _T4]
+    ) -> _RemoteMethodOptional4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg5[
+            Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5
+        ],
+    ) -> _RemoteMethodOptional5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]
+    ) -> _RemoteMethodOptional5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg6[
+            Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6
+        ],
+    ) -> _RemoteMethodOptional6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+        ...
+
+    @overload
+    def __call__(
+        self, __method: _MethodWithOptionalArg6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]
+    ) -> _RemoteMethodOptional6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg7[
+            Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7
+        ],
+    ) -> _RemoteMethodOptional7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+    ) -> _RemoteMethodOptional7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg8[
+            Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8
+        ],
+    ) -> _RemoteMethodOptional8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg8[
+            _Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8
+        ],
+    ) -> _RemoteMethodOptional8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg9[
+            Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9
+        ],
+    ) -> _RemoteMethodOptional9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+        ...
+
+    @overload
+    def __call__(
+        self,
+        __method: _MethodWithOptionalArg9[
+            _Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9
+        ],
+    ) -> _RemoteMethodOptional9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+        ...
+
     @overload
     def __call__(
         self, __method: Callable[[Any, _T0], Awaitable[_Ret]]
@@ -448,6 +979,158 @@ class _MethodDecorator:
 
     def __call__(self, __method):  # type: ignore[misc]
         ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg0[Awaitable[_Ret], _T0],
+) -> _RemoteMethodOptional0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg0[_Ret, _T0],
+) -> _RemoteMethodOptional0[_Ret, _T0]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg1[Awaitable[_Ret], _T0, _T1],
+) -> _RemoteMethodOptional1[_Ret, _T0, _T1]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg1[_Ret, _T0, _T1],
+) -> _RemoteMethodOptional1[_Ret, _T0, _T1]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg2[Awaitable[_Ret], _T0, _T1, _T2],
+) -> _RemoteMethodOptional2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg2[_Ret, _T0, _T1, _T2],
+) -> _RemoteMethodOptional2[_Ret, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg3[Awaitable[_Ret], _T0, _T1, _T2, _T3],
+) -> _RemoteMethodOptional3[_Ret, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg3[_Ret, _T0, _T1, _T2, _T3],
+) -> _RemoteMethodOptional3[_Ret, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg4[Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4],
+) -> _RemoteMethodOptional4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg4[_Ret, _T0, _T1, _T2, _T3, _T4],
+) -> _RemoteMethodOptional4[_Ret, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg5[Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5],
+) -> _RemoteMethodOptional5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5],
+) -> _RemoteMethodOptional5[_Ret, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg6[
+        Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6
+    ],
+) -> _RemoteMethodOptional6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6],
+) -> _RemoteMethodOptional6[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg7[
+        Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7
+    ],
+) -> _RemoteMethodOptional7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+) -> _RemoteMethodOptional7[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg8[
+        Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8
+    ],
+) -> _RemoteMethodOptional8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg8[
+        _Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8
+    ],
+) -> _RemoteMethodOptional8[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg9[
+        Awaitable[_Ret], _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9
+    ],
+) -> _RemoteMethodOptional9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+@overload
+def method(
+    __method: _MethodWithOptionalArg9[
+        _Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9
+    ],
+) -> _RemoteMethodOptional9[_Ret, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
 
 
 @overload
