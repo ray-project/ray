@@ -3378,7 +3378,7 @@ class TestIcebergDatasourceV2:
         )
 
     @classmethod
-    def _indexer(cls):
+    def _indexer(cls, reads_footers=False):
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
             IcebergFileIndexer,
         )
@@ -3390,7 +3390,23 @@ class TestIcebergDatasourceV2:
             scan_kwargs={},
             snapshot_id=None,
             row_filter=pyi_expr.AlwaysTrue(),
+            reads_footers=reads_footers,
         )
+
+    @classmethod
+    def _listed_chunks(cls, columns, reads_footers=True):
+        """Each listed file's ``FileChunk``, by path."""
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FileChunk,
+        )
+
+        return {
+            path: FileChunk.from_metadata(metadata)
+            for manifest in cls._indexer(reads_footers=reads_footers).list_files(
+                None, filesystem=None, projected_columns=columns
+            )
+            for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas)
+        }
 
     def test_manifest_preserves_every_field_the_reader_uses(self):
         """A manifest round trip must return each scan task field-for-field."""
@@ -3623,6 +3639,55 @@ class TestIcebergDatasourceV2:
         assert ServerSidePlanning.for_table(rest_table) is None
         assert ServerSidePlanning.for_table(self._load_table()) is None
 
+    def test_listing_sizes_parquet_files_from_their_footers(self):
+        """A Parquet file is sized at its decoded bytes, with the memory decoding takes."""
+        chunks = self._listed_chunks(["col_a"])
+        assert chunks, "fixture table should plan at least one file"
+        for path, chunk in chunks.items():
+            parquet = pq.ParquetFile(path.removeprefix("file://"))
+            # A fixed-width column, so the estimate is exact.
+            assert chunk.size_bytes == parquet.read(columns=["col_a"]).nbytes
+            assert chunk.memory_bytes > chunk.size_bytes
+
+    def test_listing_falls_back_for_a_renamed_column(self):
+        """A column the files store under an old name is sized without its footer."""
+        table = self._load_table()
+        table.update_schema().rename_column("col_b", "col_b_renamed").commit()
+
+        files = {task.file.file_path: task.file for task in table.scan().plan_files()}
+        renamed = self._listed_chunks(["col_b_renamed"])
+        assert {path: chunk.size_bytes for path, chunk in renamed.items()} == {
+            path: file.file_size_in_bytes for path, file in files.items()
+        }
+        assert all(chunk.memory_bytes is None for chunk in renamed.values())
+        assert all(
+            chunk.memory_bytes is not None
+            for chunk in self._listed_chunks(["col_a"]).values()
+        )
+
+    def test_read_unit_requests_the_memory_its_files_take(self):
+        """A packed read unit carries its files' summed decode memory to its task."""
+        from ray.data._internal.datasource_v2.common.online_bin_packer import (
+            OnlineBinPacker,
+        )
+        from ray.data.block import CONSUMER_MEMORY_BYTES_METADATA_KEY
+
+        packer = OnlineBinPacker(max_bin_bytes=1 << 30)
+        for manifest in self._indexer(reads_footers=True).list_files(
+            None, filesystem=None, projected_columns=["col_a"]
+        ):
+            packer.add_input(manifest)
+        packer.finalize()
+        (read_unit,) = [
+            packer.next_partition() for _ in iter(packer.has_partition, False)
+        ]
+
+        metadata = read_unit.as_block().schema.metadata
+        memory = sum(
+            chunk.memory_bytes for chunk in self._listed_chunks(["col_a"]).values()
+        )
+        assert int(metadata[CONSUMER_MEMORY_BYTES_METADATA_KEY]) == memory
+
     def test_select_columns_keeps_the_requested_order(self, restore_data_context):
         """Rows come back in the order ``select_columns`` asked for.
 
@@ -3724,10 +3789,11 @@ class TestIcebergDatasourceV2:
         # The rule rebuilds ``ListFiles`` with whatever ``as_whole_file_indexer``
         # returns. For Parquet that is a *different*, plainer indexer, because
         # the footer one bin-packs row groups and can emit a file once per bin.
-        # Ours must survive intact: it plans the table, and a plain path-walking
-        # indexer has nothing to walk.
+        # Ours must stay an Iceberg indexer, since it plans the table, but one
+        # that reads no Parquet footers.
         (list_files,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
         assert isinstance(list_files.file_indexer, IcebergFileIndexer)
+        assert not list_files.file_indexer._reads_footers
         assert list_files.file_partitioner is None
 
         # The fixture's delete rewrote its files, so their ``record_count``
