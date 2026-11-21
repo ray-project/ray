@@ -8,6 +8,10 @@ Drop-in replacement for :class:`ray.train.DataConfig`::
         dataset_config=PushBasedDataConfig(),
     )
 
+``PushBasedDataConfig`` always uses the push-based split. The plain
+``DataConfig`` uses it by default on Ray Train V2, unless the
+``RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT=0`` environment variable is set.
+
 Split datasets are served by a ``PushSplitCoordinator`` that pushes blocks
 to each train worker (see
 ``ray/data/_internal/iterator/push_split_iterator.py``). Each returned
@@ -18,11 +22,10 @@ methods that ``RayTrainWorker`` mixes in.
 
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
-from ray.actor import ActorHandle
 from ray.train._internal.data_config import DataConfig
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+    from ray.data import ExecutionOptions
     from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 
 
@@ -55,48 +58,5 @@ class PushBasedDataConfig(DataConfig):
             dataset_checkpoint_configs=dataset_checkpoint_configs,
         )
 
-    def configure(
-        self,
-        datasets: Dict[str, "Dataset"],
-        world_size: int,
-        worker_handles: Optional[List[ActorHandle]],
-        worker_node_ids: Optional[List["NodeIdStr"]],
-        **kwargs,
-    ) -> List[Dict[str, "DataIterator"]]:
-        from ray.data._internal.iterator.push_split_iterator import (
-            streaming_split_push_based,
-        )
-
-        # Mirrors DataConfig.configure, swapping Dataset.streaming_split for
-        # the push-based split.
-        output = [{} for _ in range(world_size)]
-
-        for dataset_name, dataset in datasets.items():
-            if dataset.name is None:
-                dataset.set_name(dataset_name)
-
-        if self._datasets_to_split == "all":
-            datasets_to_split = set(datasets.keys())
-        else:
-            datasets_to_split = set(self._datasets_to_split)
-
-        locality_hints = worker_node_ids if self._enable_shard_locality else None
-        for name, ds in datasets.items():
-            ds = ds.copy(ds)
-            ds.context.execution_options = self._resolve_execution_options(name)
-
-            if name in datasets_to_split:
-                for i, split in enumerate(
-                    streaming_split_push_based(
-                        ds,
-                        world_size,
-                        equal=True,
-                        locality_hints=locality_hints,
-                    )
-                ):
-                    output[i][name] = split
-            else:
-                for i in range(world_size):
-                    output[i][name] = ds.iterator()
-
-        return output
+    def _use_push_based_streaming_split(self) -> bool:
+        return True

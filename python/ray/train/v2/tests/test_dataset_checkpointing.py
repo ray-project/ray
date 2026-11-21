@@ -13,16 +13,22 @@ import ray.train
 import ray.train.collective
 from ray.data.datasource import FileShuffleConfig
 from ray.train import DataConfig, DatasetCheckpointConfig
-from ray.train._internal.push_based_data_config import PushBasedDataConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
+from ray.train.v2._internal.constants import USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.util import create_dummy_run_context
 
 
-def make_data_config(push_based: bool, **kwargs) -> DataConfig:
-    """Shard with the push-based split if ``push_based``, else the pull-based one."""
-    return PushBasedDataConfig(**kwargs) if push_based else DataConfig(**kwargs)
+@pytest.fixture
+def push_based(request, monkeypatch) -> bool:
+    """Parametrize with ``indirect=True``. Selects the push-based split or the
+    pull-based one with the environment variable, which Ray Train sends to
+    the controller."""
+    monkeypatch.setenv(
+        USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR, "1" if request.param else "0"
+    )
+    return request.param
 
 
 def filter_state_dict(state_dict: Dict[str, Any]) -> Dict[str, Any]:
@@ -47,7 +53,7 @@ def read_checkpoint_files_for_state_dict(
     return checkpointed_row_ids
 
 
-@pytest.mark.parametrize("push_based", [False, True])
+@pytest.mark.parametrize("push_based", [False, True], indirect=True)
 @pytest.mark.parametrize("restore_from_end_of_epoch", [True, False])
 @pytest.mark.parametrize("generate_id_column", [True, False])
 def test_e2e_with_ray_train(
@@ -231,8 +237,7 @@ def test_e2e_with_ray_train(
             storage_path=str(train_checkpoint_path),
             failure_config=ray.train.FailureConfig(max_failures=2),
         ),
-        dataset_config=make_data_config(
-            push_based,
+        dataset_config=DataConfig(
             dataset_checkpoint_configs={
                 "train": DatasetCheckpointConfig(
                     checkpoint_path=str(data_checkpoint_path),
@@ -387,7 +392,7 @@ def test_data_config_validation():
         )
 
 
-@pytest.mark.parametrize("push_based", [False, True])
+@pytest.mark.parametrize("push_based", [False, True], indirect=True)
 def test_execution_idx_restored_from_checkpoint(ray_start_4_cpus, tmp_path, push_based):
     """Test that data_context._execution_idx is correctly restored from checkpoint.
 
@@ -519,8 +524,7 @@ def test_execution_idx_restored_from_checkpoint(ray_start_4_cpus, tmp_path, push
                 storage_path=str(train_checkpoint_path),
                 failure_config=ray.train.FailureConfig(max_failures=2),
             ),
-            dataset_config=make_data_config(
-                push_based,
+            dataset_config=DataConfig(
                 dataset_checkpoint_configs={
                     "train": DatasetCheckpointConfig(
                         checkpoint_path=str(data_checkpoint_path),

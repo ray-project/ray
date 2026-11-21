@@ -351,11 +351,13 @@ def run_once(args: argparse.Namespace) -> Dict[str, float]:
         )
         datasets = {"train": ds}
 
+    # Ray Train V2 uses the push-based streaming split by default. Set the
+    # variable for both cases, so that the flag decides and not the default.
+    # Ray Train sends it to the controller.
+    os.environ["RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT"] = (
+        "1" if args.push_based_split else "0"
+    )
     dataset_config = None
-    if args.push_based_split:
-        from ray.train._internal.push_based_data_config import PushBasedDataConfig
-
-        dataset_config = PushBasedDataConfig()
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
