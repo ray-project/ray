@@ -18,6 +18,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _floor_div(a: float, b: float) -> float:
+    """``a // b`` that ignores float error, where ``0.9 // 0.1`` is 8.0, not 9."""
+    return np.floor(a / b + 1e-9)
+
+
 @PublicAPI(stability="beta")
 class DistributeResources:
     """This class creates a basic uniform resource allocation function.
@@ -188,13 +193,13 @@ class DistributeResources:
         occur in ``cpus`` and ``gpus``."""
         if increase_by.get("CPU", 0) and increase_by.get("GPU", 0):
             multiplier = min(
-                cpus // increase_by.get("CPU", 0),
-                gpus // increase_by.get("GPU", 0),
+                _floor_div(cpus, increase_by.get("CPU", 0)),
+                _floor_div(gpus, increase_by.get("GPU", 0)),
             )
         elif increase_by.get("GPU", 0):
-            multiplier = gpus // increase_by.get("GPU", 0)
+            multiplier = _floor_div(gpus, increase_by.get("GPU", 0))
         else:
-            multiplier = cpus // increase_by.get("CPU", 0)
+            multiplier = _floor_div(cpus, increase_by.get("CPU", 0))
 
         if max_multiplier > 0 and multiplier > 0:
             multiplier = min(max_multiplier, multiplier)
