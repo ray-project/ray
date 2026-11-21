@@ -1,22 +1,59 @@
-"""Read the results of a build's Trivy image scans.
+"""Read and judge the results of a build's Trivy image scans.
 
 Each scan job writes, per image, a ``<name>.status.json`` record and, when the
 scan succeeded, Trivy's JSON result as ``<name>.json.gz``. ``load_scans``
-reads them all into one ``ImageScan`` per image: its findings and the
-packages Trivy saw, or why the image wasn't scanned.
+reads them all; ``group_findings`` merges each CRITICAL/HIGH finding across
+the images it appears in; ``build_summary`` and ``write_csv`` produce
+``summary.json`` and ``vulns.csv``.
+
+Only fixable CRITICAL/HIGH findings count against the build. ``exit_code``
+gives 0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage
+(takes precedence over 10).
 """
 
+import csv
 import gzip
 import json
 import re
 import zlib
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Iterable, Mapping, Sequence
 
 GATED_SEVERITIES = ("CRITICAL", "HIGH")
 # Trivy statuses meaning no usable fix exists, even if FixedVersion is set.
 NO_FIX_STATUSES = frozenset({"affected", "will_not_fix", "fix_deferred", "end_of_life"})
+
+# Results, not failures, so neither may be a code rayci retries on its own
+# (it reruns 3, for example, up to 3 times) or one Bazel uses under `bazel run`.
+EXIT_CLEAN = 0
+EXIT_FINDINGS = 10
+EXIT_INCOMPLETE = 11
+SUMMARY_SCHEMA_VERSION = 1
+
+CSV_COLUMNS = (
+    "pipeline",
+    "build_number",
+    "commit",
+    "image",
+    "image_type",
+    "python_version",
+    "platform",
+    "architecture",
+    "digest",
+    "vuln_id",
+    "severity",
+    "fixable",
+    "status",
+    "suppressed",
+    "pkg_class",
+    "pkg_type",
+    "pkg_name",
+    "installed",
+    "fixed",
+    "location",
+    "path",
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +129,57 @@ class ImageScan:
     @property
     def scanned(self) -> bool:
         return not self.error
+
+    def gated_by_key(
+        self, suppressed: bool = False
+    ) -> dict[tuple[str, str, str], list[Finding]]:
+        """CRITICAL/HIGH findings by key, with one finding per install path.
+
+        A package installed in two paths counts once per image, but both
+        paths are kept so the report can show every place to fix. If one path
+        lists a finding twice, the copy with a fix wins, so the order Trivy
+        lists them in can't hide a fix.
+        """
+        by_key: dict[tuple[str, str, str], list[Finding]] = {}
+        for finding in self.findings:
+            if finding.gated and finding.suppressed == suppressed:
+                same_key = by_key.setdefault(finding.key, [])
+                same_path = [
+                    i for i, f in enumerate(same_key) if f.path == finding.path
+                ]
+                if not same_path:
+                    same_key.append(finding)
+                elif finding.fixable and not same_key[same_path[0]].fixable:
+                    same_key[same_path[0]] = finding
+        return by_key
+
+
+def _any_fixable(findings: Iterable[Finding]) -> bool:
+    return any(f.fixable for f in findings)
+
+
+@dataclass
+class Group:
+    """One finding deduplicated across the images and paths it appears in.
+
+    Fixability is part of the group's identity: if the same CVE has a fix in
+    one image but not in another, each image lands in its own group.
+    """
+
+    fixable: bool
+    findings: list[Finding]
+    images: list[Image]
+
+    @property
+    def finding(self) -> Finding:
+        """A representative finding, one with a usable fix if the group has one."""
+        if self.fixable:
+            return next(f for f in self.findings if f.fixable)
+        return self.findings[0]
+
+    @property
+    def locations(self) -> list[str]:
+        return sorted({f.location for f in self.findings})
 
 
 def _text(record: Mapping[str, Any], key: str, required: bool = False) -> str:
@@ -291,3 +379,167 @@ def _image_sort_key(image: Image) -> tuple:
         image.python_version,
         image.name,
     )
+
+
+def _severity_rank(severity: str) -> int:
+    return GATED_SEVERITIES.index(severity) if severity in GATED_SEVERITIES else 9
+
+
+def group_findings(scans: Sequence[ImageScan], suppressed: bool = False) -> list[Group]:
+    """Deduplicate scanned images' CRITICAL/HIGH findings across images."""
+    groups: dict[tuple[str, str, str, bool], Group] = {}
+    for scan in scans:
+        if not scan.scanned:
+            continue
+        for key, findings in scan.gated_by_key(suppressed).items():
+            fixable = _any_fixable(findings)
+            group = groups.setdefault(
+                (*key, fixable), Group(fixable=fixable, findings=[], images=[])
+            )
+            group.findings.extend(findings)
+            group.images.append(scan.image)
+    return sorted(
+        groups.values(),
+        key=lambda g: (
+            _severity_rank(g.finding.severity),
+            -len(g.images),
+            g.finding.pkg_name,
+            g.finding.vuln_id,
+        ),
+    )
+
+
+def exit_code(scans: Sequence[ImageScan], issues: Sequence[str] = ()) -> int:
+    if issues or not scans or any(not s.scanned for s in scans):
+        return EXIT_INCOMPLETE
+    if any(g.fixable for g in group_findings(scans)):
+        return EXIT_FINDINGS
+    return EXIT_CLEAN
+
+
+def _split_by_fixable(scan: ImageScan) -> tuple[list[Finding], list[Finding]]:
+    """One representative finding per key, split by whether the key is fixable."""
+    fixable, no_fix = [], []
+    for findings in scan.gated_by_key().values():
+        (fixable if _any_fixable(findings) else no_fix).append(findings[0])
+    return fixable, no_fix
+
+
+def build_info(env: Mapping[str, str]) -> dict[str, Any]:
+    return {
+        "pipeline": env.get("BUILDKITE_PIPELINE_SLUG", ""),
+        "build_number": env.get("BUILDKITE_BUILD_NUMBER", ""),
+        "build_url": env.get("BUILDKITE_BUILD_URL", ""),
+        "commit": env.get("BUILDKITE_COMMIT", ""),
+        "branch": env.get("BUILDKITE_BRANCH", ""),
+        "rayci_build_id": env.get("RAYCI_BUILD_ID", ""),
+        "triggered_from": {
+            "pipeline": env.get("BUILDKITE_TRIGGERED_FROM_BUILD_PIPELINE_SLUG", ""),
+            "build_number": env.get("BUILDKITE_TRIGGERED_FROM_BUILD_NUMBER", ""),
+        },
+    }
+
+
+def write_csv(path: Path, scans: Sequence[ImageScan], build: Mapping[str, Any]) -> None:
+    """One row per image and CRITICAL/HIGH finding, suppressed ones included."""
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
+        writer.writeheader()
+        for scan in scans:
+            if not scan.scanned:
+                continue
+            image = scan.image
+            for suppressed in (False, True):
+                for findings in scan.gated_by_key(suppressed).values():
+                    for finding in sorted(findings, key=lambda f: f.path):
+                        _write_row(writer, build, image, finding)
+
+
+def _write_row(
+    writer: csv.DictWriter, build: Mapping[str, Any], image: Image, finding: Finding
+) -> None:
+    writer.writerow(
+        {
+            "pipeline": build["pipeline"],
+            "build_number": build["build_number"],
+            "commit": build["commit"],
+            "image": image.name,
+            "image_type": image.image_type,
+            "python_version": image.python_version,
+            "platform": image.platform,
+            "architecture": image.architecture,
+            "digest": image.digest,
+            "vuln_id": finding.vuln_id,
+            "severity": finding.severity,
+            "fixable": finding.fixable,
+            "status": finding.status,
+            "suppressed": finding.suppressed,
+            "pkg_class": finding.pkg_class,
+            "pkg_type": finding.pkg_type,
+            "pkg_name": finding.pkg_name,
+            "installed": finding.installed,
+            "fixed": finding.fixed,
+            "location": finding.location,
+            "path": finding.path,
+        }
+    )
+
+
+def build_summary(
+    scans: Sequence[ImageScan],
+    scanner: Mapping[str, Any],
+    build: Mapping[str, Any],
+    issues: Sequence[str] = (),
+) -> dict[str, Any]:
+    """The build's result for tracking over time: its verdict, per-image
+    counts and findings, and totals.
+
+    Like the report's tables, the totals count groups: a finding fixable in
+    one image and not in another counts once in each of ``fixable`` and
+    ``no_fix``. An image that wasn't scanned counts nothing, as in the totals
+    and vulns.csv, even if Trivy returned some findings for it.
+    """
+    groups = group_findings(scans)
+    images = []
+    for scan in scans:
+        gated = scan.gated_by_key() if scan.scanned else {}
+        suppressed = scan.gated_by_key(suppressed=True) if scan.scanned else {}
+        fixable, no_fix = _split_by_fixable(scan) if scan.scanned else ([], [])
+        counts = {
+            f"{severity.lower()}_{label}": sum(f.severity == severity for f in found)
+            for severity in GATED_SEVERITIES
+            for label, found in (("fixable", fixable), ("no_fix", no_fix))
+        }
+        counts["suppressed"] = len(suppressed)
+        images.append(
+            {
+                "name": scan.image.name,
+                "image_type": scan.image.image_type,
+                "python_version": scan.image.python_version,
+                "platform": scan.image.platform,
+                "architecture": scan.image.architecture,
+                "ref": scan.image.ref,
+                "digest": scan.image.digest,
+                "published_tags": list(scan.image.published_tags),
+                "scanned": scan.scanned,
+                "error": scan.error,
+                "packages": scan.packages,
+                "counts": counts,
+                "findings": sorted("|".join(key) for key in gated),
+            }
+        )
+    return {
+        "schema_version": SUMMARY_SCHEMA_VERSION,
+        "exit_code": exit_code(scans, issues),
+        "build": dict(build),
+        "scanner": dict(scanner),
+        "issues": list(issues),
+        "totals": {
+            "images": len(scans),
+            "scanned": sum(s.scanned for s in scans),
+            "fixable": sum(g.fixable for g in groups),
+            "no_fix": sum(not g.fixable for g in groups),
+            "suppressed": len(group_findings(scans, suppressed=True)),
+        },
+        "images": images,
+    }
