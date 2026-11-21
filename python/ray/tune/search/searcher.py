@@ -221,8 +221,19 @@ class Searcher:
         This functionality depends on the underlying search algorithm
         and may not be always available (same as ``add_evaluated_point``.)
 
+        For compatibility, trials containing ``metric`` are forwarded regardless
+        of status. Without it, only ``Trial.ERROR`` is forwarded, with
+        ``value=None`` and ``error=True``. Forwarded ``Trial.TERMINATED`` trials
+        whose ``done`` flag is false or absent are marked ``pruned=True``.
+        A searcher may ignore errored points.
+
+        Imports run in input order. Exceptions propagate, earlier imports are
+        retained, and later trials are not processed. After the loop, a warning
+        is emitted if no normally completed trial contained ``metric``.
+
         Args:
-            trials_or_analysis: Trials to pass results form to the searcher.
+            trials_or_analysis: A trial, a list or tuple of trials, or an
+                experiment analysis whose results are passed to the searcher.
             metric: Metric name reported by trials used for
                 determining the objective value.
 
@@ -262,7 +273,7 @@ class Searcher:
                 any_trial_had_metric = (
                     metric in trial.last_result and has_trial_finished
                 )
-            if Trial.TERMINATED and metric not in trial.last_result:
+            if trial.status != Trial.ERROR and metric not in trial.last_result:
                 return None
             return dict(
                 parameters=trial.config,
