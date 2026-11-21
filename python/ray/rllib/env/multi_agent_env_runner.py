@@ -776,8 +776,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     rl_module_state = ray.get(rl_module_state)
                 self.module.set_state(rl_module_state)
 
-            # Update weights_seq_no, if the new one is > 0.
-            if weights_seq_no > 0:
+            # Never publish an older version for weights that were rejected.
+            if weights_seq_no > self._weights_seq_no:
                 self._weights_seq_no = weights_seq_no
 
         # Update lifetime counters.
