@@ -216,8 +216,13 @@ def _count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
     # Helper function: Deep update dictionary
     def deep_update(d, u):
         for k, v in u.items():
-            if isinstance(v, Mapping):
-                d[k] = deep_update(d.get(k, {}), v)
+            existing = d.get(k, {})
+            if (
+                isinstance(v, Mapping)
+                and isinstance(existing, Mapping)
+                and "grid_search" not in existing
+            ):
+                d[k] = deep_update(existing, v)
             else:
                 d[k] = v
         return d
@@ -226,9 +231,9 @@ def _count_variants(spec: Dict, presets: Optional[List[Dict]] = None) -> int:
     total_num_samples = spec.get("num_samples", 1)
     # For each preset, overwrite the spec and count the samples generated
     # for this preset
-    for preset in presets:
+    for preset in presets or ():
         preset_spec = copy.deepcopy(spec)
-        deep_update(preset_spec["config"], preset)
+        deep_update(preset_spec.setdefault("config", {}), preset)
         total_samples += _count_spec_samples(preset_spec, 1)
         total_num_samples -= 1
 
