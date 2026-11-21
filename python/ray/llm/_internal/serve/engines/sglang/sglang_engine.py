@@ -148,6 +148,12 @@ class SGLangServer:
         finally:
             signal.signal = original_signal_func
 
+        if not hasattr(self.engine, "check_health"):
+            logger.warning(
+                "Installed SGLang RayEngine has no check_health. Replica health "
+                "checks will not detect a dead or stuck scheduler."
+            )
+
     @staticmethod
     def _build_sampling_params(request: Any) -> dict[str, Any]:
         sampling_params: dict[str, Any] = {}
@@ -272,6 +278,10 @@ class SGLangServer:
         return
 
     async def check_health(self) -> None:
+        # The engine probe is a real generate request. It blocks while paused
+        # and cannot run while weights or KV cache are released.
+        if self._is_paused or self._sleeping_tags:
+            return
         # SGLang versions whose RayEngine has check_health run it here; it raises
         # when a scheduler actor died or stopped answering a probe. Older versions
         # do not have it, so the check stays a no-op for them.
@@ -280,8 +290,8 @@ class SGLangServer:
             return
         try:
             await engine_check_health()
-        except Exception:
-            logger.error("SGLang engine health check failed.")
+        except Exception as e:
+            logger.error("SGLang engine health check failed: %s", e)
             raise
 
     async def __serve_build_asgi_app__(self) -> Any:

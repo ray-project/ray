@@ -23,9 +23,11 @@ class _FakeRayEngine:
             raise self.error
 
 
-def _server(engine) -> SGLangServer:
+def _server(engine, is_paused=False, sleeping_tags=()) -> SGLangServer:
     server = SGLangServer.__new__(SGLangServer)
     server.engine = engine
+    server._is_paused = is_paused
+    server._sleeping_tags = set(sleeping_tags)
     return server
 
 
@@ -40,6 +42,18 @@ async def test_healthy_engine_passes():
     engine = _FakeRayEngine()
     await _server(engine).check_health()
     assert engine.calls == 1
+
+
+@pytest.mark.parametrize(
+    "state",
+    [{"is_paused": True}, {"sleeping_tags": ["weights"]}],
+    ids=["paused", "sleeping"],
+)
+async def test_paused_or_sleeping_skips_probe(state):
+    """The probe blocks while paused and cannot run with memory released."""
+    engine = _FakeRayEngine(RuntimeError("probe timed out"))
+    await _server(engine, **state).check_health()
+    assert engine.calls == 0
 
 
 async def test_engine_without_check_health_passes():
