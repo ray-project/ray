@@ -178,15 +178,28 @@ def test_cluster_autoscaler_env_value_creates_correct_autoscaler(
     cluster_autoscaler_env_value, expected_autoscaler_type, monkeypatch
 ):
     monkeypatch.setenv(CLUSTER_AUTOSCALER_ENV_KEY, cluster_autoscaler_env_value)
+    mock_gauge = MagicMock()
+    monkeypatch.setattr(
+        "ray.data._internal.cluster_autoscaler.resource_utilization_gauge.Gauge",
+        MagicMock(return_value=mock_gauge),
+    )
+    resource_manager = MagicMock(spec=ResourceManager)
+    resource_manager.get_global_usage.return_value = ExecutionResources(cpu=1)
+    resource_manager.get_global_limits.return_value = ExecutionResources(cpu=2)
 
     autoscaler = create_cluster_autoscaler(
         topology={},
         data_context=DataContext(execution_options=ExecutionOptions()),
-        resource_manager=MagicMock(spec=ResourceManager),
+        resource_manager=resource_manager,
         execution_id="test",
     )
 
     assert isinstance(autoscaler, expected_autoscaler_type)
+    if isinstance(autoscaler, RateBasedClusterAutoscaler):
+        autoscaler._utility_calculator.observe()
+    else:
+        autoscaler._resource_utilization_calculator.observe()
+    mock_gauge.set.assert_any_call(50.0, tags={"dataset": "test"})
 
 
 @pytest.mark.parametrize("cpu_usage", [0.25, 0.9])
