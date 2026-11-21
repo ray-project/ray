@@ -1548,7 +1548,8 @@ class ReporterAgent(
                 elif hasattr(memory_info, "private"):
                     # Windows: private IS USS
                     total_uss_bytes += float(memory_info.private)
-            total_num_fds += int(stat.get("num_fds", 0))
+            # psutil.as_dict() uses None for attributes it cannot read.
+            total_num_fds += int(stat.get("num_fds") or 0)
 
         tags = {"ip": self._ip, "Component": component_name}
         if pid:

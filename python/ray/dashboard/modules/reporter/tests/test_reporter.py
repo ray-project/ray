@@ -1165,6 +1165,61 @@ def test_report_stats_tpu(tmp_path):
     assert isinstance(stats_payload, str)
 
 
+@pytest.mark.parametrize(
+    "driver_fd_stats, expected_num_fds",
+    [
+        pytest.param({"num_fds": None}, 7, id="unreadable"),
+        pytest.param({}, 7, id="missing"),
+        pytest.param({"num_fds": 0}, 7, id="zero"),
+        pytest.param({"num_fds": 5}, 12, id="readable"),
+    ],
+)
+def test_report_stats_with_unavailable_num_fds(
+    tmp_path, driver_fd_stats, expected_num_fds
+):
+    dashboard_agent = MagicMock()
+    dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
+    dashboard_agent.session_dir = str(tmp_path)
+    dashboard_agent.node_id = ray.NodeID.from_random().hex()
+    agent = ReporterAgent(dashboard_agent, MagicMock())
+    agent._is_head_node = True
+
+    stats = copy.deepcopy(STATS_TEMPLATE)
+    driver_stats = copy.deepcopy(stats["workers"][0])
+    driver_stats.pop("num_fds")
+    driver_stats.update(driver_fd_stats)
+    driver_stats.update(cmdline=["python", "driver.py"], cpu_percent=2.0)
+    readable_driver_stats = copy.deepcopy(driver_stats)
+    readable_driver_stats.update(num_fds=7, cpu_percent=3.0)
+    stats["workers"].extend([driver_stats, readable_driver_stats])
+    stats["gpus"] = [
+        {
+            "index": 0,
+            "uuid": "GPU-test",
+            "name": "test-gpu",
+            "utilization_gpu": 42,
+            "memory_used": 128,
+            "memory_total": 1024,
+            "processes": [],
+        }
+    ]
+
+    records = agent._to_records(stats, {})
+    driver_records = {
+        record.gauge.name: record.value
+        for record in records
+        if record.tags.get("Component") == "python"
+    }
+    assert driver_records["component_num_fds"] == expected_num_fds
+    assert driver_records["component_cpu_percentage"] == 5.0
+    assert driver_records["component_rss_bytes"] == 2 * driver_stats["memory_info"].rss
+
+    node_records = {record.gauge.name: record.value for record in records}
+    assert node_records["node_cpu_utilization"] == stats["cpu"]
+    assert node_records["node_mem_used"] == stats["mem"][3]
+    assert node_records["node_gpus_utilization"] == 42
+
+
 def test_report_per_component_stats(tmp_path):
     dashboard_agent = MagicMock()
     dashboard_agent.gcs_address = build_address("127.0.0.1", 6379)
