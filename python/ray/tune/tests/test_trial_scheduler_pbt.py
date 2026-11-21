@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import pickle
 import random
@@ -929,6 +930,73 @@ def test_pbt_quantile_fraction_zero_selects_no_trials():
     # a fraction that does select trials is unchanged
     scheduler._quantile_fraction = 0.25
     assert scheduler._quantiles() == ([trials[0]], [trials[3]])
+
+
+def test_pbt_missing_nested_hyperparam_init(caplog):
+    """Test that PBT recursively fills missing nested hyperparameters without
+    overwriting existing keys in partially populated nested dicts."""
+    scheduler = PopulationBasedTraining(
+        metric="score",
+        mode="max",
+        hyperparam_mutations={
+            "a": [1.0, 2.0],
+            "b": {
+                "c": tune.uniform(2.0, 4.0),
+                "d": {"e": [10, 20]},
+            },
+        },
+    )
+    mock_runner = MagicMock()
+
+    trial = Trial(
+        "test_pbt",
+        stub=True,
+        config={"b": {"c": 3.0, "untouched": "keep"}},
+    )
+    scheduler.on_trial_add(mock_runner, trial)
+
+    assert trial.config["a"] in [1.0, 2.0]
+    assert trial.config["b"]["c"] == 3.0
+    assert trial.config["b"]["untouched"] == "keep"
+    assert trial.config["b"]["d"]["e"] in [10, 20]
+    assert set(trial.evaluated_params.keys()) == {"a", "b/d/e"}
+    assert trial.evaluated_params["a"] == trial.config["a"]
+    assert trial.evaluated_params["b/d/e"] == trial.config["b"]["d"]["e"]
+
+    trial_non_dict = Trial(
+        "test_pbt_non_dict",
+        stub=True,
+        config={"b": 42},
+    )
+    ray_logger = logging.getLogger("ray")
+    old_propagate = ray_logger.propagate
+    ray_logger.propagate = True
+    try:
+        with caplog.at_level(logging.WARNING, logger="ray.tune.schedulers.pbt"):
+            scheduler.on_trial_add(mock_runner, trial_non_dict)
+    finally:
+        ray_logger.propagate = old_propagate
+    assert isinstance(trial_non_dict.config["b"], dict)
+    assert 2.0 <= trial_non_dict.config["b"]["c"] <= 4.0
+    assert trial_non_dict.config["b"]["d"]["e"] in [10, 20]
+    assert "Overwriting existing non-dict value" in caplog.text
+
+
+def test_pbt_nested_hyperparam_mutations_validation():
+    """Test that PBT validates nested hyperparam_mutations recursively."""
+    with pytest.raises(TypeError):
+        PopulationBasedTraining(hyperparam_mutations={"a": {"b": 123}})
+
+    with pytest.raises(ValueError):
+        PopulationBasedTraining(
+            hyperparam_mutations={"a": {"b": tune.sample_from(lambda _: 1.0)}}
+        )
+
+    with pytest.raises(ValueError):
+        PopulationBasedTraining(hyperparam_mutations={"a": {"b": []}})
+
+    with pytest.raises(tune.TuneError):
+        PopulationBasedTraining(hyperparam_mutations={"a": {}})
 
 
 def _create_pb2_scheduler(
