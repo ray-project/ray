@@ -91,6 +91,7 @@ class TestDeploymentOptions:
         "graceful_shutdown_timeout_s": 10,
         "health_check_period_s": 10,
         "health_check_timeout_s": 10,
+        "health_check_unhealthy_threshold": 5,
     }
 
     deployment_option_combos = get_random_dict_combos(deployment_options, 1000)
@@ -195,6 +196,30 @@ class TestDeploymentOptions:
         assert f._deployment_config.max_surge_percent == 0
         with pytest.raises(ValueError):
             f.options(max_surge_percent=101)
+
+    def test_options_health_check_unhealthy_threshold(self):
+        @serve.deployment(health_check_unhealthy_threshold=5)
+        def f():
+            pass
+
+        assert f._deployment_config.health_check_unhealthy_threshold == 5
+        assert (
+            "health_check_unhealthy_threshold"
+            in f._deployment_config.user_configured_option_names
+        )
+
+        updated = f.options(health_check_unhealthy_threshold=1)
+        assert updated._deployment_config.health_check_unhealthy_threshold == 1
+        assert f._deployment_config.health_check_unhealthy_threshold == 5
+        assert (
+            "health_check_unhealthy_threshold"
+            in updated._deployment_config.user_configured_option_names
+        )
+
+        with pytest.raises(ValueError):
+            f.options(health_check_unhealthy_threshold=0)
+        with pytest.raises(ValueError):
+            serve.deployment(health_check_unhealthy_threshold=0)(lambda: None)
 
     def test_typed_options_match_deployment_signature(self):
         """_DeploymentOptions must list every keyword option deployment() takes."""
