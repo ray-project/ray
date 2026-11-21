@@ -234,6 +234,11 @@ class ICloudInstanceProvider(ABC):
         """
         pass
 
+    def launch_many(self, requests: Dict[str, Dict[NodeType, int]]) -> None:
+        """Launch multiple request batches; providers may coalesce into one API write."""
+        for request_id, shape in requests.items():
+            self.launch(shape=shape, request_id=request_id)
+
     @abstractmethod
     def launch(
         self,

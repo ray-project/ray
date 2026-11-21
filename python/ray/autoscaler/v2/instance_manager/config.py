@@ -1,5 +1,7 @@
 import copy
 import logging
+import os
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
@@ -16,6 +18,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    FOREGROUND_NODE_LAUNCH_KEY,
     RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -465,6 +468,13 @@ class AutoscalingConfig:
         return self.get_config("upscaling_speed", DEFAULT_UPSCALING_SPEED)
 
     def get_max_concurrent_launches(self) -> int:
+        if "AUTOSCALER_MAX_CONCURRENT_LAUNCHES" in os.environ:
+            return env_integer(
+                "AUTOSCALER_MAX_CONCURRENT_LAUNCHES",
+                AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+            )
+        if self.get_provider_config().get(FOREGROUND_NODE_LAUNCH_KEY, False):
+            return sys.maxsize
         return AUTOSCALER_MAX_CONCURRENT_LAUNCHES
 
     def disable_node_updaters(self) -> bool:

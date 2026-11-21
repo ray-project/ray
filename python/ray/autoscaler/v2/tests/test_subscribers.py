@@ -400,6 +400,66 @@ class TestCloudInstanceUpdater:
 
         wait_for_condition(verify)
 
+    def test_launch_batches_into_icloud_instance_provider_launch_many(self):
+        """ICloudInstanceProvider subclasses receive one coalesced launch_many batch,
+        while plain duck-typed mocks fall back to per-request launch calls."""
+        from ray.autoscaler.v2.instance_manager.node_provider import (
+            ICloudInstanceProvider,
+        )
+
+        class _RecordingProvider(ICloudInstanceProvider):
+            def __init__(self):
+                self.batch_calls = []
+                self.single_calls = []
+
+            def get_non_terminated(self):
+                return {}
+
+            def terminate(self, ids, request_id):
+                return None
+
+            def launch(self, shape, request_id):
+                self.single_calls.append((request_id, dict(shape)))
+
+            def launch_many(self, requests):
+                self.batch_calls.append({k: dict(v) for k, v in requests.items()})
+
+            def poll_errors(self):
+                return []
+
+        events = [
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-a",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-a",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-b",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-b",
+                instance_type="type-2",
+            ),
+        ]
+        typed_provider = _RecordingProvider()
+        CloudInstanceUpdater(typed_provider).notify(events)
+        assert typed_provider.batch_calls == [
+            {"req-a": {"type-1": 2}, "req-b": {"type-1": 1, "type-2": 1}}
+        ]
+        assert typed_provider.single_calls == []
+
+        duck_provider = mock.MagicMock()
+        CloudInstanceUpdater(duck_provider).notify(events)
+        assert duck_provider.launch.call_count == 2
+
 
 class TestReadOnlyProvider:
     def test_terminate_raises_not_implemented_with_correct_interface(self):

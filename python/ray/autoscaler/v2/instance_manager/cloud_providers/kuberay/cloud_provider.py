@@ -116,10 +116,12 @@ class KubeRayProvider(ICloudInstanceProvider):
 
         # Transient reconcile-step context populated only during reconcile_step.
         self._active_step: Optional["KubeRayProvider._ActiveReconcileStep"] = None
+        self._deferred_patches: Optional[Dict[str, Dict[str, Any]]] = None
 
     @dataclass
     class _ActiveReconcileStep:
         synced: bool = False
+        standalone_batch: bool = False
         known_cloud_instance_ids: Set[CloudInstanceId] = field(default_factory=set)
         pre_sh_in_flight: Dict[NodeType, Dict[str, int]] = field(default_factory=dict)
         pre_mh_in_flight: Dict[NodeType, Dict[str, int]] = field(default_factory=dict)
@@ -330,6 +332,101 @@ class KubeRayProvider(ICloudInstanceProvider):
                 self._active_step.synced = False
             logger.exception(f"Error terminating nodes: {scale_request or 'N/A'}")
             self._add_terminate_errors(ids, request_id, details=str(e), e=e)
+
+    def launch_many(self, requests: Dict[str, Dict[NodeType, int]]) -> None:
+        if not requests:
+            return
+        if len(requests) == 1:
+            req_id, shape = next(iter(requests.items()))
+            self.launch(shape=shape, request_id=req_id)
+            return
+
+        # Sync once upfront before snapshotting transactional state for coalesced PATCH.
+        try:
+            self._ensure_synced_for_step()
+        except Exception as e:
+            if self._active_step is not None:
+                self._active_step.synced = False
+            logger.exception("Error syncing KubeRay state before batch launch")
+            for request_id, shape in requests.items():
+                if request_id not in self._requests:
+                    self._add_launch_errors(shape, request_id, details=str(e), e=e)
+            return
+
+        snap_cr = copy.deepcopy(self._ray_cluster)
+        snap_reqs = dict(self._requests)
+        snap_acc = copy.deepcopy(self._accepted_launch_workers)
+        snap_ext = defaultdict(int, self._external_unmaterialized)
+        snap_claimed = dict(self._claimed_pre_step_lids)
+        snap_last_seen_cr = (
+            None
+            if self._last_seen_cr_workers is None
+            else dict(self._last_seen_cr_workers)
+        )
+        snap_step = copy.deepcopy(self._active_step)
+        snap_err_len = len(self._launch_errors_queue)
+        attempted_fresh = [
+            (rid, shape) for rid, shape in requests.items() if rid not in snap_reqs
+        ]
+
+        created_temp_step = self._active_step is None
+        if created_temp_step:
+            wgs = (self._ray_cluster or {}).get("spec", {}).get("workerGroupSpecs", [])
+            self._active_step = self._ActiveReconcileStep(
+                synced=True,
+                standalone_batch=True,
+                known_cloud_instance_ids=set((self._cached_instances or {}).keys()),
+                pre_mh_in_flight={
+                    wg["groupName"]: {}
+                    for idx, wg in enumerate(wgs)
+                    if _worker_group_num_of_hosts(self._ray_cluster, idx) > 1
+                },
+            )
+
+        self._deferred_patches = {}
+        try:
+            for request_id, shape in requests.items():
+                self.launch(shape=shape, request_id=request_id)
+            final_patches = list(self._deferred_patches.values())
+        finally:
+            self._deferred_patches = None
+            if created_temp_step:
+                self._active_step = None
+
+        if not final_patches:
+            return
+
+        try:
+            logger.info(f"Submitting coalesced scale patch: {final_patches}")
+            resp = self._patch(f"rayclusters/{self._cluster_name}", final_patches)
+            if isinstance(resp, dict) and "spec" in resp:
+                self._ray_cluster = resp
+                patched_types = {
+                    self._ray_cluster["spec"]["workerGroupSpecs"][
+                        int(p["path"].split("/")[3])
+                    ]["groupName"]
+                    for p in final_patches
+                    if p["path"].endswith("/replicas")
+                }
+                self._update_external_cr_capacity(
+                    autoscaler_patched_types=patched_types
+                )
+        except Exception as e:
+            self._ray_cluster = snap_cr
+            self._requests = snap_reqs
+            self._accepted_launch_workers = snap_acc
+            self._external_unmaterialized = snap_ext
+            self._claimed_pre_step_lids = snap_claimed
+            self._last_seen_cr_workers = snap_last_seen_cr
+            self._active_step = snap_step
+            if self._active_step is not None:
+                self._active_step.synced = False
+            del self._launch_errors_queue[snap_err_len:]
+            logger.exception(
+                f"Error submitting coalesced launch patch: {final_patches}"
+            )
+            for request_id, shape in attempted_fresh:
+                self._add_launch_errors(shape, request_id, details=str(e), e=e)
 
     def launch(self, shape: Dict[NodeType, int], request_id: str) -> None:
         if request_id in self._requests:
@@ -629,7 +726,7 @@ class KubeRayProvider(ICloudInstanceProvider):
 
             known_cids = step.known_cloud_instance_ids if step is not None else set()
             ext_w = self._external_unmaterialized.get(node_type, 0)
-            if step is None:
+            if step is None or step.standalone_batch:
                 ext_w += max(0, min_w - effective_observed - ext_w)
             req_pos = max(0, req_w)
             if num_of_hosts > 1 and (
@@ -835,8 +932,13 @@ class KubeRayProvider(ICloudInstanceProvider):
                 raycluster["spec"]["workerGroupSpecs"][group_index]["groupName"]
                 for group_index, _ in patched_replicas
             }
-            logger.info(f"Submitting a scale request: {scale_request}")
-            resp = self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
+            if self._deferred_patches is not None:
+                for p_op in patch_payload:
+                    self._deferred_patches[p_op["path"]] = p_op
+                resp = None
+            else:
+                logger.info(f"Submitting a scale request: {scale_request}")
+                resp = self._patch(f"rayclusters/{self._cluster_name}", patch_payload)
             if isinstance(resp, dict) and "spec" in resp:
                 self._ray_cluster = resp
             elif self._ray_cluster is not None:

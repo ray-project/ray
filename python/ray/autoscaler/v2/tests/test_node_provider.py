@@ -2569,6 +2569,198 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
         ):
             assert len(prov._claimed_pre_step_lids) == 0
 
+    def test_launch_many_coalesces_multihost_scale_up_and_rolls_back_atomically(self):
+        """Verify KubeRayProvider.launch_many coalesces N replica UUIDs into one PATCH,
+        rolls back bounded dict and external-CR state atomically on 409 Conflict without
+        a GET/LIST storm, and accumulates replicas correctly for standalone callers."""
+        from ray.autoscaler.v2.instance_manager.subscribers.cloud_instance_updater import (
+            CloudInstanceUpdater,
+        )
+        from ray.core.generated.instance_manager_pb2 import (
+            Instance,
+            InstanceUpdateEvent,
+        )
+
+        # 1. 25 distinct 4-host replica UUIDs coalesce into 1 atomic HTTP PATCH.
+        prov, client = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "tpu-4h",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 50,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[],
+        )
+        known = set(prov.get_non_terminated())
+        events_25 = [
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id=f"rep-{rep_idx}",
+                instance_type="tpu-4h",
+                instance_id=f"im-{rep_idx}-{host_idx}",
+            )
+            for rep_idx in range(25)
+            for host_idx in range(4)
+        ]
+        with prov.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known,
+                unclaimed_replicas_by_lid={"tpu-4h": {}},
+            )
+        ):
+            CloudInstanceUpdater(prov).notify(events_25)
+
+        assert len(client.patch_history) == 1
+        assert client.patch_history[0] == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 25}
+        ]
+        assert isinstance(prov._requests, dict)
+        assert len(prov._requests) == 25
+        assert prov.poll_errors() == []
+
+        # 2. 409 Conflict on a 20-replica batch emits 1 PATCH, 0 extra GET/LISTs,
+        # preserves bounded dict types + _last_seen_cr_workers, and retries cleanly.
+        prov_err, client_err = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "tpu-4h",
+                    "replicas": 0,
+                    "minReplicas": 0,
+                    "maxReplicas": 50,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                }
+            ],
+            pods=[],
+        )
+        prov_err._max_tracked_request_entries = 16
+        known_err = set(prov_err.get_non_terminated())
+        assert prov_err._last_seen_cr_workers == {"tpu-4h": 0}
+        real_patch = client_err.patch
+
+        def conflict_patch(path, patches, content_type="application/json-patch+json"):
+            client_err.patch_history.append(list(patches))
+            raise RuntimeError("409 Conflict: object has been modified")
+
+        client_err.patch = conflict_patch
+        events_20 = [
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id=f"fail-{rep_idx}",
+                instance_type="tpu-4h",
+                instance_id=f"im-f-{rep_idx}-{host_idx}",
+            )
+            for rep_idx in range(20)
+            for host_idx in range(4)
+        ]
+        with prov_err.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_err,
+                unclaimed_replicas_by_lid={"tpu-4h": {}},
+            )
+        ):
+            gets_before = len(client_err.get_calls)
+            CloudInstanceUpdater(prov_err).notify(events_20)
+            gets_after = len(client_err.get_calls)
+
+        assert len(client_err.patch_history) == 1
+        assert gets_after - gets_before <= 2
+        assert prov_err._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] == 0
+        assert prov_err._last_seen_cr_workers == {"tpu-4h": 0}
+        assert isinstance(prov_err._requests, dict)
+        assert isinstance(prov_err._claimed_pre_step_lids, dict)
+        assert len(prov_err._requests) == 0
+        errs_20 = prov_err.poll_errors()
+        assert len(errs_20) == 20
+        assert {e.request_id for e in errs_20} == {f"fail-{i}" for i in range(20)}
+        assert all(e.count == 4 and e.node_type == "tpu-4h" for e in errs_20)
+
+        # External scale-up after rolled-back 409 must still be detected, and subsequent
+        # retry must still keep FIFO dict bounding intact.
+        client_err.patch = real_patch
+        client_err._ray_cluster["spec"]["workerGroupSpecs"][0]["replicas"] = 2
+        known_retry = set(prov_err.get_non_terminated())
+        assert prov_err._external_unmaterialized["tpu-4h"] == 8
+        with prov_err.reconcile_step(
+            ReconcileStepContext(
+                known_cloud_instance_ids=known_retry,
+                unclaimed_replicas_by_lid={"tpu-4h": {}},
+            )
+        ):
+            CloudInstanceUpdater(prov_err).notify(events_20)
+        assert len(client_err.patch_history) == 2
+        assert client_err.patch_history[-1] == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/0/replicas", "value": 22}
+        ]
+        assert isinstance(prov_err._requests, dict)
+        assert len(prov_err._requests) == 16
+
+        # 3. Standalone launch_many outside reconcile_step (_active_step is None) with
+        # minReplicas > 0 and a mixed capped sibling group.
+        prov_mix, client_mix = self._make_kuberay_provider(
+            worker_groups=[
+                {
+                    "groupName": "capped",
+                    "replicas": 1,
+                    "minReplicas": 0,
+                    "maxReplicas": 1,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+                {
+                    "groupName": "scalable",
+                    "replicas": 1,
+                    "minReplicas": 1,
+                    "maxReplicas": 10,
+                    "numOfHosts": 4,
+                    "template": {"spec": {"containers": [{}]}},
+                },
+            ],
+            pods=[
+                self._make_multihost_pod(
+                    f"cap-p-{h}", group="capped", rep="capped-rep-0"
+                )
+                for h in range(4)
+            ],
+        )
+        mix_events = [
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="cap-0",
+                instance_type="capped",
+                instance_id=f"c-{h}",
+            )
+            for h in range(4)
+        ] + [
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id=f"sc-{r}",
+                instance_type="scalable",
+                instance_id=f"s-{r}-{h}",
+            )
+            for r in range(3)
+            for h in range(4)
+        ]
+        gets_mix_before = len(client_mix.get_calls)
+        CloudInstanceUpdater(prov_mix).notify(mix_events)
+        gets_mix_after = len(client_mix.get_calls)
+
+        assert prov_mix._active_step is None
+        assert len(client_mix.patch_history) == 1
+        assert gets_mix_after - gets_mix_before <= 2
+        assert client_mix.patch_history[0] == [
+            {"op": "replace", "path": "/spec/workerGroupSpecs/1/replicas", "value": 4}
+        ]
+        mix_errs = prov_mix.poll_errors()
+        assert len(mix_errs) == 1
+        assert mix_errs[0].request_id == "cap-0"
+        assert mix_errs[0].node_type == "capped"
+        assert mix_errs[0].count == 4
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

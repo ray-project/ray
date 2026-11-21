@@ -442,6 +442,188 @@ def test_multihost_replica_config_validation():
         unknown_field_cfg.get_node_type_configs()
 
 
+def test_foreground_node_launch_uncaps_max_concurrent_launches_unless_overridden(
+    monkeypatch,
+):
+    """Foreground node-launch providers (KubeRay) bypass the default 10-node per-tick
+    cap unless AUTOSCALER_MAX_CONCURRENT_LAUNCHES is set, while Conservative
+    upscaling_speed and non-foreground VM providers stay bounded."""
+    from collections import Counter
+
+    from ray.autoscaler._private.constants import (
+        AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+        DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+        FOREGROUND_NODE_LAUNCH_KEY,
+    )
+    from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
+    from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
+    from ray.autoscaler.v2.instance_manager.node_provider import (
+        CloudInstance,
+        ICloudInstanceProvider,
+    )
+    from ray.autoscaler.v2.instance_manager.reconciler import Reconciler
+    from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
+    from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+        CloudResourceMonitor,
+    )
+    from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
+    from ray.core.generated.autoscaler_pb2 import (
+        ClusterResourceState,
+        NodeState,
+        NodeStatus,
+        ResourceRequest,
+        ResourceRequestByCount,
+    )
+    from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+
+    monkeypatch.delenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES", raising=False)
+
+    def _make_cfg(
+        foreground: bool, upscaling_speed: float = 1000.0
+    ) -> AutoscalingConfig:
+        if foreground:
+            from ray.autoscaler._private.kuberay.autoscaling_config import (
+                _derive_autoscaling_config_from_ray_cr,
+            )
+            from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
+
+            ray_cr = get_basic_ray_cr()
+            ray_cr["metadata"]["namespace"] = "default"
+            ray_cr["spec"]["headGroupSpec"]["rayStartParams"] = {"num-cpus": "0"}
+            wg = ray_cr["spec"]["workerGroupSpecs"][0]
+            wg.update(
+                groupName="tpu-4h",
+                replicas=0,
+                minReplicas=0,
+                maxReplicas=10,
+                numOfHosts=4,
+            )
+            wg["template"]["spec"]["nodeSelector"] = {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            }
+            wg["template"]["spec"]["containers"][0]["resources"] = {
+                "limits": {"cpu": "4", "google.com/tpu": "4"},
+                "requests": {"cpu": "4", "google.com/tpu": "4"},
+            }
+            ray_cr["spec"]["workerGroupSpecs"] = [wg]
+            raw = _derive_autoscaling_config_from_ray_cr(ray_cr)
+            raw["upscaling_speed"] = upscaling_speed
+            cfg = AutoscalingConfig(configs=raw, skip_content_hash=True)
+            cfg._configs["available_node_types"]["tpu-4h"]["replica_config"] = {
+                "workers_per_replica": 4
+            }
+            return cfg
+        cfg = AutoscalingConfig(
+            configs={
+                "cluster_name": "test",
+                "max_workers": 40,
+                "upscaling_speed": upscaling_speed,
+                "idle_timeout_minutes": 5,
+                "provider": {
+                    "type": "aws",
+                    DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+                    FOREGROUND_NODE_LAUNCH_KEY: False,
+                },
+                "head_node_type": "headgroup",
+                "available_node_types": {
+                    "headgroup": {"node_config": {}, "resources": {"CPU": 0}},
+                    "tpu-4h": {
+                        "node_config": {},
+                        "resources": {"CPU": 4, "TPU": 4},
+                        "min_workers": 0,
+                        "max_workers": 40,
+                    },
+                },
+            },
+            skip_content_hash=True,
+        )
+        cfg._configs["available_node_types"]["tpu-4h"]["replica_config"] = {
+            "workers_per_replica": 4
+        }
+        return cfg
+
+    fg_cfg = _make_cfg(foreground=True, upscaling_speed=1000.0)
+    vm_cfg = _make_cfg(foreground=False, upscaling_speed=1000.0)
+    assert fg_cfg.get_max_concurrent_launches() == sys.maxsize
+    assert vm_cfg.get_max_concurrent_launches() == AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+
+    monkeypatch.setenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES", "24")
+    assert fg_cfg.get_max_concurrent_launches() == 24
+    assert vm_cfg.get_max_concurrent_launches() == 24
+    monkeypatch.delenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES")
+
+    class _NoopProvider(ICloudInstanceProvider):
+        def get_non_terminated(self):
+            return {"hpod": CloudInstance("hpod", "headgroup", NodeKind.HEAD, True)}
+
+        def terminate(self, ids, request_id):
+            return None
+
+        def launch(self, shape, request_id):
+            return None
+
+        def poll_errors(self):
+            return []
+
+    def _run_cold_start_tick(acfg: AutoscalingConfig) -> Counter:
+        storage = InstanceStorage(cluster_id="fg", storage=InMemoryStorage())
+        im = InstanceManager(
+            instance_storage=storage, instance_status_update_subscribers=[]
+        )
+        hnid = b"h".ljust(28, b"\0")
+        head_im = Instance(
+            instance_id="h0",
+            instance_type="headgroup",
+            status=Instance.RAY_RUNNING,
+            node_kind=NodeKind.HEAD,
+            node_id=hnid.hex(),
+            cloud_instance_id="hpod",
+            version=0,
+        )
+        assert storage.batch_upsert_instances([head_im], expected_storage_version=0)[0]
+        crs = ClusterResourceState(
+            node_states=[
+                NodeState(
+                    node_id=hnid,
+                    instance_id="hpod",
+                    ray_node_type_name="headgroup",
+                    status=NodeStatus.RUNNING,
+                )
+            ],
+            pending_resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequest(resources_bundle={"CPU": 1, "TPU": 4}),
+                    count=20,
+                )
+            ],
+        )
+        Reconciler.reconcile(
+            instance_manager=im,
+            scheduler=ResourceDemandScheduler(),
+            cloud_provider=_NoopProvider(),
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_cluster_resource_state=crs,
+            non_terminated_cloud_instances={
+                "hpod": CloudInstance("hpod", "headgroup", NodeKind.HEAD, True)
+            },
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=acfg,
+        )
+        insts, _ = storage.get_instances()
+        return Counter(i.status for i in insts.values() if i.node_kind != NodeKind.HEAD)
+
+    # Aggressive KubeRay cold start launches all 20 workers (5 x 4-host slices) in 1 tick.
+    assert _run_cold_start_tick(fg_cfg) == {Instance.REQUESTED: 20}
+    # Conservative KubeRay cold start (upscaling_speed=1.0) still rounds 1 worker up to 1 slice (4 REQUESTED, 16 QUEUED).
+    cons_cfg = _make_cfg(foreground=True, upscaling_speed=1.0)
+    assert _run_cold_start_tick(cons_cfg) == {
+        Instance.REQUESTED: 4,
+        Instance.QUEUED: 16,
+    }
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
