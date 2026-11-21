@@ -55,9 +55,9 @@ class RayDataConfig(DataLoaderConfig):
     enable_shard_locality: bool = True
     preserve_order: bool = False
     ray_data_pin_memory: bool = False
-    # Use the push-based streaming split (PushBasedDataConfig)
-    # instead of the default pull-based streaming_split.
-    ray_data_push_based_split: bool = False
+    # Use the push-based streaming split, which is the Ray Train default.
+    # Set to False to use the pull-based streaming_split.
+    ray_data_push_based_split: bool = True
     # Turn on mid-epoch resumption for the train dataset, with either split.
     # The data iterator records the row IDs of each batch it yields, and each
     # checkpoint saves the iterator state. On restore, Ray Data skips the rows

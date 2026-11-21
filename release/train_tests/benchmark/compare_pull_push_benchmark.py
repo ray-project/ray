@@ -1,7 +1,7 @@
 """Pull-vs-push comparison for the training ingestion benchmark.
 
 Runs ``train_benchmark.py`` twice on the same cluster — first with the
-default pull-based streaming split, then with the push-based one — and
+pull-based streaming split, then with the default push-based one — and
 fails unless push reaches at least ``--push_min_throughput_ratio`` of
 pull's ``train/global_throughput``. Both runs' metrics and the ratio are
 written as the release test result.
@@ -29,9 +29,7 @@ def run_benchmark(
     script = os.path.join(
         os.path.dirname(os.path.abspath(__file__)), "train_benchmark.py"
     )
-    cmd = [sys.executable, script, *benchmark_args]
-    if push_based:
-        cmd.append(f"{PUSH_FLAG}=True")
+    cmd = [sys.executable, script, *benchmark_args, f"{PUSH_FLAG}={push_based}"]
     env = dict(os.environ, TEST_OUTPUT_JSON=output_json)
     mode = "push" if push_based else "pull"
     logger.info(f"Running the {mode} benchmark: {' '.join(cmd)}")
