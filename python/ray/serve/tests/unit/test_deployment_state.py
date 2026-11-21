@@ -14468,6 +14468,43 @@ class TestPushedHealthWrapper:
         assert wrapper.last_health_check_failed is False
 
 
+def test_a_heartbeat_reply_carries_the_settings_the_replica_is_judged_by(
+    mock_deployment_state_manager,
+):
+    """Changing only health_check_period_s or health_check_timeout_s needs no
+    reconfigure, so the reply to a replica's heartbeat is how it learns new ones.
+    Mid-rollout an old replica is still judged by its own version's, so those are
+    the ones it is told. A recovered replica's version is the target's until
+    check_ready, so it is told nothing until then."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    dsm.deploy(
+        TEST_DEPLOYMENT_ID,
+        deployment_info(
+            version="1", health_check_period_s=10.0, health_check_timeout_s=20.0
+        )[0],
+    )
+    dsm.update()
+    ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+    old = ds._replicas.get()[0]
+    old._actor.set_ready()
+    dsm.update()
+    dsm.deploy(
+        TEST_DEPLOYMENT_ID,
+        deployment_info(
+            version="2", health_check_period_s=60.0, health_check_timeout_s=45.0
+        )[0],
+    )
+    assert dsm.record_replica_health(old.replica_id, 1, True, 0) == (10.0, 20.0)
+    untracked = ReplicaID("untracked", TEST_DEPLOYMENT_ID)
+    assert dsm.record_replica_health(untracked, 1, True, 0) == (60.0, 45.0)
+    gone = ReplicaID("r1", DeploymentID(name="gone", app_name="test_app"))
+    assert dsm.record_replica_health(gone, 1, True, 0) is None
+    dsm.save_checkpoint()
+    recovered = create_dsm([old.replica_id.to_full_id_str()])
+    assert recovered.record_replica_health(old.replica_id, 1, True, 0) is None
+
+
 def test_the_push_window_stays_under_the_probe_cadence():
     """A crash is invisible until the window expires and a probe is armed, so the
     window has to stay under the cadence it replaces or push detects crashes later
