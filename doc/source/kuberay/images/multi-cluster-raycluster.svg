@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="Helvetica, Arial, sans-serif" font-size="13">
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#1f6feb"/>
+    </marker>
+  </defs>
+  <rect width="760" height="330" fill="#ffffff"/>
+
+  <!-- Kubernetes clusters -->
+  <g fill="#f6f8fa" stroke="#57606a" stroke-width="1.5">
+    <rect x="20" y="20" width="220" height="230" rx="8"/>
+    <rect x="270" y="20" width="220" height="230" rx="8"/>
+    <rect x="520" y="20" width="220" height="230" rx="8"/>
+  </g>
+  <g fill="#24292f" font-weight="bold" text-anchor="middle">
+    <text x="130" y="42">Kubernetes cluster: primary</text>
+    <text x="380" y="42">Kubernetes cluster: member-1</text>
+    <text x="630" y="42">Kubernetes cluster: member-2</text>
+  </g>
+  <g fill="#57606a" text-anchor="middle" font-size="12">
+    <text x="130" y="60">Pod CIDR 10.10.0.0/16</text>
+    <text x="380" y="60">Pod CIDR 10.20.0.0/16</text>
+    <text x="630" y="60">Pod CIDR 10.30.0.0/16</text>
+  </g>
+
+  <!-- Ray head -->
+  <rect x="50" y="80" width="160" height="50" rx="6" fill="#ddf4ff" stroke="#1f6feb" stroke-width="2"/>
+  <text x="130" y="101" text-anchor="middle" fill="#24292f" font-weight="bold">Ray head</text>
+  <text x="130" y="119" text-anchor="middle" fill="#24292f" font-size="12">raycluster-kuberay</text>
+
+  <!-- Unused heads -->
+  <g fill="#ffffff" stroke="#8c959f" stroke-width="1.5" stroke-dasharray="5 4">
+    <rect x="300" y="80" width="160" height="50" rx="6"/>
+    <rect x="550" y="80" width="160" height="50" rx="6"/>
+  </g>
+  <g fill="#57606a" text-anchor="middle">
+    <text x="380" y="101">Unused head</text>
+    <text x="380" y="119" font-size="12">raycluster-member</text>
+    <text x="630" y="101">Unused head</text>
+    <text x="630" y="119" font-size="12">raycluster-member</text>
+  </g>
+
+  <!-- Workers -->
+  <g fill="#dafbe1" stroke="#1a7f37" stroke-width="1.5">
+    <rect x="50" y="180" width="160" height="44" rx="6"/>
+    <rect x="300" y="180" width="160" height="44" rx="6"/>
+    <rect x="550" y="180" width="160" height="44" rx="6"/>
+  </g>
+  <g fill="#24292f" text-anchor="middle" font-weight="bold">
+    <text x="130" y="207">Ray worker</text>
+    <text x="380" y="207">Ray worker</text>
+    <text x="630" y="207">Ray worker</text>
+  </g>
+
+  <!-- Worker to head connections -->
+  <!-- The member workers share one horizontal line that joins the primary worker's line. -->
+  <g stroke="#1f6feb" stroke-width="2" fill="none" stroke-linejoin="round">
+    <path d="M380,180 L380,155 L130,155"/>
+    <path d="M630,180 L630,155 L380,155"/>
+    <path d="M130,180 L130,136" marker-end="url(#arrow)"/>
+  </g>
+
+  <!-- Submariner -->
+  <rect x="20" y="270" width="720" height="40" rx="8" fill="#fff8c5" stroke="#9a6700" stroke-width="1.5"/>
+  <text x="380" y="295" text-anchor="middle" fill="#24292f">Submariner: Pod IP routing and service DNS across clusters</text>
+</svg>
