@@ -49,13 +49,40 @@ def _pa_is_in(left: Any, right: Any) -> Any:
     return pc.is_in(left, right)
 
 
+def _pd_widen_for_number(value: Any, other: Any) -> Any:
+    """Widen a narrow NumPy column used with a Python number to 64 bits.
+
+    Arrow blocks treat a Python number as 64-bit, so int8 ``x + 100`` is 200
+    there, while NumPy keeps int8 and wraps to -56.
+    """
+    if not isinstance(value, pd.Series) or not isinstance(value.dtype, np.dtype):
+        return value
+    if value.dtype.itemsize >= 8 or isinstance(other, bool):
+        return value
+    if isinstance(other, int) and value.dtype.kind in "iu":
+        return value.astype(np.int64)
+    if isinstance(other, float) and value.dtype.kind == "f":
+        return value.astype(np.float64)
+    return value
+
+
+def _pd_arithmetic(op: Callable[[Any, Any], Any]) -> Callable[[Any, Any], Any]:
+    def apply(left: Any, right: Any) -> Any:
+        return op(
+            _pd_widen_for_number(value=left, other=right),
+            _pd_widen_for_number(value=right, other=left),
+        )
+
+    return apply
+
+
 _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
-    Operation.ADD: operator.add,
-    Operation.SUB: operator.sub,
-    Operation.MUL: operator.mul,
-    Operation.DIV: operator.truediv,
-    Operation.MOD: operator.mod,
-    Operation.FLOORDIV: operator.floordiv,
+    Operation.ADD: _pd_arithmetic(op=operator.add),
+    Operation.SUB: _pd_arithmetic(op=operator.sub),
+    Operation.MUL: _pd_arithmetic(op=operator.mul),
+    Operation.DIV: _pd_arithmetic(op=operator.truediv),
+    Operation.MOD: _pd_arithmetic(op=operator.mod),
+    Operation.FLOORDIV: _pd_arithmetic(op=operator.floordiv),
     Operation.GT: operator.gt,
     Operation.LT: operator.lt,
     Operation.GE: operator.ge,
@@ -138,11 +165,30 @@ def _pa_add_or_concat(left: Any, right: Any) -> Any:
     return pc.add(left, right)
 
 
+def _is_integer(value: Any) -> bool:
+    """Whether an operand is an integer array, Arrow scalar or Python integer."""
+    if isinstance(value, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+        return pa.types.is_integer(value.type)
+    return isinstance(value, (int, np.integer)) and not isinstance(value, bool)
+
+
+def _pa_true_divide(left: Any, right: Any) -> Any:
+    # Python's ``/`` divides integers as floats; PyArrow truncates them.
+    if _is_integer(value=left) and _is_integer(value=right):
+        left, right = (
+            side.cast(pa.float64())
+            if isinstance(side, (pa.Array, pa.ChunkedArray, pa.Scalar))
+            else float(side)
+            for side in (left, right)
+        )
+    return pc.divide(left, right)
+
+
 _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
-    Operation.DIV: pc.divide,
+    Operation.DIV: _pa_true_divide,
     Operation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M

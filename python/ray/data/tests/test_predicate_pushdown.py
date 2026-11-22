@@ -6,6 +6,7 @@ from typing import Any, List
 import lance
 import pandas as pd
 import pyarrow as pa
+import pyarrow.orc as orc
 import pyarrow.parquet as pq
 import pytest
 from packaging.version import Version
@@ -124,6 +125,14 @@ def test_pushed_filter_matches_in_memory_filter(
     pushed = ds.filter(expr=predicate).take_all()
     in_memory = ds.materialize().filter(expr=predicate).take_all()
     assert [row["id"] for row in pushed] == [row["id"] for row in in_memory]
+
+
+def test_integer_division_filter_keeps_fraction(ray_start_regular_shared, tmp_path):
+    """Ray divides integers as floats; a filter pushed into ORC would truncate."""
+    path = str(tmp_path / "data.orc")
+    orc.write_table(pa.table({"x": [7, -7]}), path)
+    rows = ray.data.read_orc(path).filter(expr=(col("x") / 2) == 3.5).take_all()
+    assert rows == [{"x": 7}]
 
 
 def test_synthesized_path_residual_preserves_read_constraints(

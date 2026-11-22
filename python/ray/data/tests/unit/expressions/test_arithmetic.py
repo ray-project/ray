@@ -227,6 +227,26 @@ class TestBasicArithmetic:
             check_names=False,
         )
 
+    @pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+    @pytest.mark.parametrize(
+        "values,expr,python",
+        [
+            (pa.array([-7, 7, 100], pa.int8()), col("x") + 100, lambda x: x + 100),
+            (pa.array([0.1], pa.float32()), col("x") + 0.1, lambda x: x + 0.1),
+            (pa.array([-7, 7]), col("x") / 2, lambda x: x / 2),
+        ],
+        ids=["int8_add", "float32_add", "int_div"],
+    )
+    def test_matches_python(self, values, expr, python, block_format):
+        """Arrow and pandas blocks both give Python's answer and result type."""
+        table = pa.table({"x": values})
+        block = table if block_format == "arrow" else table.to_pandas()
+        result = eval_expr(expr, block)
+        actual = result.to_pylist() if block_format == "arrow" else result.tolist()
+        expected = [python(value) for value in values.to_pylist()]
+        assert actual == expected
+        assert [type(value) for value in actual] == [type(value) for value in expected]
+
 
 # ──────────────────────────────────────
 # Complex Arithmetic Expressions

@@ -291,6 +291,9 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
         # literal (the converter reads ``expr.right.value`` directly).
         if expr.op in (Operation.IN, Operation.NOT_IN):
             return isinstance(expr.right, LiteralExpr) and self.visit(expr.left)
+        # Ray divides integers as floats, but the converter can't see column types.
+        if expr.op == Operation.DIV:
+            return False
 
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
             _ARROW_EXPR_OPS_MAP,
