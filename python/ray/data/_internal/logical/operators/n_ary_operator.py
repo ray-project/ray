@@ -1,11 +1,12 @@
 import enum
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Sequence, Union as TypingUnion
+from typing import TYPE_CHECKING, List, Optional, Sequence, Set, Union as TypingUnion
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorUnifiesInputSchemas,
     PredicatePassThroughBehavior,
 )
@@ -187,6 +188,7 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
 class Union(
     NAry,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorUnifiesInputSchemas,
 ):
     """Logical operator for union."""
@@ -213,6 +215,11 @@ class Union(
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch
         return PredicatePassThroughBehavior.PUSH_INTO_BRANCHES
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns for _ in self.input_dependencies]
 
 
 def _unify_union_schemas(

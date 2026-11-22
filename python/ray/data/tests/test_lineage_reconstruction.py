@@ -311,6 +311,133 @@ def test_joined_plans_sharing_a_child_release_it_once(
     assert child_task.reconstruction_plan_ids == frozenset(plan_ids)
 
 
+def test_seed_re_execution_is_stamped_only_with_plans_that_traced_to_it(
+    ray_start_regular_shared,  # noqa: F405
+):
+    """A task re-executing for two plans loses its input, and only one plan's trace
+    reaches the seed.
+
+    The other plan's trace stops at the child's reconstruction task already queued
+    for that plan, which also re-produces the task's input for it. So the seed must
+    re-execute for the first plan only.
+    """
+    from ray.data._internal.execution.interfaces import ExecutionOptions
+
+    producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+    # x and y are two tasks of an operator downstream of the child.
+    grandchild_op = MapOperator.create(
+        create_map_transformer_from_block_fn(lambda block, _: block),
+        input_op=consumer,
+        data_context=DataContext.get_current(),
+        name="Grandchild",
+    )
+    grandchild_op.start(ExecutionOptions(), noop_counter(), tracker)  # noqa: F405
+    source_op = producer.input_dependencies[0]
+    topology = {
+        source_op: MagicMock(),
+        producer: MagicMock(),
+        consumer: MagicMock(),
+        grandchild_op: MagicMock(),
+    }
+
+    def lose(lost_task_id, plan_ids):
+        task = DataOpTask(
+            0,
+            MagicMock(),
+            MagicMock(),
+            "lost_op",
+            lineage_task_id=lost_task_id,
+            reconstruction_plan_ids=frozenset(plan_ids),
+        )
+        calls = topology[source_op].add_output.call_args_list
+        num_calls = len(calls)
+        _reconstruct_lost_object(
+            topology,
+            tracker,
+            MagicMock(),
+            task,
+            ObjectLostError(ray.ObjectRef.nil().hex(), None, "injected by test"),
+        )
+        # The seed's re-injected input, or None if the loss joined a queued one.
+        return calls[-1].args[0] if len(calls) > num_calls else None
+
+    # First run.
+    seed_task_id = producer._lineage_task_id_for(0)
+    child_task_id = consumer._lineage_task_id_for(0)
+    x, y = (grandchild_op._lineage_task_id_for(index) for index in range(2))
+    seed_block_id = "seed/0"
+    tracker.register_task_submission(seed_task_id, [])
+    tracker.register_seed_input(seed_task_id, seed_input)
+    tracker.register_block_output(seed_task_id, seed_block_id, 0)
+    tracker.register_block_queued(seed_task_id, 0)
+    tracker.register_task_complete(seed_task_id, num_outputs=1)
+    tracker.register_task_submission(
+        child_task_id, tracker.resolve_dependencies([seed_block_id])
+    )
+    for output_index, task_id in enumerate([x, y]):
+        block_id = f"{child_task_id}/{output_index}"
+        tracker.register_block_output(child_task_id, block_id, output_index)
+        tracker.register_block_queued(child_task_id, output_index)
+        tracker.register_task_submission(
+            task_id, tracker.resolve_dependencies([block_id])
+        )
+    tracker.register_task_complete(child_task_id, num_outputs=2)
+    for output_index in range(2):
+        tracker.register_block_output(x, f"{x}/{output_index}", output_index)
+        tracker.register_block_queued(x, output_index)
+    tracker.register_task_complete(x, num_outputs=2)
+    tracker.register_block_output(y, f"{y}/0", 0)
+    tracker.register_block_queued(y, 0)
+    tracker.register_task_complete(y, num_outputs=1)
+    tracker.register_task_submission("leaf:0", tracker.resolve_dependencies([f"{x}/0"]))
+    tracker.register_task_submission(
+        "leaf:1", tracker.resolve_dependencies([f"{x}/1", f"{y}/0"])
+    )
+
+    # Both leaves are lost. P2 joins P1's queued seed re-execution.
+    p1, p2 = "leaf:0", "leaf:1"
+    first_copy = lose(p1, [])
+    assert first_copy is not None
+    assert lose(p2, []) is None
+    assert producer._batched_plans == {seed_task_id: {p2}}
+
+    # The seed, the child, x and y re-execute.
+    (seed_output,) = _produced_bundles([[1]])
+    _run_to_completion(producer, first_copy, [seed_output])
+    (child_input,) = _drain(producer)
+    child_outputs = _produced_bundles([[1], [2]])
+    child_task = _run_to_completion(consumer, child_input, child_outputs)
+    assert child_task.reconstruction_plan_ids == frozenset({p1, p2})
+    x_input, y_input = _drain(consumer)
+    assert x_input.reconstruction_stamp == ReconstructionStamp(x, frozenset({p1, p2}))
+    assert y_input.reconstruction_stamp == ReconstructionStamp(y, frozenset({p2}))
+    grandchild_op._submit_data_task(MagicMock(), x_input)
+    grandchild_op._submit_data_task(MagicMock(), y_input)
+
+    # y loses its input. The seed re-executes for P2 and queues the child's input,
+    # which waits in the child's queue.
+    y_copy = lose(y, [p2])
+    assert y_copy is not None
+    assert y_copy.reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, frozenset({p2})
+    )
+    (seed_output,) = _produced_bundles([[1]])
+    _run_to_completion(producer, y_copy, [seed_output])
+    (queued_child_input,) = _drain(producer)
+    assert queued_child_input.reconstruction_stamp == ReconstructionStamp(
+        child_task_id, frozenset({p2})
+    )
+
+    # x loses its input while the child's input for P2 is queued. Only P1 traced to
+    # the seed, so the seed re-executes for P1 only.
+    x_copy = lose(x, [p1, p2])
+    assert x_copy is not None
+    producer._submit_data_task(MagicMock(), x_copy)
+    assert x_copy.reconstruction_stamp == ReconstructionStamp(
+        seed_task_id, frozenset({p1})
+    )
+
+
 def _run_to_completion(
     op: MapOperator, inputs: "RefBundle", outputs: List["RefBundle"]
 ) -> DataOpTask:

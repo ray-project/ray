@@ -7,10 +7,10 @@ import uuid
 import ray.train
 import ray.train.torch
 
-# The detector reads these on the driver when you construct the trainer.
+# Set these on the driver. Ray Train propagates them to its controller.
 os.environ["RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"] = "1"
 # Log a confirmed hang and capture diagnostics without failing the run.
-# Set to "fail" to raise NCCLHangError instead.
+# Set to "fail" to reattempt the run instead.
 os.environ["RAY_TRAIN_NCCL_RAS_ACTION"] = "observe"
 
 
@@ -39,7 +39,7 @@ import ray.train
 import ray.train.torch
 
 os.environ["RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR"] = "1"
-# Raise NCCLHangError on a confirmed hang so the failure policy restarts the run.
+# Reattempt the run on a confirmed hang, through the failure policy.
 os.environ["RAY_TRAIN_NCCL_RAS_ACTION"] = "fail"
 # Confirm a hang after 5 minutes frozen. Keep this well below
 # TorchConfig(timeout_s), which defaults to 1800 seconds.
@@ -58,8 +58,8 @@ trainer = ray.train.torch.TorchTrainer(
     scaling_config=ray.train.ScalingConfig(num_workers=2),
     run_config=ray.train.RunConfig(
         name=f"train_run-{uuid.uuid4().hex}",
-        # NCCLHangError counts as a worker failure, so each confirmed hang
-        # uses one retry.
+        # A confirmed hang counts as a worker failure, so each one uses one
+        # retry.
         failure_config=ray.train.FailureConfig(max_failures=2),
     ),
 )
