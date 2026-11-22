@@ -14,7 +14,6 @@ from ray.train.v2._internal.util import (
 )
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
-
 _DEFAULT_WEIGHTS = np.ones(3)
 
 
