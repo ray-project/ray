@@ -582,6 +582,8 @@ class AsList(VectorizedAggregateFnV2[List, List]):
         return current_accumulator + new
 
     def output_field(self, input_schema: "pa.Schema") -> Optional["pa.Field"]:
+        if not isinstance(self._target_col_name, str):
+            return None
         try:
             in_type = input_schema.field(self._target_col_name).type
         except (KeyError, ValueError):
