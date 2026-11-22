@@ -1084,6 +1084,13 @@
         # Shuffles are all-to-all, so high object store utilization is expected
         # here and the DEFAULTS cap doesn't apply. A negative value disables it.
         RAYTEST_MAX_OBJ_STORE_UTIL_PERCENT: "-1"
+        # Since pyarrow 24 (#68005 moved this image to 25), Arrow's bundled mimalloc
+        # serves allocations up to 2 GiB from its arenas instead of returning
+        # anything over 32 MiB to the OS on free. Freed arena memory is only
+        # released on a later allocation, so idle workers keep GBs of freed Arrow
+        # buffers, which starves the page cache and leads to OOM kills. Release it
+        # on free instead. Users on pyarrow 24+ still get mimalloc's default.
+        MIMALLOC_PURGE_DELAY: "0"
     cluster_compute: fixed_size_all_to_all_compute.yaml
 
   run:

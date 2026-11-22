@@ -197,7 +197,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         # TODO(justinvyu): [Deprecated] Legacy XGBoostTrainer API
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        num_boost_round: Optional[int] = None,
+        num_boost_round: int = 10,
         **train_kwargs,
     ):
         if Version(xgboost.__version__) < Version("1.7.0"):
@@ -243,7 +243,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         run_config: Optional[ray.train.RunConfig],
         datasets: Optional[Dict[str, GenDataset]],
         label_column: Optional[str],
-        num_boost_round: Optional[int],
+        num_boost_round: int = 10,
     ) -> Callable[[Dict], None]:
         """Get the training function for the legacy XGBoostTrainer API."""
 
@@ -263,12 +263,10 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 "This is the column name of the label in the dataset."
             )
 
-        num_boost_round = num_boost_round or 10
-
         _log_deprecation_warning(LEGACY_XGBOOST_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
-        callbacks = xgboost_train_kwargs.get("callbacks", [])
+        callbacks = list(xgboost_train_kwargs.get("callbacks") or [])
         user_supplied_callback = any(
             isinstance(callback, RayTrainReportCallback) for callback in callbacks
         )

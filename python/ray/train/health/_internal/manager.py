@@ -17,21 +17,23 @@ import ray
 from ray.train.health._internal.constants import (
     DEFAULT_NODE_MONITOR_POLL_TIMEOUT_S,
     DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S,
-    DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
+    ON_DEMAND_PROBE_GRACE_S,
 )
 from ray.train.health._internal.node_monitor import NodeMonitorStatus
 from ray.train.health._internal.node_monitor_group import (
     NodeMonitorGroup,
     NodeMonitorGroupPollStatus,
 )
-from ray.train.health._internal.probe_utils import ScheduledProbe, merge_probes
+from ray.train.health._internal.probe_utils import (
+    ScheduledProbe,
+    merge_probes,
+    split_probes_by_type,
+)
 from ray.train.health.check import HealthCheck, PeriodicHealthCheck
 from ray.train.health.decision import Diagnose, Evict, HealthDecision, Noop, Reattempt
 from ray.train.health.evaluator import Evaluator
 from ray.train.health.probe import (
-    ControllerProbe,
     NodeIdStr,
-    NodeProbe,
     Probe,
     ProbeResult,
     WorkerProbe,
@@ -90,6 +92,18 @@ def merge_decisions(decisions: Sequence[HealthDecision]) -> HealthDecision:
         checks = [check for diagnose in diagnoses for check in diagnose.checks]
         return Diagnose(reason=_join_reasons(diagnoses), checks=checks)
     return Noop()
+
+
+def _on_demand_timeout_s(probes: Sequence[Probe]) -> float:
+    """How long some on-demand probes, polled together, have to return.
+
+    Args:
+        probes: The probes.
+
+    Returns:
+        Their longest ``timeout_s``, plus ``ON_DEMAND_PROBE_GRACE_S``.
+    """
+    return max((p.timeout_s for p in probes), default=0.0) + ON_DEMAND_PROBE_GRACE_S
 
 
 class HealthManager:
@@ -194,6 +208,15 @@ class HealthManager:
     def shutdown(self) -> None:
         """Stop monitoring."""
         self._node_monitor_group.shutdown()
+        for evaluator in self._inflight_evaluators:
+            try:
+                evaluator.on_shutdown()
+            except Exception:
+                logger.warning(
+                    "Evaluator %s raised in on_shutdown().",
+                    type(evaluator).__name__,
+                    exc_info=True,
+                )
 
     def evaluate(
         self,
@@ -254,18 +277,16 @@ class HealthManager:
         )
         return self._decide(self._inflight_evaluators, state)
 
-    def start_on_demand_checks(
-        self,
-        checks: Sequence[HealthCheck],
-        timeout: float = DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
-    ) -> None:
+    def start_on_demand_checks(self, checks: Sequence[HealthCheck]) -> None:
         """Start running on-demand checks once on the monitored nodes and
         workers. ``evaluate_on_demand_checks()`` evaluates their results.
+
+        The probes on the nodes, and those on the workers, have their longest
+        ``timeout_s``, plus ``ON_DEMAND_PROBE_GRACE_S``, to return.
 
         Args:
             checks: The checks, such as pre-flight checks or the checks of a
                 ``Diagnose``.
-            timeout: Timeout in seconds for the nodes and workers to answer.
         """
         # New evaluators for each run: the checks differ from run to run, such
         # as the pre-flight checks, then a Diagnose's, and an evaluator can
@@ -278,15 +299,22 @@ class HealthManager:
             return
         probes = {p.probe_name(): p for check in checks for p in check.probe_creator()}
         self._on_demand_probes = list(probes.values())
+        (
+            worker_on_demand_probes,
+            node_on_demand_probes,
+            controller_on_demand_probes,
+        ) = split_probes_by_type(self._on_demand_probes)
+        # The worker nodes and the controller's node are polled together.
+        node_monitor_probes = node_on_demand_probes + controller_on_demand_probes
         self._node_monitor_group.poll_probes_async(
-            self._on_demand_probes, timeout_s=timeout
+            node_monitor_probes, timeout_s=_on_demand_timeout_s(node_monitor_probes)
         )
-        worker_probes = [
-            p for p in self._on_demand_probes if isinstance(p, WorkerProbe)
-        ]
         self._on_demand_worker_results = {}
-        if worker_probes and self._worker_group is not None:
-            self._worker_group.poll_probes_async(worker_probes, timeout_s=timeout)
+        if worker_on_demand_probes and self._worker_group is not None:
+            self._worker_group.poll_probes_async(
+                worker_on_demand_probes,
+                timeout_s=_on_demand_timeout_s(worker_on_demand_probes),
+            )
             self._on_demand_worker_results = None
 
     def evaluate_on_demand_checks(self) -> Optional[HealthDecision]:
@@ -319,23 +347,20 @@ class HealthManager:
         return decision
 
     def start_and_evaluate_on_demand_checks(
-        self,
-        checks: Sequence[HealthCheck],
-        timeout: float = DEFAULT_ON_DEMAND_PROBE_TIMEOUT_S,
+        self, checks: Sequence[HealthCheck]
     ) -> HealthDecision:
         """Run on-demand checks once on the monitored nodes, and wait for their
-        decision: until their results are back, or the timeout passed.
+        decision: until their results are back, or their timeout passed.
 
         Args:
             checks: The checks, such as the pre-flight checks that stop the
                 workers.
-            timeout: Timeout in seconds for the nodes to answer.
 
         Returns:
             The health decision to carry out. ``Noop()`` if there is nothing to
             do.
         """
-        self.start_on_demand_checks(checks, timeout)
+        self.start_on_demand_checks(checks)
         decision = self.evaluate_on_demand_checks()
         while decision is None:
             time.sleep(DEFAULT_ON_DEMAND_PROBE_POLL_INTERVAL_S)
@@ -490,7 +515,8 @@ def _to_health_state(
     Returns:
         The ``HealthState``.
     """
-    node_probe_names = [p.probe_name() for p in probes if isinstance(p, NodeProbe)]
+    _, node_probes, controller_probes = split_probes_by_type(probes)
+    node_probe_names = [p.probe_name() for p in node_probes]
     # {node ID: {probe name: result}} -> {probe name: {node ID: result}}
     probe_results: Dict[str, Dict[Any, ProbeResult]] = {}
     for node_id, node_monitor_status in status.node_monitor_statuses.items():
@@ -498,9 +524,7 @@ def _to_health_state(
         for name, result in node_results.items():
             probe_results.setdefault(name, {})[node_id] = result
 
-    controller_probe_names = [
-        p.probe_name() for p in probes if isinstance(p, ControllerProbe)
-    ]
+    controller_probe_names = [p.probe_name() for p in controller_probes]
     probe_errors: Dict[str, Exception] = {}
     controller_results = _probe_results(
         status.controller_node_monitor_status, controller_probe_names

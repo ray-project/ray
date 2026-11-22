@@ -85,6 +85,18 @@ def test_tblib():
     cloudpickle.dumps(reraised_exception)
 
 
+def test_skip_exceptions_none_and_unchained_start_traceback():
+    """Test skip_exceptions with None or a StartTraceback without __cause__."""
+    assert skip_exceptions(None) is None
+    assert skip_exceptions(StartTraceback("unchained")) is None
+
+    outer = RuntimeError("Outer error")
+    outer.__cause__ = StartTraceback("inner unchained")
+    skipped = skip_exceptions(outer)
+    assert isinstance(skipped, RuntimeError)
+    assert skipped.__cause__ is None
+
+
 def test_traceback_tuner(ray_start_2_cpus):
     """Ensure that the Tuner's stack trace is not too long."""
 
