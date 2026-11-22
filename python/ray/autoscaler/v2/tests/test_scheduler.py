@@ -1,10 +1,13 @@
 import copy
+import itertools
 import os
+import random
 import sys
 import time
+from contextlib import contextmanager
 
 # coding: utf-8
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Mapping, Optional, Tuple
 from unittest.mock import patch
 
 import pytest
@@ -19,7 +22,6 @@ from ray.autoscaler.v2.scheduler import (
     SchedulingNodeStatus,
     SchedulingReply,
     SchedulingRequest,
-    UnschedulableRequestCache,
     logger,
 )
 from ray.autoscaler.v2.schema import (
@@ -2423,31 +2425,31 @@ def test_node_schedule_label_selector_score(source):
     ]
     assert try_schedule_ls({"CPU": 1}, labels, label_selector_1) == (
         [],
-        (1 / 3, True, 1, 1.0, 1.0),
+        (1, True, 1, 1.0, 1.0),
     )
 
-    # Matching the second selector (index 1 of 3) yields normalized score 2/3.
+    # Matching a constrained fallback selector (index 1 of 3) yields binary score 1.
     assert try_schedule_ls(
         {"CPU": 1}, {"ray.io/accelerator-type": "B200"}, label_selector_1
     ) == (
         [],
-        (2 / 3, True, 1, 1.0, 1.0),
+        (1, True, 1, 1.0, 1.0),
     )
 
-    # Matching the first selector (index 0) always yields normalized score 1.0,
+    # Matching the first selector (index 0) yields binary score 1,
     # regardless of how many fallback selectors follow.
     assert try_schedule_ls(
         {"CPU": 1}, {"ray.io/accelerator-type": "TPU-v6e"}, label_selector_1
     ) == (
         [],
-        (1.0, True, 1, 1.0, 1.0),
+        (1, True, 1, 1.0, 1.0),
     )
     single_selector = [
         [("ray.io/accelerator-type", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A100"])]
     ]
     assert try_schedule_ls({"CPU": 1}, labels, single_selector) == (
         [],
-        (1.0, True, 1, 1.0, 1.0),
+        (1, True, 1, 1.0, 1.0),
     )
 
     # 2) A non‑matching label selector should be infeasible
@@ -2460,10 +2462,10 @@ def test_node_schedule_label_selector_score(source):
     )
 
     # 3) Requests scheduled in an earlier pass must not contaminate the
-    # matches_labels score of requests scheduled in a subsequent pass.
+    # binary label score of requests scheduled in a subsequent pass.
     cfg = NodeTypeConfig(
         name="type_1",
-        resources={"CPU": 2},
+        resources={"CPU": 3},
         min_worker_nodes=0,
         max_worker_nodes=1,
         labels=labels,
@@ -2476,14 +2478,19 @@ def test_node_schedule_label_selector_score(source):
     req_primary = ResourceRequestUtil.make({"CPU": 1}, label_selectors=single_selector)
     infeasible, score_1 = node.try_schedule([req_primary], source)
     assert infeasible == []
-    assert score_1[0] == 1.0
+    assert score_1[0] == 1
 
     req_fallback = ResourceRequestUtil.make(
         {"CPU": 1}, label_selectors=label_selector_1
     )
     infeasible, score_2 = node.try_schedule([req_fallback], source)
     assert infeasible == []
-    assert score_2[0] == 1 / 3
+    assert score_2[0] == 1
+
+    req_unlabeled = ResourceRequestUtil.make({"CPU": 1})
+    infeasible, score_3 = node.try_schedule([req_unlabeled], source)
+    assert infeasible == []
+    assert score_3[0] == 0
 
 
 def test_get_nodes_packing_heuristic():
@@ -4384,28 +4391,6 @@ class TestPrecomputeSerializeKeys:
         # Should still work via fallback: 2 CPU fits 2 requests, 1 remains.
         assert len(remaining) == 1
 
-    def test_unschedulable_request_cache_bytes_interface(self):
-        """UnschedulableRequestCache works correctly with raw bytes keys."""
-        cache = UnschedulableRequestCache()
-
-        key_a = b"shape_a"
-        key_b = b"shape_b"
-
-        assert not cache.contains(key_a)
-        assert not cache.contains(key_b)
-
-        cache.add(key_a)
-        assert cache.contains(key_a)
-        assert not cache.contains(key_b)
-
-        cache.add(key_b)
-        assert cache.contains(key_a)
-        assert cache.contains(key_b)
-
-        cache.clear()
-        assert not cache.contains(key_a)
-        assert not cache.contains(key_b)
-
     def test_precomputed_keys_with_duplicate_objects(self):
         """Duplicate request objects (same id) work correctly with shape_keys."""
         node_type_configs = {
@@ -4484,983 +4469,156 @@ class TestPrecomputeSerializeKeys:
         assert to_launch == {"type_1": 2}
 
 
-_A_THEN_B = [
-    [("accel", LabelSelectorOperator.LABEL_OPERATOR_IN, ["A"])],
-    [("accel", LabelSelectorOperator.LABEL_OPERATOR_IN, ["B"])],
-]
+_IN = LabelSelectorOperator.LABEL_OPERATOR_IN
+_NOT_IN = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
+_ANTI = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+_A_THEN_B = [[("accel", _IN, ["A"])], [("accel", _IN, ["B"])]]
 _B_THEN_A = _A_THEN_B[::-1]
 
 
-def _accel_node_types(cpu: int, max_type_b: int = 10) -> Dict[NodeType, NodeTypeConfig]:
-    return {
-        f"type_{accel.lower()}": NodeTypeConfig(
-            name=f"type_{accel.lower()}",
-            resources={"CPU": cpu},
-            min_worker_nodes=0,
-            max_worker_nodes=max_type_b if accel == "B" else 10,
-            labels={"accel": accel},
-        )
-        for accel in ("A", "B")
-    }
-
-
-@pytest.mark.parametrize(
-    "node_cpu,max_type_b,max_num_nodes,request_cpus,expected_launch",
-    [
-        # One 2-CPU node fits both requests via fallback, but each request still
-        # gets its primary node type.
-        (2, 10, None, [1], {"type_a": 1, "type_b": 1}),
-        # type_b unavailable: fall back and bin-pack onto the launched type_a node.
-        (2, 0, None, [1], {"type_a": 1}),
-        # max_num_nodes reached: same fallback onto the launched type_a node.
-        (2, 10, 1, [1], {"type_a": 1}),
-        # Interleaved sizes: smaller requests pack onto their primary launched node.
-        (4, 10, None, [2, 1], {"type_a": 1, "type_b": 1}),
-    ],
-)
-def test_label_selector_fallback_new_nodes(
-    node_cpu, max_type_b, max_num_nodes, request_cpus, expected_launch
-):
-    requests = [
-        ResourceRequestUtil.make({"CPU": cpu}, label_selectors=selectors)
-        for cpu in request_cpus
-        for selectors in (_A_THEN_B, _B_THEN_A)
-    ]
-    reply = ResourceDemandScheduler(event_logger).schedule(
-        sched_request(
-            node_type_configs=_accel_node_types(node_cpu, max_type_b),
-            resource_requests=requests,
-            max_num_nodes=max_num_nodes,
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == expected_launch
-    assert not reply.infeasible_resource_requests
-
-
-def test_label_selector_fallback_existing_nodes():
-    """Each request lands on its running primary node, so neither node is idle."""
-    instances = [
-        make_autoscaler_instance(
-            ray_node=NodeState(
-                ray_node_type_name=f"type_{accel.lower()}",
-                available_resources={"CPU": 2},
-                total_resources={"CPU": 2},
-                labels={"accel": accel},
-                idle_duration_ms=10,
-                node_id=f"r-{accel}".encode(),
-            ),
-            im_instance=Instance(
-                instance_type=f"type_{accel.lower()}",
-                status=Instance.RAY_RUNNING,
-                instance_id=f"i-{accel}",
-                node_id=f"r-{accel}",
-            ),
-            cloud_instance_id=f"c-{accel}",
-        )
-        for accel in ("A", "B")
-    ]
-    reply = ResourceDemandScheduler(event_logger).schedule(
-        sched_request(
-            node_type_configs=_accel_node_types(2),
-            resource_requests=[
-                ResourceRequestUtil.make({"CPU": 1}, label_selectors=s)
-                for s in (_A_THEN_B, _B_THEN_A)
-            ],
-            instances=instances,
-            idle_timeout_s=0,
-        )
-    )
-    assert _launch_and_terminate(reply) == ({}, [])
-    assert not reply.infeasible_resource_requests
-
-
-def test_ippr_resized_node_hosts_deferred_requests():
-    """A pod resized in place for a primary-selector request stays an IPPR
-    candidate, so requests it deferred in that pass reuse it instead of
-    launching a new node."""
-    spec = IPPRGroupSpec(
-        min_cpu=1,
-        max_cpu=4,
-        min_memory=1024**3,
-        max_memory=8 * 1024**3,
-        resize_timeout=60,
-    )
-    node_type_configs = {
-        accel: NodeTypeConfig(
-            name=accel,
-            resources={"CPU": 1, **({"special": 2} if accel == "A" else {})},
-            min_worker_nodes=0,
-            max_worker_nodes=10,
-            labels={"accel": accel},
-        )
-        for accel in ("A", "B")
-    }
-    instances = [
-        make_autoscaler_instance(
-            ray_node=NodeState(
-                ray_node_type_name=accel,
-                available_resources={"CPU": 0, **extra},
-                total_resources={"CPU": 1, **extra},
-                labels={"accel": accel},
-                node_id=f"r-{accel}".encode(),
-            ),
-            im_instance=Instance(
-                instance_type=accel,
-                status=Instance.RAY_RUNNING,
-                instance_id=f"i-{accel}",
-                node_id=f"r-{accel}",
-            ),
-            cloud_instance_id=f"pod-{accel}",
-        )
-        for accel, extra in (("A", {"special": 2}), ("B", {}))
-    ]
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    selector = lambda accel: [("accel", in_op, [accel])]  # noqa: E731
-    reply = ResourceDemandScheduler(event_logger).schedule(
-        sched_request(
-            node_type_configs=node_type_configs,
-            resource_requests=[
-                # pod-A wins the first pass (2 matching resource types) and defers
-                # the fallback request and the unlabeled request.
-                ResourceRequestUtil.make(
-                    {"CPU": 2, "special": 1}, label_selectors=[selector("A")]
-                ),
-                # Lands on its primary pod-B in the second pass.
-                ResourceRequestUtil.make(
-                    {"CPU": 1}, label_selectors=[selector("B"), selector("A")]
-                ),
-                # Only pod-A has `special`, so it needs pod-A to stay a candidate.
-                ResourceRequestUtil.make({"CPU": 1, "special": 1}),
-            ],
-            instances=instances,
-            ippr_specs=IPPRSpecs(groups={"A": spec, "B": spec}),
-            ippr_statuses={
-                f"pod-{accel}": IPPRStatus(
-                    cloud_instance_id=f"pod-{accel}",
-                    spec=spec,
-                    current_cpu=1,
-                    current_memory=1024**3,
-                    desired_cpu=1,
-                    desired_memory=1024**3,
-                )
-                for accel in ("A", "B")
-            },
-        )
-    )
-    assert sorted((s.cloud_instance_id, s.desired_cpu) for s in reply.to_ippr) == [
-        ("pod-A", 4),
-        ("pod-B", 4),
-    ]
-    assert reply.to_launch == []
-    assert not reply.infeasible_resource_requests
-
-
-@pytest.mark.parametrize("max_num_nodes", [1, 2, None])
-@pytest.mark.parametrize(
-    "l_labels,r2_selectors",
-    [
-        # Cross-selector bin-packing: R1 requires x=1 and R2 requires y=1, both
-        # satisfied at primary priority by node type L.
-        (
-            {"x": "1", "y": "1"},
-            [[("y", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
-        ),
-        # Cross-tier bin-packing when R2's preferred selector (y=1) is only on an
-        # undersized node type (Tiny_Y: 0.5 CPU), so x=1 is the best feasible match.
-        (
-            {"x": "1"},
-            [
-                [("y", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])],
-                [("x", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])],
-            ],
-        ),
-        # Unlabeled request co-packing: R2 has no label selectors and fills L
-        # alongside R1 in the same pass instead of losing to smaller node type S.
-        (
-            {"x": "1"},
-            [],
-        ),
-    ],
-)
-def test_label_selector_cross_selector_bin_packing(
-    max_num_nodes, l_labels, r2_selectors
-):
-    """Requests with different, fallback, or empty label selectors pack onto a shared
-    node type L instead of greedily picking a smaller single-request node type S."""
-    node_type_configs = {
-        "Tiny_Y": NodeTypeConfig(
-            name="Tiny_Y",
-            resources={"CPU": 0.5},
-            min_worker_nodes=0,
-            max_worker_nodes=10,
-            labels={"y": "1"},
-        ),
-        "S": NodeTypeConfig(
-            name="S",
-            resources={"CPU": 2},
-            min_worker_nodes=0,
-            max_worker_nodes=10,
-            labels={"x": "1"},
-        ),
-        "L": NodeTypeConfig(
-            name="L",
-            resources={"CPU": 3},
-            min_worker_nodes=0,
-            max_worker_nodes=10,
-            labels=l_labels,
-        ),
-    }
-    requests = [
-        ResourceRequestUtil.make(
-            {"CPU": 2},
-            label_selectors=[[("x", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
-        ),
-        ResourceRequestUtil.make({"CPU": 1}, label_selectors=r2_selectors),
-    ]
-    reply = ResourceDemandScheduler(event_logger).schedule(
-        sched_request(
-            node_type_configs=node_type_configs,
-            resource_requests=requests,
-            max_num_nodes=max_num_nodes,
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"L": 1}
-    assert not reply.infeasible_resource_requests
-
-
-def test_label_selector_dynamic_depletion_and_fallback_reservation():
-    """Verify (1) exhausting a primary node type promotes fallback matches on the
-    next pass, and (2) unlabeled requests do not steal capacity from deferred
-    fallback requests."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    scheduler = ResourceDemandScheduler(event_logger)
-
-    # 1. Once Y (max_worker_nodes=1) is consumed by R0 ([y=1]), R2 ([y=1, x=1])
-    # can no longer schedule on Y and co-packs with R1 ([x=1]) on L.
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs={
-                "Y": NodeTypeConfig(
-                    name="Y",
-                    resources={"CPU": 4},
-                    min_worker_nodes=0,
-                    max_worker_nodes=1,
-                    labels={"y": "1"},
-                ),
-                "S": NodeTypeConfig(
-                    name="S",
-                    resources={"CPU": 2},
-                    min_worker_nodes=0,
-                    max_worker_nodes=10,
-                    labels={"x": "1"},
-                ),
-                "L": NodeTypeConfig(
-                    name="L",
-                    resources={"CPU": 3},
-                    min_worker_nodes=0,
-                    max_worker_nodes=10,
-                    labels={"x": "1"},
-                ),
-            },
-            resource_requests=[
-                ResourceRequestUtil.make(
-                    {"CPU": 4}, label_selectors=[[("y", in_op, ["1"])]]
-                ),
-                ResourceRequestUtil.make(
-                    {"CPU": 2}, label_selectors=[[("x", in_op, ["1"])]]
-                ),
-                ResourceRequestUtil.make(
-                    {"CPU": 1},
-                    label_selectors=[[("y", in_op, ["1"])], [("x", in_op, ["1"])]],
-                ),
-            ],
-            max_num_nodes=2,
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"Y": 1, "L": 1}
-    assert not reply.infeasible_resource_requests
-
-    # 2. When B (4 CPU) schedules R_B (2 CPU, [B]) and defers R_CB (2 CPU, [C, B]),
-    # an unlabeled request R_u (whether [], Raylet [LabelSelector()], or
-    # [LabelSelector(), LabelSelector()]) must not jump over R_CB and steal B's
-    # remaining 2 CPUs.
-    for unlabeled_selectors in (None, [[]], [[], []]):
-        reply = scheduler.schedule(
-            sched_request(
-                node_type_configs={
-                    "B": NodeTypeConfig(
-                        name="B",
-                        resources={"CPU": 4},
-                        min_worker_nodes=0,
-                        max_worker_nodes=1,
-                        labels={"accel": "B"},
-                    ),
-                    "C": NodeTypeConfig(
-                        name="C",
-                        resources={"CPU": 2},
-                        min_worker_nodes=0,
-                        max_worker_nodes=1,
-                        labels={"accel": "C"},
-                    ),
-                    "U": NodeTypeConfig(
-                        name="U",
-                        resources={"CPU": 2},
-                        min_worker_nodes=0,
-                        max_worker_nodes=1,
-                        labels={},
-                    ),
-                },
-                resource_requests=[
-                    ResourceRequestUtil.make(
-                        {"CPU": 2}, label_selectors=[[("accel", in_op, ["C"])]]
-                    ),
-                    ResourceRequestUtil.make(
-                        {"CPU": 2}, label_selectors=[[("accel", in_op, ["B"])]]
-                    ),
-                    ResourceRequestUtil.make(
-                        {"CPU": 2},
-                        label_selectors=[
-                            [("accel", in_op, ["C"])],
-                            [("accel", in_op, ["B"])],
-                        ],
-                    ),
-                    ResourceRequestUtil.make(
-                        {"CPU": 2}, label_selectors=unlabeled_selectors
-                    ),
-                ],
-            )
-        )
-        assert _launch_and_terminate(reply)[0] == {"B": 1, "C": 1, "U": 1}
-        assert not reply.infeasible_resource_requests
-
-
-def test_label_selector_with_dynamic_anti_affinity_labels():
-    """Verify label selectors that read anti-affinity labels neither double-schedule
-    cached nodes nor corrupt pre-mutation NOT_IN or newly unlocked IN label scores."""
-    cfg = NodeTypeConfig(
-        name="t", resources={"CPU": 4}, min_worker_nodes=0, max_worker_nodes=2
-    )
-    instances = [
-        make_autoscaler_instance(
-            ray_node=NodeState(
-                ray_node_type_name="t",
-                available_resources={"CPU": cpu},
-                total_resources={"CPU": cpu},
-                node_id=f"r{i}".encode(),
-                labels=labels,
-            ),
-            im_instance=Instance(
-                instance_type="t",
-                status=Instance.RAY_RUNNING,
-                instance_id=f"i{i}",
-                node_id=f"r{i}",
-            ),
-            cloud_instance_id=f"c{i}",
-        )
-        for i, (cpu, labels) in enumerate(
-            [(1, {"req": "true", "pg": "1"}), (4, {"req": "true"})]
-        )
-    ]
-    anti = [(ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY, "pg", "1")]
-    req_b = ResourceRequestUtil.make(
-        {"CPU": 1},
-        constraints=anti,
-        label_selectors=[[("req", LabelSelectorOperator.LABEL_OPERATOR_IN, ["true"])]],
-    )
-    req_a = ResourceRequestUtil.make(
-        {"CPU": 1},
-        label_selectors=[[("pg", LabelSelectorOperator.LABEL_OPERATOR_IN, ["1"])]],
-    )
-    ctx = ResourceDemandScheduler.ScheduleContext(
-        nodes=[SchedulingNode.new(inst, {"t": cfg}, True) for inst in instances],
-        node_type_configs={"t": cfg},
-        cloud_resource_availabilities={},
-        recoverable_resource_availabilities={},
-        disable_launch_config_check=True,
-        max_num_nodes=2,
-    )
-    nodes, infeasible = ResourceDemandScheduler._try_schedule(
-        ctx, [req_b, req_a], ResourceRequestSource.PENDING_DEMAND
-    )
-    assert not infeasible
-    assert (
-        sum(
-            len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
-            for n in nodes
-        )
-        == 2
-    )
-
-    node = SchedulingNode.from_node_config(
-        cfg, status=SchedulingNodeStatus.TO_LAUNCH, node_kind=NodeKind.WORKER
-    )
-    remaining, score = node.try_schedule(
-        [
-            ResourceRequestUtil.make(
-                {"CPU": 1},
-                constraints=anti,
-                label_selectors=[
-                    [("pg", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["1"])]
-                ],
-            )
-        ],
-        ResourceRequestSource.PENDING_DEMAND,
-    )
-    assert not remaining and score[0] == 1.0
-
-    # An unlabeled anti-affinity request that adds pg=1 unlocks requests that
-    # select pg=1 on the same node within one _try_schedule call.
-    req_b_unlabeled = ResourceRequestUtil.make({"CPU": 1}, constraints=anti)
-    ctx_unlabeled = ResourceDemandScheduler.ScheduleContext(
-        nodes=[
-            SchedulingNode.from_node_config(
-                cfg, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-            )
-        ],
-        node_type_configs={"t": cfg},
-        cloud_resource_availabilities={},
-        recoverable_resource_availabilities={},
-        disable_launch_config_check=True,
-        max_num_nodes=1,
-    )
-    nodes, infeasible = ResourceDemandScheduler._try_schedule(
-        ctx_unlabeled,
-        [req_a, req_b_unlabeled, req_a],
-        ResourceRequestSource.PENDING_DEMAND,
-    )
-    assert not infeasible
-    assert [
-        len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND)) for n in nodes
-    ] == [3]
-
-
-@pytest.mark.parametrize(
-    "mode", ["pinned", "slice", "spread", "co_pack", "fallback", "shared_fallback"]
-)
-def test_label_selector_attempt_cache_linear_deepcopy(mode, monkeypatch):
-    """Scheduling N label-constrained bundles across N candidate nodes performs O(N)
-    SchedulingNode deepcopies instead of O(N^2), including STRICT_SPREAD anti-affinity,
-    unlabeled co-packing, distinct fallback pools, and shared primary fallback pools."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    num_hosts = 64
-    cfg = NodeTypeConfig(
-        name="tpu",
-        resources={"CPU": 8, "TPU": 4},
+def _nt(
+    name: str,
+    resources: Mapping[str, float],
+    labels: Optional[Dict[str, str]] = None,
+    max_workers: int = 10,
+    priority: int = 0,
+) -> NodeTypeConfig:
+    return NodeTypeConfig(
+        name=name,
+        resources=dict(resources),
         min_worker_nodes=0,
-        max_worker_nodes=num_hosts * 2,
-    )
-    nodes = []
-    for i in range(num_hosts):
-        node = SchedulingNode.from_node_config(
-            cfg, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-        )
-        node.labels = {
-            "ray.io/tpu-worker-id": str(i),
-            "ray.io/tpu-slice-name": "slice-0",
-        }
-        nodes.append(node)
-    if mode == "fallback":
-        for i in range(num_hosts):
-            fb = SchedulingNode.from_node_config(
-                cfg, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-            )
-            fb.labels = {
-                "ray.io/tpu-worker-id": str(i),
-                "ray.io/tpu-slice-name": "slice-1",
-            }
-            nodes.append(fb)
-
-    pinned = mode in ("pinned", "fallback")
-    constraints = (
-        [(ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY, "_PG_1", "")]
-        if mode == "spread"
-        else []
-    )
-    if pinned:
-        requests = [
-            ResourceRequestUtil.make(
-                {"TPU": 4},
-                label_selectors=[
-                    [
-                        ("ray.io/tpu-slice-name", in_op, ["slice-0"]),
-                        ("ray.io/tpu-worker-id", in_op, [str(i)]),
-                    ],
-                    *(
-                        [[("ray.io/tpu-slice-name", in_op, ["slice-1"])]]
-                        if mode == "fallback"
-                        else []
-                    ),
-                ],
-            )
-            for i in range(num_hosts)
-        ]
-    elif mode == "shared_fallback":
-        # Every node matches every request via the shared slice-0 fallback
-        # selector (0.5) while also matching its own pinned worker-id (1.0),
-        # verifying that consuming one request does not invalidate all other
-        # nodes' cached attempts.
-        requests = [
-            ResourceRequestUtil.make(
-                {"TPU": 4, f"job_{i}": 0},
-                label_selectors=[
-                    [("ray.io/tpu-worker-id", in_op, [str(i)])],
-                    [("ray.io/tpu-slice-name", in_op, ["slice-0"])],
-                ],
-            )
-            for i in range(num_hosts)
-        ]
-    else:
-        requests = [
-            ResourceRequestUtil.make(
-                {"TPU": 4},
-                constraints=constraints,
-                label_selectors=[[("ray.io/tpu-slice-name", in_op, ["slice-0"])]],
-            )
-        ] * num_hosts + (
-            [ResourceRequestUtil.make({"CPU": 8})] * num_hosts
-            if mode == "co_pack"
-            else []
-        )
-    ctx = ResourceDemandScheduler.ScheduleContext(
-        nodes=nodes,
-        node_type_configs={"tpu": cfg},
-        cloud_resource_availabilities={},
-        recoverable_resource_availabilities={},
-        disable_launch_config_check=True,
+        max_worker_nodes=max_workers,
+        labels=labels or {},
+        priority=priority,
     )
 
-    deepcopy_count = 0
+
+def _nts(*specs) -> Dict[NodeType, NodeTypeConfig]:
+    out: Dict[NodeType, NodeTypeConfig] = {}
+    for spec in specs:
+        name, cpu = spec[0], spec[1]
+        accel = spec[2] if len(spec) > 2 else None
+        max_w = spec[3] if len(spec) > 3 else 10
+        prio = spec[4] if len(spec) > 4 else 0
+        res = cpu if isinstance(cpu, dict) else {"CPU": cpu}
+        lbls = accel if isinstance(accel, dict) else ({"accel": accel} if accel else {})
+        out[name] = _nt(name, res, lbls, max_w, prio)
+    return out
+
+
+def _req(
+    cpu: float = 1,
+    *accels: str,
+    extra: Optional[ResourceMap] = None,
+    constraints=None,
+    selectors=None,
+) -> ResourceRequest:
+    sels = (
+        selectors
+        if selectors is not None
+        else [[("accel", _IN, [a])] if a else [] for a in accels]
+    )
+    return ResourceRequestUtil.make(
+        {"CPU": cpu, **(extra or {})},
+        constraints=constraints,
+        label_selectors=sels,
+    )
+
+
+def _res_dict(val, default_cpu: float = 2) -> Dict[str, float]:
+    if val is None:
+        return {"CPU": float(default_cpu)}
+    if isinstance(val, (int, float)):
+        return {"CPU": float(val)}
+    return {k: float(v) for k, v in val.items()}
+
+
+def _make_running_instance(
+    name: str,
+    node_type: Optional[str] = None,
+    total=None,
+    avail=None,
+    labels: Optional[Dict[str, str]] = None,
+    dynamic_labels: Optional[Dict[str, str]] = None,
+    idle_ms: int = 0,
+    cloud_id: Optional[str] = None,
+) -> AutoscalerInstance:
+    ntype = node_type or name
+    tot = _res_dict(total)
+    av = dict(tot) if avail is None else _res_dict(avail)
+    return make_autoscaler_instance(
+        ray_node=NodeState(
+            ray_node_type_name=ntype,
+            available_resources=av,
+            total_resources=tot,
+            labels=labels or {},
+            dynamic_labels=dynamic_labels or {},
+            idle_duration_ms=idle_ms,
+            node_id=f"r-{name}".encode(),
+        ),
+        im_instance=Instance(
+            instance_type=ntype,
+            status=Instance.RAY_RUNNING,
+            instance_id=f"i-{name}",
+            node_id=f"r-{name}",
+        ),
+        cloud_instance_id=cloud_id or f"c-{name}",
+    )
+
+
+def _make_running_node(
+    nid: str,
+    total,
+    avail=None,
+    labels: Optional[Dict[str, str]] = None,
+) -> SchedulingNode:
+    tot = _res_dict(total)
+    av = dict(tot) if avail is None else _res_dict(avail)
+    return SchedulingNode(
+        node_type=nid,
+        total_resources=tot,
+        available_resources=av,
+        labels=dict(labels or {}),
+        status=SchedulingNodeStatus.SCHEDULABLE,
+        im_instance_id=f"im-{nid}",
+        im_instance_status=Instance.RAY_RUNNING,
+        ray_node_id=nid,
+    )
+
+
+@contextmanager
+def _spy_deepcopy(monkeypatch, target_node_id: Optional[str] = None):
+    count = [0]
     real_deepcopy = copy.deepcopy
 
-    def counting_deepcopy(obj, memo=None):
-        nonlocal deepcopy_count
-        if isinstance(obj, SchedulingNode):
-            deepcopy_count += 1
+    def wrapped(obj, memo=None):
+        if isinstance(obj, SchedulingNode) and (
+            target_node_id is None or obj.ray_node_id == target_node_id
+        ):
+            count[0] += 1
         return real_deepcopy(obj, memo)
 
-    monkeypatch.setattr(copy, "deepcopy", counting_deepcopy)
-    out_nodes, infeasible = ResourceDemandScheduler._try_schedule(
-        ctx, requests, ResourceRequestSource.PENDING_DEMAND
-    )
-    assert not infeasible
-    expected_per_primary = 2 if mode == "co_pack" else 1
-    scheduled_counts = sorted(
-        len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
-        for n in out_nodes
-    )
-    expected_counts = ([0] * num_hosts if mode == "fallback" else []) + [
-        expected_per_primary
-    ] * num_hosts
-    assert scheduled_counts == expected_counts
-    assert deepcopy_count == num_hosts
+    with monkeypatch.context() as m:
+        m.setattr(copy, "deepcopy", wrapped)
+        yield count
 
 
-def test_label_selector_attempt_cache_prefix_and_tier_invalidation():
-    """Verify the attempt cache invalidates whenever a node's accepted top-tier
-    prefix, blocking fallback tier, or unlabeled tier prefix shifts across passes."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    notin_op = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
-    scheduler = ResourceDemandScheduler(event_logger)
-
-    def running_inst(nid, ntype, total_cpu, avail_cpu, labels):
-        return make_autoscaler_instance(
-            ray_node=NodeState(
-                ray_node_type_name=ntype,
-                available_resources={"CPU": avail_cpu},
-                total_resources={"CPU": total_cpu},
-                node_id=nid.encode(),
-                labels=labels,
-            ),
-            im_instance=Instance(
-                instance_type=ntype,
-                status=Instance.RAY_RUNNING,
-                instance_id=f"i-{nid}",
-                node_id=nid,
-            ),
-            cloud_instance_id=f"c-{nid}",
-        )
-
-    # 1. Interleaved gang [A, B, A]: n2 (x=1, y=1, 1 CPU) caches scheduling A on pass 1
-    # after n1 (x=1, 3 total / 1 avail CPU) wins A; pass 2 must re-simulate n2 on [B, A]
-    # so n2 takes B and n3 (x=1, 1 CPU) takes the remaining A without spurious scale-up.
-    gang_cfgs = {
-        "nx": NodeTypeConfig(
-            name="nx",
-            resources={"CPU": 3},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"x": "1"},
-        ),
-        "nxy": NodeTypeConfig(
-            name="nxy",
-            resources={"CPU": 1},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"x": "1", "y": "1"},
-        ),
-        "nx1": NodeTypeConfig(
-            name="nx1",
-            resources={"CPU": 1},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"x": "1"},
-        ),
-        "ny_extra": NodeTypeConfig(
-            name="ny_extra",
-            resources={"CPU": 1},
-            min_worker_nodes=0,
-            max_worker_nodes=5,
-            labels={"y": "1"},
-        ),
-    }
-    req_x = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("x", in_op, ["1"])]]
-    )
-    req_y = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("y", in_op, ["1"])]]
-    )
-    for max_num_nodes in (None, 3):
-        reply = scheduler.schedule(
-            sched_request(
-                node_type_configs=gang_cfgs,
-                instances=[
-                    running_inst("n1", "nx", 3, 1, {"x": "1"}),
-                    running_inst("n2", "nxy", 1, 1, {"x": "1", "y": "1"}),
-                    running_inst("n3", "nx1", 1, 1, {"x": "1"}),
-                ],
-                gang_resource_requests=[[req_x, req_y, req_x]],
-                max_num_nodes=max_num_nodes,
-            )
-        )
-        assert _launch_and_terminate(reply)[0] == {}
-        assert not reply.infeasible_gang_resource_requests
-
-    # 2. Prefix multiplicity shift [S0, S0, S1, S1, S0] and cross-tier blocker removal:
-    # verify cached multi-pass _sched_best_node matches uncached simulation exactly.
-    s0 = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("y", notin_op, ["0"])]]
-    )
-    s1 = ResourceRequestUtil.make(
-        {"CPU": 1},
-        label_selectors=[
-            [("y", notin_op, ["0"]), ("z", notin_op, ["1"])],
-            [("y", notin_op, ["1"]), ("z", notin_op, ["1"])],
-        ],
-    )
-    u0 = ResourceRequestUtil.make({"CPU": 1})
-    scenarios = [
-        # Consuming one front S0 turns [S0, S0, S1, S1, S0] into [S0, S1, S1, S0]:
-        # total count(S0) is still 2 and unique/run-length order still starts with
-        # (S0, S1), yet p1 (2 CPU, y=1) must switch from [S0, S0] to [S0, S1] so p2
-        # (y=0) takes the second S1 and p3 (y=1, z=1) takes the trailing S0.
-        (
-            [
-                ("p0", 4, 1, {"y": "1", "z": "1"}),
-                ("p1", 2, 2, {"y": "1"}),
-                ("p2", 1, 1, {"y": "0"}),
-                ("p3", 1, 1, {"y": "1", "z": "1"}),
-            ],
-            [s0, s0, s1, s1, s0],
-        ),
-        # Consuming a fallback blocker on b0 frees spare capacity on primary node b1
-        # so b1 co-packs the unlabeled request u0 positioned earlier in `requests`.
-        (
-            [
-                ("b0", 4, 1, {"x": "0"}),
-                ("b1", 2, 2, {"x": "1"}),
-            ],
-            [
-                u0,
-                ResourceRequestUtil.make(
-                    {"CPU": 1}, label_selectors=[[("x", in_op, ["1"])]]
-                ),
-                ResourceRequestUtil.make(
-                    {"CPU": 1},
-                    label_selectors=[
-                        [("x", in_op, ["0"])],
-                        [("x", in_op, ["1"])],
-                    ],
-                ),
-            ],
-        ),
-    ]
-    for node_specs, reqs in scenarios:
-        cfgs = {
-            nid: NodeTypeConfig(
-                name=nid,
-                resources={"CPU": tot},
-                min_worker_nodes=0,
-                max_worker_nodes=1,
-                labels=lbls,
-            )
-            for nid, tot, _, lbls in node_specs
-        }
-        base_nodes = [
-            SchedulingNode.new(running_inst(nid, nid, tot, av, lbls), cfgs, True)
-            for nid, tot, av, lbls in node_specs
-        ]
-
-        def run_passes(use_cache):
-            ns = copy.deepcopy(base_nodes)
-            rs = list(reqs)
-            attempts = {} if use_cache else None
-            placements = []
-            while rs and ns:
-                best, rs, ns = ResourceDemandScheduler._sched_best_node(
-                    rs, ns, ResourceRequestSource.PENDING_DEMAND, {}, {}, None, attempts
-                )
-                if best is None:
-                    break
-                placements.append(
-                    (
-                        best.ray_node_id,
-                        [
-                            r.SerializeToString(deterministic=True)
-                            for r in best.get_sched_requests(
-                                ResourceRequestSource.PENDING_DEMAND
-                            )
-                        ],
-                    )
-                )
-                if any(
-                    best._can_schedule_one(r, ResourceRequestSource.PENDING_DEMAND)
-                    for r in rs
-                ):
-                    ns.append(best)
-            return placements, [r.SerializeToString(deterministic=True) for r in rs]
-
-        cached = run_passes(True)
-        uncached = run_passes(False)
-        assert cached == uncached
-        assert not cached[1]
-
-
-def test_label_selector_raylet_empty_and_mixed_selectors():
-    """Verify Raylet-shaped empty selectors ([LabelSelector()]) score 0 while
-    mixed empty-selector fallbacks preserve primary preference and fallback."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    scheduler = ResourceDemandScheduler(event_logger)
-
-    cfg_a = NodeTypeConfig(
-        name="type_a",
-        resources={"CPU": 2},
-        min_worker_nodes=0,
-        max_worker_nodes=1,
-        labels={"accel": "A"},
-    )
-    cfg_u = NodeTypeConfig(
-        name="type_u",
-        resources={"CPU": 2},
-        min_worker_nodes=0,
-        max_worker_nodes=1,
-        labels={},
-    )
-    node_a = SchedulingNode.from_node_config(
-        cfg_a, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-    )
-    node_u = SchedulingNode.from_node_config(
-        cfg_u, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-    )
-
-    # 1. Pure empty selector [LabelSelector()] and [LabelSelector(), LabelSelector()]
-    # behave as unlabeled requests (tier = 0) and remain schedulable.
-    for empty_sel in ([[]], [[], []]):
-        req_empty = ResourceRequestUtil.make({"CPU": 1}, label_selectors=empty_sel)
-        rem, score = copy.deepcopy(node_u).try_schedule(
-            [req_empty], ResourceRequestSource.PENDING_DEMAND
-        )
-        assert not rem
-        assert score[0] == 0
-
-    # 2. [LabelSelector(accel=A), LabelSelector()] scores 1.0 on accel=A and 0.5 on
-    # an unlabeled node, falling back cleanly when accel=A is exhausted.
-    req_fallback_any = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("accel", in_op, ["A"])], []]
-    )
-    rem_a, score_a = copy.deepcopy(node_a).try_schedule(
-        [req_fallback_any], ResourceRequestSource.PENDING_DEMAND
-    )
-    rem_u, score_u = copy.deepcopy(node_u).try_schedule(
-        [req_fallback_any], ResourceRequestSource.PENDING_DEMAND
-    )
-    assert not rem_a and score_a[0] == 1.0
-    assert not rem_u and score_u[0] == 0.5
-
-    req_only_a = ResourceRequestUtil.make(
-        {"CPU": 2}, label_selectors=[[("accel", in_op, ["A"])]]
-    )
-    req_raylet_unlabeled = ResourceRequestUtil.make({"CPU": 1}, label_selectors=[[]])
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs={"type_a": cfg_a, "type_u": cfg_u},
-            resource_requests=[req_only_a, req_fallback_any, req_raylet_unlabeled],
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"type_a": 1, "type_u": 1}
-    assert not reply.infeasible_resource_requests
-
-    # Paired negative vs fallback check: [accel=missing] is infeasible while
-    # [accel=missing, ()] falls back onto type_u.
-    req_missing = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("accel", in_op, ["missing"])]]
-    )
-    req_missing_fallback = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("accel", in_op, ["missing"])], []]
-    )
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs={"type_u": cfg_u},
-            resource_requests=[req_missing, req_missing_fallback],
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"type_u": 1}
-    assert reply.infeasible_resource_requests == [req_missing]
-
-    # 3. [LabelSelector(), LabelSelector(accel=A)] scores 1.0 on both unlabeled and
-    # labeled nodes because its primary selector has 0 constraints.
-    req_any_then_a = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[], [("accel", in_op, ["A"])]]
-    )
-    rem_u2, score_u2 = copy.deepcopy(node_u).try_schedule(
-        [req_any_then_a], ResourceRequestSource.PENDING_DEMAND
-    )
-    assert not rem_u2 and score_u2[0] == 1.0
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs={"type_u": cfg_u},
-            resource_requests=[req_any_then_a],
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"type_u": 1}
-    assert not reply.infeasible_resource_requests
-
-
-def test_label_selector_earlier_request_unlocked_by_anti_affinity():
-    """When an anti-affinity placement grows node.labels mid-pass, earlier requests in
-    keyed_requests whose tier promotes must be revisited before unlabeled demands."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    anti_type = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
-    scheduler = ResourceDemandScheduler(event_logger)
-
-    req_a_direct = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("_PG_1", in_op, [""])]]
-    )
-    req_b_labeled = ResourceRequestUtil.make(
-        {"CPU": 1},
-        constraints=[(anti_type, "_PG_1", "")],
-        label_selectors=[[("req", in_op, ["true"])]],
-    )
-    req_b_unlabeled = ResourceRequestUtil.make(
-        {"CPU": 1}, constraints=[(anti_type, "_PG_1", "")]
-    )
-    req_u = ResourceRequestUtil.make({"CPU": 1}, label_selectors=[[]])
-
-    # 1. Direct try_schedule with [req_a, req_b, req_u] (both labeled and unlabeled
-    # anti-affinity mutators) schedules req_a and req_b, leaving req_u unscheduled.
-    cfg_2cpu = NodeTypeConfig(
-        name="n1",
-        resources={"CPU": 2},
-        min_worker_nodes=0,
-        max_worker_nodes=1,
-        labels={"req": "true"},
-    )
-    node_labeled = SchedulingNode.from_node_config(
-        cfg_2cpu, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-    )
-    rem, score = node_labeled.try_schedule(
-        [req_a_direct, req_b_labeled, req_u], ResourceRequestSource.PENDING_DEMAND
-    )
-    assert rem == [req_u]
-    assert score[0] == 1.0
-
-    node_unlabeled = SchedulingNode.from_node_config(
-        NodeTypeConfig(
-            name="nu", resources={"CPU": 2}, min_worker_nodes=0, max_worker_nodes=1
-        ),
-        status=SchedulingNodeStatus.SCHEDULABLE,
-        node_kind=NodeKind.WORKER,
-    )
-    rem, score = node_unlabeled.try_schedule(
-        [req_a_direct, req_b_unlabeled, req_u], ResourceRequestSource.PENDING_DEMAND
-    )
-    assert rem == [req_u]
-    assert score[0] == 1.0
-
-    # Counter-case: a request requiring an unsatisfied label (_PG_2) is not unlocked
-    # by _PG_1 and stays unscheduled while req_u takes the second CPU.
-    req_other_pg = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("_PG_2", in_op, [""])]]
-    )
-    node_counter = SchedulingNode.from_node_config(
-        cfg_2cpu, status=SchedulingNodeStatus.SCHEDULABLE, node_kind=NodeKind.WORKER
-    )
-    rem, score = node_counter.try_schedule(
-        [req_other_pg, req_b_labeled, req_u], ResourceRequestSource.PENDING_DEMAND
-    )
-    assert rem == [req_other_pg]
-    assert score[0] == 1.0
-
-    # 2. Full scheduler.schedule(): req_a_fallback sorted BEFORE req_b (due to 2
-    # primary label constraints + unrelated placement constraint) must pack with req_b
-    # on n1 instead of spilling onto pre-labeled alternate node n2.
-    req_a_sorted_first = ResourceRequestUtil.make(
-        {"CPU": 1},
-        constraints=[(anti_type, "_PG_OTHER", "")],
-        label_selectors=[
-            [("_PG_1", in_op, [""]), ("req", in_op, ["true"])],
-            [("req", in_op, ["true"])],
-        ],
-    )
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs={
-                "n1": cfg_2cpu,
-                "n2": NodeTypeConfig(
-                    name="n2",
-                    resources={"CPU": 1},
-                    min_worker_nodes=0,
-                    max_worker_nodes=1,
-                    labels={"_PG_1": "", "req": "true"},
-                ),
-            },
-            resource_requests=[req_a_sorted_first, req_b_labeled],
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"n1": 1}
-    assert not reply.infeasible_resource_requests
-
-    # 3. Capped single node (max_num_nodes=1) with competing unlabeled request req_u:
-    # req_a_strict_first (unlocked by req_b) must take the 2nd CPU over req_u.
-    req_a_strict_first = ResourceRequestUtil.make(
-        {"CPU": 1},
-        constraints=[(anti_type, "_PG_OTHER", "")],
-        label_selectors=[[("_PG_1", in_op, [""]), ("req", in_op, ["true"])]],
-    )
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs={"n1": cfg_2cpu},
-            resource_requests=[req_a_strict_first, req_b_labeled, req_u],
-            max_num_nodes=1,
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"n1": 1}
-    assert reply.infeasible_resource_requests == [req_u]
-
-
-def test_label_selector_sched_best_node_attempts_with_anti_affinity_overlap():
-    """Passing attempts={} directly to _sched_best_node must match attempts=None
-    even when an anti_affinity key overlaps a label_selector key (Cases A, C, and
-    tier-0 dynamic promotion past pass_top)."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    anti_type = ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY
+def _run_best_node_rounds(
+    nodes: List[SchedulingNode],
+    requests: List[ResourceRequest],
+    use_cache: bool,
+    monkeypatch=None,
+    spy_node_id: Optional[str] = None,
+):
     src = ResourceRequestSource.PENDING_DEMAND
+    ns = copy.deepcopy(nodes)
+    rs = list(requests)
+    shape_keys = {id(r): r.SerializeToString(deterministic=True) for r in rs}
+    attempts = {} if use_cache else None
+    placements = []
 
-    def run_multi_pass(base_nodes, reqs, use_cache):
-        ns = copy.deepcopy(base_nodes)
-        rs = list(reqs)
-        shape_keys = {id(r): r.SerializeToString(deterministic=True) for r in rs}
-        attempts = {} if use_cache else None
-        placements = []
+    def drive():
+        nonlocal ns, rs
         while rs and ns:
             best, rs, ns = ResourceDemandScheduler._sched_best_node(
                 rs, ns, src, {}, {}, shape_keys, attempts
@@ -5470,83 +4628,882 @@ def test_label_selector_sched_best_node_attempts_with_anti_affinity_overlap():
             placements.append(
                 (
                     best.ray_node_id,
-                    best.get_available_resources(src)["CPU"],
                     [
                         r.SerializeToString(deterministic=True)
                         for r in best.get_sched_requests(src)
                     ],
                 )
             )
-            if rs and any(best._can_schedule_one(r, src) for r in rs):
+            avail = best.get_available_resources(src)
+            if any(best._schedulable_selector(r, avail) is not None for r in rs):
                 ns.append(best)
-        return placements, [r.SerializeToString(deterministic=True) for r in rs]
 
-    def make_node(nid, cpu, labels):
-        return SchedulingNode(
-            node_type=nid,
-            total_resources={"CPU": float(cpu)},
-            available_resources={"CPU": float(cpu)},
-            labels=labels,
-            status=SchedulingNodeStatus.SCHEDULABLE,
-            im_instance_id=f"im-{nid}",
-            im_instance_status=Instance.RAY_RUNNING,
-            ray_node_id=nid,
+    if monkeypatch is not None and spy_node_id is not None:
+        with _spy_deepcopy(monkeypatch, spy_node_id) as copies:
+            drive()
+        spy_count = copies[0]
+    else:
+        drive()
+        spy_count = 0
+    return (
+        placements,
+        [r.SerializeToString(deterministic=True) for r in rs],
+        spy_count,
+    )
+
+
+@pytest.mark.parametrize(
+    "node_cpu,max_type_b,max_num_nodes,request_cpus,expected_launch",
+    [
+        (2, 10, None, [1], {"type_a": 1, "type_b": 1}),
+        (2, 0, None, [1], {"type_a": 1}),
+        (2, 10, 1, [1], {"type_a": 1}),
+        (4, 10, None, [2, 1], {"type_a": 1, "type_b": 1}),
+    ],
+)
+def test_label_selector_fallback_new_nodes(
+    node_cpu, max_type_b, max_num_nodes, request_cpus, expected_launch
+):
+    cfgs = _nts(("type_a", node_cpu, "A"), ("type_b", node_cpu, "B", max_type_b))
+    requests = [
+        _req(cpu, selectors=s) for cpu in request_cpus for s in (_A_THEN_B, _B_THEN_A)
+    ]
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(cfgs, max_num_nodes=max_num_nodes, resource_requests=requests)
+    )
+    assert _launch_and_terminate(reply)[0] == expected_launch
+    assert not reply.infeasible_resource_requests
+
+
+def test_label_selector_existing_nodes_fallback_and_revisit():
+    """Verify running nodes honor primary preference, preserve idle primaries over
+    empty fallbacks, fall back when primaries fill, and revisit deferred capacity."""
+    src = ResourceRequestSource.PENDING_DEMAND
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    # 1. Opposing [A, B] and [B, A] each land on their running primary node.
+    cfgs_ab = _nts(("type_a", 2, "A"), ("type_b", 2, "B"))
+    reply = scheduler.schedule(
+        sched_request(
+            node_type_configs=cfgs_ab,
+            resource_requests=[_req(1, selectors=s) for s in (_A_THEN_B, _B_THEN_A)],
+            instances=[
+                _make_running_instance(
+                    a, f"type_{a.lower()}", 2, labels={"accel": a}, idle_ms=10
+                )
+                for a in ("A", "B")
+            ],
+            idle_timeout_s=0,
+        )
+    )
+    assert _launch_and_terminate(reply) == ({}, [])
+    assert not reply.infeasible_resource_requests
+
+    # 2. [accel=A, {}] lands on idle primary A (2 CPU) rather than larger B (4 CPU),
+    # spills onto B when A is full, and leaves a strict [accel=A] request infeasible.
+    cfgs_idle = _nts(("A", 2, "A", 1), ("B", 4, "B", 1))
+    insts_idle = [
+        _make_running_instance("A", "A", 2, labels={"accel": "A"}, idle_ms=10),
+        _make_running_instance("B", "B", 4, labels={"accel": "B"}, idle_ms=10),
+    ]
+    r_a_any, r_a_strict, r_b = _req(2, "A", ""), _req(2, "A"), _req(2, "B")
+    sreq_idle = sched_request(
+        cfgs_idle,
+        resource_requests=[r_b, r_a_any],
+        instances=insts_idle,
+        idle_timeout_s=0,
+    )
+    assert _launch_and_terminate(scheduler.schedule(sreq_idle)) == ({}, [])
+
+    for req_list, expected_inf, expected_per_node in [
+        ([r_b, r_a_any, r_a_any], [], {"A": 1, "B": 2}),
+        ([r_b, r_a_strict, r_a_strict], [r_a_strict], {"A": 1, "B": 1}),
+    ]:
+        ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(sreq_idle)
+        nodes_out, inf_out = ResourceDemandScheduler._try_schedule(ctx, req_list, src)
+        assert inf_out == expected_inf
+        assert {
+            n.node_type: len(n.get_sched_requests(src)) for n in nodes_out
+        } == expected_per_node
+
+    # 3. Existing node A picked in Round 1 stays a candidate via _can_host_more and
+    # hosts a deferred [B, A] fallback request once running node B is full.
+    res_revisit = {"A": {"CPU": 2, "special": 1}, "B": {"CPU": 1}}
+    reply_revisit = scheduler.schedule(
+        sched_request(
+            node_type_configs={
+                k: _nt(k, res, {"accel": k}, max_workers=1)
+                for k, res in res_revisit.items()
+            },
+            instances=[
+                _make_running_instance(k, k, res, labels={"accel": k})
+                for k, res in res_revisit.items()
+            ],
+            resource_requests=[
+                _req(1, "A", extra={"special": 1}),
+                _req(1, "B", "A"),
+                _req(1, "B", "A"),
+            ],
+        )
+    )
+    assert _launch_and_terminate(reply_revisit)[0] == {}
+    assert not reply_revisit.infeasible_resource_requests
+
+
+@pytest.mark.parametrize(
+    "pod_specs,reqs,expected_ippr,expected_cluster_cpu",
+    [
+        # 1. Resized pod-A stays a candidate and hosts `special` work in Round 3.
+        (
+            [("A", 4, {"special": 2}, {"accel": "A"}), ("B", 4, {}, {"accel": "B"})],
+            [
+                _req(2, "A", extra={"special": 1}),
+                _req(1, "B", "A"),
+                _req(1, extra={"special": 1}),
+            ],
+            [("pod-A", 4), ("pod-B", 4)],
+            8,
+        ),
+        # 2. Early loop exit retains pod-A in resized_ippr and restores unchosen pod-C.
+        (
+            [
+                ("A", 4, {"special": 2}, {"accel": "A"}),
+                ("B", 4, {}, {"accel": "B"}),
+                ("C", 4, {}, {"accel": "C"}),
+            ],
+            [_req(2, "A", extra={"special": 1}), _req(1, "B", "A")],
+            [("pod-A", 4), ("pod-B", 4)],
+            9,
+        ),
+        # 3. Already-resized pod-A (max 16 CPU) beats unresized pod-U (max 5 CPU, 100%
+        # util) at equal score[0] == 0 for held-back unlabeled work in Round 3, while
+        # unselected pod-U is restored to 1 CPU.
+        (
+            [
+                ("A", 16, {}, {"accel": "A"}),
+                ("C", 4, {}, {"accel": "C"}),
+                ("U", 5, {}, {}),
+            ],
+            [_req(5, "A"), _req(1, "C", "A"), _req(4)],
+            [("pod-A", 16), ("pod-C", 4)],
+            21,
+        ),
+    ],
+)
+def test_ippr_label_selector_revisit_and_committed_preference(
+    pod_specs, reqs, expected_ippr, expected_cluster_cpu
+):
+    cfgs, instances, groups, statuses = {}, [], {}, {}
+    for name, max_cpu, extra, labels in pod_specs:
+        spec = IPPRGroupSpec(
+            min_cpu=1,
+            max_cpu=max_cpu,
+            min_memory=1024**3,
+            max_memory=8 * 1024**3,
+            resize_timeout=60,
+        )
+        cfgs[name] = _nt(name, {"CPU": 1, **extra}, labels)
+        instances.append(
+            _make_running_instance(
+                name,
+                name,
+                {"CPU": 1, **extra},
+                {"CPU": 0, **extra},
+                labels,
+                cloud_id=f"pod-{name}",
+            )
+        )
+        groups[name] = spec
+        statuses[f"pod-{name}"] = IPPRStatus(
+            cloud_instance_id=f"pod-{name}",
+            spec=spec,
+            current_cpu=1,
+            current_memory=1024**3,
+            desired_cpu=1,
+            desired_memory=1024**3,
+        )
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(
+            node_type_configs=cfgs,
+            resource_requests=reqs,
+            instances=instances,
+            ippr_specs=IPPRSpecs(groups=groups),
+            ippr_statuses=statuses,
+        )
+    )
+    assert (
+        sorted((s.cloud_instance_id, s.desired_cpu) for s in reply.to_ippr)
+        == expected_ippr
+    )
+    assert reply.cluster_resources["CPU"] == expected_cluster_cpu
+    assert reply.to_launch == []
+    assert not reply.infeasible_resource_requests
+
+
+@pytest.mark.parametrize("max_num_nodes", [1, 2, None])
+@pytest.mark.parametrize(
+    "l_labels,r2_selectors",
+    [
+        ({"x": "1", "y": "1"}, [[("y", _IN, ["1"])]]),
+        ({"x": "1"}, [[("y", _IN, ["1"])], [("x", _IN, ["1"])]]),
+        ({"x": "1"}, []),
+    ],
+)
+def test_label_selector_cross_selector_bin_packing(
+    max_num_nodes, l_labels, r2_selectors
+):
+    cfgs = _nts(("Tiny_Y", 0.5, {"y": "1"}), ("S", 2, {"x": "1"}), ("L", 3, l_labels))
+    reqs = [_req(2, selectors=[[("x", _IN, ["1"])]]), _req(1, selectors=r2_selectors)]
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(cfgs, resource_requests=reqs, max_num_nodes=max_num_nodes)
+    )
+    assert _launch_and_terminate(reply)[0] == {"L": 1}
+    assert not reply.infeasible_resource_requests
+
+
+@pytest.mark.parametrize(
+    "cfgs,reqs,max_num_nodes,expected_launch,expected_infeasible",
+    [
+        # Primary preference preserved: [A100] + [H100, A100] launches both primaries.
+        (
+            _nts(("a100", 8, "A100"), ("h100", 8, "H100")),
+            [_req(2, "A100"), _req(2, "H100", "A100")],
+            None,
+            {"a100": 1, "h100": 1},
+            0,
+        ),
+        # Held-back unlabeled request reuses already-launched type_a (2 VMs, not 3).
+        (
+            _nts(
+                ("type_a", {"CPU": 16, "memory": 64}, "A"),
+                ("type_c", {"CPU": 2, "memory": 8}, "C"),
+                ("type_u", {"CPU": 4, "memory": 16}),
+            ),
+            [_req(6, "A"), _req(1, "C", "A"), _req(4)],
+            None,
+            {"type_a": 1, "type_c": 1},
+            0,
+        ),
+        # Equal score[0] == 1 fallback reuses launched type_a instead of launching
+        # smaller type_a_small and exhausting max_num_nodes=3 before type_d.
+        (
+            _nts(
+                ("type_a", 64, "A"),
+                ("type_a_small", 8, "A"),
+                ("type_c", {"CPU": 8, "memory": 64}, "C", 1),
+                ("type_d", {"CPU": 2, "memory": 8}, "D", 1),
+            ),
+            [_req(16, "A", "Z"), _req(8, "C"), _req(8, "C", "A"), _req(2, "D")],
+            3,
+            {"type_a": 1, "type_c": 1, "type_d": 1},
+            0,
+        ),
+        # Exact utilization tie fills already-launched A before launching fresh A.
+        (
+            _nts(("A", 4, "A", 2), ("B", 1, "B", 1), ("U", 3, None, 1)),
+            [_req(3, "A"), _req(1, "B"), _req(1, "B", "A"), _req(3)],
+            None,
+            {"A": 1, "B": 1, "U": 1},
+            0,
+        ),
+        # Primary Y (max=1) depletion promotes [y=1, x=1] to co-pack on L.
+        (
+            _nts(("Y", 4, {"y": "1"}, 1), ("S", 2, {"x": "1"}), ("L", 3, {"x": "1"})),
+            [
+                _req(4, selectors=[[("y", _IN, ["1"])]]),
+                _req(2, selectors=[[("x", _IN, ["1"])]]),
+                _req(1, selectors=[[("y", _IN, ["1"])], [("x", _IN, ["1"])]]),
+            ],
+            2,
+            {"Y": 1, "L": 1},
+            0,
+        ),
+        # Post-Pass-1 fit check: deferred 2-CPU [C, B] does not fit remaining 1 CPU on
+        # B_big (3 CPU), so Pass 2 co-packs 1-CPU unlabeled work onto B_big.
+        (
+            _nts(
+                ("B_small", 2, "B", 1),
+                ("B_big", 3, "B", 1),
+                ("C", 4, "C", 1),
+                ("U", 1, None, 1),
+            ),
+            [_req(2, "C"), _req(2, "B"), _req(2, "C", "B"), _req(1)],
+            None,
+            {"B_big": 1, "C": 1},
+            0,
+        ),
+        # 3-selector [A, B, C] active-index progression (missing A -> B=1 -> C=2).
+        (
+            _nts(
+                ("type_b", 2, "B", 1), ("type_c", 2, "C", 1, 10), ("type_u", 1, None, 1)
+            ),
+            [_req(2, "B"), _req(1, "C"), _req(1, "A", "B", "C"), _req(1, "")],
+            None,
+            {"type_b": 1, "type_c": 1, "type_u": 1},
+            0,
+        ),
+        # max_num_nodes=2 reached mid-loop packs deferred [B, A] and [[]] onto type_a.
+        (
+            _nts(("type_a", 4, "A", 2, 10), ("type_b", 4, "B", 2)),
+            [_req(2, "A"), _req(4, "B"), _req(1, "B", "A"), _req(1, "")],
+            2,
+            {"type_a": 1, "type_b": 1},
+            0,
+        ),
+        # Dead 2-constraint primary + {} fallback does not steal B from [B].
+        (
+            _nts(("B", 2, "B", 1), ("U", 2, None, 1)),
+            [
+                _req(2, selectors=[[("zone", _IN, ["q"]), ("rack", _IN, ["r"])], []]),
+                _req(2, "B"),
+            ],
+            None,
+            {"B": 1, "U": 1},
+            0,
+        ),
+        # Empty-selector truncation in _sort_resource_request keeps 3-CPU [[], [A]]
+        # ahead of 2-CPU [[]] requests so 5-CPU + 2-CPU nodes fit all three.
+        (
+            _nts(("n5", 5, None, 1), ("n2", 2, None, 1)),
+            [_req(3, "", "A"), _req(2, ""), _req(2, "")],
+            None,
+            {"n5": 1, "n2": 1},
+            0,
+        ),
+        # Paired negative vs fallback: [missing] fails while [missing, []] lands on U.
+        (
+            _nts(("type_u", 2, None, 1)),
+            [_req(1, "missing"), _req(1, "missing", "")],
+            None,
+            {"type_u": 1},
+            1,
+        ),
+    ],
+)
+def test_label_selector_planner_table(
+    cfgs, reqs, max_num_nodes, expected_launch, expected_infeasible
+):
+    reply = ResourceDemandScheduler(event_logger).schedule(
+        sched_request(cfgs, max_num_nodes=max_num_nodes, resource_requests=reqs)
+    )
+    assert _launch_and_terminate(reply)[0] == expected_launch
+    assert len(reply.infeasible_resource_requests) == expected_infeasible
+
+
+def test_label_selector_fallback_reservation_permutations_and_contracts():
+    """Verify fallback reservation across all 24 request permutations, MRV fallback
+    ordering, exhausted-primary equivalence, and cluster resource constraints."""
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    cfgs_perm = _nts(("B", 4, "B", 1), ("C", 2, "C", 1), ("U", 2, None, 1))
+    for unlabeled_sels, extra_constraints in [
+        (None, None),
+        ([[]], None),
+        ([[], []], None),
+        ([[], [("accel", _IN, ["C"])]], None),
+        ([[("accel", _IN, ["A_missing"])], []], None),
+        ([[("accel", _IN, ["A_missing"]), ("zone", _IN, ["z_missing"])], []], None),
+        ([[], [("accel", _IN, ["C"])]], [(_ANTI, "_PG_1", "")]),
+    ]:
+        base_four = [
+            _req(2, "C"),
+            _req(2, "B"),
+            _req(2, "C", "B"),
+            _req(2, constraints=extra_constraints, selectors=unlabeled_sels),
+        ]
+        for perm in itertools.permutations(base_four):
+            reply = scheduler.schedule(
+                sched_request(cfgs_perm, resource_requests=list(perm))
+            )
+            assert _launch_and_terminate(reply)[0] == {"B": 1, "C": 1, "U": 1}
+            assert not reply.infeasible_resource_requests
+
+    # MRV fallback tie-break: [C, B] takes C while [C, {}] falls back onto U.
+    r_cb, r_c_any = _req(2, "C", "B"), _req(2, "C", "")
+    cfgs_mrv = _nts(("B", 2, "B", 0), ("C", 2, "C", 1), ("U", 2, None, 1))
+    for req_order in ([r_c_any, r_cb], [r_cb, r_c_any]):
+        reply_mrv = scheduler.schedule(
+            sched_request(cfgs_mrv, resource_requests=req_order)
+        )
+        assert _launch_and_terminate(reply_mrv)[0] == {"C": 1, "U": 1}
+        assert not reply_mrv.infeasible_resource_requests
+
+    # Exhausted primary [{zone: q}, {}] plans identically to [] and [[]].
+    cfgs_eq = _nts(("big", 8, "B", 1), ("small", 2, "A", 3))
+    req_ba_1cpu = _req(1, "B", "A")
+    outcomes = [
+        (
+            _launch_and_terminate(rep)[0],
+            len(rep.infeasible_resource_requests),
+        )
+        for sels in ([], [[]], [[("zone", _IN, ["q"])], []])
+        for r4 in (_req(4, selectors=sels),)
+        for rep in (
+            scheduler.schedule(
+                sched_request(cfgs_eq, resource_requests=[r4, r4, req_ba_1cpu])
+            ),
+        )
+    ]
+    assert outcomes[0] == outcomes[1] == outcomes[2]
+
+    # CLUSTER_RESOURCE_CONSTRAINT with multi-selector fallbacks (feasible + excess).
+    crc_cfgs = _nts(("type_a", 2, "A", 1), ("type_b", 2, "B", 1))
+    crc_ok = [_req(2, "A"), _req(2, "A", "B")]
+    rep_crc = scheduler.schedule(
+        sched_request(crc_cfgs, cluster_resource_constraints=crc_ok)
+    )
+    assert _launch_and_terminate(rep_crc)[0] == {"type_a": 1, "type_b": 1}
+    assert not rep_crc.infeasible_cluster_resource_constraints
+
+    req_crc_bad = sched_request(
+        crc_cfgs, cluster_resource_constraints=crc_ok + [_req(2, "A", "B")]
+    )
+    rep_crc_bad = scheduler.schedule(req_crc_bad)
+    assert (
+        rep_crc_bad.infeasible_cluster_resource_constraints
+        == req_crc_bad.cluster_resource_constraints
+    )
+
+
+def test_label_selector_empty_and_operator_semantics():
+    """Verify binary integer label scores on empty/mixed selectors, empty b'' request
+    shape keys, unknown operators, empty value lists, and absent vs '' under NOT_IN."""
+    src = ResourceRequestSource.PENDING_DEMAND
+    unspec_op = LabelSelectorOperator.LABEL_OPERATOR_UNSPECIFIED
+    node_a = SchedulingNode.from_node_config(
+        _nt("a", {"CPU": 2}, {"accel": "A"}, 1),
+        SchedulingNodeStatus.SCHEDULABLE,
+        NodeKind.WORKER,
+    )
+    node_u = SchedulingNode.from_node_config(
+        _nt("u", {"CPU": 2}, max_workers=1),
+        SchedulingNodeStatus.SCHEDULABLE,
+        NodeKind.WORKER,
+    )
+
+    empty_req = ResourceRequest()
+    rem_zero, score_zero = copy.deepcopy(node_u).try_schedule(
+        [empty_req], src, {id(empty_req): b""}
+    )
+    assert not rem_zero and score_zero[0] == 0
+
+    for req, node, expected_score in [
+        (_req(1, ""), node_u, 0),
+        (_req(1, "", ""), node_u, 0),
+        (_req(1, "A", ""), node_a, 1),
+        (_req(1, "A", ""), node_u, 0),
+        (_req(1, "", "A"), node_a, 0),
+        (_req(1, "", "A"), node_u, 0),
+    ]:
+        rem, score = copy.deepcopy(node).try_schedule([req], src)
+        assert not rem and score[0] == expected_score
+
+    nodes = {
+        k: SchedulingNode.from_node_config(
+            _nt("n", {"CPU": 2}, lbls),
+            SchedulingNodeStatus.SCHEDULABLE,
+            NodeKind.WORKER,
+        )
+        for k, lbls in [("val", {"k": "v"}), ("empty", {"k": ""}), ("absent", {})]
+    }
+    for bad_op in (unspec_op, 99):
+        req_bad = _req(1, selectors=[[("k", bad_op, ["v"])]])
+        assert nodes["val"]._first_matching_selector(req_bad) is None
+        assert (
+            nodes["val"]._schedulable_selector(
+                req_bad, nodes["val"].get_available_resources(src)
+            )
+            is None
+        )
+    assert (
+        nodes["val"]._schedulable_selector(
+            _req(1, selectors=[[("k", _IN, ["v"])]]), {"CPU": 0}
+        )
+        is None
+    )
+
+    for n_key, op, vals, expected in [
+        ("val", _IN, ["v"], (0, True)),
+        ("val", _IN, ["other", "v"], (0, True)),
+        ("val", _IN, [], None),
+        ("empty", _IN, [], None),
+        ("absent", _IN, [], None),
+        ("val", _NOT_IN, [], (0, True)),
+        ("empty", _NOT_IN, [], (0, True)),
+        ("absent", _NOT_IN, [], (0, True)),
+        ("absent", _NOT_IN, [""], (0, True)),
+        ("empty", _NOT_IN, [""], None),
+        ("absent", _NOT_IN, ["v"], (0, True)),
+        ("empty", _NOT_IN, ["v"], (0, True)),
+        ("val", _NOT_IN, ["v"], None),
+    ]:
+        req = _req(1, selectors=[[("k", op, vals)]])
+        assert nodes[n_key]._first_matching_selector(req) == expected
+        assert (
+            nodes[n_key]._schedulable_selector(
+                req, nodes[n_key].get_available_resources(src)
+            )
+            == expected
         )
 
-    # Case A: req_anti sets foo=bar and unlocks req_only ([foo=bar], no fallback);
-    # node_requests must not drop req_only when attempts={} is passed.
-    req_anti_w = ResourceRequestUtil.make(
-        {"CPU": 1},
-        constraints=[(anti_type, "foo", "bar")],
-        label_selectors=[[("role", in_op, ["w"])]],
-    )
-    req_only_foo = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("foo", in_op, ["bar"])]]
-    )
-    nodes_a = [make_node("n_w", 2, {"role": "w"})]
-    assert run_multi_pass(nodes_a, [req_anti_w, req_only_foo], True) == run_multi_pass(
-        nodes_a, [req_anti_w, req_only_foo], False
-    )
 
-    # Case C: n_w promotes req_fb ([foo=bar, {}]) from tier 0.5 -> 1.0 during Pass 1
-    # simulation while n_foo (1 CPU, foo=bar) wins Pass 1 and consumes req_fb;
-    # Pass 2 must not reuse n_w's stale cached attempt that still holds req_fb.
-    req_fb = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("foo", in_op, ["bar"])], []]
+def test_label_selector_spread_anti_affinity_depletion():
+    """Verify STRICT_SPREAD anti-affinity depletion on multi-GPU primary nodes advances
+    active_selectors to fallback nodes, paired with pre-blocked counter-cases."""
+    src = ResourceRequestSource.PENDING_DEMAND
+    scheduler = ResourceDemandScheduler(event_logger)
+    cfgs = {k: _nt(k, {"CPU": 4, "GPU": 4}, {"accel": k}, 1) for k in ("A", "B")}
+    spread_bundle = _req(
+        1,
+        "A",
+        "B",
+        extra={"GPU": 1},
+        constraints=[(_ANTI, "_PG_SPREAD", "v1")],
     )
-    nodes_c = [
-        make_node("n_w", 3, {"role": "w"}),
-        make_node("n_foo", 1, {"foo": "bar"}),
+    insts_ok = [
+        _make_running_instance("A", "A", {"CPU": 4, "GPU": 4}, labels={"accel": "A"}),
+        _make_running_instance("B", "B", {"CPU": 4, "GPU": 4}, labels={"accel": "B"}),
     ]
-    cached_c = run_multi_pass(nodes_c, [req_anti_w, req_fb], True)
-    uncached_c = run_multi_pass(nodes_c, [req_anti_w, req_fb], False)
-    assert cached_c == uncached_c
-    assert cached_c[0][1][1] == 2.0
-
-    # Tier-0 dynamic promotion: n_w starts at tier 0 (unlabeled req_anti) while
-    # n_foo gives pass_top=1.0 on req_only_foo; n_w must not be pruned by top < pass_top.
-    req_anti_unlabeled = ResourceRequestUtil.make(
-        {"CPU": 1}, constraints=[(anti_type, "foo", "bar")]
+    ctx = ResourceDemandScheduler.ScheduleContext.from_schedule_request(
+        sched_request(cfgs, instances=insts_ok)
     )
-    nodes_t0 = [make_node("n_w", 2, {}), make_node("n_foo", 2, {"foo": "bar"})]
-    cached_t0 = run_multi_pass(nodes_t0, [req_anti_unlabeled, req_only_foo], True)
-    uncached_t0 = run_multi_pass(nodes_t0, [req_anti_unlabeled, req_only_foo], False)
-    assert cached_t0 == uncached_t0
-    assert len(cached_t0[0]) == 1 and cached_t0[0][0][0] == "n_w"
+    nodes, infeasible = ResourceDemandScheduler._try_schedule(
+        ctx, [spread_bundle, spread_bundle], src
+    )
+    assert not infeasible
+    assert {n.node_type: len(n.get_sched_requests(src)) for n in nodes} == {
+        "A": 1,
+        "B": 1,
+    }
+    assert not scheduler.schedule(
+        sched_request(
+            cfgs,
+            instances=insts_ok,
+            gang_resource_requests=[[spread_bundle, spread_bundle]],
+        )
+    ).infeasible_gang_resource_requests
+
+    insts_pre_a = [
+        _make_running_instance(
+            "A",
+            "A",
+            {"CPU": 4, "GPU": 4},
+            labels={"accel": "A"},
+            dynamic_labels={"_PG_SPREAD": "v1"},
+        ),
+        _make_running_instance("B", "B", {"CPU": 4, "GPU": 4}, labels={"accel": "B"}),
+    ]
+    ctx_pre = ResourceDemandScheduler.ScheduleContext.from_schedule_request(
+        sched_request(cfgs, instances=insts_pre_a)
+    )
+    nodes_pre, inf_pre = ResourceDemandScheduler._try_schedule(
+        ctx_pre, [spread_bundle], src
+    )
+    assert not inf_pre
+    assert {n.node_type: len(n.get_sched_requests(src)) for n in nodes_pre} == {
+        "A": 0,
+        "B": 1,
+    }
+
+    insts_pre_b = [
+        _make_running_instance("A", "A", {"CPU": 4, "GPU": 4}, labels={"accel": "A"}),
+        _make_running_instance(
+            "B",
+            "B",
+            {"CPU": 4, "GPU": 4},
+            labels={"accel": "B"},
+            dynamic_labels={"_PG_SPREAD": "v1"},
+        ),
+    ]
+    reply_blocked = scheduler.schedule(
+        sched_request(
+            cfgs,
+            instances=insts_pre_b,
+            gang_resource_requests=[[spread_bundle, spread_bundle]],
+        )
+    )
+    assert len(reply_blocked.infeasible_gang_resource_requests) == 1
+
+
+def test_label_selector_dynamic_anti_affinity_overlap():
+    """Verify label selectors reading anti-affinity keys restart Pass 1 on label growth,
+    promote ms[0] < act, allow Pass 2 mutators when Pass 1 scheduled nothing, skip
+    infeasible 0-request nodes, and match uncached multi-pass scheduling."""
+    src = ResourceRequestSource.PENDING_DEMAND
+    scheduler = ResourceDemandScheduler(event_logger)
+    anti_pg = [(_ANTI, "_PG_1", "")]
+
+    req_pg1 = _req(1, selectors=[[("_PG_1", _IN, [""])]])
+    req_pg2 = _req(1, selectors=[[("_PG_2", _IN, [""])]])
+    req_mut_l = _req(1, constraints=anti_pg, selectors=[[("req", _IN, ["true"])]])
+    req_mut_u = _req(1, constraints=anti_pg, selectors=[])
+    req_u = _req(1, "")
+
+    cfg_2cpu = _nt("n1", {"CPU": 2}, {"req": "true"}, 1)
+    for cfg, mut, first, expected_rem in [
+        (cfg_2cpu, req_mut_l, req_pg1, [req_u]),
+        (_nt("nu", {"CPU": 2}, max_workers=1), req_mut_u, req_pg1, [req_u]),
+        (cfg_2cpu, req_mut_l, req_pg2, [req_pg2]),
+    ]:
+        node = SchedulingNode.from_node_config(
+            cfg, SchedulingNodeStatus.SCHEDULABLE, NodeKind.WORKER
+        )
+        rem, score = node.try_schedule([first, mut, req_u], src)
+        assert rem == expected_rem and score[0] == 1
+
+    # NOT_IN evaluated before anti-affinity label mutation still scores 1.
+    node_notin = SchedulingNode.from_node_config(
+        _nt("t", {"CPU": 4}, max_workers=2),
+        SchedulingNodeStatus.TO_LAUNCH,
+        NodeKind.WORKER,
+    )
+    rem_ni, score_ni = node_notin.try_schedule(
+        [
+            _req(
+                1,
+                constraints=[(_ANTI, "pg", "1")],
+                selectors=[[("pg", _NOT_IN, ["1"])]],
+            )
+        ],
+        src,
+    )
+    assert not rem_ni and score_ni[0] == 1
+
+    # Per-node placement across running r-0 (1 CPU, pg=1) and r-1 (4 CPU): each hosts 1.
+    cfg_t = _nt("t", {"CPU": 4}, max_workers=2)
+    ctx_run = ResourceDemandScheduler.ScheduleContext(
+        nodes=[
+            _make_running_node("r-0", 4, 1, {"req": "true", "pg": "1"}),
+            _make_running_node("r-1", 4, 4, {"req": "true"}),
+        ],
+        node_type_configs={"t": cfg_t},
+        cloud_resource_availabilities={},
+        recoverable_resource_availabilities={},
+        disable_launch_config_check=True,
+        max_num_nodes=2,
+    )
+    req_anti_req = _req(
+        1, constraints=[(_ANTI, "pg", "1")], selectors=[[("req", _IN, ["true"])]]
+    )
+    req_pg_1 = _req(1, selectors=[[("pg", _IN, ["1"])]])
+    nodes_run, inf_run = ResourceDemandScheduler._try_schedule(
+        ctx_run, [req_anti_req, req_pg_1], src
+    )
+    assert not inf_run
+    assert {n.ray_node_id: len(n.get_sched_requests(src)) for n in nodes_run} == {
+        "r-0": 1,
+        "r-1": 1,
+    }
+
+    # Selector promotion (ms[0] == 0 < act == 1) co-packs onto big (2 CPU).
+    cfgs_promo = _nts(("big", 2, {"role": "w"}, 1), ("small", 1, {"role": "w"}, 1))
+    req_anti_role = _req(
+        1, constraints=[(_ANTI, "pg", "1")], selectors=[[("role", _IN, ["w"])]]
+    )
+    rep_promo = scheduler.schedule(
+        sched_request(cfgs_promo, resource_requests=[req_anti_role, req_pg_1])
+    )
+    assert _launch_and_terminate(rep_promo)[0] == {"big": 1}
+    assert not rep_promo.infeasible_resource_requests
+
+    # Pass 2 runs when scheduled_constrained is False despite fitting deferred fallback.
+    best_b5, rem_b5, _ = ResourceDemandScheduler._sched_best_node(
+        [
+            _req(1, constraints=[(_ANTI, "pg", "1")]),
+            _req(1, selectors=[[("pg", _IN, ["1"])], [("alt", _IN, ["1"])]]),
+        ],
+        [
+            _make_running_node("r-unlock", 2, 2, {"alt": "1"}),
+            _make_running_node("r-pre", 3, 2, {"pg": "1"}),
+        ],
+        src,
+        {},
+        {},
+    )
+    assert best_b5 is not None and best_b5.ray_node_id == "r-unlock" and rem_b5 == []
+
+    # Uncached score[0] == 1 beats committed score[0] == 0 even at 100% utilization.
+    best_s70, _, _ = ResourceDemandScheduler._sched_best_node(
+        [_req(1, "B"), _req(1)],
+        [
+            _make_running_node("r-comm", 1, 1),
+            _make_running_node("r-uncomm", 4, 4, {"accel": "B"}),
+        ],
+        src,
+        {},
+        {},
+        attempts=None,
+        num_committed=1,
+    )
+    assert best_s70 is not None and best_s70.ray_node_id == "r-uncomm"
+
+    # Infeasible dynamic-overlap request does not launch a spurious 0-request node.
+    req_inf = _req(
+        4, constraints=[(_ANTI, "pg", "1")], selectors=[[("pg", _IN, ["1"])]]
+    )
+    rep_inf = scheduler.schedule(
+        sched_request(_nts(("n1", 1, None, 1)), resource_requests=[req_inf])
+    )
+    assert rep_inf.to_launch == [] and len(rep_inf.infeasible_resource_requests) == 1
+
+    # Capped single node (max_num_nodes=1): unlocked constrained request beats req_u.
+    req_strict_first = _req(
+        1,
+        constraints=[(_ANTI, "_PG_OTHER", "")],
+        selectors=[[("_PG_1", _IN, [""]), ("req", _IN, ["true"])]],
+    )
+    rep_cap = scheduler.schedule(
+        sched_request(
+            {"n1": cfg_2cpu},
+            max_num_nodes=1,
+            resource_requests=[req_strict_first, req_mut_l, req_u],
+        )
+    )
+    assert _launch_and_terminate(rep_cap)[0] == {"n1": 1}
+    assert rep_cap.infeasible_resource_requests == [req_u]
+
+    # Multi-pass attempts={} vs attempts=None equivalence with explicit placement check.
+    req_anti_w = _req(
+        1, constraints=[(_ANTI, "foo", "bar")], selectors=[[("role", _IN, ["w"])]]
+    )
+    req_only_foo = _req(1, selectors=[[("foo", _IN, ["bar"])]])
+    req_fb_foo = _req(1, selectors=[[("foo", _IN, ["bar"])], []])
+    req_anti_u = _req(1, constraints=[(_ANTI, "foo", "bar")])
+    for nodes_mp, reqs_mp, expected_first_node in [
+        (
+            [_make_running_node("n_w", 2, labels={"role": "w"})],
+            [req_anti_w, req_only_foo],
+            "n_w",
+        ),
+        (
+            [
+                _make_running_node("n_w", 3, labels={"role": "w"}),
+                _make_running_node("n_foo", 1, labels={"foo": "bar"}),
+            ],
+            [req_anti_w, req_fb_foo],
+            "n_foo",
+        ),
+        (
+            [
+                _make_running_node("n_w", 2),
+                _make_running_node("n_foo", 2, labels={"foo": "bar"}),
+            ],
+            [req_anti_u, req_only_foo],
+            "n_w",
+        ),
+    ]:
+        cached = _run_best_node_rounds(nodes_mp, reqs_mp, True)[:2]
+        uncached = _run_best_node_rounds(nodes_mp, reqs_mp, False)[:2]
+        assert cached == uncached and not cached[1]
+        assert cached[0][0][0] == expected_first_node
+
+
+@pytest.mark.parametrize(
+    "mode",
+    [
+        "pinned",
+        "slice",
+        "spread",
+        "co_pack",
+        "multi_shape",
+        "fallback",
+        "shared_fallback",
+    ],
+)
+def test_label_selector_attempt_cache_linear_deepcopy(mode, monkeypatch):
+    """Scheduling N label-constrained bundles across N candidate nodes performs O(N)
+    SchedulingNode deepcopies across pinned, spread, co-pack, and fallback pools."""
+    num_hosts = 64
+    cfg = _nt("tpu", {"CPU": 8, "TPU": 4}, max_workers=num_hosts * 2)
+    nodes = []
+    for s_idx in (0, 1) if mode == "fallback" else (0,):
+        for i in range(num_hosts):
+            node = SchedulingNode.from_node_config(
+                cfg, SchedulingNodeStatus.SCHEDULABLE, NodeKind.WORKER
+            )
+            node.labels = {
+                "ray.io/tpu-worker-id": str(i),
+                "ray.io/tpu-slice-name": f"slice-{s_idx}",
+            }
+            nodes.append(node)
+
+    if mode in ("pinned", "fallback"):
+        fb = (
+            [[("ray.io/tpu-slice-name", _IN, ["slice-1"])]]
+            if mode == "fallback"
+            else []
+        )
+        requests = [
+            ResourceRequestUtil.make(
+                {"TPU": 4},
+                label_selectors=[
+                    [
+                        ("ray.io/tpu-slice-name", _IN, ["slice-0"]),
+                        ("ray.io/tpu-worker-id", _IN, [str(i)]),
+                    ],
+                    *fb,
+                ],
+            )
+            for i in range(num_hosts)
+        ]
+    elif mode == "shared_fallback":
+        requests = [
+            ResourceRequestUtil.make(
+                {"TPU": 4, f"job_{i}": 0},
+                label_selectors=[
+                    [("ray.io/tpu-worker-id", _IN, [str(i)])],
+                    [("ray.io/tpu-slice-name", _IN, ["slice-0"])],
+                ],
+            )
+            for i in range(num_hosts)
+        ]
+    else:
+        slice_sel = [[("ray.io/tpu-slice-name", _IN, ["slice-0"])]]
+        constraints = [(_ANTI, "_PG_1", "")] if mode == "spread" else []
+        extra_reqs = (
+            [_req(8)] * num_hosts
+            if mode == "co_pack"
+            else [ResourceRequestUtil.make({"CPU": 8}, label_selectors=slice_sel)]
+            * num_hosts
+            if mode == "multi_shape"
+            else []
+        )
+        requests = [
+            ResourceRequestUtil.make(
+                {"TPU": 4},
+                constraints=constraints,
+                label_selectors=slice_sel,
+            )
+        ] * num_hosts + extra_reqs
+
+    ctx = ResourceDemandScheduler.ScheduleContext(
+        nodes=nodes,
+        node_type_configs={"tpu": cfg},
+        cloud_resource_availabilities={},
+        recoverable_resource_availabilities={},
+        disable_launch_config_check=True,
+    )
+    with _spy_deepcopy(monkeypatch) as copies:
+        out_nodes, infeasible = ResourceDemandScheduler._try_schedule(
+            ctx, requests, ResourceRequestSource.PENDING_DEMAND
+        )
+    assert not infeasible
+    expected_per_primary = 2 if mode in ("co_pack", "multi_shape") else 1
+    scheduled_counts = sorted(
+        len(n.get_sched_requests(ResourceRequestSource.PENDING_DEMAND))
+        for n in out_nodes
+    )
+    expected_counts = ([0] * num_hosts if mode == "fallback" else []) + [
+        expected_per_primary
+    ] * num_hosts
+    assert scheduled_counts == expected_counts and copies[0] <= num_hosts
 
 
 def test_label_selector_pending_node_dedup_and_shared_fallback_latency(monkeypatch):
     """Identical QUEUED/ALLOCATED pending nodes are deduplicated by NodeStateCache
-    before label scoring, keeping deepcopy and label-check counts linear/bounded."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+    before label scoring, keeping deepcopy and label-check counts bounded."""
     num_nodes = 64
-    cfg = NodeTypeConfig(
-        name="tpu",
-        resources={"CPU": 4, "TPU": 4},
-        min_worker_nodes=0,
-        max_worker_nodes=num_nodes,
-        labels={"accel": "A"},
-    )
+    cfg = _nt("tpu", {"CPU": 4, "TPU": 4}, {"accel": "A"}, max_workers=num_nodes)
     instances = [
         make_autoscaler_instance(
             im_instance=Instance(
@@ -5562,281 +5519,283 @@ def test_label_selector_pending_node_dedup_and_shared_fallback_latency(monkeypat
         ResourceRequestUtil.make(
             {"TPU": 4, f"job_{i}": 0},
             label_selectors=[
-                [("accel", in_op, ["A", f"alt_{i}"])],
-                [("accel", in_op, ["B"])],
+                [("accel", _IN, ["A", f"alt_{i}"])],
+                [("accel", _IN, ["B"])],
             ],
         )
         for i in range(num_nodes)
     ]
-
-    deepcopy_count = 0
-    real_deepcopy = copy.deepcopy
-
-    def counting_deepcopy(obj, memo=None):
-        nonlocal deepcopy_count
-        if isinstance(obj, SchedulingNode):
-            deepcopy_count += 1
-        return real_deepcopy(obj, memo)
-
-    monkeypatch.setattr(copy, "deepcopy", counting_deepcopy)
-    orig_satisfies = SchedulingNode._satisfies_label_constraints
-    with patch.object(
+    orig_first = SchedulingNode._first_matching_selector
+    with _spy_deepcopy(monkeypatch) as copies, patch.object(
         SchedulingNode,
-        "_satisfies_label_constraints",
+        "_first_matching_selector",
         autospec=True,
-        side_effect=orig_satisfies,
-    ) as mock_satisfies:
+        side_effect=orig_first,
+    ) as mock_first:
         reply = ResourceDemandScheduler(event_logger).schedule(
-            sched_request(
-                node_type_configs={"tpu": cfg},
-                resource_requests=requests,
-                instances=instances,
-            )
+            sched_request({"tpu": cfg}, resource_requests=requests, instances=instances)
         )
-
     assert _launch_and_terminate(reply) == ({}, [])
     assert not reply.infeasible_resource_requests
-    # Only the 1 selected pending representative is deepcopied per pass (64 total,
-    # not 64 * 65 / 2).
-    assert deepcopy_count == num_nodes
-    # Pre-NodeStateCache deduplication evaluates only 1 candidate per pass rather
-    # than all 64 duplicate pending nodes on every pass.
-    assert mock_satisfies.call_count <= num_nodes * (num_nodes + 1) // 2 + num_nodes
+    assert copies[0] <= num_nodes
+    assert 0 < mock_first.call_count <= num_nodes * (num_nodes + 1) // 2 + num_nodes
 
 
-def test_label_selector_multi_tier_normalization_max_nodes_and_cluster_constraints():
-    """Verify (1) 3+ selector relative normalization when primary/top selectors have
-    no reachable nodes, (2) launched_nodes packing after max_num_nodes flips mid-loop,
-    and (3) CLUSTER_RESOURCE_CONSTRAINT with multi-selector fallbacks."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
+def test_selected_node_leaves_attempt_cache():
+    """Evicting the selected node from `attempts` prevents CPython id() reuse from
+    inheriting a stale _NodeAttempt."""
+    src = ResourceRequestSource.PENDING_DEMAND
+    nodes = [
+        _make_running_node(f"r{i}", {"CPU": 2}, labels={"accel": "A"}) for i in range(3)
+    ]
+    requests = [_req(1, "A")] * 4
+    attempts = {}
+    while requests:
+        best, requests, nodes = ResourceDemandScheduler._sched_best_node(
+            requests, nodes, src, {}, {}, None, attempts
+        )
+        assert best is not None and set(attempts) <= {id(n) for n in nodes}
+
+
+def test_label_selector_attempt_cache_invalidation_and_blockers(monkeypatch):
+    """Verify _NodeAttempt invalidation, pruning, and blocker caching across gang
+    interleaving, duplicate-run prefix shifts, intermediate vs tail rejections,
+    dual blockers, unconstrained pruning, and active-blocker hit/miss boundaries."""
     scheduler = ResourceDemandScheduler(event_logger)
+    req_x = _req(1, selectors=[[("x", _IN, ["1"])]])
+    req_y = _req(1, selectors=[[("y", _IN, ["1"])]])
+    gang_cfgs = _nts(
+        ("nx", 3, {"x": "1"}, 1),
+        ("nxy", 1, {"x": "1", "y": "1"}, 1),
+        ("nx1", 1, {"x": "1"}, 1),
+        ("ny_extra", 1, {"y": "1"}, 5),
+    )
+    for max_num_nodes in (None, 3):
+        rep_gang = scheduler.schedule(
+            sched_request(
+                gang_cfgs,
+                max_num_nodes=max_num_nodes,
+                instances=[
+                    _make_running_instance("n1", "nx", 3, 1, {"x": "1"}),
+                    _make_running_instance("n2", "nxy", 1, 1, {"x": "1", "y": "1"}),
+                    _make_running_instance("n3", "nx1", 1, 1, {"x": "1"}),
+                ],
+                gang_resource_requests=[[req_x, req_y, req_x]],
+            )
+        )
+        assert _launch_and_terminate(rep_gang)[0] == {}
+        assert not rep_gang.infeasible_gang_resource_requests
 
-    # 1. 3-selector request [A, B, C] where node type A does not exist:
-    # best_label_scores = 2/3 (on B), so C (1/3) is normalized to tier = 0.5 < 1.0
-    # and reserves C's spare CPU against unlabeled req_u while B is still available;
-    # once B fills, C's 1/3 score normalizes to 1.0 and packs onto C.
-    cfgs_3tier = {
-        "type_b": NodeTypeConfig(
-            name="type_b",
-            resources={"CPU": 2},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"accel": "B"},
-            priority=0,
-        ),
-        "type_c": NodeTypeConfig(
-            name="type_c",
-            resources={"CPU": 2},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"accel": "C"},
-            priority=10,
-        ),
-        "type_u": NodeTypeConfig(
-            name="type_u",
-            resources={"CPU": 1},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={},
-        ),
-    }
-    req_b = ResourceRequestUtil.make(
-        {"CPU": 2}, label_selectors=[[("accel", in_op, ["B"])]]
-    )
-    req_c = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("accel", in_op, ["C"])]]
-    )
-    req_abc = ResourceRequestUtil.make(
-        {"CPU": 1},
-        label_selectors=[
-            [("accel", in_op, ["A"])],
-            [("accel", in_op, ["B"])],
-            [("accel", in_op, ["C"])],
+    s0 = _req(1, selectors=[[("y", _NOT_IN, ["0"])]])
+    s1 = _req(
+        1,
+        selectors=[
+            [("y", _NOT_IN, ["0"]), ("z", _NOT_IN, ["1"])],
+            [("y", _NOT_IN, ["1"]), ("z", _NOT_IN, ["1"])],
         ],
     )
-    req_u = ResourceRequestUtil.make({"CPU": 1}, label_selectors=[[]])
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs=cfgs_3tier,
-            resource_requests=[req_b, req_c, req_abc, req_u],
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"type_b": 1, "type_c": 1, "type_u": 1}
-    assert not reply.infeasible_resource_requests
-
-    # 2. max_num_nodes reached mid-loop (can_launch_new True -> False):
-    # Pass 1 launches type_a (4 CPU, 2 used -> stays in launched_nodes), Pass 2
-    # launches type_b (hits max_num_nodes=2), Pass 3 packs deferred [B, A] and
-    # unlabeled [LabelSelector()] requests onto the already-launched type_a node.
-    cfgs_cap = {
-        "type_a": NodeTypeConfig(
-            name="type_a",
-            resources={"CPU": 4},
-            min_worker_nodes=0,
-            max_worker_nodes=2,
-            labels={"accel": "A"},
-            priority=10,
-        ),
-        "type_b": NodeTypeConfig(
-            name="type_b",
-            resources={"CPU": 4},
-            min_worker_nodes=0,
-            max_worker_nodes=2,
-            labels={"accel": "B"},
-            priority=0,
-        ),
-    }
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs=cfgs_cap,
-            resource_requests=[
-                ResourceRequestUtil.make(
-                    {"CPU": 2}, label_selectors=[[("accel", in_op, ["A"])]]
-                ),
-                ResourceRequestUtil.make(
-                    {"CPU": 4}, label_selectors=[[("accel", in_op, ["B"])]]
-                ),
-                ResourceRequestUtil.make(
-                    {"CPU": 1},
-                    label_selectors=[
-                        [("accel", in_op, ["B"])],
-                        [("accel", in_op, ["A"])],
-                    ],
-                ),
-                ResourceRequestUtil.make({"CPU": 1}, label_selectors=[[]]),
+    r_u = _req(1)
+    for nodes_case, reqs_case, spy_nid, expected_copies in [
+        # Duplicate-run prefix shift [s0, s0, s1, s1, s0, s0] -> [s0, s1, s1, s0, s0].
+        (
+            [
+                _make_running_node("p0", 4, 1, {"y": "1", "z": "1"}),
+                _make_running_node("p1", 2, 2, {"y": "1"}),
+                _make_running_node("p2", 1, 1, {"y": "0"}),
+                _make_running_node("p3", 2, 2, {"y": "1", "z": "1"}),
             ],
-            max_num_nodes=2,
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"type_a": 1, "type_b": 1}
-    assert not reply.infeasible_resource_requests
-
-    # 3. CLUSTER_RESOURCE_CONSTRAINT with multi-selector fallbacks.
-    crc_cfgs = {
-        "type_a": NodeTypeConfig(
-            name="type_a",
-            resources={"CPU": 2},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"accel": "A"},
+            [s0, s0, s1, s1, s0, s0],
+            "p1",
+            2,
         ),
-        "type_b": NodeTypeConfig(
-            name="type_b",
-            resources={"CPU": 2},
-            min_worker_nodes=0,
-            max_worker_nodes=1,
-            labels={"accel": "B"},
-        ),
-    }
-    crc_feasible = [
-        ResourceRequestUtil.make(
-            {"CPU": 2}, label_selectors=[[("accel", in_op, ["A"])]]
-        ),
-        ResourceRequestUtil.make(
-            {"CPU": 2},
-            label_selectors=[
-                [("accel", in_op, ["A"])],
-                [("accel", in_op, ["B"])],
+        # Blocker removal frees primary node b1 to co-pack earlier unlabeled r_u.
+        (
+            [
+                _make_running_node("b0", 4, 1, {"x": "0"}),
+                _make_running_node("b1", 2, 2, {"x": "1"}),
             ],
+            [r_u, req_x, _req(1, selectors=[[("x", _IN, ["0"])], [("x", _IN, ["1"])]])],
+            "b1",
+            2,
         ),
+        # Intermediate multi-resource rejection invalidates n_mix (2 copies).
+        (
+            [
+                _make_running_node(
+                    "n_gpu", {"CPU": 8, "GPU": 8}, {"CPU": 1, "GPU": 1}, {"accel": "A"}
+                ),
+                _make_running_node(
+                    "n_mix", {"CPU": 4, "GPU": 1}, {"CPU": 4, "GPU": 1}, {"accel": "A"}
+                ),
+                _make_running_node("n_cpu", 3, 3, {"accel": "A"}),
+            ],
+            [_req(1, "A", extra={"GPU": 1}), _req(4, "A"), _req(3, "A")],
+            "n_mix",
+            2,
+        ),
+        # Post-last tail rejection keeps n_mix cached while unrelated r_o drains first.
+        (
+            [
+                _make_running_node(
+                    "n_other",
+                    {"CPU": 16, "GPU": 16, "tail": 16},
+                    {"CPU": 1, "GPU": 1, "tail": 1},
+                    {"accel": "O"},
+                ),
+                _make_running_node(
+                    "n_tail",
+                    {"CPU": 8, "GPU": 8, "tail": 8},
+                    {"CPU": 1, "GPU": 1, "tail": 1},
+                    {"accel": "A"},
+                ),
+                _make_running_node(
+                    "n_mix",
+                    {"CPU": 4, "GPU": 1, "tail": 1},
+                    {"CPU": 4, "GPU": 1, "tail": 1},
+                    {"accel": "A"},
+                ),
+            ],
+            [
+                _req(1, "O", extra={"GPU": 1, "tail": 1}),
+                _req(2, "A", extra={"GPU": 1}),
+                _req(2, "A"),
+                _req(1, "A", extra={"GPU": 1, "tail": 1}),
+            ],
+            "n_mix",
+            1,
+        ),
+        # Empty u_prefix=() with rejected r_u still present on Round 2 hits cache.
+        (
+            [
+                _make_running_node("n_o", 8, 1, {"accel": "O"}),
+                _make_running_node("n_a", 2, 2, {"accel": "A"}),
+                _make_running_node("n_u", 2, 1),
+            ],
+            [_req(1, "O"), _req(2, "A"), r_u],
+            "n_a",
+            1,
+        ),
+        # Split runs [r_a, r_o, r_a] coalesce to (r_a, 2) in stream_for (1 copy).
+        (
+            [
+                _make_running_node("n_o", 8, 1, {"accel": "O"}),
+                _make_running_node("n_a", 2, 2, {"accel": "A"}),
+            ],
+            [_req(1, "A"), _req(1, "O"), _req(1, "A")],
+            "n_a",
+            1,
+        ),
+        # Exhausted run growing [r_a, r_mid, r_a, r_mid] -> [(r_a, 2), (r_mid, 1)]
+        # invalidates exact prefix on n_spy (2 copies).
+        (
+            [
+                _make_running_node("n_first", 16, 1, {"tag": "1"}),
+                _make_running_node("n_spy", 8, 2, {"accel": "A", "tag": "1"}),
+                _make_running_node("n_rest", 4, 1, {"accel": "A", "tag": "1"}),
+            ],
+            [
+                _req(1, "A"),
+                _req(1, selectors=[[("tag", _IN, ["1"])]]),
+                _req(1, "A"),
+                _req(1, selectors=[[("tag", _IN, ["1"])]]),
+            ],
+            "n_spy",
+            2,
+        ),
+        # Held-back blocker hits cache in Round 2 with active r_u present (2 copies).
+        (
+            [
+                _make_running_node("a1", 8, 1, {"accel": "A"}),
+                _make_running_node("a2", 4, 1, {"accel": "A"}),
+                _make_running_node("n_c", 2, 2, {"accel": "C"}),
+            ],
+            [_req(1, "C"), r_u, _req(1, "A", ""), _req(1, "A", "")],
+            "n_c",
+            2,
+        ),
+        # Active shape (act == m_idx) fitting spare capacity is not a blocker (1 copy).
+        (
+            [
+                _make_running_node("a1", 8, 8, {"accel": "A"}),
+                _make_running_node("n_b", 3, 3, {"accel": "B"}),
+            ],
+            [_req(8, "A"), _req(1, "B")],
+            "n_b",
+            1,
+        ),
+    ]:
+        c_out, rem_out, copies_out = _run_best_node_rounds(
+            nodes_case, reqs_case, True, monkeypatch, spy_nid
+        )
+        u_out, rem_u, _ = _run_best_node_rounds(nodes_case, reqs_case, False)
+        assert c_out == u_out and not rem_out and not rem_u
+        assert copies_out == expected_copies
+
+    # Dual blockers r_ab and r_cb on n_b: c_rejected invalidates n_b in Round 2.
+    reqs_dual = [_req(2, "B"), _req(1, "A", "B"), _req(1, "A", "B"), _req(1, "C", "B")]
+    nodes_dual = [
+        _make_running_node("n_a", 8, 1, {"accel": "A"}),
+        _make_running_node("n_c", 2, 1, {"accel": "C"}),
+        _make_running_node("n_b", 3, 3, {"accel": "B"}),
+        _make_running_node("n_b2", 2, 2, {"accel": "B"}),
     ]
-    reply = scheduler.schedule(
-        sched_request(
-            node_type_configs=crc_cfgs,
-            cluster_resource_constraints=crc_feasible,
-        )
-    )
-    assert _launch_and_terminate(reply)[0] == {"type_a": 1, "type_b": 1}
-    assert not reply.infeasible_cluster_resource_constraints
+    c_dual, rem_dual, _ = _run_best_node_rounds(nodes_dual, reqs_dual, True)
+    assert c_dual == _run_best_node_rounds(nodes_dual, reqs_dual, False)[0]
+    assert not rem_dual and [nid for nid, _ in c_dual] == ["n_a", "n_b", "n_c"]
 
-    # Counter-case: exceeding available fallback capacity marks the CRC infeasible.
-    crc_infeasible = crc_feasible + [
-        ResourceRequestUtil.make(
-            {"CPU": 2},
-            label_selectors=[
-                [("accel", in_op, ["A"])],
-                [("accel", in_op, ["B"])],
-            ],
-        )
-    ]
-    req_infeasible = sched_request(
-        node_type_configs=crc_cfgs,
-        cluster_resource_constraints=crc_infeasible,
+    # Unconstrained-only nodes are pruned (0 copies on 32 unlabeled nodes).
+    ctx_prune = ResourceDemandScheduler.ScheduleContext(
+        nodes=[_make_running_node("n_con", {"CPU": 2}, labels={"accel": "A"})]
+        + [_make_running_node(f"n_un_{i}", {"CPU": 2}) for i in range(32)],
+        node_type_configs={"n_con": _nt("n_con", {"CPU": 2}, {"accel": "A"})},
+        cloud_resource_availabilities={},
+        recoverable_resource_availabilities={},
+        disable_launch_config_check=True,
     )
-    reply_infeasible = scheduler.schedule(req_infeasible)
+    with _spy_deepcopy(monkeypatch) as prune_copies:
+        _, inf_prune = ResourceDemandScheduler._try_schedule(
+            ctx_prune, [_req(1, "A"), r_u], ResourceRequestSource.PENDING_DEMAND
+        )
+    assert not inf_prune and prune_copies[0] == 1
+
+
+def _random_scenario(rng: random.Random):
+    accels = ["A", "B", "C"]
+    use_dyn_overlap = rng.random() < 0.2
+    nodes = [
+        _make_running_node(
+            f"n{i}",
+            {"CPU": 4.0},
+            {"CPU": float(rng.randint(1, 4))},
+            {"accel": rng.choice(accels)} if rng.random() < 0.85 else {},
+        )
+        for i in range(rng.randint(2, 6))
+    ]
+    requests = []
+    for _ in range(rng.randint(2, 6)):
+        selectors = [
+            []
+            if rng.random() < 0.2
+            else [("_PG_1", _IN, ["v1"])]
+            if (use_dyn_overlap and rng.random() < 0.35)
+            else [("accel", _IN, [rng.choice(accels)])]
+            for _ in range(rng.randint(0, 3))
+        ]
+        constraints = [(_ANTI, "_PG_1", "v1")] if rng.random() < 0.25 else None
+        requests += [
+            _req(rng.choice([1, 1, 2]), constraints=constraints, selectors=selectors)
+        ] * rng.randint(1, 4)
+    rng.shuffle(requests)
+    return nodes, requests
+
+
+@pytest.mark.parametrize("seed", range(300))
+def test_attempt_cache_matches_uncached_scheduling(seed):
+    nodes, requests = _random_scenario(random.Random(seed))
     assert (
-        reply_infeasible.infeasible_cluster_resource_constraints
-        == req_infeasible.cluster_resource_constraints
+        _run_best_node_rounds(nodes, requests, True)[:2]
+        == _run_best_node_rounds(nodes, requests, False)[:2]
     )
-
-
-def test_label_selector_operator_and_value_edge_cases():
-    """Verify _satisfies_label_constraints and _can_schedule_one on unspecified/unknown
-    operators, empty label_values under IN vs NOT_IN, and NOT_IN on absent vs '' keys."""
-    in_op = LabelSelectorOperator.LABEL_OPERATOR_IN
-    notin_op = LabelSelectorOperator.LABEL_OPERATOR_NOT_IN
-    unspec_op = LabelSelectorOperator.LABEL_OPERATOR_UNSPECIFIED
-    src = ResourceRequestSource.PENDING_DEMAND
-
-    def make_node(labels):
-        return SchedulingNode.from_node_config(
-            NodeTypeConfig(
-                name="n",
-                resources={"CPU": 2},
-                min_worker_nodes=0,
-                max_worker_nodes=1,
-                labels=labels,
-            ),
-            status=SchedulingNodeStatus.SCHEDULABLE,
-            node_kind=NodeKind.WORKER,
-        )
-
-    node_val = make_node({"k": "v"})
-    node_empty = make_node({"k": ""})
-    node_absent = make_node({})
-
-    # 1. UNSPECIFIED and unknown operator enum values fail, paired with IN pass.
-    for bad_op in (unspec_op, 99):
-        req_bad = ResourceRequestUtil.make(
-            {"CPU": 1}, label_selectors=[[("k", bad_op, ["v"])]]
-        )
-        assert node_val._satisfies_label_constraints(req_bad) == 0
-        assert not node_val._can_schedule_one(req_bad, src)
-    req_good = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("k", in_op, ["v"])]]
-    )
-    assert node_val._satisfies_label_constraints(req_good) == 1.0
-    assert node_val._can_schedule_one(req_good, src)
-
-    # 2. Empty label_values=[] fails under IN and passes under NOT_IN across all states.
-    req_in_empty = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("k", in_op, [])]]
-    )
-    req_notin_empty = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("k", notin_op, [])]]
-    )
-    for n in (node_val, node_empty, node_absent):
-        assert n._satisfies_label_constraints(req_in_empty) == 0
-        assert not n._can_schedule_one(req_in_empty, src)
-        assert n._satisfies_label_constraints(req_notin_empty) == 1.0
-        assert n._can_schedule_one(req_notin_empty, src)
-
-    # 3. NOT_IN distinguishes an absent key (None) from an explicit empty string ''.
-    req_notin_blank = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("k", notin_op, [""])]]
-    )
-    assert node_absent._satisfies_label_constraints(req_notin_blank) == 1.0
-    assert node_absent._can_schedule_one(req_notin_blank, src)
-    assert node_empty._satisfies_label_constraints(req_notin_blank) == 0
-    assert not node_empty._can_schedule_one(req_notin_blank, src)
-
-    req_notin_v = ResourceRequestUtil.make(
-        {"CPU": 1}, label_selectors=[[("k", notin_op, ["v"])]]
-    )
-    assert node_absent._satisfies_label_constraints(req_notin_v) == 1.0
-    assert node_empty._satisfies_label_constraints(req_notin_v) == 1.0
-    assert node_val._satisfies_label_constraints(req_notin_v) == 0
-    assert not node_val._can_schedule_one(req_notin_v, src)
 
 
 if __name__ == "__main__":
