@@ -17,11 +17,12 @@ import io
 import json
 import logging
 import os
+import posixpath
 import re
 import tarfile
 import threading
 import urllib.parse
-from typing import BinaryIO, Dict, List, Optional, Tuple, Union
+from typing import BinaryIO, Dict, Iterable, List, Optional, Tuple, Union
 
 import requests
 import requests.adapters
@@ -93,7 +94,9 @@ class _Sha256Writer:
         return f"sha256:{self.sha256.hexdigest()}"
 
 
-def build_layers(rootfs_tar: str, directory: str) -> List[Layer]:
+def build_layers(
+    rootfs_tar: str, directory: str, mount_points: Iterable[str] = ()
+) -> List[Layer]:
     """Convert gVisor's rootfs tar into gzipped OCI layers in ``directory``.
 
     gVisor uses overlayfs markers, which OCI layers express differently:
@@ -107,7 +110,13 @@ def build_layers(rootfs_tar: str, directory: str) -> List[Layer]:
     Large changes are split into parts that apply in order. An opaque
     marker is written right after its directory, in the same part, so it
     can't hide the directory's new children.
+
+    runsc creates each of ``mount_points`` that the image lacks as an empty
+    file or directory in the upper layer. The mount hides it for the
+    sandbox's whole life, so it holds nothing the sandbox wrote, and it is
+    left out. A directory runsc made above a mount point stays.
     """
+    mount_points = {_absolute(path) for path in mount_points} - {"/"}
     part_bytes = max(_PART_BYTES, -(-os.path.getsize(rootfs_tar) // _MAX_PARTS))
     parts: List[tuple] = []
     whiteouts = set()
@@ -122,6 +131,10 @@ def build_layers(rootfs_tar: str, directory: str) -> List[Layer]:
         rootfs_tar, "rb"
     ) as src_file, tarfile.open(fileobj=src_file, mode="r|") as src:
         for member in src:
+            if _absolute(member.name) in mount_points and (
+                member.isdir() or (member.isreg() and not member.size)
+            ):
+                continue
             if dst is None:
                 out = stack.enter_context(
                     open(os.path.join(directory, f"layer{len(parts)}.tar"), "wb")
@@ -175,6 +188,11 @@ def _compress(path: str, diff_id: str) -> Layer:
                 gz.write(block)
     os.remove(path)
     return Layer(f"{path}.gz", compressed.digest, diff_id, compressed.size)
+
+
+def _absolute(path: str) -> str:
+    """Return a tar member's name or a mount's destination as one spelling."""
+    return posixpath.normpath(posixpath.join("/", path))
 
 
 def _marker(name: str, like: tarfile.TarInfo) -> tarfile.TarInfo:

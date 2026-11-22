@@ -10,7 +10,6 @@ from ray.train.v2._internal.execution.context import (
 )
 from ray.train.v2.api.context import (
     DistributedTrainContext,
-    LocalTrainContext,
     TrainContext as ExternalTrainContext,
 )
 from ray.train.v2.api.report_config import (
@@ -144,10 +143,6 @@ class TrainFnUtils(ABC):
         pass
 
     @abstractmethod
-    def is_distributed(self) -> bool:
-        pass
-
-    @abstractmethod
     def barrier(self) -> None:
         """Create a barrier across all workers.
 
@@ -211,9 +206,6 @@ class DistributedTrainFnUtils(TrainFnUtils):
     def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
         get_internal_train_context().report_health(metrics, step)
 
-    def is_distributed(self) -> bool:
-        return True
-
     def barrier(self) -> None:
         return collective_impl.barrier()
 
@@ -228,90 +220,6 @@ class DistributedTrainFnUtils(TrainFnUtils):
         return get_internal_train_context().get_all_reported_checkpoints(
             consistency_mode=consistency_mode, timeout_s=timeout_s
         )
-
-
-class LocalTrainFnUtils(TrainFnUtils):
-    def __init__(
-        self,
-        experiment_name: str,
-        dataset_shards: Optional[Dict[str, "DataIterator"]] = None,
-        world_size: int = 1,
-        world_rank: int = 0,
-        local_rank: int = 0,
-        local_world_size: int = 1,
-        node_rank: int = 0,
-    ):
-        self._context = LocalTrainContext(
-            experiment_name=experiment_name,
-            world_size=world_size,
-            world_rank=world_rank,
-            local_rank=local_rank,
-            local_world_size=local_world_size,
-            node_rank=node_rank,
-        )
-        self._dataset_shards = dataset_shards
-        self._last_metrics = None
-        self._last_checkpoint = None
-
-    def report(
-        self,
-        metrics: Dict[str, Any],
-        checkpoint: Optional["Checkpoint"] = None,
-        checkpoint_dir_name: Optional[str] = None,
-        checkpoint_upload_mode: CheckpointUploadMode = CheckpointUploadMode.SYNC,
-        delete_local_checkpoint_after_upload: Optional[bool] = None,
-        checkpoint_upload_fn: Optional[
-            Callable[["Checkpoint", str], "Checkpoint"]
-        ] = None,
-        validation: Union[bool, ValidationTaskConfig] = False,
-    ) -> None:
-        self._last_metrics = metrics
-        if checkpoint is not None:
-            self._last_checkpoint = checkpoint
-        logger.info(f"Reported metrics: {metrics}")
-
-    def get_checkpoint(self) -> Optional["Checkpoint"]:
-        return self._last_checkpoint
-
-    def get_dataset_shard(self, dataset_info: DatasetShardMetadata) -> "DataIterator":
-        dataset_name = dataset_info.dataset_name
-        assert (
-            self._dataset_shards is not None and dataset_name in self._dataset_shards
-        ), f"Dataset shard {dataset_name} not found."
-        return self._dataset_shards[dataset_name]
-
-    def get_context(self) -> LocalTrainContext:
-        return self._context
-
-    def get_preemption_info(self) -> Optional["PreemptionInfo"]:
-        # Local mode runs in a single process with no preemption watcher.
-        return None
-
-    def report_health(self, metrics: Dict[str, float], step: Optional[int]) -> None:
-        # Local mode has no controller to read health reports.
-        pass
-
-    def is_distributed(self) -> bool:
-        return False
-
-    def barrier(self) -> None:
-        pass
-
-    def broadcast_from_rank_zero(self, data: Any) -> Any:
-        return data
-
-    def _get_last_metrics(self) -> Optional[Dict[str, Any]]:
-        """Return the last metrics reported by the training function.
-        This function should only be called by LocalController
-        """
-        return self._last_metrics
-
-    def get_all_reported_checkpoints(
-        self,
-        consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
-        timeout_s: Optional[float] = None,
-    ) -> List["ReportedCheckpoint"]:
-        return []
 
 
 _train_fn_utils: Optional[TrainFnUtils] = None
