@@ -18,13 +18,20 @@ from transformers import ViTImageProcessor, ViTForImageClassification
 from PIL import Image
 from pybase64 import b64decode
 
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 from benchmark import (
     Benchmark,
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
     collect_dataset_stats,
+)
+from chaos import (
+    add_chaos_args,
+    chaos_init_kwargs,
+    check_chaos_results,
+    install_lineage_reconstruction_counter,
+    record_chaos_results,
+    start_chaos,
+    stop_chaos,
 )
 from profiling.coordinator import Profiling
 from profiling import nvtx as profiling_nvtx
@@ -71,14 +78,7 @@ def parse_args():
         required=True,
         help="The minimum and maximum concurrency for the inference operator.",
     )
-    parser.add_argument(
-        "--chaos",
-        action="store_true",
-        help=(
-            "Whether to enable chaos. If set, this script terminates one worker node "
-            "every minute with a grace period."
-        ),
-    )
+    add_chaos_args(parser)
     parser.add_argument(
         "--fake-gpu",
         action="store_true",
@@ -226,8 +226,7 @@ class FakeInfer:
 def main(args: argparse.Namespace, profiling: Profiling):
     benchmark = Benchmark()
 
-    if args.chaos:
-        start_chaos()
+    reconstruction_counter = install_lineage_reconstruction_counter(args)
 
     # `default_map_logical_memory_enabled` is a best practice that's required for
     # Ray Data to prevent OOMs. It's not enabled by default in Ray 2.56, but we
@@ -264,6 +263,9 @@ def main(args: argparse.Namespace, profiling: Profiling):
         )
         ds.write_parquet(OUTPUT_PREFIX)
         ds_holder["ds"] = ds
+        stop_chaos(resource_killer)
+
+    resource_killer = start_chaos(args)
 
     benchmark.run_fn("main", benchmark_fn)
 
@@ -284,28 +286,18 @@ def main(args: argparse.Namespace, profiling: Profiling):
         )
     benchmark.result["main"].update(metrics)
 
-    benchmark.write_result()
-
-
-def start_chaos():
-    assert ray.is_initialized()
-
-    head_node_id = ray.get_runtime_context().get_node_id()
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        node_id=head_node_id, soft=False
+    record_chaos_results(
+        benchmark.result["main"], resource_killer, reconstruction_counter
     )
-    resource_killer = EC2InstanceTerminatorWithGracePeriod.options(
-        scheduling_strategy=scheduling_strategy
-    ).remote(head_node_id, max_to_kill=None)
-
-    ray.get(resource_killer.ready.remote())
-
-    resource_killer.run.remote()
+    benchmark.write_result()
+    check_chaos_results(args, resource_killer, reconstruction_counter)
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
+    ray.init(
+        runtime_env={"py_modules": benchmark_py_modules()}, **chaos_init_kwargs(args)
+    )
 
     # S3 sometimes returns transient ACCESS_DENIED on HeadObject under heavy
     # concurrent load (credential refresh or throttling). Retry these instead
