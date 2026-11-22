@@ -196,7 +196,7 @@ class FooterReader:
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
         )
-        self._has_modelable_leaves = _has_modelable_leaf(self._predicate)
+        self._has_modelable_leaves = _has_modelable_leaf(expr=self._predicate)
         # Top-level columns the predicate reads. A row group whose value in any
         # of them may be a null or a NaN cannot be an exact-survivor count --
         # see ``_rg_can_fully_match``.
@@ -386,7 +386,7 @@ class FooterReader:
         try:
             if physical_schema is None:
                 physical_schema = schema.to_arrow_schema()
-            bounds = _add_statistics_bounds(predicate, physical_schema)
+            bounds = _add_statistics_bounds(expr=predicate, schema=physical_schema)
             return plain if bounds is predicate else bounds.to_pyarrow()
         except Exception as e:
             logger.debug(

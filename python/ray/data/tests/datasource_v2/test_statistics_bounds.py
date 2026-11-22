@@ -206,6 +206,16 @@ def test_derived_integer_arithmetic_bound_safety(column_type, offset, strict):
             {0: False, 1: True},
             id="unsigned-exact",
         ),
+        # A plain prefix filter: the group fully inside the prefix range is
+        # fully matched, and the group entirely below it is pruned outright.
+        pytest.param(
+            ["s000", "s001", "s080", "s081"],
+            pa.string(),
+            2,
+            col("x").str.starts_with("s08"),
+            {1: True},
+            id="prefix-plain",
+        ),
         # Negation of a modeled leaf prunes through the rewritten bound: only
         # the group below the threshold survives, fully matched.
         pytest.param(
