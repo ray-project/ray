@@ -29,6 +29,7 @@ import pyarrow as pa
 import ray
 from ray._common.utils import env_integer, get_or_create_event_loop
 from ray.data._internal.arrow_block import _is_user_visible_column
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
 from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -180,10 +181,22 @@ def plan_align_to_schema_op(
             if field.name in names:
                 column = table[field.name]
                 if column.type != field.type:
-                    raise ValueError(
-                        f"Expected type {field.type} for union input column "
-                        f"{field.name!r}, but found {column.type}."
+                    # Dataset schema inference can promote types across its blocks.
+                    message = (
+                        f"Cannot safely promote union input column {field.name!r} "
+                        f"from {column.type} to {field.type}."
                     )
+                    source_schema = pa.schema([table.schema.field(field.name)])
+                    target_schema = pa.schema([field])
+                    try:
+                        promoted_schema = unify_schemas(
+                            [target_schema, source_schema], promote_types=True
+                        )
+                        if promoted_schema.field(0).type != field.type:
+                            raise ValueError(message)
+                        column = column.cast(field.type, safe=True)
+                    except pa.ArrowException as exc:
+                        raise ValueError(message) from exc
             else:
                 column = pa.nulls(table.num_rows, type=field.type)
             if not field.nullable and column.null_count:

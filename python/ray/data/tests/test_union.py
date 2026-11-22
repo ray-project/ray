@@ -66,6 +66,84 @@ def test_union_allow_missing_columns(ray_start_10_cpus_shared):
     assert list(combined.take(1)[0]) == expected_schema.names
 
 
+@pytest.mark.parametrize(
+    "first_values,second_values,expected_first_value",
+    [
+        pytest.param(
+            pa.array([1], type=pa.int32()),
+            pa.array([2], type=pa.int64()),
+            1,
+            id="integer",
+        ),
+        pytest.param(
+            pa.array([1.25], type=pa.float32()),
+            pa.array([2.5], type=pa.float64()),
+            1.25,
+            id="float",
+        ),
+        pytest.param(
+            pa.array([{"x": 1}], type=pa.struct([("x", pa.int32())])),
+            pa.array(
+                [{"x": 2, "label": "two"}],
+                type=pa.struct([("x", pa.int64()), ("label", pa.string())]),
+            ),
+            {"x": 1, "label": None},
+            id="struct",
+        ),
+    ],
+)
+def test_union_allow_missing_columns_promotes_input_blocks(
+    ray_start_10_cpus_shared, first_values, second_values, expected_first_value
+):
+    history = ray.data.from_arrow(
+        [
+            pa.table({"value": first_values, "row": [1], "history": [True]}),
+            pa.table({"value": second_values, "row": [2], "history": [True]}),
+            pa.table({"value": pa.nulls(1), "row": [3], "history": [True]}),
+        ]
+    )
+    incoming = ray.data.from_arrow(
+        pa.table({"row": [4], "value": second_values, "score": [0.8]})
+    )
+    combined = history.union(incoming, allow_missing_columns=True)
+
+    expected_schema = pa.schema(
+        [
+            ("value", second_values.type),
+            ("row", pa.int64()),
+            ("history", pa.bool_()),
+            ("score", pa.float64()),
+        ]
+    )
+    assert combined.schema(fetch_if_missing=False).base_schema == expected_schema
+    rows = []
+    for batch in combined.iter_batches(batch_size=None, batch_format="pyarrow"):
+        assert isinstance(batch, pa.Table)
+        assert batch.schema == expected_schema
+        rows.extend(batch.to_pylist())
+    second_value = second_values[0].as_py()
+    assert sorted(rows, key=lambda row: row["row"]) == [
+        {"value": expected_first_value, "row": 1, "history": True, "score": None},
+        {"value": second_value, "row": 2, "history": True, "score": None},
+        {"value": None, "row": 3, "history": True, "score": None},
+        {"value": second_value, "row": 4, "history": None, "score": 0.8},
+    ]
+
+
+def test_union_allow_missing_columns_rejects_lossy_cast(ray_start_10_cpus_shared):
+    history = ray.data.from_arrow(
+        [pa.table({"id": [2**60 + 1]}), pa.table({"id": [0.5]})]
+    )
+    incoming = ray.data.from_arrow(pa.table({"id": [1.5], "score": [0.8]}))
+
+    combined = history.union(incoming, allow_missing_columns=True)
+
+    with pytest.raises(
+        ValueError, match="Cannot safely promote union input column 'id'"
+    ):
+        combined.take_all()
+
+
 @pytest.mark.parametrize("file_format", ["csv", "json", "jsonl", "orc"])
 def test_union_allow_missing_columns_across_file_formats(
     ray_start_10_cpus_shared, tmp_path, file_format
@@ -146,9 +224,20 @@ def test_union_allow_missing_columns_invalid_schemas(ray_start_10_cpus_shared):
     with pytest.raises(ValueError, match="Union input 2 has duplicate column names"):
         ds.union(duplicate, allow_missing_columns=True)
 
-    conflicting = ray.data.from_items([{"id": "other"}])
+
+@pytest.mark.parametrize(
+    "conflicting_ids",
+    [pa.array(["other"]), pa.array([1], type=pa.int32())],
+    ids=["string", "int32"],
+)
+def test_union_allow_missing_columns_rejects_dataset_type_conflicts(
+    ray_start_10_cpus_shared, conflicting_ids
+):
+    ds = ray.data.range(1)
+    conflicting = ray.data.from_arrow(pa.table({"id": conflicting_ids}))
     with pytest.raises(
-        ValueError, match="input 2 has type string for column 'id'.*int64"
+        ValueError,
+        match=rf"input 2 has type {conflicting_ids.type} for column 'id'.*int64",
     ):
         ds.union(conflicting, allow_missing_columns=True)
 
