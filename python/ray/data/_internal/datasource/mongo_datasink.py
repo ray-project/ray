@@ -28,21 +28,21 @@ class MongoDatasink(Datasink[None]):
         ctx: TaskContext,
     ) -> None:
         import pymongo
-
-        _validate_database_collection_exist(
-            pymongo.MongoClient(self.uri), self.database, self.collection
-        )
-
-        def write_block(uri: str, database: str, collection: str, block: Block):
-            from pymongoarrow.api import write
-
-            block = BlockAccessor.for_block(block).to_arrow()
-            client = pymongo.MongoClient(uri)
-            write(client[database][collection], block)
+        from pymongoarrow.api import write
 
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
         block = builder.build()
 
-        write_block(self.uri, self.database, self.collection, block)
+        client = pymongo.MongoClient(self.uri)
+        try:
+            _validate_database_collection_exist(client, self.database, self.collection)
+            block_accessor = BlockAccessor.for_block(block)
+            if block_accessor.num_rows() > 0:
+                write(
+                    client[self.database][self.collection],
+                    block_accessor.to_arrow(),
+                )
+        finally:
+            client.close()

@@ -104,9 +104,15 @@ class MongoDatasource(Datasource):
                 }
             ]
             client = pymongo.MongoClient(uri)
-            return aggregate_arrow_all(
-                client[database][collection], match + pipeline, schema=schema, **kwargs
-            )
+            try:
+                return aggregate_arrow_all(
+                    client[database][collection],
+                    match + pipeline,
+                    schema=schema,
+                    **kwargs,
+                )
+            finally:
+                client.close()
 
         read_tasks: List[ReadTask] = []
 
