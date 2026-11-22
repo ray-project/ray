@@ -2,7 +2,6 @@ from contextlib import nullcontext
 from functools import partial
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from ray.train._internal.utils import (
@@ -31,11 +30,22 @@ def _train_loop_with_array_default(config, weights=_DEFAULT_WEIGHTS):
     "fn",
     [
         partial(_train_loop_with_data, X=np.ones((3, 2)), y=np.zeros(3)),
-        partial(_train_loop_with_data, X=pd.DataFrame({"a": [1, 2]}), y=1),
         _train_loop_with_array_default,
     ],
 )
 def test_count_required_parameters_array_like_defaults(fn):
+    assert count_required_parameters(fn) == 1
+    wrapped_v1 = construct_train_func(fn, {"lr": 0.01}, train_func_context=nullcontext)
+    wrapped_v2 = construct_train_func_v2(
+        fn, {"lr": 0.01}, train_func_context=nullcontext
+    )
+    assert callable(wrapped_v1)
+    assert callable(wrapped_v2)
+
+
+def test_count_required_parameters_pandas_defaults():
+    pd = pytest.importorskip("pandas")
+    fn = partial(_train_loop_with_data, X=pd.DataFrame({"a": [1, 2]}), y=1)
     assert count_required_parameters(fn) == 1
     wrapped_v1 = construct_train_func(fn, {"lr": 0.01}, train_func_context=nullcontext)
     wrapped_v2 = construct_train_func_v2(
