@@ -83,13 +83,17 @@ def test_a_crane_that_cannot_run_is_a_registry_error(
         registry.digest("repo:tag")
 
 
+@pytest.mark.parametrize(
+    "found",
+    [None, mock.Mock(**{"Rlocation.return_value": None})],
+    ids=["no-runfiles", "not-in-runfiles"],
+)
 def test_a_crane_missing_from_the_runfiles_is_a_registry_error(
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: pytest.MonkeyPatch, found: object
 ):
-    runfiles = mock.Mock(**{"Rlocation.return_value": None})
-    monkeypatch.setattr(registry.runfiles, "Create", lambda: runfiles)
-    with pytest.raises(registry.RegistryError, match="runfiles"):
-        registry.crane_binary()
+    monkeypatch.setattr(registry.runfiles, "Create", lambda: found)
+    with pytest.raises(registry.RegistryError, match="not in this program's runfiles"):
+        registry.digest("repo:tag")
 
 
 @pytest.mark.parametrize(

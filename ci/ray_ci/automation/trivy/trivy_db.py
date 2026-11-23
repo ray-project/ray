@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import Any, Mapping
 
 import click
-import runfiles
 
 from ci.ray_ci.automation.trivy import registry, scan_store
 from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER, ScanStore
@@ -120,8 +119,7 @@ def stage_db(source: DbSource, store: ScanStore, workdir: Path) -> dict[str, Any
 
 
 def load_trivy_pin() -> dict[str, Any]:
-    path = runfiles.Create().Rlocation(TRIVY_PIN_RUNFILE)
-    return json.loads(Path(path).read_text())
+    return json.loads(registry.runfile(TRIVY_PIN_RUNFILE).read_text())
 
 
 @click.command()
