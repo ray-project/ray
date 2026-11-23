@@ -773,4 +773,6 @@ def main(
 
 
 if __name__ == "__main__":
+    # Only as a program: importers keep their own logging setup.
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     main()
