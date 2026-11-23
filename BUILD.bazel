@@ -22,14 +22,25 @@ package(
 
 exports_files([
     ".rayciversion",
-    # Read by //ci/ray_ci/automation/trivy:test_workspace_contexts.
-    "WORKSPACE",
-    "ci/docker/ray-core.wanda.yaml",
-    "ci/docker/ray-cpp-core.wanda.yaml",
-    "ci/docker/ray-java.wanda.yaml",
     "python/setup.py",
     "ray-images.json",
 ])
+
+# For //ci/ray_ci/automation/trivy:test_workspace_contexts.
+exports_files(
+    ["WORKSPACE"],
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
+
+filegroup(
+    name = "wanda_specs",
+    srcs = glob(
+        ["ci/docker/*.wanda.yaml"],
+        # The image builds that copy this file don't copy ci/docker/.
+        allow_empty = True,
+    ),
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
 
 # C/C++ toolchain constraint configs.
 

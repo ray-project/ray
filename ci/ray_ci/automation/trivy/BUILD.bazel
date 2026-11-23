@@ -28,9 +28,8 @@ py_test(
     srcs = ["test_workspace_contexts.py"],
     data = [
         "//:WORKSPACE",
-        "//:ci/docker/ray-core.wanda.yaml",
-        "//:ci/docker/ray-cpp-core.wanda.yaml",
-        "//:ci/docker/ray-java.wanda.yaml",
+        "//:wanda_specs",
+        "//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [

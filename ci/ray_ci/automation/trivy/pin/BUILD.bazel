@@ -2,3 +2,9 @@
 # ray-cpp-core and ray-java image builds copy this directory into their
 # build contexts. Keep everything else out: any change here invalidates those
 # builds' caches.
+
+exports_files(
+    ["trivy_versions.bzl"],
+    # For the test that checks the pin loads only what those contexts copy.
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
