@@ -215,7 +215,7 @@ from ray.serve.grpc_util import (
     gRPCInputStream,
 )
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank
+from ray.serve.schema import EncodingType, LoggingConfig, ReplicaRank, TracingConfig
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -1091,6 +1091,7 @@ class Replica:
         ingress: bool,
         route_prefix: str,
         is_ingress_request_router: bool = False,
+        tracing_config: Optional[TracingConfig] = None,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -1200,17 +1201,14 @@ class Replica:
             SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
         )
 
-        tracing_config = ray.get(
-            self._controller_handle.get_tracing_config.remote()  # type: ignore[attr-defined]
-        )
         # Let a setup failure raise so it surfaces at startup.
         is_tracing_setup_successful = setup_tracing(
             component_type=ServeComponentType.REPLICA,
             component_name=self._component_name,
             component_id=self._component_id,
-            # ray.get of the ActorHandle result is mistyped as list; it is a
-            # TracingConfig at runtime (the controller never returns None).
-            tracing_config=tracing_config,  # type: ignore[arg-type]
+            tracing_config=(
+                tracing_config if tracing_config is not None else TracingConfig()
+            ),
         )
         if is_tracing_setup_successful:
             logger.info("Successfully set up tracing for replica")
@@ -3428,6 +3426,7 @@ class ReplicaActor:
         ingress: bool,
         route_prefix: str,
         is_ingress_request_router: bool = False,
+        tracing_config: Optional[TracingConfig] = None,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -3445,6 +3444,7 @@ class ReplicaActor:
             ingress=ingress,
             route_prefix=route_prefix,
             is_ingress_request_router=is_ingress_request_router,
+            tracing_config=tracing_config,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

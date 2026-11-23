@@ -128,6 +128,7 @@ from ray.serve.schema import (
     DeploymentDetails,
     ReplicaDetails,
     ReplicaRank,
+    TracingConfig,
     _deployment_info_to_schema,
 )
 from ray.util import metrics as ray_metrics
@@ -1320,6 +1321,7 @@ class ActorReplicaWrapper:
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
         target_node_id: Optional[str] = None,
+        tracing_config: Optional[TracingConfig] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -1389,6 +1391,7 @@ class ActorReplicaWrapper:
                 deployment_info.ingress,
                 deployment_info.route_prefix,
                 deployment_info.ingress_request_router,
+                tracing_config,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -2386,6 +2389,7 @@ class DeploymentReplica:
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
         target_node_id: Optional[str] = None,
+        tracing_config: Optional[TracingConfig] = None,
     ) -> ReplicaSchedulingRequest:
         """Start a new actor for current DeploymentReplica instance.
 
@@ -2404,6 +2408,7 @@ class DeploymentReplica:
         replica_scheduling_request = self._actor.start(
             deployment_info,
             assign_rank_callback=assign_rank_callback,
+            tracing_config=tracing_config,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
             gang_context=gang_context,
@@ -3362,12 +3367,14 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
+        tracing_config: Optional[TracingConfig] = None,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._tracing_config = tracing_config
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -4911,6 +4918,7 @@ class DeploymentState:
             scheduling_request = new_deployment_replica.start(
                 self._deployed_info,
                 assign_rank_callback=self._rank_manager.assign_rank,
+                tracing_config=self._tracing_config,
                 target_node_id=target_node_id,
             )
             upscale.append(scheduling_request)
@@ -5000,6 +5008,7 @@ class DeploymentState:
                 scheduling_request = new_deployment_replica.start(
                     self._deployed_info,
                     assign_rank_callback=self._rank_manager.assign_rank,
+                    tracing_config=self._tracing_config,
                     gang_placement_group=gang_pg,
                     gang_pg_index=bundle_index * bundles_per_replica,
                     gang_context=gang_context,
@@ -6868,6 +6877,7 @@ class DeploymentStateManager:
         autoscaling_state_manager: AutoscalingStateManager,
         head_node_id_override: Optional[str] = None,
         create_placement_group_fn_override: Optional[Callable] = None,
+        tracing_config: Optional[TracingConfig] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
@@ -6878,6 +6888,7 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._tracing_config = tracing_config
 
         self._shutting_down = False
 
@@ -6950,6 +6961,7 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
+            tracing_config=self._tracing_config,
         )
 
     def record_replica_health(

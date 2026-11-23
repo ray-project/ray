@@ -711,6 +711,7 @@ class MockReplicaActorWrapper:
         gang_pg_index=None,
         gang_context=None,
         target_node_id=None,
+        tracing_config=None,
     ):
         self.started = True
         self._scheduling_constraints = format_scheduling_constraints(
