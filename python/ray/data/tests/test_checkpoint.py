@@ -642,7 +642,6 @@ def _write_generated_id_input(
             mode="append",
             writer_properties=deltalake.WriterProperties(max_row_group_size=3),
         )
-    DataContext.get_current()._use_delta_datasource_v2 = True
     return lambda: ray.data.read_delta(data_dir, version=2)
 
 

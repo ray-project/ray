@@ -3050,7 +3050,8 @@ def read_orc(
         If you encounter a DataSourceV2 limitation, use the V1 reader by
         setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
-        Ray. This shared setting also affects ``read_parquet()``.
+        Ray. This shared setting also affects ``read_parquet()`` and
+        ``read_delta()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -6656,6 +6657,26 @@ def read_delta(
         ``name`` or ``id``) aren't supported yet, and ``read_delta`` raises
         ``NotImplementedError`` for them.
 
+    .. note::
+
+        ``read_delta`` reads through the DataSourceV2 pipeline. It opens the
+        table once, in a Ray task, when ``read_delta`` is called, which pins
+        the version and keeps the file list off the driver, skips files using
+        the statistics in the Delta log, and splits files into row-group read
+        units. It raises ``NotImplementedError`` for tables that need a reader
+        feature other than ``timestampNtz``, or that have binary partition
+        columns, and ``ValueError`` if ``include_paths`` would replace the
+        table's own ``path`` column or the log names data files outside the
+        table directory, as a shallow clone's does. Because the table is opened and its
+        files listed in Ray tasks, the worker nodes, not only the driver, need
+        read access to the table's ``_delta_log`` directory; credentials in
+        ``storage_options`` are passed to those tasks. To read with the V1
+        reader, set
+        ``ray.data.DataContext.get_current().use_datasource_v2 = False`` (or
+        ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray). This shared setting also affects ``read_parquet()`` and
+        ``read_orc()``.
+
     Examples:
 
         Read a local Delta table:
@@ -6821,7 +6842,7 @@ def read_delta(
     )
 
     ctx = DataContext.get_current()
-    if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
+    if ctx.use_datasource_v2:
         check_delta_scan_options(arrow_parquet_args)
         # Opens the table once, in a Ray task: the driver gets the schema, and
         # the file list stays in the object store for the listing.

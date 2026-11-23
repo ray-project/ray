@@ -43,16 +43,16 @@ pytestmark = pytest.mark.parametrize("datasource_v2", [True], indirect=True)
 
 
 @pytest.fixture(autouse=True)
-def use_delta_datasource_v2(ray_start_regular_shared, datasource_v2):
-    DataContext.get_current()._use_delta_datasource_v2 = True
+def use_datasource_v2_on_a_shared_cluster(ray_start_regular_shared, datasource_v2):
+    """``datasource_v2`` turns ``use_datasource_v2`` on for each test."""
 
 
 def _read(path: str, *, v2: bool = True, **kwargs) -> ray.data.Dataset:
-    DataContext.get_current()._use_delta_datasource_v2 = v2
+    DataContext.get_current().use_datasource_v2 = v2
     try:
         return ray.data.read_delta(path, **kwargs)
     finally:
-        DataContext.get_current()._use_delta_datasource_v2 = True
+        DataContext.get_current().use_datasource_v2 = True
 
 
 def _uses_v2(ds: ray.data.Dataset) -> bool:
@@ -622,8 +622,10 @@ def test_partition_values_come_from_the_log(tmp_path, write, transform):
     _assert_matches_v1(path, transform)
 
 
-def test_falls_back_to_v1_when_the_flag_is_off(partitioned_table):
-    assert not _uses_v2(_read(partitioned_table, v2=False))
+def test_reads_with_v2_by_default(partitioned_table):
+    DataContext._set_current(DataContext())
+
+    assert _uses_v2(ray.data.read_delta(partitioned_table))
 
 
 if __name__ == "__main__":

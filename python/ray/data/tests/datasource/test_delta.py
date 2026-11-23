@@ -29,12 +29,6 @@ pytestmark = pytest.mark.usefixtures("datasource_v2")
 _V1_ONLY = pytest.mark.parametrize("datasource_v2", [False], indirect=True)
 
 
-@pytest.fixture(autouse=True)
-def _delta_follows_use_datasource_v2(restore_data_context):
-    """``read_delta`` picks its reader by ``use_datasource_v2`` alone."""
-    restore_data_context._use_delta_datasource_v2 = True
-
-
 @pytest.mark.parametrize(
     "batch_size",
     [1, 100],
