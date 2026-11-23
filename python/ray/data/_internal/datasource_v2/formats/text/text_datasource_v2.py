@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-from typing import TYPE_CHECKING, Iterable, List, Literal, Optional, Union
+from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import numpy as np
 import pyarrow as pa
@@ -37,7 +37,6 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
 )
-from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
@@ -59,8 +58,6 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
-    from ray.data.block import BlockColumn
-
 
 class _TextFileIndexer(NonSamplingFileIndexer):
     """``NonSamplingFileIndexer`` that keeps empty files.
@@ -80,26 +77,8 @@ class _TextFileIndexer(NonSamplingFileIndexer):
         )
 
     @override
-    def list_file_infos(
-        self,
-        paths: "BlockColumn",
-        *,
-        filesystem: Optional["FileSystem"],
-        pruners: Optional[List[FilePruner]] = None,
-        preserve_order: bool = False,
-    ) -> Iterable[FileInfo]:
-        if filesystem is None:
-            raise ValueError(
-                f"{type(self).__name__} lists files through a PyArrow filesystem, "
-                "but the datasource returned `filesystem=None`."
-            )
-        pruners = pruners or []
-        for file_info in self._get_file_info_iterator(
-            paths, filesystem, preserve_order
-        ):
-            if not all(pruner.should_include(file_info.path) for pruner in pruners):
-                continue
-            yield file_info
+    def _should_skip_file(self, file_info: FileInfo) -> bool:
+        return False
 
 
 class _OnDiskSizeEstimator(InMemorySizeEstimator):

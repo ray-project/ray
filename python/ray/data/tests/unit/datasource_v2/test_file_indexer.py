@@ -20,7 +20,10 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
     resolve_partitioning,
 )
-from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.datasource_v2.interfaces.file_indexer import (
+    FileIndexer,
+    FileInfo,
+)
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.read_units import (
@@ -964,6 +967,44 @@ def test_sample_files_can_discover_all_files(tmp_path):
     assert {str(path) for path in complete.paths} == {
         str(tmp_path / f"f{i:02d}.parquet") for i in range(18)
     }
+
+
+def test_bounded_file_indexer_default_limits_legacy_iterator():
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    indexer.list_file_infos = lambda *args, **kwargs: iter(
+        FileInfo(path=f"file-{i}", size=1) for i in range(10)
+    )
+
+    infos = list(
+        FileIndexer.list_file_infos_bounded(
+            indexer,
+            pa.array(["/data"]),
+            filesystem=LocalFileSystem(),
+            max_files=3,
+        )
+    )
+
+    assert [info.path for info in infos] == ["file-0", "file-1", "file-2"]
+
+
+def test_sample_files_does_not_require_preserved_listing_order(monkeypatch):
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+    captured = {}
+
+    def list_file_infos_bounded(
+        paths, *, filesystem, max_files, pruners, preserve_order
+    ):
+        captured["preserve_order"] = preserve_order
+        captured["max_files"] = max_files
+        yield FileInfo(path="sample.parquet", size=1)
+
+    monkeypatch.setattr(indexer, "list_file_infos_bounded", list_file_infos_bounded)
+
+    sample = sample_files(indexer, ["/data"], LocalFileSystem(), max_files=1)
+
+    assert captured["preserve_order"] is False
+    assert captured["max_files"] == 1
+    assert sample.paths.tolist() == ["sample.parquet"]
 
 
 def test_prelisted_file_infos_shuffle_across_blocks_without_relisting(monkeypatch):

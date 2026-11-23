@@ -102,6 +102,40 @@ class FileIndexer(ABC):
         """
         ...
 
+    def list_file_infos_bounded(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: Optional["FileSystem"],
+        max_files: int,
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable["FileInfo"]:
+        """List at most ``max_files`` file infos when supported by the indexer.
+
+        The default implementation preserves compatibility for custom indexers
+        but cannot prevent their ``list_file_infos`` implementation from doing
+        eager work. Indexers that control traversal should override this method
+        to provide true bounded discovery.
+        """
+        if max_files < 1:
+            raise ValueError("max_files must be positive")
+        file_infos = self.list_file_infos(
+            paths,
+            filesystem=filesystem,
+            pruners=pruners,
+            preserve_order=preserve_order,
+        )
+        try:
+            for index, file_info in enumerate(file_infos):
+                if index >= max_files:
+                    break
+                yield file_info
+        finally:
+            close = getattr(file_infos, "close", None)
+            if close is not None:
+                close()
+
     @abstractmethod
     def list_file_infos(
         self,

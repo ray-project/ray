@@ -261,12 +261,16 @@ class NonSamplingFileIndexer(FileIndexer):
         paths: "BlockColumn",
         filesystem: "FileSystem",
         preserve_order: bool,
+        max_output_queue_size: int = -1,
     ) -> Iterable[FileInfo]:
         """Threaded (work-stealing) traversal when ``num_workers > 1``, else
         sequential. Shared by :meth:`list_files` and :meth:`list_file_infos`."""
         if self._num_workers > 1:
             return self._get_file_info_iterator_threaded(
-                paths, filesystem, preserve_order
+                paths,
+                filesystem,
+                preserve_order,
+                max_output_queue_size=max_output_queue_size,
             )
         return self._get_file_info_iterator_sequential(paths, filesystem)
 
@@ -291,6 +295,7 @@ class NonSamplingFileIndexer(FileIndexer):
         paths: "BlockColumn",
         filesystem: "FileSystem",
         preserve_order: bool = False,
+        max_output_queue_size: int = -1,
     ) -> Iterable[FileInfo]:
         """Threaded file info iterator with work stealing for parallel directory
         traversal. Subdirectories are added as work items for idle workers to
@@ -373,9 +378,60 @@ class NonSamplingFileIndexer(FileIndexer):
             num_workers=num_workers,
             preserve_order=preserve_order,
             order_key=_ordered_result_key if preserve_order else None,
+            max_output_queue_size=max_output_queue_size,
         )
-        for result in results:
-            yield result.file_info if isinstance(result, OrderedFileResult) else result
+        try:
+            for result in results:
+                yield result.file_info if isinstance(
+                    result, OrderedFileResult
+                ) else result
+        finally:
+            close = getattr(results, "close", None)
+            if close is not None:
+                close()
+
+    def _should_skip_file(self, file_info: FileInfo) -> bool:
+        return file_info.size == 0
+
+    def _log_skipped_file(self, file_info: FileInfo) -> None:
+        logger.warning(f"Skipping zero-size file: {file_info.path!r}")
+
+    def list_file_infos_bounded(
+        self,
+        paths: "BlockColumn",
+        *,
+        filesystem: Optional["FileSystem"],
+        max_files: int,
+        pruners: Optional[List[FilePruner]] = None,
+        preserve_order: bool = False,
+    ) -> Iterable[FileInfo]:
+        """List file infos with bounded prefetch for consumers that stop early."""
+        if max_files < 1:
+            raise ValueError("max_files must be positive")
+        if filesystem is None:
+            raise ValueError(
+                f"{type(self).__name__} lists files through a PyArrow filesystem, "
+                "but the datasource returned `filesystem=None`."
+            )
+        pruners = pruners or []
+        file_info_iterator = self._get_file_info_iterator(
+            paths, filesystem, preserve_order, max_output_queue_size=max_files
+        )
+        try:
+            yielded_count = 0
+            for file_info in file_info_iterator:
+                if self._should_skip_file(file_info):
+                    continue
+                if not all(pruner.should_include(file_info.path) for pruner in pruners):
+                    continue
+                yield file_info
+                yielded_count += 1
+                if yielded_count >= max_files:
+                    break
+        finally:
+            close = getattr(file_info_iterator, "close", None)
+            if close is not None:
+                close()
 
     def list_file_infos(
         self,
@@ -395,10 +451,6 @@ class NonSamplingFileIndexer(FileIndexer):
         rows. Zero-size files are skipped and ``pruners`` (file-extension /
         partition filters) are applied here, so both listing paths share one
         filtering point.
-
-        A file whose size the filesystem doesn't report (``size`` is
-        ``None``, e.g. an HTTP server that sends no ``Content-Length``) is
-        kept: its size isn't zero, just unknown.
         """
         if filesystem is None:
             raise ValueError(
@@ -411,13 +463,18 @@ class NonSamplingFileIndexer(FileIndexer):
         file_info_iterator = self._get_file_info_iterator(
             paths, filesystem, preserve_order
         )
-        for file_info in file_info_iterator:
-            if file_info.size == 0:
-                logger.warning(f"Skipping zero-size file: {file_info.path!r}")
-                continue
-            if not all(pruner.should_include(file_info.path) for pruner in pruners):
-                continue
-            yield file_info
+        try:
+            for file_info in file_info_iterator:
+                if self._should_skip_file(file_info):
+                    self._log_skipped_file(file_info)
+                    continue
+                if not all(pruner.should_include(file_info.path) for pruner in pruners):
+                    continue
+                yield file_info
+        finally:
+            close = getattr(file_info_iterator, "close", None)
+            if close is not None:
+                close()
 
     def _process_file_infos_to_manifests(
         self,
@@ -429,13 +486,13 @@ class NonSamplingFileIndexer(FileIndexer):
         # a file to split it (the Parquet footer indexer) override
         # ``list_files`` instead.
         running_paths: List[str] = []
-        # ``None`` where the filesystem didn't report a size.
         running_file_sizes: List[Optional[int]] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
         files_count = 0
 
         for file_info in file_infos:
+            # ``list_file_infos`` already dropped zero-size files.
             files_count += 1
             for chunk_metadata in self._chunk_metadatas_of_file(file_info):
                 running_paths.append(file_info.path)
@@ -476,9 +533,8 @@ class NonSamplingFileIndexer(FileIndexer):
         ``FileInfo``.
 
         Args:
-            file_info: The file. Its size is positive, or ``None`` when the
-                filesystem doesn't report one; such a file can only be read
-                whole.
+            file_info: The file. Its size may be unknown when the filesystem does
+                not report it.
 
         Returns:
             One entry per manifest row for this file, in read order.

@@ -49,12 +49,12 @@ class _WorkerPool:
 
     _pool_counter = itertools.count()
 
-    def __init__(self):
+    def __init__(self, max_output_queue_size: int = -1):
         self._prefix = f"pool-{next(self._pool_counter)}"
         self.interrupted = threading.Event()
         self._threads: list[threading.Thread] = []
         self.work_queue = _InterruptibleQueue(-1, self.interrupted)
-        self.output_queue = _InterruptibleQueue(-1, self.interrupted)
+        self.output_queue = _InterruptibleQueue(max_output_queue_size, self.interrupted)
 
     def start_thread(
         self,
@@ -188,6 +188,7 @@ def parallel_process_work_stealing(
     num_workers: int = 1,
     preserve_order: bool = False,
     order_key: Optional[Callable[[ResultT], Any]] = None,
+    max_output_queue_size: int = -1,
 ) -> Generator[ResultT, None, None]:
     """Returns a generator that processes work items in parallel using a shared
     work queue with dynamic load balancing (work stealing).
@@ -251,17 +252,20 @@ def parallel_process_work_stealing(
         preserve_order: Whether to buffer and sort results before yielding.
         order_key: Sort key function applied to each result for ordering.
             Required when ``preserve_order`` is True.
+        max_output_queue_size: Maximum number of produced results buffered before
+            producers apply backpressure. ``-1`` means unbounded.
 
     Yields:
         ResultT: Result items produced by ``process_fn`` via ``add_result``.
     """
     if num_workers < 1:
         raise ValueError("num_workers must be at least 1.")
+    if max_output_queue_size == 0 or max_output_queue_size < -1:
+        raise ValueError("max_output_queue_size must be -1 or positive")
     if preserve_order and order_key is None:
         raise ValueError("order_key is required when preserve_order is True.")
 
-    pool = _WorkerPool()
-
+    pool = _WorkerPool(max_output_queue_size)
     for item in seed_items:
         pool.work_queue.put(item)
 

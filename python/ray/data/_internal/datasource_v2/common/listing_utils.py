@@ -182,19 +182,35 @@ def sample_files(
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
     sampled_paths: List[str] = []
-    # ``None`` where the filesystem didn't report a size. Full mode retains
-    # these paths for execution, so dropping them here would drop their rows.
     sampled_sizes: List[Optional[int]] = []
-    for file_info in indexer.list_file_infos(
-        paths_column,
-        filesystem=filesystem,
-        pruners=pruners or [],
-        preserve_order=True,
-    ):
-        sampled_paths.append(file_info.path)
-        sampled_sizes.append(file_info.size)
-        if max_files is not None and len(sampled_paths) >= max_files:
-            break
+    # Sampling only needs any eligible files. Preserving the listing order
+    # would buffer and sort the entire traversal before yielding the first
+    # file, defeating the bound imposed by ``max_files``.
+    if max_files is None:
+        file_infos = indexer.list_file_infos(
+            paths_column,
+            filesystem=filesystem,
+            pruners=pruners or [],
+            preserve_order=False,
+        )
+    else:
+        file_infos = indexer.list_file_infos_bounded(
+            paths_column,
+            filesystem=filesystem,
+            max_files=max_files,
+            pruners=pruners or [],
+            preserve_order=False,
+        )
+    try:
+        for file_info in file_infos:
+            sampled_paths.append(file_info.path)
+            sampled_sizes.append(file_info.size)
+            if max_files is not None and len(sampled_paths) >= max_files:
+                break
+    finally:
+        close = getattr(file_infos, "close", None)
+        if close is not None:
+            close()
     return FileManifest.construct_manifest(
         paths=sampled_paths,
         sizes=sampled_sizes,
