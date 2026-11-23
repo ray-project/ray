@@ -50,7 +50,6 @@ from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA
 from ci.ray_ci.automation.trivy.trivy_report import Image, ImageScan
 from ci.ray_ci.ray_image import RayImage, RayImageError
 
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 PIPELINE_RUNFILE = "io_ray/.buildkite/image-scan.rayci.yml"
@@ -394,4 +393,6 @@ def main(
 
 
 if __name__ == "__main__":
+    # Only as a program: importers keep their own logging setup.
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     main()
