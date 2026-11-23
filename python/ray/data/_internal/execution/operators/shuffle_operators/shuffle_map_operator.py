@@ -86,8 +86,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         block_transformer: Optional transform applied to each non-empty input
             block before partitioning (e.g. map-side partial aggregation).
             May change the block schema.
-        map_runtime_env: Optional runtime_env for map tasks; useful to
-            isolate map workers from other ops.
         map_cpus: CPU request per map task.
         peak_memory_multiplier: Multiplier applied to a task's input bytes to
             derive its memory request.
@@ -104,7 +102,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         num_partitions: int,
         partition_fn: PartitionFn,
         block_transformer: Optional[BlockTransformer] = None,
-        map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = _DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         peak_memory_multiplier: float = SHUFFLE_PEAK_MEMORY_MULTIPLIER,
         name: str = "ShuffleMap",
@@ -121,7 +118,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
 
         # -- Map task config -------------------------------------------------
         self._shuffle_map_task_num_cpus: float = map_cpus
-        self._map_runtime_env: Optional[Dict[str, Any]] = map_runtime_env
         self._peak_memory_multiplier: float = peak_memory_multiplier
 
         # -- Pre-map merge ---------------------------------------------------
@@ -240,9 +236,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 target_node_id, soft=True
             )
-        if self._map_runtime_env is not None:
-            ray_options["runtime_env"] = self._map_runtime_env
-
         ray_options = merge_label_selector(
             ray_options, self.data_context.execution_options.label_selector
         )

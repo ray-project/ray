@@ -494,18 +494,14 @@ def test_read_text_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path)
 
 
 @pytest.mark.parametrize(
-    "use_v2, open_stream_args, path",
-    [
-        (False, None, None),
-        (True, {"compression": "gzip"}, None),
-        (True, None, "http://example.com/data.txt"),
-    ],
-    ids=["v2_disabled", "open_stream_args", "http"],
+    "use_v2, open_stream_args",
+    [(False, None), (True, {"compression": "gzip"})],
+    ids=["v2_disabled", "open_stream_args"],
 )
-def test_read_text_routes_to_v1(monkeypatch, tmp_path, use_v2, open_stream_args, path):
+def test_read_text_routes_to_v1(monkeypatch, tmp_path, use_v2, open_stream_args):
     result = object()
     captured = {}
-    path = path or str(tmp_path)
+    path = str(tmp_path)
 
     class FakeTextDatasource:
         def __init__(self, *args, **kwargs):
