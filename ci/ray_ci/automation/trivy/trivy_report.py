@@ -647,6 +647,11 @@ def _image_cves(findings: Sequence[Finding], list_limit: Optional[int]) -> str:
     return "; ".join(parts)
 
 
+def _digest(image: Image) -> str:
+    # A status record may lack a digest; an empty code span shows as "``".
+    return f"`{image.digest[:19]}`" if image.digest else ""
+
+
 def _image_cve_table(
     scans: Sequence[ImageScan],
     fixable: bool,
@@ -663,7 +668,7 @@ def _image_cve_table(
             continue
         critical = sum(f.severity == "CRITICAL" for f in found)
         row = (
-            f"| `{scan.image.name}` | `{scan.image.digest[:19]}` "
+            f"| `{scan.image.name}` | {_digest(scan.image)} "
             f"| {_critical_high(found)} | {_image_cves(found, list_limit)} |"
         )
         ranked.append(((-critical, -len(found), _image_sort_key(scan.image)), row))
@@ -696,7 +701,7 @@ def _per_image_table(scans: Sequence[ImageScan], max_rows: Optional[int]) -> lis
         fixable, no_fix = _split_by_fixable(scan)
         suppressed = len(scan.gated_by_key(suppressed=True))
         rows.append(
-            f"| `{scan.image.name}` | `{scan.image.digest[:19]}` | {scan.packages} "
+            f"| `{scan.image.name}` | {_digest(scan.image)} | {scan.packages} "
             f"| {_critical_high(fixable)} | {_critical_high(no_fix)} | {suppressed} |"
         )
     header = [
