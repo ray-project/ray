@@ -9,7 +9,10 @@ sees one pull per build instead of one per scan job.
 ``metadata.json`` records the Trivy pin and the DB pins. It goes up last,
 so a scan job that finds it can count on both DBs being in place; it is also
 written to ``--output``, the job's artifact. A retried job finds it and keeps
-that snapshot, so one build never mixes two DBs.
+that snapshot, so one build never mixes two DBs. That assumes one attempt
+runs at a time: Buildkite retries only a finished job, unless it gave up on
+an agent whose job kept running. A scan job that then gets the other DB
+fails its sha256 check.
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:trivy_db -- \\
@@ -24,7 +27,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping
 
 import click
 import runfiles
@@ -48,7 +51,6 @@ class TrivyDbError(Exception):
 class DbSource:
     name: str
     upstream: str
-    ghcr: str
     media_type: str
 
     @property
@@ -64,13 +66,11 @@ DB_SOURCES = (
     DbSource(
         name="db",
         upstream="public.ecr.aws/aquasecurity/trivy-db:2",
-        ghcr="ghcr.io/aquasecurity/trivy-db:2",
         media_type="application/vnd.aquasec.trivy.db.layer.v1.tar+gzip",
     ),
     DbSource(
         name="java_db",
         upstream="public.ecr.aws/aquasecurity/trivy-java-db:1",
-        ghcr="ghcr.io/aquasecurity/trivy-java-db:1",
         media_type="application/vnd.aquasec.trivy.javadb.layer.v1.tar+gzip",
     ),
 )
@@ -95,34 +95,12 @@ def manifest_created(manifest: Mapping[str, Any]) -> str:
     return created
 
 
-def _ghcr_layer_matches(source: DbSource, layer_digest: str) -> Optional[bool]:
-    """Compare the DB layer with ghcr.io's copy.
-
-    The two registries wrap the same layer in different manifests, so only
-    the layer digest is comparable. A mismatch is logged, not fatal: the
-    mirrors can disagree for a while during a DB refresh.
-    """
-    try:
-        ghcr = db_layer(registry.manifest(source.ghcr), source.media_type)
-    except (registry.RegistryError, TrivyDbError) as e:
-        logger.warning(f"Could not compare {source.name} with ghcr.io: {e}")
-        return None
-    if ghcr["digest"] != layer_digest:
-        logger.warning(
-            f"{source.name}: ghcr.io serves layer {ghcr['digest']}, "
-            f"public.ecr.aws serves {layer_digest}"
-        )
-        return False
-    return True
-
-
 def stage_db(source: DbSource, store: ScanStore, workdir: Path) -> dict[str, Any]:
     """Upload one DB, pinned by digest, to the build's db/ folder."""
     manifest_digest = registry.digest(source.upstream)
     pinned = f"{source.upstream_repo}@{manifest_digest}"
     manifest = registry.manifest(pinned)
     layer = db_layer(manifest, source.media_type)
-    ghcr_matches = _ghcr_layer_matches(source, layer["digest"])
 
     tarball = workdir / source.file_name
     registry.fetch_blob(source.upstream_repo, layer["digest"], tarball)
@@ -138,7 +116,6 @@ def stage_db(source: DbSource, store: ScanStore, workdir: Path) -> dict[str, Any
         "media_type": source.media_type,
         "created": manifest_created(manifest),
         "object": url,
-        "ghcr_layer_matches": ghcr_matches,
     }
 
 

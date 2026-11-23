@@ -1,6 +1,7 @@
 import contextlib
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from unittest import mock
@@ -37,15 +38,15 @@ def db_manifest(blob: str = BLOB, media_type: str = DB.media_type) -> dict:
 
 
 @contextlib.contextmanager
-def fake_registry(ghcr_manifest=None):
+def fake_registry():
     """Patch registry calls; yields the mock for fetch_blob."""
 
     def manifest(ref):
-        if ref.startswith("ghcr.io"):
-            if isinstance(ghcr_manifest, Exception):
-                raise ghcr_manifest
-            return ghcr_manifest or db_manifest()
-        return db_manifest()
+        # The tag may have moved on since digest() resolved it: only the
+        # manifest that digest pins names BLOB.
+        if ref.endswith("@sha256:m1"):
+            return db_manifest()
+        return db_manifest(blob="sha256:" + "f" * 64)
 
     fetch_blob = mock.Mock(side_effect=lambda repo, d, dest: dest.write_bytes(DB_BYTES))
     with mock.patch.multiple(
@@ -83,21 +84,16 @@ def test_stage_db_uploads_the_pinned_blob_and_records_the_pin(tmp_path: Path):
         "media_type": DB.media_type,
         "created": "2026-11-10T19:09:25Z",
         "object": f"s3://{BUCKET}/{PREFIX}/db/trivy-db.tar.gz",
-        "ghcr_layer_matches": True,
     }
 
 
-@pytest.mark.parametrize(
-    ("ghcr", "expected"),
-    [
-        pytest.param(db_manifest(blob="sha256:" + "c" * 64), False, id="layer-differs"),
-        pytest.param(registry.RegistryError("denied"), None, id="unreachable"),
-    ],
-)
-def test_ghcr_disagreement_is_recorded_not_fatal(tmp_path: Path, ghcr, expected):
-    with fake_registry(ghcr_manifest=ghcr):
-        pin = stage_db(DB, store(FakeS3()), tmp_path)
-    assert pin["ghcr_layer_matches"] is expected
+def test_the_real_trivy_pin_is_readable():
+    """The pin comes from the trivy_pin target's file, which only the real
+    job reads otherwise."""
+    pin = trivy_db.load_trivy_pin()
+    assert re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", pin["version"])
+    assert re.fullmatch(r"[0-9a-f]{64}", pin["tarball_sha256"])
+    assert pin["signer"].endswith(f"@refs/tags/v{pin['version']}")
 
 
 @pytest.mark.parametrize(

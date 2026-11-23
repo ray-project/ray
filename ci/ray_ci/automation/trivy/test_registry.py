@@ -30,7 +30,7 @@ def test_fetch_blob_checks_the_sha256(tmp_path: Path, tampered: bool):
     payload = b"trivy db"
     expected = "sha256:" + hashlib.sha256(payload).hexdigest()
 
-    def run(cmd, stdout, stderr, check):
+    def run(cmd, stdout, **kwargs):
         stdout.write(payload + (b"x" if tampered else b""))
         return subprocess.CompletedProcess(cmd, 0, stderr=b"")
 
@@ -45,6 +45,61 @@ def test_fetch_blob_checks_the_sha256(tmp_path: Path, tampered: bool):
         else:
             registry.fetch_blob("repo", expected, dest)
             assert dest.read_bytes() == payload
+
+
+def fake_crane(tmp_path: Path, script: str) -> str:
+    """A stand-in crane: a shell script, run for real by subprocess."""
+    path = tmp_path / "crane"
+    path.write_text("#!/bin/sh\n" + script + "\n")
+    path.chmod(0o755)
+    return str(path)
+
+
+@pytest.mark.parametrize(
+    ("script", "message"),
+    [
+        pytest.param(r"printf 'boom \377\n' >&2; exit 1", "boom", id="non-utf8-stderr"),
+        pytest.param("echo not json", "printed no JSON", id="not-json"),
+        pytest.param("echo '[1]'", "no JSON object", id="not-an-object"),
+        pytest.param("sleep 5", "timed out after 1s", id="stalls"),
+    ],
+)
+def test_crane_problems_are_registry_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, script: str, message: str
+):
+    crane = fake_crane(tmp_path, script)
+    monkeypatch.setattr(registry, "crane_binary", lambda: crane)
+    monkeypatch.setattr(registry, "CALL_TIMEOUT", 1)
+    with pytest.raises(registry.RegistryError, match=message):
+        registry.manifest("repo:tag")
+
+
+def test_a_crane_that_cannot_run_is_a_registry_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setattr(registry, "crane_binary", lambda: str(tmp_path / "none"))
+    with pytest.raises(registry.RegistryError, match="could not run"):
+        registry.digest("repo:tag")
+
+
+def test_a_crane_missing_from_the_runfiles_is_a_registry_error(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    runfiles = mock.Mock(**{"Rlocation.return_value": None})
+    monkeypatch.setattr(registry.runfiles, "Create", lambda: runfiles)
+    with pytest.raises(registry.RegistryError, match="runfiles"):
+        registry.crane_binary()
+
+
+def test_a_failed_blob_download_leaves_no_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    crane = fake_crane(tmp_path, "printf partial; echo boom >&2; exit 1")
+    monkeypatch.setattr(registry, "crane_binary", lambda: crane)
+    dest = tmp_path / "db.tgz"
+    with pytest.raises(registry.RegistryError, match="boom"):
+        registry.fetch_blob("repo", "sha256:" + "0" * 64, dest)
+    assert not dest.exists()
 
 
 if __name__ == "__main__":
