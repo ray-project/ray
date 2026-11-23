@@ -3998,8 +3998,6 @@ def read_webdataset(
         - The default decoder returns grayscale images as ``(H, W, 1)``.
         - Arrays in one field whose number of dimensions differs between
           shards, such as ``.npy`` members, can get a leading axis of size 1.
-          For example, a ``(4, 5)`` array read with ``(4, 5, 3)`` arrays comes
-          back as ``(1, 4, 5)``.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
