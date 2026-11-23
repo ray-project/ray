@@ -1,4 +1,5 @@
 """Unit tests for byte-range line chunking of CSV and JSONL on DataSourceV2."""
+
 import json
 import random
 from unittest import mock
@@ -20,6 +21,7 @@ from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     one_block_size,
 )
 from ray.data._internal.datasource_v2.common.line_chunking import (
+    iter_line_pieces,
     line_chunk_byte_range,
     read_line_aligned,
     split_into_line_chunks,
@@ -288,3 +290,21 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+@pytest.mark.parametrize(
+    "text, piece_size, expected",
+    [
+        (b"a\nb\nc\n", 100, [b"a\nb\nc\n"]),
+        (b"aa\nbb\ncc\ndd\n", 5, [b"aa\nbb\n", b"cc\ndd\n"]),
+        (b"aa\nbb\ncc", 5, [b"aa\nbb\n", b"cc"]),
+        (b"a very long line\nb\n", 4, [b"a very long line\n", b"b\n"]),
+        (b"", 4, []),
+    ],
+    ids=["one_piece", "cut_at_a_newline", "no_final_newline", "long_line", "empty"],
+)
+def test_iter_line_pieces_cuts_a_stream_at_newlines(text, piece_size, expected):
+    with mock.patch.object(line_chunking, "_STREAM_READ_BYTES", 3):
+        pieces = list(iter_line_pieces(pa.BufferReader(text), piece_size))
+
+    assert pieces == expected

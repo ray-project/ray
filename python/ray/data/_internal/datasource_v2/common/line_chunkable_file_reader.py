@@ -224,7 +224,9 @@ class LineChunkableFileReader(FileReader):
         if unit.id == unit.source:
             data = self._read_whole_file(fragment_to_read)
             if data is None:
-                yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
+                yield from self._iter_streamed_unit_tables(
+                    fragment_to_read, scanner_kwargs
+                )
                 return
             fragment = self._make_chunk_fragment(
                 data, starts_at_file_start=True, path=unit.source
@@ -235,6 +237,19 @@ class LineChunkableFileReader(FileReader):
             yield from self._iter_fragment_tables(
                 fragment=fragment, scanner_kwargs=scanner_kwargs
             )
+
+    def _iter_streamed_unit_tables(
+        self,
+        fragment_to_read: ReadUnitFragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Stream a whole-file unit that can't be read into one chunk.
+
+        That is a compressed file, a file of unknown size, and a file larger than
+        a chunk that can't be split. Override this when pyarrow's dataset scan of
+        the stream would read ahead of the consumer without bound.
+        """
+        yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
 
     def _read_whole_file(
         self, fragment_to_read: ReadUnitFragment
@@ -288,18 +303,29 @@ class LineChunkableFileReader(FileReader):
     ) -> Iterator[pa.Table]:
         columns = scanner_kwargs.get("columns")
         if columns is not None:
-            # ``columns`` leaves out partition keys, so a file column named like
-            # one is read here for ``_apply_partition_values`` to check.
-            file_names = set(fragment.physical_schema.names)
-            columns = columns + [
-                name
-                for name in self._columns or []
-                if name in self._partition_keys
-                and name in file_names
-                and name not in columns
-            ]
-            scanner_kwargs = {**scanner_kwargs, "columns": columns}
+            scanner_kwargs = {
+                **scanner_kwargs,
+                "columns": self._with_file_partition_keys(
+                    columns, fragment.physical_schema.names
+                ),
+            }
         yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+
+    def _with_file_partition_keys(
+        self, columns: List[str], file_names: List[str]
+    ) -> List[str]:
+        """Add the file columns named like a requested partition key to ``columns``.
+
+        ``columns`` leaves out partition keys, so a file column named like one is
+        read for ``_apply_partition_values`` to check against the path value.
+        """
+        return columns + [
+            name
+            for name in self._columns or []
+            if name in self._partition_keys
+            and name in file_names
+            and name not in columns
+        ]
 
     @override
     def _on_disk_column_names(self, dataset: pds.Dataset) -> Set[str]:

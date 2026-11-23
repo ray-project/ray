@@ -24,6 +24,7 @@ from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     one_block_size,
     read_snappy_buffer,
 )
+from ray.data._internal.datasource_v2.common.line_chunking import iter_line_pieces
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
 from ray.data._internal.util import infer_compression
@@ -47,6 +48,14 @@ def infer_json_compression(path: str) -> Optional[str]:
     if lowered.endswith(".br"):
         return "brotli"
     return infer_compression(lowered)
+
+
+def _is_json_lines_path(path: str) -> bool:
+    """Whether ``path`` names a ``.jsonl`` file, compressed or not."""
+    lowered = path.lower()
+    if infer_json_compression(lowered) is not None:
+        lowered = lowered.rsplit(".", 1)[0]
+    return lowered.endswith(".jsonl")
 
 
 def open_json_stream(path: str, filesystem: "FileSystem") -> pa.NativeFile:
@@ -173,6 +182,15 @@ class JsonFileReader(LineChunkableFileReader):
         if unit.id != unit.source:
             yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
             return
+        if self._streams_in_pieces(unit.source):
+            with open_json_stream(unit.source, self._filesystem) as file:
+                for piece in iter_line_pieces(file, self._chunk_size):
+                    fragment = self._make_chunk_fragment(
+                        memoryview(piece), starts_at_file_start=False, path=unit.source
+                    )
+                    if fragment is not None:
+                        yield from self._iter_fragment_tables(fragment, scanner_kwargs)
+            return
         table = parse_json(
             read_whole_json_file(unit.source, self._filesystem),
             unit.source,
@@ -184,6 +202,25 @@ class JsonFileReader(LineChunkableFileReader):
             # An in-memory dataset has one fragment per record batch.
             for fragment in pds.dataset(table).get_fragments():
                 yield from self._iter_fragment_tables(fragment, scanner_kwargs)
+
+    def _streams_in_pieces(self, path: str) -> bool:
+        """Whether a whole-file unit is read as pieces of lines, not parsed whole.
+
+        Parsing a file whole holds several times its size in memory. A JSON Lines
+        file that is compressed, of unknown size or larger than a chunk but can't
+        be split is read in pieces instead, each parsed like a split chunk. A
+        ``.json`` file may be one document, so it is parsed whole.
+        """
+        size = self._file_sizes[path]
+        return (
+            not self._parse_options.newlines_in_values
+            and _is_json_lines_path(path)
+            and (
+                size is None
+                or infer_json_compression(path) is not None
+                or size > self._chunk_size
+            )
+        )
 
     @override
     def _make_chunk_fragment(

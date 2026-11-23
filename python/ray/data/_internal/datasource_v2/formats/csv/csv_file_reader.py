@@ -1,7 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -106,6 +106,7 @@ class CsvFileReader(LineChunkableFileReader):
         # which duplicates a column named in both, so ``include_columns`` is
         # applied as the projection instead.
         self._include_columns = list(convert_options.include_columns)
+        self._streamed_convert_options = convert_options
         self._convert_options = copy.copy(convert_options)
         self._convert_options.include_columns = []
         self._column_names_by_path: Dict[str, List[str]] = {}
@@ -150,6 +151,54 @@ class CsvFileReader(LineChunkableFileReader):
             if unit.id == unit.source:
                 raise invalid_csv_error(unit.source, e) from e
             raise invalid_csv_chunk_error(unit.source, e) from e
+
+    @override
+    def _iter_streamed_unit_tables(
+        self,
+        fragment_to_read: ReadUnitFragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Stream the file with ``pcsv.open_csv``, as V1 does.
+
+        pyarrow's dataset scan of a CSV stream reads ahead of its consumer
+        without bound, so a file larger than memory would fill it. ``open_csv``
+        parses a block only when asked for the next one. The projection, null
+        fill and filter that the scan would apply are applied to each block.
+        """
+        path = fragment_to_read.unit.source
+        assert self._filesystem is not None
+        with self._filesystem.open_input_stream(path) as file:
+            reader = pcsv.open_csv(
+                file,
+                read_options=self._read_options,
+                parse_options=self._parse_options,
+                convert_options=self._streamed_convert_options,
+            )
+            columns = scanner_kwargs.get("columns")
+            if columns is not None:
+                columns = self._with_file_partition_keys(columns, reader.schema.names)
+            for batch in reader:
+                yield self._scan_block(
+                    pa.Table.from_batches([batch]),
+                    columns,
+                    scanner_kwargs.get("filter"),
+                )
+
+    def _scan_block(
+        self, table: pa.Table, columns: Optional[List[str]], predicate: Any
+    ) -> pa.Table:
+        """Return ``table`` as the dataset scan would: null-filled, filtered, projected.
+
+        A column the plan schema or the projection names but the file lacks is
+        added as ``null``, so it null-fills instead of failing.
+        """
+        planned = (self._file_dataset_schema or pa.schema([])).names
+        for name in planned + list(columns or []):
+            if name not in table.column_names:
+                table = table.append_column(name, pa.nulls(len(table)))
+        if predicate is not None:
+            table = table.filter(predicate)
+        return table if columns is None else table.select(columns)
 
     @override
     def _make_chunk_fragment(

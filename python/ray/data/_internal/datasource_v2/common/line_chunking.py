@@ -37,10 +37,10 @@ Design decisions:
 
 import logging
 import math
-from typing import TYPE_CHECKING, List, Tuple
+from typing import TYPE_CHECKING, Iterator, List, Tuple
 
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
-from ray.data._internal.util import KiB, NumBytes
+from ray.data._internal.util import KiB, MiB, NumBytes
 
 if TYPE_CHECKING:
     import pyarrow
@@ -50,6 +50,9 @@ logger = logging.getLogger(__name__)
 # Bytes read past a chunk's end in the same request, so the line that crosses
 # the end is usually finished without a second request.
 _LINE_PROBE_BYTES = 64 * KiB
+
+# Bytes asked of a stream per read in :func:`iter_line_pieces`.
+_STREAM_READ_BYTES = 8 * MiB
 
 
 def line_chunk_byte_range(
@@ -163,6 +166,37 @@ def read_line_aligned(
         aligned_start + len(lines),
     )
     return lines
+
+
+def iter_line_pieces(
+    file: "pyarrow.NativeFile", piece_size: NumBytes
+) -> Iterator[bytes]:
+    """Yield a stream's bytes as pieces of whole lines, about ``piece_size`` each.
+
+    A line longer than ``piece_size`` makes its piece longer. The stream is read
+    forward only, so it may be one whose size is unknown or that decompresses
+    on the fly.
+
+    Args:
+        file: The stream to read.
+        piece_size: Bytes to gather before cutting a piece at its last newline.
+
+    Yields:
+        bytes: Each piece, ending in a newline except possibly the last.
+    """
+    buffer = bytearray()
+    while True:
+        part = file.read(min(_STREAM_READ_BYTES, piece_size))
+        buffer += part
+        if not part:
+            if buffer:
+                yield bytes(buffer)
+            return
+        if len(buffer) >= piece_size:
+            cut = buffer.rfind(b"\n") + 1
+            if cut:
+                yield bytes(buffer[:cut])
+                del buffer[:cut]
 
 
 def _read_through_newline(

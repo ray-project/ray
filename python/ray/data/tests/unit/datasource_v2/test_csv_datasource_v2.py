@@ -50,6 +50,7 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
 )
+from ray.data.expressions import col
 
 
 def _write(path, text: str) -> str:
@@ -437,6 +438,51 @@ def test_reads_compressed_files_whole(tmp_path, small_chunks):
         f.write(gzip.compress(b"id\n" + b"".join(b"%d\n" % i for i in range(200))))
     table = _read_all(CsvDatasourceV2([path]), [path])
     assert sorted(table.column("id").to_pylist()) == list(range(200))
+
+
+def test_streams_a_compressed_file_with_projection_filter_and_null_fill(tmp_path):
+    path = str(tmp_path / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(
+            gzip.compress(
+                b"id,name\n" + b"".join(b"%d,n%d\n" % (i, i) for i in range(20))
+            )
+        )
+    datasource = CsvDatasourceV2([path])
+    scanner = dataclasses.replace(
+        datasource.create_scanner(schema=pa.schema([("id", pa.int64())])),
+        columns=("name", "missing"),
+        predicate=col("id") >= 18,
+    )
+    manifest = FileManifest.concat(
+        list(
+            datasource._get_file_indexer().list_files(
+                pa.array([path]), filesystem=datasource.filesystem
+            )
+        )
+    )
+
+    table = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+
+    assert table.to_pylist() == [
+        {"name": "n18", "missing": None},
+        {"name": "n19", "missing": None},
+    ]
+
+
+def test_streams_a_compressed_file_block_by_block(tmp_path):
+    path = str(tmp_path / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b"id\n" + b"".join(b"%d\n" % i for i in range(5000))))
+    datasource = CsvDatasourceV2(
+        [path],
+        arrow_csv_args={"read_options": pcsv.ReadOptions(block_size=1024)},
+    )
+
+    tables = _read_tables(datasource, [path])
+
+    assert len(tables) > 1
+    assert sum(len(t) for t in tables) == 5000
 
 
 def test_reads_snappy_files_whole(tmp_path):

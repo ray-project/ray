@@ -282,6 +282,25 @@ def test_infers_the_schema_from_a_stream_that_returns_short_reads(tmp_path, num_
     assert datasource.infer_schema(sample).names == ["id", "name"]
 
 
+@pytest.mark.parametrize(
+    "path, in_pieces",
+    [("a.jsonl.gz", True), ("a.json.gz", False)],
+    ids=["jsonl", "json"],
+)
+def test_streams_only_compressed_json_lines_in_pieces(
+    tmp_path, monkeypatch, path, in_pieces
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", "100")
+    file = str(tmp_path / path)
+    with open(file, "wb") as f:
+        f.write(gzip.compress(b"".join(b'{"id": %d}\n' % i for i in range(200))))
+
+    tables = _read_blocks(JsonDatasourceV2([file]), [file])
+
+    assert (len(tables) > 1) == in_pieces
+    assert sorted(pa.concat_tables(tables).column("id").to_pylist()) == list(range(200))
+
+
 def test_lines_true_reports_the_file_of_a_bad_line(tmp_path):
     path = tmp_path / "a.jsonl"
     path.write_text('{"a": 1}\n{"a":\n')
