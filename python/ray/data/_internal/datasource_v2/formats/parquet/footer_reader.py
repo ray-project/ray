@@ -161,8 +161,8 @@ class FooterReader:
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
         )
-        # The bin packer reads a zero size on a matched run as "the reader will
-        # answer this from num_rows", so zero only the read-byte estimate.
+        # A zero size on a matched run tells the packer and ParquetFileReader
+        # to answer it from num_rows.
         self._stub_fully_matched = stub_fully_matched
         self._partition_value_parser = (
             _PartitionValueParser(self.partitioning)

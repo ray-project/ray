@@ -32,6 +32,7 @@ from ray.data._internal.datasource_v2.common.file_reader import (
     FileFormat,
     FileReader,
 )
+from ray.data._internal.datasource_v2.common.online_bin_packer import _is_stubbed
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
     _PartitionValueParser,
@@ -73,7 +74,6 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
-from ray.data.context import DataContext
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
@@ -196,7 +196,7 @@ def _split_stubbed(manifest: FileManifest) -> Tuple[int, FileManifest]:
             to_read.append(idx)
             continue
         chunk = FileChunk.from_metadata(chunk_metadata)
-        if chunk.fully_matched and chunk.size_bytes == 0:
+        if _is_stubbed(chunk):
             stub_rows += chunk.num_rows
         else:
             to_read.append(idx)
@@ -823,6 +823,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         from pyarrow.fs import LocalFileSystem
 
         from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
+        from ray.data.context import DataContext
 
         filesystem = filesystem_for_sized_opens(self._filesystem or LocalFileSystem())
         retried_io_errors = DataContext.get_current().retried_io_errors
