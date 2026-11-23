@@ -1026,6 +1026,75 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    def testHEBOPointsToEvaluateAndErrorHandling(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        import pandas as pd
+
+        import ray.tune.search.hebo.hebo_search as hebo_mod
+        from ray.tune.search.hebo import HEBOSearch
+
+        class DummyDesignSpace:
+            def __init__(self):
+                self.para_names = ["a"]
+                self.num_paras = 1
+
+            def parse(self, params):
+                self.para_names = [p["name"] for p in params]
+                self.num_paras = len(params)
+                return self
+
+        class DummyHEBO:
+            def __init__(self, space, **kwargs):
+                self.space = space
+                self.observed = []
+
+            def observe(self, X, y):
+                self.observed.append((X, y))
+
+            def suggest(self, n_suggestions=1):
+                return pd.DataFrame([{"a": 0.5} for _ in range(n_suggestions)])
+
+        fake_hebo = SimpleNamespace(
+            design_space=SimpleNamespace(
+                design_space=SimpleNamespace(DesignSpace=DummyDesignSpace)
+            ),
+            optimizers=SimpleNamespace(hebo=SimpleNamespace(HEBO=DummyHEBO)),
+        )
+
+        with patch.object(hebo_mod, "hebo", fake_hebo):
+            points = [{"a": 0.1}, {"a": 0.2}]
+            searcher = HEBOSearch(
+                space={"a": tune.uniform(0.0, 1.0)},
+                metric="loss",
+                mode="min",
+                points_to_evaluate=points,
+                max_concurrent=1,
+            )
+
+            # Suggesting initial points should not mutate the caller's list
+            self.assertEqual(searcher.suggest("trial_1"), {"a": 0.1})
+            self.assertEqual(points, [{"a": 0.1}, {"a": 0.2}])
+            self.assertEqual(searcher._points_to_evaluate, [{"a": 0.1}, {"a": 0.2}])
+
+            # Errored trial should not be observed by HEBO and should be cleaned up
+            searcher.on_trial_complete("trial_1", result={"loss": 1.5}, error=True)
+            self.assertEqual(len(searcher._opt.observed), 0)
+            self.assertNotIn("trial_1", searcher._live_trial_mapping)
+
+            # Missing metric should not raise KeyError or leak trial_id
+            self.assertEqual(searcher.suggest("trial_2"), {"a": 0.2})
+            searcher.on_trial_complete("trial_2", result={"other_metric": 2.0})
+            self.assertEqual(len(searcher._opt.observed), 0)
+            self.assertNotIn("trial_2", searcher._live_trial_mapping)
+
+            # Valid result should be observed; unknown trial_id should be a no-op
+            self.assertEqual(searcher.suggest("trial_3"), {"a": 0.5})
+            searcher.on_trial_complete("trial_3", result={"loss": 0.25})
+            self.assertEqual(len(searcher._opt.observed), 1)
+            searcher.on_trial_complete("unknown_trial", result={"loss": 0.5})
+
     def testConvertHyperOpt(self):
         from hyperopt import hp
 

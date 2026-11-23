@@ -1,3 +1,4 @@
+import copy
 import logging
 import pickle
 from typing import Dict, List, Optional, Union
@@ -186,7 +187,7 @@ class HEBOSearch(Searcher):
         self._hebo_config = kwargs
         self._random_state_seed = random_state_seed
         self._space = space
-        self._points_to_evaluate = points_to_evaluate
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
         self._evaluated_rewards = evaluated_rewards
         self._initial_points = []
         self._live_trial_mapping = {}
@@ -246,7 +247,7 @@ class HEBOSearch(Searcher):
                     np.array(self._evaluated_rewards) * self._metric_op,
                 )
             else:
-                self._initial_points = self._points_to_evaluate
+                self._initial_points = copy.deepcopy(self._points_to_evaluate)
 
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
@@ -307,14 +308,21 @@ class HEBOSearch(Searcher):
         """Notification for the completion of trial.
 
         HEBO always minimizes."""
-
-        if result:
-            self._process_result(trial_id, result)
-        self._live_trial_mapping.pop(trial_id)
+        try:
+            if result and not error:
+                self._process_result(trial_id, result)
+        finally:
+            self._live_trial_mapping.pop(trial_id, None)
 
     def _process_result(self, trial_id: str, result: Dict):
-        trial_info = self._live_trial_mapping[trial_id]
-        if result and not is_nan_or_inf(result[self._metric]):
+        trial_info = self._live_trial_mapping.get(trial_id)
+        if trial_info is None:
+            return
+        if (
+            result
+            and self._metric in result
+            and not is_nan_or_inf(result[self._metric])
+        ):
             self._opt.observe(
                 trial_info, np.array([self._metric_op * result[self._metric]])
             )
