@@ -44,7 +44,6 @@ from pathlib import Path
 from typing import Any, Callable, Optional, Sequence
 
 import click
-import runfiles
 
 from ci.ray_ci.automation.push_ray_image import RayImagePushContext
 from ci.ray_ci.automation.trivy import registry, scan_store
@@ -529,11 +528,10 @@ def stage(
     staging = workdir / "staging"
     data = staging / "data"
     (data / "ignore").mkdir(parents=True)
-    r = runfiles.Create()
-    shutil.copy(r.Rlocation(TRIVY_RUNFILE), data / "trivy")
+    shutil.copy(registry.runfile(TRIVY_RUNFILE), data / "trivy")
     (data / "trivy").chmod(0o755)
     for image_type in sorted(image_types):
-        src = Path(r.Rlocation(IGNORE_RUNFILE.format(image_type)))
+        src = registry.runfile(IGNORE_RUNFILE.format(image_type))
         if not src.is_file():
             raise ScanError(f"no ignore file for {image_type}: {src}")
         shutil.copy(src, data / "ignore" / src.name)

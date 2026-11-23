@@ -30,11 +30,18 @@ class RegistryError(Exception):
     """A crane call failed, timed out or returned something unexpected."""
 
 
+def runfile(path: str) -> Path:
+    """A file this program was built with. Raises FileNotFoundError when the
+    program has no runfiles, or none at ``path``."""
+    r = runfiles.Create()
+    location = r.Rlocation(path) if r else None
+    if not location:
+        raise FileNotFoundError(f"{path} is not in this program's runfiles")
+    return Path(location)
+
+
 def crane_binary() -> str:
-    path = runfiles.Create().Rlocation("crane_linux_x86_64/crane")
-    if not path:
-        raise RegistryError("crane is not in this program's runfiles")
-    return path
+    return str(runfile("crane_linux_x86_64/crane"))
 
 
 def _run(args: Sequence[str], timeout: int, **kwargs: Any) -> Any:

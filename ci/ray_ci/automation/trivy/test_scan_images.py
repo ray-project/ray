@@ -442,7 +442,9 @@ def test_stage_needs_an_ignore_file_for_every_image_type(tmp_path: Path):
     dbs = {"db": tmp_path / "db", "java_db": tmp_path / "jdb"}
     for d in dbs.values():
         d.mkdir()
-    with mock.patch.object(scan_images.runfiles, "Create", return_value=rlocation):
+    with mock.patch.object(
+        scan_images.registry.runfiles, "Create", return_value=rlocation
+    ):
         with pytest.raises(ScanError, match="no ignore file for ray-extra"):
             scan_images.stage(tmp_path / "a", layout, dbs, {"ray", "ray-extra"})
         staging = scan_images.stage(tmp_path / "b", layout, dbs, {"ray"})
@@ -475,7 +477,9 @@ def test_stage_makes_the_data_tree_readable_by_the_scan_user(tmp_path: Path):
     db.mkdir()
     (db / "trivy.db").write_bytes(b"db")
     (db / "trivy.db").chmod(0o600)
-    with mock.patch.object(scan_images.runfiles, "Create", return_value=rlocation):
+    with mock.patch.object(
+        scan_images.registry.runfiles, "Create", return_value=rlocation
+    ):
         staging = scan_images.stage(tmp_path / "w", layout, {"db": db}, {"ray"})
     data = staging / "data"
     assert mode(data / "trivy") == "0o755"
