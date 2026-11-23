@@ -91,18 +91,32 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
             pynvml.nvmlInit()
         except pynvml.NVMLError:
             return None  # pynvml init failed
-        device_count = pynvml.nvmlDeviceGetCount()
-        cuda_device_type = None
-        if device_count > 0:
-            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
-            device_name = pynvml.nvmlDeviceGetName(handle)
-            if isinstance(device_name, bytes):
-                device_name = device_name.decode("utf-8")
-            cuda_device_type = (
-                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(device_name)
-            )
-        pynvml.nvmlShutdown()
-        return cuda_device_type
+        try:
+            device_count = pynvml.nvmlDeviceGetCount()
+            # Ray supports one accelerator type per node, so the first GPU
+            # that NVML can query gives it. A GPU that NVML cannot query, for
+            # example one that has fallen off the bus, is skipped instead of
+            # failing node startup.
+            for index in range(device_count):
+                try:
+                    handle = pynvml.nvmlDeviceGetHandleByIndex(index)
+                    device_name = pynvml.nvmlDeviceGetName(handle)
+                except pynvml.NVMLError as e:
+                    logger.warning(
+                        "Cannot read the name of NVIDIA GPU %d to detect the "
+                        "node's accelerator type: %s",
+                        index,
+                        e,
+                    )
+                    continue
+                if isinstance(device_name, bytes):
+                    device_name = device_name.decode("utf-8")
+                return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
+                    device_name
+                )
+            return None
+        finally:
+            pynvml.nvmlShutdown()
 
     @staticmethod
     def get_current_node_driver_version() -> str:
