@@ -1,7 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -12,14 +12,11 @@ from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     LineChunkableFileReader,
     one_block_size,
+    read_snappy_buffer,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
 from ray.data._internal.util import infer_compression
-from ray.data.datasource.file_based_datasource import _decompress_snappy
-
-if TYPE_CHECKING:
-    from pyarrow.fs import FileSystem
 
 
 def csv_file_format(
@@ -53,10 +50,15 @@ def invalid_csv_error(path: str) -> ValueError:
     )
 
 
-def read_snappy_buffer(path: str, filesystem: "FileSystem") -> pa.Buffer:
-    """Return a whole Snappy file decompressed, since pyarrow can't read it."""
-    with filesystem.open_input_stream(path, compression=None) as file:
-        return pa.py_buffer(_decompress_snappy(file, filesystem).getbuffer())
+def quoted_newline_error(path: str) -> ValueError:
+    """Error for a split file's piece failing to parse."""
+    return ValueError(
+        f"Failed to read a chunk of CSV file: {path}. The file is split at "
+        "newline bytes, so a newline inside a quoted or escaped value that "
+        "the piece can't see fails to parse. Pass "
+        "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
+        "read each file whole. See read_csv() documentation for more details."
+    )
 
 
 class CsvFileReader(LineChunkableFileReader):
@@ -121,7 +123,9 @@ class CsvFileReader(LineChunkableFileReader):
             else:
                 yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
         except pa.ArrowInvalid as e:
-            raise invalid_csv_error(unit.source) from e
+            if unit.id == unit.source:
+                raise invalid_csv_error(unit.source) from e
+            raise quoted_newline_error(unit.source) from e
 
     @override
     def _make_chunk_fragment(

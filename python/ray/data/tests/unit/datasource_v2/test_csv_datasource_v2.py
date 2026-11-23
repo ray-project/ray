@@ -7,6 +7,7 @@ from typing import List
 import pyarrow as pa
 import pyarrow.csv as pcsv
 import pytest
+from pyarrow.fs import LocalFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
@@ -21,10 +22,14 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
 from ray.data._internal.datasource_v2.common.size_estimators import (
     OnDiskSizeEstimator,
 )
+from ray.data._internal.datasource_v2.formats.csv import csv_datasource_v2
 from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvDatasourceV2,
     CsvFileIndexer,
 )
+from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import csv_file_format
+from ray.data._internal.datasource_v2.formats.csv.header_reader import HeaderReader
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data._internal.util import RetryingPyFileSystem
@@ -62,6 +67,13 @@ def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
     return pa.concat_tables(
         _read_tables(datasource, paths), promote_options="permissive"
     )
+
+
+@pytest.fixture(autouse=True)
+def inline_header_reads(monkeypatch):
+    # Header reads stay in this process; the actor pool is covered in
+    # ``tests/datasource_v2/test_csv_header_listing.py``.
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "0")
 
 
 @pytest.fixture
@@ -120,6 +132,35 @@ def test_names_a_split_file_from_its_own_header(tmp_path, small_chunks):
     assert rows == {(1, "x")} | {(i, f"n{i}") for i in range(100)}
 
 
+def test_starts_no_actors_when_no_file_is_split(tmp_path, monkeypatch):
+    # Listing only inline-sized files must not provision the header pool.
+    provisioned = []
+
+    class _FakeActorClass:
+        @staticmethod
+        def options(**_options):
+            class _Builder:
+                @staticmethod
+                def remote(**kwargs):
+                    provisioned.append(kwargs)
+                    return object()
+
+            return _Builder
+
+    monkeypatch.setattr(csv_datasource_v2, "HeaderReaderActor", _FakeActorClass)
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "2")
+    paths = [_write(tmp_path / f"{i}.csv", f"id{i},x\n1,2\n") for i in range(3)]
+    datasource = CsvDatasourceV2(paths)
+
+    list(
+        datasource._get_file_indexer().list_files(
+            pa.array(paths), filesystem=datasource.filesystem
+        )
+    )
+
+    assert provisioned == []
+
+
 def test_lists_a_split_file_with_its_column_names(tmp_path, small_chunks):
     split = _write(tmp_path / "a.csv", '"order id",amount\n' + "1,2\n" * 100)
     whole = _write(tmp_path / "b.csv", "x\n1\n")
@@ -141,6 +182,28 @@ def test_lists_a_split_file_with_its_column_names(tmp_path, small_chunks):
     ]
     assert names.count(None) == 1
     assert set(names) - {None} == {("order id", "amount")}
+
+
+def test_header_reader_reads_each_files_header(tmp_path):
+    # ``HeaderReader`` is a plain class, unit-tested here as ``FooterReader``
+    # is; the indexer runs it as an actor pool.
+    filesystem = LocalFileSystem()
+    reader = HeaderReader(
+        filesystem=filesystem,
+        file_format=csv_file_format(
+            pcsv.ReadOptions(), pcsv.ParseOptions(), pcsv.ConvertOptions()
+        ),
+        io_concurrency=2,
+    )
+    paths = [_write(tmp_path / f"{i}.csv", f"id{i},x\n1,2\n") for i in range(3)]
+    files = [
+        FileInfo(path=path, size=filesystem.get_file_info(path).size) for path in paths
+    ]
+
+    assert reader.read_header(files[0]) == ["id0", "x"]
+    assert [reader.read_header(file) for file in files] == [
+        [f"id{i}", "x"] for i in range(3)
+    ]
 
 
 @pytest.mark.parametrize(
@@ -225,6 +288,7 @@ def test_reads_a_file_holding_its_partition_column(
     "arrow_csv_args",
     [
         {"parse_options": pcsv.ParseOptions(newlines_in_values=True)},
+        {"parse_options": pcsv.ParseOptions(escape_char="\\")},
         {"read_options": pcsv.ReadOptions(skip_rows=1)},
         {"read_options": pcsv.ReadOptions(skip_rows_after_names=1)},
         {"read_options": pcsv.ReadOptions(encoding="utf-16")},
@@ -234,6 +298,20 @@ def test_reads_files_whole_when_rows_may_not_end_at_newlines(arrow_csv_args):
     datasource = CsvDatasourceV2(["/tmp"], arrow_csv_args=arrow_csv_args)
     indexer = datasource._get_file_indexer()
     assert type(indexer) is NonSamplingFileIndexer
+
+
+def test_hints_newlines_in_values_when_a_piece_fails_to_parse(tmp_path, monkeypatch):
+    # The first piece ends inside a quoted value; the second piece's first
+    # row then holds more fields than the header names, so pyarrow raises
+    # and the reader points at ``newlines_in_values``. The chunk boundary
+    # is placed right before the value's second half.
+    head = "id,note\n" + "".join(f'{i},"short"\n' for i in range(4)) + '4,"multi\n'
+    tail = 'w,x,y,z"\n' + "".join(f'{i},"short"\n' for i in range(5, 20))
+    path = _write(tmp_path / "a.csv", head + tail)
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+
+    with pytest.raises(ValueError, match="newlines_in_values"):
+        _read_all(CsvDatasourceV2([path]), [path])
 
 
 def test_reads_compressed_files_whole(tmp_path, small_chunks):

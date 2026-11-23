@@ -2526,11 +2526,17 @@ def read_csv(
         The DataSourceV2 reader is selected through the ``use_datasource_v2``
         setting of :class:`~ray.data.context.DataContext`. It splits each large
         uncompressed file into byte ranges read by separate tasks, unless
-        ``parse_options.newlines_in_values`` is set, ``read_options`` skips
-        rows, or the encoding isn't UTF-8. The pieces of a split file are named
-        from the schema of up to 16 sampled files, so every split file must
-        list the same columns in the same order. Column types are inferred per
-        piece. ``arrow_open_stream_args``, and CSV options other than
+        ``parse_options.newlines_in_values`` or ``parse_options.escape_char``
+        is set, ``read_options`` skips rows, or the encoding isn't UTF-8.
+        Each piece of a split file parses with its own file's header line.
+        Column types are inferred per piece, so :meth:`Dataset.schema` before
+        execution is a guess from the first about 1 MiB of up to 16 sampled
+        files, and one file's pieces can produce different types for the same
+        column. A newline inside a quoted or escaped value isn't supported in
+        split reads: a piece cut at one fails to parse (pass
+        ``parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True)`` to
+        read such files whole) or can return wrong rows.
+        ``arrow_open_stream_args``, and CSV options other than
         ``read_options``, ``parse_options`` and ``convert_options``, use the V1
         reader. To use the V1 reader everywhere, set
         ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
