@@ -243,21 +243,8 @@ class FileReader(Reader[FileManifest]):
                 )
         return table
 
-    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read data from the input bucket and yield Arrow tables.
-
-        This method is called on workers to perform the actual read operation.
-        It should respect all pushdowns configured on this reader.
-
-        Args:
-            input_split: Work unit describing what data to read.
-
-        Yields:
-            pa.Table: PyArrow Tables containing the read data.
-        """
-        if len(input_split) == 0:
-            return
-
+    def _make_dataset(self, input_split: FileManifest) -> pds.Dataset:
+        """Return a ``pds.Dataset`` over the manifest's files."""
         # Dedupe paths before handing them to pyarrow. A manifest can carry
         # multiple rows per file — chunking emits one row per row-group
         # slice, and a user may deliberately list the same file more than
@@ -289,13 +276,39 @@ class FileReader(Reader[FileManifest]):
             schema=self._file_dataset_schema,
             ignore_prefixes=self._ignore_prefixes,
         )
+        return dataset
+
+    def _on_disk_column_names(self, dataset: pds.Dataset) -> Set[str]:
+        """Return the names of the columns pyarrow reads from the files.
+
+        A requested column outside this set is synthesized after the read:
+        a partition key, ``path`` or ``row_hash``.
+        """
+        return set(dataset.schema.names)
+
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Read data from the input bucket and yield Arrow tables.
+
+        This method is called on workers to perform the actual read operation.
+        It should respect all pushdowns configured on this reader.
+
+        Args:
+            input_split: Work unit describing what data to read.
+
+        Yields:
+            pa.Table: PyArrow Tables containing the read data.
+        """
+        if len(input_split) == 0:
+            return
+
+        dataset = self._make_dataset(input_split)
 
         # Split the requested columns into ones the on-disk file has
         # (pyarrow reads these) and ones we need to synthesize post-read
         # (hive partition keys, ``path``, ``row_hash``). ``self._columns
         # is None`` means "no projection" — read every file column and
         # synthesize every available partition/synthesized column.
-        on_disk_column_names = set(dataset.schema.names)
+        on_disk_column_names = self._on_disk_column_names(dataset)
         if self._columns is None:
             columns_to_read_from_file: Optional[List[str]] = None
             columns_to_synthesize: Optional[Set[str]] = None
@@ -581,13 +594,13 @@ class FileReader(Reader[FileManifest]):
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
             ):
-                if table.num_rows > 0:
+                if len(table) > 0:
                     yield table, ReadUnitPosition(
                         unit=fragment_to_read.unit,
                         rows_before=rows_before,
                         unit_start_row=fragment_to_read.unit_start_row,
                     )
-                    rows_before += table.num_rows
+                    rows_before += len(table)
 
     def _iter_unit_tables(
         self,
