@@ -896,7 +896,7 @@ def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
     monkeypatch.setattr(
         footer_reader,
         "_add_statistics_bounds",
-        lambda *args: rewrite_calls.append(args),
+        lambda *args, **kwargs: rewrite_calls.append(kwargs),
     )
 
     path, size = four_row_groups
@@ -919,7 +919,7 @@ def test_derived_predicate_failure_falls_back_to_original(four_row_groups, monke
     """
     from ray.data._internal.datasource_v2.formats.parquet import footer_reader
 
-    def fail_to_derive(*args):
+    def fail_to_derive(*args, **kwargs):
         raise RuntimeError("Injected derivation failure")
 
     monkeypatch.setattr(footer_reader, "_add_statistics_bounds", fail_to_derive)
