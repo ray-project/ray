@@ -3,7 +3,18 @@
 import functools
 import io
 import sys
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Tuple,
+    Union,
+)
 
 import pyarrow as pa
 
@@ -19,6 +30,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data._internal.util import infer_compression, iterate_with_retry
+from ray.data.block import BlockAccessor, BlockType
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 
@@ -26,9 +38,7 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
 
-def rows_to_arrow(rows: List[Dict[str, Any]]) -> pa.Table:
-    from ray.data.block import BlockAccessor, BlockType
-
+def _rows_to_arrow(rows: List[Dict[str, Any]]) -> pa.Table:
     columns = list(dict.fromkeys(key for row in rows for key in row))
     return BlockAccessor.batch_to_block(
         # A sample that lacks a key gets a null in that column.
@@ -67,10 +77,10 @@ class WebDatasetReader(Reader[FileManifest]):
         self,
         *,
         filesystem: "FileSystem",
-        decoder: Optional[Any],
-        fileselect: Optional[Any],
-        filerename: Optional[Any],
-        suffixes: Optional[Any],
+        decoder: Optional[Union[bool, str, Callable, list]],
+        fileselect: Optional[Union[list, Callable]],
+        filerename: Optional[Union[list, Callable]],
+        suffixes: Optional[Union[list, Callable]],
         verbose_open: bool,
         expand_json: bool,
         allow_unsafe_deserialization: bool,
@@ -186,7 +196,7 @@ class WebDatasetReader(Reader[FileManifest]):
     def _finalize(
         self, chunk: List[Dict[str, Any]], unit: ReadUnit, rows_before: int
     ) -> pa.Table:
-        table = rows_to_arrow(chunk)
+        table = _rows_to_arrow(chunk)
         position = ReadUnitPosition(unit=unit, rows_before=rows_before)
         for column in self._synthesized_columns:
             values = column.compute(position, table.num_rows)

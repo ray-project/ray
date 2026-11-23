@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Union
 
 import pyarrow as pa
 
@@ -26,10 +26,10 @@ class WebDatasetScanner(FileScanner):
 
     schema: Optional[pa.Schema]
     filesystem: "FileSystem"
-    decoder: Optional[Any] = True
-    fileselect: Optional[Any] = None
-    filerename: Optional[Any] = None
-    suffixes: Optional[Any] = None
+    decoder: Optional[Union[bool, str, Callable, list]] = True
+    fileselect: Optional[Union[list, Callable]] = None
+    filerename: Optional[Union[list, Callable]] = None
+    suffixes: Optional[Union[list, Callable]] = None
     verbose_open: bool = False
     expand_json: bool = False
     allow_unsafe_deserialization: bool = False

@@ -104,7 +104,6 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
         # The resolved paths above lose their URI scheme; lineage tracking
         # reads the caller's paths through ``source_paths``.
         self._source_paths: List[str] = _normalize_paths_to_strings(paths)
-        # Retry ``DataContext.retried_io_errors`` on every filesystem call.
         self._filesystem = RetryingPyFileSystem.wrap(
             resolved_filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,
@@ -153,7 +152,6 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
     def get_file_partitioner(
         self, *, hints: Optional["PartitionHints"] = None
     ) -> Optional[RoundRobinPartitioner]:
-        # Group shards into read tasks by estimated in-memory size.
         if hints is None:
             return None
         encoding_ratio = (
