@@ -169,6 +169,11 @@ def _any_fixable(findings: Iterable[Finding]) -> bool:
     return any(f.fixable for f in findings)
 
 
+def _representative(findings: Sequence[Finding]) -> Finding:
+    """One with a usable fix if any has one."""
+    return next((f for f in findings if f.fixable), findings[0])
+
+
 @dataclass
 class Group:
     """One finding deduplicated across the images and paths it appears in.
@@ -184,9 +189,7 @@ class Group:
     @property
     def finding(self) -> Finding:
         """A representative finding, one with a usable fix if the group has one."""
-        if self.fixable:
-            return next(f for f in self.findings if f.fixable)
-        return self.findings[0]
+        return _representative(self.findings)
 
     @property
     def locations(self) -> list[str]:
@@ -632,7 +635,8 @@ def _split_by_fixable(scan: ImageScan) -> tuple[list[Finding], list[Finding]]:
     """One representative finding per key, split by whether the key is fixable."""
     fixable, no_fix = [], []
     for findings in scan.gated_by_key().values():
-        (fixable if _any_fixable(findings) else no_fix).append(findings[0])
+        finding = _representative(findings)
+        (fixable if finding.fixable else no_fix).append(finding)
     return fixable, no_fix
 
 
