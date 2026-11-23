@@ -6830,18 +6830,16 @@ def read_delta(
             storage_options=storage_options,
             **({} if loads_files else {"without_files": True}),
         )
-        unsupported_reason = (
-            # The V2 reader doesn't turn ``partition_filters`` into partition
-            # pruning yet, so it would read every partition.
-            "`partition_filters` was passed"
-            if partition_filters is not None
-            else delta_datasource_v2_unsupported_reason(
-                checked_table,
-                include_paths=include_paths,
-                arrow_parquet_args=arrow_parquet_args,
-            )
+        unsupported_reason = delta_datasource_v2_unsupported_reason(
+            checked_table,
+            include_paths=include_paths,
+            arrow_parquet_args=arrow_parquet_args,
         )
         if unsupported_reason is None:
+            if partition_filters is not None:
+                # Rejects what the V1 reader rejects; the V2 listing then has
+                # ``deltalake`` select the files, as V1 does.
+                _delta_partition_filter_kwargs(checked_table, partition_filters)
             datasource_v2 = DeltaDatasourceV2(
                 checked_table,
                 storage_options=storage_options,
@@ -6850,6 +6848,7 @@ def read_delta(
                 include_paths=include_paths,
                 shuffle=shuffle,
                 version_pinned_by_caller=version is not None,
+                partition_filters=partition_filters,
             )
             return _read_datasource_v2(
                 datasource_v2,

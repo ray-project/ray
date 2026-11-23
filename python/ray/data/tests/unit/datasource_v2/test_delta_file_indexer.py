@@ -8,7 +8,8 @@ what ``read_delta`` can't reach.
 import datetime
 import os
 import sys
-from typing import List, Optional
+from types import SimpleNamespace
+from typing import Any, List, Optional
 
 import pyarrow as pa
 import pyarrow.fs as pa_fs
@@ -19,6 +20,7 @@ from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     DeltaFileIndexer,
     DeltaPartitionPruner,
     DeltaTableSnapshot,
+    _files_selected_by_partition_filters,
     partition_values_as_strings,
     resolve_data_file_path,
 )
@@ -234,6 +236,17 @@ def test_listing_skips_files_the_log_statistics_rule_out(
 
     listed = sorted(p for m in manifests for p in m.paths.tolist())
     assert listed == sorted(files_by_commit[i] for i in expected_files)
+
+
+def test_partition_filters_fail_on_uris_that_dont_match_the_log():
+    """A ``deltalake`` URI form the listing doesn't expect fails the read, rather
+    than dropping the files it couldn't match."""
+    table: Any = SimpleNamespace(file_uris=lambda *args: ["s3://b/t/p=x/a.parquet"])
+
+    with pytest.raises(ValueError, match="Couldn't match the data files"):
+        _files_selected_by_partition_filters(
+            table, [("p", "=", "x")], ["p%3Dx/a.parquet"]
+        )
 
 
 if __name__ == "__main__":
