@@ -11,6 +11,10 @@ data = b"\n".join([b"some test data"] * 1000)
 data_file = "http://localhost:%i/index/data_file" % port
 index = b'<a href="%s">Link</a>' % data_file.encode()
 
+json_num_rows = 1000
+json_data = b"\n".join(b'{"id": %d}' % i for i in range(json_num_rows))
+json_file = "http://localhost:%i/index/data.jsonl" % port
+
 # Served whole, with its size, whatever range a request asks for, as
 # ``python -m http.server`` does. Larger than fsspec's 5 MiB read block.
 no_ranges_num_lines = 450_000
@@ -22,6 +26,7 @@ class HTTPTestHandler(BaseHTTPRequestHandler):
     files = {
         "/index/data_file": data,
         "/index": index,
+        "/index/data.jsonl": json_data,
     }
     no_ranges_files = {"/no_ranges/data_file": no_ranges_data}
 
