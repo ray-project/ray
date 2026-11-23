@@ -5,6 +5,7 @@ import gzip
 import io
 from typing import List
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.csv as pcsv
 import pytest
@@ -14,6 +15,7 @@ import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
     LineChunkFileIndexer,
 )
+from ray.data._internal.datasource_v2.common.listing_utils import batch_file_infos
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
@@ -33,6 +35,10 @@ from ray.data._internal.datasource_v2.formats.csv.header_reader import HeaderRea
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
+from ray.data._internal.datasource_v2.interfaces.read_units import (
+    ReadUnit,
+    ReadUnitFragment,
+)
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
@@ -413,6 +419,59 @@ def test_weighs_a_chunk_by_its_own_bytes(tmp_path, small_chunks):
         64,
         11,
     ]
+
+
+def test_batches_keep_files_of_unknown_size():
+    infos = [FileInfo("a", None), FileInfo("b", 10), FileInfo("c", None)]
+    assert [[info.path for info in batch] for batch in batch_file_infos(infos, 2)] == [
+        ["a", "b"],
+        ["c"],
+    ]
+
+
+def test_weighs_a_file_of_unknown_size_as_unknown(tmp_path):
+    manifest = FileManifest.construct_manifest(
+        paths=["a", "b"], sizes=[None, 10], chunk_metadatas=[None, None]
+    )
+    sizes = OnDiskSizeEstimator().estimate_in_memory_sizes(manifest)
+    assert np.isnan(sizes[0])
+    assert sizes[1] == 10
+
+
+def test_reads_no_header_for_a_file_of_unknown_size(tmp_path, small_chunks):
+    path = _write(tmp_path / "a.csv", "id\n" + "1\n" * 100)
+    indexer = CsvFileIndexer(
+        chunk_size=64,
+        ignore_missing_paths=False,
+        filesystem=LocalFileSystem(),
+        read_options=pcsv.ReadOptions(),
+        parse_options=pcsv.ParseOptions(),
+    )
+    assert indexer._needs_header(FileInfo(path, 1000))
+    assert not indexer._needs_header(FileInfo(path, None))
+    assert indexer._chunk_metadatas_of_file(FileInfo(path, None)) == [None]
+
+
+def test_reads_a_file_of_unknown_size_whole_without_asking_for_its_size(tmp_path):
+    path = _write(tmp_path / "a.csv", "id\n" + "".join(f"{i}\n" for i in range(5)))
+    datasource = CsvDatasourceV2([path])
+    sample = FileManifest.construct_manifest(
+        paths=[path], sizes=[None], chunk_metadatas=[None]
+    )
+    reader = datasource.create_scanner(
+        schema=datasource.infer_schema(sample)
+    ).create_reader()
+
+    table = pa.concat_tables(list(reader.read(sample)))
+
+    assert table.column("id").to_pylist() == list(range(5))
+
+    class _CannotOpen:
+        def open(self):
+            raise AssertionError("opened a file of unknown size for its size")
+
+    unit = ReadUnitFragment(_CannotOpen(), ReadUnit(id=path, source=path))
+    assert reader._read_whole_file(unit) is None
 
 
 def test_preserve_order_fills_one_bucket_at_a_time(monkeypatch):

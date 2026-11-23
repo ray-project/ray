@@ -40,22 +40,41 @@ def has_header(read_options: pcsv.ReadOptions) -> bool:
     return not (read_options.column_names or read_options.autogenerate_column_names)
 
 
-def invalid_csv_error(path: str) -> ValueError:
-    """Return V1 ``read_csv``'s error for a file pyarrow can't parse."""
+def invalid_csv_error(path: str, error: Exception) -> ValueError:
+    """Return V1 ``read_csv``'s error for a file pyarrow can't parse.
+
+    Args:
+        path: The file that failed.
+        error: The error pyarrow raised, shown in the message.
+
+    Returns:
+        The error to raise.
+    """
     return ValueError(
         f"Failed to read CSV file: {path}. "
         "Please check the CSV file has correct format, or filter out non-CSV "
         "file with 'partition_filter' field. See read_csv() documentation for "
-        "more details."
+        f"more details. Original error: {error}"
     )
 
 
-def quoted_newline_error(path: str) -> ValueError:
-    """Error for a split file's piece failing to parse."""
+def invalid_csv_chunk_error(path: str, error: Exception) -> ValueError:
+    """Return the error for a piece of a split file that pyarrow can't parse.
+
+    Args:
+        path: The split file.
+        error: The error pyarrow raised, shown in the message.
+
+    Returns:
+        The error to raise.
+    """
     return ValueError(
-        f"Failed to read a chunk of CSV file: {path}. The file is split at "
-        "newline bytes, so a newline inside a quoted or escaped value that "
-        "the piece can't see fails to parse. Pass "
+        f"Failed to read a chunk of CSV file: {path}. Original error: {error}. "
+        "A value that doesn't match its column's type, or a row with a different "
+        "number of columns, can cause this: fix the file, or pass "
+        "convert_options=pyarrow.csv.ConvertOptions(column_types=...). "
+        "The file is split at newline bytes, so a newline inside a quoted or "
+        "escaped value that the piece can't see can also cause it: pass "
         "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
         "read each file whole. See read_csv() documentation for more details."
     )
@@ -124,8 +143,8 @@ class CsvFileReader(LineChunkableFileReader):
                 yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
         except pa.ArrowInvalid as e:
             if unit.id == unit.source:
-                raise invalid_csv_error(unit.source) from e
-            raise quoted_newline_error(unit.source) from e
+                raise invalid_csv_error(unit.source, e) from e
+            raise invalid_csv_chunk_error(unit.source, e) from e
 
     @override
     def _make_chunk_fragment(

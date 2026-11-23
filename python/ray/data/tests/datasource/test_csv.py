@@ -4,15 +4,22 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from fsspec.implementations.http import HTTPFileSystem
 
 import ray
 from ray.data import Schema
+from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.mock_http_server import (
+    data_file,
+    no_ranges_file,
+    no_ranges_num_lines,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -280,6 +287,32 @@ def test_read_csv_v2_reads_a_split_file_with_another_column_order(
     assert {(row["id"], row["name"]) for row in rows} == {(1, "x")} | {
         (i, f"n{i}") for i in range(200)
     }
+
+
+@pytest.mark.parametrize(
+    "url, num_lines",
+    [(data_file, 1000), (no_ranges_file, no_ranges_num_lines)],
+    ids=["no-size", "no-ranges"],
+)
+@pytest.mark.parametrize("filesystem", [HTTPFileSystem(), None], ids=["fsspec", "auto"])
+@pytest.mark.parametrize("num_paths", [1, 2])
+def test_read_csv_http_file_system(
+    ray_start_regular_shared,
+    http_server,
+    datasource_v2,
+    url,
+    num_lines,
+    filesystem,
+    num_paths,
+):
+    """``no-size``: the server sends no ``Content-Length``, so the filesystem
+    reports no size for the file and V2 must read it whole, not skip it.
+    ``no-ranges``: the server sends the size but ignores range requests."""
+    ds = ray.data.read_csv([url] * num_paths, filesystem=filesystem)
+
+    assert isinstance(ds._logical_plan.dag, ReadFiles) == datasource_v2
+    # The first line is the header.
+    assert ds.count() == (num_lines - 1) * num_paths
 
 
 if __name__ == "__main__":

@@ -118,7 +118,9 @@ class OnDiskSizeEstimator(InMemorySizeEstimator):
 
     A chunk row weighs its own ``size_bytes``, not its whole file's size.
     V1 sizes CSV and JSON reads by on-disk bytes the same way, and nothing
-    is read to estimate.
+    is read to estimate. A row whose file size is unknown (``NaN`` in
+    ``file_sizes``) gets a ``NaN`` estimate, which the partitioner treats as
+    unknown.
     """
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
@@ -129,5 +131,5 @@ class OnDiskSizeEstimator(InMemorySizeEstimator):
                     manifest.file_sizes, manifest.file_chunk_metadatas
                 )
             ],
-            dtype=np.int64,
+            dtype=np.float64,
         )

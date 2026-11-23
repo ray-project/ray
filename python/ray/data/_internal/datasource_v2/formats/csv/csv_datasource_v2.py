@@ -179,9 +179,13 @@ class CsvFileIndexer(LineChunkFileIndexer):
 
     def _needs_header(self, file_info: FileInfo) -> bool:
         # The whole-file branch of ``_chunk_metadatas_of_file`` is the exact
-        # negation, so a file reads its header iff its rows are chunked.
-        assert file_info.size is not None
-        return file_info.size > self._chunk_size and not _is_compressed(file_info.path)
+        # negation, so a file reads its header iff its rows are chunked. A file of
+        # unknown size is read whole.
+        return (
+            file_info.size is not None
+            and file_info.size > self._chunk_size
+            and not _is_compressed(file_info.path)
+        )
 
     @override
     def _chunk_metadatas_of_file(
@@ -310,7 +314,7 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
                 return file_format.inspect(read_snappy_buffer(path, self._filesystem))
             return file_format.inspect(path, filesystem=self._filesystem)
         except pa.ArrowInvalid as e:
-            raise invalid_csv_error(path) from e
+            raise invalid_csv_error(path, e) from e
 
     @override
     def create_scanner(
