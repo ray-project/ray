@@ -91,7 +91,7 @@ def manifest(ref: str) -> dict[str, Any]:
 
 
 def config(ref: str) -> dict[str, Any]:
-    return json.loads(_crane(["config", ref]))
+    return _crane_json(["config", ref])
 
 
 def sha256_file(path: Path) -> str:
