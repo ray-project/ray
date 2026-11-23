@@ -10,6 +10,7 @@ import pytest
 import ray.cloudpickle as cloudpickle
 from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
     DeltaDatasourceV2,
+    DeltaTableInfo,
     delta_datasource_v2_unsupported_reason,
 )
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
@@ -213,7 +214,6 @@ def _stub_table(
     "table, kwargs, expected",
     [
         (_stub_table(reader_version=3, reader_features=["timestampNtz"]), {}, None),
-        (_stub_table(), {"arrow_parquet_args": {"batch_size": 10}}, "PyArrow"),
         (_stub_table(reader_version=2), {}, "reader version 2"),
         # Only the unsupported features are named.
         (
@@ -243,9 +243,7 @@ def _stub_table(
 )
 def test_delta_datasource_v2_unsupported_reason(table, kwargs, expected):
     reason = delta_datasource_v2_unsupported_reason(
-        table,
-        include_paths=kwargs.get("include_paths", False),
-        arrow_parquet_args=kwargs.get("arrow_parquet_args", {}),
+        table, include_paths=kwargs.get("include_paths", False)
     )
 
     if expected is None:
@@ -257,12 +255,11 @@ def test_delta_datasource_v2_unsupported_reason(table, kwargs, expected):
 def test_delta_datasource_v2_supports_a_real_table(partitioned_table):
     """Catches a ``deltalake`` whose ``protocol()``, ``metadata()`` or
     ``schema()`` changed, which would send every table to the V1 reader."""
-    assert (
-        delta_datasource_v2_unsupported_reason(
-            _open(partitioned_table), include_paths=False, arrow_parquet_args={}
-        )
-        is None
-    )
+    info = DeltaTableInfo.from_table(_open(partitioned_table))
+
+    assert info.unsupported_reason is None
+    assert info.schema.names == ["id", "grp", "value"]
+    assert info.partition_columns == ("grp",)
 
 
 def _bind_generated_id_column(datasource: DeltaDatasourceV2, tmp_path) -> LogicalPlan:

@@ -6808,80 +6808,67 @@ def read_delta(
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
     ctx = DataContext.get_current()
-    dt = None
+    v1_version = version
     if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
-        import deltalake
-        from packaging.version import parse as parse_version
-
         from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
             DeltaDatasourceV2,
-            delta_datasource_v2_unsupported_reason,
+            open_delta_table,
         )
 
-        # The V2 reader lists the data files in its listing tasks, so the driver
-        # only needs the log's metadata. deltalake 1.6 and later ignore
-        # ``without_files`` (with a DeprecationWarning) and load the file list:
-        # they have no metadata-only load yet
-        # (https://github.com/delta-io/delta-rs/issues/5034).
-        loads_files = parse_version(deltalake.__version__) >= parse_version("1.6")
-        checked_table = DeltaTable(
-            path,
-            version=version,
-            storage_options=storage_options,
-            **({} if loads_files else {"without_files": True}),
-        )
-        unsupported_reason = delta_datasource_v2_unsupported_reason(
-            checked_table,
-            include_paths=include_paths,
-            arrow_parquet_args=arrow_parquet_args,
-        )
-        if unsupported_reason is None:
-            if partition_filters is not None:
-                # Rejects what the V1 reader rejects; the V2 listing then has
-                # ``deltalake`` select the files, as V1 does.
-                _delta_partition_filter_kwargs(checked_table, partition_filters)
-            datasource_v2 = DeltaDatasourceV2(
-                checked_table,
+        if arrow_parquet_args:
+            unsupported_reason = (
+                f"PyArrow scan options were passed: {sorted(arrow_parquet_args)}"
+            )
+        else:
+            # Opens the table once, in a Ray task: the driver gets the schema,
+            # and the file list stays in the object store for the listing.
+            table_info, loaded_add_actions = open_delta_table(
+                path,
+                version=version,
                 storage_options=storage_options,
-                filesystem=filesystem,
-                columns=columns,
-                include_paths=include_paths,
-                shuffle=shuffle,
-                version_pinned_by_caller=version is not None,
                 partition_filters=partition_filters,
+                include_paths=include_paths,
+                ray_remote_args=_delta_open_task_remote_args(
+                    runtime_env, ray_remote_args
+                ),
             )
-            return _read_datasource_v2(
-                datasource_v2,
-                parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
-                num_cpus=num_cpus,
-                num_gpus=num_gpus,
-                memory=memory,
-                ray_remote_args=ray_remote_args,
-                label_selector=label_selector,
-                fallback_strategy=fallback_strategy,
-                max_calls=max_calls,
-                resources=resources,
-                accelerator_type=accelerator_type,
-                runtime_env=runtime_env,
-                concurrency=concurrency,
-            )
+            unsupported_reason = table_info.unsupported_reason
+            if unsupported_reason is None:
+                datasource_v2 = DeltaDatasourceV2(
+                    table_info,
+                    loaded_add_actions=loaded_add_actions,
+                    storage_options=storage_options,
+                    filesystem=filesystem,
+                    columns=columns,
+                    include_paths=include_paths,
+                    shuffle=shuffle,
+                    version_pinned_by_caller=version is not None,
+                    partition_filters=partition_filters,
+                )
+                return _read_datasource_v2(
+                    datasource_v2,
+                    parallelism=_get_num_output_blocks(
+                        parallelism, override_num_blocks
+                    ),
+                    num_cpus=num_cpus,
+                    num_gpus=num_gpus,
+                    memory=memory,
+                    ray_remote_args=ray_remote_args,
+                    label_selector=label_selector,
+                    fallback_strategy=fallback_strategy,
+                    max_calls=max_calls,
+                    resources=resources,
+                    accelerator_type=accelerator_type,
+                    runtime_env=runtime_env,
+                    concurrency=concurrency,
+                )
+            # V1 reads the version that was checked.
+            v1_version = table_info.version
         logger.info(
             "Reading Delta table %r with the V1 reader: %s.", path, unsupported_reason
         )
-        # Read the version that was checked. With its file list loaded, the
-        # checked table is the one V1 needs, so don't load it again.
-        dt = (
-            checked_table
-            if loads_files
-            else DeltaTable(
-                path,
-                version=checked_table.version(),
-                storage_options=storage_options,
-            )
-        )
 
-    if dt is None:
-        dt = DeltaTable(path, version=version, storage_options=storage_options)
+    dt = DeltaTable(path, version=v1_version, storage_options=storage_options)
     # The data files of a column-mapped table name their columns with physical
     # names (such as ``col-<uuid>``) that only the log maps to the table's
     # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some
@@ -7221,6 +7208,19 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
+
+
+def _delta_open_task_remote_args(
+    runtime_env: Optional[Dict[str, Any]],
+    ray_remote_args: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    """Options for the task that opens a Delta table for the V2 reader.
+
+    It takes the read's ``runtime_env``, which may be what installs
+    ``deltalake`` on the workers.
+    """
+    runtime_env = runtime_env or (ray_remote_args or {}).get("runtime_env")
+    return {"runtime_env": runtime_env} if runtime_env else {}
 
 
 def _delta_partition_filter_kwargs(
