@@ -258,12 +258,12 @@ def test_table_scanner_capabilities_clone_and_projection():
 @pytest.mark.parametrize(
     "limit,expected",
     [
-        (True, None),
-        (False, None),
-        (0, 0),
-        (2**31 - 1, 2**31 - 1),
-        (2**31, None),
-        (2**63, None),
+        pytest.param(True, None, id="true_falls_back"),
+        pytest.param(False, None, id="false_falls_back"),
+        pytest.param(0, 0, id="zero"),
+        pytest.param(2**31 - 1, 2**31 - 1, id="max_hive_integer"),
+        pytest.param(2**31, None, id="above_hive_integer"),
+        pytest.param(2**63, None, id="large_integer"),
     ],
 )
 def test_dataset_limit_sql_integer_boundary(limit, expected):
@@ -277,11 +277,11 @@ def test_dataset_limit_sql_integer_boundary(limit, expected):
 @pytest.mark.parametrize(
     "source_limit,limits,expected",
     [
-        (None, (2**31, 10), 10),
-        (None, (10, 2**31), 10),
-        (100, (2**31,), 100),
-        (5, (2,), 2),
-        (5, (2, True, False), 2),
+        pytest.param(None, (2**31, 10), 10, id="overflow_then_limit"),
+        pytest.param(None, (10, 2**31), 10, id="limit_then_overflow"),
+        pytest.param(100, (2**31,), 100, id="source_then_overflow"),
+        pytest.param(5, (2,), 2, id="smaller_dataset_limit"),
+        pytest.param(5, (2, True, False), 2, id="limit_then_boolean"),
     ],
 )
 def test_limits_preserve_smaller_source_and_accepted_limits(
@@ -293,7 +293,13 @@ def test_limits_preserve_smaller_source_and_accepted_limits(
     assert scanner.pushed_limit() == expected
 
 
-@pytest.mark.parametrize("source", ["parquet", "hive_query"])
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param("parquet", id="parquet"),
+        pytest.param("hive_query", id="hive_query"),
+    ],
+)
 def test_non_table_read_metadata_preserves_original_args(source):
     if source == "hive_query":
         scanner = _HiveScanner(_query_spec(), pa.schema([("id", pa.int64())]))
@@ -308,7 +314,9 @@ def test_non_table_read_metadata_preserves_original_args(source):
     assert sanitize_for_struct(current) == sanitize_for_struct(original)
 
 
-@pytest.mark.parametrize("source", ["query", "table"])
+@pytest.mark.parametrize(
+    "source", [pytest.param("query", id="query"), pytest.param("table", id="table")]
+)
 def test_metadata_does_not_export_hive_scanner_spec(source):
     marker = "synthetic_private_value"
     schema = pa.schema([("value", pa.string())])

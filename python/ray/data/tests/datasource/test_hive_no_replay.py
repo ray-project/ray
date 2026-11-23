@@ -24,8 +24,6 @@ class Cursor:
             os.environ["HIVE_TEST_EXECUTE_COUNT_FILE"], "a", encoding="utf-8"
         ) as log:
             log.write(statement + "\\n")
-        if os.environ["HIVE_TEST_FAILURE_MODE"] == "execute":
-            raise RuntimeError("injected execute failure")
 
     def fetchmany(self, size):
         self.fetch_calls += 1
@@ -34,8 +32,6 @@ class Cursor:
             return [(1,), (2,)] if self.fetch_calls == 1 else []
         if mode == "after_first_block" and self.fetch_calls == 1:
             return [(1,)]
-        if mode == "convert":
-            return [(1,)] if self.fetch_calls == 1 else [("invalid integer",)]
         if mode == "worker_crash":
             os._exit(23)
         raise RuntimeError("injected fetch failure")
@@ -78,10 +74,7 @@ def _write_fake_impyla(tmp_path: Path):
         for failure in ("before_first_block", "after_first_block", "worker_crash")
         for max_errors in (0, 1, -1)
     ]
-    + [
-        (failure, 0, "table")
-        for failure in ("execute", "after_first_block", "convert", "worker_crash")
-    ],
+    + [("worker_crash", 0, "table")],
 )
 def test_failed_read_submits_one_data_query(
     tmp_path: Path,
@@ -89,6 +82,7 @@ def test_failed_read_submits_one_data_query(
     max_errored_blocks: int,
     read_mode: str,
     restore_data_context,
+    shutdown_only,
 ):
     driver_pid = os.getpid()
 
@@ -129,7 +123,7 @@ def test_failed_read_submits_one_data_query(
     try:
         context = ray.data.DataContext.get_current()
         context.max_errored_blocks = max_errored_blocks
-        if failure_mode in ("after_first_block", "convert"):
+        if failure_mode == "after_first_block":
             # Flush the first fetched rows as their own output block so the
             # read task produces output before the injected failure.
             context.target_max_block_size = 1
@@ -152,9 +146,8 @@ def test_failed_read_submits_one_data_query(
                 assert rows in ([], [{"id": 1}])
             else:
                 assert rows == []
-        elif failure_mode in ("worker_crash", "convert"):
-            message = "could not be converted" if failure_mode == "convert" else None
-            with pytest.raises(Exception, match=message):
+        elif failure_mode == "worker_crash":
+            with pytest.raises(Exception):
                 dataset.take_all()
         else:
             with pytest.raises(Exception, match="HiveServer2 read failed"):

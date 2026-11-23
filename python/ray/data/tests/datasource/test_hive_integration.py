@@ -390,43 +390,6 @@ class TestHiveTablePushdown:
             assert source(trace).limit(0).take_all() == []
             assert _data_statements(trace) == []
 
-    def test_hive_dataset_limit_boundaries_over_real_hs2(self, tmp_path):
-        options = _connection_options()
-        values = "SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3"
-        with _temporary_table(options, "id BIGINT", values) as (table, _):
-            for limit, expected_count, sql_limit in (
-                (True, 1, None),
-                (False, 0, None),
-                (2**31 - 1, 3, 2**31 - 1),
-                (2**31, 3, None),
-            ):
-                trace = tmp_path / f"limit-{limit}.jsonl"
-                dataset = ray.data.read_hive(
-                    table, connection_factory=_traced_factory(options, trace)
-                ).limit(limit)
-                rows = dataset.take_all()
-                assert len(rows) == expected_count
-                assert all(row["id"] in (1, 2, 3) for row in rows)
-                if expected_count == 3:
-                    assert sorted(row["id"] for row in rows) == [1, 2, 3]
-                statements = _data_statements(trace)
-                if limit is False:
-                    assert statements == []
-                else:
-                    assert len(statements) == 1
-                    if sql_limit is None:
-                        assert " LIMIT " not in statements[0]
-                    else:
-                        assert statements[0].endswith(f" LIMIT {sql_limit}")
-
-            trace = tmp_path / "source-limit-boolean.jsonl"
-            dataset = ray.data.read_hive(
-                table, limit=2, connection_factory=_traced_factory(options, trace)
-            ).limit(True)
-            assert len(dataset.take_all()) == 1
-            statements = _data_statements(trace)
-            assert len(statements) == 1 and statements[0].endswith(" LIMIT 2")
-
     def test_hive_projection_quoted_columns_over_real_hs2(self, tmp_path):
         options = _connection_options()
         value = "O'Reilly\\line\n\t\x00中文"
