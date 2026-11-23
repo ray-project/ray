@@ -36,10 +36,9 @@ from pathlib import Path
 from typing import Any, Mapping, Optional, Sequence
 
 import click
-import runfiles
 import yaml
 
-from ci.ray_ci.automation.trivy import scan_images, scan_store, trivy_report
+from ci.ray_ci.automation.trivy import registry, scan_images, scan_store, trivy_report
 from ci.ray_ci.automation.trivy.scan_store import (
     DB_FOLDER,
     REPORT_FOLDER,
@@ -308,7 +307,7 @@ def report_build(
 ) -> int:
     """Write the report and the annotation; returns the exit code."""
     if not pipeline_file:
-        pipeline_file = Path(runfiles.Create().Rlocation(PIPELINE_RUNFILE))
+        pipeline_file = registry.runfile(PIPELINE_RUNFILE)
     expected = expected_images(yaml.safe_load(pipeline_file.read_text()))
     note = files_note(store)
 
