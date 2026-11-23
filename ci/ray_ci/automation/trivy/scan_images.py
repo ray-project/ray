@@ -105,7 +105,6 @@ DB_FILES = {
     "db": {"trivy.db", "metadata.json"},
     "java_db": {"trivy-java.db", "metadata.json"},
 }
-SHA256_DIGEST = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class ScanError(Exception):
@@ -298,7 +297,8 @@ def fetch_db(
     pin = pin if isinstance(pin, dict) else {}
     blob, manifest_digest = pin.get("blob"), pin.get("manifest")
     if not all(
-        isinstance(d, str) and SHA256_DIGEST.match(d) for d in (blob, manifest_digest)
+        isinstance(d, str) and registry.SHA256_DIGEST.fullmatch(d)
+        for d in (blob, manifest_digest)
     ):
         raise ScanError(f"{DB_METADATA} has no valid {source.name} pin: {pin!r}")
     # crane refuses a manifest whose digest differs from the one requested.
