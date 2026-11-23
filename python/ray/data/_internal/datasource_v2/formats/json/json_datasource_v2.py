@@ -80,8 +80,18 @@ def _read_json_sample(path: str, filesystem: "FileSystem") -> Tuple[pa.Buffer, b
     Returns:
         The sample, and whether it is the whole file.
     """
+    parts: List[bytes] = []
+    num_bytes = 0
     with open_json_stream(path, filesystem) as file:
-        data = file.read(_SCHEMA_SAMPLE_BYTES + 1)
+        # A stream may return fewer bytes than asked, such as an HTTP body
+        # without ``Content-Length``, so read until the sample is full.
+        while num_bytes <= _SCHEMA_SAMPLE_BYTES:
+            part = file.read(_SCHEMA_SAMPLE_BYTES + 1 - num_bytes)
+            if not part:
+                break
+            parts.append(part)
+            num_bytes += len(part)
+    data = b"".join(parts)
     if len(data) <= _SCHEMA_SAMPLE_BYTES:
         return pa.py_buffer(data), True
     last_newline = data.rfind(b"\n", 0, _SCHEMA_SAMPLE_BYTES)

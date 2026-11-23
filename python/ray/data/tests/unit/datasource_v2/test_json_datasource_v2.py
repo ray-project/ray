@@ -9,6 +9,8 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.json as pajson
 import pytest
+from fsspec.implementations.local import LocalFileSystem
+from pyarrow.fs import FSSpecHandler, PyFileSystem
 
 from ray.data._internal.datasource.json_datasource import iter_json_lines_frames
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
@@ -223,6 +225,39 @@ def test_infers_the_schema_from_a_prefix_and_warns_if_it_cant(
 
     assert inferred == schema
     assert ("Couldn't infer the schema" in caplog.text) is warns
+
+
+class _ShortReadFile:
+    """A file whose ``read`` returns at most 4 KiB, as a network stream may."""
+
+    def __init__(self, file):
+        self._file = file
+
+    def read(self, num_bytes=-1):
+        return self._file.read(4096 if num_bytes < 0 else min(num_bytes, 4096))
+
+    def __getattr__(self, name):
+        return getattr(self._file, name)
+
+
+class _ShortReadFileSystem(LocalFileSystem):
+    def _open(self, path, mode="rb", **kwargs):
+        return _ShortReadFile(super()._open(path, mode, **kwargs))
+
+
+@pytest.mark.parametrize("num_rows", [300, 40_000], ids=["under_sample", "over_sample"])
+def test_infers_the_schema_from_a_stream_that_returns_short_reads(tmp_path, num_rows):
+    path = _write_jsonl(
+        tmp_path / "a.jsonl", [{"id": i, "name": f"n{i}"} for i in range(num_rows)]
+    )
+    datasource = JsonDatasourceV2(
+        [path], filesystem=PyFileSystem(FSSpecHandler(_ShortReadFileSystem()))
+    )
+    sample = FileManifest.construct_manifest(
+        paths=[path], sizes=[None], chunk_metadatas=[None]
+    )
+
+    assert datasource.infer_schema(sample).names == ["id", "name"]
 
 
 def test_lines_true_reports_the_file_of_a_bad_line(tmp_path):
