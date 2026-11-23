@@ -113,6 +113,15 @@ def test_digest_must_be_a_sha256_digest(
     assert registry.digest("repo:tag") == good
 
 
+def test_config_is_one_json_object(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    crane = fake_crane(tmp_path, 'echo \'{"architecture": "amd64"}\'')
+    monkeypatch.setattr(registry, "crane_binary", lambda: crane)
+    assert registry.config("repo@sha256:d1") == {"architecture": "amd64"}
+    fake_crane(tmp_path, "echo '[1]'")
+    with pytest.raises(registry.RegistryError, match="no JSON object"):
+        registry.config("repo@sha256:d1")
+
+
 def test_a_failed_blob_download_leaves_no_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

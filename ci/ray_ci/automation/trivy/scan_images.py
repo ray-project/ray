@@ -47,6 +47,8 @@ class Target:
 
     ctx: RayImagePushContext
     ref: str
+    # Whether this build's publish step pushes the image to Docker Hub.
+    published: bool = False
     digest: str = ""
     error: str = ""
     db: dict[str, Any] = field(default_factory=dict)
@@ -80,10 +82,14 @@ class Target:
             "architecture": self.ctx.architecture,
             "ref": self.ref,
             "digest": self.digest,
+            # The tags the publish step pushed this image under, none when it
+            # only did a dry run. Nightly tags of the two architectures are
+            # later joined into multi-arch indexes, so such a tag can name an
+            # index holding this image rather than the image itself.
             "published_tags": [
                 f"{self.ctx.docker_hub_repo}:{tag}"
                 for tag in self.ctx.destination_tags()
-                if not DATED_TAG.match(tag)
+                if self.published and not DATED_TAG.match(tag)
             ],
             "status": "scanned" if self.scanned and not self.error else "error",
             "error": self.error,
@@ -98,6 +104,15 @@ def parse_image(spec: str) -> tuple[str, str]:
     return image_type, python_version
 
 
+def publishes(branch: str, rayci_schedule: str) -> bool:
+    """Whether the build's publish step pushes to Docker Hub, as
+    push_ray_image._should_upload decides. Its other condition, a postmerge
+    pipeline, holds for every scan job."""
+    return branch.startswith("releases/") or (
+        branch == "master" and rayci_schedule == "nightly"
+    )
+
+
 def build_targets(
     images: Sequence[tuple[str, str]],
     platform: str,
@@ -109,24 +124,32 @@ def build_targets(
     rayci_schedule: str,
     pull_request: str,
 ) -> list[Target]:
-    targets = []
+    targets: list[Target] = []
     for image_type, python_version in images:
-        ctx = RayImagePushContext(
-            ray_type=RayType(image_type),
-            python_version=python_version,
-            platform=platform,
-            architecture=architecture,
-            branch=branch,
-            commit=commit,
-            rayci_schedule=rayci_schedule,
-            rayci_build_id=build_id,
-            pull_request=pull_request,
-        )
         try:
+            ctx = RayImagePushContext(
+                ray_type=RayType(image_type),
+                python_version=python_version,
+                platform=platform,
+                architecture=architecture,
+                branch=branch,
+                commit=commit,
+                rayci_schedule=rayci_schedule,
+                rayci_build_id=build_id,
+                pull_request=pull_request,
+            )
             ctx.ray_image.validate()
-        except RayImageError as e:
+        except (ValueError, RayImageError) as e:
+            # ValueError: an image type RayType doesn't know.
             raise click.BadParameter(str(e)) from e
-        targets.append(Target(ctx=ctx, ref=f"{work_repo}:{ctx.wanda_tag}"))
+        target = Target(
+            ctx=ctx,
+            ref=f"{work_repo}:{ctx.wanda_tag}",
+            published=publishes(branch, rayci_schedule),
+        )
+        if any(t.name == target.name for t in targets):
+            raise click.BadParameter(f"{image_type}:{python_version} is given twice")
+        targets.append(target)
     return targets
 
 

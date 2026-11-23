@@ -140,7 +140,6 @@ py_test(
     name = "test_scan_images",
     size = "small",
     srcs = ["test_scan_images.py"],
-    data = glob(["testdata/*.json"]),
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
