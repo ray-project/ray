@@ -26,6 +26,7 @@ Two engines:
   ``AggregateFnV2.raw_to_partial``.
 """
 import enum
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -101,10 +102,22 @@ def _agg_specs(
     return tuple(aggs), specs
 
 
-def _is_vectorizable(keys: List[str], specs: List[ArrowAggSpec]) -> bool:
+# Internal columns that share a table with the keys and target columns:
+# per-agg state (``__agg{i}_*``) and derived values (``__d{i}_*``).
+_INTERNAL_COLUMN = re.compile(r"__(agg|d)\d+_")
+
+
+def _is_vectorizable(
+    keys: List[str], aggs: Tuple["AggregateFnV2", ...], specs: List[ArrowAggSpec]
+) -> bool:
     """Query-shape gate shared by the map and reduce builders, the two must
     decide identically (the reduce's expected input format depends on what the
     map shipped)."""
+    targets = [agg.get_target_column() for agg in aggs]
+    if any(c is not None and _INTERNAL_COLUMN.match(c) for c in keys + targets):
+        # A key or target named like an internal column would clash with it;
+        # the Python engine doesn't add such columns.
+        return False
     has_collection = any(spec.collection for spec in specs)
     if has_collection and not all(spec.collection for spec in specs):
         # Mixed reduction + collection shapes need different map outputs
@@ -185,9 +198,12 @@ def _aggregate_raw_rows(
     keys: List[str],
     aggs: Tuple["AggregateFnV2", ...],
     specs: List[ArrowAggSpec],
+    final: bool = False,
 ) -> Tuple[pa.Table, List[Tuple[str, ...]]]:
     """Groups ``table``'s raw rows by ``keys`` into each agg's ``__agg{i}_*``
-    columns (e.g. sum and count for Mean). Returns the table and those names."""
+    columns (e.g. sum and count for Mean). Returns the table and those names.
+    ``final``: the rows are all of their groups' rows, on the reducer, so
+    specs use ``final_grouped_raw`` where they have one."""
     agg_specs: List[tuple] = []
     comps: List[Tuple[str, ...]] = []
     kernel_names: List[str] = []
@@ -199,8 +215,11 @@ def _aggregate_raw_rows(
             table = spec.prep(i, col, table)
         agg_comps = tuple(f"__agg{i}_{c}" for c in spec.components)
         comps.append(agg_comps)
-        if spec.grouped_raw is not None:
-            grouped_aggs.append((i, spec.grouped_raw, col, opts, agg_comps))
+        grouped_raw = spec.grouped_raw
+        if final and spec.final_grouped_raw is not None:
+            grouped_raw = spec.final_grouped_raw
+        if grouped_raw is not None:
+            grouped_aggs.append((i, grouped_raw, col, opts, agg_comps))
         else:
             kernel_names.extend(agg_comps)
             agg_specs += spec.raw_agg_specs(i, col, opts)
@@ -376,7 +395,9 @@ def _make_complete_aggregating_block_fn(
         return None
     aggs, specs = unpacked
     keys = list(key_columns)
-    if not _is_vectorizable(keys, specs) or any(spec.collection for spec in specs):
+    if not _is_vectorizable(keys, aggs, specs) or any(
+        spec.collection for spec in specs
+    ):
         return None
     # Buffer only the columns the aggregation needs.
     columns = _key_and_target_columns(keys, aggs)
@@ -533,7 +554,7 @@ def _make_vectorized_aggregating_transformer(
     aggs, specs = unpacked
 
     keys = list(key_columns)
-    if not _is_vectorizable(keys, specs):
+    if not _is_vectorizable(keys, aggs, specs):
         return None
     has_collection = any(spec.collection for spec in specs)
     keep = _key_and_target_columns(keys, aggs)
@@ -590,7 +611,8 @@ def _make_vectorized_aggregating_transformer(
             # them by the missing ``__agg0_*`` column (see _arrow_reduce).
             return block.select(keep)
 
-        partials, _ = _aggregate_raw_rows(block, keys, aggs, specs)
+        # Only keys and targets: no other column can clash with ``__d{i}_*``.
+        partials, _ = _aggregate_raw_rows(block.select(keep), keys, aggs, specs)
         return partials
 
     return _arrow_transform
@@ -606,7 +628,7 @@ def _make_vectorized_aggregating_reduce_fn(
     aggs, specs = unpacked
 
     keys = list(key_columns)
-    if not _is_vectorizable(keys, specs):
+    if not _is_vectorizable(keys, aggs, specs):
         return None
     has_collection = any(spec.collection for spec in specs)
 
@@ -652,7 +674,7 @@ def _make_vectorized_aggregating_reduce_fn(
                 return
             if not partials:
                 # Every map task skipped partial aggregation: one raw pass.
-                merged, _ = _aggregate_raw_rows(raw, keys, aggs, specs)
+                merged, _ = _aggregate_raw_rows(raw, keys, aggs, specs, final=True)
             else:
                 if raw is not None:
                     partials.append(_raw_rows_to_partials(raw, keys, aggs, specs))

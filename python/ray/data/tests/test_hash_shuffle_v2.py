@@ -2352,11 +2352,16 @@ def test_python_engine_without_raw_to_partial_always_pre_aggregates():
     assert shard.column_names == ["k", "sum_sq(v)"]
 
 
-def test_std_merge_keeps_precision_with_large_offset():
-    """Partials 1e16 and 1e16 + 2: their mean, 1e16 + 1, isn't a double, so
-    merging must work with the partial means' differences."""
+@pytest.mark.parametrize(
+    "modes",
+    [None, ("always", "always"), ("never", "never"), ("always", "never")],
+)
+def test_std_keeps_precision_with_large_offset(modes):
+    """One value per block, 1e16 and 1e16 + 2: their mean, 1e16 + 1, isn't a
+    double. The Python engine merges one-value partials exactly; so must the
+    vectorized merge and the reducer's pass over raw rows."""
     tables = [pa.table({"k": [0], "v": [1e16]}), pa.table({"k": [0], "v": [1e16 + 2]})]
-    rows = _aggregate_shards((Std("v", ddof=0),), tables, ("always", "always"))
+    rows = _aggregate_shards((Std("v", ddof=0),), tables, modes)
     assert rows.to_pylist() == [{"k": 0, "std(v)": 1.0}]
 
 
@@ -2463,7 +2468,8 @@ def test_python_raw_rows_match_pre_aggregation(agg_cls, modes):
 
 
 @pytest.mark.parametrize(
-    "key", ["__ray_row", "__ray_python_partials", "__ray_raw_rows"]
+    "key",
+    ["__ray_row", "__ray_python_partials", "__ray_raw_rows", "__d0_abs", "__agg0_list"],
 )
 def test_group_key_named_like_an_internal_column(key):
     """Internal columns pick names no key or target column uses."""
