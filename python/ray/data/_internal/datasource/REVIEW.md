@@ -24,10 +24,14 @@ in this deprecated tree (see below).
 - A nontrivial feature addition to an existing v1 datasource deserves a
   comment asking whether the effort should go into porting that datasource to
   v2 instead of extending the deprecated implementation.
-- Any `pyarrow.Table` deserialized from external input (Parquet, Arrow IPC, a
-  service/library returning Arrow) calls `raise_on_pickle_object_columns(table)`
-  before it is yielded or materialized — skipping it is a remote code
-  execution bug.
+- A read never unpickles untrusted bytes. Any `pyarrow.Table` deserialized
+  from external input (Parquet, Arrow IPC, a service/library returning Arrow)
+  must not let a `ray.data.arrow_pickled_object` column reach a block —
+  letting one through is a remote code execution bug. Check against whatever
+  guard is in `master`: today that's a `raise_on_pickle_object_columns(table)`
+  call before the table is yielded or materialized; this enforcement is being
+  centralized, so once that lands the per-call check is no longer the thing to
+  look for.
 - Credentials, connection strings, and auth tokens never appear in log lines,
   exception messages, or `repr`s (e.g. SQL connection params, cloud keys in
   URIs).
