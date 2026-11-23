@@ -267,6 +267,9 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
 
         super().__init__(*args, **kwargs)
         self._input_queue_bytes_by_node: DefaultDict[NodeIdStr, int] = defaultdict(int)
+        # Set when the first bundle is queued for dispatch (the same point
+        # ``on_start`` runs). Until then the sizer starts no actors for this op.
+        self._first_bundle_queued: bool = False
         # Pool draining-generation last reconciled into the output queue's
         # prioritized set. -1 forces the first sync. See _sync_draining_priorities.
         self._last_synced_draining_generation: int = -1
@@ -452,12 +455,16 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             or self.data_context.target_max_block_size
         )
 
-    def awaiting_on_start(self) -> bool:
-        """Whether an ``on_start`` callback is registered but has not run yet.
-        Needed because icerberg requires an on_start callback to start before
-        launching any tasks.
+    def awaiting_first_input(self) -> bool:
+        """Whether no bundle has been queued for dispatch yet.
+
+        The sizer starts no actors for an op until then: there is nothing for
+        them to run, and an ``on_start`` callback (e.g. Iceberg's
+        ``on_write_start``) runs on that first bundle and must run before the
+        first actor is created, since the actor ships the MapTransformer with
+        the state ``on_start`` sets.
         """
-        return self._on_start is not None and not self._on_start_called
+        return not self._first_bundle_queued
 
     @override
     def start(
@@ -986,6 +993,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # Notify first input for deferred initialization (e.g., Iceberg schema
         # evolution).
         self._notify_first_input(bundled_input)
+        self._first_bundle_queued = True
 
     def has_queued_bundle(self) -> bool:
         """Whether a bundle is ready to dispatch (it may still wait on an
