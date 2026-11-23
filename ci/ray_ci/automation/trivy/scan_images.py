@@ -9,7 +9,6 @@ image for the expected architecture.
 
 import logging
 import re
-import sys
 from dataclasses import dataclass, field
 from typing import Any, Sequence
 
@@ -21,7 +20,6 @@ from ci.ray_ci.automation.trivy.scan_store import StoreError
 from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
 
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 # Single-platform manifests; an index would let Trivy silently pick one.
 IMAGE_MANIFEST_TYPES = frozenset(
