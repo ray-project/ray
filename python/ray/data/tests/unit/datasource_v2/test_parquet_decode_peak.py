@@ -122,12 +122,15 @@ def _narrow_columns():
     return pa.table({f"c{i:03d}": rng.integers(0, 2**62, 700) for i in range(400)})
 
 
-def _case(make, rows=N, write_kwargs=None, columns=None, high=1.5, threads=1):
-    """A ``_CASES`` entry: ``make`` builds the table of ``rows`` rows, and ``high``
-    caps the estimate over the measured peak."""
+def _case(
+    make, rows=N, row_groups=1, write_kwargs=None, columns=None, high=1.5, threads=1
+):
+    """A ``_CASES`` entry: ``make`` builds the table of ``rows`` rows, written as
+    ``row_groups`` row groups, and ``high`` caps the estimate over the measured peak."""
     return SimpleNamespace(
         make=make,
         rows=rows,
+        row_groups=row_groups,
         write_kwargs=write_kwargs or {},
         columns=columns,
         high=high,
@@ -191,6 +194,23 @@ _CASES = {
         lambda: pa.table({"l": _eight_lists()["l0"], "y": _ints()}),
         columns=["y", "l"],
     ),
+    # Only the int64 column, which follows the list in the file.
+    "column-alone-after-list": _case(
+        lambda: pa.table({"l": _eight_lists()["l0"], "y": _ints()}),
+        columns=["y"],
+    ),
+    # Measured 1.62: the levels and values are charged at twice their slots.
+    "nested-lists": _case(
+        lambda: pa.table({"n": pa.array([[[i, i + 1], [i + 2]] for i in range(N)])}),
+        high=2.0,
+    ),
+    # A read task's estimate is the sum of its row groups'. Measured 1.89: each is
+    # charged its own footer read and buffers, which one CPU thread holds in turn.
+    "four-row-groups": _case(
+        lambda: pa.table({"a": _ints(), "s": _strings(1000)}),
+        row_groups=4,
+        high=2.0,
+    ),
     # One CPU thread frees each column's buffers before the next column decodes.
     "similar-lists": _case(_eight_lists),
     # Twelve decode all eight columns at once. On a busy machine fewer overlap, down
@@ -202,7 +222,12 @@ _CASES = {
 def _write(tmp_path, label):
     case = _CASES[label]
     path = tmp_path / f"{label}.parquet"
-    pq.write_table(case.make(), path, row_group_size=case.rows, **case.write_kwargs)
+    pq.write_table(
+        case.make(),
+        path,
+        row_group_size=case.rows // case.row_groups,
+        **case.write_kwargs,
+    )
     return path
 
 
@@ -213,7 +238,8 @@ def test_estimate_bounds_measured_peak(tmp_path, monkeypatch, label):
     case = _CASES[label]
     path = _write(tmp_path, label)
     monkeypatch.setattr(reader, "READER_CPU_COUNT", case.threads)
-    (estimate,) = _peaks(path, projected_cols=case.columns)
+    # A read task's estimate is the sum of its row groups'.
+    estimate = sum(_peaks(path, projected_cols=case.columns))
     peak = _peak(path=path, rows=case.rows, columns=case.columns, threads=case.threads)
     # The estimate carries a flat safety factor over the pool's peak.
     ratio = estimate / (_SAFETY_FACTOR * peak)

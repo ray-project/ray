@@ -1,4 +1,4 @@
-"""Estimate PyArrow 24's peak memory decoding a Parquet row group, from its footer.
+"""Estimate PyArrow's peak memory decoding a Parquet row group, from its footer.
 
 The peak is the I/O (the footer read, ``pre_buffer``'s gaps and the compressed
 chunks), every column's decoded values, the buffers of the columns decoding at once,
@@ -7,7 +7,10 @@ buffers are a sum of each one at its largest, so the estimate leans high; it nev
 came under the peaks PyArrow's pool measured, and carries a flat safety factor.
 """
 
-from typing import Mapping, Sequence, Set, Tuple
+from __future__ import annotations
+
+from collections.abc import Mapping, Sequence
+from types import MappingProxyType
 
 import pyarrow as pa
 from pyarrow.parquet import ColumnChunkMetaData, ColumnSchema, RowGroupMetaData
@@ -18,9 +21,6 @@ from ray.data._internal.datasource_v2.formats.parquet.decoded_size import (
     estimate_ancestors,
     estimate_leaf,
     estimate_row_group,
-)
-from ray.data._internal.datasource_v2.formats.parquet.decoded_size.arrow_layout import (
-    _LIST,
 )
 
 # PyArrow reads a file's last 64 KiB for its footer, and pre_buffer coalesces
@@ -41,11 +41,17 @@ _CAST_FACTOR = 1.5
 # pool. Telemetry decides whether it stays.
 _SAFETY_FACTOR = 1.1
 # Bytes per value as PyArrow decodes each fixed-width physical type.
-_PHYSICAL_WIDTH = dict(BOOLEAN=1, INT32=4, INT64=8, INT96=12, FLOAT=4, DOUBLE=8)
+_PHYSICAL_WIDTH = MappingProxyType(
+    dict(BOOLEAN=1, INT32=4, INT64=8, INT96=12, FLOAT=4, DOUBLE=8)
+)
 # Encodings whose decoders unpack a page's value lengths up front.
-_DELTA_ENCODINGS = {"DELTA_BYTE_ARRAY", "DELTA_LENGTH_BYTE_ARRAY"}
+_DELTA_ENCODINGS = frozenset({"DELTA_BYTE_ARRAY", "DELTA_LENGTH_BYTE_ARRAY"})
 # Encodings of the data pages of a chunk that has a dictionary page.
-_DICTIONARY_ENCODINGS = {"PLAIN_DICTIONARY", "RLE_DICTIONARY"}
+_DICTIONARY_ENCODINGS = frozenset({"PLAIN_DICTIONARY", "RLE_DICTIONARY"})
+# From PyArrow 26 a column's leaves are reserved for the row group's rows. Before,
+# the k-th column read was reserved for as many slots as the file's k-th *leaf* has
+# values, whichever column that leaf is in.
+_RESERVES_ROWS = pa.cpp_version_info.major >= 26
 
 
 def estimate_row_group_peak(
@@ -79,29 +85,37 @@ def estimate_row_group_work(
     column_leaves: Sequence[Sequence[int]],
     leaves: Mapping[int, LeafChunk],
     decode_threads: int,
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """One row group's decoded columns, and the buffers of the ``decode_threads``
-    largest columns, or of every column if it is 0 or less. ``column_leaves`` holds
-    each top-level column read as its leaf indices, in the order PyArrow reads them:
-    the filter's columns, then the projection's others. ``leaves`` holds the
-    unpinned leaves modelled."""
+    largest columns, or of every column if it is 0 or less. ``columns`` holds every
+    leaf of the file's schema, by leaf index. ``column_leaves`` holds each top-level
+    column read as its leaf indices, in the order PyArrow reads them: the filter's
+    columns, then the projection's others. ``leaves`` holds the unpinned leaves
+    modelled."""
     decoded, buffers = 0, []
     # The ancestors sized, which a column's leaves share.
-    counted: Set[int] = set()
+    counted: set[int] = set()
     # A column the file lacks isn't read, and takes no position.
     for position, leaf_indices in enumerate(filter(None, column_leaves)):
-        # PyArrow 24 reserves the k-th column's leaves for as many slots as the
-        # file's k-th *leaf* has values, whichever column that leaf is in.
-        reserved = row_group.column(position).num_values
+        if _RESERVES_ROWS:
+            reserved = row_group.num_rows
+        else:
+            reserved = row_group.column(position).num_values
         column_buffers = 0
         for leaf_idx in leaf_indices:
             # A leaf the estimator doesn't model is charged by the caller.
             if (leaf := leaves.get(leaf_idx)) is None:
                 continue
             decoded += estimate_ancestors(leaf=leaf, counted=counted)
-            decoded += estimate_leaf(leaf=leaf)
+            # Sized here and not by estimate_row_group: the buffers need each
+            # leaf's decoded bytes too.
+            leaf_decoded = estimate_leaf(leaf=leaf)
+            decoded += leaf_decoded
             column_buffers += estimate_leaf_buffers(
-                leaf=leaf, column=columns[leaf_idx], reserved=reserved
+                leaf=leaf,
+                column=columns[leaf_idx],
+                decoded=leaf_decoded,
+                reserved=reserved,
             )
         buffers.append(column_buffers)
     # Each CPU thread decodes one column at a time, and a column's buffers are
@@ -111,12 +125,13 @@ def estimate_row_group_work(
     return decoded, sum(buffers)
 
 
-def estimate_leaf_buffers(leaf: LeafChunk, column: ColumnSchema, reserved: int) -> int:
-    """The buffers PyArrow holds decoding one leaf, past its decoded values: a sum
-    of each buffer at its largest. ``reserved`` is the slots PyArrow reserves."""
+def estimate_leaf_buffers(
+    leaf: LeafChunk, column: ColumnSchema, decoded: int, reserved: int
+) -> int:
+    """The buffers PyArrow holds decoding one leaf, past its ``decoded`` bytes: a
+    sum of each buffer at its largest. ``reserved`` is the slots PyArrow reserves."""
     chunk = leaf.chunk
     encodings = set(chunk.encodings)
-    decoded = estimate_leaf(leaf=leaf)
     repeated = column.max_repetition_level > 0
     nullable = column.max_definition_level > 0
     # Buffers start at the slots reserved and grow by doubling: at most twice the
@@ -129,7 +144,7 @@ def estimate_leaf_buffers(leaf: LeafChunk, column: ColumnSchema, reserved: int) 
         buffers += chunk.total_uncompressed_size
     if repeated:
         # A list's offsets, for every slot reserved.
-        buffers += _list_offset_width(leaf) * reserved
+        buffers += leaf.profile.list_offset_width * reserved
     dictionary = _dictionary_bytes(chunk=chunk, encodings=encodings)
     if chunk.physical_type == "BYTE_ARRAY":
         # The builder's copy of the values and its 4-byte offsets. The dictionary
@@ -187,7 +202,7 @@ def _cast_reuses_buffers(stored: pa.DataType, pinned: pa.DataType) -> bool:
     return False
 
 
-def _dictionary_bytes(chunk: ColumnChunkMetaData, encodings: Set[str]) -> int:
+def _dictionary_bytes(chunk: ColumnChunkMetaData, encodings: set[str]) -> int:
     """The dictionary page's uncompressed bytes, at most, from its gap."""
     if chunk.has_dictionary_page:
         gap = chunk.data_page_offset - (chunk.dictionary_page_offset or 0)
@@ -204,10 +219,3 @@ def _dictionary_bytes(chunk: ColumnChunkMetaData, encodings: Set[str]) -> int:
     # Offsets that don't bound the page, or a writer that left the dictionary's
     # unset: the chunk's bytes, at most 2 MiB.
     return min(chunk.total_uncompressed_size, _DICTIONARY_BYTES)
-
-
-def _list_offset_width(leaf: LeafChunk) -> int:
-    """Bytes per offset of the widest list above ``leaf``: 4 under only a
-    fixed_size_list, which PyArrow reads as a list before dropping the offsets."""
-    widths = [node.width for node in leaf.profile.nodes[:-1] if node.kind == _LIST]
-    return max(widths, default=4)
