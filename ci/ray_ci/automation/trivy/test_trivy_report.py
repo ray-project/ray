@@ -581,6 +581,20 @@ def test_build_summary_totals_count_groups_like_the_report():
     assert summary["exit_code"] == EXIT_FINDINGS
 
 
+@pytest.mark.parametrize("fixed_first", [True, False])
+def test_build_summary_counts_a_key_like_its_group(fixed_first: bool):
+    """A key with a fix in only one path counts with that path's severity, as
+    its group in the report does, whichever path Trivy lists first."""
+    fixed = make_vuln(PkgPath="a/site-packages/x", Severity="CRITICAL")
+    no_fix = make_vuln(PkgPath="b/site-packages/x", FixedVersion="", Status="affected")
+    scan = scan_with(*((fixed, no_fix) if fixed_first else (no_fix, fixed)))
+    (group,) = group_findings([scan])
+    summary = trivy_report.build_summary([scan], SCANNER, BUILD)
+    counts = summary["images"][0]["counts"]
+    assert group.finding.severity == "CRITICAL"
+    assert (counts["critical_fixable"], counts["high_fixable"]) == (1, 0)
+
+
 @pytest.mark.parametrize(
     ("scans", "issues", "expected"),
     [
