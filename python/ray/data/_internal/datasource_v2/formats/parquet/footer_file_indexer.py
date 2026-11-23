@@ -75,7 +75,6 @@ def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     listing discovers, the partitioner groups.
     """
     n = len(chunked_file.row_groups)
-    assert chunked_file.file.size is not None
     return FileManifest.construct_manifest(
         paths=[chunked_file.file.path] * n,
         sizes=[chunked_file.file.size] * n,
@@ -407,10 +406,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             dispatch_next()
 
     def _batches(self, file_infos: "Iterable[FileInfo]") -> Iterator[List[FileInfo]]:
+        # A file of unknown size stays in: its footer read either works (the
+        # filesystem can still seek in it) or fails the read, as V1 does,
+        # instead of silently dropping the file's rows.
         batch: List[FileInfo] = []
         for file_info in file_infos:
-            if file_info.size is None:
-                continue
             batch.append(file_info)
             if len(batch) >= self._footer_batch_size:
                 yield batch
