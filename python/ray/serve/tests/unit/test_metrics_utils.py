@@ -209,6 +209,43 @@ class TestMetricsPusher:
         assert not metrics_pusher.stop_event.is_set()
         assert all(t.done() for t in new_tasks)
 
+    @pytest.mark.asyncio
+    async def test_stop_tasks_while_async_task_suspended(self):
+        """stop_tasks() while a metrics task is suspended in task_func().
+
+        Regression test for #68460: after resuming from an async
+        `task_func()`, the loop re-read `self._tasks[name].interval_s`
+        outside the try/except. If `stop_tasks()` had cleared `self._tasks`
+        in the meantime, the resumed task died with an uncaught KeyError.
+        """
+        entered = asyncio.Event()
+        release = asyncio.Event()
+
+        async def suspended_task():
+            entered.set()
+            await release.wait()
+
+        tasks_before = asyncio.all_tasks()
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.start()
+        metrics_pusher.register_or_update_task("suspended", suspended_task, 1)
+        await entered.wait()
+
+        # The metrics task and its internal stop-event waiter.
+        new_tasks = asyncio.all_tasks() - tasks_before
+        assert len(new_tasks) == 2
+        metrics_task = metrics_pusher._async_tasks["suspended"]
+
+        # Clear the registry while the metrics task is suspended inside
+        # `suspended_task()`, then let it resume.
+        metrics_pusher.stop_tasks()
+        release.set()
+
+        await asyncio.wait_for(metrics_task, timeout=10)
+        assert metrics_task.exception() is None
+        await asyncio.sleep(0)
+        assert all(t.done() for t in new_tasks)
+
 
 def assert_timeseries_equal(actual, expected):
     assert len(actual) == len(
