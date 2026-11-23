@@ -105,7 +105,7 @@ _TWO_TYPES_MOCK_DATA = [
     ids=["handle", "name"],
 )
 def test_accelerator_type_skips_gpu_that_cannot_be_queried(
-    mock_nvml, patch_mock_pynvml, caplog
+    mock_nvml, patch_mock_pynvml, propagate_logs, caplog
 ):
     accelerator_type = NvidiaGPUAcceleratorManager.get_current_node_accelerator_type()
 
@@ -124,7 +124,7 @@ def test_accelerator_type_skips_gpu_that_cannot_be_queried(
     ids=["handle", "name"],
 )
 def test_accelerator_type_is_unknown_when_no_gpu_can_be_queried(
-    mock_nvml, patch_mock_pynvml, caplog
+    mock_nvml, patch_mock_pynvml, propagate_logs, caplog
 ):
     accelerator_type = NvidiaGPUAcceleratorManager.get_current_node_accelerator_type()
 
