@@ -12,10 +12,15 @@ folder, named so people can find it by eye:
 Every job of a build derives the same folder from Buildkite's variables, so
 jobs hand files to each other through it. CI runner roles can read and write
 this bucket but can't push to ECR. The bucket expires objects after 30 days.
+
+Any job on the branch runners can write here too. Scan jobs check each DB
+against its upstream digest for that reason, but the report takes the
+results as it finds them.
 """
 
 import functools
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
@@ -37,7 +42,8 @@ MAX_POOL_CONNECTIONS = 32
 
 
 class StoreError(Exception):
-    """The folder can't be named, or an S3 call failed."""
+    """The folder can't be named, or an S3 call, or the local file it reads
+    or writes, failed."""
 
 
 def _clean_path(value: str) -> str:
@@ -59,6 +65,20 @@ class ScanStore:
     commit: str
     # A boto3 S3 client, created on first use.
     client: Any = field(default=None, repr=False)
+    # Threads share a store, and boto3's default session isn't thread-safe.
+    _lock: threading.Lock = field(
+        default_factory=threading.Lock, init=False, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        if not re.fullmatch(r"[0-9]+", self.build_number):
+            raise StoreError(f"build number {self.build_number!r} is not a number")
+        if not _clean_commit(self.commit):
+            raise StoreError(f"commit {self.commit!r} has no usable name")
+        if not _clean_path(self.pipeline.replace("/", "_")):
+            raise StoreError(f"pipeline {self.pipeline!r} has no usable name")
+        if not _clean_path(self.branch):
+            raise StoreError(f"branch {self.branch!r} has no usable name")
 
     @classmethod
     def for_build(
@@ -69,14 +89,8 @@ class ScanStore:
         commit: str,
         client: Any = None,
     ) -> "ScanStore":
-        if not re.fullmatch(r"[0-9]+", build_number):
-            raise StoreError(f"build number {build_number!r} is not a number")
-        if not _clean_commit(commit):
-            raise StoreError(f"commit {commit!r} has no usable name")
-        if not _clean_path(pipeline.replace("/", "_")):
-            raise StoreError(f"pipeline {pipeline!r} has no usable name")
-        if not _clean_path(branch):
-            raise StoreError(f"branch {branch!r} has no usable name")
+        """The store for a build's folder; raises StoreError if the folder
+        can't be named."""
         return cls(pipeline, branch, build_number, commit, client)
 
     @property
@@ -92,18 +106,19 @@ class ScanStore:
         return f"s3://{BUCKET}/{self.prefix}/" + (f"{folder}/" if folder else "")
 
     def _s3(self) -> Any:
-        if self.client is None:
-            self.client = boto3.client(
-                "s3",
-                region_name=REGION,
-                config=Config(max_pool_connections=MAX_POOL_CONNECTIONS),
-            )
+        with self._lock:
+            if self.client is None:
+                self.client = boto3.client(
+                    "s3",
+                    region_name=REGION,
+                    config=Config(max_pool_connections=MAX_POOL_CONNECTIONS),
+                )
         return self.client
 
     def _call(self, what: str, key: str, call: Callable[[], Any]) -> Any:
         try:
             return call()
-        except (Boto3Error, BotoCoreError, ClientError) as e:
+        except (Boto3Error, BotoCoreError, ClientError, OSError) as e:
             raise StoreError(f"{what} s3://{BUCKET}/{key} failed: {e}") from e
 
     def upload(self, path: Path, folder: str) -> str:

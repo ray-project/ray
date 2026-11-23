@@ -36,7 +36,10 @@ py_library(
     name = "fake_s3",
     testonly = True,
     srcs = ["fake_s3.py"],
-    deps = [ci_require("botocore")],
+    deps = [
+        ci_require("boto3"),
+        ci_require("botocore"),
+    ],
 )
 
 py_test(
