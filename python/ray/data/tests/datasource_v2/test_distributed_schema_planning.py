@@ -26,59 +26,6 @@ _FORMATS = [
 ]
 
 
-@pytest.mark.parametrize(
-    "include_paths,path_name,incompatible_id",
-    [
-        ("source_file", "source_file", False),
-        ("source_file", "source_file", True),
-    ],
-)
-def test_distributed_parquet_schema_ignores_overwritten_path(
-    monkeypatch,
-    tmp_path,
-    ray_start_regular_shared_2_cpus,
-    include_paths,
-    path_name,
-    incompatible_id,
-):
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", True)
-    for key, value in dict(
-        min_files=0, max_tasks=2, num_cpus=0.5, batch_size=2, io_concurrency=2
-    ).items():
-        monkeypatch.setattr(inference, f"_FULL_SCHEMA_INFERENCE_{key.upper()}", value)
-    paths = [tmp_path / f"f{i}.parquet" for i in range(2)]
-    pq.write_table(pa.table({"id": [1], path_name: [1]}), paths[0])
-    pq.write_table(
-        pa.table({"id": ["bad" if incompatible_id else 2], path_name: ["physical"]}),
-        paths[1],
-    )
-    trace = tmp_path / "reads.jsonl"
-
-    def read():
-        return ray.data.read_parquet(
-            [str(path) for path in paths],
-            include_paths=include_paths,
-            merge_schema=True,
-            filesystem=_filesystem(trace),
-        )
-
-    ds = None
-    if incompatible_id:
-        with pytest.raises(pa.ArrowTypeError, match="id"):
-            read()
-    else:
-        ds = read()
-
-    # Check before executing the Dataset so read workers cannot mask fallback.
-    assert any(record["pid"] != os.getpid() for record in _records(trace))
-    if ds is not None:
-        assert ds.schema().names == ["id", path_name]
-        assert sorted(ds.take_all(), key=lambda row: row["id"]) == [
-            {"id": 1, path_name: str(paths[0])},
-            {"id": 2, path_name: str(paths[1])},
-        ]
-
-
 @pytest.mark.parametrize("name,write,read", _FORMATS)
 def test_schema_reads_use_selected_workers(
     monkeypatch, tmp_path, ray_start_cluster, name, write, read

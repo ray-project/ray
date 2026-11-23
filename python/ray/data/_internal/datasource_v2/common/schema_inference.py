@@ -245,14 +245,13 @@ def infer_full_schema_from_files(
                     schema = pq.read_schema(pa.BufferReader(value))
                 else:
                     schema = pa.ipc.read_schema(pa.BufferReader(value))
-                if transform_schema is not None:
-                    schema = transform_schema(schema)
                 schemas.append((position, schema))
         schemas.sort(key=lambda item: item[0])
         return _merge_file_schemas(
             [paths[index] for index, _ in schemas],
             [schema for _, schema in schemas],
             format_name,
+            transform_schema=transform_schema,
         )
     finally:
         for ref in pending:
@@ -268,6 +267,7 @@ def infer_schema_from_files(
     read_schema: Callable[[str], pa.Schema],
     *,
     format_name: str,
+    transform_schema: Optional[Callable[[pa.Schema], pa.Schema]] = None,
 ) -> pa.Schema:
     """Read file schemas in input order and apply Ray's existing unifier.
 
@@ -283,12 +283,20 @@ def infer_schema_from_files(
         for start in range(0, len(paths), _SCHEMA_READ_BATCH_SIZE):
             batch = paths[start : start + _SCHEMA_READ_BATCH_SIZE]
             per_file_schemas.extend(executor.map(read_schema, batch))
-    return _merge_file_schemas(paths, per_file_schemas, format_name)
+    return _merge_file_schemas(
+        paths, per_file_schemas, format_name, transform_schema=transform_schema
+    )
 
 
 def _merge_file_schemas(
-    paths: List[str], per_file_schemas: List[pa.Schema], format_name: str
+    paths: List[str],
+    per_file_schemas: List[pa.Schema],
+    format_name: str,
+    *,
+    transform_schema: Optional[Callable[[pa.Schema], pa.Schema]] = None,
 ) -> pa.Schema:
+    if transform_schema is not None:
+        per_file_schemas = [transform_schema(schema) for schema in per_file_schemas]
     try:
         schema = unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
     except (pa.ArrowTypeError, pa.ArrowInvalid):

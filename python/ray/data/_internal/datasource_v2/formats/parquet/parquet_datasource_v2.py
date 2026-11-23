@@ -365,12 +365,13 @@ class ParquetDatasourceV2(FileDataSourceV2):
         else:
 
             def _read_schema(path: str):
-                return self._without_path_column(
-                    _read_parquet_schema(path, filesystem, file_sizes[path])
-                )
+                return _read_parquet_schema(path, filesystem, file_sizes[path])
 
             schema = infer_schema_from_files(
-                sample_paths, _read_schema, format_name="Parquet"
+                sample_paths,
+                _read_schema,
+                format_name="Parquet",
+                transform_schema=self._without_path_column,
             )
 
         return self._augment_schema(schema, sample)
