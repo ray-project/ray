@@ -22,14 +22,15 @@ from websockets.sync.client import connect
 
 import ray
 import ray._private.state as state
-from ray import serve
+from ray import cloudpickle, serve
 from ray._common.network_utils import find_free_port
 from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.exceptions import RayTaskError
 from ray.serve._private.api import serve_start_async
-from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.common import DeploymentID, ReplicaID, TargetCapacityDirection
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
@@ -42,6 +43,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.replica import ReplicaActor
 from ray.serve._private.test_utils import (
     expected_proxy_actors,
     get_application_url,
@@ -49,6 +51,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve._private.tracing_utils import InvalidTracingConfigError
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
+from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import (
     ControllerOptions,
     GangSchedulingConfig,
@@ -837,9 +840,8 @@ def test_serve_start_tracing_config_imperative_flow(ray_shutdown):
     """Tracing config passed to ``serve.start()`` reaches the controller and is
     applied to both replicas and proxies (the imperative flow).
 
-    Verifies the controller stores the config and that, after a request, tracing
-    span files are produced for the replica (which pulls the config at init) and
-    the proxy (which receives it as a constructor arg when it is created).
+    Verifies the controller stores the config and that, after a request,
+    both the replica and the proxy produce span files.
     """
     tracing_config = TracingConfig(enabled=True, sampling_ratio=1.0)
     serve.start(
@@ -1175,6 +1177,49 @@ def test_serve_start_retries_after_raising_exporter(
     finally:
         serve.shutdown()
         shutil.rmtree(spans_dir, ignore_errors=True)
+
+
+def test_replica_starts_with_supplied_tracing_config():
+    from opentelemetry.sdk.trace.sampling import ParentBasedTraceIdRatio
+
+    @ray.remote
+    class Controller:
+        def __init__(self):
+            self.tracing_requests = 0
+
+        def get_tracing_config(self):
+            self.tracing_requests += 1
+            return TracingConfig(enabled=False)
+
+        def num_tracing_requests(self):
+            return self.tracing_requests
+
+    @ray.remote
+    class ProbeReplica(ReplicaActor):
+        def sampler_description(self):
+            return trace.get_tracer_provider().sampler.get_description()
+
+    with ray.init(address="local", num_cpus=2):
+        controller = Controller.options(
+            name=SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        ).remote()
+        deployment = DeploymentConfig()
+        config = TracingConfig(enabled=True, sampling_ratio=0.375)
+        replica = ProbeReplica.remote(
+            ReplicaID("probe", DeploymentID("model", "app")),
+            cloudpickle.dumps(lambda: None),
+            cloudpickle.dumps(()),
+            cloudpickle.dumps({}),
+            deployment.to_proto_bytes(),
+            DeploymentVersion("v1", deployment, {}),
+            False,
+            "/",
+            False,
+            config,
+        )
+        expected = ParentBasedTraceIdRatio(config.sampling_ratio).get_description()
+        assert ray.get(replica.sampler_description.remote(), timeout=60) == expected
+        assert ray.get(controller.num_tracing_requests.remote(), timeout=60) == 0
 
 
 def test_replica_tracing_setup_failure_fails_deployment(ray_shutdown):

@@ -1335,6 +1335,7 @@ class ActorReplicaWrapper:
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
             target_node_id: If set, pin this replica to this node.
+            tracing_config: Controller-resolved tracing settings for Python replicas.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
@@ -2400,6 +2401,7 @@ class DeploymentReplica:
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
             target_node_id: If set, pin this replica to this node.
+            tracing_config: Controller-resolved tracing settings for Python replicas.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
