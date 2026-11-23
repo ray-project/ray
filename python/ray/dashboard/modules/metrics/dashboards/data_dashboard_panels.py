@@ -228,6 +228,26 @@ INPUT_BYTES_SUBMITTED_PANEL = Panel(
     stack=False,
 )
 
+CROSS_NODE_INPUT_TRANSFER_PANEL = Panel(
+    id=130,
+    title="Cross-Node Input Transfer / Second",
+    description=(
+        "Rate of input bytes an operator's actors read from a node other than "
+        "their own (fetched over the network). A sustained high rate means "
+        "tasks are being scheduled away from the nodes that hold their input "
+        "blocks. Block counts are in ray_data_num_remote_blocks_read."
+    ),
+    unit="Bps",
+    targets=[
+        Target(
+            expr='sum(rate(ray_data_bytes_remote_inputs_read{{{global_filters}, operator=~"$Operator"}}[1m])) by (dataset, operator)',
+            legend="Remote Input Bytes / Second: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
 # Ray Data Metrics (Outputs)
 BLOCKS_GENERATED_PANEL = Panel(
     id=22,
@@ -1445,6 +1465,114 @@ OPERATOR_BLOCK_SIZE_ROWS_PANEL = Panel(
     hideXAxis=True,
 )
 
+# Actor draining: a preempted node shows up
+# as N independent actor drains. A draining actor takes no new tasks and is
+# torn down only once it has no in-flight tasks and no unconsumed outputs.
+# Outcomes: completed (torn down empty), interrupted (died still owing work),
+# cancelled (revived by a reclaim/core restart). The reason tag records why
+# the drain STARTED and never changes, so e.g. interrupted[resize] means an
+# actor draining for a resize died mid-drain (typically its node was lost).
+ACTOR_DRAINING_ACTORS_PANEL = Panel(
+    id=132,
+    title="Draining Actors",
+    description="Actors currently draining, per operator.",
+    unit="actors",
+    targets=[
+        Target(
+            expr='sum(ray_data_num_draining_actors{{{global_filters}, operator=~"$Operator"}}) by (dataset, operator)',
+            legend="Draining: {{dataset}}, {{operator}}",
+        )
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_DRAIN_OUTCOMES_PANEL = Panel(
+    id=133,
+    title="Actor Drain Outcomes",
+    description=(
+        "Actors whose drain ended over the last 5m, by outcome. completed: "
+        "torn down with nothing left to serve | interrupted: the actor died "
+        "mid-drain (e.g. its node was torn down under it) | cancelled: "
+        "rejoined the pool (cause: reclaimed by an upscale, or core_restart "
+        "of an actor that still owes work). The reason says why the drain "
+        "started, not why it ended."
+    ),
+    unit="actors",
+    targets=[
+        Target(
+            expr='sum(increase(ray_data_actor_drains_completed_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, reason)',
+            legend="completed [{{reason}}]: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='sum(increase(ray_data_actor_drains_interrupted_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, reason)',
+            legend="interrupted [{{reason}}]: {{dataset}}, {{operator}}",
+        ),
+        Target(
+            expr='sum(increase(ray_data_actor_drains_cancelled_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, reason, cause)',
+            legend="cancelled [{{reason}}/{{cause}}]: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_DRAIN_STARTS_BY_REASON_PANEL = Panel(
+    id=128,
+    title="Actor Drains Started by Reason",
+    description=(
+        "Actors that started draining over the last 5m, split by why the "
+        "drain began. resize: a downscale or a completed operator's release "
+        "| preemption: the node is being taken away (e.g. spot) | "
+        "alloc_shrink: the dataset's allocation shrank and the actor was "
+        "evicted from a reclaimed node | unknown: the caller did not say."
+    ),
+    unit="actors",
+    targets=[
+        Target(
+            expr='sum(increase(ray_data_actor_drains_started_total{{{global_filters}, operator=~"$Operator"}}[5m])) by (dataset, operator, reason)',
+            legend="{{reason}}: {{dataset}}, {{operator}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_DRAIN_COMPLETED_TIME_PANEL = Panel(
+    id=129,
+    title="Actor Drain Duration (completed)",
+    description=(
+        "Time from drain start to graceful teardown. Quantiles are cumulative "
+        "over the run (drains are rare events, so windowed rates would render "
+        "as disconnected dashes) and are bucket-quantized: with few samples "
+        "they pin to a bucket boundary rather than a true percentile."
+    ),
+    unit="s",
+    targets=[
+        Target(
+            expr='histogram_quantile(0.5, sum by (dataset, reason, le) (ray_data_actor_drain_completed_time_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            legend="p50 [{{reason}}]: {{dataset}}",
+        ),
+        Target(
+            expr='histogram_quantile(0.9, sum by (dataset, reason, le) (ray_data_actor_drain_completed_time_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            legend="p90 [{{reason}}]: {{dataset}}",
+        ),
+        Target(
+            expr='histogram_quantile(0.99, sum by (dataset, reason, le) (ray_data_actor_drain_completed_time_bucket{{{global_filters}, operator=~"$Operator"}}))',
+            legend="p99 [{{reason}}]: {{dataset}}",
+        ),
+    ],
+    fill=0,
+    stack=False,
+)
+
+ACTOR_DRAINING_PANELS = [
+    ACTOR_DRAINING_ACTORS_PANEL,
+    ACTOR_DRAIN_OUTCOMES_PANEL,
+    ACTOR_DRAIN_STARTS_BY_REASON_PANEL,
+    ACTOR_DRAIN_COMPLETED_TIME_PANEL,
+]
+
 OPERATOR_PANELS = [
     ROWS_OUTPUT_PER_SECOND_PANEL,
     ALL_RESOURCES_UTILIZATION_PANEL,
@@ -1494,6 +1622,7 @@ DATA_GRAFANA_ROWS = [
             INPUT_BLOCKS_PROCESSED_PANEL,
             INPUT_BYTES_PROCESSED_PANEL,
             INPUT_BYTES_SUBMITTED_PANEL,
+            CROSS_NODE_INPUT_TRANSFER_PANEL,
         ],
         collapsed=True,
     ),
@@ -1631,6 +1760,14 @@ DATA_GRAFANA_ROWS = [
             OPERATOR_BLOCK_SIZE_BYTES_PANEL,
             OPERATOR_BLOCK_SIZE_ROWS_PANEL,
         ],
+        collapsed=True,
+    ),
+    # Populated only when the actor-only backend
+    # (RAY_DATA_ACTOR_ONLY_BACKEND) is enabled.
+    Row(
+        title="Actor Only Draining",
+        id=131,
+        panels=ACTOR_DRAINING_PANELS,
         collapsed=True,
     ),
 ]

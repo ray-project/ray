@@ -1,9 +1,8 @@
 from typing import Any, Dict, List, Optional
 
+import pyarrow as pa
+
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
-from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_map_operator import (  # noqa: E501
-    DiskHashShuffleMapOp,
-)
 from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (  # noqa: E501
     ShuffleMapOp,
 )
@@ -27,8 +26,10 @@ class SortRangePartitioner:
 
     Boundaries come from the user (``sort_key.boundaries``), are empty when there
     is a single partition, or are read from the upstream ``SortSamplingOp`` the
-    first time an input arrives. Both sort map operators (object-store and disk
-    transport) delegate here so the resolution logic exists once.
+    first time an input arrives. ``SortShuffleMapOp`` resolves them per input;
+    the disk writer (see ``_plan_sort_v2``) ships the partitioner itself as its
+    partition fn, resolved once on the first input before the map tasks pick
+    it up.
     """
 
     def __init__(
@@ -72,14 +73,14 @@ class SortRangePartitioner:
         return self._boundaries
 
     def partition_fn_for(
-        self, refs: RefBundle, input_op: PhysicalOperator
+        self, schema: Optional[pa.Schema], input_op: PhysicalOperator
     ) -> PartitionFn:
-        """Validate ``refs`` and return the partition fn to apply to it.
+        """Validate ``schema`` and return the partition fn for inputs with it.
 
         Sampled boundaries are read from ``input_op`` on the first call; the
         sampling op only forwards inputs once they are ready.
         """
-        self._sort_key.validate_schema(refs.schema)
+        self._sort_key.validate_schema(schema)
         if self._boundaries is None:
             assert isinstance(input_op, SortSamplingOp)
             boundaries = input_op.boundaries
@@ -89,6 +90,9 @@ class SortRangePartitioner:
                 )
             self._set_boundaries(boundaries)
         return self._partition_fn
+
+    def __call__(self, block: pa.Table) -> Dict[int, pa.Table]:
+        return self._partition_fn(block)
 
     def _set_boundaries(self, boundaries: List) -> None:
         self._boundaries = boundaries
@@ -138,49 +142,6 @@ class SortShuffleMapOp(ShuffleMapOp):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert input_index == 0
         self._partition_fn = self._partitioner.partition_fn_for(
-            refs, self.input_dependencies[0]
-        )
-        super()._add_input_inner(refs, input_index)
-
-
-class DiskSortShuffleMapOp(DiskHashShuffleMapOp):
-    """``SortShuffleMapOp`` over the disk transport.
-
-    Same boundary resolution as the object-store variant; map tasks write their
-    range partitions to local shard files instead of the object store.
-    """
-
-    def __init__(
-        self,
-        input_op: PhysicalOperator,
-        data_context: DataContext,
-        *,
-        num_partitions: int,
-        sort_key: SortKey,
-        map_runtime_env: Optional[Dict[str, Any]] = None,
-        map_cpus: float = DiskHashShuffleMapOp._DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
-        name: str = "DiskSortShuffleMap",
-    ):
-        self._partitioner = SortRangePartitioner(
-            sort_key, num_partitions, input_op, data_context
-        )
-        super().__init__(
-            input_op,
-            data_context,
-            num_partitions=num_partitions,
-            partition_fn=_uninitialized_partition_fn,
-            map_runtime_env=map_runtime_env,
-            map_cpus=map_cpus,
-            name=name,
-        )
-
-    @property
-    def boundaries(self) -> Optional[List]:
-        return self._partitioner.boundaries
-
-    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert input_index == 0
-        self._partition_fn = self._partitioner.partition_fn_for(
-            refs, self.input_dependencies[0]
+            refs.schema, self.input_dependencies[0]
         )
         super()._add_input_inner(refs, input_index)
