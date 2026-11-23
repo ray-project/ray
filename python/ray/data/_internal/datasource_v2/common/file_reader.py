@@ -51,7 +51,8 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
 
-# Upper bound on concurrent Python fragment scans per read task.
+# Maximum number of concurrent Python fragment scans per read task.
+# A value of 1 or less makes the task scan fragments sequentially.
 _MAX_FRAGMENT_WORKERS = env_integer("RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS", 64)
 
 
@@ -72,11 +73,6 @@ class FileReader(Reader[FileManifest]):
     PyArrow's Dataset API handles column pruning and batch-level filtering.
     Metadata pruning depends on the file format; for example, Parquet can
     prune row groups while ORC filters are applied after reading.
-
-    Parallel reads use at most 64 Python fragment workers per task by default.
-    Set ``RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS`` in the worker environment
-    before importing Ray Data to override the limit. Values of 1 or less
-    scan fragments sequentially.
     """
 
     def __init__(
@@ -489,10 +485,10 @@ class FileReader(Reader[FileManifest]):
 
         When multiple workers are available and
         ``execution_options.preserve_order`` is False, fragments are read
-        concurrently via :func:`make_async_gen`. With
-        ``preserve_ordering=True``, the worker count determines how batches
-        are interleaved. Set the same limit on all workers so task retries
-        can reproduce the batch sequence.
+        concurrently via :func:`make_async_gen`. We pass
+        ``preserve_ordering=True`` so a retried task yields its batches in
+        the same order. That order depends on the worker count, so the
+        fragment worker limit must be the same on every node.
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
