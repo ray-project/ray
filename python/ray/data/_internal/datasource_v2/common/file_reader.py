@@ -30,6 +30,7 @@ from ray.data._internal.util import (
     make_async_gen,
 )
 from ray.data.context import DataContext
+from ray.data.datasource.file_based_datasource import _add_partitions_to_table
 from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionParser,
@@ -199,10 +200,21 @@ class FileReader(Reader[FileManifest]):
         *,
         required_columns: Optional[Set[str]] = None,
     ) -> pa.Table:
-        """Replace requested columns with typed path-derived partition values.
+        """Add typed path-derived partition values as columns.
 
         Format readers call this before residual filtering. The base read loop
         keeps its post-read placement for formats using the default path.
+
+        A key that a file column already has is checked, not overwritten, by
+        V1's ``_add_partitions_to_table``. The file column keeps its own type and
+        position, and the path value must equal its values, with a null path value
+        matching only an all-null column. A mismatch raises ``ValueError``, as in
+        V1 CSV, JSON and ORC.
+
+        Only readers that read the file's own column reach this check, such as
+        CSV and JSON. Parquet and ORC scan a dataset schema without the partition
+        keys, so a same-named file column is never read and the path value is the
+        only one.
 
         Args:
             table: Batch receiving the path-derived values.
@@ -210,16 +222,22 @@ class FileReader(Reader[FileManifest]):
             required_columns: Keys to synthesize, or None for all parsed keys.
 
         Returns:
-            Table with requested path values replacing same-named columns.
+            Table with the requested path values added.
+
+        Raises:
+            ValueError: A file column's values differ from the path value, or the
+                path value can't be cast to the file column's type.
         """
         for name, value in values.items():
             if required_columns is not None and name not in required_columns:
                 continue
             if name in table.column_names:
-                table = table.drop([name])
-            table = table.append_column(
-                name, self._broadcast_partition_value(name, value, table.num_rows)
-            )
+                table = _add_partitions_to_table(table, {name: value})
+            else:
+                table = table.append_column(
+                    name,
+                    self._broadcast_partition_value(name, value, table.num_rows),
+                )
         return table
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:

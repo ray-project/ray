@@ -1,4 +1,5 @@
 """Unit tests for the CSV datasource on DataSourceV2."""
+
 import collections
 import gzip
 import io
@@ -34,7 +35,11 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.context import DataContext
-from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.datasource.partitioning import (
+    HIVE_DEFAULT_PARTITION,
+    Partitioning,
+    PartitionStyle,
+)
 
 
 def _write(path, text: str) -> str:
@@ -279,9 +284,53 @@ def test_reads_a_file_holding_its_partition_column(
         [path],
     )
 
-    assert table.column_names == ["id", "country"]
+    assert table.column_names == (
+        ["country", "id"] if country_first else ["id", "country"]
+    )
     assert sorted(table.column("id").to_pylist()) == list(range(100))
     assert set(table.column("country").to_pylist()) == {"US"}
+
+
+@pytest.mark.parametrize("chunk_bytes", ["64", "1073741824"], ids=["split", "whole"])
+def test_raises_when_a_file_column_differs_from_its_partition_value(
+    tmp_path, monkeypatch, chunk_bytes
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+    partition_dir = tmp_path / "country=US"
+    partition_dir.mkdir()
+    rows = ["id,country"] + [f"{i},{'US' if i else 'CA'}" for i in range(100)]
+    path = _write(partition_dir / "a.csv", "\n".join(rows) + "\n")
+
+    with pytest.raises(ValueError, match="Partition column country exists"):
+        _read_all(
+            CsvDatasourceV2([path], partitioning=Partitioning(PartitionStyle.HIVE)),
+            [path],
+        )
+
+
+@pytest.mark.parametrize(
+    "rows, matches",
+    [("1,\n2,\n", True), ("1,a\n2,\n", False)],
+    ids=["all-null-column", "partly-null-column"],
+)
+def test_null_partition_value_matches_only_an_all_null_file_column(
+    tmp_path, rows, matches
+):
+    partition_dir = tmp_path / f"grp={HIVE_DEFAULT_PARTITION}"
+    partition_dir.mkdir()
+    path = _write(partition_dir / "a.csv", "id,grp\n" + rows)
+    datasource = CsvDatasourceV2(
+        [path],
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, null_fallback=HIVE_DEFAULT_PARTITION
+        ),
+    )
+
+    if matches:
+        assert _read_all(datasource, [path]).column("grp").to_pylist() == [None, None]
+    else:
+        with pytest.raises(ValueError, match="Partition column grp exists"):
+            _read_all(datasource, [path])
 
 
 @pytest.mark.parametrize(
