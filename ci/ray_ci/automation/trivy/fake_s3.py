@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any, Iterator
 
+from boto3.exceptions import S3UploadFailedError
 from botocore.exceptions import ClientError
 
 
@@ -16,9 +17,10 @@ class FakeS3:
 
     def upload_file(self, filename: str, bucket: str, key: str) -> None:
         if key in self.denied:
-            raise ClientError(
-                {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
-                "PutObject",
+            # boto3 turns the upload's ClientError into S3UploadFailedError.
+            raise S3UploadFailedError(
+                f"Failed to upload {filename} to {bucket}/{key}: An error occurred "
+                "(AccessDenied) when calling the PutObject operation: Access Denied"
             )
         self.objects[(bucket, key)] = Path(filename).read_bytes()
 

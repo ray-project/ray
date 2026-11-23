@@ -1,4 +1,6 @@
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
 
@@ -17,16 +19,16 @@ from ci.ray_ci.automation.trivy.scan_store import (
 )
 
 COMMIT = "80ceee083e49b1ae709c149d3a15862fe12ce8cb"
+BUILD = {
+    "pipeline": "postmerge",
+    "branch": "master",
+    "build_number": "20897",
+    "commit": COMMIT,
+}
 
 
 def store(client=None, **overrides) -> ScanStore:
-    args = {
-        "pipeline": "postmerge",
-        "branch": "master",
-        "build_number": "20897",
-        "commit": COMMIT,
-        **overrides,
-    }
+    args = {**BUILD, **overrides}
     return ScanStore.for_build(**args, client=client or FakeS3())
 
 
@@ -64,6 +66,9 @@ def test_the_folder_is_named_after_the_build(branch: str, prefix: str):
 def test_a_build_that_cannot_be_named_is_rejected(overrides: dict):
     with pytest.raises(StoreError):
         store(**overrides)
+    # Building the store directly checks the name just the same.
+    with pytest.raises(StoreError):
+        ScanStore(**{**BUILD, **overrides})
 
 
 @pytest.mark.parametrize(
@@ -75,26 +80,32 @@ def test_a_build_that_cannot_be_named_is_rejected(overrides: dict):
     ],
 )
 def test_a_commit_that_is_not_a_sha_still_names_a_folder(commit: str, folder: str):
-    """Only the first job of a build created with HEAD sees HEAD; a scan job
-    that ever did should still report, under a folder unique by build."""
+    """Only a build's first job can see HEAD, before Buildkite resolves it.
+    The Trivy jobs all run after rayci's pipeline upload, so they all name
+    the same folder; any other commit text still names one."""
     s = store(commit=commit)
     assert s.prefix == f"trivy-scans/postmerge/master/{folder}"
     assert s.commit == commit
 
 
-def test_upload_download_and_list(tmp_path: Path):
+def test_upload_and_download(tmp_path: Path):
+    s3 = FakeS3()
+    s = store(s3)
+    (tmp_path / "a.json").write_text("a")
+    assert s.upload(tmp_path / "a.json", "results") == f"{s.prefix}/results/a.json"
+    assert s3.get(BUCKET, f"{s.prefix}/results/a.json") == b"a"
+    dest = s.download("results", "a.json", tmp_path / "copy.json")
+    assert dest.read_text() == "a"
+
+
+def test_names_lists_only_the_files_directly_in_the_folder():
     s3 = FakeS3()
     s = store(s3)
     for name in ("b.json", "a.json", "c.json"):
-        (tmp_path / name).write_text(name)
-        s.upload(tmp_path / name, "results")
+        s3.put(BUCKET, f"{s.prefix}/results/{name}", b"")
     s3.put(BUCKET, f"{s.prefix}/results/nested/x.json", b"")
     s3.put(BUCKET, f"{s.prefix}/db/metadata.json", b"")
-
     assert s.names("results") == ["a.json", "b.json", "c.json"]
-    dest = s.download("results", "b.json", tmp_path / "copy.json")
-    assert dest.read_text() == "b.json"
-    assert s3.get(BUCKET, f"{s.prefix}/results/a.json") == b"a.json"
 
 
 def test_s3_errors_become_store_errors(tmp_path: Path):
@@ -106,6 +117,16 @@ def test_s3_errors_become_store_errors(tmp_path: Path):
     (tmp_path / "a.json").write_text("{}")
     with pytest.raises(StoreError, match="AccessDenied"):
         s.upload(tmp_path / "a.json", "results")
+
+
+def test_local_file_errors_become_store_errors(tmp_path: Path):
+    s3 = FakeS3()
+    s = store(s3)
+    s3.put(BUCKET, f"{s.prefix}/results/a.json", b"{}")
+    with pytest.raises(StoreError, match="results/a.json"):
+        s.download("results", "a.json", tmp_path / "no-such-dir" / "a.json")
+    with pytest.raises(StoreError, match="results/b.json"):
+        s.upload(tmp_path / "b.json", "results")
 
 
 def test_build_options_read_buildkite_variables():
@@ -152,6 +173,19 @@ def test_the_client_has_a_connection_for_every_download_thread():
     assert call.args == ("s3",)
     assert call.kwargs["region_name"] == "us-west-2"
     assert call.kwargs["config"].max_pool_connections == MAX_POOL_CONNECTIONS
+
+
+def test_threads_share_one_client():
+    def slow_client(*args, **kwargs):
+        time.sleep(0.05)  # so that every thread asks before the first gets one
+        return object()
+
+    s = ScanStore.for_build("postmerge", "master", "1", COMMIT)
+    with mock.patch.object(scan_store.boto3, "client", side_effect=slow_client):
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            clients = list(pool.map(lambda _: s._s3(), range(8)))
+        assert scan_store.boto3.client.call_count == 1
+    assert all(c is clients[0] for c in clients)
 
 
 if __name__ == "__main__":
