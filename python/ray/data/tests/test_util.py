@@ -673,6 +673,15 @@ def test_find_partition_index_duplicates_descending():
     assert find_partition_index(table, (3,), sort_key) == 0
 
 
+@pytest.mark.parametrize("pivot", [None, float("nan"), pd.NA, pd.NaT])
+def test_find_insertion_index_with_missing_pivot(pivot):
+    # pandas blocks mark missing values with NaN, pd.NA or NaT. Whichever it is,
+    # the pivot goes after the non-missing values.
+    key_column = np.array(["a", "b", "c", None, None], dtype=object)
+
+    assert find_insertion_index([key_column], (pivot,), [False]) == 3
+
+
 def test_find_insertion_index_descending_uses_slice_view(monkeypatch):
     def disallow_arange(*args, **kwargs):
         raise AssertionError("np.arange should not be called in find_insertion_index")
