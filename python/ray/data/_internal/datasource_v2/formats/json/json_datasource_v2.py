@@ -126,12 +126,25 @@ class JsonScanner(ArrowFileScanner):
     def read_schema(self) -> Optional[pa.Schema]:
         """Return ``None`` when the plan schema can't answer.
 
-        That is ``lines=True``, where pandas types its blocks as it reads, and a
-        projection of a column the sample didn't contain.
+        That is ``lines=True``, where pandas types its blocks as it reads, a
+        projection of a column the sample didn't contain, and a sample that
+        found no file columns, such as a ``.json`` file holding one array larger
+        than the sample. A block is read to get the schema then.
         """
-        if self.lines or not set(self.columns or ()) <= set(self.schema.names):
+        if (
+            self.lines
+            or not set(self.columns or ()) <= set(self.schema.names)
+            or not self._has_sampled_file_columns()
+        ):
             return None
         return super().read_schema()
+
+    def _has_sampled_file_columns(self) -> bool:
+        """Whether the plan schema has a column from the files, not from the paths."""
+        path_names = {column.name for column in self.synthesized_columns}
+        if self.partitioning is not None:
+            path_names.update(self.partitioning.field_names or [])
+        return any(name not in path_names for name in self.schema.names)
 
     @override
     def create_reader(self) -> LineChunkableFileReader:
@@ -216,7 +229,7 @@ class JsonDatasourceV2(LineChunkableDatasourceV2):
         except ValueError as e:
             if is_whole_file:
                 raise
-            logger.warning(
+            logger.debug(
                 f"Couldn't infer the schema of {path} from its first "
                 f"{_SCHEMA_SAMPLE_BYTES} bytes, so its columns are left to the "
                 f"read task: {e}"

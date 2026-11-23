@@ -3,6 +3,7 @@
 import gzip
 import io
 import json
+import logging
 
 import pandas as pd
 import pyarrow as pa
@@ -19,6 +20,7 @@ from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.json.json_datasource_v2 import (
     JsonDatasourceV2,
     JsonScanner,
@@ -230,9 +232,10 @@ _ROWS_OVER_ONE_MIB = [{"s": "x" * 1000}] * 1100
         ),
     ],
 )
-def test_infers_the_schema_from_a_prefix_and_warns_if_it_cant(
+def test_infers_the_schema_from_a_prefix_and_logs_if_it_cant(
     tmp_path, caplog, propagate_logs, text, schema, warns
 ):
+    caplog.set_level(logging.DEBUG)
     path = tmp_path / "a.json"
     path.write_text(text)
 
@@ -318,6 +321,26 @@ def test_lines_true_has_no_plan_time_schema(lines):
     schema = pa.schema([("a", pa.int64())])
     scanner = JsonScanner(schema=schema, lines=lines)
     assert scanner.read_schema() == (None if lines else schema)
+
+
+@pytest.mark.parametrize(
+    "schema, has_schema",
+    [
+        (pa.schema([]), False),
+        (pa.schema([("country", pa.string()), ("path", pa.string())]), False),
+        (pa.schema([("country", pa.string()), ("a", pa.int64())]), True),
+    ],
+    ids=["no_columns", "only_path_columns", "file_column"],
+)
+def test_has_no_plan_time_schema_when_the_sample_found_no_file_columns(
+    schema, has_schema
+):
+    scanner = JsonScanner(
+        schema=schema,
+        partitioning=Partitioning(PartitionStyle.HIVE, field_names=["country"]),
+        synthesized_columns=(PathColumn(),),
+    )
+    assert (scanner.read_schema() is not None) == has_schema
 
 
 def test_pins_column_types_across_pieces_with_an_explicit_schema(
