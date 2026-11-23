@@ -549,6 +549,41 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["processes_pids"][1234]["gpu_utilization"], 35)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_gpu_with_failing_handle_does_not_hide_later_gpus(self, mock_pynvml):
+        """A GPU whose NVML handle lookup fails is skipped; the others report."""
+        handles = self._configure_nvidia_collection(
+            mock_pynvml, ["NVIDIA H100", "NVIDIA H100", "NVIDIA H100"]
+        )
+        lost = {1}
+
+        def get_handle(index):
+            if index in lost:
+                raise mock_pynvml.NVMLError("GPU is lost")
+            return handles[index]
+
+        mock_pynvml.nvmlDeviceGetHandleByIndex.side_effect = get_handle
+
+        with patch.object(self.provider, "_shutdown"), self.assertLogs(
+            "ray.dashboard.modules.reporter.gpu_providers", level="INFO"
+        ) as logs:
+            first = self.provider.get_gpu_utilization()
+            second = self.provider.get_gpu_utilization()
+            # The GPU answers again.
+            lost.clear()
+            recovered = self.provider.get_gpu_utilization()
+
+        self.assertEqual([gpu["index"] for gpu in first], [0, 2])
+        self.assertEqual([gpu["index"] for gpu in second], [0, 2])
+        self.assertEqual([gpu["index"] for gpu in recovered], [0, 1, 2])
+        skip_warnings = [
+            line for line in logs.output if "Skipping NVIDIA GPU 1" in line
+        ]
+        self.assertEqual(len(skip_warnings), 1)
+        self.assertTrue(
+            any("GPU 1 is reporting GPU metrics again" in line for line in logs.output)
+        )
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_errors(self, mock_pynvml):
         """Test GPU utilization retrieval with partial errors."""
         mock_handle = Mock()
