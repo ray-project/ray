@@ -1610,17 +1610,17 @@ def filesystem_for_sized_opens(
     ``RetryingPyFileSystem`` opens a file by path alone, which drops a known
     size, so S3 sends a HEAD request to look it up again. That request is all
     the wrapper retries: the file it returns reads from S3 directly. Given the
-    size, ``S3FileSystem`` opens without any request, so it is returned
-    unwrapped. Other filesystems keep the wrapper.
+    size, ``S3FileSystem`` opens without any request, and so does a
+    ``SubTreeFileSystem`` over one (what a catalog's vended credentials give),
+    so these are returned unwrapped. Other filesystems keep the wrapper.
     """
+    if not isinstance(filesystem, RetryingPyFileSystem):
+        return filesystem
+    inner = filesystem.unwrap()
     # ``type_name``, not ``isinstance``: a pyarrow build without S3 support
     # raises ImportError on any reference to ``pyarrow.fs.S3FileSystem``.
-    if (
-        isinstance(filesystem, RetryingPyFileSystem)
-        and filesystem.unwrap().type_name == "s3"
-    ):
-        return filesystem.unwrap()
-    return filesystem
+    base = inner.base_fs if inner.type_name == "subtree" else inner
+    return inner if base.type_name == "s3" else filesystem
 
 
 def _annotate_exception_with_retry_context(
