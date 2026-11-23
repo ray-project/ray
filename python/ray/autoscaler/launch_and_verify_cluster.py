@@ -515,12 +515,23 @@ def run_ray_commands(
 
     diag_lines = collect_auth_diagnostics(config_yaml, cluster_config, env)
 
+    # The release harness prints the test's results JSON in the Buildkite log
+    # when the test passes.
+    output_json = os.environ.get("TEST_OUTPUT_JSON")
+    if output_json:
+        with open(output_json, "w") as f:
+            json.dump(
+                {f"diag_{i:02d}": line[:400] for i, line in enumerate(diag_lines)},
+                f,
+            )
+
     def print_diag():
         # Printed last so it lands in the 100-line tail Buildkite keeps.
         print("=============== AUTH DIAGNOSTICS ===============")
         for line in diag_lines:
             print(line[:400])
         print("================================================")
+        sys.stdout.flush()
 
     if not success:
         print("======================================")
@@ -534,6 +545,9 @@ def run_ray_commands(
             print_diag()
         print("======================================")
         print("Exiting script.")
+        sys.stdout.flush()
+        # Let the job log catch up before the harness reads its tail.
+        time.sleep(180)
         sys.exit(1)
 
     print("======================================")
