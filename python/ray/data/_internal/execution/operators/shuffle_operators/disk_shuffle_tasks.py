@@ -50,6 +50,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     ReduceFn,
     TaskScopedPartitioner,
+    cap_polars_threads,
     resolve_partition_fn,
 )
 from ray.data._internal.output_buffer import (
@@ -251,6 +252,9 @@ class DiskShuffleWriteFn:
         self._block_transformer = block_transformer
 
     def __call__(self, blocks: Iterable[Block], ctx: "TaskContext") -> Iterator[Block]:
+        # Set in the task, not through a runtime env, which would make the
+        # writer unfusable with the upstream read or map.
+        cap_polars_threads()
         handle = _write_disk_shuffle_file(
             blocks,
             partition_fn=self._partition_fn,

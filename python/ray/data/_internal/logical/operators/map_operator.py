@@ -118,6 +118,32 @@ class AbstractMap(AbstractOneToOne):
     def set_per_block_limit(self, per_block_limit: int):
         object.__setattr__(self, "per_block_limit", per_block_limit)
 
+
+@dataclass(frozen=True, repr=False, eq=False, init=False)
+class DiskShuffleMap(AbstractMap):
+    """Logical identity of a disk-shuffle writer (``plan_disk_hash_shuffle_map``).
+
+    The writer is a plain task-pool map, but the planner would tag it with the
+    shuffle's logical op (Repartition, Sort, Aggregate, Join), which map fusion
+    can't reason about. The plan function tags the writer with this op instead
+    so the upstream read or map fuses into it like into any other map. Not
+    user-facing: it never appears in a logical plan.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        input_op: Optional[LogicalOperator],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            name,
+            [input_op] if input_op is not None else [],
+            # The writer emits one handle row per task, unrelated to its input.
+            can_modify_num_rows=True,
+            ray_remote_args=ray_remote_args,
+        )
+
     def _get_args(self) -> Dict[str, Any]:
         args = super()._get_args()
         for key in [
