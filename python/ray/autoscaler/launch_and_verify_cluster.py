@@ -19,6 +19,7 @@ import tempfile
 import time
 import traceback
 from pathlib import Path
+from typing import List
 
 import boto3
 import botocore
@@ -363,6 +364,89 @@ def cleanup_security_groups(config):
         print(f"Error cleaning up security groups: {e}")
 
 
+# TEMPORARY (debug branch only): auth diagnostics for the cluster-launcher
+# InvalidAuthToken failures. Never reads or prints the token itself.
+_DIAG_CONTAINER_SCRIPT = r"""
+echo "DIAG|node ray: $(python -c 'import ray; print(ray.__version__, ray.__commit__[:10])' 2>&1 | tail -1)"
+echo "DIAG|node user: $(id)"
+echo "DIAG|shell env: RAY_AUTH_MODE=${RAY_AUTH_MODE-<unset>} RAY_AUTH_TOKEN=${RAY_AUTH_TOKEN:+<set>} RAY_AUTH_TOKEN_PATH=${RAY_AUTH_TOKEN_PATH-<unset>}"
+echo "DIAG|token file: $(stat -c '%U(%u):%G(%g) mode=%a size=%s' ~/.ray/auth_token 2>&1) readable=$(test -r ~/.ray/auth_token && echo yes || echo no)"
+echo "DIAG|~/.ray dir: $(stat -c '%U(%u) mode=%a' ~/.ray 2>&1)"
+for p in gcs_server raylet; do
+  pid=$(pgrep -f "$p" | head -1)
+  echo "DIAG|$p env: $(tr '\0' '\n' < /proc/$pid/environ 2>/dev/null | grep -E '^RAY_AUTH_MODE=' || echo 'RAY_AUTH_MODE <unset>')"
+done
+grep -h -o -E '.{0,30}(PermissionError|auth_token|InvalidAuthToken|[Tt]oken auth|RAY_AUTH_MODE).{0,90}' \
+  /tmp/ray/session_latest/logs/monitor* /tmp/ray/session_latest/logs/gcs_server.out \
+  /tmp/ray/session_latest/logs/raylet.out /tmp/ray/session_latest/logs/dashboard.log 2>/dev/null \
+  | sort | uniq -c | sort -rn | head -6 | sed 's/^/DIAG|head log: /'
+check() {
+  label=$1; shift
+  timeout 90 env "$@" python -c "import ray; ray.init('localhost:6379'); print('NODES', len(ray.nodes()))" > /tmp/diag_client.out 2>&1
+  rc=$?
+  echo "DIAG|client [$label]: rc=$rc $(grep -o -E "NODES [0-9]+|InvalidAuthToken|RAY_AUTH_MODE is currently '[a-z]+'|PermissionError[^,]{0,80}|No auth token[^.]{0,60}" /tmp/diag_client.out | sort -u | tr '\n' ';')"
+}
+check "RAY_AUTH_MODE unset" -u RAY_AUTH_MODE
+check "RAY_AUTH_MODE=token" RAY_AUTH_MODE=token
+"""
+
+_DIAG_HOST_SCRIPT = r"""
+echo "DIAG|host user: $(id)"
+for f in $(sudo -n find /tmp/ray_tmp_mount -name auth_token 2>/dev/null); do
+  echo "DIAG|host token: $f $(sudo -n stat -c '%U(%u):%G(%g) mode=%a' $f)"
+done
+c=$(docker ps --format '{{.Names}}' 2>/dev/null | head -1)
+[ -z "$c" ] && c=$(sudo -n docker ps --format '{{.Names}}' | head -1)
+echo "DIAG|container: $c"
+(docker inspect -f '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' $c 2>/dev/null \
+  || sudo -n docker inspect -f '{{range .Mounts}}{{println .Source "->" .Destination}}{{end}}' $c) \
+  | grep -E 'auth_token|/\.ray' | sed 's/^/DIAG|bind mount: /'
+"""
+
+
+def _run_diag_script(
+    cluster_config: Path, script: str, env: dict, run_env: str = "auto"
+) -> List[str]:
+    import base64
+
+    encoded = base64.b64encode(script.encode()).decode()
+    cmd = [
+        "ray",
+        "exec",
+        "--run-env",
+        run_env,
+        str(cluster_config),
+        f"echo {encoded} | base64 -d | bash",
+    ]
+    try:
+        out = subprocess.run(
+            cmd, capture_output=True, env=env, timeout=600, check=False
+        )
+        text = out.stdout.decode(errors="replace") + out.stderr.decode(errors="replace")
+    except Exception as e:  # noqa: BLE001
+        return [f"DIAG|diag command failed: {e!r}"]
+    lines = [
+        line.strip().replace("\r", "")
+        for line in text.splitlines()
+        if "DIAG|" in line
+    ]
+    return lines or [f"DIAG|no output from run_env={run_env}: {text[-300:]!r}"]
+
+
+def collect_auth_diagnostics(
+    config_yaml: dict, cluster_config: Path, env: dict
+) -> List[str]:
+    lines = [
+        f"DIAG|ray up CLI ray: {ray.__version__} {ray.__commit__[:10]}",
+        f"DIAG|cluster yaml: auth_mode={config_yaml.get('auth_mode', '<unset>')} "
+        f"docker image={config_yaml.get('docker', {}).get('image')}",
+    ]
+    lines += _run_diag_script(cluster_config, _DIAG_CONTAINER_SCRIPT, env)
+    if config_yaml.get("docker", {}).get("container_name"):
+        lines += _run_diag_script(cluster_config, _DIAG_HOST_SCRIPT, env, "host")
+    return lines
+
+
 def run_ray_commands(
     config_yaml: dict,
     cluster_config: Path,
@@ -429,13 +513,25 @@ def run_ray_commands(
             print(f"Verification failed. Retry attempt {count} of {retries}...")
             time.sleep(60)
 
+    diag_lines = collect_auth_diagnostics(config_yaml, cluster_config, env)
+
+    def print_diag():
+        # Printed last so it lands in the 100-line tail Buildkite keeps.
+        print("=============== AUTH DIAGNOSTICS ===============")
+        for line in diag_lines:
+            print(line[:400])
+        print("================================================")
+
     if not success:
         print("======================================")
         print(
             f"Error: Verification failed after {retries} attempts. Cleaning up cluster "
             "before exiting..."
         )
-        cleanup_cluster(config_yaml, cluster_config)
+        try:
+            cleanup_cluster(config_yaml, cluster_config)
+        finally:
+            print_diag()
         print("======================================")
         print("Exiting script.")
         sys.exit(1)
@@ -443,7 +539,10 @@ def run_ray_commands(
     print("======================================")
     print("Ray verification successful.")
 
-    cleanup_cluster(config_yaml, cluster_config)
+    try:
+        cleanup_cluster(config_yaml, cluster_config)
+    finally:
+        print_diag()
 
     print("======================================")
     print("Finished executing script successfully.")
