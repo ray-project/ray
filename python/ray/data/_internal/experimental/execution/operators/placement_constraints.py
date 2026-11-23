@@ -14,7 +14,7 @@ from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.actor_only_resource_reporter import (  # noqa: E501
-        DatasetAllocationView,
+        DatasetReservationView,
     )
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
@@ -69,7 +69,7 @@ class PlacementConstraint:
 
     def matching_nodes(
         self,
-        view: "DatasetAllocationView",
+        view: "DatasetReservationView",
         per_actor: ExecutionResources,
     ) -> AbstractSet[NodeIdStr]:
         """Allocated nodes the op is allowed on.
@@ -110,7 +110,7 @@ class PlacementConstraint:
     @staticmethod
     def _filter_by_resource(
         nodes: AbstractSet[NodeIdStr],
-        view: "DatasetAllocationView",
+        view: "DatasetReservationView",
         per_actor: ExecutionResources,
     ) -> AbstractSet[NodeIdStr]:
         """Drop nodes whose slice is too small to ever hold one actor.

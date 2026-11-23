@@ -30,7 +30,7 @@ from ray.data._internal.execution.resource_bank import LiveObjStore
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
     ActorOnlyResourceReporter,
     BundleKey,
-    DatasetAllocationView,
+    DatasetReservationView,
     PlacementGroupSlots,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool import (
@@ -53,18 +53,23 @@ from ray.data._internal.experimental.execution.sizer import placement_view
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     OpPlacementView,
 )
+from ray.data._internal.experimental.execution.sizer.capacity import (
+    committed_by_node,
+    nodes_to_reclaim,
+    pg_free_by_bundle,
+)
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
 from ray.data._internal.experimental.execution.sizer.models import (
+    ClusterStateSnapshot,
     PerOpSizingRequest,
     PlacedSizingRequest,
-    TickCapacitySnapshot,
-    TickContext,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
     build_op_profile,
+    critical_ops,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     OpOrderingSignals,
@@ -84,11 +89,6 @@ from ray.data._internal.experimental.execution.sizer.scale_where import (
 )
 from ray.data._internal.experimental.execution.sizer.telemetry import (
     SizerTelemetry,
-)
-from ray.data._internal.experimental.execution.sizer.tick import (
-    SizingTicker,
-    committed_by_node,
-    pg_free_by_bundle,
 )
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.util import GiB, MiB
@@ -446,7 +446,7 @@ class _FakeReporter(ActorOnlyResourceReporter):
     placement groups' bundle shapes (``pg_bundles_by_id``)."""
 
     def __init__(
-        self, view: DatasetAllocationView, topology=None, pg_bundles_by_id=None
+        self, view: DatasetReservationView, topology=None, pg_bundles_by_id=None
     ):
         self.view = view
         self.topology = topology or {}
@@ -497,21 +497,31 @@ class _TestSizer(OperatorSizer):
     def initial_sizing_request(self) -> None:
         OperatorSizer._scale_to_initial_size(self)
 
-    def next_tick(self, *, force: bool = True) -> Optional[TickContext]:
-        """The next TickContext; ``force`` steps the clock past the cadence."""
+    def next_tick(self, *, force: bool = True) -> Optional[ClusterStateSnapshot]:
+        """This step's snapshot, or None inside the cadence window; ``force``
+        steps the clock past the cadence. Runs the step's lifecycle
+        transitions, as the scheduling loop's call does."""
         if force:
             self.clock.advance(SIZER_CADENCE_S)
-        return self._ticker.next_tick(self.reporter.get_cluster_view())
+        return self.maybe_build_cluster_state_snapshot(
+            cluster_view=self.reporter.get_cluster_view(),
+            seconds_since_allocation_change=0.0,
+        )
+
+    def held_snapshot(self, *, force: bool = True) -> ClusterStateSnapshot:
+        """The next tick's snapshot with held ops' room already taken out,
+        as every later step of a tick sees it."""
+        snapshot = self.next_tick(force=force)
+        assert snapshot is not None
+        self._note_held_ops(self._hold_for_held_ops(snapshot))
+        return snapshot
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
         """One per-op how_many evaluation, after the step's lifecycle
-        transitions and the tick's phase update."""
-        self._lifecycles.on_step()
-        ctx = self.next_tick(force=force)
-        assert ctx is not None
-        self._note_held_ops(ctx)
-        self._advance_phase(ctx)
-        return self._per_op_how_many(ctx)
+        transitions, the holds and the tick's phase update."""
+        snapshot = self.held_snapshot(force=force)
+        self._advance_phase()
+        return self._per_op_how_many(snapshot)
 
     @property
     def lifecycles(self):
@@ -541,8 +551,8 @@ def _topology(*ops: PhysicalOperator, enqueued: int = 0) -> Any:
     return {op: _FakeOpState(enqueued_blocks=enqueued) for op in ops}
 
 
-def _single_node(cpu=100.0, gpu=4.0) -> DatasetAllocationView:
-    return DatasetAllocationView(
+def _single_node(cpu=100.0, gpu=4.0) -> DatasetReservationView:
+    return DatasetReservationView(
         reserved_by_node={"node0": ExecutionResources(cpu=cpu, gpu=gpu)},
         labels_by_node={"node0": {}},
     )
@@ -550,7 +560,7 @@ def _single_node(cpu=100.0, gpu=4.0) -> DatasetAllocationView:
 
 def _make_sizer(
     topo,
-    view: Optional[DatasetAllocationView] = None,
+    view: Optional[DatasetReservationView] = None,
     pg_bundles_by_id=None,
     **cluster,
 ) -> _TestSizer:
@@ -592,25 +602,22 @@ def _tick(sizer: _TestSizer, topo=None) -> PerOpSizingRequest:
     return sizer.how_many()
 
 
-def _ticker(topo):
-    """A standalone ticker on a fake clock, and a callable that runs its next
-    tick and reports whether that tick is still in warmup."""
-    clock = _FakeClock()
-    ticker = SizingTicker(OpProfiles(topo), cadence_s=SIZER_CADENCE_S, clock=clock)
+def _warmup_probe(topo, **sizer_attrs):
+    """A sizer over ``topo``, and a callable that runs its next tick and
+    reports whether the sizer is still in WARMUP after it."""
+    sizer = _make_sizer(topo)
+    for name, value in sizer_attrs.items():
+        setattr(sizer, name, value)
 
     def in_warmup_after_tick() -> bool:
-        clock.advance(SIZER_CADENCE_S)
-        ctx = ticker.next_tick(_single_node())
-        assert ctx is not None
-        return ctx.warmup
+        sizer.how_many()
+        return sizer.phase is SizerPhase.WARMUP
 
-    return ticker, in_warmup_after_tick
+    return sizer, in_warmup_after_tick
 
 
-def _snapshot_of(sizer: _TestSizer) -> TickCapacitySnapshot:
-    ctx = sizer.next_tick()
-    assert ctx is not None
-    return ctx.capacity
+def _snapshot_of(sizer: _TestSizer) -> ClusterStateSnapshot:
+    return sizer.held_snapshot()
 
 
 def _ticks_until_idle_drain(sizer: _TestSizer, op, limit: int = 20) -> int:
@@ -695,7 +702,7 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
         inputs=[read],
         awaiting_on_start=True,
     )
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={"node0": ExecutionResources(cpu=16, memory=20)},
         labels_by_node={"node0": {}},
     )
@@ -749,7 +756,7 @@ def _video_pipeline(write_awaiting_on_start=False):
         inputs=(features,),
         awaiting_on_start=write_awaiting_on_start,
     )
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={
             "node0": ExecutionResources(cpu=32, gpu=8, memory=61.6 * GiB)
         },
@@ -806,7 +813,7 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
 
     assert write not in _tick(sizer).request
     snapshot = _snapshot_of(sizer)
-    assert snapshot.held_actors_by_op[write] == 4
+    assert sizer._held_actors_by_op[write] == 4
     # 61.6 - 3 running 1-actor stages (2.4 + 2.4 + 3.3) - 4 held x 2.4.
     assert snapshot.free_by_node["node0"].memory == pytest.approx(
         (61.6 - 8.1 - 9.6) * GiB, rel=1e-6
@@ -829,7 +836,8 @@ def test_op_waiting_on_upstream_output_reserves_its_share():
     ops, view = _video_pipeline()
     sizer, _ = _bootstrapped(*ops.values(), view=view)
 
-    held = _snapshot_of(sizer).held_actors_by_op
+    _snapshot_of(sizer)
+    held = sizer._held_actors_by_op
     # resize, features and write wait on upstream output; read is a source.
     assert set(held) == {ops["resize"], ops["features"], ops["write"]}
     assert held[ops["features"]] == 5
@@ -916,19 +924,21 @@ def test_phase_is_steady_once_every_unfinished_op_is_modeled(
 def test_warmup_latches_off_on_critical_op_first_output():
     ops, topo = _linear_pipeline(running=1)
     # Critical op = deepest task-launching op, i.e. the last non-sink map -> infer.
-    assert _ticker(topo)[0].critical_ops == (ops["infer"],)
+    assert critical_ops(topo) == (ops["infer"],)
     sizer = _make_sizer(topo)
-    ctx = sizer.next_tick()
-    assert ctx is not None and ctx.warmup
+    # Ticks without the hold step: this checks the phase, not held grants.
+    assert sizer.next_tick() is not None
+    sizer._advance_phase()
+    assert sizer.phase is SizerPhase.WARMUP
     ops["infer"].metrics.num_task_outputs_generated = 1
-    ctx = sizer.next_tick()
-    assert ctx is not None and not ctx.warmup
     # Once the model has every op, the first tick past warmup holds sizes:
     # growth is the bottleneck policy's, and nothing has been idle yet.
     _mark_modeled(sizer, *topo)
-    sizer._advance_phase(ctx)
+    snapshot = sizer.next_tick()
+    assert snapshot is not None
+    sizer._advance_phase()
     assert sizer.phase is SizerPhase.STEADY
-    assert sizer._per_op_how_many(ctx).request == {}
+    assert sizer._per_op_how_many(snapshot).request == {}
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
@@ -936,19 +946,9 @@ def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_lo
     # reservation) must not hold the sizer in warmup forever: after the
     # timeout it moves to the warm phase, and says which op it gave up on.
     ops, topo = _linear_pipeline(running=1)
-    clock = _FakeClock()
-    ticker = SizingTicker(
-        OpProfiles(topo),
-        cadence_s=SIZER_CADENCE_S,
-        clock=clock,
-        warmup_timeout_s=10 * SIZER_CADENCE_S,
+    _, in_warmup_after_tick = _warmup_probe(
+        topo, _warmup_timeout_s=10 * SIZER_CADENCE_S
     )
-
-    def in_warmup_after_tick() -> bool:
-        clock.advance(SIZER_CADENCE_S)
-        ctx = ticker.next_tick(_single_node())
-        assert ctx is not None
-        return ctx.warmup
 
     # The timeout counts from the first tick.
     assert all(in_warmup_after_tick() for _ in range(10))
@@ -1189,7 +1189,7 @@ def _label_view():
         "g2": {_NODE_ID_KEY: "g2", "accelerator-type": "A100"},
         "g3": {_NODE_ID_KEY: "g3", "accelerator-type": "L4"},
     }
-    return DatasetAllocationView(reserved_by_node=alloc, labels_by_node=labels)
+    return DatasetReservationView(reserved_by_node=alloc, labels_by_node=labels)
 
 
 # n1 is CPU-only and g1/g2/g3 are GPU-only. Nodes must satisfy the label
@@ -1318,7 +1318,7 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
         "c1": ExecutionResources(cpu=8),
     }
     pg_bundles_by_id = {"pg1": [ExecutionResources(cpu=1, gpu=1)] * 2}
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node=reserved_by_node,
         labels_by_node={"g1": {}, "c1": {}},
     )
@@ -1369,7 +1369,7 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
 )
 def test_sizer_measures_core_placed_caps(pg, uses_fn, pool_kwargs, expected_cap):
     pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=4)]}
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={"g1": ExecutionResources(gpu=4)},
     )
     op = _FakeOp(
@@ -1478,7 +1478,7 @@ def test_warmup_pg_ops_share_their_placement_group():
     GPU op gets the whole slice."""
     pg = _FakePG("pg1")
     pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=10)]}
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={"node0": ExecutionResources(cpu=8, gpu=8)},
         labels_by_node={"node0": {}},
     )
@@ -1555,9 +1555,10 @@ def test_critical_op_discovery_walks_past_ops_that_never_report_task_outputs():
     sizer in feedforward warmup for the entire run."""
     source = _FakeOp("Map", _FakePool(min_size=1, max_size=4, cpu=1))
     limit = _FakeNonPoolOp("Limit", inputs=[source])
-    ticker, in_warmup_after_tick = _ticker(_topology(source, limit))
+    topo = _topology(source, limit)
+    _, in_warmup_after_tick = _warmup_probe(topo)
 
-    assert ticker.critical_ops == (source,)
+    assert critical_ops(topo) == (source,)
     assert in_warmup_after_tick()
     source.metrics.num_task_outputs_generated = 1
     assert not in_warmup_after_tick()
@@ -1570,9 +1571,10 @@ def test_latch_waits_for_every_branch_of_a_union():
     left = _FakeOp("Left", _FakePool(min_size=1, max_size=4, cpu=1))
     right = _FakeOp("Right", _FakePool(min_size=1, max_size=4, cpu=1))
     union = _FakeNonPoolOp("Union", inputs=[left, right])
-    ticker, in_warmup_after_tick = _ticker(_topology(left, right, union))
+    topo = _topology(left, right, union)
+    _, in_warmup_after_tick = _warmup_probe(topo)
 
-    assert set(ticker.critical_ops) == {left, right}
+    assert set(critical_ops(topo)) == {left, right}
     left.metrics.num_task_outputs_generated = 1
     assert in_warmup_after_tick()  # right is still cold
     right.metrics.num_task_outputs_generated = 1
@@ -1582,26 +1584,22 @@ def test_latch_waits_for_every_branch_of_a_union():
 def test_tick_cadence_gate_and_idle_phases():
     ops, topo = _linear_pipeline(running=1)
     sizer = _make_sizer(topo)
-    ctx = sizer.next_tick(force=False)  # the first tick is never gated
-    assert ctx is not None
-    assert ctx.capacity.nodes_to_reclaim == {}
-    # Every real tick carries the cluster snapshot the phases share, and the
-    # order they all walk operators in.
-    assert ctx.ordered_ops == tuple(
+    snapshot = sizer.next_tick(force=False)  # the first tick is never gated
+    assert snapshot is not None
+    assert snapshot.nodes_to_reclaim == {}
+    # Every real tick's snapshot carries the order every step walks
+    # operators in.
+    assert snapshot.ordered_ops == tuple(
         ordered_actor_pool_ops(
             topo,
             OpProfiles(topo).actor_pool_ops,
-            ctx.capacity.schedulable_nodes_by_op,
+            snapshot.schedulable_nodes_by_op,
         )
     )
-    # Inside the cadence window there is no tick, so a scheduling-loop step
-    # only samples signals. Nothing is resized, and pool upkeep is the
+    # Inside the cadence window there is no snapshot, so the scheduling loop
+    # makes no sizing decision. Nothing is resized, and pool upkeep is the
     # executor's job, not the sizer's.
     assert sizer.next_tick(force=False) is None
-    sizer.perform_sizing_decision(
-        cluster_view=sizer.reporter.view,
-        seconds_since_allocation_change=0.0,
-    )
     assert all(op._pool.scaled == [] for op in topo)
     assert all(op.actor_pool.upkeep_calls == 0 for op in topo)
 
@@ -1706,7 +1704,7 @@ def test_below_min_constrained_op_granted_full_min():
         "n3": ExecutionResources(cpu=8),
     }
     labels = {"picked": {_NODE_ID_KEY: "picked"}, "n2": {}, "n3": {}}
-    view = DatasetAllocationView(reserved_by_node=alloc, labels_by_node=labels)
+    view = DatasetReservationView(reserved_by_node=alloc, labels_by_node=labels)
 
     # Pinned op: min 4 x 2 CPUs = exactly the picked node.
     peer1 = _FakeOp("peer1", _FakePool(min_size=1, max_size=10, cpu=1), node=None)
@@ -1965,7 +1963,7 @@ def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
         "g2": {"accelerator-type": "A100"},
         "g3": {"accelerator-type": "L4"},
     }
-    view = DatasetAllocationView(reserved_by_node=alloc, labels_by_node=labels)
+    view = DatasetReservationView(reserved_by_node=alloc, labels_by_node=labels)
 
     read = _FakeOp(
         "read", _FakePool(min_size=1, max_size=500, cpu=1, running=1), node=None
@@ -1995,7 +1993,7 @@ def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
     # A reclaim-heavy op processed first must not over-debit the per-node
     # ledger: only genuinely-new actors consume free capacity, so a later op
     # contending for the same node still gets its full grant.
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={"n1": ExecutionResources(cpu=10)}, labels_by_node={"n1": {}}
     )
     up = _FakeOp(
@@ -2044,7 +2042,7 @@ def _snapshot(
         op: (frozenset(free) if match is None else match)
         for op, match in schedulable_nodes_by_op.items()
     }
-    return TickCapacitySnapshot(
+    return ClusterStateSnapshot(
         free_by_node=free,
         reserved_by_node=dict(free),
         schedulable_nodes_by_op=schedulable_nodes_by_op,
@@ -2162,12 +2160,12 @@ def test_decision_claims_reach_the_how_many_pass():
     claimed."""
     op = _FakeOp("op", _FakePool(min_size=1, max_size=10, cpu=1, running=1))
     sizer, _ = _bootstrapped(op, warm=True, cpu=4.0, gpu=0.0)
-    ctx = sizer.next_tick()
-    assert ctx is not None
-    before = ConstraintAwareCapacityLedger(ctx.capacity).max_upscale_delta(op)
-    decision_ctx = sizer._decision_context(ctx, seconds_since_allocation_change=0.0)
+    snapshot = sizer.next_tick()
+    assert snapshot is not None
+    before = ConstraintAwareCapacityLedger(snapshot).max_upscale_delta(op)
+    decision_ctx = sizer._decision_context(snapshot)
     decision_ctx.claim_free("node0", ExecutionResources(cpu=1), 2)
-    after = ConstraintAwareCapacityLedger(ctx.capacity).max_upscale_delta(op)
+    after = ConstraintAwareCapacityLedger(snapshot).max_upscale_delta(op)
     assert after == before - 2
 
 
@@ -2311,7 +2309,7 @@ def test_ordered_ops_use_snapshot_eligibility_for_specificity():
         "a1": {_NODE_ID_KEY: "a1", "ray-pool": "pool_a"},
         "a2": {_NODE_ID_KEY: "a2", "ray-pool": "pool_a"},
     }
-    view = DatasetAllocationView(reserved_by_node=alloc, labels_by_node=labels)
+    view = DatasetReservationView(reserved_by_node=alloc, labels_by_node=labels)
 
     # pinned is UPSTREAM of pool: sink-most within the tier would put pool first.
     pinned = _FakeOp(
@@ -2341,7 +2339,7 @@ def test_ordered_ops_use_snapshot_eligibility_for_specificity():
 def test_gpu_nodes_are_scarce_in_node_pressure():
     # A GPU op with NO label_selector still marks GPU nodes as scarce, so a
     # plain CPU op deprioritizes them; a CPU-only node stays unpressured.
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={
             "n1": ExecutionResources(cpu=16),
             "g1": ExecutionResources(cpu=8, gpu=4),
@@ -2392,7 +2390,7 @@ def test_committed_and_free_by_node_exclude_pg_managed_ops():
         uses_ray_remote_args_fn=True,
     )
     labels = {"n1": {}, "n2": {}}
-    view = DatasetAllocationView(
+    view = DatasetReservationView(
         reserved_by_node={
             "n1": ExecutionResources(cpu=4),
             "n2": ExecutionResources(cpu=4),
@@ -2409,7 +2407,7 @@ def test_committed_and_free_by_node_exclude_pg_managed_ops():
     assert free["n1"].cpu == 1 and free["n2"].cpu == 1
 
     # Over-commit clamps free at 0, never negative.
-    tight = DatasetAllocationView(
+    tight = DatasetReservationView(
         reserved_by_node={
             "n1": ExecutionResources(cpu=1),
             "n2": ExecutionResources(cpu=4),
@@ -2435,7 +2433,7 @@ def test_committed_and_free_by_node_exclude_pg_managed_ops():
         pytest.param(0, 2, id="shrink-not-yet-shed"),
     ],
 )
-def test_compute_nodes_to_reclaim_nets_out_draining_actors(draining_cpu, expected_over):
+def test_nodes_to_reclaim_nets_out_draining_actors(draining_cpu, expected_over):
     op = _FakeOp(
         "Map",
         _FakePool(min_size=1, max_size=10, cpu=1),
@@ -2443,7 +2441,7 @@ def test_compute_nodes_to_reclaim_nets_out_draining_actors(draining_cpu, expecte
         draining={"n1": ExecutionResources(cpu=draining_cpu)} if draining_cpu else None,
     )
     alloc = {"n1": ExecutionResources(cpu=6)}
-    reclaim = SizingTicker.compute_nodes_to_reclaim(alloc, OpProfiles(_topology(op)))
+    reclaim = nodes_to_reclaim(alloc, OpProfiles(_topology(op)))
     if expected_over is None:
         assert reclaim == {}
     else:
@@ -2468,10 +2466,10 @@ def test_replacements_for_draining_actors_are_not_read_as_an_overage():
     )
     alloc = {"n1": ExecutionResources(cpu=8)}
     profiles = OpProfiles(_topology(donor, recipient))
-    assert SizingTicker.compute_nodes_to_reclaim(alloc, profiles) == {}
+    assert nodes_to_reclaim(alloc, profiles) == {}
 
 
-def test_compute_nodes_to_reclaim_over_allocation():
+def test_nodes_to_reclaim_over_allocation():
     """Per node, reclaim = committed - alloc, clamped >= 0. A node absent from
     alloc (our slice lost it) is fully over-allocated."""
     op = _FakeOp(
@@ -2484,7 +2482,7 @@ def test_compute_nodes_to_reclaim_over_allocation():
         },
     )
     alloc = {"n1": ExecutionResources(cpu=2), "n2": ExecutionResources(cpu=4)}
-    reclaim = SizingTicker.compute_nodes_to_reclaim(alloc, OpProfiles(_topology(op)))
+    reclaim = nodes_to_reclaim(alloc, OpProfiles(_topology(op)))
     assert set(reclaim) == {"n1", "n3"}
     assert reclaim["n1"].cpu == 2
     assert reclaim["n3"].cpu == 3
@@ -2502,16 +2500,16 @@ def test_empty_allocation_reclaim_skepticism():
     grant = sizer.reporter.view
     empty = replace(grant, reserved_by_node={})
 
-    def nodes_to_reclaim(view):
+    def reclaim_for(view):
         sizer.reporter.view = view
         return _snapshot_of(sizer).nodes_to_reclaim
 
-    assert nodes_to_reclaim(empty) == {}  # empty before the first grant
-    nodes_to_reclaim(grant)  # non-empty grant seen
-    assert nodes_to_reclaim(empty) == {}  # first empty read: skeptical
-    assert nodes_to_reclaim(grant) == {}  # recovers; counter resets
-    assert nodes_to_reclaim(empty) == {}
-    assert "node0" in nodes_to_reclaim(empty)  # second consecutive empty
+    assert reclaim_for(empty) == {}  # empty before the first grant
+    reclaim_for(grant)  # non-empty grant seen
+    assert reclaim_for(empty) == {}  # first empty read: skeptical
+    assert reclaim_for(grant) == {}  # recovers; counter resets
+    assert reclaim_for(empty) == {}
+    assert "node0" in reclaim_for(empty)  # second consecutive empty
 
 
 def _evictable_ops(*, cpu_running, cpu_pending=(), gpu_running=()):

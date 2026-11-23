@@ -112,7 +112,7 @@ class OpSizingPolicy:
     ) -> Optional[int]:
         """This op's warmup share in actors, clamped to [min_size, max_size]
         (see ``warmup_delta``). Also what an op held at zero or min reserves
-        (``SizingTicker``).
+        (``OperatorSizer._hold_for_held_ops``).
 
         A CPU op's share is also capped by memory: GPU ops take their GPU share (and its memory) first, and the
         CPU ops whose actors request memory split what is left equally. A

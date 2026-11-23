@@ -30,7 +30,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     OpPlacementView,
     max_placeable_actors,
 )
-from ray.data._internal.experimental.execution.sizer.models import TickCapacitySnapshot
+from ray.data._internal.experimental.execution.sizer.models import ClusterStateSnapshot
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 from ray.data._internal.experimental.execution.sizer.telemetry import SizerTelemetry
 
@@ -141,7 +141,7 @@ def evict_from_reclaimed_nodes(
 def build_placement_views(
     *,
     request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
-    capacity: TickCapacitySnapshot,
+    capacity: ClusterStateSnapshot,
 ) -> Dict[ExperimentalActorPoolMapOperator, OpPlacementView]:
     """A placement view per requested op, carrying its schedulable nodes and
     the per-node contention the strategy sorts on. Only downscales pay for sorted

@@ -52,8 +52,9 @@ HOLD_CLUSTER_SETTLING = "cluster_settling"
 def classify_phase(
     warmup: bool, unmodeled: AbstractSet["ExperimentalActorPoolMapOperator"]
 ) -> SizerPhase:
-    """The sizer's phase: ``warmup`` is the ticker's latch (until every
-    critical op has produced output), ``unmodeled`` the unfinished ops the
+    """The sizer's phase: ``warmup`` is whether WARMUP still holds (until
+    every critical op has produced output, see
+    ``OperatorSizer._warmup_complete``), ``unmodeled`` the unfinished ops the
     bottleneck model has never had a full window for."""
     if warmup:
         return SizerPhase.WARMUP

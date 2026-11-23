@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Tuple
+from typing import TYPE_CHECKING, Dict, List, Tuple
 
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.resource_manager import (
+    terminal_operator_from_topology,
+)
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
     next_actor_pool_ops,
@@ -29,6 +32,59 @@ def is_sink_or_write(op: "PhysicalOperator") -> bool:
 def has_produced_output(op: "PhysicalOperator") -> bool:
     """Whether ``op`` has emitted a task output, or completed without one."""
     return op.metrics.num_task_outputs_generated > 0 or op.has_completed()
+
+
+def critical_ops(
+    topology: "Topology",
+) -> Tuple["ExperimentalActorPoolMapOperator", ...]:
+    """The last map operator on each path back from the output.
+
+    Warmup ends once every one of them has produced its first output --
+    that is what "the pipeline is flowing end to end" means in practice.
+
+    Walking back is necessary because only map operators report task
+    outputs. Limit, union, mix, aggregate, the output splitter and the
+    input buffer never increment ``num_task_outputs_generated``, so
+    watching one of those would keep the sizer in warmup for the whole run.
+    Write operators are skipped too: they are the sink, and the useful
+    signal is one step earlier.
+
+        read -> map -> limit -> split    watches: map
+        read -> map -> write             watches: map
+
+    There can be more than one, because union and mix take two or more
+    inputs, so there is no single last operator:
+
+        read_a -> map_a ---\
+                            union -> split    watches: map_a and map_b
+        read_b -> map_b ---/
+
+    Waiting for both is deliberate. If warmup ended as soon as map_a
+    produced, map_b would be sized from feedback while its queues were
+    still empty -- it would read as idle and be drained back to min_size
+    just as its data arrived.
+    """
+
+    def walk(
+        allow_sinks: bool,
+    ) -> Tuple["ExperimentalActorPoolMapOperator", ...]:
+        found: List["ExperimentalActorPoolMapOperator"] = []
+
+        def visit(op: "PhysicalOperator") -> None:
+            if isinstance(op, ExperimentalActorPoolMapOperator) and (
+                allow_sinks or not is_sink_or_write(op)
+            ):
+                found.append(op)
+                return
+            for upstream in op.input_dependencies:
+                visit(upstream)
+
+        visit(terminal_operator_from_topology(topology))
+        return tuple(found)
+
+    # A pipeline that is only a write has no non-sink map op; latch on the
+    # sink itself rather than never leaving warmup.
+    return walk(allow_sinks=False) or walk(allow_sinks=True)
 
 
 @dataclass(frozen=True)

@@ -158,19 +158,26 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         # 3. If there are any operators that are IDLE, execute escape hatch
         self._maybe_run_escape_hatch()
 
-        self._sizer.perform_sizing_decision(
+        # 4. Build a cluster snapshot if ready for sizing decision.
+        cluster_state_snapshot = self._sizer.maybe_build_cluster_state_snapshot(
             cluster_view=cluster_view,
             seconds_since_allocation_change=(
                 self._resource_reporter.seconds_since_allocation_change()
             ),
         )
-        self._expire_pending_actors(topology)
+        if cluster_state_snapshot is not None:
+            self._sizer.perform_sizing_decision(
+                cluster_state_snapshot=cluster_state_snapshot
+            )
 
+        # TODO(Justin: This probably should be part of the sizing in this case,
+        # since we scaling up and down the number of actors. Like it should
+        # be called here, but the method can be part of the sizer.
+        self._expire_pending_actors(topology)
         self._resource_bank.drain_consumed_blocks()
         self._release_drained_actors_of_completed_ops(topology)
+
         self._launch_tasks()
-        # After the launch: a slot freed this step and refilled by it is busy,
-        # not idle (see ``OperatorSizer.observe_after_launch``).
         self._sizer.observe_after_launch()
         self._sample_output_backpressure(topology)
 

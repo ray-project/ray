@@ -16,7 +16,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     max_placeable_actors,
     pack_actors,
 )
-from ray.data._internal.experimental.execution.sizer.models import TickCapacitySnapshot
+from ray.data._internal.experimental.execution.sizer.models import ClusterStateSnapshot
 
 # Placeable count for an actor that requests no cpu/gpu/memory (fits anywhere).
 _UNBOUNDED_PLACEABLE = 1 << 30
@@ -31,7 +31,7 @@ class ConstraintAwareCapacityLedger:
     run in placement order, so anything granted here is placeable.
     """
 
-    def __init__(self, capacity: TickCapacitySnapshot):
+    def __init__(self, capacity: ClusterStateSnapshot):
         self._capacity = capacity
         self._free: Dict[NodeIdStr, ExecutionResources] = {
             node_id: res.copy() for node_id, res in capacity.free_by_node.items()

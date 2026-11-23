@@ -20,6 +20,9 @@ if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
         BottleneckTick,
     )
+    from ray.data._internal.experimental.execution.sizer.models import (
+        ClusterStateSnapshot,
+    )
 
 
 @dataclass
@@ -49,7 +52,7 @@ class DecisionContext:
         "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
     ] = field(default_factory=dict)
     # Static-PG ops spend their PG's bundles (each like a node); ops whose PG
-    # capacity is unknown, a plain count (see ``TickCapacitySnapshot``).
+    # capacity is unknown, a plain count (see ``ClusterStateSnapshot``).
     pg_free: Dict[BundleKey, ExecutionResources] = field(default_factory=dict)
     schedulable_bundles: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
@@ -68,6 +71,46 @@ class DecisionContext:
         "ExperimentalActorPoolMapOperator",
         Tuple["ExperimentalActorPoolMapOperator", ...],
     ] = field(default_factory=dict)
+
+    @classmethod
+    def from_snapshot(
+        cls,
+        snapshot: "ClusterStateSnapshot",
+        *,
+        topology: "Topology",
+        phase: SizerPhase,
+        actor_pool_ops: Sequence["ExperimentalActorPoolMapOperator"],
+        non_pg_ops: Sequence["ExperimentalActorPoolMapOperator"],
+        now: float,
+        bottleneck: Optional["BottleneckTick"],
+        growth_ceiling: Dict["ExperimentalActorPoolMapOperator", int],
+        next_ops: Dict[
+            "ExperimentalActorPoolMapOperator",
+            Tuple["ExperimentalActorPoolMapOperator", ...],
+        ],
+    ) -> "DecisionContext":
+        """This tick's context over ``snapshot`` plus the sizer's own state.
+
+        The free maps are shared with ``snapshot``, not copied: the policy
+        debits what it claims, so the how-many pass later this tick (which
+        reads the same snapshot) doesn't hand it out again.
+        """
+        return cls(
+            topology=topology,
+            phase=phase,
+            free=snapshot.free_by_node,
+            actor_pool_ops=actor_pool_ops,
+            non_pg_ops=non_pg_ops,
+            seconds_since_allocation_change=snapshot.seconds_since_allocation_change,
+            now=now,
+            bottleneck=bottleneck,
+            schedulable_nodes=snapshot.schedulable_nodes_by_op,
+            pg_free=snapshot.pg_free_by_bundle,
+            schedulable_bundles=snapshot.schedulable_bundles_by_op,
+            unknown_pg_headroom=snapshot.unknown_pg_headroom_by_op,
+            growth_ceiling=growth_ceiling,
+            next_ops=next_ops,
+        )
 
     @property
     def warmup(self) -> bool:

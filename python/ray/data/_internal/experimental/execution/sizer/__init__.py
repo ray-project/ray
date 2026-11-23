@@ -6,7 +6,7 @@ Capacity
 --------
 reserved
     This dataset's slice of each node, as handed out by the autoscaling
-    coordinator (``DatasetAllocationView``).
+    coordinator (``DatasetReservationView``).
 
 committed
     Capacity held by this dataset's non-PG actors on a node: running actors

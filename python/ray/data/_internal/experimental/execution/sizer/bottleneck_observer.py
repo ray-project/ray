@@ -94,7 +94,7 @@ if TYPE_CHECKING:
         SlotUsage,
     )
     from ray.data._internal.experimental.execution.sizer.models import (
-        TickCapacitySnapshot,
+        ClusterStateSnapshot,
     )
     from ray.data._internal.experimental.execution.sizer.op_profile import (
         OpProfiles,
@@ -912,7 +912,7 @@ class BottleneckObserver:
     def assess(
         self,
         snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
-        capacity: "TickCapacitySnapshot",
+        capacity: "ClusterStateSnapshot",
         stable: AbstractSet["ExperimentalActorPoolMapOperator"],
         held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
     ) -> Assessment["ExperimentalActorPoolMapOperator"]:
@@ -990,7 +990,7 @@ class BottleneckObserver:
 
     def _freeable_by_node(
         self,
-        capacity: "TickCapacitySnapshot",
+        capacity: "ClusterStateSnapshot",
         *,
         exclude: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> Dict[NodeIdStr, ExecutionResources]:
@@ -1043,7 +1043,7 @@ class BottleneckObserver:
     def _eligibility(
         self,
         op: "ExperimentalActorPoolMapOperator",
-        capacity: "TickCapacitySnapshot",
+        capacity: "ClusterStateSnapshot",
         free_by_node: Mapping[NodeIdStr, ExecutionResources],
         freeable: Mapping[NodeIdStr, ExecutionResources],
     ) -> str:
@@ -1083,7 +1083,7 @@ class BottleneckObserver:
 
     @staticmethod
     def _pg_eligibility(
-        op: "ExperimentalActorPoolMapOperator", capacity: "TickCapacitySnapshot"
+        op: "ExperimentalActorPoolMapOperator", capacity: "ClusterStateSnapshot"
     ) -> str:
         """A PG-managed op grows only into its own placement group: other
         ops' actors hold none of its bundles, so it never takes victims."""
@@ -1174,7 +1174,7 @@ class BottleneckObserver:
 
     def tick(
         self,
-        capacity: "TickCapacitySnapshot",
+        capacity: "ClusterStateSnapshot",
         held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
     ) -> BottleneckTick["ExperimentalActorPoolMapOperator"]:
         """This tick's model: snapshot, stable bottlenecks (advancing their

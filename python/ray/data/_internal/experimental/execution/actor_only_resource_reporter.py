@@ -167,29 +167,18 @@ class PlacementGroupSlots:
 
 
 @dataclass(frozen=True)
-class DatasetAllocationView:
+class DatasetReservationView:
     """Snapshot of the cluster as visible to one dataset, taken once per sizing
     tick so every sizing phase plans against the same numbers."""
 
-    # This dataset's coordinator allocation, per node, including
-    # ``pg_reserved_by_node``.
+    # This includes pg reservations
     reserved_by_node: Dict[NodeIdStr, ExecutionResources]
-    # Node labels (``ray.nodes()[...]["Labels"]``) per alive node; resolves
-    # label_selector eligibility. Empty when constraint-aware placement is off.
-    labels_by_node: Dict[NodeIdStr, Dict[str, str]] = field(default_factory=dict)
-    # The part of ``reserved_by_node`` this dataset's registered placement
-    # groups hold, on the nodes Ray placed them. Only PG actors can use it.
-    # E.g. ``{"node-1": ExecutionResources(cpu=4, gpu=2)}`` for the PG in the
-    # ``PlacementGroupSlots`` example, if Ray placed all of it on node-1.
+    # Only pg reservations
     pg_reserved_by_node: Dict[NodeIdStr, ExecutionResources] = field(
         default_factory=dict
     )
-    # Nodes Ray core is draining. Their reservation is still reported, but
-    # nothing new should be placed there.
+    labels_by_node: Dict[NodeIdStr, Dict[str, str]] = field(default_factory=dict)
     draining_nodes: FrozenSet[NodeIdStr] = frozenset()
-    # The bundle slots each PG-managed op may use, and caps for those whose
-    # PG capacity is unknown. Capacity only; the sizer subtracts what its
-    # pools hold (``sizer.tick.pg_free_by_bundle``).
     pg_slots: PlacementGroupSlots = field(default_factory=PlacementGroupSlots)
 
     @cached_property
@@ -366,7 +355,7 @@ class ActorOnlyResourceReporter:
             self._autoscaling_coordinator.register_placement_groups(pg_ids)
             self._registered_pg_ids = pg_ids
 
-    def get_cluster_view(self) -> DatasetAllocationView:
+    def get_cluster_view(self) -> DatasetReservationView:
         """Snapshot of the cluster as visible to this dataset right now."""
         self._register_placement_groups()
         reserved_by_node, pg_reserved_by_node = self._get_split_reserved_by_node()
@@ -379,7 +368,7 @@ class ActorOnlyResourceReporter:
                 ),
                 self._pg_bundles_by_id,
             )
-        return DatasetAllocationView(
+        return DatasetReservationView(
             reserved_by_node=reserved_by_node,
             labels_by_node=dict(self._get_node_labels()),
             pg_reserved_by_node=pg_reserved_by_node,
