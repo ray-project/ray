@@ -1,3 +1,4 @@
+import importlib
 import json
 import logging
 import os
@@ -12,7 +13,7 @@ import urllib.parse
 import warnings
 from collections import deque
 from datetime import datetime
-from typing import List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import click
 import colorama
@@ -143,12 +144,57 @@ def _check_ray_version(gcs_client):
         )
 
 
-class RayCLI(click.Group):
-    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+def _unavailable_command(name: str, message: str) -> click.Command:
+    """Placeholder for a subcommand that failed to import.
 
-    This overrides format_commands to split subcommands into "Observability"
-    and "Commands" sections for better readability of ray --help output.
+    The unavailable command is hidden from `ray --help` list, and invoking it
+    explains why it is unavailable.
     """
+
+    @click.command(
+        name=name,
+        hidden=True,
+        add_help_option=False,
+        context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
+    )
+    def unavailable():
+        raise click.ClickException(message)
+
+    return unavailable
+
+
+class RayCLI(click.Group):
+    """Custom click.Group for the `ray` CLI.
+
+    Subcommands in `lazy_subcommands` are imported only when they are used.
+    `ray --help` groups the observability commands (State CLI commands) into
+    their own section.
+    """
+
+    def __init__(
+        self,
+        *args,
+        lazy_subcommands: Optional[Dict[str, str]] = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self._lazy_subcommands = lazy_subcommands or {}
+
+    def list_commands(self, ctx: click.Context) -> List[str]:
+        return sorted(set(super().list_commands(ctx)) | self._lazy_subcommands.keys())
+
+    def get_command(self, ctx: click.Context, cmd_name: str) -> Optional[click.Command]:
+        if cmd_name not in self._lazy_subcommands:
+            return super().get_command(ctx, cmd_name)
+
+        module_name, attr_name = self._lazy_subcommands[cmd_name].rsplit(".", 1)
+        try:
+            module = importlib.import_module(module_name)
+        except Exception as e:
+            return _unavailable_command(
+                cmd_name, f"`ray {cmd_name}` is unavailable: {e}"
+            )
+        return getattr(module, attr_name)
 
     def format_commands(self, ctx, formatter):
         commands = []
@@ -189,7 +235,18 @@ class RayCLI(click.Group):
                     formatter.write_dl(observability_commands)
 
 
-@click.group(cls=RayCLI)
+# Subcommands whose modules are expensive to import, as name -> "module.attribute".
+_LAZY_SUBCOMMANDS = {
+    "list": "ray.util.state.state_cli.ray_list",
+    "get": "ray.util.state.state_cli.ray_get",
+    "summary": "ray.util.state.state_cli.summary_state_cli_group",
+    "logs": "ray.util.state.state_cli.logs_state_cli_group",
+    "job": "ray.dashboard.modules.job.cli.job_cli_group",
+    "serve": "ray.serve.scripts.cli",
+}
+
+
+@click.group(cls=RayCLI, lazy_subcommands=_LAZY_SUBCOMMANDS)
 @click.option(
     "--logging-level",
     required=False,
@@ -2996,37 +3053,6 @@ cli.add_command(sanity_check)
 cli.add_command(symmetric_run, name="symmetric-run")
 cli.add_command(get_auth_token)
 cli.add_command(kill_actor)
-
-try:
-    from ray.util.state.state_cli import (
-        logs_state_cli_group,
-        ray_get,
-        ray_list,
-        summary_state_cli_group,
-    )
-
-    cli.add_command(ray_list, name="list")
-    cli.add_command(ray_get, name="get")
-    cli.add_command(summary_state_cli_group, name="summary")
-    cli.add_command(logs_state_cli_group, name="logs")
-except ImportError as e:
-    logger.debug(f"Integrating ray state command line tool failed: {e}")
-
-
-try:
-    from ray.dashboard.modules.job.cli import job_cli_group
-
-    cli.add_command(job_cli_group, name="job")
-except Exception as e:
-    logger.debug(f"Integrating ray jobs command line tool failed with {e}")
-
-
-try:
-    from ray.serve.scripts import cli as serve_cli_group
-
-    cli.add_command(serve_cli_group, name="serve")
-except Exception as e:
-    logger.debug(f"Integrating ray serve command line tool failed with {e}")
 
 
 def main():
