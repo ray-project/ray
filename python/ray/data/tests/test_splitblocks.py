@@ -53,7 +53,16 @@ def test_split_blocks():
     f(50, 5)
 
 
-def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
+def test_small_file_split_v1(ray_start_10_cpus_shared, restore_data_context):
+    """Checks the V1 read path, which splits a small file's output into
+    ``override_num_blocks`` blocks.
+
+    Not supported on V2: ``ReadFiles`` is planned by ``plan_read_files_op``, which
+    doesn't set the additional split factor that ``SetReadParallelismRule`` sets for
+    V1 ``Read``. V2 also names its tasks ``ListFiles`` and ``ReadFilesCsvV2``, and
+    ``initial_num_blocks()`` is ``None`` until execution.
+    """
+    ray.data.context.DataContext.get_current().use_datasource_v2 = False
     last_snapshot = get_initial_core_execution_metrics_snapshot()
 
     ds = ray.data.read_csv("example://iris.csv", override_num_blocks=1)

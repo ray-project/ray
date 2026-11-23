@@ -4979,9 +4979,11 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
+            >>> ds = ray.data.read_binary_files(
+            ...     "s3://anonymous@ray-example-data/pdf-sample_0.pdf"
+            ... )
             >>> ds.input_files()
-            ['ray-example-data/this.txt']
+            ['ray-example-data/pdf-sample_0.pdf']
 
         Returns:
             The list of input files used to create the dataset, or an empty

@@ -1,5 +1,6 @@
 """Unit tests for the shared line-chunkable datasource base (CSV, JSONL)."""
 
+import pytest
 
 from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvDatasourceV2,
@@ -44,3 +45,9 @@ def test_resolves_partitioning_without_a_sample():
 
     assert resolved is not None
     assert resolved.field_names is None
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

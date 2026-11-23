@@ -2645,7 +2645,11 @@ def read_csv(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
-                hive-style-partitioning/>`_.
+                hive-style-partitioning/>`_. The partition values from a file's path
+            become columns. If the file also has a column with the same name, the
+            path value replaces the file's values: ``country=US/a.csv`` with rows
+            containing ``country=CA`` returns ``country="US"`` for every row. The V1
+            reader raises an error instead.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
