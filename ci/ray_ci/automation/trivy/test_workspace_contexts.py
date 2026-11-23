@@ -23,8 +23,9 @@ KNOWN_CONTEXTS = {
     "ci/docker/ray-java.wanda.yaml",
 }
 # A load from this repo, written "//pkg:file", "@//pkg:file" or
-# "@io_ray//pkg:file", on one line or several.
-LOAD = re.compile(r'\bload\(\s*"(?:@io_ray|@)?//([^:"]*):([^"]+)"')
+# "@io_ray//pkg:file", in either quotes, on one line or several. pre-commit
+# runs buildifier only on BUILD files, so nothing normalizes the quotes here.
+LOAD = re.compile(r"""\bload\(\s*["'](?:@io_ray|@)?//([^:"']*):([^"']+)["']""")
 
 
 def repo_file(path: str) -> Path:
@@ -77,6 +78,7 @@ def missing(context_srcs: list[str], loads: list[tuple[str, str]]) -> list[str]:
         ('load("//a/b:c.bzl", "x")', [("a/b", "c.bzl")]),
         ('load("@//a/b:c.bzl", "x")', [("a/b", "c.bzl")]),
         ('load("@io_ray//a/b:c.bzl", "x")', [("a/b", "c.bzl")]),
+        ("load('//a/b:c.bzl', 'x')", [("a/b", "c.bzl")]),
         ('load(\n    "//a/b:c.bzl",\n    "x",\n)', [("a/b", "c.bzl")]),
         ('load("@bazel_tools//tools:http.bzl", "x")', []),
     ],
