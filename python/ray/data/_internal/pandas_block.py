@@ -849,6 +849,36 @@ class PandasBlockAccessor(TableBlockAccessor):
         columns, ascending = sort_key.to_pandas_sort_args()
         return self._table.sort_values(by=columns, ascending=ascending)
 
+    def top_n(self, sort_key: "SortKey", limit: int) -> Block:
+        assert (
+            sort_key.get_columns()
+        ), f"Sorting columns couldn't be empty (got {sort_key.get_columns()})"
+        assert limit >= 0, limit
+
+        if limit == 0 or self._table.shape[0] == 0:
+            return self._table.iloc[:0]
+
+        result_size = min(limit, self._table.shape[0])
+        columns, ascending = sort_key.to_pandas_sort_args()
+
+        # Use row positions so duplicate/non-default indices survive the gather.
+        key_frame = self._table[columns].reset_index(drop=True)
+        if not key_frame.isnull().values.any() and len(set(ascending)) == 1:
+            try:
+                if ascending[0]:
+                    selected = key_frame.nsmallest(result_size, columns)
+                else:
+                    selected = key_frame.nlargest(result_size, columns)
+            except TypeError:
+                pass
+            else:
+                return self._table.iloc[selected.index]
+
+        indices = key_frame.sort_values(by=columns, ascending=ascending).index[
+            :result_size
+        ]
+        return self._table.iloc[indices]
+
     def sort_and_partition(
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:

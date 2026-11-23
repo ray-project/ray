@@ -21,7 +21,6 @@ from ray.train.torch.train_loop_utils import (
     _WrappedDataLoader,
     get_devices as get_devices_distributed,
 )
-from ray.train.v2._internal.execution.train_fn_utils import get_train_fn_utils
 from ray.train.v2._internal.util import requires_train_worker
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -125,15 +124,7 @@ def get_devices() -> List[torch.device]:
         >>> torch.cuda.is_available() == True
         >>> get_devices() == [torch.device("cuda:2"), torch.device("cuda:3")]
     """
-    if get_train_fn_utils().is_distributed():
-        return get_devices_distributed()
-    else:
-        # Local mode, we defer to torch.cuda
-        # TODO(xgui): Use `ScalingConfig.use_gpu` instead
-        if torch.cuda.is_available():
-            return [torch.device(f"cuda:{torch.cuda.current_device()}")]
-        else:
-            return [torch.device("cpu")]
+    return get_devices_distributed()
 
 
 def prepare_model(
@@ -301,6 +292,11 @@ def prepare_data_loader(
 
     Returns:
         The prepared DataLoader.
+
+    Raises:
+        ValueError: If ``add_dist_sampler`` is ``True``, there is more than one
+            worker, and ``data_loader`` was created with a custom
+            ``batch_sampler``.
     """
     record_extra_usage_tag(TagKey.TRAIN_TORCH_PREPARE_DATALOADER, "1")
 
@@ -321,6 +317,17 @@ def prepare_data_loader(
         )
         and add_dist_sampler
     ):
+        # A custom `batch_sampler` leaves `batch_size` as None. Rebuilding the
+        # DataLoader below would drop the `batch_sampler` and disable batching.
+        if data_loader.batch_sampler is not None and data_loader.batch_size is None:
+            raise ValueError(
+                "`prepare_data_loader` can't add a `DistributedSampler` to a "
+                "DataLoader with a custom `batch_sampler`, since that would drop "
+                "the `batch_sampler` and return unbatched samples. Shard the data "
+                "in your batch sampler instead (for example, by wrapping a "
+                "`DistributedSampler` in a `torch.utils.data.BatchSampler`) and "
+                "pass `add_dist_sampler=False`."
+            )
 
         def with_sampler(loader):
             # Automatically set the DistributedSampler

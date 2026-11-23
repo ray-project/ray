@@ -1074,16 +1074,34 @@ def test_poll_probes_async_collects_each_rank():
     wg.shutdown()
 
 
-def test_poll_probe_results_times_out_unfinished_ranks():
+def test_an_on_demand_probe_still_running_at_the_timeout_times_out():
     signal = SignalActor.remote()
     wg = _default_inactive_worker_group()
     wg._start()
 
-    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=1, ranks=[0])
+    wg.poll_probes_async([BlockingProbe(signal), RankProbe()], timeout_s=1, ranks=[0])
 
     assert wg.poll_probe_results() is None
-    # The on-demand probe runs apart from poll_status, which still answers.
+    # The on-demand probes run apart from poll_status, which still answers.
     ray.get(wg.get_workers()[0].actor.poll_status.remote(), timeout=5)
+    results = _wait_for_probe_results(wg)
+    # The worker times out the probe itself, and still returns the others.
+    assert isinstance(results["BlockingProbe"][0].error, TimeoutError)
+    assert "within 1s" in str(results["BlockingProbe"][0].error)
+    assert results["RankProbe"][0].metrics == {"rank": 0.0}
+
+    ray.get(signal.send.remote())
+    wg.shutdown()
+
+
+def test_a_worker_that_does_not_answer_in_time_times_out():
+    signal = SignalActor.remote()
+    wg = _default_inactive_worker_group()
+    wg._start()
+
+    wg.poll_probes_async([BlockingProbe(signal)], timeout_s=30, ranks=[0])
+    # As if the timeout passed while the worker still had nothing to report.
+    wg._on_demand_deadline = 0.0
     (result,) = _wait_for_probe_results(wg)["BlockingProbe"].values()
     assert isinstance(result.error, TimeoutError)
     assert "rank 0" in str(result.error)

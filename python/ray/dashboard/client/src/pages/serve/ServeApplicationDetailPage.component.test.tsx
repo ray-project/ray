@@ -22,7 +22,7 @@ const mockGetServeApplications = jest.mocked(getServeApplications);
 
 describe("ServeApplicationDetailPage", () => {
   it("renders page with deployments and replicas", async () => {
-    expect.assertions(13);
+    expect.assertions(15);
 
     mockUseParams.mockReturnValue({
       applicationName: "home",
@@ -50,6 +50,8 @@ describe("ServeApplicationDetailPage", () => {
                 },
                 status: ServeDeploymentStatus.HEALTHY,
                 message: "deployment is healthy",
+                target_num_replicas: 2,
+                num_running_replicas_at_target_version: 1,
                 replicas: [
                   {
                     actor_id: "test-actor-id",
@@ -78,6 +80,8 @@ describe("ServeApplicationDetailPage", () => {
                 deployment_config: {},
                 status: ServeDeploymentStatus.UPDATING,
                 message: "deployment is updating",
+                target_num_replicas: 1,
+                num_running_replicas_at_target_version: 0,
                 replicas: [
                   {
                     actor_id: "test-actor-id-3",
@@ -125,11 +129,13 @@ describe("ServeApplicationDetailPage", () => {
     expect(screen.getByText("FirstDeployment")).toBeVisible();
     expect(screen.getByText("deployment is healthy")).toBeVisible();
     expect(screen.getByText("HEALTHY")).toBeVisible();
+    expect(screen.getByText("1 / 2")).toBeVisible();
 
     // Second deployment
     expect(screen.getByText("SecondDeployment")).toBeVisible();
     expect(screen.getByText("deployment is updating")).toBeVisible();
     expect(screen.getByText("UPDATING")).toBeVisible();
+    expect(screen.getByText("0 / 1")).toBeVisible();
 
     // Config dialog for application
     await user.click(
