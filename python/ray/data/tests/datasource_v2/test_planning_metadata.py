@@ -14,6 +14,10 @@ from ray.data._internal.datasource_v2.common import schema_inference as inferenc
 from ray.data._internal.datasource_v2.common.file_metadata import (
     get_cached_file_metadata,
 )
+from ray.data._internal.datasource_v2.common.listing_utils import sample_files
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+    NonSamplingFileIndexer,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
     _read_parquet_metadata,
@@ -23,6 +27,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FILE_MTIME_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     FileManifest,
     FileMetadata,
@@ -245,6 +250,75 @@ def test_planning_row_counts_hit_and_miss(tmp_path, miss):
     opens = len(raw.opens)
     assert [v.num_rows for v in reader.read_metadata(unknown_size)] == [3]
     assert len(raw.opens) == opens + 1
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_unknown_file_sizes_preserve_planning_metadata(
+    tmp_path, monkeypatch, ray_start_regular_shared, datasource_v2
+):
+    class UnknownSizeFileSystem(RecordingLocalFileSystem):
+        def info(self, path, **kwargs):
+            result = super().info(path, **kwargs)
+            if result["type"] == "file":
+                result["size"] = None
+            return result
+
+    file_paths = [tmp_path / f"{i}.parquet" for i in range(2)]
+    for i, path in enumerate(file_paths):
+        pq.write_table(pa.table({"id": list(range(i + 1))}), path)
+        os.utime(path, (1_600_000_000 + i, 1_600_000_000 + i))
+    paths = list(map(str, file_paths))
+    trace = tmp_path / "reads.jsonl"
+    raw = UnknownSizeFileSystem(trace_path=str(trace), skip_instance_cache=True)
+    fs = pafs.PyFileSystem(pafs.FSSpecHandler(raw))
+    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+
+    bounded = sample_files(indexer, paths, fs, max_files=1)
+    sample = sample_files(indexer, paths, fs, max_files=None)
+    assert bounded.paths.tolist() == paths[:1]
+    assert bounded.known_file_sizes == [None]
+    assert sample.paths.tolist() == paths
+    assert sample.known_file_sizes == [None, None]
+    block = sample.as_block()
+    assert isinstance(block, pa.Table)
+    assert block[FILE_SIZE_COLUMN_NAME].type == pa.int64()
+    mtimes = [fs.get_file_info(path).mtime_ns for path in paths]
+    assert mtimes == [1_600_000_000_000_000_000, 1_600_000_001_000_000_000]
+    assert block[FILE_MTIME_COLUMN_NAME].to_pylist() == mtimes
+
+    source = ParquetDatasourceV2(paths, filesystem=fs)
+    result = source.infer_full_schema_with_metadata(
+        sample, ray_remote_args={"num_cpus": 0}
+    )
+    assert result.schema.names == ["id"]
+    metadata = result.metadata
+    assert metadata is not None
+    values = [FileMetadata.from_metadata(value) for value in metadata.to_pylist()]
+    assert [(value.num_rows, value.mtime_ns) for value in values] == list(
+        zip([1, 2], mtimes)
+    )
+    # Without a known size or mtime, the existing check only proves existence.
+    values[0] = replace(values[0], mtime_ns=None)
+    manifest = FileManifest.construct_manifest(
+        paths=paths,
+        sizes=[None, None],
+        chunk_metadatas=[None, None],
+        file_metadatas=values,
+    )
+    opens = len(raw.opens)
+    assert [
+        v.num_rows for v in ParquetFileReader(filesystem=fs).read_metadata(manifest)
+    ] == [1, 2]
+    assert len(raw.opens) == opens
+
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 4096)
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 4096
+    )
+    dataset = ray.data.read_parquet(paths, filesystem=fs, merge_schema=True)
+    before = _records(trace)
+    assert dataset.count() == 3
+    assert _records(trace) == before
 
 
 @pytest.mark.parametrize(

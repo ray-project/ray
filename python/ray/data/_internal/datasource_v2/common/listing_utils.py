@@ -200,7 +200,9 @@ def sample_files(
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
     sampled_paths: List[str] = []
-    sampled_sizes: List[int] = []
+    # ``None`` where the filesystem didn't report a size. Full mode retains
+    # these paths for execution, so dropping them here would drop their rows.
+    sampled_sizes: List[Optional[int]] = []
     sampled_mtimes: List[Optional[int]] = []
     for file_info in indexer.list_file_infos(
         paths_column,
@@ -208,8 +210,6 @@ def sample_files(
         pruners=pruners or [],
         preserve_order=True,
     ):
-        if file_info.size is None:
-            continue
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
         if max_files is None:

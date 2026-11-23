@@ -64,6 +64,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     TensorColumnSchema,
 )
 from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.datasource.snowflake_datasource import SnowflakeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
@@ -2696,33 +2697,14 @@ def read_csv(
     )
 
 
-def _text_read_uses_v2(
-    paths: Union[str, List[str]],
-    filesystem: Optional["pyarrow.fs.FileSystem"],
-    arrow_open_stream_args: Optional[Dict[str, Any]],
-) -> bool:
+def _text_read_uses_v2(arrow_open_stream_args: Optional[Dict[str, Any]]) -> bool:
     """Whether ``read_text`` routes through DataSource V2.
 
-    V2 has no ``open_stream_args``, and its listing needs file sizes that HTTP
-    servers often do not report, so those reads keep the V1 reader.
+    V2 has no ``open_stream_args``, so those reads keep the V1 reader.
     """
-    from ray.data.datasource.path_util import _is_http_filesystem, _is_http_url
-
-    if not DataContext.get_current().use_datasource_v2:
-        return False
-    if arrow_open_stream_args is not None:
-        return False
-    if any(_is_http_url(path) for path in _normalize_paths_to_strings(paths)):
-        return False
-    if filesystem is None:
-        return True
-    if _is_http_filesystem(filesystem):
-        return False
-    try:
-        from fsspec.implementations.http import HTTPFileSystem
-    except ImportError:
-        return True
-    return not isinstance(filesystem, HTTPFileSystem)
+    return (
+        DataContext.get_current().use_datasource_v2 and arrow_open_stream_args is None
+    )
 
 
 @PublicAPI
@@ -2761,8 +2743,8 @@ def read_text(
     Note:
         The DataSourceV2 reader is selected through the ``use_datasource_v2``
         setting of :class:`~ray.data.context.DataContext`. A read that sets
-        ``arrow_open_stream_args`` or reads over HTTP uses the V1 reader. If you
-        encounter a DataSourceV2 limitation, use the V1 reader by setting
+        ``arrow_open_stream_args`` uses the V1 reader. If you encounter a
+        DataSourceV2 limitation, use the V1 reader by setting
         ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
         ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
         Ray. This shared setting also affects ``read_parquet()`` and
@@ -2845,7 +2827,7 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
-    if _text_read_uses_v2(paths, filesystem, arrow_open_stream_args):
+    if _text_read_uses_v2(arrow_open_stream_args):
         from ray.data._internal.datasource_v2.formats.text.text_datasource_v2 import (
             TextDatasourceV2,
         )
@@ -4805,6 +4787,12 @@ def read_snowflake(
 ) -> Dataset:
     """Read data from a Snowflake data set.
 
+    Ray runs the query once. Snowflake returns the result as result batches, which
+    the read tasks download in parallel as Arrow tables.
+
+    Snowflake ``NUMBER`` columns with a nonzero scale, like ``NUMBER(10, 2)``, are
+    read as ``float64``.
+
     Examples:
         >>> import ray  # doctest: +SKIP_EXAMPLE
         >>> connection_parameters = dict(
@@ -4821,7 +4809,10 @@ def read_snowflake(
         connection_parameters: Keyword arguments to pass to
             ``snowflake.connector.connect``. To view supported parameters, read
             https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
-        shard_keys: The keys to shard the data by.
+        shard_keys: The keys to shard the data by. If you set this, Ray reads with
+            :func:`~ray.data.read_sql` instead, which runs a separate query for each
+            output block that selects rows by a hash of these keys. You don't need
+            this for parallel reads.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4833,10 +4824,10 @@ def read_snowflake(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
-            This is used for sharding when shard_keys is provided.
-            By default, the number of output blocks is dynamically decided based on
-            input data size and available resources. You shouldn't manually set this
-            value in most cases.
+            Without ``shard_keys``, Ray creates at most one read task per result
+            batch. By default, the number of output blocks is dynamically decided
+            based on input data size and available resources. You shouldn't manually
+            set this value in most cases.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -4852,6 +4843,24 @@ def read_snowflake(
     Returns:
         A ``Dataset`` containing the data from the Snowflake data set.
     """  # noqa: E501
+    if shard_keys is None:
+        return read_datasource(
+            SnowflakeDatasource(sql=sql, connection_parameters=connection_parameters),
+            parallelism=parallelism,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
     import snowflake.connector
 
     def snowflake_connection_factory():

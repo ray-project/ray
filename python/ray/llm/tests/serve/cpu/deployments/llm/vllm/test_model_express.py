@@ -11,9 +11,9 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+from vllm.ray.ray_env import get_env_vars_to_copy
 
 from ray.llm._internal.serve.engines.vllm import model_express
-from ray.llm._internal.serve.engines.vllm.patches.compile_cache_compat import _rewrite
 from ray.llm._internal.serve.serving_patterns.model_express import envs as mx_envs
 from ray.llm._internal.serve.serving_patterns.model_express.mx_server import (
     ModelExpressServer,
@@ -121,6 +121,10 @@ def test_setup_sets_client_env():
     # vLLM only copies listed env prefixes into its Ray workers.
     prefixes = env["VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY"].split(",")
     assert {"MX_", "MODEL_EXPRESS_"} <= set(prefixes)
+    # Peers load the transferred compile cache on other GPU indices.
+    assert env["VLLM_COMPILE_ON_ONE_RANK"] == "1"
+    # vLLM copies its own env vars into its Ray workers.
+    assert "VLLM_COMPILE_ON_ONE_RANK" in get_env_vars_to_copy()
 
 
 def test_setup_uses_configured_env():
@@ -155,11 +159,13 @@ def test_setup_keeps_user_env():
             "MX_SERVER_ADDRESS": "mx:9000",
             "MX_METADATA_PORT": "40000",
             "VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY": "FOO_",
+            "VLLM_COMPILE_ON_ONE_RANK": "0",
         },
     )
     assert looked_up == []
     assert env["MX_SERVER_ADDRESS"] == "mx:9000"
     assert env["MX_METADATA_PORT"] == "40000"
+    assert env["VLLM_COMPILE_ON_ONE_RANK"] == "0"
     assert env["VLLM_RAY_EXTRA_ENV_VAR_PREFIXES_TO_COPY"].split(",") == [
         "FOO_",
         "MX_",
@@ -273,70 +279,9 @@ def test_mx_server_port_never_released():
         popen.assert_not_called()
 
 
-def test_compile_cache_compat_rewrites_device_literals():
-    code = (
-        "with torch.cuda._DeviceGuard(1):\n"
-        "    torch.cuda.set_device(1)\n"
-        "    stream1 = get_raw_stream(1)\n"
-        "    x = tl.program_id(0)\n"
-        "    y = other.get_raw_stream(0)\n"
-    )
-    current = "__import__('torch').cuda.current_device()"
-    assert _rewrite(code) == (
-        f"with torch.cuda._DeviceGuard({current}):\n"
-        f"    torch.cuda.set_device({current})\n"
-        f"    stream1 = get_raw_stream({current})\n"
-        "    x = tl.program_id(0)\n"
-        "    y = other.get_raw_stream(0)\n"
-    )
-
-
-@pytest.mark.parametrize(
-    "vllm_has_flag,user_env,expected_env,expected_torch_flag",
-    [
-        # vLLM supports the mode but leaves it off: turn it on through vLLM.
-        (True, None, "1", False),
-        # A user's choice wins.
-        (True, "0", "0", False),
-        # Older vLLM on torch >= 2.14: set torch's mode directly.
-        (False, None, None, True),
-    ],
-)
-def test_compile_cache_compat_on_torch_with_compile_on_one_rank(
-    vllm_has_flag, user_env, expected_env, expected_torch_flag
-):
-    import torch.compiler
-    import vllm.envs
-
-    from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat
-
-    if not vllm_has_flag and hasattr(vllm.envs, "VLLM_COMPILE_ON_ONE_RANK"):
-        pytest.skip("installed vLLM already has VLLM_COMPILE_ON_ONE_RANK")
-    env = {"VLLM_COMPILE_ON_ONE_RANK": user_env} if user_env else {}
-    # Stands in for torch >= 2.14's compiler config.
-    compiler_config = SimpleNamespace(compile_on_one_rank=False)
-    with patch.dict("os.environ", env, clear=True), patch.object(
-        torch.compiler, "config", compiler_config
-    ), patch.object(compile_cache_compat, "_add_compile_cache_factor"):
-        if vllm_has_flag:
-            with patch.object(
-                vllm.envs, "VLLM_COMPILE_ON_ONE_RANK", False, create=True
-            ):
-                compile_cache_compat.apply()
-        else:
-            compile_cache_compat.apply()
-        assert os.environ.get("VLLM_COMPILE_ON_ONE_RANK") == expected_env
-        assert compiler_config.compile_on_one_rank is expected_torch_flag
-
-
-def _run_python(code: str, pythonpath: str = "") -> None:
-    env = dict(os.environ)
-    if pythonpath:
-        env["PYTHONPATH"] = os.pathsep.join(
-            filter(None, [pythonpath, env.get("PYTHONPATH")])
-        )
+def _run_python(code: str) -> None:
     result = subprocess.run(
-        [sys.executable, "-c", code], env=env, capture_output=True, text=True
+        [sys.executable, "-c", code], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stdout + result.stderr
 
@@ -350,28 +295,6 @@ def test_worker_process_setup_hook_imports_neither_torch_nor_vllm():
         "_worker_process_setup_hook()\n"
         "assert 'torch' not in sys.modules, 'hook imported torch'\n"
         "assert 'vllm' not in sys.modules, 'hook imported vllm'\n"
-    )
-
-
-@pytest.mark.parametrize("probe_first", [False, True])
-def test_compile_cache_compat_install_applies_after_vllm_import(tmp_path, probe_first):
-    # A stand-in vllm package: apply must run once, after it has executed. A
-    # find_spec probe before the import must not use up the hook.
-    (tmp_path / "vllm").mkdir()
-    (tmp_path / "vllm" / "__init__.py").write_text("EXECUTED = True\n")
-    probe = (
-        "assert importlib.util.find_spec('vllm') is not None\n" if probe_first else ""
-    )
-    _run_python(
-        "import importlib.util, sys\n"
-        "from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat\n"
-        "calls = []\n"
-        "compile_cache_compat.apply = lambda: calls.append(sys.modules['vllm'].EXECUTED)\n"
-        "compile_cache_compat.install()\n" + probe + "assert calls == []\n"
-        "import vllm\n"
-        "import vllm\n"
-        "assert calls == [True], calls\n",
-        pythonpath=str(tmp_path),
     )
 
 
