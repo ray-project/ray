@@ -1269,11 +1269,7 @@ py_test(
 py_test(
     name = "test_read_parquet_v2",
     size = "medium",
-    srcs = [
-        "tests/datasource/test_read_parquet_v2.py",
-        "tests/schema_planning_utils.py",
-    ],
-    main = "tests/datasource/test_read_parquet_v2.py",
+    srcs = ["tests/datasource/test_read_parquet_v2.py"],
     tags = [
         "exclusive",
         "team:data",

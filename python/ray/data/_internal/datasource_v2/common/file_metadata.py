@@ -22,16 +22,20 @@ def get_cached_file_metadata(
     metadata = file.metadata
     if metadata is None or metadata.num_rows is None:
         return None
-    info = call_with_retry(
-        lambda: filesystem.get_file_info(file.path),
-        description=f"check planning metadata for {file.path}",
-        match=retried_io_errors,
-    )
+    if file.size is None and metadata.mtime_ns is None:
+        return None
+    try:
+        info = call_with_retry(
+            lambda: filesystem.get_file_info(file.path),
+            description=f"check planning metadata for {file.path}",
+            match=retried_io_errors,
+        )
+    except (PermissionError, NotImplementedError):
+        # Optional stat access is not required to read the Parquet footer.
+        return None
     if info.type == FileType.NotFound:
         raise FileNotFoundError(file.path)
     if info.type != FileType.File:
-        return None
-    if file.size is None and metadata.mtime_ns is None:
         return None
     if info.size != file.size:
         return None

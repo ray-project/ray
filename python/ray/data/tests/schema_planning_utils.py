@@ -61,3 +61,17 @@ class RecordingLocalFileSystem(LocalFileSystem):
                     + "\n"
                 )
         return super()._open(path, mode, block_size=block_size, **kwargs)
+
+
+class UnknownSizeRecordingLocalFileSystem(RecordingLocalFileSystem):
+    def __init__(self, *, mtime_known, **kwargs):
+        super().__init__(**kwargs)
+        self.mtime_known = mtime_known
+
+    def info(self, path, **kwargs):
+        result = super().info(path, **kwargs)
+        if result["type"] == "file":
+            result["size"] = None
+            if not self.mtime_known:
+                result["mtime"] = None
+        return result

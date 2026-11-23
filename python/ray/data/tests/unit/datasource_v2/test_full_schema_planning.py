@@ -360,7 +360,7 @@ def test_full_schema_orders_bounded_out_of_order_results(monkeypatch):
     cancel.assert_not_called()
 
 
-def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
+def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch, tmp_path):
     for suffix, value in dict(min_files=0, max_tasks=2, batch_size=2).items():
         monkeypatch.setattr(
             inference, f"_FULL_SCHEMA_INFERENCE_{suffix.upper()}", value
@@ -377,11 +377,30 @@ def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
     monkeypatch.setattr(ray, "wait", wait)
     monkeypatch.setattr(ray, "cancel", cancel)
     monkeypatch.setattr(inference.logger, "warning", warning)
-    result = _plan_schema(["a", "b", "c"], {})
-    assert result is None
+    paths = [str(tmp_path / f"{i}.parquet") for i in range(3)]
+    for i, path in enumerate(paths):
+        pq.write_table(pa.table({"id": list(range(i + 1))}), path)
+
+    def read_metadata(path, filesystem, size, *, retried_io_errors):
+        return pq.read_metadata(path)
+
+    read = Mock(side_effect=read_metadata)
+    result = inference.infer_full_schema_with_metadata_from_files(
+        _schema_manifest(paths),
+        pafs.LocalFileSystem(),
+        format_name="Parquet",
+        read_metadata=read,
+        ray_remote_args={},
+        supports_distributed_reads=True,
+    )
+    assert result is not None and result.schema.names == ["id"]
+    metadata = result.metadata
+    assert metadata is not None
+    assert [row["num_rows"] for row in metadata.to_pylist()] == [1, 2, 3]
+    assert sorted(call.args[0] for call in read.call_args_list) == paths
     assert [call.args[0] for call in remote.remote.call_args_list] == [
-        ["a"],
-        ["b", "c"],
+        paths[:1],
+        paths[1:],
     ]
     assert [call.args[1] for call in remote.remote.call_args_list] == [[1], [2, 3]]
     wait.assert_called_once_with(

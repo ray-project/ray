@@ -1,5 +1,4 @@
 import os
-import time
 from collections import Counter
 from dataclasses import replace
 
@@ -9,7 +8,6 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.cluster_utils import Cluster
 from ray.data._internal.datasource_v2.common import schema_inference as inference
 from ray.data._internal.datasource_v2.common.file_metadata import (
     get_cached_file_metadata,
@@ -34,6 +32,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 )
 from ray.data.tests.schema_planning_utils import (
     RecordingLocalFileSystem,
+    UnknownSizeRecordingLocalFileSystem,
     read_schema_records as _records,
     recording_filesystem as _filesystem,
 )
@@ -101,39 +100,26 @@ def test_metadata_count_preserves_storage_access(
         remove_placement_group(pg)
 
 
-def test_cached_metadata_survives_new_cluster(
-    monkeypatch, tmp_path, ray_start_cluster, restore_data_context
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_cached_metadata_survives_lineage_roundtrip(
+    tmp_path, ray_start_regular_shared_2_cpus, datasource_v2
 ):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
-    ray.init(address=cluster.address)
-    restore_data_context.use_datasource_v2 = True
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 1)
-    for i in range(3):
-        pq.write_table(pa.table({"id": [i]}), tmp_path / f"f{i}.parquet")
+    paths = [tmp_path / f"f{i}.parquet" for i in range(3)]
+    for i, path in enumerate(paths):
+        pq.write_table(pa.table({"id": [i]}), path)
     trace = tmp_path / "opens.jsonl"
     dataset = ray.data.read_parquet(
         str(tmp_path), merge_schema=True, filesystem=_filesystem(trace)
     )
     serialized = dataset.serialize_lineage()
-    assert len(_records(trace)) == 3
-    ray.shutdown()
-    cluster.shutdown()
+    before = _records(trace)
+    assert Counter(r["path"] for r in before) == Counter(map(str, paths))
+
     pq.write_table(pa.table({"id": [99]}), tmp_path / "appended.parquet")
-    other = Cluster()
-    try:
-        other.add_node(num_cpus=2, object_store_memory=100 * 1024 * 1024)
-        ray.init(address=other.address)
-        restored = ray.data.Dataset.deserialize_lineage(serialized)
-        assert restored.count() == 3
-        assert len(_records(trace)) == 3
-        assert {r["path"] for r in _records(trace)} == {
-            str(tmp_path / f"f{i}.parquet") for i in range(3)
-        }
-    finally:
-        ray.shutdown()
-        other.shutdown()
+    restored = ray.data.Dataset.deserialize_lineage(serialized)
+    assert restored.count() == 3
+    assert _records(trace) == before
+    assert sorted(row["id"] for row in restored.take_all()) == [0, 1, 2]
 
 
 def _plan(tmp_path):
@@ -156,10 +142,12 @@ def _plan(tmp_path):
     ]
     for path, table in zip(paths, tables):
         pq.write_table(table, path, row_group_size=1)
-    sample = FileManifest.construct_manifest(
-        paths=list(map(str, paths)),
-        sizes=[p.stat().st_size for p in paths],
-        chunk_metadatas=[None] * 2,
+    sample = sample_files(
+        NonSamplingFileIndexer(ignore_missing_paths=False),
+        list(map(str, paths)),
+        fs,
+        max_files=None,
+        include_mtime=True,
     )
     source = ParquetDatasourceV2(list(map(str, paths)), filesystem=fs)
     result = source.infer_full_schema_with_metadata(
@@ -168,8 +156,8 @@ def _plan(tmp_path):
     return result, sample, fs, raw
 
 
-@pytest.mark.parametrize("miss", [False, True])
-def test_planning_row_counts_hit_and_miss(tmp_path, miss):
+@pytest.mark.parametrize("mtime_changed", [False, True])
+def test_planning_row_counts_hit_and_miss(tmp_path, mtime_changed):
     result, sample, fs, raw = _plan(tmp_path)
     assert result.schema.names == ["id", "empty_only", "late"]
     metadata = result.metadata
@@ -177,122 +165,99 @@ def test_planning_row_counts_hit_and_miss(tmp_path, miss):
     values = [FileMetadata.from_metadata(v) for v in metadata.to_pylist()]
     assert [v.num_rows for v in values] == [0, 3]
     assert len(raw.opens) == 2
-    cached = [replace(v, num_rows=999, mtime_ns=0) for v in values] if miss else values
+    if mtime_changed:
+        path = sample.paths[-1]
+        mtime_ns = values[-1].mtime_ns
+        assert mtime_ns is not None
+        new_mtime_ns = mtime_ns + 10**9
+        os.utime(path, ns=(new_mtime_ns, new_mtime_ns))
+        assert fs.get_file_info(path).size == sample.file_sizes[-1]
+        values[-1] = replace(values[-1], num_rows=999)
     manifest = FileManifest.construct_manifest(
         paths=sample.paths.tolist(),
         sizes=sample.file_sizes.tolist(),
         chunk_metadatas=[None] * 2,
-        file_metadatas=cached,
+        file_metadatas=values,
     )
     reader = ParquetFileReader(filesystem=fs)
     assert [v.num_rows for v in reader.read_metadata(manifest)] == [0, 3]
-    assert len(raw.opens) == (4 if miss else 2)
-    block = manifest.as_block()
-    assert isinstance(block, pa.Table)
-    block = block.slice(1, 1)
-    unknown_size = FileManifest(
-        block.set_column(
-            block.schema.get_field_index(FILE_SIZE_COLUMN_NAME),
-            FILE_SIZE_COLUMN_NAME,
-            pa.array([None], type=pa.int64()),
-        )
+    assert len(raw.opens) == (3 if mtime_changed else 2)
+
+
+@pytest.mark.parametrize(
+    "has_size,stat_error,raises",
+    [
+        pytest.param(True, PermissionError, False, id="stat_denied"),
+        pytest.param(True, NotImplementedError, False, id="stat_unsupported"),
+        pytest.param(False, AssertionError, False, id="stat_unnecessary"),
+        pytest.param(True, FileNotFoundError, True, id="missing"),
+        pytest.param(True, OSError, True, id="io_error"),
+    ],
+)
+def test_planning_row_count_stat_errors(tmp_path, has_size, stat_error, raises):
+    class StatUnavailableFileSystem(pafs.LocalFileSystem):
+        def get_file_info(self, paths):
+            raise stat_error("optional stat unavailable")
+
+    path = tmp_path / "data.parquet"
+    pq.write_table(pa.table({"id": [1, 2, 3]}), path)
+    manifest = FileManifest.construct_manifest(
+        paths=[str(path)],
+        sizes=[path.stat().st_size if has_size else None],
+        chunk_metadatas=[None],
+        file_metadatas=[FileMetadata(999)],
     )
-    opens = len(raw.opens)
-    assert [v.num_rows for v in reader.read_metadata(unknown_size)] == [3]
-    assert len(raw.opens) == opens + 1
+
+    reader = ParquetFileReader(filesystem=StatUnavailableFileSystem())
+    if raises:
+        with pytest.raises(stat_error, match="optional stat unavailable"):
+            list(reader.read_metadata(manifest))
+    else:
+        assert [metadata.num_rows for metadata in reader.read_metadata(manifest)] == [3]
 
 
 @pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize("mtime_known", [True, False], ids=["mtime", "no_identity"])
 def test_unknown_file_sizes_preserve_planning_metadata(
-    tmp_path, monkeypatch, ray_start_regular_shared, datasource_v2
+    tmp_path, ray_start_regular_shared_2_cpus, datasource_v2, mtime_known
 ):
-    class UnknownSizeFileSystem(RecordingLocalFileSystem):
-        def info(self, path, **kwargs):
-            result = super().info(path, **kwargs)
-            if result["type"] == "file":
-                result["size"] = None
-            return result
-
-    file_paths = [tmp_path / f"{i}.parquet" for i in range(2)]
-    for i, path in enumerate(file_paths):
+    paths = [str(tmp_path / f"{i}.parquet") for i in range(2)]
+    for i, path in enumerate(paths):
         pq.write_table(pa.table({"id": list(range(i + 1))}), path)
-        os.utime(path, (1_600_000_000 + i, 1_600_000_000 + i))
-    paths = list(map(str, file_paths))
+        timestamp = 1_600_000_000 + i
+        os.utime(path, (timestamp, timestamp))
     trace = tmp_path / "reads.jsonl"
-    raw = UnknownSizeFileSystem(trace_path=str(trace), skip_instance_cache=True)
+    raw = UnknownSizeRecordingLocalFileSystem(
+        trace_path=str(trace), mtime_known=mtime_known, skip_instance_cache=True
+    )
     fs = pafs.PyFileSystem(pafs.FSSpecHandler(raw))
-    indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
 
-    bounded = sample_files(indexer, paths, fs, max_files=1)
-    sample = sample_files(indexer, paths, fs, max_files=None, include_mtime=True)
-    plain = sample_files(indexer, paths, fs, max_files=None)
-    assert bounded.paths.tolist() == paths[:1]
-    assert bounded.known_file_sizes == [None]
-    assert sample.paths.tolist() == paths
-    assert sample.known_file_sizes == [None, None]
-    block = sample.as_block()
-    assert isinstance(block, pa.Table)
-    plain_block = plain.as_block()
-    assert isinstance(plain_block, pa.Table)
-    assert FILE_MTIME_COLUMN_NAME not in plain_block.column_names
-    assert block[FILE_SIZE_COLUMN_NAME].type == pa.int64()
-    mtimes = [fs.get_file_info(path).mtime_ns for path in paths]
-    assert mtimes == [1_600_000_000_000_000_000, 1_600_000_001_000_000_000]
-    assert block[FILE_MTIME_COLUMN_NAME].to_pylist() == mtimes
+    if mtime_known:
+        indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
+        bounded = sample_files(indexer, paths, fs, max_files=1)
+        sample = sample_files(indexer, paths, fs, max_files=None, include_mtime=True)
+        assert bounded.paths.tolist() == paths[:1]
+        assert bounded.known_file_sizes == [None]
+        bounded_block = bounded.as_block()
+        assert isinstance(bounded_block, pa.Table)
+        assert FILE_MTIME_COLUMN_NAME not in bounded_block.column_names
+        assert sample.paths.tolist() == paths
+        assert sample.known_file_sizes == [None, None]
+        block = sample.as_block()
+        assert isinstance(block, pa.Table)
+        assert block[FILE_SIZE_COLUMN_NAME].type == pa.int64()
+        assert block[FILE_MTIME_COLUMN_NAME].to_pylist() == [
+            1_600_000_000_000_000_000,
+            1_600_000_001_000_000_000,
+        ]
 
-    source = ParquetDatasourceV2(paths, filesystem=fs)
-    result = source.infer_full_schema_with_metadata(
-        sample, ray_remote_args={"num_cpus": 0}
-    )
-    assert result.schema.names == ["id"]
-    metadata = result.metadata
-    assert metadata is not None
-    values = [FileMetadata.from_metadata(value) for value in metadata.to_pylist()]
-    assert [(value.num_rows, value.mtime_ns) for value in values] == list(
-        zip([1, 2], mtimes)
-    )
-    # Without a known size or mtime, stale counts must fall back to the footer.
-    values[0] = replace(values[0], num_rows=999, mtime_ns=None)
-    manifest = FileManifest.construct_manifest(
-        paths=paths,
-        sizes=[None, None],
-        chunk_metadatas=[None, None],
-        file_metadatas=values,
-    )
-    opens = len(raw.opens)
-    assert [
-        v.num_rows for v in ParquetFileReader(filesystem=fs).read_metadata(manifest)
-    ] == [1, 2]
-    assert len(raw.opens) == opens + 1
-
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 4096)
-    monkeypatch.setattr(
-        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 4096
-    )
     dataset = ray.data.read_parquet(paths, filesystem=fs, merge_schema=True)
+    assert dataset.schema(fetch_if_missing=False).base_schema.names == ["id"]
     before = _records(trace)
+    assert Counter(r["path"] for r in before) == Counter(paths)
     assert dataset.count() == 3
-    assert _records(trace) == before
-
-    class UnknownSizeAndMtimeFileSystem(UnknownSizeFileSystem):
-        def info(self, path, **kwargs):
-            result = super().info(path, **kwargs)
-            result["mtime"] = None
-            return result
-
-    fallback_trace = tmp_path / "fallback-count.jsonl"
-    fallback_fs = pafs.PyFileSystem(
-        pafs.FSSpecHandler(
-            UnknownSizeAndMtimeFileSystem(
-                trace_path=str(fallback_trace), skip_instance_cache=True
-            )
-        )
-    )
-    fallback = ray.data.read_parquet(paths, filesystem=fallback_fs, merge_schema=True)
-    before = _records(fallback_trace)
-    assert fallback.count() == 3
-    rereads = _records(fallback_trace)[len(before) :]
-    assert Counter(record["path"] for record in rereads) == Counter(paths)
+    rereads = _records(trace)[len(before) :]
+    assert Counter(r["path"] for r in rereads) == Counter([] if mtime_known else paths)
 
 
 @pytest.mark.parametrize(
@@ -364,7 +329,7 @@ def test_cache_validation(tmp_path, change):
     ],
 )
 def test_deduplicated_schemas_keep_metadata_in_file_order(
-    monkeypatch, tmp_path, ray_start_regular_shared, distributed, expected
+    monkeypatch, tmp_path, ray_start_regular_shared_2_cpus, distributed, expected
 ):
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 4)
@@ -401,63 +366,6 @@ def test_deduplicated_schemas_keep_metadata_in_file_order(
     assert all(
         (record["pid"] != os.getpid()) == distributed for record in _records(trace)
     )
-
-
-def test_metadata_timeout_falls_back_to_driver(
-    monkeypatch, tmp_path, ray_start_regular_shared
-):
-    # Ensure a worker is available before timing the first schema result.
-    ray.get(ray.remote(num_cpus=0.5)(lambda: None).remote())
-    for suffix, value in dict(
-        min_files=0,
-        max_tasks=1,
-        batch_size=2,
-        io_concurrency=2,
-        first_result_timeout_s=1,
-    ).items():
-        monkeypatch.setattr(
-            inference, "_FULL_SCHEMA_INFERENCE_" + suffix.upper(), value
-        )
-    paths = [tmp_path / f"{i}.parquet" for i in range(3)]
-    for i, path in enumerate(paths):
-        pq.write_table(pa.table({"id": list(range(i + 1))}), path)
-    sample = FileManifest.construct_manifest(
-        paths=list(map(str, paths)),
-        sizes=[path.stat().st_size for path in paths],
-        chunk_metadatas=[None] * len(paths),
-    )
-    driver_pid = os.getpid()
-    worker_trace = str(tmp_path / "worker-starts.txt")
-
-    def delayed_read(path, filesystem, size, *, retried_io_errors):
-        if os.getpid() != driver_pid:
-            with open(worker_trace, "a") as output:
-                output.write(path + "\n")
-            time.sleep(2)
-        return _read_parquet_metadata(
-            path, filesystem, size, retried_io_errors=retried_io_errors
-        )
-
-    trace = tmp_path / "fallback-reads.jsonl"
-    result = inference.infer_full_schema_with_metadata_from_files(
-        sample,
-        _filesystem(trace),
-        format_name="Parquet",
-        read_metadata=delayed_read,
-        ray_remote_args={},
-        supports_distributed_reads=True,
-    )
-    assert result is not None
-    metadata = result.metadata
-    assert metadata is not None
-    assert [row["num_rows"] for row in metadata.to_pylist()] == [1, 2, 3]
-    assert Counter(r["path"] for r in _records(trace) if r["pid"] == driver_pid) == {
-        str(path): 1 for path in paths
-    }
-    time.sleep(2)
-    with open(worker_trace) as recorded:
-        starts = Counter(recorded.read().splitlines())
-    assert starts == {str(paths[0]): 1}
 
 
 if __name__ == "__main__":
