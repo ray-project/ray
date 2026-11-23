@@ -200,7 +200,8 @@ filegroup(
     urls = ["https://github.com/google/go-containerregistry/releases/download/v0.19.0/go-containerregistry_Linux_x86_64.tar.gz"],
 )
 
-# The Trivy pin lives in its own file so its bumps get their own review.
+# The Trivy pin lives in its own file, owned by ray-ci, so a bump never edits
+# WORKSPACE.
 load("//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl", "trivy_repositories")
 
 trivy_repositories()
