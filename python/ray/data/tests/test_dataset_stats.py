@@ -789,6 +789,8 @@ class TestDatasetSummary:
     ):
         """Regression test for #68280: summary() must not raise NotImplementedError on
         native arrow.fixed_shape_tensor columns with permutation on pyarrow 25+."""
+        import numpy as np
+
         from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
         from ray.data.context import DataContext
 

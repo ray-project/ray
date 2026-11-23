@@ -586,7 +586,8 @@ def _create_pyarrow_array(
         try:
             return pa.array(col_data, type=col_type)
         except (pa.ArrowTypeError, pa.ArrowInvalid, NotImplementedError):
-            # Type mismatch or unsupported sequence conversion - fall through to type inference
+            # Type mismatch or unsupported sequence conversion - fall through
+            # to type inference
             pass
 
     # Use convert_to_pyarrow_array for type inference and error handling
