@@ -1,5 +1,6 @@
 import bisect
 import json
+from enum import Enum
 from typing import Dict, List, Tuple
 
 from ray.data._internal.util import GiB, KiB, MiB
@@ -7,6 +8,29 @@ from ray.util.metrics import Histogram
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
+
+# Logical identifier of an actor (used in labels and actor-to-id maps).
+#
+# Ray Core actor IDs can't serve this purpose: actors are identified by labels,
+# labels must be set before creation, and the Core ID only exists afterwards.
+LogicalActorId = str
+
+
+class ActorStatus(str, Enum):
+    """Lifecycle state of an actor in a Ray Data actor pool."""
+
+    # Breakdown of alive states
+    PENDING = "pending"
+    IDLE = "idle"
+    ACTIVE = "active"
+
+    # Actor is restarting from some unexpected error
+    RESTARTING = "restarting"
+
+    # The actor is draining: it takes no new tasks and is released once it has
+    # no in-flight tasks and no output blocks still counted against it.
+    DRAINING = "draining"
+
 
 # Used for time-based histograms (e.g. task completion time, block completion time)
 histogram_buckets_s = [

@@ -79,18 +79,16 @@ class ModelV2:
             List of np.array (for tf) or Tensor (for torch) objects containing the
             initial hidden state of an RNN, if applicable.
 
-        .. testcode::
-            :skipif: True
-
-            import numpy as np
-            from ray.rllib.models.modelv2 import ModelV2
-            class MyModel(ModelV2):
-                # ...
-                def get_initial_state(self):
-                    return [
-                        np.zeros(self.cell_size, np.float32),
-                        np.zeros(self.cell_size, np.float32),
-                    ]
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2):
+            ...     # ...
+            ...     def get_initial_state(self):
+            ...         return [
+            ...             np.zeros(self.cell_size, np.float32),
+            ...             np.zeros(self.cell_size, np.float32),
+            ...         ]
         """
         return []
 
@@ -125,17 +123,15 @@ class ModelV2:
             A tuple consisting of the model output tensor of size
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
-        .. testcode::
-            :skipif: True
-
-            import numpy as np
-            from ray.rllib.models.modelv2 import ModelV2
-            class MyModel(ModelV2):
-                # ...
-                def forward(self, input_dict, state, seq_lens):
-                    model_out, self._value_out = self.base_model(
-                        input_dict["obs"])
-                    return model_out, state
+        Examples:
+            >>> import numpy as np
+            >>> from ray.rllib.models.modelv2 import ModelV2
+            >>> class MyModel(ModelV2):
+            ...     # ...
+            ...     def forward(self, input_dict, state, seq_lens):
+            ...         model_out, self._value_out = self.base_model(
+            ...             input_dict["obs"])
+            ...         return model_out, state
         """
         raise NotImplementedError
 

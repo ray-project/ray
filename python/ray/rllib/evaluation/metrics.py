@@ -37,18 +37,31 @@ RolloutMetrics.__new__.__defaults__ = (0, 0, {}, {}, {}, {}, {}, False, {})
 def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
     """Return optimization stats reported from the policy.
 
-    .. testcode::
-        :skipif: True
+    Args:
+        grad_info: A dict that holds the stats under the `"learner_stats"` key,
+            or a dict whose values are such dicts.
 
-        grad_info = worker.learn_on_batch(samples)
+    Returns:
+        The value under `"learner_stats"` if `grad_info` has that key. Otherwise,
+        a dict that maps each key of `grad_info` whose value is a dict with a
+        `"learner_stats"` key to that value.
 
-        # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}
+    Examples:
+        >>> from ray.rllib.evaluation.metrics import get_learner_stats
+        >>> grad_info = {
+        ...     "td_error": [0.1],
+        ...     "learner_stats": {"vf_loss": 0.5, "policy_loss": 0.2},
+        ... }
+        >>> print(get_learner_stats(grad_info))
+        {'vf_loss': 0.5, 'policy_loss': 0.2}
 
-        print(get_stats(grad_info))
-
-    .. testoutput::
-
-        {"vf_loss": ..., "policy_loss": ...}
+        >>> # Multi-agent: one info dict per policy ID.
+        >>> grad_info = {
+        ...     "pol1": {"learner_stats": {"vf_loss": 0.5}},
+        ...     "pol2": {"learner_stats": {"vf_loss": 0.3}},
+        ... }
+        >>> print(get_learner_stats(grad_info))
+        {'pol1': {'vf_loss': 0.5}, 'pol2': {'vf_loss': 0.3}}
     """
     if LEARNER_STATS_KEY in grad_info:
         return grad_info[LEARNER_STATS_KEY]

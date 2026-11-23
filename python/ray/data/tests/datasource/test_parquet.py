@@ -16,7 +16,6 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from packaging.version import parse as parse_version
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
@@ -36,7 +35,6 @@ from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data._internal.util import explain_plan, rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -47,13 +45,8 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.fixture(params=[False, True], ids=["v1", "v2"])
-def use_datasource_v2(request, restore_data_context):
-    restore_data_context.use_datasource_v2 = request.param
-
-
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+    tmp_path, shutdown_only, datasource_v2, monkeypatch
 ):
     # Set the environment variable on both the driver and the worker processes.
     monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
@@ -72,7 +65,7 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
 
 
 def test_read_parquet_rejects_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, ray_start_regular_shared, datasource_v2
 ):
     marker = tmp_path / "exploit_marker"
 
@@ -95,7 +88,7 @@ def test_read_parquet_rejects_pickle_object_columns(
 
 
 def test_read_parquet_rejects_nested_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, ray_start_regular_shared, datasource_v2
 ):
     # A pickled-object column nested inside a `list<...>` must trip the guard
     # just like a top-level one; otherwise nesting bypasses the check.
@@ -304,7 +297,7 @@ def test_include_paths_with_column_projection(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    use_datasource_v2,
+    datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
@@ -408,7 +401,7 @@ def test_include_row_hash_with_column_projection(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    use_datasource_v2,
+    datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
@@ -1212,6 +1205,10 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         ("myfile-{i}.parquet", True),
         # Case 8: Templated filename with UUID already present - should not raise error
         ("myfile_{write_uuid}-{i}.parquet", False),
+        # Case 9: `parquet` in the stem is not a file extension
+        ("contains-parquet-{write_uuid}", False),
+        # Case 10: Same as above with an index template
+        ("contains-parquet-{write_uuid}-{i}", False),
     ],
     ids=[
         "no_uuid_no_ext",
@@ -1222,6 +1219,8 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         "templated_no_uuid_no_ext",
         "templated_no_uuid_with_ext",
         "templated_has_uuid",
+        "contains_parquet_no_ext",
+        "templated_contains_parquet_no_ext",
     ],
 )
 def test_parquet_write_uuid_handling_with_custom_filename_provider(
@@ -1278,6 +1277,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
         assert re.search(
             uuid_pattern, written_file
         ), f"File '{written_file}' should contain UUID"
+        assert pathlib.Path(written_file).suffix == ".parquet"
 
         # Verify the content is correct by reading back
         ds_read = ray.data.read_parquet(tmp_path)
@@ -1909,7 +1909,7 @@ def test_read_null_data_in_first_file(
 
 
 def test_read_parquet_does_not_call_infer_schema(
-    tmp_path, monkeypatch, ray_start_regular_shared, use_datasource_v2
+    tmp_path, monkeypatch, ray_start_regular_shared, datasource_v2
 ):
     """The V2 read path should not call _infer_schema, which can cause O(N)
     metadata reads. V1 still calls it to reconcile per-file schemas."""
@@ -1948,14 +1948,7 @@ def test_parquet_row_group_size_001(ray_start_regular_shared, tmp_path):
         )
     )
 
-    # Since version 15, use_legacy_dataset is deprecated.
-    if parse_version(pa.__version__) >= parse_version("15.0.0"):
-        ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
-    else:
-        ds = pq.ParquetDataset(
-            tmp_path / "test_row_group_5k.parquet",
-            use_legacy_dataset=False,  # required for .fragments attribute
-        )
+    ds = pq.ParquetDataset(tmp_path / "test_row_group_5k.parquet")
     assert ds.fragments[0].num_row_groups == 2
 
 
@@ -1973,14 +1966,7 @@ def test_parquet_row_group_size_002(ray_start_regular_shared, tmp_path):
         )
     )
 
-    # Since version 15, use_legacy_dataset is deprecated.
-    if parse_version(pa.__version__) >= parse_version("15.0.0"):
-        ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
-    else:
-        ds = pq.ParquetDataset(
-            tmp_path / "test_row_group_1k.parquet",
-            use_legacy_dataset=False,
-        )
+    ds = pq.ParquetDataset(tmp_path / "test_row_group_1k.parquet")
     assert ds.fragments[0].num_row_groups == 10
 
 
@@ -2864,10 +2850,6 @@ def hive_partitioned_dataset(tmp_path):
     ],
     ids=lambda ops: "_".join(ops) if isinstance(ops, tuple) else ops,
 )
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
-)
 def test_hive_partitioned_parquet_operations(
     ray_start_regular_shared,
     hive_partitioned_dataset,
@@ -3106,10 +3088,6 @@ def test_hive_partitioned_parquet_operations(
 
 
 @pytest.mark.parametrize("choice", ["default", "hive", "filename", "ray_default"])
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="Hive partitioned parquet operations require pyarrow >= 14.0.0",
-)
 def test_write_parquet_partitioning(choice, tmp_path):
 
     # Ray's default is "hive", while pyarrow's default is "directory" (when None).
@@ -3339,10 +3317,6 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     return str(tmp_path), file_path, num_rows, schema
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("16.0.0"),
-    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
-)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
@@ -3364,10 +3338,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     assert total_rows == num_rows
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("16.0.0"),
-    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
-)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_column(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
@@ -3409,10 +3379,6 @@ def test_read_parquet_nested_fallback_triggered_when_filter_references_nested_co
     assert _needs_nested_type_fallback(fragment, read_columns) is True
 
 
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("16.0.0"),
-    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
-)
 @pytest.mark.timeout(300)
 def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     ray_start_regular_shared, nested_parquet_exceeding_2gb
@@ -3459,7 +3425,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
 
 
 def test_parquet_sampling_fails_on_permanent_error(
-    ray_start_regular_shared, tmp_path, use_datasource_v2
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """Test that parquet sampling does not hang on permanent OSError (e.g.,
     permission denied). Instead, it should fail with a clear error after
@@ -3477,9 +3443,10 @@ def test_parquet_sampling_fails_on_permanent_error(
         raise PermissionError("Access Denied: invalid credentials")
 
     if DataContext.get_current().use_datasource_v2:
-        # V2 samples schema on the driver by reading Parquet footers via
-        # ``pq.read_schema``; a permanent OSError there must propagate.
-        target = "pyarrow.parquet.read_schema"
+        # V2 samples schema on the driver by reading Parquet footers through
+        # a ``ParquetFileFormat`` fragment; a permanent OSError there must
+        # propagate.
+        target = "pyarrow.dataset.ParquetFileFormat"
     else:
         # V1 samples files through a remote task wrapping
         # ``_fetch_parquet_file_info``; retries are capped so the error
@@ -3492,6 +3459,41 @@ def test_parquet_sampling_fails_on_permanent_error(
     with patch(target, new=_raise_permission_error):
         with pytest.raises(Exception, match="Access Denied"):
             ray.data.read_parquet(str(tmp_path)).materialize()
+
+
+def test_parquet_sampling_retries_transient_error(
+    ray_start_regular_shared, tmp_path, datasource_v2
+):
+    """V2 schema sampling retries a footer read that fails with an error in
+    ``DataContext.retried_io_errors``."""
+    from unittest.mock import patch
+
+    if not DataContext.get_current().use_datasource_v2:
+        pytest.skip("V2 reads the sample's footers on the driver.")
+
+    pq.write_table(pa.table({"col": [1, 2, 3]}), tmp_path / "data.parquet")
+    footer_reads = []
+
+    class _FailFirstFooterRead:
+        def __init__(self, fragment):
+            self._fragment = fragment
+
+        @property
+        def metadata(self):
+            footer_reads.append(1)
+            if len(footer_reads) == 1:
+                raise OSError("AWS Error SLOW_DOWN during GetObject operation")
+            return self._fragment.metadata
+
+    class _Format(pds.ParquetFileFormat):
+        def make_fragment(self, *args, **kwargs):
+            return _FailFirstFooterRead(super().make_fragment(*args, **kwargs))
+
+    with patch("pyarrow.dataset.ParquetFileFormat", new=_Format):
+        rows = ray.data.read_parquet(str(tmp_path)).take_all()
+
+    assert len(footer_reads) == 2
+    assert sorted(row["col"] for row in rows) == [1, 2, 3]
 
 
 @pytest.mark.timeout(30)

@@ -20,7 +20,6 @@ from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
     make_fastapi_ingress,
 )
-from ray.llm._internal.serve.core.ingress.router_application import RouterApplication
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
@@ -87,12 +86,14 @@ def _build_direct_streaming_llm_deployment(
     )
 
 
-def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> Optional[dict]:
-    runtime_env = llm_config.runtime_env
-    if runtime_env is None or "env_vars" not in runtime_env:
-        return None
-
-    return {"env_vars": runtime_env["env_vars"]}
+def _get_tokenizing_router_runtime_env(llm_config: LLMConfig) -> dict:
+    env_vars = dict((llm_config.runtime_env or {}).get("env_vars", {}))
+    # Budget in MiB, configurable through FASTOKENS_SEGMENT_CACHE.
+    # Default headroom for 32 concurrent conversations of about 500k tokens each.
+    env_vars.setdefault(
+        "FASTOKENS_SEGMENT_CACHE", os.environ.get("FASTOKENS_SEGMENT_CACHE", "1024")
+    )
+    return {"env_vars": env_vars}
 
 
 def _build_openai_ingress_request_router(
@@ -382,6 +383,13 @@ def build_openai_router_app(
     router_args: dict,
 ) -> Application:
     """Build a router for independently deployed OpenAI model applications."""
+    # Import lazily: router_application imports router, whose module-level
+    # @serve.ingress(FastAPI()) fails when fastapi is mocked, as in the docs
+    # build, which breaks `import ray.serve.llm`.
+    from ray.llm._internal.serve.core.ingress.router_application import (
+        RouterApplication,
+    )
+
     if not RAY_SERVE_ENABLE_HA_PROXY:
         raise ValueError(
             "build_openai_router_app requires HAProxy. Set "

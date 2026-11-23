@@ -251,6 +251,12 @@ class MultiRLModule(RLModule):
     @OverrideToImplementCustomLogic
     @override(RLModule)
     def is_stateful(self) -> bool:
+        """Returns whether any of the RLModules in this MultiRLModule is stateful.
+
+        Returns:
+            True if the initial state of at least one RLModule in this
+            MultiRLModule isn't empty.
+        """
         initial_state = self.get_initial_state()
         assert isinstance(initial_state, dict), (
             "The initial state of an RLModule must be a dict, but is "
@@ -396,15 +402,27 @@ class MultiRLModule(RLModule):
         return self._rl_modules[module_id]
 
     def items(self) -> ItemsView[ModuleID, RLModule]:
-        """Returns an ItemsView over the module IDs in this MultiRLModule."""
+        """Returns an ItemsView over the module IDs and RLModules in this MultiRLModule.
+
+        Returns:
+            A view of the (ModuleID, RLModule) pairs in this MultiRLModule.
+        """
         return self._rl_modules.items()
 
     def keys(self) -> KeysView[ModuleID]:
-        """Returns a KeysView over the module IDs in this MultiRLModule."""
+        """Returns a KeysView over the module IDs in this MultiRLModule.
+
+        Returns:
+            A view of the module IDs in this MultiRLModule.
+        """
         return self._rl_modules.keys()
 
-    def values(self) -> ValuesView[ModuleID]:
-        """Returns a ValuesView over the module IDs in this MultiRLModule."""
+    def values(self) -> ValuesView[RLModule]:
+        """Returns a ValuesView over the RLModules in this MultiRLModule.
+
+        Returns:
+            A view of the RLModules in this MultiRLModule.
+        """
         return self._rl_modules.values()
 
     def __len__(self) -> int:
@@ -704,7 +722,12 @@ class MultiRLModuleSpec:
             )
 
     def to_dict(self) -> Dict[str, Any]:
-        """Converts the MultiRLModuleSpec to a dictionary."""
+        """Converts the MultiRLModuleSpec to a dictionary.
+
+        Returns:
+            A serializable dict of this spec, from which `from_dict()` can rebuild
+            it. Each sub-spec is converted with `RLModuleSpec.to_dict()`.
+        """
         return {
             "multi_rl_module_class": serialize_type(self.multi_rl_module_class),
             "observation_space": gym_space_to_dict(self.observation_space),
@@ -718,8 +741,16 @@ class MultiRLModuleSpec:
         }
 
     @classmethod
-    def from_dict(cls, d) -> "MultiRLModuleSpec":
-        """Creates a MultiRLModuleSpec from a dictionary."""
+    def from_dict(cls, d: Dict[str, Any]) -> "MultiRLModuleSpec":
+        """Creates a MultiRLModuleSpec from a dictionary.
+
+        Args:
+            d: The serialized spec, as `to_dict()` returns it.
+
+        Returns:
+            The MultiRLModuleSpec rebuilt from `d`, with each sub-spec rebuilt with
+            `RLModuleSpec.from_dict()`.
+        """
         return MultiRLModuleSpec(
             multi_rl_module_class=deserialize_type(d["multi_rl_module_class"]),
             observation_space=gym_space_from_dict(d.get("observation_space")),
@@ -769,7 +800,11 @@ class MultiRLModuleSpec:
                 self.rl_module_specs.update(other.rl_module_specs)
 
     def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
-        """Returns self in order to match `RLModuleSpec.as_multi_rl_module_spec()`."""
+        """Returns self in order to match `RLModuleSpec.as_multi_rl_module_spec()`.
+
+        Returns:
+            This MultiRLModuleSpec.
+        """
         return self
 
     def __contains__(self, item) -> bool:

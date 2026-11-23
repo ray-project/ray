@@ -1,4 +1,6 @@
+import os
 import sys
+import types
 
 import pytest
 
@@ -10,6 +12,7 @@ from ci.ray_ci.doc.run_docstring_examples import (
     extract,
     is_skipped,
     label_path,
+    library_settings,
     main,
     missing_library,
     module_name,
@@ -333,6 +336,9 @@ def _chained(outer: ImportError, inner: BaseException) -> ImportError:
 def test_missing_library_from_module_not_found(nothing_installed):
     assert missing_library(ModuleNotFoundError("x", name="torch")) == "torch"
     assert missing_library(ModuleNotFoundError("x", name="torch.nn")) == "torch"
+    # ray.tune.integration.lightgbm and .xgboost import these at module level.
+    assert missing_library(ModuleNotFoundError("x", name="lightgbm")) == "lightgbm"
+    assert missing_library(ModuleNotFoundError("x", name="xgboost")) == "xgboost"
 
 
 def test_missing_library_follows_the_exception_chain(nothing_installed):
@@ -364,6 +370,20 @@ def test_missing_library_from_a_bare_import_error_message(nothing_installed):
         missing_library(ModuleNotFoundError("No module named 'tensorflow_datasets'"))
         == "tensorflow_datasets"
     )
+    # Dataset.join raises this from a Ray worker, so the chain doesn't reach
+    # the ModuleNotFoundError and only the message names the library.
+    error = ImportError(
+        "Dataset.join depends on 'polars', but Ray Data couldn't import it. "
+        "Install it by running `pip install polars`."
+    )
+    assert missing_library(error) == "polars"
+    # Dataset.write_lance raises this from _check_import, which names the
+    # module, not the pylance distribution.
+    error = ImportError(
+        "`LanceDatasink` depends on 'lance', but Ray Data couldn't import it. "
+        "Install 'lance' by running `pip install pylance`."
+    )
+    assert missing_library(error) == "lance"
 
 
 def test_missing_library_ignores_libraries_the_image_keeps(nothing_installed):
@@ -505,6 +525,86 @@ def test_main_skips_docstrings_and_modules_that_need_omitted_libraries(
         "2 docstring(s) run, 0 failed, 1 skipped, "
         "2 skipped for a library this image omits (2 need torch), in 3 file(s)."
     ) in out
+
+
+_RENDER_ONLY_WITH_OUTPUT = '''def shown():
+    """Shows output that never runs.
+
+    Examples:
+        >>> import docpkg  # doctest: +SKIP_EXAMPLE
+        >>> 1 + 1
+        2
+        >>> 2 + 2
+        4
+    """
+
+
+def silent():
+    """Render only, no output.
+
+    Examples:
+        >>> import docpkg  # doctest: +SKIP_EXAMPLE
+    """
+'''
+
+
+def test_main_counts_expected_output_a_skipped_docstring_hides(
+    package, monkeypatch, capsys
+):
+    paths = _write_package(package, {"render": _RENDER_ONLY_WITH_OUTPUT})
+    assert _run_main(monkeypatch, paths) == 0
+    out = capsys.readouterr().out
+    assert (
+        "SKIP python/docpkg/render.py:shown (+SKIP_EXAMPLE, leaves 2 example(s) "
+        "with expected output unchecked)"
+    ) in out
+    assert "SKIP python/docpkg/render.py:silent (+SKIP_EXAMPLE)" in out
+
+
+class _FakeExecutionOptions:
+    preserve_order = False
+
+
+class _FakeDataContext:
+    def __init__(self):
+        self.execution_options = _FakeExecutionOptions()
+        self.print_on_execution_start = True
+
+    @classmethod
+    def get_current(cls):
+        return _CONTEXT
+
+
+_CONTEXT = _FakeDataContext()
+
+
+@pytest.fixture
+def fake_data_context(monkeypatch):
+    """Stand in for ray.data.context, which the test environment doesn't have."""
+    module = types.ModuleType("ray.data.context")
+    module.DataContext = _FakeDataContext
+    monkeypatch.setitem(sys.modules, "ray.data.context", module)
+    monkeypatch.delenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", raising=False)
+    _CONTEXT.execution_options.preserve_order = False
+    _CONTEXT.print_on_execution_start = True
+    return _CONTEXT
+
+
+def test_ray_data_modules_get_the_data_doctest_settings(fake_data_context):
+    with library_settings("ray.data.dataset"):
+        assert fake_data_context.execution_options.preserve_order is True
+        assert fake_data_context.print_on_execution_start is False
+        assert os.environ["RAY_DATA_PARQUET_FOOTER_NUM_ACTORS"] == "1"
+    # Restored afterwards, so one docstring's settings don't leak.
+    assert fake_data_context.execution_options.preserve_order is False
+    assert fake_data_context.print_on_execution_start is True
+
+
+def test_other_modules_run_unchanged(fake_data_context):
+    for module in ["ray.tune.search", "ray.dataset_tools", "docpkg.ok"]:
+        with library_settings(module):
+            assert fake_data_context.execution_options.preserve_order is False
+            assert fake_data_context.print_on_execution_start is True
 
 
 def test_main_fails_on_any_other_import_error(package, monkeypatch, capsys):

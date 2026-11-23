@@ -123,14 +123,12 @@ def list_files_for_each_block(
                     block[PATH_COLUMN_NAME].to_pylist(),
                     block[FILE_SIZE_COLUMN_NAME].to_pylist(),
                 ):
-                    if partition_pruner is None or partition_pruner.should_include(
-                        path
-                    ):
-                        yield FileInfo(path=path, size=size)
+                    yield FileInfo(path=path, size=size)
 
         for manifest in indexer.list_files_from_file_infos(
             _file_infos(),
             filesystem=filesystem,
+            pruners=[partition_pruner] if partition_pruner is not None else None,
             preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
@@ -184,15 +182,15 @@ def sample_files(
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
     sampled_paths: List[str] = []
-    sampled_sizes: List[int] = []
+    # ``None`` where the filesystem didn't report a size. Full mode retains
+    # these paths for execution, so dropping them here would drop their rows.
+    sampled_sizes: List[Optional[int]] = []
     for file_info in indexer.list_file_infos(
         paths_column,
         filesystem=filesystem,
         pruners=pruners or [],
         preserve_order=True,
     ):
-        if file_info.size is None:
-            continue
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
         if max_files is not None and len(sampled_paths) >= max_files:

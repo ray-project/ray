@@ -144,71 +144,64 @@ class BaseTrainer(abc.ABC):
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
     - ``trainer.training_loop()``: Executes the main training logic.
-    - Calling ``trainer.fit()`` will return a ``ray.result.Result``
+    - Calling ``trainer.fit()`` will return a ``ray.train.Result``
       object where you can access metrics from your training run, as well
       as any checkpoints that may have been saved.
 
-    **How do I create a new Trainer?**
+    Examples:
+        **How do I create a new Trainer?**
 
-    Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
-    method, and optionally ``setup``.
+        Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
+        method, and optionally ``setup``.
 
-    .. testcode::
-        :skipif: True
-
-        import torch
-
-        from ray.train.trainer import BaseTrainer
-        from ray import train, tune
-
-
-        class MyPytorchTrainer(BaseTrainer):
-            def setup(self):
-                self.model = torch.nn.Linear(1, 1)
-                self.optimizer = torch.optim.SGD(
-                    self.model.parameters(), lr=0.1)
-
-            def training_loop(self):
-                # You can access any Trainer attributes directly in this method.
-                # self.datasets["train"] has already been
-                dataset = self.datasets["train"]
-
-                torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
-                loss_fn = torch.nn.MSELoss()
-
-                for epoch_idx in range(10):
-                    loss = 0
-                    num_batches = 0
-                    torch_ds = dataset.iter_torch_batches(
-                        dtypes=torch.float, batch_size=2
-                    )
-                    for batch in torch_ds:
-                        X = torch.unsqueeze(batch["x"], 1)
-                        y = torch.unsqueeze(batch["y"], 1)
-                        # Compute prediction error
-                        pred = self.model(X)
-                        batch_loss = loss_fn(pred, y)
-
-                        # Backpropagation
-                        self.optimizer.zero_grad()
-                        batch_loss.backward()
-                        self.optimizer.step()
-
-                        loss += batch_loss.item()
-                        num_batches += 1
-                    loss /= num_batches
-
-                    # Use Tune functions to report intermediate
-                    # results.
-                    train.report({"loss": loss, "epoch": epoch_idx})
-
-
-        # Initialize the Trainer, and call Trainer.fit()
-        import ray
-        train_dataset = ray.data.from_items(
-            [{"x": i, "y": i} for i in range(10)])
-        my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
-        result = my_trainer.fit()
+        >>> import torch  # doctest: +SKIP_EXAMPLE
+        >>> from ray.train.trainer import BaseTrainer
+        >>> from ray import train, tune
+        >>> class MyPytorchTrainer(BaseTrainer):
+        ...     def setup(self):
+        ...         self.model = torch.nn.Linear(1, 1)
+        ...         self.optimizer = torch.optim.SGD(
+        ...             self.model.parameters(), lr=0.1)
+        ...
+        ...     def training_loop(self):
+        ...         # You can access any Trainer attributes directly in this method.
+        ...         # self.datasets["train"] has already been
+        ...         dataset = self.datasets["train"]
+        ...
+        ...         torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
+        ...         loss_fn = torch.nn.MSELoss()
+        ...
+        ...         for epoch_idx in range(10):
+        ...             loss = 0
+        ...             num_batches = 0
+        ...             torch_ds = dataset.iter_torch_batches(
+        ...                 dtypes=torch.float, batch_size=2
+        ...             )
+        ...             for batch in torch_ds:
+        ...                 X = torch.unsqueeze(batch["x"], 1)
+        ...                 y = torch.unsqueeze(batch["y"], 1)
+        ...                 # Compute prediction error
+        ...                 pred = self.model(X)
+        ...                 batch_loss = loss_fn(pred, y)
+        ...
+        ...                 # Backpropagation
+        ...                 self.optimizer.zero_grad()
+        ...                 batch_loss.backward()
+        ...                 self.optimizer.step()
+        ...
+        ...                 loss += batch_loss.item()
+        ...                 num_batches += 1
+        ...             loss /= num_batches
+        ...
+        ...             # Use Tune functions to report intermediate
+        ...             # results.
+        ...             train.report({"loss": loss, "epoch": epoch_idx})
+        >>> # Initialize the Trainer, and call Trainer.fit()
+        >>> import ray
+        >>> train_dataset = ray.data.from_items(
+        ...     [{"x": i, "y": i} for i in range(10)])
+        >>> my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
+        >>> result = my_trainer.fit()
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -307,46 +300,39 @@ class BaseTrainer(abc.ABC):
             via ``<Framework>Trainer.restore("s3://...")``. The restored run will
             continue writing results to the same cloud storage location.
 
-        The following example can be paired with implementing job retry using
-        :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
-        attempt to resume on both experiment-level and trial-level failures:
+        Examples:
+            The following example can be paired with implementing job retry using
+            :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
+            attempt to resume on both experiment-level and trial-level failures:
 
-        .. testcode::
-            :skipif: True
-
-            import os
-            import ray
-            from ray import train
-            from ray.train.trainer import BaseTrainer
-
-            experiment_name = "unique_experiment_name"
-            storage_path = os.path.expanduser("~/ray_results")
-            experiment_dir = os.path.join(storage_path, experiment_name)
-
-            # Define some dummy inputs for demonstration purposes
-            datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
-
-            class CustomTrainer(BaseTrainer):
-                def training_loop(self):
-                    pass
-
-            if CustomTrainer.can_restore(experiment_dir):
-                trainer = CustomTrainer.restore(
-                    experiment_dir, datasets=datasets
-                )
-            else:
-                trainer = CustomTrainer(
-                    datasets=datasets,
-                    run_config=train.RunConfig(
-                        name=experiment_name,
-                        storage_path=storage_path,
-                        # Tip: You can also enable retries on failure for
-                        # worker-level fault tolerance
-                        failure_config=train.FailureConfig(max_failures=3),
-                    ),
-                )
-
-            result = trainer.fit()
+            >>> import os  # doctest: +SKIP_EXAMPLE
+            >>> import ray
+            >>> from ray import train
+            >>> from ray.train.trainer import BaseTrainer
+            >>> experiment_name = "unique_experiment_name"
+            >>> storage_path = os.path.expanduser("~/ray_results")
+            >>> experiment_dir = os.path.join(storage_path, experiment_name)
+            >>> # Define some dummy inputs for demonstration purposes
+            >>> datasets = {"train": ray.data.from_items([{"a": i} for i in range(10)])}
+            >>> class CustomTrainer(BaseTrainer):
+            ...     def training_loop(self):
+            ...         pass
+            >>> if CustomTrainer.can_restore(experiment_dir):
+            ...     trainer = CustomTrainer.restore(
+            ...         experiment_dir, datasets=datasets
+            ...     )
+            ... else:
+            ...     trainer = CustomTrainer(
+            ...         datasets=datasets,
+            ...         run_config=train.RunConfig(
+            ...             name=experiment_name,
+            ...             storage_path=storage_path,
+            ...             # Tip: You can also enable retries on failure for
+            ...             # worker-level fault tolerance
+            ...             failure_config=train.FailureConfig(max_failures=3),
+            ...         ),
+            ...     )
+            >>> result = trainer.fit()
 
         Args:
             path: The path to the experiment directory of the training run to restore.
@@ -658,19 +644,14 @@ class BaseTrainer(abc.ABC):
         :func:`train.get_checkpoint() <ray.train.get_checkpoint>`) inside
         this training loop.
 
-        Example:
-
-        .. testcode::
-
-            from ray.train.trainer import BaseTrainer
-            from ray import train
-
-            class MyTrainer(BaseTrainer):
-                def training_loop(self):
-                    for epoch_idx in range(5):
-                        ...
-                        train.report({"epoch": epoch_idx})
-
+        Examples:
+            >>> from ray.train.trainer import BaseTrainer
+            >>> from ray import train
+            >>> class MyTrainer(BaseTrainer):
+            ...     def training_loop(self):
+            ...         for epoch_idx in range(5):
+            ...             ...
+            ...             train.report({"epoch": epoch_idx})
         """
         raise NotImplementedError
 

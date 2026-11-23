@@ -33,9 +33,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only):
 
     # Test that unsupported pyarrow versions cause an error to be raised upon the
     # initial pyarrow use.
-    # Pin numpy<2 since pyarrow 8.0.0 is incompatible with numpy>=2,
-    # which is now the default on the data CI images.
-    ray.init(runtime_env={"pip": ["numpy==1.26.4", "pyarrow==8.0.0"]})
+    ray.init(runtime_env={"pip": ["pyarrow==22.0.0"]})
 
     @ray.remote
     def should_error():
@@ -43,7 +41,7 @@ def test_unsupported_pyarrow_versions_check(shutdown_only):
 
     with pytest.raises(
         Exception,
-        match=r".*Dataset requires pyarrow >= 17.0.0, but 8.0.0 is installed.*",
+        match=r".*Dataset requires pyarrow >= 23.0.0, but 22.0.0 is installed.*",
     ):
         ray.get(should_error.remote())
 

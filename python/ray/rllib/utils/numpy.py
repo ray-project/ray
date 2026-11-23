@@ -239,32 +239,34 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    .. testcode::
-        :skipif: True
-
-        # B=2
-        from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        from gymnasium.spaces import Discrete, Box
-        out = flatten_inputs_to_1d_tensor(
-            {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-            spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        )
-        print(out)
-
-        # B=2; T=2
-        out = flatten_inputs_to_1d_tensor(
-            ([[1, 0], [0, 1]],
-             [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-            spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
-            time_axis=True
-        )
-        print(out)
-
-    .. testoutput::
-
-        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
-        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
-        [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
+    Examples:
+        >>> # B=2
+        >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
+        >>> from gymnasium.spaces import Discrete, Box
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     {
+        ...         "a": np.array([1, 0]),
+        ...         "b": np.array([[[0.0], [0.1]], [[1.0], [1.1]]]),
+        ...     },
+        ...     spaces_struct=dict(a=Discrete(2), b=Box(-1.0, 1.0, shape=(2, 1)))
+        ... )
+        >>> print(out)
+        [[0.  1.  0.  0.1]
+         [1.  0.  1.  1.1]]
+        >>> # B=2; T=2
+        >>> out = flatten_inputs_to_1d_tensor(
+        ...     (np.array([[1, 0], [0, 1]]),
+        ...      np.array([[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]])),
+        ...     spaces_struct=tuple([Discrete(2), Box(-1.0, 1.0, shape=(2, ))]),
+        ...     time_axis=True
+        ... )
+        >>> print(out)
+        [[[0.  1.  0.  0.1]
+          [1.  0.  1.  1.1]]
+        <BLANKLINE>
+         [[1.  0.  2.  2.1]
+          [0.  1.  3.  3.1]]]
     """
     # `time_axis` must not be True if `batch_axis` is False.
     assert not (time_axis and not batch_axis)
@@ -354,15 +356,13 @@ def make_action_immutable(obj: Any) -> Any:
     Returns:
         The immutable object.
 
-    .. testcode::
-        :skipif: True
-
-        import tree
-        import numpy as np
-        from ray.rllib.utils.numpy import make_action_immutable
-        arr = np.arange(1,10)
-        d = dict(a = 1, b = (arr, arr))
-        tree.traverse(make_action_immutable, d, top_down=False)
+    Examples:
+        >>> import tree  # doctest: +SKIP_EXAMPLE
+        >>> import numpy as np
+        >>> from ray.rllib.utils.numpy import make_action_immutable
+        >>> arr = np.arange(1,10)
+        >>> d = dict(a = 1, b = (arr, arr))
+        >>> tree.traverse(make_action_immutable, d, top_down=False)
     """
     if isinstance(obj, np.ndarray):
         obj.setflags(write=False)
@@ -377,7 +377,19 @@ def make_action_immutable(obj: Any) -> Any:
 
 @PublicAPI
 def huber_loss(x: np.ndarray, delta: float = 1.0) -> np.ndarray:
-    """Reference: https://en.wikipedia.org/wiki/Huber_loss."""
+    """Computes the element-wise Huber loss.
+
+    Reference: https://en.wikipedia.org/wiki/Huber_loss.
+
+    Args:
+        x: The input values, such as the differences between predictions and
+            targets.
+        delta: The threshold at which the loss switches from quadratic to linear.
+
+    Returns:
+        `0.5 * x**2` where `abs(x) < delta`, and `delta * (abs(x) - 0.5 * delta)`
+        elsewhere.
+    """
     return np.where(
         np.abs(x) < delta, np.power(x, 2.0) * 0.5, delta * (np.abs(x) - 0.5 * delta)
     )
@@ -529,7 +541,23 @@ def one_hot(
 
 
 @PublicAPI
-def one_hot_multidiscrete(x, depths=List[int]):
+def one_hot_multidiscrete(
+    x: Union[np.ndarray, "torch.Tensor"], depths: List[int]
+) -> np.ndarray:
+    """One-hot encodes the values of a MultiDiscrete space.
+
+    Encodes each sub-action with `one_hot()` and concatenates the results along
+    the last axis.
+
+    Args:
+        x: The values to encode, of shape `(len(depths),)` or
+            `(batch_size, len(depths))`. A torch tensor is converted to numpy.
+        depths: The number of values of each sub-action, such as the `nvec` of a
+            `MultiDiscrete` space.
+
+    Returns:
+        The float32 one-hot encoding, of size `sum(depths)` in the last axis.
+    """
     # Handle torch arrays properly.
     if torch and isinstance(x, torch.Tensor):
         x = x.numpy()

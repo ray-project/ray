@@ -32,9 +32,16 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
         self._encoding_ratio = None
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
-        assert np.all(manifest.file_sizes >= 0)
+        """Return each row's estimated in-memory size.
 
-        for path, file_size in zip(manifest.paths, manifest.file_sizes):
+        A row whose file size is unknown (``NaN`` in ``file_sizes``) gets a
+        ``NaN`` estimate, which the partitioner treats as unknown.
+        """
+        file_sizes = manifest.file_sizes
+        known = ~np.isnan(file_sizes.astype(float))
+        assert np.all(file_sizes[known] >= 0)
+
+        for path, file_size in zip(manifest.paths[known], file_sizes[known]):
             if self._encoding_ratio is None:
                 # Estimating the encoding ratio can be expensive since it requires
                 # reading the file. So, we only estimate the encoding ratio if we don't
@@ -44,9 +51,9 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
 
         if self._encoding_ratio is None:
             # If we couldn't estimate the encoding ratio, assume a 1:1 encoding ratio.
-            return manifest.file_sizes
+            return file_sizes
         else:
-            return manifest.file_sizes * self._encoding_ratio
+            return file_sizes * self._encoding_ratio
 
     def _estimate_encoding_ratio(
         self,

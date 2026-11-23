@@ -12,6 +12,20 @@ DEFAULT_NUM_CPUS_PER_TASK = 0.5
 def get_offline_io_resource_bundles(
     config: "AlgorithmConfig",
 ) -> List[Dict[str, float]]:
+    """Returns the resource bundles that offline I/O needs, given a config.
+
+    Only the `"dataset"` input needs resources. It gets one CPU bundle per read
+    task.
+
+    Args:
+        config: The AlgorithmConfig to read the input settings from.
+
+    Returns:
+        If `config.input_` is `"dataset"`, one `{"CPU": num_cpus}` bundle per read
+        task, where the number of tasks is the input config's `parallelism`, or
+        `num_env_runners` if unset, and `num_cpus` is its
+        `num_cpus_per_read_task`, or 0.5 if unset. Otherwise, an empty list.
+    """
     # DatasetReader is the only offline I/O component today that
     # requires compute resources.
     if config.input_ == "dataset":

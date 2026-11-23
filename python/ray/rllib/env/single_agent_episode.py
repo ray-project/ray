@@ -51,106 +51,90 @@ class SingleAgentEpisode:
     lookback buffer size of sufficient size.
 
     Examples:
-
-    .. testcode::
-
-        import gymnasium as gym
-        import numpy as np
-
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
-        # Construct a new episode (without any data in it yet).
-        episode = SingleAgentEpisode()
-        assert len(episode) == 0
-
-        # Fill the episode with some data (10 timesteps).
-        env = gym.make("CartPole-v1")
-        obs, infos = env.reset()
-        episode.add_env_reset(obs, infos)
-
-        # Even with the initial obs/infos, the episode is still considered len=0.
-        assert len(episode) == 0
-        for _ in range(5):
-            action = env.action_space.sample()
-            obs, reward, term, trunc, infos = env.step(action)
-            episode.add_env_step(
-                observation=obs,
-                action=action,
-                reward=reward,
-                terminated=term,
-                truncated=trunc,
-                infos=infos,
-            )
-        assert len(episode) == 5
-
-        # We can now access information from the episode via the getter APIs.
-
-        # Get the last 3 rewards (in a batch of size 3).
-        episode.get_rewards(slice(-3, None))  # same as `episode.rewards[-3:]`
-
-        # Get the most recent action (single item, not batched).
-        # This works regardless of the action space or whether the episode has
-        # been numpy'ized or not (see below).
-        episode.get_actions(-1)  # same as episode.actions[-1]
-
-        # Looking back from ts=1, get the previous 4 rewards AND fill with 0.0
-        # in case we go over the beginning (ts=0). So we would expect
-        # [0.0, 0.0, 0.0, r0] to be returned here, where r0 is the very first received
-        # reward in the episode:
-        episode.get_rewards(slice(-4, 0), neg_index_as_lookback=True, fill=0.0)
-
-        # Note the use of fill=0.0 here (fill everything that's out of range with this
-        # value) AND the argument `neg_index_as_lookback=True`, which interprets
-        # negative indices as being left of ts=0 (e.g. -1 being the timestep before
-        # ts=0).
-
-        # Assuming we had a complex action space (nested gym.spaces.Dict) with one or
-        # more elements being Discrete or MultiDiscrete spaces:
-        # 1) The `fill=...` argument would still work, filling all spaces (Boxes,
-        # Discrete) with that provided value.
-        # 2) Setting the flag `one_hot_discrete=True` would convert those discrete
-        # sub-components automatically into one-hot (or multi-one-hot) tensors.
-        # This simplifies the task of having to provide the previous 4 (nested and
-        # partially discrete/multi-discrete) actions for each timestep within a training
-        # batch, thereby filling timesteps before the episode started with 0.0s and
-        # one-hot'ing the discrete/multi-discrete components in these actions:
-        episode = SingleAgentEpisode(action_space=gym.spaces.Dict({
-            "a": gym.spaces.Discrete(3),
-            "b": gym.spaces.MultiDiscrete([2, 3]),
-            "c": gym.spaces.Box(-1.0, 1.0, (2,)),
-        }))
-
-        # ... fill episode with data ...
-        episode.add_env_reset(observation=0)
-        # ... from a few steps.
-        episode.add_env_step(
-            observation=1,
-            action={"a":0, "b":np.array([1, 2]), "c":np.array([.5, -.5], np.float32)},
-            reward=1.0,
-        )
-
-        # In your connector
-        prev_4_a = []
-        # Note here that len(episode) does NOT include the lookback buffer.
-        for ts in range(len(episode)):
-            prev_4_a.append(
-                episode.get_actions(
-                    indices=slice(ts - 4, ts),
-                    # Make sure negative indices are interpreted as
-                    # "into lookback buffer"
-                    neg_index_as_lookback=True,
-                    # Zero-out everything even further before the lookback buffer.
-                    fill=0.0,
-                    # Take care of discrete components (get ready as NN input).
-                    one_hot_discrete=True,
-                )
-            )
-
-        # Finally, convert from list of batch items to a struct (same as action space)
-        # of batched (numpy) arrays, in which all leafs have B==len(prev_4_a).
-        from ray.rllib.utils.spaces.space_utils import batch
-
-        prev_4_actions_col = batch(prev_4_a)
+        >>> import gymnasium as gym
+        >>> import numpy as np
+        >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        >>> # Construct a new episode (without any data in it yet).
+        >>> episode = SingleAgentEpisode()
+        >>> assert len(episode) == 0
+        >>> # Fill the episode with some data (10 timesteps).
+        >>> env = gym.make("CartPole-v1")
+        >>> obs, infos = env.reset()
+        >>> episode.add_env_reset(obs, infos)
+        >>> # Even with the initial obs/infos, the episode is still considered len=0.
+        >>> assert len(episode) == 0
+        >>> for _ in range(5):
+        ...     action = env.action_space.sample()
+        ...     obs, reward, term, trunc, infos = env.step(action)
+        ...     episode.add_env_step(
+        ...         observation=obs,
+        ...         action=action,
+        ...         reward=reward,
+        ...         terminated=term,
+        ...         truncated=trunc,
+        ...         infos=infos,
+        ...     )
+        >>> assert len(episode) == 5
+        >>> # We can now access information from the episode via the getter APIs.
+        >>> # Get the last 3 rewards (in a batch of size 3).
+        >>> _ = episode.get_rewards(slice(-3, None))  # same as `episode.rewards[-3:]`
+        >>> # Get the most recent action (single item, not batched).
+        >>> # This works regardless of the action space or whether the episode has
+        >>> # been numpy'ized or not (see below).
+        >>> _ = episode.get_actions(-1)  # same as episode.actions[-1]
+        >>> # Looking back from ts=1, get the previous 4 rewards AND fill with 0.0
+        >>> # in case we go over the beginning (ts=0). So we would expect
+        >>> # [0.0, 0.0, 0.0, r0] to be returned here, where r0 is the very first received
+        >>> # reward in the episode:
+        >>> episode.get_rewards(slice(-3, 1), neg_index_as_lookback=True, fill=0.0)
+        [array(0., dtype=float32), array(0., dtype=float32), array(0., dtype=float32), 1.0]
+        >>> # Note the use of fill=0.0 here (fill everything that's out of range with this
+        >>> # value) AND the argument `neg_index_as_lookback=True`, which interprets
+        >>> # negative indices as being left of ts=0 (e.g. -1 being the timestep before
+        >>> # ts=0).
+        >>> # Assuming we had a complex action space (nested gym.spaces.Dict) with one or
+        >>> # more elements being Discrete or MultiDiscrete spaces:
+        >>> # 1) The `fill=...` argument would still work, filling all spaces (Boxes,
+        >>> # Discrete) with that provided value.
+        >>> # 2) Setting the flag `one_hot_discrete=True` would convert those discrete
+        >>> # sub-components automatically into one-hot (or multi-one-hot) tensors.
+        >>> # This simplifies the task of having to provide the previous 4 (nested and
+        >>> # partially discrete/multi-discrete) actions for each timestep within a training
+        >>> # batch, thereby filling timesteps before the episode started with 0.0s and
+        >>> # one-hot'ing the discrete/multi-discrete components in these actions:
+        >>> episode = SingleAgentEpisode(action_space=gym.spaces.Dict({
+        ...     "a": gym.spaces.Discrete(3),
+        ...     "b": gym.spaces.MultiDiscrete([2, 3]),
+        ...     "c": gym.spaces.Box(-1.0, 1.0, (2,)),
+        ... }))
+        >>> # ... fill episode with data ...
+        >>> episode.add_env_reset(observation=0)
+        >>> # ... from a few steps.
+        >>> episode.add_env_step(
+        ...     observation=1,
+        ...     action={"a":0, "b":np.array([1, 2]), "c":np.array([.5, -.5], np.float32)},
+        ...     reward=1.0,
+        ... )
+        >>> # In your connector
+        >>> prev_4_a = []
+        >>> # Note here that len(episode) does NOT include the lookback buffer.
+        >>> for ts in range(len(episode)):
+        ...     prev_4_a.append(
+        ...         episode.get_actions(
+        ...             indices=slice(ts - 4, ts),
+        ...             # Make sure negative indices are interpreted as
+        ...             # "into lookback buffer"
+        ...             neg_index_as_lookback=True,
+        ...             # Zero-out everything even further before the lookback buffer.
+        ...             fill=0.0,
+        ...             # Take care of discrete components (get ready as NN input).
+        ...             one_hot_discrete=True,
+        ...         )
+        ...     )
+        >>> # Finally, convert from list of batch items to a struct (same as action space)
+        >>> # of batched (numpy) arrays, in which all leafs have B==len(prev_4_a).
+        >>> from ray.rllib.utils.spaces.space_utils import batch
+        >>> prev_4_actions_col = batch(prev_4_a)
     """
 
     __slots__ = (
@@ -494,6 +478,13 @@ class SingleAgentEpisode:
 
     @property
     def custom_data(self):
+        """A dict for storing your own data on this episode.
+
+        For example, a callback can collect values here over the episode's steps
+        and log them as custom metrics when the episode ends. RLlib doesn't read
+        this data. `cut()` deep-copies it into the successor chunk, and
+        `get_state()` includes it.
+        """
         return self._custom_data
 
     @property
@@ -535,49 +526,41 @@ class SingleAgentEpisode:
         the `self.add_env_step()` method.
 
         Examples:
-
-        .. testcode::
-
-            import numpy as np
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
-            episode = SingleAgentEpisode(
-                observations=[0, 1, 2, 3],
-                actions=[1, 2, 3],
-                rewards=[1, 2, 3],
-                # Note: terminated/truncated have nothing to do with an episode
-                # being numpy'ized or not (via the `self.to_numpy()` method)!
-                terminated=False,
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-            )
-            # Episode has not been numpy'ized yet.
-            assert not episode.is_numpy
-            # We are still operating on lists.
-            assert episode.get_observations([1]) == [1]
-            assert episode.get_observations(slice(None, 2)) == [0, 1]
-            # We can still add data (and even add the terminated=True flag).
-            episode.add_env_step(
-                observation=4,
-                action=4,
-                reward=4,
-                terminated=True,
-            )
-            # Still NOT numpy'ized.
-            assert not episode.is_numpy
-
-            # Numpy'ized the episode.
-            episode.to_numpy()
-            assert episode.is_numpy
-
-            # We cannot add data anymore. The following would crash.
-            # episode.add_env_step(observation=5, action=5, reward=5)
-
-            # Everything is now numpy arrays (with 0-axis of size
-            # B=[len of requested slice]).
-            assert isinstance(episode.get_observations([1]), np.ndarray)  # B=1
-            assert isinstance(episode.actions[0:2], np.ndarray)  # B=2
-            assert isinstance(episode.rewards[1:4], np.ndarray)  # B=3
+            >>> import numpy as np
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> episode = SingleAgentEpisode(
+            ...     observations=[0, 1, 2, 3],
+            ...     actions=[1, 2, 3],
+            ...     rewards=[1, 2, 3],
+            ...     # Note: terminated/truncated have nothing to do with an episode
+            ...     # being numpy'ized or not (via the `self.to_numpy()` method)!
+            ...     terminated=False,
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ... )
+            >>> # Episode has not been numpy'ized yet.
+            >>> assert not episode.is_numpy
+            >>> # We are still operating on lists.
+            >>> assert episode.get_observations([1]) == [1]
+            >>> assert episode.get_observations(slice(None, 2)) == [0, 1]
+            >>> # We can still add data (and even add the terminated=True flag).
+            >>> episode.add_env_step(
+            ...     observation=4,
+            ...     action=4,
+            ...     reward=4,
+            ...     terminated=True,
+            ... )
+            >>> # Still NOT numpy'ized.
+            >>> assert not episode.is_numpy
+            >>> # Numpy'ized the episode.
+            >>> _ = episode.to_numpy()
+            >>> assert episode.is_numpy
+            >>> # We cannot add data anymore. The following would crash.
+            >>> # episode.add_env_step(observation=5, action=5, reward=5)
+            >>> # Everything is now numpy arrays (with 0-axis of size
+            >>> # B=[len of requested slice]).
+            >>> assert isinstance(episode.get_observations([1]), np.ndarray)  # B=1
+            >>> assert isinstance(episode.actions[0:2], np.ndarray)  # B=2
+            >>> assert isinstance(episode.rewards[1:4], np.ndarray)  # B=3
 
         Returns:
              This `SingleAgentEpisode` object with the converted numpy data.
@@ -787,45 +770,40 @@ class SingleAgentEpisode:
                 one-hot vectors will actually be zero-hot (all slots zero).
 
         Examples:
-
-        .. testcode::
-
-            import gymnasium as gym
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            episode = SingleAgentEpisode(
-                # Discrete(4) observations (ints between 0 and 4 (excl.))
-                observation_space=gym.spaces.Discrete(4),
-                observations=[0, 1, 2, 3],
-                actions=[1, 2, 3], rewards=[1, 2, 3],  # <- not relevant for this demo
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-            )
-            # Plain usage (`indices` arg only).
-            check(episode.get_observations(-1), 3)
-            check(episode.get_observations(0), 0)
-            check(episode.get_observations([0, 2]), [0, 2])
-            check(episode.get_observations([-1, 0]), [3, 0])
-            check(episode.get_observations(slice(None, 2)), [0, 1])
-            check(episode.get_observations(slice(-2, None)), [2, 3])
-            # Using `fill=...` (requesting slices beyond the boundaries).
-            check(episode.get_observations(slice(-6, -2), fill=-9), [-9, -9, 0, 1])
-            check(episode.get_observations(slice(2, 5), fill=-7), [2, 3, -7])
-            # Using `one_hot_discrete=True`.
-            check(episode.get_observations(2, one_hot_discrete=True), [0, 0, 1, 0])
-            check(episode.get_observations(3, one_hot_discrete=True), [0, 0, 0, 1])
-            check(episode.get_observations(
-                slice(0, 3),
-                one_hot_discrete=True,
-            ), [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
-            # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
-            check(episode.get_observations(
-                -1,
-                neg_index_as_lookback=True,  # -1 means one left of ts=0
-                fill=0.0,
-                one_hot_discrete=True,
-            ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            >>> import gymnasium as gym
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> from ray.rllib.utils.test_utils import check
+            >>> episode = SingleAgentEpisode(
+            ...     # Discrete(4) observations (ints between 0 and 4 (excl.))
+            ...     observation_space=gym.spaces.Discrete(4),
+            ...     observations=[0, 1, 2, 3],
+            ...     actions=[1, 2, 3], rewards=[1, 2, 3],  # <- not relevant for this demo
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ... )
+            >>> # Plain usage (`indices` arg only).
+            >>> check(episode.get_observations(-1), 3)
+            >>> check(episode.get_observations(0), 0)
+            >>> check(episode.get_observations([0, 2]), [0, 2])
+            >>> check(episode.get_observations([-1, 0]), [3, 0])
+            >>> check(episode.get_observations(slice(None, 2)), [0, 1])
+            >>> check(episode.get_observations(slice(-2, None)), [2, 3])
+            >>> # Using `fill=...` (requesting slices beyond the boundaries).
+            >>> check(episode.get_observations(slice(-6, -2), fill=-9), [-9, -9, 0, 1])
+            >>> check(episode.get_observations(slice(2, 5), fill=-7), [2, 3, -7])
+            >>> # Using `one_hot_discrete=True`.
+            >>> check(episode.get_observations(2, one_hot_discrete=True), [0, 0, 1, 0])
+            >>> check(episode.get_observations(3, one_hot_discrete=True), [0, 0, 0, 1])
+            >>> check(episode.get_observations(
+            ...     slice(0, 3),
+            ...     one_hot_discrete=True,
+            ... ), [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]])
+            >>> # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
+            >>> check(episode.get_observations(
+            ...     -1,
+            ...     neg_index_as_lookback=True,  # -1 means one left of ts=0
+            ...     fill=0.0,
+            ...     one_hot_discrete=True,
+            ... ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
 
         Returns:
             The collected observations.
@@ -881,29 +859,31 @@ class SingleAgentEpisode:
                 with `[{"o":0.0}, {"o":0.0}, {"l":10}, {"l":11}, {"a":12}]`.
 
         Examples:
-
-        .. testcode::
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
-            episode = SingleAgentEpisode(
-                infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}],
-                # The following is needed, but not relevant for this demo.
-                observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-            )
-            # Plain usage (`indices` arg only).
-            episode.get_infos(-1)  # {"d":3}
-            episode.get_infos(0)  # {"a":0}
-            episode.get_infos([0, 2])  # [{"a":0},{"c":2}]
-            episode.get_infos([-1, 0])  # [{"d":3},{"a":0}]
-            episode.get_infos(slice(None, 2))  # [{"a":0},{"b":1}]
-            episode.get_infos(slice(-2, None))  # [{"c":2},{"d":3}]
-            # Using `fill=...` (requesting slices beyond the boundaries).
-            # TODO (sven): This would require a space being provided. Maybe we can
-            #  skip this check for infos, which don't have a space anyways.
-            # episode.get_infos(slice(-5, -3), fill={"o":-1})  # [{"o":-1},{"a":0}]
-            # episode.get_infos(slice(3, 5), fill={"o":-2})  # [{"d":3},{"o":-2}]
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> episode = SingleAgentEpisode(
+            ...     infos=[{"a":0}, {"b":1}, {"c":2}, {"d":3}],
+            ...     # The following is needed, but not relevant for this demo.
+            ...     observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ... )
+            >>> # Plain usage (`indices` arg only).
+            >>> episode.get_infos(-1)
+            {'d': 3}
+            >>> episode.get_infos(0)
+            {'a': 0}
+            >>> episode.get_infos([0, 2])
+            [{'a': 0}, {'c': 2}]
+            >>> episode.get_infos([-1, 0])
+            [{'d': 3}, {'a': 0}]
+            >>> episode.get_infos(slice(None, 2))
+            [{'a': 0}, {'b': 1}]
+            >>> episode.get_infos(slice(-2, None))
+            [{'c': 2}, {'d': 3}]
+            >>> # Using `fill=...` (requesting slices beyond the boundaries).
+            >>> # TODO (sven): This would require a space being provided. Maybe we can
+            >>> #  skip this check for infos, which don't have a space anyways.
+            >>> # episode.get_infos(slice(-5, -3), fill={"o":-1})  # [{"o":-1},{"a":0}]
+            >>> # episode.get_infos(slice(3, 5), fill={"o":-2})  # [{"d":3},{"o":-2}]
 
         Returns:
             The collected info dicts.
@@ -961,43 +941,52 @@ class SingleAgentEpisode:
                 one-hot vectors will actually be zero-hot (all slots zero).
 
         Examples:
-
-        .. testcode::
-
-            import gymnasium as gym
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
-            episode = SingleAgentEpisode(
-                # Discrete(4) actions (ints between 0 and 4 (excl.))
-                action_space=gym.spaces.Discrete(4),
-                actions=[1, 2, 3],
-                observations=[0, 1, 2, 3], rewards=[1, 2, 3],  # <- not relevant here
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-            )
-            # Plain usage (`indices` arg only).
-            episode.get_actions(-1)  # 3
-            episode.get_actions(0)  # 1
-            episode.get_actions([0, 2])  # [1, 3]
-            episode.get_actions([-1, 0])  # [3, 1]
-            episode.get_actions(slice(None, 2))  # [1, 2]
-            episode.get_actions(slice(-2, None))  # [2, 3]
-            # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_actions(slice(-5, -2), fill=-9)  # [-9, -9, 1, 2]
-            episode.get_actions(slice(1, 5), fill=-7)  # [2, 3, -7, -7]
-            # Using `one_hot_discrete=True`.
-            episode.get_actions(1, one_hot_discrete=True)  # [0 0 1 0] (action=2)
-            episode.get_actions(2, one_hot_discrete=True)  # [0 0 0 1] (action=3)
-            episode.get_actions(
-                slice(0, 2),
-                one_hot_discrete=True,
-            )   # [[0 1 0 0], [0 0 0 1]] (actions=1 and 3)
-            # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
-            episode.get_actions(
-                -1,
-                neg_index_as_lookback=True,  # -1 means one left of ts=0
-                fill=0.0,
-                one_hot_discrete=True,
-            )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
+            >>> import gymnasium as gym
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> episode = SingleAgentEpisode(
+            ...     # Discrete(4) actions (ints between 0 and 4 (excl.))
+            ...     action_space=gym.spaces.Discrete(4),
+            ...     actions=[1, 2, 3],
+            ...     observations=[0, 1, 2, 3], rewards=[1, 2, 3],  # <- not relevant here
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ... )
+            >>> # Plain usage (`indices` arg only).
+            >>> episode.get_actions(-1)
+            3
+            >>> episode.get_actions(0)
+            1
+            >>> episode.get_actions([0, 2])
+            [1, 3]
+            >>> episode.get_actions([-1, 0])
+            [3, 1]
+            >>> episode.get_actions(slice(None, 2))
+            [1, 2]
+            >>> episode.get_actions(slice(-2, None))
+            [2, 3]
+            >>> # Using `fill=...` (requesting slices beyond the boundaries).
+            >>> episode.get_actions(slice(-5, -2), fill=-9)
+            [array(-9), array(-9), 1]
+            >>> episode.get_actions(slice(1, 5), fill=-7)
+            [2, 3, array(-7), array(-7)]
+            >>> # Using `one_hot_discrete=True`.
+            >>> episode.get_actions(1, one_hot_discrete=True)
+            array([0., 0., 1., 0.], dtype=float32)
+            >>> episode.get_actions(2, one_hot_discrete=True)
+            array([0., 0., 0., 1.], dtype=float32)
+            >>> episode.get_actions(
+            ...     slice(0, 2),
+            ...     one_hot_discrete=True,
+            ... )
+            [array([0., 1., 0., 0.], dtype=float32), array([0., 0., 1., 0.], dtype=float32)]
+            >>> # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
+            >>> # All-0s one-hot tensor (note the difference to [1 0 0 0]!).
+            >>> episode.get_actions(
+            ...     -1,
+            ...     neg_index_as_lookback=True,  # -1 means one left of ts=0
+            ...     fill=0.0,
+            ...     one_hot_discrete=True,
+            ... )
+            array([0., 0., 0., 0.], dtype=float32)
 
         Returns:
             The collected actions.
@@ -1050,26 +1039,30 @@ class SingleAgentEpisode:
                 `get_rewards(slice(-7, -2), fill=0.0)` with `[0.0, 0.0, 10, 11, 12]`.
 
         Examples:
-
-        .. testcode::
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
-            episode = SingleAgentEpisode(
-                rewards=[1.0, 2.0, 3.0],
-                observations=[0, 1, 2, 3], actions=[1, 2, 3],  # <- not relevant here
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-            )
-            # Plain usage (`indices` arg only).
-            episode.get_rewards(-1)  # 3.0
-            episode.get_rewards(0)  # 1.0
-            episode.get_rewards([0, 2])  # [1.0, 3.0]
-            episode.get_rewards([-1, 0])  # [3.0, 1.0]
-            episode.get_rewards(slice(None, 2))  # [1.0, 2.0]
-            episode.get_rewards(slice(-2, None))  # [2.0, 3.0]
-            # Using `fill=...` (requesting slices beyond the boundaries).
-            episode.get_rewards(slice(-5, -2), fill=0.0)  # [0.0, 0.0, 1.0, 2.0]
-            episode.get_rewards(slice(1, 5), fill=0.0)  # [2.0, 3.0, 0.0, 0.0]
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> episode = SingleAgentEpisode(
+            ...     rewards=[1.0, 2.0, 3.0],
+            ...     observations=[0, 1, 2, 3], actions=[1, 2, 3],  # <- not relevant here
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ... )
+            >>> # Plain usage (`indices` arg only).
+            >>> episode.get_rewards(-1)
+            3.0
+            >>> episode.get_rewards(0)
+            1.0
+            >>> episode.get_rewards([0, 2])
+            [1.0, 3.0]
+            >>> episode.get_rewards([-1, 0])
+            [3.0, 1.0]
+            >>> episode.get_rewards(slice(None, 2))
+            [1.0, 2.0]
+            >>> episode.get_rewards(slice(-2, None))
+            [2.0, 3.0]
+            >>> # Using `fill=...` (requesting slices beyond the boundaries).
+            >>> episode.get_rewards(slice(-5, -2), fill=0.0)
+            [array(0., dtype=float32), array(0., dtype=float32), 1.0]
+            >>> episode.get_rewards(slice(1, 5), fill=0.0)
+            [2.0, 3.0, array(0., dtype=float32), array(0., dtype=float32)]
 
         Returns:
             The collected rewards.
@@ -1128,30 +1121,31 @@ class SingleAgentEpisode:
                 automatically infer the space from existing data?
 
         Examples:
-
-        .. testcode::
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-
-            episode = SingleAgentEpisode(
-                extra_model_outputs={"mo": [1, 2, 3]},
-                len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
-                # The following is needed, but not relevant for this demo.
-                observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
-            )
-
-            # Plain usage (`indices` arg only).
-            episode.get_extra_model_outputs("mo", -1)  # 3
-            episode.get_extra_model_outputs("mo", 1)  # 0
-            episode.get_extra_model_outputs("mo", [0, 2])  # [1, 3]
-            episode.get_extra_model_outputs("mo", [-1, 0])  # [3, 1]
-            episode.get_extra_model_outputs("mo", slice(None, 2))  # [1, 2]
-            episode.get_extra_model_outputs("mo", slice(-2, None))  # [2, 3]
-            # Using `fill=...` (requesting slices beyond the boundaries).
-            # TODO (sven): This would require a space being provided. Maybe we can
-            #  automatically infer the space from existing data?
-            # episode.get_extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
-            # episode.get_extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> episode = SingleAgentEpisode(
+            ...     extra_model_outputs={"mo": [1, 2, 3]},
+            ...     len_lookback_buffer=0,  # no lookback; all data is actually "in" episode
+            ...     # The following is needed, but not relevant for this demo.
+            ...     observations=[0, 1, 2, 3], actions=[1, 2, 3], rewards=[1, 2, 3],
+            ... )
+            >>> # Plain usage (`indices` arg only).
+            >>> episode.get_extra_model_outputs("mo", -1)
+            3
+            >>> episode.get_extra_model_outputs("mo", 1)
+            2
+            >>> episode.get_extra_model_outputs("mo", [0, 2])
+            [1, 3]
+            >>> episode.get_extra_model_outputs("mo", [-1, 0])
+            [3, 1]
+            >>> episode.get_extra_model_outputs("mo", slice(None, 2))
+            [1, 2]
+            >>> episode.get_extra_model_outputs("mo", slice(-2, None))
+            [2, 3]
+            >>> # Using `fill=...` (requesting slices beyond the boundaries).
+            >>> # TODO (sven): This would require a space being provided. Maybe we can
+            >>> #  automatically infer the space from existing data?
+            >>> # episode.get_extra_model_outputs("mo", slice(-5, -2), fill=0)  # [0, 0, 1]
+            >>> # episode.get_extra_model_outputs("mo", slice(2, 5), fill=-1)  # [3, -1, -1]
 
         Returns:
             The collected extra_model_outputs[`key`].
@@ -1422,30 +1416,27 @@ class SingleAgentEpisode:
         and extra model outputs) due to the initial observation received after an env
         reset.
 
-        .. testcode::
-
-            from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-            from ray.rllib.utils.test_utils import check
-
-            # Generate a simple multi-agent episode.
-            observations = [0, 1, 2, 3, 4, 5]
-            actions = [1, 2, 3, 4, 5]
-            rewards = [0.1, 0.2, 0.3, 0.4, 0.5]
-            episode = SingleAgentEpisode(
-                observations=observations,
-                actions=actions,
-                rewards=rewards,
-                len_lookback_buffer=0,  # all given data is part of the episode
-            )
-            slice_1 = episode[:1]
-            check(slice_1.observations, [0, 1])
-            check(slice_1.actions, [1])
-            check(slice_1.rewards, [0.1])
-
-            slice_2 = episode[-2:]
-            check(slice_2.observations, [3, 4, 5])
-            check(slice_2.actions, [4, 5])
-            check(slice_2.rewards, [0.4, 0.5])
+        Examples:
+            >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+            >>> from ray.rllib.utils.test_utils import check
+            >>> # Generate a simple multi-agent episode.
+            >>> observations = [0, 1, 2, 3, 4, 5]
+            >>> actions = [1, 2, 3, 4, 5]
+            >>> rewards = [0.1, 0.2, 0.3, 0.4, 0.5]
+            >>> episode = SingleAgentEpisode(
+            ...     observations=observations,
+            ...     actions=actions,
+            ...     rewards=rewards,
+            ...     len_lookback_buffer=0,  # all given data is part of the episode
+            ... )
+            >>> slice_1 = episode[:1]
+            >>> check(slice_1.observations, [0, 1])
+            >>> check(slice_1.actions, [1])
+            >>> check(slice_1.rewards, [0.1])
+            >>> slice_2 = episode[-2:]
+            >>> check(slice_2.observations, [3, 4, 5])
+            >>> check(slice_2.actions, [4, 5])
+            >>> check(slice_2.rewards, [0.4, 0.5])
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
@@ -1649,7 +1640,13 @@ class SingleAgentEpisode:
         return sum(self.get_rewards())
 
     def get_duration_s(self) -> float:
-        """Returns the duration of this Episode (chunk) in seconds."""
+        """Returns the duration of this Episode (chunk) in seconds.
+
+        Returns:
+            The seconds between the start of this episode chunk and its most
+            recently added env step, measured with `time.perf_counter()`. 0.0 if
+            no env step has been added yet.
+        """
         if self._last_step_time is None:
             return 0.0
         return self._last_step_time - self._start_time
@@ -1781,6 +1778,10 @@ class SingleAgentEpisode:
 
     @property
     def observation_space(self):
+        """The observation space of this episode.
+
+        Setting it also sets the space of the episode's observations buffer.
+        """
         return self._observation_space
 
     @observation_space.setter
@@ -1789,6 +1790,10 @@ class SingleAgentEpisode:
 
     @property
     def action_space(self):
+        """The action space of this episode.
+
+        Setting it also sets the space of the episode's actions buffer.
+        """
         return self._action_space
 
     @action_space.setter
