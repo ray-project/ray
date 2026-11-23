@@ -711,7 +711,6 @@ def _fallback_aggregating_transformer(
     raw_aggs = _python_raw_to_partial_aggs(key_columns, aggregation_fns)
     if raw_aggs is None:
         policy = None
-    keep = _key_and_target_columns(keys, raw_aggs) if raw_aggs else []
 
     def _transform(block: pa.Table) -> pa.Table:
         from ray.data._internal.planner.exchange.aggregate_task_spec import (
@@ -730,8 +729,12 @@ def _fallback_aggregating_transformer(
             and _should_skip_partial_aggregation(block, keys, policy)
         ):
             # The reducer turns these rows into accumulators with
-            # ``raw_to_partial`` (see _fallback_aggregating_reduce_fn).
-            raw = block.select(keep)
+            # ``raw_to_partial`` (see _fallback_aggregating_reduce_fn). Keeps
+            # the columns aggregate_block would see: every column when an
+            # aggregation reads no single target column.
+            raw = SortAggregateTaskSpec._prune_unused_columns(
+                block, sort_key, aggregation_fns
+            )
             return raw.append_column(
                 _RAW_ROWS_MARKER, pa.nulls(raw.num_rows, pa.null())
             )
@@ -760,6 +763,7 @@ def _fallback_aggregating_reduce_fn(
     """Reduce-side merge + finalize of the map-side partial aggregates."""
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data._internal.table_block import _resolve_aggregated_column_names
+    from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 
     sort_key = SortKey(key=list(key_columns), descending=False)
 
@@ -773,7 +777,9 @@ def _fallback_aggregating_reduce_fn(
         for name, agg in zip(names, raw_aggs):
             accumulators = agg.raw_to_partial(raw)
             if not isinstance(accumulators, (pa.Array, pa.ChunkedArray)):
-                accumulators = pa.array(list(accumulators))
+                # Same conversion as the partial blocks aggregate_block's
+                # accumulators go into, so the two concatenate.
+                accumulators = convert_to_pyarrow_array(list(accumulators), name)
             columns[name] = accumulators
         return pa.table(columns)
 

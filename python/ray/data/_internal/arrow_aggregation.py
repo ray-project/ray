@@ -503,25 +503,45 @@ def _is_numeric(t: "pa.DataType") -> bool:
     return pa.types.is_integer(t) or pa.types.is_floating(t) or pa.types.is_null(t)
 
 
-def _is_groupable(t: "pa.DataType") -> bool:
-    """Whether Arrow can group by values of type ``t``."""
+def _is_float16(t: "pa.DataType") -> bool:
     if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
         t = t.value_type
-    return not (pa.types.is_nested(t) or isinstance(t, pa.ExtensionType))
+    return pa.types.is_float16(t)
+
+
+def _is_groupable(t: "pa.DataType") -> bool:
+    """Whether Arrow can group by (hash and sort) values of type ``t``. Not
+    float16: Arrow has no ``dictionary_encode`` or sort kernel for it."""
+    if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
+        t = t.value_type
+    return not (
+        pa.types.is_nested(t)
+        or isinstance(t, pa.ExtensionType)
+        or pa.types.is_float16(t)
+    )
 
 
 def _is_numeric_or_bool(t: "pa.DataType") -> bool:
     return _is_numeric(t) or is_boolean_arrow_type(t)
 
 
+def absmax_input_type(t: "pa.DataType") -> "pa.DataType":
+    """The type AbsMax takes ``abs`` in: signed integers narrower than 64 bits
+    widen to int64, since ``abs(-128)`` doesn't fit in int8. Other types are
+    kept."""
+    if pa.types.is_signed_integer(t) and t.bit_width < 64:
+        return pa.int64()
+    return t
+
+
 def _abs_checked(column):
-    """``abs`` that raises on ``abs(INT_MIN)`` instead of wrapping. A null-typed
-    (all-null) column passes through: older pyarrow has no ``abs`` kernel for
-    it."""
+    """``abs`` that raises on ``abs(INT64_MIN)`` instead of wrapping. A
+    null-typed (all-null) column passes through: older pyarrow has no ``abs``
+    kernel for it."""
     column = _decode(column)
     if pa.types.is_null(column.type):
         return column
-    return pc.abs_checked(column)
+    return pc.abs_checked(pc.cast(column, absmax_input_type(column.type)))
 
 
 def absmax_spec() -> ArrowAggSpec:
@@ -542,7 +562,8 @@ def absmax_spec() -> ArrowAggSpec:
         raw_to_partial=lambda block, agg_index, source_col, options: [
             block[f"__d{agg_index}_abs"]
         ],
-        supports_type=_is_numeric,
+        # No abs kernel for float16; the Python engine handles it as on master.
+        supports_type=lambda t: _is_numeric(t) and not _is_float16(t),
     )
 
 
@@ -589,19 +610,25 @@ def _merge_std(
     used = has_rows & ~mean_is_null
     weight = np.where(used, n, 0).astype(np.float64)
     total = np.bincount(ids, weights=weight, minlength=num_groups)
+    # Work with each partial's mean relative to one of its group's partial
+    # means. Averaging the raw means first rounds away the spread when
+    # |mean| >> std: partials 1e16 and 1e16 + 2 have mean 1e16 + 1, which
+    # rounds to 1e16, giving deviations 0 and 2 instead of -1 and 1. Any
+    # partial of the group works as the reference.
+    reference = np.zeros(num_groups)
+    reference[ids[used]] = mean[used]
+    offset = np.where(used, mean - reference[ids], 0.0)
     with np.errstate(invalid="ignore", divide="ignore"):
-        group_mean = (
-            np.bincount(
-                ids, weights=np.where(used, weight * mean, 0.0), minlength=num_groups
-            )
-            / total
+        mean_offset = (
+            np.bincount(ids, weights=weight * offset, minlength=num_groups) / total
         )
-        delta = np.where(used, mean - group_mean[ids], 0.0)
+        delta = np.where(used, offset - mean_offset[ids], 0.0)
         m2 = np.bincount(
             ids,
             weights=np.where(used, weight * (var + delta * delta), 0.0),
             minlength=num_groups,
         )
+        group_mean = reference + mean_offset
         group_var = m2 / total
     null = (total == 0) | (saw_null > 0)
     return [
@@ -873,10 +900,19 @@ def _values_at_ranks(
 
 
 def _finalize_quantile(q: float, ignore_nulls: bool) -> Callable:
+    if not 0 <= q <= 1:
+        # pc.quantile's check; a negative q would index from the end.
+        raise ValueError(f"Quantile must be between 0 and 1, got {q}")
+
     def _finalize(merged: "pa.Table", component_cols: Tuple[str, ...]):
         values_col, nulls_col = component_cols
         # One list per group, so the flattened values are already grouped.
-        values = _as_array(pc.cast(pc.list_flatten(merged[values_col]), pa.float64()))
+        # Large integers (beyond 2^53) round to the nearest double, as in
+        # pc.quantile. Rounding keeps the order, so the ranks pick the same
+        # values as on the integers.
+        values = _as_array(
+            pc.cast(pc.list_flatten(merged[values_col]), pa.float64(), safe=False)
+        )
         values = values.to_numpy(zero_copy_only=False)
         sizes = _list_lengths(merged[values_col])
         # Linear interpolation between the two ranks around q * (n - 1), as

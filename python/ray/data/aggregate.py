@@ -24,6 +24,7 @@ import pyarrow.compute as pc
 
 from ray.data._internal.arrow_aggregation import (
     ArrowAggSpec,
+    absmax_input_type,
     absmax_spec,
     count_spec,
     distinct_spec,
@@ -389,7 +390,7 @@ class AggregateFnV2(AggregateFn, abc.ABC, Generic[AccumulatorType, AggOutputType
 
         Args:
             block: Raw rows: the group key columns and the column this
-                aggregation reads.
+                aggregation reads (every column if ``on`` is ``None``).
 
         Returns:
             One accumulator per row, in row order: the value ``aggregate_block``
@@ -1093,7 +1094,7 @@ class AbsMax(
             self.name,
             input_schema,
             self._target_col_name,
-            lambda a: pc.max(pc.abs(a)),
+            lambda a: pc.max(pc.abs(pc.cast(a, absmax_input_type(a.type)))),
         )
 
     def _combine_column(self, accumulator_col: BlockColumn) -> AggType:
