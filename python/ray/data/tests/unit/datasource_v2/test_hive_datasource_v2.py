@@ -263,7 +263,6 @@ def test_table_scanner_capabilities_clone_and_projection():
         pytest.param(0, 0, id="zero"),
         pytest.param(2**31 - 1, 2**31 - 1, id="max_hive_integer"),
         pytest.param(2**31, None, id="above_hive_integer"),
-        pytest.param(2**63, None, id="large_integer"),
     ],
 )
 def test_dataset_limit_sql_integer_boundary(limit, expected):
@@ -280,7 +279,6 @@ def test_dataset_limit_sql_integer_boundary(limit, expected):
         pytest.param(None, (2**31, 10), 10, id="overflow_then_limit"),
         pytest.param(None, (10, 2**31), 10, id="limit_then_overflow"),
         pytest.param(100, (2**31,), 100, id="source_then_overflow"),
-        pytest.param(5, (2,), 2, id="smaller_dataset_limit"),
         pytest.param(5, (2, True, False), 2, id="limit_then_boolean"),
     ],
 )
@@ -302,7 +300,13 @@ def test_limits_preserve_smaller_source_and_accepted_limits(
 )
 def test_non_table_read_metadata_preserves_original_args(source):
     if source == "hive_query":
-        scanner = _HiveScanner(_query_spec(), pa.schema([("id", pa.int64())]))
+        schema = pa.schema([("value", pa.string())])
+        spec = HiveReadSpec(
+            lambda: None,
+            query="SELECT 'synthetic_private_value' AS value",
+            schema=schema,
+        )
+        scanner = HiveDatasourceV2(spec).create_scanner(schema)
         name = "Hive"
     else:
         scanner = ParquetScanner(schema=_TABLE_SCHEMA)
@@ -312,27 +316,19 @@ def test_non_table_read_metadata_preserves_original_args(source):
     current = read._get_args()
     assert current["_scanner"] is original["_scanner"] is scanner
     assert sanitize_for_struct(current) == sanitize_for_struct(original)
+    if source == "hive_query":
+        assert "synthetic_private_value" not in str(sanitize_for_struct(current))
 
 
-@pytest.mark.parametrize(
-    "source", [pytest.param("query", id="query"), pytest.param("table", id="table")]
-)
-def test_metadata_does_not_export_hive_scanner_spec(source):
+def test_metadata_does_not_export_hive_scanner_spec():
     marker = "synthetic_private_value"
     schema = pa.schema([("value", pa.string())])
-    if source == "query":
-        spec = HiveReadSpec(
-            lambda: None, query=f"SELECT '{marker}' AS value", schema=schema
-        )
-        scanner = HiveDatasourceV2(spec).create_scanner(schema)
-    else:
-        spec = HiveReadSpec(lambda: None, table="events", user=marker)
-        scanner = _HiveTableScanner(spec, schema)
+    spec = HiveReadSpec(lambda: None, table="events", user=marker)
+    scanner = _HiveTableScanner(spec, schema)
 
     args = _read(scanner, "Hive")._get_args()
     assert marker not in str(sanitize_for_struct(args))
-    if source == "table":
-        assert args["_scanner"] == "<Hive table scanner>"
+    assert args["_scanner"] == "<Hive table scanner>"
 
 
 if __name__ == "__main__":

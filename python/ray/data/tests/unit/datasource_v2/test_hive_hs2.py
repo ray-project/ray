@@ -445,13 +445,22 @@ def test_one_statement_yields_bounded_batches_and_closes():
     assert connection.cursor_user == "reader"
 
 
-def test_table_limit_zero_skips_connection():
+@pytest.mark.parametrize(
+    "source_limit,pushed_limit",
+    [
+        pytest.param(0, None, id="source_zero"),
+        pytest.param(None, 0, id="pushed_zero"),
+    ],
+)
+def test_table_limit_zero_skips_connection(source_limit, pushed_limit):
     def connection_factory():
         pytest.fail("zero limit must not connect")
 
-    spec = HiveReadSpec(connection_factory, table="events", limit=0)
+    spec = HiveReadSpec(connection_factory, table="events", limit=source_limit)
     schema = pa.schema([("id", pa.int64())])
-    assert list(hive_hs2.read_hs2_batches(spec, schema))[0].schema == schema
+    batch = list(hive_hs2.read_hs2_batches(spec, schema, limit=pushed_limit))[0]
+    assert batch.schema == schema
+    assert batch.num_rows == 0
 
 
 def test_table_statement_uses_validated_identifiers_and_limit():
@@ -612,22 +621,6 @@ def test_empty_projection_keeps_a_physical_stub_across_batches():
     assert pa.concat_tables(batches).num_rows == 3
     assert all(batch.column_names == ["__bsp_stub"] for batch in batches)
     assert len(cursor.statements) == 1
-
-
-def test_pushed_zero_limit_does_not_open_a_connection():
-    spec = HiveReadSpec(
-        lambda: pytest.fail("zero limit must not connect"), table="events"
-    )
-    batches = list(
-        hive_hs2.read_hs2_batches(
-            spec,
-            pa.schema([("id", pa.int64())]),
-            statement="SELECT `id` FROM `events` LIMIT 0",
-            limit=0,
-        )
-    )
-    assert batches[0].num_rows == 0
-    assert batches[0].column_names == ["id"]
 
 
 if __name__ == "__main__":

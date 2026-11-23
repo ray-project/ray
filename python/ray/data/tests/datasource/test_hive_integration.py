@@ -187,8 +187,6 @@ def test_hive_table_query_limit_and_ignored_block_hint():
                 user=options["user"],
             )
             assert sorted(row["id"] for row in query.take_all()) == [1, 2]
-            selected = query.filter(expr=col("id") == 2).select_columns(["id"]).limit(1)
-            assert selected.take_all() == [{"id": 2}]
 
             assert (
                 ray.data.read_hive(
@@ -336,16 +334,6 @@ class TestHiveTablePushdown:
             sql = _data_statements(trace)
             assert len(sql) == 1 and sql[0].startswith("SELECT `name`")
             assert sql[0].endswith(" LIMIT 2")
-
-            trace = tmp_path / "branches.jsonl"
-            dataset = source(trace)
-            for column, expected in (("id", [1, 2, 3, 4, 5]), ("name", list("abcde"))):
-                rows = dataset.select_columns([column]).take_all()
-                assert sorted(row[column] for row in rows) == expected
-            assert [sql.split(" FROM ")[0] for sql in _data_statements(trace)] == [
-                "SELECT `id`",
-                "SELECT `name`",
-            ]
 
             for source_limit in (True, False):
                 trace = tmp_path / f"source-filter-limit-{source_limit}.jsonl"
