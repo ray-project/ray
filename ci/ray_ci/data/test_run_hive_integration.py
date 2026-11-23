@@ -206,9 +206,9 @@ def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script, monkeypat
     assert "HIVE_TLS_PASSWORD" in service
     assert not any(arg.startswith("HIVE_TLS_PASSWORD=") for arg in service)
     test = next(call for call in calls if call[0] == "bazel")
-    assert "//python/ray/data:test_hive_auth_integration" in test
+    assert "//python/ray/data:test_hive_integration" in test
     assert test[test.index("--bisect-run-test-target") + 1] == (
-        "//python/ray/data:test_hive_auth_integration"
+        "//python/ray/data:test_hive_integration"
     )
     envs = [test[i + 1] for i, arg in enumerate(test) if arg == "--test-env"]
     assert "RAY_HIVE_TEST_USE_SSL=true" in envs

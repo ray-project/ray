@@ -113,8 +113,8 @@ if [[ "$tls" == true ]]; then
   ca_pem=$(docker exec "${service}" cat /tmp/ray-hive-tls/ca.pem | base64 | tr -d '\n')
   [[ -n "$ca_pem" ]] || { echo "Missing Hive TLS CA" >&2; exit 1; }
   bazel run //ci/ray_ci:test_in_docker -- \
-    //python/ray/data:test_hive_auth_integration data \
-    --bisect-run-test-target //python/ray/data:test_hive_auth_integration \
+    //python/ray/data:test_hive_integration data \
+    --bisect-run-test-target //python/ray/data:test_hive_integration \
     --build-name datamongobuild-py3.10 --python-version 3.10 \
     --exact-targets --network "${network}" \
     --test-env RAY_HIVE_TEST_HOST=hiveserver2 \
