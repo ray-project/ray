@@ -192,6 +192,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: small
     soft_fail: true
+    timeout_in_minutes: 20
     allow_dependency_failure: true
     tags:
       - docker
