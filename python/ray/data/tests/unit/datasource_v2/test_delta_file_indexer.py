@@ -192,5 +192,49 @@ def test_manifests_carry_the_partition_values(partitioned_table):
     ]
 
 
+def _log_paths(path: str, version: Optional[int] = None) -> List[str]:
+    table = deltalake.DeltaTable(path, version=version)
+    return sorted(
+        resolve_data_file_path(p)
+        for p in pa.table(table.get_add_actions(flatten=True))["path"].to_pylist()
+    )
+
+
+@pytest.mark.parametrize(
+    "predicate, expected_files",
+    [
+        (None, [0, 1, 2]),
+        (col("x") >= 20, [2]),
+        (col("x") < 5, [0]),
+        ((col("x") > 12) & (col("x") < 18), [1]),
+        (col("x") > 100, []),
+        (col("x") != 5, [0, 1, 2]),
+    ],
+    ids=str,
+)
+def test_listing_skips_files_the_log_statistics_rule_out(
+    tmp_path, predicate, expected_files
+):
+    """Three commits, one file each, with x in [0, 9], [10, 19] and [20, 29]."""
+    path = str(tmp_path / "table")
+    for start in (0, 10, 20):
+        mode = "append" if start else "error"
+        deltalake.write_deltalake(
+            path, pa.table({"x": list(range(start, start + 10))}), mode=mode
+        )
+    files_by_commit = []
+    for version in range(3):
+        (new_file,) = set(_log_paths(path, version=version)) - set(files_by_commit)
+        files_by_commit.append(new_file)
+    indexer = _indexer(path).as_whole_file_indexer()
+
+    manifests = indexer.list_files(
+        pa.array(["label"]), filesystem=None, predicate=predicate
+    )
+
+    listed = sorted(p for m in manifests for p in m.paths.tolist())
+    assert listed == sorted(files_by_commit[i] for i in expected_files)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
