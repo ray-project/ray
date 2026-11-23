@@ -43,8 +43,8 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
     comparisons, null checks and membership by itself.
     """
     if isinstance(expr, BinaryExpr) and expr.op in (Operation.AND, Operation.OR):
-        left = _add_statistics_bounds(expr.left, schema)
-        right = _add_statistics_bounds(expr.right, schema)
+        left = _add_statistics_bounds(expr=expr.left, schema=schema)
+        right = _add_statistics_bounds(expr=expr.right, schema=schema)
         if left is expr.left and right is expr.right:
             return expr
         return left & right if expr.op == Operation.AND else left | right
@@ -53,13 +53,13 @@ def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
     # so ~rewritten is ~leaf -- the negation never prunes a group the leaf's
     # negation keeps, while staying evaluable where ~leaf does not.
     if isinstance(expr, UnaryExpr) and expr.op == Operation.NOT:
-        operand = _add_statistics_bounds(expr.operand, schema)
+        operand = _add_statistics_bounds(expr=expr.operand, schema=schema)
         if operand is expr.operand:
             return expr
         return ~operand
 
     for bound in (_bound_addition_comparison, _bound_starts_with):
-        rewritten = bound(expr, schema)
+        rewritten = bound(expr=expr, schema=schema)
         if rewritten is not None:
             return rewritten
     return expr
@@ -196,7 +196,9 @@ def _has_modelable_leaf(expr: Expr | None) -> bool:
             # The addition sits inside a comparison the rewrite may model;
             # whether that comparison has a safe bound is its call.
             return True
-        return _has_modelable_leaf(expr.left) or _has_modelable_leaf(expr.right)
+        return _has_modelable_leaf(expr=expr.left) or _has_modelable_leaf(
+            expr=expr.right
+        )
     if isinstance(expr, UnaryExpr):
-        return _has_modelable_leaf(expr.operand)
+        return _has_modelable_leaf(expr=expr.operand)
     return isinstance(expr, PyArrowComputeUDFExpr) and expr.pc_func is pc.starts_with

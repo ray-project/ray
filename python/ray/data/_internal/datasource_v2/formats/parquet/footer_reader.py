@@ -479,9 +479,9 @@ class FooterReader:
         # single schema, so resolve them once rather than rescanning every leaf
         # for each group. The read-column lookup reads leaf paths off row group 0,
         # which a file with no row groups has none of; it sizes nothing either way.
-        per_file = self._filter_for_file(path, metadata.schema)
+        per_file = self._filter_for_file(path=path, schema=metadata.schema)
         filter_leaves = self._locate_filter_columns(
-            metadata.schema, per_file.filter_columns
+            schema=metadata.schema, columns=per_file.filter_columns
         )
         leaf_indices = (
             self._read_leaf_indices(metadata.row_group(0))
@@ -509,14 +509,14 @@ class FooterReader:
             # Fail closed on any split error -- keep every group -- so a type
             # mismatch or similar cannot abort the rest of the read_footers batch.
             surviving: list[int] | None = self._try_split_by_row_group(
-                fragment, per_file.prune_filter, path
+                fragment=fragment, expr=per_file.prune_filter, path=path
             )
             if surviving is None and per_file.prune_filter is not per_file.file_filter:
                 # The added bounds could not be evaluated against this file's
                 # statistics (a type mismatch or similar). Fall back to the
                 # plain filter, so pruning never comes out weaker than it.
                 surviving = self._try_split_by_row_group(
-                    fragment, per_file.file_filter, path
+                    fragment=fragment, expr=per_file.file_filter, path=path
                 )
             rg_indices: Iterable[int] = (
                 unprocessed_rg_ids if surviving is None else surviving
@@ -530,7 +530,7 @@ class FooterReader:
             # ``prune_filter`` matches the same rows as the original, and its
             # negation can prune where ``~original`` cannot.
             not_fully_ids = self._try_split_by_row_group(
-                fragment, ~per_file.prune_filter, path
+                fragment=fragment, expr=~per_file.prune_filter, path=path
             )
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a
