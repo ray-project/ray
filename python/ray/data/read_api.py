@@ -2329,6 +2329,35 @@ def read_json(
     For JSON file, the whole file is read as one row.
     For JSONL file, each line of file is read as separate row.
 
+    Note:
+        The DataSourceV2 reader is selected through the ``use_datasource_v2``
+        setting of :class:`~ray.data.context.DataContext`. It splits each large
+        uncompressed JSON Lines file into byte ranges read by separate tasks:
+        every such file when ``lines=True``, else only ``.jsonl`` files.
+
+        With ``lines=False`` it parses with ``pyarrow.json``, inferring column
+        types per piece, so a column of whole numbers early in a file and
+        decimals later is int64 in some blocks and double in others. Pass
+        ``parse_options=pyarrow.json.ParseOptions(explicit_schema=...)`` to pin
+        the types. A ``.jsonl`` file larger than the chunk size is parsed only
+        as JSON Lines: unlike a whole file, a chunk can't fall back to
+        ``json.load``, so a ``.jsonl`` file holding one array raises.
+
+        With ``lines=True`` it parses with ``pandas.read_json``, as V1 does,
+        and produces pandas blocks, so the schema is known only once a block is
+        read. Each pandas block infers its own types. Strings become timestamps
+        only in columns named like dates, numeric strings become numbers, and
+        integer columns with nulls become floats. Nested objects stay Python
+        objects, and a line that is an array becomes a row with columns ``"0"``,
+        ``"1"``, and so on.
+
+        ``arrow_open_stream_args``, and JSON options other than
+        ``read_options`` and ``parse_options``, use the V1 reader. To use the
+        V1 reader everywhere, set
+        ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
+        ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray.
+
     Examples:
         Read a JSON file in remote storage.
 
@@ -2401,7 +2430,11 @@ def read_json(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
-                hive-style-partitioning/>`_.
+                hive-style-partitioning/>`_. The partition values from a file's path
+            become columns. If the file also has a column with the same name, the
+            path value must equal the file's values, or reading raises a
+            ``ValueError``: ``country=US/a.jsonl`` with rows containing
+            ``country=CA`` fails.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
@@ -2446,6 +2479,44 @@ def read_json(
         for param, value in incompatible_params.items():
             if value:
                 raise ValueError(f"`{param}` is not supported when `lines=True`.")
+
+    from ray.data._internal.datasource_v2.formats.json.json_datasource_v2 import (
+        JSON_V2_ARGS,
+        JsonDatasourceV2,
+    )
+
+    if (
+        DataContext.get_current().use_datasource_v2
+        and not arrow_open_stream_args
+        and set(arrow_json_args) <= JSON_V2_ARGS
+    ):
+        datasource_v2 = JsonDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            lines=lines,
+            arrow_json_args=arrow_json_args,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     file_based_datasource_kwargs = dict(
         filesystem=filesystem,
@@ -2522,6 +2593,27 @@ def read_csv(
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from CSV files.
 
+    Note:
+        The DataSourceV2 reader is selected through the ``use_datasource_v2``
+        setting of :class:`~ray.data.context.DataContext`. It splits each large
+        uncompressed file into byte ranges read by separate tasks, unless
+        ``parse_options.newlines_in_values`` or ``parse_options.escape_char``
+        is set, ``read_options`` skips rows, or the encoding isn't UTF-8.
+        Each piece of a split file parses with its own file's header line.
+        Column types are inferred per piece, so :meth:`Dataset.schema` before
+        execution is a guess from the first about 1 MiB of up to 16 sampled
+        files, and one file's pieces can produce different types for the same
+        column. A newline inside a quoted or escaped value isn't supported in
+        split reads: a piece cut at one fails to parse (pass
+        ``parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True)`` to
+        read such files whole) or can return wrong rows.
+        ``arrow_open_stream_args``, and CSV options other than
+        ``read_options``, ``parse_options`` and ``convert_options``, use the V1
+        reader. To use the V1 reader everywhere, set
+        ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
+        ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
+        Ray.
+
     Examples:
         Read a file in remote storage.
 
@@ -2588,7 +2680,13 @@ def read_csv(
 
         >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     file_extensions=["csv"])
-        Dataset(num_rows=?, schema=Unknown schema)
+        shape: (?, 2)
+        ╭───────┬───────╮
+        │ a     ┆ b     │
+        │ ---   ┆ ---   │
+        │ int64 ┆ int64 │
+        ╰───────┴───────╯
+        (Dataset isn't materialized)
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -2618,7 +2716,11 @@ def read_csv(
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
-                hive-style-partitioning/>`_.
+                hive-style-partitioning/>`_. The partition values from a file's path
+            become columns. If the file also has a column with the same name, the
+            path value must equal the file's values, or reading raises a
+            ``ValueError``: ``country=US/a.csv`` with rows containing
+            ``country=CA`` fails.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
@@ -2653,6 +2755,42 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
+        CSV_V2_ARGS,
+        CsvDatasourceV2,
+    )
+
+    if (
+        DataContext.get_current().use_datasource_v2
+        and not arrow_open_stream_args
+        and set(arrow_csv_args) <= CSV_V2_ARGS
+    ):
+        datasource_v2 = CsvDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            arrow_csv_args=arrow_csv_args,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
+            include_paths=include_paths,
+            shuffle=shuffle,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = CSVDatasource(
         paths,

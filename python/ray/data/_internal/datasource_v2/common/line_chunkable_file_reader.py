@@ -17,10 +17,10 @@ a byte range of a text file. For each chunk the reader:
 3. Scans that fragment through ``_iter_fragment_tables``, with the schema
    ``_get_scan_schema`` picks.
 
-A whole-file row of an uncompressed file of at most ``chunk_size`` bytes is
-read with one request and scanned like a chunk. Larger and compressed files
-take the plain ``FileReader`` path, which streams them and lets pyarrow
-decompress them by extension.
+A whole-file row of an uncompressed file of known size, at most ``chunk_size``
+bytes, is read with one request and scanned like a chunk. Larger, compressed
+and unknown-size files take the plain ``FileReader`` path, which streams them
+and lets pyarrow decompress them by extension.
 
 Design decisions:
 
@@ -52,9 +52,10 @@ Design decisions:
 - CSV chunks after the first have no header. The CSV subclass names their
   columns from the file's own header line, which its indexer reads once
   while listing and stores in each chunk's metadata.
-- Parsing uses pyarrow only (``pds.CsvFileFormat`` and
-  ``pds.JsonFileFormat``), no pandas. JSON input must be JSON Lines; a
-  top-level array can't be split by lines.
+- Parsing uses pyarrow (``pds.CsvFileFormat`` and ``pds.JsonFileFormat``). A
+  subclass may parse the lines ``_read_chunk_lines`` returns with another
+  library, as ``read_json(lines=True)`` does with pandas. JSON input must be
+  JSON Lines; a top-level array can't be split by lines.
 - ``row_hash`` needs each chunk's first row number, but line numbers are
   unknown. A chunk numbers its rows from its starting byte instead, which is
   unique because a chunk has fewer rows than bytes. The numbers depend on
@@ -65,7 +66,7 @@ Design decisions:
   override, so JSONL carries nothing for it.
 """
 
-from typing import Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -79,13 +80,31 @@ from ray.data._internal.datasource_v2.common.line_chunking import (
     line_chunk_byte_range,
     read_line_aligned,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileChunk
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnit,
     ReadUnitFragment,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import NumBytes
+from ray.data._internal.util import NumBytes, RetryingPyFileSystem
+from ray.data.datasource.file_based_datasource import _decompress_snappy
+
+if TYPE_CHECKING:
+    from pyarrow.fs import FileSystem
+
+
+def read_snappy_buffer(path: str, filesystem: "FileSystem") -> pa.Buffer:
+    """Return a whole Snappy file decompressed, since pyarrow can't read it."""
+    if isinstance(filesystem, RetryingPyFileSystem):
+        # Unwrap the retry wrapper, as V1 does, so ``_decompress_snappy``
+        # sees the ``HadoopFileSystem`` underneath and applies Hadoop framing.
+        filesystem = filesystem.unwrap()
+    with filesystem.open_input_stream(path, compression=None) as file:
+        return pa.py_buffer(_decompress_snappy(file, filesystem).getbuffer())
+
 
 # pyarrow's ``ReadOptions.block_size`` is a 32-bit int.
 _MAX_BLOCK_SIZE = 2**31 - 1
@@ -129,6 +148,16 @@ class LineChunkableFileReader(FileReader):
         # TODO: Carry each chunk's byte range in the manifest instead, once
         # bin sizes can vary per file.
         self._chunk_size = chunk_size
+        self._file_sizes: Dict[str, Optional[int]] = {}
+
+    @override
+    def _get_fragments_to_read(
+        self,
+        dataset: pds.Dataset,
+        manifest: FileManifest,
+    ) -> List[ReadUnitFragment]:
+        self._file_sizes = dict(zip(manifest.paths, manifest.known_file_sizes))
+        return super()._get_fragments_to_read(dataset, manifest)
 
     @override
     def _get_chunk_fragments(
@@ -180,9 +209,9 @@ class LineChunkableFileReader(FileReader):
         """Read one chunk's whole lines and scan them as if they were a file.
 
         Runs inside the retry loop and the scan threads, so the range read is
-        retried and chunks download in parallel. A small uncompressed file is
-        read the same way, in one request; other whole files take the plain
-        ``FileReader`` path.
+        retried and chunks download in parallel. An uncompressed whole file that
+        fits in one chunk is read the same way, in one request; other whole
+        files take the plain ``FileReader`` path.
 
         Args:
             fragment_to_read: The unit to read and its whole-file fragment.
@@ -193,7 +222,7 @@ class LineChunkableFileReader(FileReader):
         """
         unit = fragment_to_read.unit
         if unit.id == unit.source:
-            data = self._read_small_file(fragment_to_read)
+            data = self._read_whole_file(fragment_to_read)
             if data is None:
                 yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
                 return
@@ -207,24 +236,30 @@ class LineChunkableFileReader(FileReader):
                 fragment=fragment, scanner_kwargs=scanner_kwargs
             )
 
-    def _read_small_file(
+    def _read_whole_file(
         self, fragment_to_read: ReadUnitFragment
     ) -> Optional[memoryview]:
-        """Read an uncompressed file of at most ``chunk_size`` bytes; else ``None``.
+        """Read a whole-file unit's file into memory if it fits in one chunk.
 
-        The fragment knows the file's size from the listing, so opening it
-        through the fragment skips the filesystem's size lookup.
+        Runs once per whole-file unit, so a task with several files reads each
+        file in its own scan thread. A compressed file, a file larger than
+        ``chunk_size`` and a file of unknown size return ``None`` and are
+        streamed by the plain ``FileReader`` path instead.
+
+        The size comes from the listing, so a file of unknown size, such as an
+        HTTP file without ``Content-Length``, is never opened for its size,
+        which a streaming file can't report.
         """
-        if _is_compressed(fragment_to_read.unit.source):
+        path = fragment_to_read.unit.source
+        size = self._file_sizes[path]
+        if _is_compressed(path) or size is None or size > self._chunk_size:
             return None
         with fragment_to_read.fragment.open() as file:
-            if file.size() > self._chunk_size:
-                return None
             return memoryview(file.read_buffer())
 
-    def _read_chunk_fragment(
+    def _read_chunk_lines(
         self, fragment_to_read: ReadUnitFragment
-    ) -> Optional[pds.Fragment]:
+    ) -> Optional[memoryview]:
         """Fetch a chunk unit's whole lines; ``None`` when it holds no rows."""
         unit = fragment_to_read.unit
         with fragment_to_read.fragment.open() as file:
@@ -233,11 +268,52 @@ class LineChunkableFileReader(FileReader):
                 index=unit.index, chunk_size=self._chunk_size, file_size=file_size
             )
             lines = read_line_aligned(file, start=start, end=end, file_size=file_size)
-        if not lines:
+        return lines or None
+
+    def _read_chunk_fragment(
+        self, fragment_to_read: ReadUnitFragment
+    ) -> Optional[pds.Fragment]:
+        """Fetch a chunk unit's whole lines as a fragment; ``None`` when it holds no rows."""
+        lines = self._read_chunk_lines(fragment_to_read)
+        if lines is None:
             return None
+        unit = fragment_to_read.unit
         return self._make_chunk_fragment(
-            lines, starts_at_file_start=start == 0, path=unit.source
+            lines, starts_at_file_start=unit.index == 0, path=unit.source
         )
+
+    @override
+    def _iter_fragment_tables(
+        self, fragment: pds.Fragment, scanner_kwargs: dict
+    ) -> Iterator[pa.Table]:
+        columns = scanner_kwargs.get("columns")
+        if columns is not None:
+            # ``columns`` leaves out partition keys, so a file column named like
+            # one is read here for ``_apply_partition_values`` to check.
+            file_names = set(fragment.physical_schema.names)
+            columns = columns + [
+                name
+                for name in self._columns or []
+                if name in self._partition_keys
+                and name in file_names
+                and name not in columns
+            ]
+            scanner_kwargs = {**scanner_kwargs, "columns": columns}
+        yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+
+    @override
+    def _on_disk_column_names(self, dataset: pds.Dataset) -> Set[str]:
+        """Count a requested column the plan schema lacks as read from the file.
+
+        The plan schema is a sample of the files, so a column absent from it may
+        still be in a file. It is read and null-filled where a file lacks it, by
+        ``_get_scan_schema``, instead of being treated as synthesized and dropped.
+        """
+        schema = self._schema
+        planned = set(schema.names) if schema is not None else set()
+        synthesized = {column.name for column in self._synthesized_columns}
+        unsampled = set(self._columns or ()) - planned - synthesized
+        return super()._on_disk_column_names(dataset) | unsampled
 
     @override
     def _get_scan_schema(
@@ -285,7 +361,7 @@ class LineChunkableFileReader(FileReader):
 
         Args:
             lines: Whole lines: a chunk's from ``read_line_aligned``, or a
-                small file's.
+                whole file's.
             starts_at_file_start: Whether ``lines`` start at byte 0, as a
                 whole file's do.
             path: The file's path, for error messages.
