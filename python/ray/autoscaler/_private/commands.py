@@ -807,6 +807,7 @@ def get_or_create_head_node(
     auth_token_file, auth_token_sha256 = _add_auth_token_file_mount(
         config, keep_cluster_auth_token
     )
+    _set_auth_mode_in_containers(config)
     if creating_new_head:
         with cli_logger.group("Acquiring an up-to-date head node"):
             global_event_system.execute_callback(
@@ -1105,6 +1106,28 @@ def _ships_local_auth_token(config: Dict[str, Any]) -> bool:
         config.get("auth_mode", "token") == "token"
         and AUTH_TOKEN_REMOTE_PATH not in config["file_mounts"]
     )
+
+
+def _set_auth_mode_in_containers(config: Dict[str, Any]) -> None:
+    """Set RAY_AUTH_MODE to the cluster YAML's auth_mode in the environment of
+    every node's container, so that every process in it, including `ray exec`
+    commands and jobs, uses the cluster's mode.
+
+    The image can hold an older Ray than this `ray up`. Before Ray 2.61, an
+    unset RAY_AUTH_MODE means disabled, except that `ray start --head` turns
+    on token mode when it finds a token file. The head then requires the
+    token `ray up` ships, while workers and clients in the containers send
+    none. The head's autoscaler gives workers the same Docker run options.
+    """
+    docker_config = config.get("docker")
+    if not docker_config or not docker_config.get("container_name"):
+        return
+    env_option = f"--env=RAY_AUTH_MODE={config.get('auth_mode', 'token')}"
+    run_options = docker_config.get("run_options", [])
+    if env_option not in run_options:
+        # Docker keeps the last value of a variable, so this one overrides any
+        # RAY_AUTH_MODE in the user's run_options.
+        docker_config["run_options"] = run_options + [env_option]
 
 
 def _add_auth_token_file_mount(
