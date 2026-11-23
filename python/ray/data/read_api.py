@@ -6807,7 +6807,81 @@ def read_delta(
             _, normalized_path = pafs.FileSystem.from_uri(path)
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
-    dt = DeltaTable(path, version=version, storage_options=storage_options)
+    ctx = DataContext.get_current()
+    dt = None
+    if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
+        import deltalake
+        from packaging.version import parse as parse_version
+
+        from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
+            DeltaDatasourceV2,
+            delta_datasource_v2_unsupported_reason,
+        )
+
+        # The V2 reader lists the data files in its listing tasks, so the driver
+        # only needs the log's metadata. deltalake 1.6 and later ignore
+        # ``without_files`` (with a DeprecationWarning) and load the file list:
+        # they have no metadata-only load yet
+        # (https://github.com/delta-io/delta-rs/issues/5034).
+        loads_files = parse_version(deltalake.__version__) >= parse_version("1.6")
+        checked_table = DeltaTable(
+            path,
+            version=version,
+            storage_options=storage_options,
+            **({} if loads_files else {"without_files": True}),
+        )
+        unsupported_reason = (
+            # The V2 reader doesn't turn ``partition_filters`` into partition
+            # pruning yet, so it would read every partition.
+            "`partition_filters` was passed"
+            if partition_filters is not None
+            else delta_datasource_v2_unsupported_reason(
+                checked_table,
+                include_paths=include_paths,
+                arrow_parquet_args=arrow_parquet_args,
+            )
+        )
+        if unsupported_reason is None:
+            datasource_v2 = DeltaDatasourceV2(
+                checked_table,
+                storage_options=storage_options,
+                filesystem=filesystem,
+                columns=columns,
+                include_paths=include_paths,
+                shuffle=shuffle,
+            )
+            return _read_datasource_v2(
+                datasource_v2,
+                parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                ray_remote_args=ray_remote_args,
+                label_selector=label_selector,
+                fallback_strategy=fallback_strategy,
+                max_calls=max_calls,
+                resources=resources,
+                accelerator_type=accelerator_type,
+                runtime_env=runtime_env,
+                concurrency=concurrency,
+            )
+        logger.info(
+            "Reading Delta table %r with the V1 reader: %s.", path, unsupported_reason
+        )
+        # Read the version that was checked. With its file list loaded, the
+        # checked table is the one V1 needs, so don't load it again.
+        dt = (
+            checked_table
+            if loads_files
+            else DeltaTable(
+                path,
+                version=checked_table.version(),
+                storage_options=storage_options,
+            )
+        )
+
+    if dt is None:
+        dt = DeltaTable(path, version=version, storage_options=storage_options)
     # The data files of a column-mapped table name their columns with physical
     # names (such as ``col-<uuid>``) that only the log maps to the table's
     # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some
