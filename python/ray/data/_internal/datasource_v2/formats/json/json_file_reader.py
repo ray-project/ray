@@ -260,7 +260,10 @@ class PandasJsonLinesFileReader(LineChunkableFileReader):
                     )
 
             if self._columns is not None:
-                df = df[[c for c in self._columns if c in df.columns]]
+                for column in self._columns:
+                    if column not in df.columns:
+                        df[column] = None
+                df = df[self._columns]
             if df.shape[1] == 0 and len(df) > 0:
                 # Keeps the row count of an empty projection, as ``FileReader``.
                 df[_BATCH_SIZE_PRESERVING_STUB_COL_NAME] = None

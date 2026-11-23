@@ -176,6 +176,25 @@ def test_keeps_a_key_first_seen_after_the_first_block(
     assert table.filter(pc.field("a") == -1).to_pylist() == [{"a": -1, "late": "x"}]
 
 
+@pytest.mark.parametrize("lines", [False, True])
+def test_every_block_has_a_requested_column_that_part_of_a_file_lacks(
+    tmp_path, small_chunks, lines
+):
+    rows = [{"id": i} for i in range(20)] + [
+        {"id": i, "extra": i} for i in range(20, 40)
+    ]
+    path = _write_jsonl(tmp_path / "a.jsonl", rows)
+    datasource = JsonDatasourceV2([path], lines=lines)
+
+    blocks = _read_blocks(datasource, [path], columns=["id", "extra"])
+
+    assert len(blocks) > 1
+    names = {tuple(b.columns if lines else b.column_names) for b in blocks}
+    assert names == {("id", "extra")}
+    table = _read_all(datasource, [path], columns=["id", "extra"])
+    assert table.column("extra").null_count == 20
+
+
 def test_reads_a_line_longer_than_the_block_size(tmp_path):
     path = _write_jsonl(tmp_path / "a.json", [{"s": "x" * 5000}, {"s": "y"}])
     datasource = JsonDatasourceV2(
