@@ -185,12 +185,9 @@ def _aggregate_raw_rows(
     keys: List[str],
     aggs: Tuple["AggregateFnV2", ...],
     specs: List[ArrowAggSpec],
-    final: bool = False,
 ) -> Tuple[pa.Table, List[Tuple[str, ...]]]:
     """Groups ``table``'s raw rows by ``keys`` into each agg's ``__agg{i}_*``
-    columns (e.g. sum and count for Mean). Returns the table and those names.
-    ``final``: the rows are all of their groups' rows, on the reducer, so
-    specs use ``final_grouped_raw`` where they have one."""
+    columns (e.g. sum and count for Mean). Returns the table and those names."""
     agg_specs: List[tuple] = []
     comps: List[Tuple[str, ...]] = []
     kernel_names: List[str] = []
@@ -202,11 +199,8 @@ def _aggregate_raw_rows(
             table = spec.prep(i, col, table)
         agg_comps = tuple(f"__agg{i}_{c}" for c in spec.components)
         comps.append(agg_comps)
-        grouped_raw = spec.grouped_raw
-        if final and spec.final_grouped_raw is not None:
-            grouped_raw = spec.final_grouped_raw
-        if grouped_raw is not None:
-            grouped_aggs.append((i, grouped_raw, col, opts, agg_comps))
+        if spec.grouped_raw is not None:
+            grouped_aggs.append((i, spec.grouped_raw, col, opts, agg_comps))
         else:
             kernel_names.extend(agg_comps)
             agg_specs += spec.raw_agg_specs(i, col, opts)
@@ -658,7 +652,7 @@ def _make_vectorized_aggregating_reduce_fn(
                 return
             if not partials:
                 # Every map task skipped partial aggregation: one raw pass.
-                merged, _ = _aggregate_raw_rows(raw, keys, aggs, specs, final=True)
+                merged, _ = _aggregate_raw_rows(raw, keys, aggs, specs)
             else:
                 if raw is not None:
                     partials.append(_raw_rows_to_partials(raw, keys, aggs, specs))

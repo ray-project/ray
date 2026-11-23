@@ -2357,10 +2357,15 @@ def test_python_engine_without_raw_to_partial_always_pre_aggregates():
     [None, ("always", "always"), ("never", "never"), ("always", "never")],
 )
 def test_std_keeps_precision_with_large_offset(modes):
-    """One value per block, 1e16 and 1e16 + 2: their mean, 1e16 + 1, isn't a
-    double. The Python engine merges one-value partials exactly; so must the
-    vectorized merge and the reducer's pass over raw rows."""
+    """[1e16, 1e16 + 2] has std 1, but its mean, 1e16 + 1, isn't a double,
+    so a mean-first computation gives 1.414. Both values in one block, or one
+    per block (pre-aggregated or raw), give 1."""
     tables = [pa.table({"k": [0], "v": [1e16]}), pa.table({"k": [0], "v": [1e16 + 2]})]
+    if modes is not None:
+        single = _aggregate_shards(
+            (Std("v", ddof=0),), [pa.concat_tables(tables)], modes[:1]
+        )
+        assert single.to_pylist() == [{"k": 0, "std(v)": 1.0}]
     rows = _aggregate_shards((Std("v", ddof=0),), tables, modes)
     assert rows.to_pylist() == [{"k": 0, "std(v)": 1.0}]
 

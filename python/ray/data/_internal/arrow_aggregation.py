@@ -84,12 +84,6 @@ class ArrowAggSpec(NamedTuple):
     #     merges partial rows from different shards (reducer).
     grouped_raw: Optional[Callable[..., List["pa.Array"]]] = None
     grouped_merge: Optional[Callable[..., List["pa.Array"]]] = None
-    # Optional ``grouped_raw`` for the reducer's single pass over raw rows,
-    # when every map task of the partition skipped partial aggregation and
-    # the result is final. Std computes it around a group value there: as
-    # exact as merging one-row partials, which is what master's Python engine
-    # did for such data. Map tasks keep the faster ``raw_agg_specs``.
-    final_grouped_raw: Optional[Callable[..., List["pa.Array"]]] = None
     # (source column type) -> whether this spec can aggregate it.  None means
     # every type.  Unsupported columns are aggregated by the Python engine.
     supports_type: Optional[Callable[["pa.DataType"], bool]] = None
@@ -672,10 +666,15 @@ def _std_grouped_raw(
 ) -> List["pa.Array"]:
     """``(count, mean, population variance)`` of each group's raw values, as
     Arrow's grouped ``count``, ``mean`` and ``variance`` would give, but
-    computed around one of the group's values. Arrow's kernel rounds the mean
-    first, which loses the spread when |mean| >> std: [1e16, 1e16 + 2] has
-    mean 1e16 + 1, which isn't a double, so it gives variance 2 instead of 1.
-    Values relative to a group value are small and exact.
+    computed around one of the group's values (the "shifted data" method).
+    Two reasons not to use Arrow's ``variance``:
+
+    * It rounds the mean first, which loses the spread when |mean| >> std:
+      [1e16, 1e16 + 2] has mean 1e16 + 1, which isn't a double, so it gives
+      variance 2 instead of 1. Values relative to a group value are small and
+      exact.
+    * It slows down superlinearly with many groups: 25 s for 8M rows in ~6M
+      groups, against 4 s for ``max`` (pyarrow 23). This is 5 s.
     """
     column = _as_array(table[f"__d{agg_index}_std"])
     ids, num_groups = groups.ids, groups.count
@@ -707,27 +706,16 @@ def _std_grouped_raw(
 
 
 def std_spec(ddof: int) -> ArrowAggSpec:
-    """State ``(count, mean, population variance)`` per group: Arrow's grouped
-    ``variance`` computes it on the map, and ``_merge_std`` combines it on the
-    reducer without the precision loss of sum / sum-of-squares. A reducer
-    whose shards are all raw rows uses ``_std_grouped_raw``."""
+    """State ``(count, mean, population variance)`` per group, computed from
+    raw rows by ``_std_grouped_raw`` and merged by ``_merge_std``, both
+    without the precision loss of sum / sum-of-squares."""
     return ArrowAggSpec(
         components=("count", "mean", "var"),
         prep=lambda agg_index, source_col, block: block.append_column(
             f"__d{agg_index}_std", _std_input(block[source_col])
         ),
-        raw_agg_specs=lambda agg_index, source_col, options: [
-            (f"__d{agg_index}_std", "count", options.count_opts),
-            (f"__d{agg_index}_std", "mean", options.value_opts),
-            (
-                f"__d{agg_index}_std",
-                "variance",
-                pc.VarianceOptions(
-                    ddof=0, skip_nulls=options.ignore_nulls, min_count=1
-                ),
-            ),
-        ],
-        final_grouped_raw=_std_grouped_raw,
+        raw_agg_specs=_no_kernels,
+        grouped_raw=_std_grouped_raw,
         grouped_merge=_merge_std,
         finalize=_finalize_std(ddof),
         raw_to_partial=lambda block, agg_index, source_col, options: [
