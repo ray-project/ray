@@ -72,20 +72,14 @@ def _peak(path, rows, columns=None, threads=1):
 
 
 def _estimate(path, columns=None, threads=1):
-    """The peak estimate for ``path``'s one row group, read as the footer reader does."""
+    """The peak estimates of ``path``'s row groups, summed as a read task's are,
+    read as the footer reader does."""
     metadata = pq.read_metadata(str(path))
     profiles = build_leaf_profiles(
         parquet_schema=metadata.schema, format_kwargs={}, file_metadata=metadata
     )
     assert profiles is not None
-    row_group = metadata.row_group(0)
     stats = read_footer_stats(metadata)
-    leaves = leaf_chunks(
-        row_group=row_group,
-        leaf_profiles=profiles,
-        leaf_indices=range(row_group.num_columns),
-        size_stats=None if stats is None else stats[0],
-    )
     schema_columns = [metadata.schema.column(j) for j in range(metadata.num_columns)]
     names = columns or metadata.schema.to_arrow_schema().names
     column_leaves = [
@@ -96,19 +90,29 @@ def _estimate(path, columns=None, threads=1):
         ]
         for name in names
     ]
-    decoded, buffers = estimate_row_group_work(
-        row_group=row_group,
-        columns=schema_columns,
-        column_leaves=column_leaves,
-        leaves=leaves,
-        decode_threads=threads,
-    )
-    return estimate_row_group_peak(
-        row_group=row_group,
-        leaf_indices=sorted(j for leaf_indices in column_leaves for j in leaf_indices),
-        row_group_work=decoded + buffers,
-        file_size=path.stat().st_size,
-    )
+    estimate = 0
+    for i in range(metadata.num_row_groups):
+        row_group = metadata.row_group(i)
+        leaves = leaf_chunks(
+            row_group=row_group,
+            leaf_profiles=profiles,
+            leaf_indices=range(row_group.num_columns),
+            size_stats=None if stats is None else stats[i],
+        )
+        decoded, buffers = estimate_row_group_work(
+            row_group=row_group,
+            columns=schema_columns,
+            column_leaves=column_leaves,
+            leaves=leaves,
+            decode_threads=threads,
+        )
+        estimate += estimate_row_group_peak(
+            row_group=row_group,
+            leaf_indices=sorted(j for column in column_leaves for j in column),
+            row_group_work=decoded + buffers,
+            file_size=path.stat().st_size,
+        )
+    return estimate
 
 
 def _ints(rows=N):
@@ -136,12 +140,15 @@ def _narrow_columns():
     return pa.table({f"c{i:03d}": rng.integers(0, 2**62, 700) for i in range(400)})
 
 
-def _case(make, rows=N, write_kwargs=None, columns=None, high=1.5, threads=1):
-    """A ``_CASES`` entry: ``make`` builds the table of ``rows`` rows, and ``high``
-    caps the estimate over the measured peak."""
+def _case(
+    make, rows=N, row_groups=1, write_kwargs=None, columns=None, high=1.5, threads=1
+):
+    """A ``_CASES`` entry: ``make`` builds the table of ``rows`` rows, written as
+    ``row_groups`` row groups, and ``high`` caps the estimate over the measured peak."""
     return SimpleNamespace(
         make=make,
         rows=rows,
+        row_groups=row_groups,
         write_kwargs=write_kwargs or {},
         columns=columns,
         high=high,
@@ -205,6 +212,23 @@ _CASES = {
         lambda: pa.table({"l": _eight_lists()["l0"], "y": _ints()}),
         columns=["y", "l"],
     ),
+    # Only the int64 column, which follows the list in the file.
+    "column-alone-after-list": _case(
+        lambda: pa.table({"l": _eight_lists()["l0"], "y": _ints()}),
+        columns=["y"],
+    ),
+    # Measured 1.62: the levels and values are charged at twice their slots.
+    "nested-lists": _case(
+        lambda: pa.table({"n": pa.array([[[i, i + 1], [i + 2]] for i in range(N)])}),
+        high=2.0,
+    ),
+    # A read task's estimate is the sum of its row groups'. Measured 1.89: each is
+    # charged its own footer read and buffers, which one CPU thread holds in turn.
+    "four-row-groups": _case(
+        lambda: pa.table({"a": _ints(), "s": _strings(1000)}),
+        row_groups=4,
+        high=2.0,
+    ),
     # One CPU thread frees each column's buffers before the next column decodes.
     "similar-lists": _case(_eight_lists),
     # Twelve decode all eight columns at once. On a busy machine fewer overlap, down
@@ -216,7 +240,12 @@ _CASES = {
 def _write(tmp_path, label):
     case = _CASES[label]
     path = tmp_path / f"{label}.parquet"
-    pq.write_table(case.make(), path, row_group_size=case.rows, **case.write_kwargs)
+    pq.write_table(
+        case.make(),
+        path,
+        row_group_size=case.rows // case.row_groups,
+        **case.write_kwargs,
+    )
     return path
 
 
