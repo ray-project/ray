@@ -1273,6 +1273,31 @@ def test_latch_waits_for_every_branch_of_a_union():
     assert not in_warmup_after_tick()
 
 
+@pytest.mark.parametrize("release", ["on_start_runs", "op_completes"])
+def test_latch_waits_for_ops_awaiting_on_start(release):
+    """A write held at zero actors until its on_start runs is not a critical
+    op, but warmup must not end before it can scale: otherwise the warm phase
+    sizes its upstream from feedback while the write has no actors at all. An
+    op that completes without ever starting does not hold warmup open."""
+    read = _FakeOp("Read", _FakePool(min_size=1, max_size=4, cpu=1))
+    write = _write_op(
+        "Write",
+        _FakePool(min_size=1, max_size=4, cpu=1),
+        inputs=[read],
+        awaiting_on_start=True,
+    )
+    ticker, in_warmup_after_tick = _ticker(_topology(read, write))
+
+    assert ticker.critical_ops == (read,)
+    read.metrics.num_task_outputs_generated = 1
+    assert in_warmup_after_tick()  # write's on_start hasn't run
+    if release == "on_start_runs":
+        write.pending_on_start = False
+    else:
+        write._completed = True
+    assert not in_warmup_after_tick()
+
+
 def test_tick_cadence_gate_and_idle_phases():
     ops, topo = _linear_pipeline(running=1)
     sizer = _make_sizer(topo)

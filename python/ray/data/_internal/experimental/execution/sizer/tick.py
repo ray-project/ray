@@ -188,14 +188,19 @@ class SizingTicker:
         )
 
     def _update_warmup_latch(self, now: float) -> None:
-        """Warmup ends for good once every critical op has produced its first
-        output: the pipeline is flowing end to end, so feedback beats
-        feedforward from here on.
+        """Warmup ends for good once every actor-pool op has run its
+        ``on_start`` and every critical op has produced its first output: the
+        pipeline is flowing end to end, so feedback beats feedforward from
+        here on.
 
-        A critical op that finished without producing (an empty branch of a union)
-        does not hold warmup open. Nor does one that never produces within the
-        warmup timeout: leaving warmup early only hands sizing to the warm
-        phase, which can still move capacity to it.
+        Waiting on ``on_start`` keeps an op that can't scale until its first
+        input (e.g. an Iceberg write) under the warmup equal share, so the
+        warm phase doesn't size its neighbors before it has any actors.
+
+        An op that finished without producing or starting (an empty branch of
+        a union) does not hold warmup open. Nor does one that never produces
+        or starts within the warmup timeout: leaving warmup early only hands
+        sizing to the warm phase, which can still move capacity to it.
         """
         if not self.warmup:
             return
@@ -206,12 +211,19 @@ class SizingTicker:
             for op in self.critical_ops
             if op.metrics.num_task_outputs_generated == 0 and not op.has_completed()
         ]
+        waiting_on += [
+            op
+            for op in self._profiles.actor_pool_ops
+            if op.awaiting_on_start()
+            and not op.has_completed()
+            and op not in waiting_on
+        ]
         if waiting_on:
             if now - self._warmup_started_t < self._warmup_timeout_s:
                 return
             logger.warning(
-                "OperatorSizer: warmup timed out after %.0fs with no output yet "
-                "from %s; switching to the warm phase.",
+                "OperatorSizer: warmup timed out after %.0fs still waiting on "
+                "first output or on_start from %s; switching to the warm phase.",
                 now - self._warmup_started_t,
                 ", ".join(op.name for op in waiting_on),
             )
