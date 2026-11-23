@@ -64,7 +64,6 @@ from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
 from ci.ray_ci.utils import ecr_docker_login
 
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 # Trivy is a static binary; this image only provides an empty, non-root root.
@@ -741,4 +740,6 @@ def main(
 
 
 if __name__ == "__main__":
+    # Only as a program: importers keep their own logging setup.
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     main()
