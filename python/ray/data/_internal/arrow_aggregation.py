@@ -886,10 +886,14 @@ def _finalize_quantile(q: float, ignore_nulls: bool) -> Callable:
         low_value, high_value = _values_at_ranks(
             values, sizes, lower.astype(np.int64), upper.astype(np.int64)
         )
+        # Linear interpolation written as pc.quantile computes it, so results
+        # match the Python engine bit for bit (a + (b - a) * t rounds
+        # differently, and turns (-inf, 1) into NaN instead of -inf).
+        fraction = position - lower
         with np.errstate(invalid="ignore"):
-            result = low_value + (high_value - low_value) * (position - lower)
-        # Equal neighbors (including a rank that lands exactly on a value)
-        # need no interpolation; computing it would turn inf into NaN.
+            result = (1 - fraction) * low_value + fraction * high_value
+        # Equal neighbors, e.g. a rank that lands exactly on a value, need no
+        # interpolation: inf * 0 would give NaN.
         result = np.where(low_value == high_value, low_value, result)
         null = sizes == 0
         if not ignore_nulls:

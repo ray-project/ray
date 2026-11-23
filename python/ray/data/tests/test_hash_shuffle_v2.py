@@ -2224,7 +2224,8 @@ def _quantile_by_sorting(values, groups, num_groups, q):
         if len(xs):
             pos = q * (len(xs) - 1)
             lo, hi = xs[int(np.floor(pos))], xs[int(np.ceil(pos))]
-            out[g] = lo if lo == hi else lo + (hi - lo) * (pos - np.floor(pos))
+            t = pos - np.floor(pos)
+            out[g] = lo if lo == hi else (1 - t) * lo + t * hi
     return out
 
 
@@ -2261,12 +2262,18 @@ def test_quantile_finalize_matches_sorting(sizes, q):
 
 
 def test_quantile_with_infinities():
-    """Interpolating between equal infinite neighbors must not give NaN."""
+    """Infinities interpolate as in pc.quantile: equal neighbors give
+    themselves, (-inf, finite) gives -inf, and (-inf, inf) is undefined."""
     inf = float("inf")
-    table = pa.table({"k": [0, 0, 0, 1, 2, 2], "v": [-inf, -inf, 1.0, inf, -inf, inf]})
+    table = pa.table(
+        {
+            "k": [0, 0, 0, 1, 2, 2, 3, 3],
+            "v": [-inf, -inf, 1.0, inf, -inf, inf, -inf, 1.0],
+        }
+    )
     rows = _aggregate_shards((Quantile("v", q=0.3),), [table], ("always",))
     got = {r["k"]: r["quantile(v)"] for r in rows.to_pylist()}
-    assert got[0] == -inf and got[1] == inf and np.isnan(got[2])
+    assert got[0] == -inf and got[1] == inf and np.isnan(got[2]) and got[3] == -inf
 
 
 @pytest.mark.parametrize("modes", [("always", "never"), ("never", "never")])
