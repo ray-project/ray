@@ -34,7 +34,6 @@ import click
 from ci.ray_ci.automation.trivy import registry, scan_store
 from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER, ScanStore
 
-logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
 TRIVY_PIN_RUNFILE = "io_ray/ci/ray_ci/automation/trivy/trivy_pin.json"
@@ -152,4 +151,6 @@ def main(output: Path, store: ScanStore) -> None:
 
 
 if __name__ == "__main__":
+    # Only as a program: importers keep their own logging setup.
+    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
     main()
