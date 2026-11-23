@@ -1,8 +1,11 @@
-"""The filesystem the Delta reader reads a table through when the caller gives none.
+"""The filesystem the Delta reader uses when the caller passes no ``filesystem``.
 
-It is ``deltalake``'s own, as ``DeltaTable.to_pyarrow_dataset`` uses: it takes
-credentials from ``storage_options`` and every URI scheme ``deltalake`` does,
-including ``az://``, which PyArrow can't parse.
+It is ``deltalake``'s own storage (``DeltaStorageHandler``), the one
+``DeltaTable.to_pyarrow_dataset`` uses for the V1 reader. So it takes
+credentials from ``storage_options`` and supports every URI ``deltalake`` does,
+including Azure's ``az://``, which PyArrow can't parse. This module also tells
+it each file's size from the Delta log, which saves a HEAD request per file on
+S3.
 """
 
 import threading

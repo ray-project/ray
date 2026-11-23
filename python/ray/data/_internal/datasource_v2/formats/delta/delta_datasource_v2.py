@@ -130,7 +130,14 @@ def delta_datasource_v2_unsupported_reason(
 
 @DeveloperAPI
 class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
-    """V2 datasource for one version of a Delta Lake table."""
+    """V2 datasource for one version of a Delta Lake table.
+
+    The version is the one ``table`` was opened at: ``read_delta``'s
+    ``version=`` argument, or the latest version when ``read_delta`` is
+    called. Every listing task, retry and re-execution reads that version, so
+    the rows don't change if the table is written to while the dataset is in
+    use, and they match the schema read when the dataset was created.
+    """
 
     def __init__(
         self,
@@ -181,7 +188,8 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         )
         self._synthesized_columns = (PathColumn(),) if include_paths else ()
         if columns is not None:
-            # ``columns`` may name the ``path`` column, as with the V1 reader.
+            # With ``include_paths=True``, ``columns`` may include ``path``, as
+            # with the V1 reader. It isn't a table column, so accept it here.
             known = set(self._table_schema.names) | {
                 column.name for column in self._synthesized_columns
             }
@@ -203,11 +211,11 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             [name for name in projected if name not in synthesized] + synthesized
         )
         _validate_shuffle_arg(shuffle)
-        # ``_read_datasource_v2`` gives a metadata-backed source's listing no
-        # file shuffle, so the indexer applies it. File sources draw the seed
-        # for ``"files"`` when the read is planned; this one is drawn when the
-        # dataset is created. Either way ``reseed_after_execution`` mixes in
-        # the execution index, so each execution shuffles differently.
+        # ``shuffle="files"`` gets its seed here, once per dataset. Each
+        # execution still shuffles differently, because the seed is mixed with
+        # the execution number (``reseed_after_execution``). The Delta listing
+        # applies the shuffle itself: ``_read_datasource_v2`` doesn't shuffle
+        # the listing of a source with metadata.
         self._shuffle_config: Optional[FileShuffleConfig] = (
             FileShuffleConfig(seed=time.time_ns() % _INT32_MAX)
             if shuffle == "files"
