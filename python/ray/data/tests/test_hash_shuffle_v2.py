@@ -2389,12 +2389,19 @@ def test_absmax_of_narrow_int_min_widens_to_int64(dtype):
     assert AbsMax("v").output_field(table.schema).type == pa.int64()
 
 
-def test_topk_unique_of_float16_uses_python_engine():
-    """Arrow can't dictionary-encode or sort float16, so those blocks
-    pre-aggregate on the Python engine."""
-    table = pa.table({"k": [0, 0, 0], "v": np.array([1, 0, 1], dtype=np.float16)})
-    rows = _aggregate_shards((TopKUnique("v", k=2),), [table], ("always",))
-    assert rows.to_pylist() == [{"k": 0, "topk_unique(v)": [1.0, 0.0]}]
+@pytest.mark.parametrize(
+    "agg, expected",
+    [(TopKUnique("v", k=2), [2.0, 1.0]), (AbsMax("v"), 3.0)],
+)
+def test_float16_blocks_merge_with_float32_blocks(agg, expected):
+    """float16 is widened to float32 (Arrow can't hash, sort or abs it), so
+    float16 and float32 blocks of one column merge."""
+    tables = [
+        pa.table({"k": [0, 0, 0], "v": np.array([1, 1, 2], dtype=np.float16)}),
+        pa.table({"k": [0, 0, 0], "v": np.array([2, 2, -3], dtype=np.float32)}),
+    ]
+    rows = _aggregate_shards((agg,), tables, ("always", "always"))
+    assert rows.column(agg.name).to_pylist() == [expected]
 
 
 class _Dot(AggregateFnV2):
@@ -2453,6 +2460,76 @@ def test_python_raw_rows_match_pre_aggregation(agg_cls, modes):
     expected = _aggregate_shards((agg_cls(),), tables, ("always", "always"))
     result = _aggregate_shards((agg_cls(),), tables, modes)
     assert _rows_by_key(result) == _rows_by_key(expected)
+
+
+@pytest.mark.parametrize(
+    "key", ["__ray_row", "__ray_python_partials", "__ray_raw_rows"]
+)
+def test_group_key_named_like_an_internal_column(key):
+    """Internal columns pick names no key or target column uses."""
+    import decimal
+
+    ints = pa.table({key: [0, 0, 1], "v": [1, -5, 2]})
+    decimals = pa.table(
+        {key: [0, 1], "v": pa.array([decimal.Decimal("2.5")] * 2, pa.decimal128(5, 1))}
+    )
+
+    def run(aggs, tables, modes):
+        from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+            PartialAggMode,
+            PartialAggPolicy,
+            _make_aggregating_reduce_fn,
+            _make_aggregating_transformer,
+        )
+
+        shards = [
+            _make_aggregating_transformer(
+                (key,), aggs, policy=PartialAggPolicy(mode=PartialAggMode(mode))
+            )(t)
+            for t, mode in zip(tables, modes)
+        ]
+        reduce_fn = _make_aggregating_reduce_fn((key,), aggs)
+        rows = pa.concat_tables(list(reduce_fn(0, [shards]))).to_pylist()
+        return sorted(rows, key=lambda r: r[key])
+
+    assert run((AsList("v"),), [ints], ("always",)) == [
+        {key: 0, "list(v)": [1, -5]},
+        {key: 1, "list(v)": [2]},
+    ]
+    # Vectorized partials and raw rows aren't mistaken for Python partials.
+    assert run((AbsMax("v"),), [ints, ints], ("always", "never")) == [
+        {key: 0, "abs_max(v)": 5},
+        {key: 1, "abs_max(v)": 2},
+    ]
+    assert run((AbsMax("v"),), [decimals, decimals], ("always", "never")) == [
+        {key: 0, "abs_max(v)": decimal.Decimal("2.5")},
+        {key: 1, "abs_max(v)": decimal.Decimal("2.5")},
+    ]
+    custom = run(
+        (_SumOfSquaresWithRawToPartial("v"),), [ints, ints], ("never", "always")
+    )
+    assert custom == [{key: 0, "sum_sq(v)": 52}, {key: 1, "sum_sq(v)": 8}]
+
+
+def test_projection_pushdown_keeps_columns_for_aggregation_without_target():
+    """A custom aggregation with ``on=None`` may read any column, so the
+    optimizer mustn't prune the Aggregate's input to the keys."""
+    from ray.data._internal.logical.operators import Aggregate, Project
+    from ray.data._internal.logical.operators.input_data_operator import InputData
+    from ray.data._internal.logical.rules.projection_pushdown import (
+        ProjectionPushdown,
+    )
+    from ray.data.aggregate import Count
+
+    schema = pa.schema([("k", pa.int64()), ("v", pa.int64()), ("w", pa.int64())])
+    source = InputData(input_data=[])
+    with patch.object(InputData, "infer_schema", return_value=schema):
+        custom = Aggregate(key="k", aggs=[_Dot()], input_dependencies=[source])
+        assert ProjectionPushdown._prune_aggregate_input(custom) is custom
+        # Count reads no column: still pruned to the key.
+        count = Aggregate(key="k", aggs=[Count()], input_dependencies=[source])
+        pruned = ProjectionPushdown._prune_aggregate_input(count)
+        assert isinstance(pruned.input_dependencies[0], Project)
 
 
 if __name__ == "__main__":

@@ -121,9 +121,7 @@ def main(args):
         for name in args.aggs:
             # Keep timing the others if one fails (e.g. runs out of memory).
             try:
-                benchmark.run_fn(
-                    f"agg_{name}", _make_benchmark_fn(args, _consume_agg(name))
-                )
+                _run_case(benchmark, f"agg_{name}", args, _consume_agg(name))
             except Exception as e:
                 print(f"agg_{name} failed: {e!r}")
                 failed.append(name)
@@ -133,7 +131,7 @@ def main(args):
             raise RuntimeError(f"Aggregations failed: {failed}")
         return
     else:
-        benchmark.run_fn("main", _make_benchmark_fn(args, get_consume_fn(args)))
+        _run_case(benchmark, "main", args, get_consume_fn(args))
     benchmark.write_result()
 
 
@@ -144,7 +142,17 @@ def _consume_agg(name: str):
     return consume_fn
 
 
-def _make_benchmark_fn(args, consume_fn):
+def _run_case(benchmark: Benchmark, name: str, args, consume_fn) -> None:
+    window = {}
+    benchmark.run_fn(name, _make_benchmark_fn(args, consume_fn, window))
+    # Query Prometheus after run_fn's timer stops, so a slow metrics service
+    # doesn't add to the reported runtime.
+    benchmark.result[name].update(_peak_node_memory_gb(window["start"], window["end"]))
+
+
+def _make_benchmark_fn(args, consume_fn, window: dict):
+    """The timed function. Records when the aggregation ran in ``window``."""
+
     def benchmark_fn():
         path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
 
@@ -169,12 +177,12 @@ def _make_benchmark_fn(args, consume_fn):
         else:
             ds = ds.map_batches(_cast_strings_to_large, batch_format="pyarrow")
         grouped_ds = ds.groupby(args.group_by)
-        start = time.time()
+        window["start"] = time.time()
         consume_fn(grouped_ds)
-        end = time.time()
+        window["end"] = time.time()
 
-        # Report arguments for the benchmark, plus peak memory.
-        return {**vars(args), **_peak_node_memory_gb(start, end)}
+        # Report arguments for the benchmark.
+        return vars(args)
 
     return benchmark_fn
 

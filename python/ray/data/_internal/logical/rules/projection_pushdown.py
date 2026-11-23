@@ -366,7 +366,7 @@ class ProjectionPushdown(Rule):
         from dataclasses import replace
 
         from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-        from ray.data.aggregate import AggregateFnV2
+        from ray.data.aggregate import AggregateFnV2, Count
         from ray.data.expressions import col
 
         if not isinstance(op, Aggregate):
@@ -382,6 +382,10 @@ class ProjectionPushdown(Rule):
             target = agg.get_target_column()
             if target is not None:
                 required.append(target)
+            elif not isinstance(agg, Count):
+                # No declared column (e.g. a custom aggregation with
+                # ``on=None``): it may read any of them.
+                return op
 
         # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
         # global count reading no columns).

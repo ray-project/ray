@@ -120,6 +120,33 @@ def _is_vectorizable(keys: List[str], specs: List[ArrowAggSpec]) -> bool:
 _ROW_INDEX = "__ray_row"
 
 
+def _unused_name(base: str, taken: Iterable[str]) -> str:
+    """``base``, with ``_`` appended until it isn't one of ``taken``, so an
+    internal column never shadows a user's."""
+    taken = set(taken)
+    name = base
+    while name in taken:
+        name += "_"
+    return name
+
+
+def _marker_name(
+    base: str,
+    key_columns: Tuple[str, ...],
+    aggregation_fns: Tuple["AggregateFn", ...],
+) -> str:
+    """A shard-marker column name that no key, target column or aggregation
+    output (a Python-engine partial column) uses. Map and reduce compute the
+    same name from the same query."""
+    taken = set(key_columns)
+    for agg in aggregation_fns:
+        taken.add(agg.name)
+        get_target = getattr(agg, "get_target_column", None)
+        if get_target is not None and get_target() is not None:
+            taken.add(get_target())
+    return _unused_name(base, taken)
+
+
 def _group_by(
     table: pa.Table,
     keys: List[str],
@@ -135,10 +162,11 @@ def _group_by(
     keys and the group order match the other outputs exactly.
     """
     if with_groups:
+        row_index = _unused_name(_ROW_INDEX, table.column_names)
         table = table.append_column(
-            _ROW_INDEX, pa.array(np.arange(table.num_rows, dtype=np.int64))
+            row_index, pa.array(np.arange(table.num_rows, dtype=np.int64))
         )
-        kernel_specs = kernel_specs + [(_ROW_INDEX, "list")]
+        kernel_specs = kernel_specs + [(row_index, "list")]
     grouped = table.group_by(keys, use_threads=False).aggregate(kernel_specs)
     columns = dict(zip(keys + kernel_names, grouped.columns))
     if not with_groups:
@@ -530,6 +558,7 @@ def _make_vectorized_aggregating_transformer(
     python_transform = _fallback_aggregating_transformer(
         key_columns, aggregation_fns, policy
     )
+    python_marker = _marker_name(_PYTHON_PARTIALS_MARKER, key_columns, aggregation_fns)
     if any(spec.raw_to_partial is None for spec in specs):
         # The reducer can only merge raw rows by projecting them with
         # ``raw_to_partial``; without it, always pre-aggregate.
@@ -553,7 +582,7 @@ def _make_vectorized_aggregating_transformer(
             # on the Python engine, as a query with such a column always did.
             partials = python_transform(block)
             return partials.append_column(
-                _PYTHON_PARTIALS_MARKER, pa.nulls(partials.num_rows, pa.null())
+                python_marker, pa.nulls(partials.num_rows, pa.null())
             )
 
         if _should_skip_partial_aggregation(block, keys, policy):
@@ -593,6 +622,7 @@ def _make_vectorized_aggregating_reduce_fn(
     # Every partial shard has this column; raw shards (from map tasks that
     # skipped partial aggregation) never do.
     partial_marker = comps[0][0] if comps else None
+    python_marker = _marker_name(_PYTHON_PARTIALS_MARKER, key_columns, aggregation_fns)
 
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
@@ -603,7 +633,7 @@ def _make_vectorized_aggregating_reduce_fn(
             return
 
         if not has_collection:
-            if any(_PYTHON_PARTIALS_MARKER in t.schema.names for t in tables):
+            if any(python_marker in t.schema.names for t in tables):
                 yield from _python_reduce(tables)
                 return
             partials = [t for t in tables if partial_marker in t.schema.names]
@@ -653,8 +683,8 @@ def _make_vectorized_aggregating_reduce_fn(
         (an unsupported column type): merge it all on the Python engine."""
         shards = []
         for table in tables:
-            if _PYTHON_PARTIALS_MARKER in table.schema.names:
-                shards.append(table.drop_columns([_PYTHON_PARTIALS_MARKER]))
+            if python_marker in table.schema.names:
+                shards.append(table.drop_columns([python_marker]))
             elif partial_marker in table.schema.names:
                 # Vectorized partials can't be turned into Python accumulators.
                 raise ValueError(
@@ -711,6 +741,7 @@ def _fallback_aggregating_transformer(
     raw_aggs = _python_raw_to_partial_aggs(key_columns, aggregation_fns)
     if raw_aggs is None:
         policy = None
+    raw_marker = _marker_name(_RAW_ROWS_MARKER, key_columns, aggregation_fns)
 
     def _transform(block: pa.Table) -> pa.Table:
         from ray.data._internal.planner.exchange.aggregate_task_spec import (
@@ -726,6 +757,9 @@ def _fallback_aggregating_transformer(
             policy is not None
             and isinstance(block, pa.Table)
             and block.num_rows > 0
+            # Raw rows keep every column for an aggregation without a target
+            # column; one named like the marker would be mistaken for it.
+            and raw_marker not in block.column_names
             and _should_skip_partial_aggregation(block, keys, policy)
         ):
             # The reducer turns these rows into accumulators with
@@ -735,9 +769,7 @@ def _fallback_aggregating_transformer(
             raw = SortAggregateTaskSpec._prune_unused_columns(
                 block, sort_key, aggregation_fns
             )
-            return raw.append_column(
-                _RAW_ROWS_MARKER, pa.nulls(raw.num_rows, pa.null())
-            )
+            return raw.append_column(raw_marker, pa.nulls(raw.num_rows, pa.null()))
 
         pruned_block = SortAggregateTaskSpec._prune_unused_columns(
             block, sort_key, aggregation_fns
@@ -766,6 +798,7 @@ def _fallback_aggregating_reduce_fn(
     from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 
     sort_key = SortKey(key=list(key_columns), descending=False)
+    raw_marker = _marker_name(_RAW_ROWS_MARKER, key_columns, aggregation_fns)
 
     def _python_raw_rows_to_partials(raw: pa.Table) -> pa.Table:
         """One partial row per raw row, laid out like ``_aggregate``'s output
@@ -793,11 +826,11 @@ def _fallback_aggregating_reduce_fn(
         raws = [
             t
             for t in tables
-            if isinstance(t, pa.Table) and _RAW_ROWS_MARKER in t.schema.names
+            if isinstance(t, pa.Table) and raw_marker in t.schema.names
         ]
         if raws:
             tables = [t for t in tables if not any(t is r for r in raws)]
-            raw = concat(raws, promote_types=True).drop_columns([_RAW_ROWS_MARKER])
+            raw = concat(raws, promote_types=True).drop_columns([raw_marker])
             if tables:
                 # Merge one accumulator per raw row with the partials.
                 tables.append(_python_raw_rows_to_partials(raw))

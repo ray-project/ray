@@ -503,22 +503,20 @@ def _is_numeric(t: "pa.DataType") -> bool:
     return pa.types.is_integer(t) or pa.types.is_floating(t) or pa.types.is_null(t)
 
 
-def _is_float16(t: "pa.DataType") -> bool:
-    if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
-        t = t.value_type
-    return pa.types.is_float16(t)
-
-
 def _is_groupable(t: "pa.DataType") -> bool:
-    """Whether Arrow can group by (hash and sort) values of type ``t``. Not
-    float16: Arrow has no ``dictionary_encode`` or sort kernel for it."""
+    """Whether Arrow can group by values of type ``t``."""
     if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
         t = t.value_type
-    return not (
-        pa.types.is_nested(t)
-        or isinstance(t, pa.ExtensionType)
-        or pa.types.is_float16(t)
-    )
+    return not (pa.types.is_nested(t) or isinstance(t, pa.ExtensionType))
+
+
+def _widen_float16(column):
+    """float16 as float32, exactly: Arrow has no ``dictionary_encode``,
+    sort or ``abs`` kernel for float16. Applied to every block, so float16
+    and float32 blocks of one column give partials of the same type."""
+    if pa.types.is_float16(column.type):
+        return pc.cast(column, pa.float32())
+    return column
 
 
 def _is_numeric_or_bool(t: "pa.DataType") -> bool:
@@ -527,10 +525,12 @@ def _is_numeric_or_bool(t: "pa.DataType") -> bool:
 
 def absmax_input_type(t: "pa.DataType") -> "pa.DataType":
     """The type AbsMax takes ``abs`` in: signed integers narrower than 64 bits
-    widen to int64, since ``abs(-128)`` doesn't fit in int8. Other types are
-    kept."""
+    widen to int64, since ``abs(-128)`` doesn't fit in int8, and float16 to
+    float32, which has an ``abs`` kernel. Other types are kept."""
     if pa.types.is_signed_integer(t) and t.bit_width < 64:
         return pa.int64()
+    if pa.types.is_float16(t):
+        return pa.float32()
     return t
 
 
@@ -562,8 +562,7 @@ def absmax_spec() -> ArrowAggSpec:
         raw_to_partial=lambda block, agg_index, source_col, options: [
             block[f"__d{agg_index}_abs"]
         ],
-        # No abs kernel for float16; the Python engine handles it as on master.
-        supports_type=lambda t: _is_numeric(t) and not _is_float16(t),
+        supports_type=_is_numeric,
     )
 
 
@@ -763,7 +762,7 @@ def _value_counts_spec(
     return ArrowAggSpec(
         components=("values", "counts"),
         prep=lambda agg_index, source_col, block: block.append_column(
-            _prepped(agg_index), prepare(_decode(block[source_col]))
+            _prepped(agg_index), prepare(_widen_float16(_decode(block[source_col])))
         ),
         raw_agg_specs=_no_kernels,
         grouped_raw=_grouped_raw,
