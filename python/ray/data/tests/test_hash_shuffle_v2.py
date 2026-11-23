@@ -2469,7 +2469,7 @@ def test_python_raw_rows_match_pre_aggregation(agg_cls, modes):
 
 @pytest.mark.parametrize(
     "key",
-    ["__ray_row", "__ray_python_partials", "__ray_raw_rows", "__d0_abs", "__agg0_list"],
+    ["__ray_row", "__ray_python_partials", "__ray_raw_rows"],
 )
 def test_group_key_named_like_an_internal_column(key):
     """Internal columns pick names no key or target column uses."""

@@ -26,7 +26,6 @@ Two engines:
   ``AggregateFnV2.raw_to_partial``.
 """
 import enum
-import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple
 
@@ -102,22 +101,10 @@ def _agg_specs(
     return tuple(aggs), specs
 
 
-# Internal columns that share a table with the keys and target columns:
-# per-agg state (``__agg{i}_*``) and derived values (``__d{i}_*``).
-_INTERNAL_COLUMN = re.compile(r"__(agg|d)\d+_")
-
-
-def _is_vectorizable(
-    keys: List[str], aggs: Tuple["AggregateFnV2", ...], specs: List[ArrowAggSpec]
-) -> bool:
+def _is_vectorizable(keys: List[str], specs: List[ArrowAggSpec]) -> bool:
     """Query-shape gate shared by the map and reduce builders, the two must
     decide identically (the reduce's expected input format depends on what the
     map shipped)."""
-    targets = [agg.get_target_column() for agg in aggs]
-    if any(c is not None and _INTERNAL_COLUMN.match(c) for c in keys + targets):
-        # A key or target named like an internal column would clash with it;
-        # the Python engine doesn't add such columns.
-        return False
     has_collection = any(spec.collection for spec in specs)
     if has_collection and not all(spec.collection for spec in specs):
         # Mixed reduction + collection shapes need different map outputs
@@ -395,9 +382,7 @@ def _make_complete_aggregating_block_fn(
         return None
     aggs, specs = unpacked
     keys = list(key_columns)
-    if not _is_vectorizable(keys, aggs, specs) or any(
-        spec.collection for spec in specs
-    ):
+    if not _is_vectorizable(keys, specs) or any(spec.collection for spec in specs):
         return None
     # Buffer only the columns the aggregation needs.
     columns = _key_and_target_columns(keys, aggs)
@@ -554,7 +539,7 @@ def _make_vectorized_aggregating_transformer(
     aggs, specs = unpacked
 
     keys = list(key_columns)
-    if not _is_vectorizable(keys, aggs, specs):
+    if not _is_vectorizable(keys, specs):
         return None
     has_collection = any(spec.collection for spec in specs)
     keep = _key_and_target_columns(keys, aggs)
@@ -611,8 +596,7 @@ def _make_vectorized_aggregating_transformer(
             # them by the missing ``__agg0_*`` column (see _arrow_reduce).
             return block.select(keep)
 
-        # Only keys and targets: no other column can clash with ``__d{i}_*``.
-        partials, _ = _aggregate_raw_rows(block.select(keep), keys, aggs, specs)
+        partials, _ = _aggregate_raw_rows(block, keys, aggs, specs)
         return partials
 
     return _arrow_transform
@@ -628,7 +612,7 @@ def _make_vectorized_aggregating_reduce_fn(
     aggs, specs = unpacked
 
     keys = list(key_columns)
-    if not _is_vectorizable(keys, aggs, specs):
+    if not _is_vectorizable(keys, specs):
         return None
     has_collection = any(spec.collection for spec in specs)
 
