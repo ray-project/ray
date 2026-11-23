@@ -26,9 +26,7 @@ from ray.tests.conftest import *  # noqa
 @pytest.fixture(params=["v1", "v2"], autouse=True)
 def delta_reader(request, restore_data_context):
     """Run every test with both the V1 and the DataSourceV2 reader."""
-    ctx = DataContext.get_current()
-    ctx.use_datasource_v2 = True
-    ctx._use_delta_datasource_v2 = request.param == "v2"
+    DataContext.get_current().use_datasource_v2 = request.param == "v2"
     return request.param
 
 
@@ -311,7 +309,7 @@ def _write_partitioned_table(path: str) -> None:
 
 def _input_dates(ds) -> list:
     """The partition dates of the files the read lists, without running it."""
-    if DataContext.get_current()._use_delta_datasource_v2:
+    if DataContext.get_current().use_datasource_v2:
         # The V2 reader lists in a Ray task when the read runs, so
         # ``input_files()`` is empty here: run its listing instead.
         (list_files,) = ds._logical_plan.dag.input_dependencies

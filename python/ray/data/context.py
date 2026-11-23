@@ -738,8 +738,9 @@ class DataContext:
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         use_datasource_v2: When True, ``ray.data.read_parquet()``,
-            ``ray.data.read_orc()``, ``ray.data.read_mcap()`` and
-            ``ray.data.read_text()`` route through the DataSourceV2 pipeline.
+            ``ray.data.read_orc()``, ``ray.data.read_mcap()``,
+            ``ray.data.read_text()`` and ``ray.data.read_delta()`` route
+            through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
@@ -1195,9 +1196,6 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
-    # Temporary: routes ``read_delta()`` through DataSourceV2 while the Delta
-    # reader lands. Deleted when V2 becomes the default for Delta.
-    _use_delta_datasource_v2: bool = False
     small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
