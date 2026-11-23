@@ -2991,12 +2991,20 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ("ReadRange->MapBatches(<lambda>)_1", "ReadRange->MapBatches(<lambda>)_1"),
+        pytest.param(
+            "ReadRange->MapBatches(<lambda>)_1",
+            "ReadRange->MapBatches(<lambda>)_1",
+            id="ascii",
+        ),
         # ASCII input that already looks like an escape sequence is unchanged.
-        (r"\u4e2d", r"\u4e2d"),
-        ("Filter(col('text') == '中文')_1", r"Filter(col('text') == '\u4e2d\u6587')_1"),
-        ("café", r"caf\xe9"),
-        ("🙂", r"\U0001f642"),
+        pytest.param(r"\u4e2d", r"\u4e2d", id="ascii_escape_like"),
+        pytest.param(
+            "Filter(col('text') == '中文')_1",
+            r"Filter(col('text') == '\u4e2d\u6587')_1",
+            id="chinese",
+        ),
+        pytest.param("café", r"caf\xe9", id="accented"),
+        pytest.param("🙂", r"\U0001f642", id="emoji"),
     ],
 )
 def test_to_metric_tag_value(value, expected):

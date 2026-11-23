@@ -544,8 +544,20 @@ def test_filter_udf_preserves_dictionary_encoded_column_type(
 
 
 # https://github.com/ray-project/ray/issues/67230
-@pytest.mark.parametrize("literal", ["english", "中文"])
-@pytest.mark.parametrize("limit_first", [False, True])
+@pytest.mark.parametrize(
+    "literal",
+    [
+        pytest.param("english", id="ascii"),
+        pytest.param("中文", id="unicode"),
+    ],
+)
+@pytest.mark.parametrize(
+    "limit_first",
+    [
+        pytest.param(False, id="no_limit"),
+        pytest.param(True, id="limit_first"),
+    ],
+)
 def test_filter_expr_with_unicode_literal(
     ray_start_regular_shared, literal, limit_first
 ):
