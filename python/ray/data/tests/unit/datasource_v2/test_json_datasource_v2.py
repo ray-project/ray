@@ -263,7 +263,7 @@ class _ShortReadFile:
 
 
 class _ShortReadFileSystem(LocalFileSystem):
-    def _open(self, path, mode="rb", **kwargs):
+    def _open(self, path, mode="rb", **kwargs):  # pyrefly: ignore[bad-override]
         return _ShortReadFile(super()._open(path, mode, **kwargs))
 
 
