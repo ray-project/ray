@@ -37,6 +37,10 @@ To retain progress after recovery, implement logic in your training function for
 
 Each recovery from a worker process or node failure counts as a retry. To configure the number of retries, set the `max_failures` attribute of the {class}`~ray.train.FailureConfig` in the {class}`~ray.train.RunConfig` that you pass to the trainer. The default, `max_failures=0`, disables worker fault tolerance.
 
+:::{note}
+For data-parallel PyTorch training, Ray Train can also recover a failed worker without restarting the whole worker group or loading a checkpoint. See {ref}`train-torchft`.
+:::
+
 ```{literalinclude} ../doc_code/fault_tolerance.py
 :language: python
 :start-after: __failure_config_start__
