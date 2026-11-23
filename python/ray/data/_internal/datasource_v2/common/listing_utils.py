@@ -183,6 +183,8 @@ def sample_files(
     filesystem: Optional["FileSystem"],
     pruners: Optional[List[FilePruner]] = None,
     max_files: Optional[int] = 16,
+    *,
+    include_mtime: bool = False,
 ) -> FileManifest:
     """List up to ``max_files`` files, or all files when it is ``None``.
 
@@ -195,7 +197,8 @@ def sample_files(
     Uses ``list_file_infos`` (raw path + size), not ``list_files``, so that
     metadata-heavy indexers (e.g. the footer-based Parquet indexer) don't do
     their footer-read + bin-pack work on the driver just to sample a schema.
-    Full mode also retains file sizes for execution.
+    Full mode also retains file sizes for execution. ``include_mtime`` retains
+    modification times for consumers that validate planning metadata.
     """
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
@@ -212,7 +215,7 @@ def sample_files(
     ):
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
-        if max_files is None:
+        if include_mtime:
             sampled_mtimes.append(file_info.mtime_ns)
         if max_files is not None and len(sampled_paths) >= max_files:
             break
@@ -221,7 +224,7 @@ def sample_files(
         sizes=sampled_sizes,
         chunk_metadatas=[None] * len(sampled_paths),
     )
-    if max_files is None:
+    if include_mtime:
         block = manifest.as_block()
         assert isinstance(block, pa.Table)
         return FileManifest(

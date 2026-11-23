@@ -22,6 +22,7 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
     FullSchemaInferenceResult,
+    _metadata_cache_enabled,
     infer_full_schema_from_files,
     infer_full_schema_with_metadata_from_files,
     infer_schema_from_files,
@@ -372,17 +373,21 @@ class ParquetDatasourceV2(FileDataSourceV2):
             return self.infer_schema(sample)
         return self._augment_schema(schema, sample)
 
+    @property
+    def _retain_planning_metadata(self) -> bool:
+        return (
+            type(self).infer_full_schema is ParquetDatasourceV2.infer_full_schema
+            and type(self).infer_schema is ParquetDatasourceV2.infer_schema
+            and self._user_schema is None
+            and _metadata_cache_enabled()
+        )
+
     @override
     def infer_full_schema_with_metadata(
         self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
     ) -> FullSchemaInferenceResult:
         # Cache settings must not bypass a subclass's schema hook.
-        if (
-            type(self).infer_full_schema is not ParquetDatasourceV2.infer_full_schema
-            or type(self).infer_schema is not ParquetDatasourceV2.infer_schema
-            or self._user_schema is not None
-            or not len(sample)
-        ):
+        if not self._retain_planning_metadata or not len(sample):
             return super().infer_full_schema_with_metadata(
                 sample, ray_remote_args=ray_remote_args
             )

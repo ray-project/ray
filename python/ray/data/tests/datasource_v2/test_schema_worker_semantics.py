@@ -115,9 +115,11 @@ def test_driver_parquet_empty_struct_schema_with_metadata_budget(
     sample = FileManifest.construct_manifest(
         paths=[str(path)], sizes=[path.stat().st_size], chunk_metadatas=[None]
     )
-    result = ParquetDatasourceV2(
-        [str(path)], filesystem=fs
-    ).infer_full_schema_with_metadata(sample, ray_remote_args={"num_cpus": 0})
+    source = ParquetDatasourceV2([str(path)], filesystem=fs)
+    assert source._retain_planning_metadata is bool(budget)
+    result = source.infer_full_schema_with_metadata(
+        sample, ray_remote_args={"num_cpus": 0}
+    )
     assert result.schema.equals(expected, check_metadata=True)
     assert len(raw.opens) == 1
     metadata = result.metadata

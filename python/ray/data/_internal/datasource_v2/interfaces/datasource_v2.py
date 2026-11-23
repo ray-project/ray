@@ -282,6 +282,11 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
     source that finds its own data extends :class:`DataSourceWithMetadata` instead.
     """
 
+    @property
+    def _retain_planning_metadata(self) -> bool:
+        """Whether full-schema planning needs file modification times."""
+        return False
+
     def infer_full_schema(
         self,
         sample: FileManifest,

@@ -61,6 +61,14 @@ _FILE_METADATA_RECORD_BYTES = 32
 logger = logging.getLogger(__name__)
 
 
+def _metadata_cache_enabled() -> bool:
+    return (
+        _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES >= _FILE_METADATA_RECORD_BYTES
+        and _FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES
+        >= _FILE_METADATA_RECORD_BYTES
+    )
+
+
 @dataclass
 class FullSchemaInferenceResult:
     """Schema and optional ordinary Arrow values for the same candidates."""
@@ -500,7 +508,7 @@ def infer_full_schema_with_metadata_from_files(
     """
     budget = _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES
     task_budget = _FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES
-    if min(budget, task_budget) < _FILE_METADATA_RECORD_BYTES:
+    if not _metadata_cache_enabled():
         return None
     result = _infer_full_schema_on_workers(
         sample,

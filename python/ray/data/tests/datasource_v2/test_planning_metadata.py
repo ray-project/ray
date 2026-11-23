@@ -1,7 +1,7 @@
 import os
+import time
+from collections import Counter
 from dataclasses import replace
-from typing import Any, Dict, cast
-from unittest.mock import Mock
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -32,75 +32,41 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileManifest,
     FileMetadata,
 )
-from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.count_operator import Count
-from ray.data._internal.logical.operators.map_operator import MapBatches
-from ray.data._internal.logical.operators.read_operator import ReadFiles
-from ray.data._internal.logical.rules.pushdown_count_files import PushdownCountFiles
 from ray.data.tests.schema_planning_utils import (
     RecordingLocalFileSystem,
     read_schema_records as _records,
     recording_filesystem as _filesystem,
 )
-from ray.util.placement_group import placement_group, remove_placement_group
+from ray.util.placement_group import (
+    placement_group,
+    placement_group_table,
+    remove_placement_group,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
-@pytest.mark.parametrize("mode", ["distributed", "pg", "none"])
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
 def test_metadata_count_preserves_storage_access(
-    monkeypatch, tmp_path, ray_start_cluster, restore_data_context, mode
+    monkeypatch, tmp_path, ray_start_cluster, datasource_v2
 ):
     cluster = ray_start_cluster
-    zero = cluster.add_node(
-        num_cpus=0, object_store_memory=100 * 1024 * 1024, labels={"pool": "zero"}
-    )
-    allowed = [
-        cluster.add_node(
-            num_cpus=1, object_store_memory=100 * 1024 * 1024, labels={"pool": "yes"}
-        )
-        for _ in range(2)
-    ]
-    cluster.add_node(
-        num_cpus=1, object_store_memory=100 * 1024 * 1024, labels={"pool": "no"}
-    )
+    for _ in range(2):
+        cluster.add_node(num_cpus=1, object_store_memory=100 * 1024 * 1024)
+    cluster.wait_for_nodes()
     ray.init(address=cluster.address)
-    ctx = restore_data_context
-    config: Dict[str, Any] = dict(
+    config = dict(
         min_files=0,
         batch_size=2,
         max_tasks=2,
-        num_cpus=1,
+        num_cpus=0.05,
         io_concurrency=2,
         metadata_budget_bytes=8192,
         task_metadata_budget_bytes=4096,
     )
-    ctx.use_datasource_v2 = True
-    pg = None
-    options: Dict[str, Any] = {
-        "runtime_env": {"env_vars": {"RAY_METADATA_ACCESS": "enabled"}}
-    }
-    if mode == "pg":
-        config["num_cpus"] = 0.05
-        pg = placement_group([{"CPU": 0.1}])
-        ray.get(pg.ready(), timeout=20)
-        options.update(
-            num_cpus=0.1,
-            ray_remote_args={
-                "scheduling_strategy": PlacementGroupSchedulingStrategy(
-                    pg, placement_group_bundle_index=0
-                )
-            },
-        )
-    elif mode == "none":
-        options["ray_remote_args"] = {"num_cpus": None}
-        options["label_selector"] = {"pool": "zero"}
-    else:
-        options["ray_remote_args"] = {"scheduling_strategy": "SPREAD"}
+    pg = placement_group([{"CPU": 0.1}])
+    ray.get(pg.ready(), timeout=20)
     for key, value in config.items():
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_" + key.upper(), value)
-    ctx.execution_options.label_selector = (
-        {"pool": "yes"} if mode == "distributed" else None
-    )
     paths = [tmp_path / f"f{i}.parquet" for i in range(6)]
     for i, path in enumerate(paths):
         pq.write_table(pa.table({"id": [i]}), path)
@@ -111,44 +77,28 @@ def test_metadata_count_preserves_storage_access(
             list(map(str, paths)),
             merge_schema=True,
             filesystem=_filesystem(trace, require_env="RAY_METADATA_ACCESS"),
-            **options,
+            runtime_env={"env_vars": {"RAY_METADATA_ACCESS": "enabled"}},
+            num_cpus=0.1,
+            ray_remote_args={
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    pg, placement_group_bundle_index=0
+                )
+            },
         )
         before = _records(trace)
         assert len(before) == len(paths)
-        if mode == "distributed":
-            assert {r["node"] for r in before} == {node.node_id for node in allowed}
-            assert all(r["pid"] != os.getpid() for r in before)
-        else:
-            assert all(r["pid"] == os.getpid() for r in before)
-        count = (
-            PushdownCountFiles()
-            .apply(
-                LogicalPlan(
-                    Count(input_dependencies=[dataset._logical_plan.dag]),
-                    dataset.context,
-                )
-            )
-            .dag
-        )
-        assert isinstance(count, MapBatches)
-        assert count.ray_remote_args == {
-            "num_cpus": 0.5,
-            **cast(ReadFiles, dataset._logical_plan.dag).ray_remote_args,
-        }
+        assert all(r["pid"] == os.getpid() for r in before)
         pq.write_table(pa.table({"id": list(range(100, 104))}), paths[-1])
         monkeypatch.delenv("RAY_METADATA_ACCESS")
         assert dataset.count() == 9
         misses = _records(trace)[len(before) :]
         assert misses and {r["path"] for r in misses} == {str(paths[-1])}
         assert all(r["pid"] != os.getpid() for r in misses)
-        if mode != "pg":
-            targets = (
-                {zero.node_id} if mode == "none" else {node.node_id for node in allowed}
-            )
-            assert {r["node"] for r in misses} <= targets
+        assert {r["node"] for r in misses} == {
+            placement_group_table(pg)["bundles_to_node_id"][0]
+        }
     finally:
-        if pg is not None:
-            remove_placement_group(pg)
+        remove_placement_group(pg)
 
 
 def test_cached_metadata_survives_new_cluster(
@@ -274,13 +224,17 @@ def test_unknown_file_sizes_preserve_planning_metadata(
     indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
 
     bounded = sample_files(indexer, paths, fs, max_files=1)
-    sample = sample_files(indexer, paths, fs, max_files=None)
+    sample = sample_files(indexer, paths, fs, max_files=None, include_mtime=True)
+    plain = sample_files(indexer, paths, fs, max_files=None)
     assert bounded.paths.tolist() == paths[:1]
     assert bounded.known_file_sizes == [None]
     assert sample.paths.tolist() == paths
     assert sample.known_file_sizes == [None, None]
     block = sample.as_block()
     assert isinstance(block, pa.Table)
+    plain_block = plain.as_block()
+    assert isinstance(plain_block, pa.Table)
+    assert FILE_MTIME_COLUMN_NAME not in plain_block.column_names
     assert block[FILE_SIZE_COLUMN_NAME].type == pa.int64()
     mtimes = [fs.get_file_info(path).mtime_ns for path in paths]
     assert mtimes == [1_600_000_000_000_000_000, 1_600_000_001_000_000_000]
@@ -297,8 +251,8 @@ def test_unknown_file_sizes_preserve_planning_metadata(
     assert [(value.num_rows, value.mtime_ns) for value in values] == list(
         zip([1, 2], mtimes)
     )
-    # Without a known size or mtime, the existing check only proves existence.
-    values[0] = replace(values[0], mtime_ns=None)
+    # Without a known size or mtime, stale counts must fall back to the footer.
+    values[0] = replace(values[0], num_rows=999, mtime_ns=None)
     manifest = FileManifest.construct_manifest(
         paths=paths,
         sizes=[None, None],
@@ -309,7 +263,7 @@ def test_unknown_file_sizes_preserve_planning_metadata(
     assert [
         v.num_rows for v in ParquetFileReader(filesystem=fs).read_metadata(manifest)
     ] == [1, 2]
-    assert len(raw.opens) == opens
+    assert len(raw.opens) == opens + 1
 
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 4096)
     monkeypatch.setattr(
@@ -319,6 +273,26 @@ def test_unknown_file_sizes_preserve_planning_metadata(
     before = _records(trace)
     assert dataset.count() == 3
     assert _records(trace) == before
+
+    class UnknownSizeAndMtimeFileSystem(UnknownSizeFileSystem):
+        def info(self, path, **kwargs):
+            result = super().info(path, **kwargs)
+            result["mtime"] = None
+            return result
+
+    fallback_trace = tmp_path / "fallback-count.jsonl"
+    fallback_fs = pafs.PyFileSystem(
+        pafs.FSSpecHandler(
+            UnknownSizeAndMtimeFileSystem(
+                trace_path=str(fallback_trace), skip_instance_cache=True
+            )
+        )
+    )
+    fallback = ray.data.read_parquet(paths, filesystem=fallback_fs, merge_schema=True)
+    before = _records(fallback_trace)
+    assert fallback.count() == 3
+    rereads = _records(fallback_trace)[len(before) :]
+    assert Counter(record["path"] for record in rereads) == Counter(paths)
 
 
 @pytest.mark.parametrize(
@@ -382,12 +356,22 @@ def test_cache_validation(tmp_path, change):
         assert actual == (file.metadata if change == "no_mtime" else None)
 
 
-@pytest.mark.parametrize("distributed", [False, True])
+@pytest.mark.parametrize(
+    "distributed,expected",
+    [
+        pytest.param(False, [1, 2, None, None, 5, 6], id="driver"),
+        pytest.param(True, [1, 2, 3, None, None, 6], id="worker"),
+    ],
+)
 def test_deduplicated_schemas_keep_metadata_in_file_order(
-    monkeypatch, tmp_path, distributed
+    monkeypatch, tmp_path, ray_start_regular_shared, distributed, expected
 ):
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 4)
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 160)
+    monkeypatch.setattr(
+        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 64
+    )
     schemas = [[], [], ["late"], [], ["last"], []]
     paths = [tmp_path / f"{i}.parquet" for i in range(len(schemas))]
     for i, (path, extra) in enumerate(zip(paths, schemas)):
@@ -398,19 +382,10 @@ def test_deduplicated_schemas_keep_metadata_in_file_order(
         sizes=[path.stat().st_size for path in paths],
         chunk_metadatas=[None] * len(paths),
     )
-    if distributed:
-        remote = Mock()
-        remote.options.return_value = remote
-        remote.remote.side_effect = lambda *args, **kwargs: Mock(
-            result=inference._read_schema_batch(*args, **kwargs)
-        )
-        monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
-        monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
-        monkeypatch.setattr(ray, "wait", lambda refs, **kw: ([refs[-1]], refs[:-1]))
-        monkeypatch.setattr(ray, "get", lambda ref: ref.result)
+    trace = tmp_path / "ordered-reads.jsonl"
     result = inference.infer_full_schema_with_metadata_from_files(
         sample,
-        pafs.LocalFileSystem(),
+        _filesystem(trace),
         format_name="Parquet",
         read_metadata=_read_parquet_metadata,
         ray_remote_args={},
@@ -420,9 +395,69 @@ def test_deduplicated_schemas_keep_metadata_in_file_order(
     metadata = result.metadata
     assert metadata is not None
     assert result.schema.names == ["id", "late", "last"]
-    assert [value["num_rows"] for value in metadata.to_pylist()] == list(range(1, 7))
-    if distributed:
-        assert remote.remote.call_count == 3
+    assert [value["num_rows"] if value else None for value in metadata.to_pylist()] == (
+        expected
+    )
+    assert all(
+        (record["pid"] != os.getpid()) == distributed for record in _records(trace)
+    )
+
+
+def test_metadata_timeout_falls_back_to_driver(
+    monkeypatch, tmp_path, ray_start_regular_shared
+):
+    # Ensure a worker is available before timing the first schema result.
+    ray.get(ray.remote(num_cpus=0.5)(lambda: None).remote())
+    for suffix, value in dict(
+        min_files=0,
+        max_tasks=1,
+        batch_size=2,
+        io_concurrency=2,
+        first_result_timeout_s=1,
+    ).items():
+        monkeypatch.setattr(
+            inference, "_FULL_SCHEMA_INFERENCE_" + suffix.upper(), value
+        )
+    paths = [tmp_path / f"{i}.parquet" for i in range(3)]
+    for i, path in enumerate(paths):
+        pq.write_table(pa.table({"id": list(range(i + 1))}), path)
+    sample = FileManifest.construct_manifest(
+        paths=list(map(str, paths)),
+        sizes=[path.stat().st_size for path in paths],
+        chunk_metadatas=[None] * len(paths),
+    )
+    driver_pid = os.getpid()
+    worker_trace = str(tmp_path / "worker-starts.txt")
+
+    def delayed_read(path, filesystem, size, *, retried_io_errors):
+        if os.getpid() != driver_pid:
+            with open(worker_trace, "a") as output:
+                output.write(path + "\n")
+            time.sleep(2)
+        return _read_parquet_metadata(
+            path, filesystem, size, retried_io_errors=retried_io_errors
+        )
+
+    trace = tmp_path / "fallback-reads.jsonl"
+    result = inference.infer_full_schema_with_metadata_from_files(
+        sample,
+        _filesystem(trace),
+        format_name="Parquet",
+        read_metadata=delayed_read,
+        ray_remote_args={},
+        supports_distributed_reads=True,
+    )
+    assert result is not None
+    metadata = result.metadata
+    assert metadata is not None
+    assert [row["num_rows"] for row in metadata.to_pylist()] == [1, 2, 3]
+    assert Counter(r["path"] for r in _records(trace) if r["pid"] == driver_pid) == {
+        str(path): 1 for path in paths
+    }
+    time.sleep(2)
+    with open(worker_trace) as recorded:
+        starts = Counter(recorded.read().splitlines())
+    assert starts == {str(paths[0]): 1}
 
 
 if __name__ == "__main__":

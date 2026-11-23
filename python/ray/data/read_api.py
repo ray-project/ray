@@ -631,6 +631,11 @@ def _read_datasource_v2(
             filesystem,
             pruners,
             max_files=None if sample_all_files_for_schema else 16,
+            include_mtime=(
+                sample_all_files_for_schema
+                and isinstance(datasource, FileDataSourceV2)
+                and datasource._retain_planning_metadata
+            ),
         )
         if len(sample) == 0:
             raise ValueError(

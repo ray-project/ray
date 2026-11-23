@@ -1081,6 +1081,37 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx, monkeypat
     assert reads and all(r["pid"] != os.getpid() for r in reads)
 
 
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_count_pushdown_preserves_zero_cpu_placement(
+    tmp_path, ray_start_cluster, shutdown_only, datasource_v2
+):
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, object_store_memory=100 * 1024 * 1024)
+    target = cluster.add_node(
+        num_cpus=0, object_store_memory=100 * 1024 * 1024, labels={"pool": "zero"}
+    )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    driver_pid = os.getpid()
+    target_node = target.node_id
+
+    class TargetNodeHandler(FSSpecHandler):
+        def open_input_file(self, path):
+            if os.getpid() != driver_pid:
+                assert ray.get_runtime_context().get_node_id() == target_node
+            return super().open_input_file(path)
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+    dataset = ray.data.read_parquet(
+        str(tmp_path),
+        filesystem=PyFileSystem(TargetNodeHandler(fsspec.filesystem("file"))),
+        ray_remote_args={"num_cpus": None},
+        label_selector={"pool": "zero"},
+    )
+    assert dataset.count() == 3
+
+
 @pytest.mark.parametrize(
     "read_kwargs", [{}, {"include_paths": True}], ids=["plain", "include_paths"]
 )

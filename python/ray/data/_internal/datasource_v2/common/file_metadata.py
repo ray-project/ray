@@ -31,6 +31,8 @@ def get_cached_file_metadata(
         raise FileNotFoundError(file.path)
     if info.type != FileType.File:
         return None
+    if file.size is None and metadata.mtime_ns is None:
+        return None
     if info.size != file.size:
         return None
     if metadata.mtime_ns is not None and info.mtime_ns != metadata.mtime_ns:
