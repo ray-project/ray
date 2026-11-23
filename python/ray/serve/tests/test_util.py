@@ -125,6 +125,17 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
         parent = {"env_vars": {"test1": "test_val"}, "working_dir": "."}
         assert parent == override_runtime_envs_except_env_vars(parent, {})
 
+    def test_merge_none_env_vars(self):
+        assert {"env_vars": {"A": "1"}} == override_runtime_envs_except_env_vars(
+            {"env_vars": None}, {"env_vars": {"A": "1"}}
+        )
+        assert {"env_vars": {"A": "1"}} == override_runtime_envs_except_env_vars(
+            {"env_vars": {"A": "1"}}, {"env_vars": None}
+        )
+        assert {"env_vars": {}} == override_runtime_envs_except_env_vars(
+            {"env_vars": None}, {"env_vars": None}
+        )
+
     @pytest.mark.parametrize("invalid_env", [None, 0, "runtime_env", set()])
     def test_invalid_type(self, invalid_env):
         with pytest.raises(TypeError):
