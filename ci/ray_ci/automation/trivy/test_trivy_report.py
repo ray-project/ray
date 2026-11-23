@@ -1200,5 +1200,14 @@ def test_text_from_a_scan_stays_on_one_line():
     assert "- `ray-py3.12-tpu-x86_64`: pull failed: retry gave up \\| 2x\n" in report
 
 
+def test_an_image_without_a_digest_gets_an_empty_digest_cell():
+    no_fix = make_vuln(VulnerabilityID="CVE-2026-0002", **NO_FIX)
+    scans = [image_scan("ray-py3.12-cpu", make_vuln(), no_fix)]
+    report = trivy_report.render_markdown(scans, SCANNER, files_note=NOTE)
+    for heading in ("Fixable Images", "No Fix Yet Per Image", "Per Image"):
+        (row,) = table_rows(section(report, heading))
+        assert row.startswith("| `ray-py3.12-cpu` |  | ")
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
