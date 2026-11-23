@@ -21,13 +21,14 @@ from ray.data._internal.savemode import SaveMode
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
+from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.datasource.path_util import _filesystem_root_from_uri
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow as pa
     import pyarrow.fs as pafs
-    from deltalake import DeltaTable
+    from deltalake import DeltaTable, Metadata
     from deltalake.transaction import AddAction
 
     from ray.data.catalog import Catalog
@@ -325,31 +326,32 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         from deltalake import DeltaTable
 
-        def _read_existing_partition_by() -> Optional[List[str]]:
-            """The table's partition columns, or None if it doesn't exist yet."""
+        def _read_existing_metadata() -> Optional["Metadata"]:
+            """The table's metadata, or None if it doesn't exist yet."""
             if not DeltaTable.is_deltatable(
                 self._path, storage_options=self._storage_options
             ):
                 return None
-            return list(
-                DeltaTable(self._path, storage_options=self._storage_options)
-                .metadata()
-                .partition_columns
-            )
+            return DeltaTable(
+                self._path, storage_options=self._storage_options
+            ).metadata()
 
         # Retried and credential-refreshed like the commit's own calls in
         # ``on_write_complete``: these are the same kind of driver-side Delta
         # log reads, so an expired token or a throttled request here would
         # otherwise fail the whole job before any refresh could happen. The
-        # validation below stays outside the retry -- a partition mismatch is a
-        # logical error that must not be retried.
-        existing_partition_by = self._with_retry(
-            _read_existing_partition_by,
-            description=f"read partition columns of Delta table '{self._path}'",
+        # validation below stays outside the retry -- a column-mapped table or
+        # a partition mismatch is a logical error that must not be retried.
+        existing_metadata = self._with_retry(
+            _read_existing_metadata,
+            description=f"read metadata of Delta table '{self._path}'",
             refresh=self._refresh_driver_filesystem,
         )
-        if existing_partition_by is None:
+        if existing_metadata is None:
             return
+
+        _raise_if_column_mapped(existing_metadata, self._path)
+        existing_partition_by = list(existing_metadata.partition_columns)
 
         if not self._partition_by:
             self._partition_by = existing_partition_by
@@ -454,6 +456,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             # boundary.
             def _commit(schema: "pa.Schema" = schema) -> None:
                 dt = DeltaTable(self._path, storage_options=self._storage_options)
+                # Checked again here because ``on_write_start`` doesn't run
+                # for an empty dataset, and the table may have changed since.
+                _raise_if_column_mapped(dt.metadata(), self._path)
                 if delta_mode == "append":
                     dt = self._reconcile_schema_with_existing_table(schema, dt)
                 dt.create_write_transaction(
@@ -500,14 +505,10 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
             reader=ReaderFormat.DELTA,
             mode=CatalogAccessMode.WRITE,
         )
-        # `catalog.resolve()` also writes freshly-vended credentials into this
-        # process's own environment as a side effect (e.g.
-        # `DatabricksUnityCatalog._apply_env`) -- that's what the deltalake
-        # calls in `on_write_complete` actually pick up, for any cloud the
-        # catalog supports, since delta-rs resolves credentials from the
-        # environment on each call rather than caching them at import time.
-        # The explicit fields below are applied too, for completeness, but
-        # aren't required for the driver's own commit to succeed.
+        # The deltalake calls in `on_write_complete` take their credentials
+        # from `self._storage_options`, and the worker-side Parquet writes from
+        # `self._filesystem`; the catalog returns fresh credentials in both
+        # (`DatabricksUnityCatalog` doesn't touch the environment).
         if resolved.storage_options:
             # Merge with the caller's *original* storage_options
             # (`_user_storage_options`), not the current (possibly now-stale)
@@ -606,14 +607,12 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         ``catalog=``, a non-``None`` filesystem here can only have come from
         the catalog.
 
-        This must be decided *without* calling ``resolve()``, because
-        ``resolve()`` itself has credential-delivery side effects: Unity
-        Catalog's ``_apply_env`` writes the vended credentials into this
-        process's environment and never restores them. For a shape a worker
-        can't use anyway (Azure, which has no explicit-filesystem path
-        today), calling ``resolve()`` just to discover that would leave live
-        credentials in a worker process that Ray then reuses for unrelated
-        tasks.
+        This must be decided *without* calling ``resolve()``: it is a network
+        call, and a ``Catalog`` implementation may have credential-delivery
+        side effects (such as writing to the environment) that would leave
+        live credentials in a worker process Ray then reuses for unrelated
+        tasks. For a shape a worker can't use anyway (Azure, which has no
+        explicit-filesystem path today), that cost buys nothing.
         """
         return self._catalog is not None and self._filesystem is not None
 
@@ -659,9 +658,9 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
 
         from ray.data.catalog import CatalogAccessMode, ReaderFormat
 
-        # ``resolve()`` may also seed the vended credentials into this
-        # process's environment without restoring them (Unity Catalog's
-        # ``_apply_env``). A worker process outlives this task and gets reused
+        # A ``Catalog`` implementation may seed vended credentials into this
+        # process's environment as a side effect (``DatabricksUnityCatalog``
+        # no longer does). A worker process outlives this task and gets reused
         # for unrelated ones, so undo whatever it changed -- the refreshed
         # filesystem below carries the credentials we actually write with, so
         # nothing downstream needs them in the environment.
@@ -888,6 +887,29 @@ class DeltaDatasink(Datasink[DeltaWriteResult]):
         )
 
 
+def _raise_if_column_mapped(metadata: "Metadata", path: str) -> None:
+    """Refuse to write to a table that uses column mapping.
+
+    The data files of a column-mapped table store their columns under
+    physical names (such as ``col-<uuid>``) or field ids, which only the log
+    maps to the table's column names. This datasink writes files with the
+    column names themselves, so engines that apply the mapping would read
+    every written column as null. deltalake 1.5.0 refuses such a commit, but
+    later versions (such as 1.6.6) accept it.
+    """
+    mode = (metadata.configuration or {}).get("delta.columnMapping.mode") or "none"
+    if mode.lower() != "none":
+        raise NotImplementedError(
+            f"Cannot write to Delta table '{path}': it uses column mapping "
+            f"(`delta.columnMapping.mode` is {mode!r}), which "
+            "`Dataset.write_delta` doesn't support yet. Its data files must "
+            "store columns under physical names that only the Delta log maps "
+            "to the table's column names, so files written with the column "
+            "names would read back as nulls. Follow "
+            "https://github.com/ray-project/ray/issues/64854 for support."
+        )
+
+
 def _explicit_filesystem_from_storage_options(
     path: str, storage_options: Optional[Dict[str, str]]
 ) -> Optional["pafs.FileSystem"]:
@@ -988,8 +1010,6 @@ def _parse_partition_values(
             unquoted_key = urllib.parse.unquote(key)
             unquoted_value = urllib.parse.unquote(value)
             values[unquoted_key] = (
-                None
-                if unquoted_value == "__HIVE_DEFAULT_PARTITION__"
-                else unquoted_value
+                None if unquoted_value == HIVE_DEFAULT_PARTITION else unquoted_value
             )
     return {col: values.get(col) for col in partition_by}

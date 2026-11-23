@@ -65,6 +65,26 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
             absl::MutexLock lock(&objects_pending_recovery_mu_);
             RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
           }
+          RAY_CHECK(obj != nullptr)
+              << "GetAsync callback received null object for " << object_id;
+          // Retry recovery if a concurrent node failure invalidated the location.
+          // Only check for re-queue on successful pin (IsInPlasmaError), not on
+          // permanent failures (e.g. OBJECT_UNRECONSTRUCTABLE).
+          if (obj->IsInPlasmaError()) {
+            bool cb_owned_by_us = false;
+            NodeID cb_pinned_at;
+            bool cb_spilled = false;
+            bool cb_ref_exists = reference_counter_.IsPlasmaObjectPinnedOrSpilled(
+                object_id, &cb_owned_by_us, &cb_pinned_at, &cb_spilled);
+            if (cb_ref_exists && cb_owned_by_us && cb_pinned_at.IsNil() && !cb_spilled) {
+              RAY_LOG(WARNING).WithField(object_id)
+                  << "Object still has no valid location after recovery attempt, "
+                     "requeuing for recovery";
+              // Mark the object for recovery
+              reference_counter_.MarkObjectForRecovery(object_id);
+              return;
+            }
+          }
           RAY_LOG(INFO).WithField(object_id) << "Recovery complete for object";
         });
     // Gets the node ids from reference_counter and then gets addresses from the local
