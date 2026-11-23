@@ -1,9 +1,10 @@
 """Unit tests for the CSV datasource on DataSourceV2."""
 
 import collections
+import dataclasses
 import gzip
 import io
-from typing import List
+from typing import List, Optional, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -30,7 +31,10 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvDatasourceV2,
     CsvFileIndexer,
 )
-from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import csv_file_format
+from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
+    csv_file_format,
+    invalid_csv_chunk_error,
+)
 from ray.data._internal.datasource_v2.formats.csv.header_reader import HeaderReader
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -53,7 +57,9 @@ def _write(path, text: str) -> str:
     return str(path)
 
 
-def _read_tables(datasource: CsvDatasourceV2, paths) -> List[pa.Table]:
+def _read_tables(
+    datasource: CsvDatasourceV2, paths, columns: Optional[Tuple[str, ...]] = None
+) -> List[pa.Table]:
     """List, plan and read ``paths`` in-process, as one read task."""
     sample = FileManifest.construct_manifest(
         paths=paths,
@@ -68,15 +74,20 @@ def _read_tables(datasource: CsvDatasourceV2, paths) -> List[pa.Table]:
             )
         )
     )
-    reader = datasource.create_scanner(
+    scanner = datasource.create_scanner(
         schema=schema, partitioning=datasource.resolve_partitioning(sample)
-    ).create_reader()
+    )
+    if columns is not None:
+        scanner = dataclasses.replace(scanner, columns=columns)
+    reader = scanner.create_reader()
     return list(reader.read(manifest))
 
 
-def _read_all(datasource: CsvDatasourceV2, paths) -> pa.Table:
+def _read_all(
+    datasource: CsvDatasourceV2, paths, columns: Optional[Tuple[str, ...]] = None
+) -> pa.Table:
     return pa.concat_tables(
-        _read_tables(datasource, paths), promote_options="permissive"
+        _read_tables(datasource, paths, columns), promote_options="permissive"
     )
 
 
@@ -143,8 +154,9 @@ def test_names_a_split_file_from_its_own_header(tmp_path, small_chunks):
     assert rows == {(1, "x")} | {(i, f"n{i}") for i in range(100)}
 
 
-def test_starts_no_actors_when_no_file_is_split(tmp_path, monkeypatch):
-    # Listing only inline-sized files must not provision the header pool.
+@pytest.fixture
+def provisioned_actors(monkeypatch):
+    """Record the header actors a listing starts, without starting any."""
     provisioned = []
 
     class _FakeActorClass:
@@ -160,16 +172,37 @@ def test_starts_no_actors_when_no_file_is_split(tmp_path, monkeypatch):
 
     monkeypatch.setattr(csv_datasource_v2, "HeaderReaderActor", _FakeActorClass)
     monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "2")
-    paths = [_write(tmp_path / f"{i}.csv", f"id{i},x\n1,2\n") for i in range(3)]
+    return provisioned
+
+
+@pytest.mark.parametrize("chunk_bytes", ["1073741824", "64"], ids=["whole", "split"])
+def test_starts_no_actors_for_few_split_files(
+    tmp_path, monkeypatch, provisioned_actors, chunk_bytes
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_BATCH_SIZE", "3")
+    paths = [
+        _write(tmp_path / f"{i}.csv", f"id{i},x\n" + "1,2\n" * 50) for i in range(3)
+    ]
     datasource = CsvDatasourceV2(paths)
 
-    list(
-        datasource._get_file_indexer().list_files(
-            pa.array(paths), filesystem=datasource.filesystem
+    manifest = FileManifest.concat(
+        list(
+            datasource._get_file_indexer().list_files(
+                pa.array(paths), filesystem=datasource.filesystem
+            )
         )
     )
 
-    assert provisioned == []
+    assert provisioned_actors == []
+    names = {
+        tuple(metadata["column_names"])
+        for metadata in manifest.file_chunk_metadatas
+        if metadata is not None
+    }
+    assert names == (
+        set() if chunk_bytes != "64" else {(f"id{i}", "x") for i in range(3)}
+    )
 
 
 def test_lists_a_split_file_with_its_column_names(tmp_path, small_chunks):
@@ -242,35 +275,6 @@ def test_infers_types_from_every_row_of_a_large_chunk(
     }
 
 
-_SPLIT = pytest.param(
-    "64",
-    marks=pytest.mark.xfail(strict=True, reason="Known gap in split CSV reads."),
-    id="split",
-)
-
-
-@pytest.mark.parametrize(
-    "chunk_bytes", [pytest.param("1073741824", id="whole"), _SPLIT]
-)
-def test_reads_quoted_newlines_in_a_split_file(tmp_path, monkeypatch, chunk_bytes):
-    # pyarrow parses a quoted newline without ``newlines_in_values``, so a cut
-    # can land inside a value. Here it yields extra rows instead of an error.
-    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
-    path = _write(
-        tmp_path / "a.csv",
-        "id,score,text\n"
-        + "".join(f'{i},{i},"hello\nworld, a, b"\n' for i in range(40)),
-    )
-    tables = _read_tables(CsvDatasourceV2([path]), [path])
-
-    # Rows, not one concatenated table: the stray rows come back as strings.
-    rows = [row for table in tables for row in table.to_pylist()]
-
-    assert rows == [
-        {"id": i, "score": i, "text": "hello\nworld, a, b"} for i in range(40)
-    ]
-
-
 @pytest.mark.parametrize("chunk_bytes", ["64", "1073741824"], ids=["split", "whole"])
 @pytest.mark.parametrize("country_first", [False, True])
 def test_reads_a_file_holding_its_partition_column(
@@ -312,6 +316,23 @@ def test_raises_when_a_file_column_differs_from_its_partition_value(
             CsvDatasourceV2([path], partitioning=Partitioning(PartitionStyle.HIVE)),
             [path],
         )
+
+
+@pytest.mark.parametrize("chunk_bytes", ["64", "1073741824"], ids=["split", "whole"])
+def test_raises_when_a_projected_file_column_differs_from_its_partition_value(
+    tmp_path, monkeypatch, chunk_bytes
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+    partition_dir = tmp_path / "country=US"
+    partition_dir.mkdir()
+    path = _write(
+        partition_dir / "a.csv",
+        "id,country\n" + "".join(f"{i},CA\n" for i in range(100)),
+    )
+    datasource = CsvDatasourceV2([path], partitioning=Partitioning(PartitionStyle.HIVE))
+
+    with pytest.raises(ValueError, match="Partition column country exists"):
+        _read_all(datasource, [path], columns=("country", "id"))
 
 
 @pytest.mark.parametrize(
@@ -367,6 +388,47 @@ def test_hints_newlines_in_values_when_a_piece_fails_to_parse(tmp_path, monkeypa
 
     with pytest.raises(ValueError, match="newlines_in_values"):
         _read_all(CsvDatasourceV2([path]), [path])
+
+
+@pytest.mark.parametrize(
+    "message, hinted",
+    [
+        ("CSV parse error: Expected 2 columns, got 4: ...", True),
+        ("CSV conversion error to int64: invalid value 'abc'", False),
+    ],
+    ids=["column_count", "conversion"],
+)
+def test_hints_newlines_in_values_only_for_a_column_count_error(message, hinted):
+    error = invalid_csv_chunk_error("a.csv", pa.ArrowInvalid(message))
+
+    assert message in str(error)
+    assert ("newlines_in_values" in str(error)) == hinted
+
+
+@pytest.mark.parametrize("chunk_bytes", ["64", "1073741824"], ids=["split", "whole"])
+@pytest.mark.parametrize(
+    "include_columns, names",
+    [(["b"], ["b"]), (["c", "a"], ["c", "a"])],
+    ids=["one", "reordered"],
+)
+def test_reads_only_the_included_columns(
+    tmp_path, monkeypatch, chunk_bytes, include_columns, names
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", chunk_bytes)
+    path = _write(
+        tmp_path / "a.csv", "a,b,c\n" + "".join(f"{i},{i},{i}\n" for i in range(100))
+    )
+    datasource = CsvDatasourceV2(
+        [path],
+        arrow_csv_args={
+            "convert_options": pcsv.ConvertOptions(include_columns=include_columns)
+        },
+    )
+
+    table = _read_all(datasource, [path])
+
+    assert table.column_names == names
+    assert sorted(table.column(names[0]).to_pylist()) == list(range(100))
 
 
 def test_reads_compressed_files_whole(tmp_path, small_chunks):
@@ -447,8 +509,8 @@ def test_reads_no_header_for_a_file_of_unknown_size(tmp_path, small_chunks):
         read_options=pcsv.ReadOptions(),
         parse_options=pcsv.ParseOptions(),
     )
-    assert indexer._needs_header(FileInfo(path, 1000))
-    assert not indexer._needs_header(FileInfo(path, None))
+    assert indexer._is_chunked(FileInfo(path, 1000))
+    assert not indexer._is_chunked(FileInfo(path, None))
     assert indexer._chunk_metadatas_of_file(FileInfo(path, None)) == [None]
 
 

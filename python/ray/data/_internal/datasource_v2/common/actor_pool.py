@@ -124,15 +124,12 @@ def dispatch_batches(
     batches = iter(batches)
     pending: Deque[Tuple[List["FileInfo"], Any]] = deque()
     window = window or len(pool) * 2
-    batch_no = 0
 
     def dispatch_next() -> bool:
-        nonlocal batch_no
         batch = next(batches, None)
         if batch is None:
             return False
         pending.append((batch, submit(pool, batch)))
-        batch_no += 1
         return True
 
     for _ in range(window):

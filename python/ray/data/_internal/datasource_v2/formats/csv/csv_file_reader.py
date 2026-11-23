@@ -68,16 +68,16 @@ def invalid_csv_chunk_error(path: str, error: Exception) -> ValueError:
     Returns:
         The error to raise.
     """
-    return ValueError(
-        f"Failed to read a chunk of CSV file: {path}. Original error: {error}. "
-        "A value that doesn't match its column's type, or a row with a different "
-        "number of columns, can cause this: fix the file, or pass "
-        "convert_options=pyarrow.csv.ConvertOptions(column_types=...). "
-        "The file is split at newline bytes, so a newline inside a quoted or "
-        "escaped value that the piece can't see can also cause it: pass "
-        "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
-        "read each file whole. See read_csv() documentation for more details."
-    )
+    message = f"Failed to read a chunk of CSV file: {path}. Original error: {error}. "
+    if "Expected" in str(error) and "columns" in str(error):
+        message += (
+            "The file is split at newline bytes, so a newline inside a quoted or "
+            "escaped value that the piece can't see can cause a row with a "
+            "different number of columns: pass "
+            "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
+            "read each file whole. "
+        )
+    return ValueError(message + "See read_csv() documentation for more details.")
 
 
 class CsvFileReader(LineChunkableFileReader):
@@ -102,7 +102,12 @@ class CsvFileReader(LineChunkableFileReader):
             parse_options.invalid_row_handler = parse_options.invalid_row_handler
         self._read_options = read_options
         self._parse_options = parse_options
-        self._convert_options = convert_options
+        # pyarrow's dataset scan appends the projection to ``include_columns``,
+        # which duplicates a column named in both, so ``include_columns`` is
+        # applied as the projection instead.
+        self._include_columns = list(convert_options.include_columns)
+        self._convert_options = copy.copy(convert_options)
+        self._convert_options.include_columns = []
         self._column_names_by_path: Dict[str, List[str]] = {}
 
     @override
@@ -131,11 +136,11 @@ class CsvFileReader(LineChunkableFileReader):
         scanner_kwargs: dict,
     ) -> Iterator[pa.Table]:
         unit = fragment_to_read.unit
+        if self._include_columns and scanner_kwargs.get("columns") is None:
+            scanner_kwargs = {**scanner_kwargs, "columns": self._include_columns}
         try:
             if unit.id == unit.source and infer_compression(unit.source) == "snappy":
-                buffer = read_snappy_buffer(
-                    unit.source, fragment_to_read.fragment.filesystem
-                )
+                buffer = read_snappy_buffer(unit.source, self._filesystem)
                 yield from self._iter_fragment_tables(
                     self._make_format().make_fragment(buffer), scanner_kwargs
                 )
@@ -150,7 +155,7 @@ class CsvFileReader(LineChunkableFileReader):
     def _make_chunk_fragment(
         self, lines: memoryview, *, starts_at_file_start: bool, path: str
     ) -> pds.Fragment:
-        read_options = copy.deepcopy(self._read_options)
+        read_options = copy.copy(self._read_options)
         read_options.block_size = one_block_size(lines)
         if not starts_at_file_start and has_header(read_options):
             read_options.column_names = self._column_names_by_path[path]

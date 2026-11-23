@@ -11,7 +11,6 @@ from ray.data import Schema
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -27,19 +26,12 @@ def df_to_csv(dataframe, path, **kwargs):
     dataframe.to_csv(path, **kwargs)
 
 
-@pytest.fixture(params=[False, True], ids=["v1", "v2"])
-def csv_reader_version(request, monkeypatch):
-    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", request.param)
-    return request.param
-
-
 @pytest.fixture
-def csv_v2_small_chunks(monkeypatch):
+def csv_v2_small_chunks(restore_data_context, monkeypatch):
     """Use the V2 reader with 256-byte chunks and 1 KiB read tasks."""
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "use_datasource_v2", True)
-    monkeypatch.setattr(ctx, "target_min_block_size", 1)
-    monkeypatch.setattr(ctx, "target_max_block_size", 1024)
+    restore_data_context.use_datasource_v2 = True
+    restore_data_context.target_min_block_size = 1
+    restore_data_context.target_max_block_size = 1024
     monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", "256")
 
 
@@ -52,7 +44,7 @@ def test_csv_read(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    csv_reader_version,
+    datasource_v2,
 ):
     # Single file.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
@@ -63,9 +55,6 @@ def test_csv_read(
     pd.testing.assert_frame_equal(df1.astype(dsdf.dtypes.to_dict()), dsdf)
     # Test metadata ops.
     assert ds.count() == 3
-    if not csv_reader_version:
-        # V2 lists files at execution time, so it has no input files up front.
-        assert ds.input_files() == [_unwrap_protocol(path1)]
     assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Two files, override_num_blocks=2.
@@ -121,7 +110,7 @@ def test_csv_roundtrip(
     tmp_path,
     override_num_blocks,
     target_max_block_size_infinite_or_default,
-    csv_reader_version,
+    datasource_v2,
 ):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
@@ -139,9 +128,7 @@ def test_csv_roundtrip(
         )
 
 
-def test_csv_read_invalid_format(
-    ray_start_regular_shared, tmp_path, csv_reader_version
-):
+def test_csv_read_invalid_format(ray_start_regular_shared, tmp_path, datasource_v2):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
     # Setup: CSV and Parquet files in the same directory.
@@ -162,7 +149,7 @@ def test_csv_read_invalid_format(
         ray.data.read_csv(tmp_path).materialize()
 
 
-def test_csv_read_no_header(ray_start_regular_shared, tmp_path, csv_reader_version):
+def test_csv_read_no_header(ray_start_regular_shared, tmp_path, datasource_v2):
     from pyarrow import csv
 
     file_path = os.path.join(tmp_path, "test.csv")
@@ -177,7 +164,7 @@ def test_csv_read_no_header(ray_start_regular_shared, tmp_path, csv_reader_versi
 
 
 def test_csv_read_with_column_type_specified(
-    ray_start_regular_shared, tmp_path, csv_reader_version
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     from pyarrow import csv
 
@@ -213,7 +200,7 @@ def test_csv_invalid_file_handler(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    csv_reader_version,
+    datasource_v2,
 ):
     from pyarrow import csv
 
@@ -230,7 +217,7 @@ def test_csv_invalid_file_handler(
     )
 
 
-def test_read_example_data(ray_start_regular_shared, tmp_path, csv_reader_version):
+def test_read_example_data(ray_start_regular_shared, tmp_path, datasource_v2):
     ds = ray.data.read_csv("example://iris.csv")
     assert ds.count() == 150
     assert ds.take(1) == [
@@ -261,11 +248,9 @@ def test_read_csv_v2_splits_large_files(
 
 
 def test_read_csv_v2_preserve_order_keeps_chunks_in_order(
-    ray_start_regular_shared, tmp_path, csv_v2_small_chunks, monkeypatch
+    ray_start_regular_shared, tmp_path, csv_v2_small_chunks, restore_data_context
 ):
-    monkeypatch.setattr(
-        DataContext.get_current().execution_options, "preserve_order", True
-    )
+    restore_data_context.execution_options.preserve_order = True
     first = _write_ids_csv(tmp_path / "a.csv", 500)
     second = _write_ids_csv(tmp_path / "b.csv", 500)
 
@@ -319,3 +304,11 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_csv_input_files_v1(ray_start_regular_shared, tmp_path, restore_data_context):
+    # V2 lists files at execution time, so it has no input files up front.
+    restore_data_context.use_datasource_v2 = False
+    path = os.path.join(tmp_path, "test1.csv")
+    pd.DataFrame({"one": [1, 2, 3]}).to_csv(path, index=False)
+    assert ray.data.read_csv(path).input_files() == [_unwrap_protocol(path)]

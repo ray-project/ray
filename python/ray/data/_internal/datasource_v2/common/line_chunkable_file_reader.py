@@ -274,6 +274,25 @@ class LineChunkableFileReader(FileReader):
         )
 
     @override
+    def _iter_fragment_tables(
+        self, fragment: pds.Fragment, scanner_kwargs: dict
+    ) -> Iterator[pa.Table]:
+        columns = scanner_kwargs.get("columns")
+        if columns is not None:
+            # ``columns`` leaves out partition keys, so a file column named like
+            # one is read here for ``_apply_partition_values`` to check.
+            file_names = set(fragment.physical_schema.names)
+            columns = columns + [
+                name
+                for name in self._columns or []
+                if name in self._partition_keys
+                and name in file_names
+                and name not in columns
+            ]
+            scanner_kwargs = {**scanner_kwargs, "columns": columns}
+        yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+
+    @override
     def _get_scan_schema(
         self, fragment: pds.Fragment, scanner_kwargs: dict
     ) -> pa.Schema:

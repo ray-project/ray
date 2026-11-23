@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -25,7 +25,6 @@ from ray.data._internal.datasource_v2.common.file_reader import (
 )
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
     LineChunkFileIndexer,
-    _is_compressed,
 )
 from ray.data._internal.datasource_v2.common.line_chunkable_datasource_v2 import (
     LineChunkableDatasourceV2,
@@ -81,10 +80,11 @@ class CsvFileIndexer(LineChunkFileIndexer):
 
     A chunk after the first has no header, so the indexer reads the split
     file's header line once and puts its column names in every chunk's
-    metadata. Header reads run in a spread actor pool, as Parquet indexers
-    read footers, made when the first split file is listed so small files
-    pay no actor startup; ``RAY_DATA_CSV_HEADER_NUM_ACTORS=0`` reads them
-    inline in the listing task instead.
+    metadata. The first ``RAY_DATA_CSV_HEADER_BATCH_SIZE`` split files read
+    their headers inline in the listing task, so a few large files pay no
+    actor startup. Further headers read in a spread actor pool, as Parquet
+    indexers read footers, made when the first of them is listed;
+    ``RAY_DATA_CSV_HEADER_NUM_ACTORS=0`` reads every header inline.
     """
 
     def __init__(
@@ -118,6 +118,7 @@ class CsvFileIndexer(LineChunkFileIndexer):
             io_concurrency=self._io_concurrency,
         )
         self._header_names: Dict[str, List[str]] = {}
+        self._inline_headers_read = 0
 
     @override
     def _process_file_infos_to_manifests(
@@ -128,6 +129,7 @@ class CsvFileIndexer(LineChunkFileIndexer):
             return
         try:
             self._header_names = {}
+            self._inline_headers_read = 0
             with reader_actor_pool(
                 HeaderReaderActor,
                 num_actors=self._num_actors,
@@ -145,6 +147,7 @@ class CsvFileIndexer(LineChunkFileIndexer):
                 )
         finally:
             self._header_names = {}
+            self._inline_headers_read = 0
 
     def _with_prefetched_headers(
         self,
@@ -153,16 +156,22 @@ class CsvFileIndexer(LineChunkFileIndexer):
     ) -> Iterable[FileInfo]:
         """Yield files in order, their headers read ahead by the actor pool.
 
-        The pool is made when the first split file is listed, so a listing
-        of only small files starts no actors.
+        The pool is made when the first file past the inline headers is
+        listed, so a listing of a few split files starts no actors.
         """
 
         def submit(
             pool: LazyActorPool, batch: List[FileInfo]
-        ) -> Optional[Tuple[List[FileInfo], "ray.ObjectRef"]]:
-            with_headers = [info for info in batch if self._needs_header(info)]
+        ) -> Optional[Tuple[List[FileInfo], Union[List[List[str]], "ray.ObjectRef"]]]:
+            with_headers = [info for info in batch if self._is_chunked(info)]
             if not with_headers:
                 return None
+            if self._inline_headers_read < self._header_batch_size:
+                self._inline_headers_read += len(with_headers)
+                # ``@ray.method`` types the plain call as an actor method.
+                # pyrefly: ignore[not-callable]
+                names = self._reader.read_headers(with_headers)
+                return with_headers, names
             # ``ActorProxy`` stubs type ``.remote`` narrower than it is.
             ref = pool.next_actor().read_headers.remote(
                 with_headers
@@ -172,20 +181,15 @@ class CsvFileIndexer(LineChunkFileIndexer):
         batches = batch_file_infos(file_infos, self._header_batch_size)
         for batch, headers in dispatch_batches(pool, batches, submit):
             if headers is not None:
-                with_headers, ref = headers
-                for info, names in zip(with_headers, ray.get(ref)):
+                with_headers, names_or_ref = headers
+                names_per_file = (
+                    ray.get(names_or_ref)
+                    if isinstance(names_or_ref, ray.ObjectRef)
+                    else names_or_ref
+                )
+                for info, names in zip(with_headers, names_per_file):
                     self._header_names[info.path] = names
             yield from batch
-
-    def _needs_header(self, file_info: FileInfo) -> bool:
-        # The whole-file branch of ``_chunk_metadatas_of_file`` is the exact
-        # negation, so a file reads its header iff its rows are chunked. A file of
-        # unknown size is read whole.
-        return (
-            file_info.size is not None
-            and file_info.size > self._chunk_size
-            and not _is_compressed(file_info.path)
-        )
 
     @override
     def _chunk_metadatas_of_file(
@@ -280,6 +284,7 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
 
     @override
     def _can_split_files(self) -> bool:
+        # TODO: Support quoted newlines (``newlines_in_values``) in split reads.
         encoding = self._read_options.encoding.lower().replace("-", "")
         return (
             not self._parse_options.newlines_in_values

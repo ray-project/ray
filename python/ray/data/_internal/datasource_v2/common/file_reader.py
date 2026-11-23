@@ -129,6 +129,13 @@ class FileReader(Reader[FileManifest]):
         self._schema = schema
 
     @cached_property
+    def _partition_keys(self) -> Set[str]:
+        """Partition keys parsed from paths, named by the partitioning."""
+        if self._partition_parser is None:
+            return set()
+        return set(self._partition_parser._scheme.field_names or [])
+
+    @cached_property
     def _file_dataset_schema(self) -> Optional[pa.Schema]:
         """Schema passed to ``pds.dataset`` — partition keys and synthesized
         columns stripped out since those are appended post-read.
@@ -161,11 +168,7 @@ class FileReader(Reader[FileManifest]):
             return None
         if any(isinstance(f.type, pa.ExtensionType) for f in schema):
             return None
-        partition_keys = (
-            set(self._partition_parser._scheme.field_names or [])
-            if self._partition_parser is not None
-            else set()
-        )
+        partition_keys = self._partition_keys
         synthesized = {c.name for c in self._synthesized_columns}
         fields = [
             f
