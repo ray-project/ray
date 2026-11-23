@@ -215,11 +215,10 @@ class PandasJsonLinesFileReader(LineChunkableFileReader):
     such as mixed types or nested values of changing shape, stays a column of
     Python objects.
 
-    This reader never calls ``raise_on_pickle_object_columns``, an exemption
-    from ``.claude/rules/security.md`` that the owner accepted: the check
-    guards ``pa.Table`` columns of pickled objects, and a DataFrame here holds
-    values ``json`` decoded, with nothing unpickled. The frames must stay pandas,
-    since converting a mixed-type column to Arrow would pickle it.
+    This reader never calls ``raise_on_pickle_object_columns``: the check guards
+    ``pa.Table`` columns of pickled objects, and a DataFrame here holds values
+    ``json`` decoded, so nothing is unpickled. The frames must stay pandas, since
+    converting a mixed-type column to Arrow would pickle it.
     """
 
     def __init__(self, **line_chunkable_kwargs: Any):
