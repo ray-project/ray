@@ -811,14 +811,19 @@ def test_execution_options_label_selector_field():
     assert options.label_selector == {"subcluster": "train"}
 
 
-def test_filesystem_for_sized_opens_unwraps_only_s3():
+@pytest.mark.parametrize("subtree", [False, True])
+def test_filesystem_for_sized_opens_unwraps_only_s3(subtree):
     s3 = pa_fs.S3FileSystem(anonymous=True, region="us-east-1")
+    local = pa_fs.LocalFileSystem()
+    if subtree:
+        s3 = pa_fs.SubTreeFileSystem("bucket/table", s3)
+        local = pa_fs.SubTreeFileSystem("/tmp", local)
     assert (
         filesystem_for_sized_opens(RetryingPyFileSystem.wrap(s3, retryable_errors=[]))
         is s3
     )
-    local = RetryingPyFileSystem.wrap(pa_fs.LocalFileSystem(), retryable_errors=[])
-    assert filesystem_for_sized_opens(local) is local
+    wrapped_local = RetryingPyFileSystem.wrap(local, retryable_errors=[])
+    assert filesystem_for_sized_opens(wrapped_local) is wrapped_local
 
 
 def test_filesystem_for_sized_opens_without_s3_support(monkeypatch):
