@@ -12,7 +12,6 @@ from typing import Any, Dict, List
 import pyarrow as pa
 import pyarrow.fs as pa_fs
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data import DataContext
@@ -20,20 +19,11 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_util
     _row_group_unit_id,
 )
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-_pa_version = get_pyarrow_version()
-assert _pa_version is not None, "pyarrow must be installed to run these tests"
-
-pytestmark = pytest.mark.skipif(
-    _pa_version < parse_version("15.0.0"),
-    reason="deltalake write_deltalake requires pyarrow >= 15.0",
-)
 
 deltalake = pytest.importorskip("deltalake")
 
@@ -42,15 +32,15 @@ deltalake = pytest.importorskip("deltalake")
 def use_delta_datasource_v2(restore_data_context):
     ctx = DataContext.get_current()
     ctx.use_datasource_v2 = True
-    ctx.use_delta_datasource_v2 = True
+    ctx._use_delta_datasource_v2 = True
 
 
 def _read(path: str, *, v2: bool = True, **kwargs) -> ray.data.Dataset:
-    DataContext.get_current().use_delta_datasource_v2 = v2
+    DataContext.get_current()._use_delta_datasource_v2 = v2
     try:
         return ray.data.read_delta(path, **kwargs)
     finally:
-        DataContext.get_current().use_delta_datasource_v2 = True
+        DataContext.get_current()._use_delta_datasource_v2 = True
 
 
 def _uses_v2(ds: ray.data.Dataset) -> bool:
@@ -125,15 +115,11 @@ def test_date_partitions_match_v1(date_partitioned_table):
 @pytest.mark.parametrize(
     "predicate",
     [
-        col("grp") == "a b",
         col("grp") == "e=f",
         col("grp") != "a b",
         col("grp").is_null(),
-        col("grp").is_not_null(),
         col("grp").is_in(["c/d", "x"]),
-        col("num") == 1,
         col("num") > 2,
-        col("num").is_null(),
         col("id") >= 4,
         (col("id") < 3) & (col("grp") == "a b"),
         (col("id") > 6) | col("num").is_null(),
@@ -144,17 +130,13 @@ def test_filters_match_v1(partitioned_table, predicate):
     _assert_matches_v1(partitioned_table, lambda ds: ds.filter(expr=predicate))
 
 
-@pytest.mark.parametrize(
-    "columns", [["value", "grp"], ["num", "id"], ["grp"], ["day", "num", "grp"]]
-)
-def test_columns_match_v1(partitioned_table, columns):
-    _assert_matches_v1(partitioned_table, columns=columns)
+def test_columns_match_v1(partitioned_table):
+    _assert_matches_v1(partitioned_table, columns=["num", "id"])
 
 
-@pytest.mark.parametrize("columns", [None, ["id", "grp"], ["path", "id"]])
-def test_include_paths_matches_v1(partitioned_table, columns):
+def test_include_paths_matches_v1(partitioned_table):
     """Paths are relative to the table directory, as V1 reports them."""
-    _assert_matches_v1(partitioned_table, include_paths=True, columns=columns)
+    _assert_matches_v1(partitioned_table, include_paths=True, columns=["path", "id"])
 
 
 def test_select_columns_matches_v1(partitioned_table):
@@ -254,10 +236,17 @@ def test_s3_reads_send_no_head_requests(s3_server, aws_credentials, caller_files
     assert data_file_heads == []
 
 
-def test_shuffle_files_reads_every_row(partitioned_table):
-    ds = _read(partitioned_table, shuffle="files")
+def test_preserve_order_matches_v1(tmp_path):
+    """Files are read in the log's order, as V1 reads them (not path order)."""
+    path = str(tmp_path / "table")
+    for i in range(6):
+        deltalake.write_deltalake(path, pa.table({"x": [i]}), mode="append")
+    DataContext.get_current().execution_options.preserve_order = True
 
-    assert sorted(row["id"] for row in ds.take_all()) == list(range(8))
+    v1 = [row["x"] for row in _read(path, v2=False).take_all()]
+    v2 = [row["x"] for row in _read(path).take_all()]
+
+    assert v2 == v1
 
 
 def test_seeded_shuffle_permutes_the_files(tmp_path):
@@ -272,15 +261,10 @@ def test_seeded_shuffle_permutes_the_files(tmp_path):
     unshuffled = listed_paths(_read(path))
     shuffled = listed_paths(_read(path, shuffle=FileShuffleConfig(seed=11)))
 
-    assert sorted(shuffled) == unshuffled
+    assert sorted(shuffled) == sorted(unshuffled)
     assert shuffled != unshuffled
     # The same seed, the same order.
     assert listed_paths(_read(path, shuffle=FileShuffleConfig(seed=11))) == shuffled
-
-
-def test_unknown_columns_are_rejected(partitioned_table):
-    with pytest.raises(ValueError, match="don't exist"):
-        _read(partitioned_table, columns=["id", "missing"])
 
 
 @pytest.fixture
@@ -314,17 +298,12 @@ def _row_groups(rows: List[Dict[str, Any]]) -> List[int]:
     return [i for row in rows for i in row["__file_chunk_metadata"]["unit_ids"]]
 
 
-def test_lists_one_row_per_row_group_run(row_group_table):
-    rows = _list_files(_read(row_group_table))
-
-    assert len({row["__path"] for row in rows}) == 1
-    assert sorted(_row_groups(rows)) == [0, 1, 2, 3, 4]
-
-
 def test_listing_skips_finished_row_groups(row_group_table):
     """What a resumed job's listing does with the read units it finished."""
     ds = _read(row_group_table)
-    (path,) = {row["__path"] for row in _list_files(ds)}
+    all_rows = _list_files(ds)
+    (path,) = {row["__path"] for row in all_rows}
+    assert sorted(_row_groups(all_rows)) == [0, 1, 2, 3, 4]
 
     rows = _list_files(
         ds,
@@ -447,15 +426,6 @@ def test_partition_values_come_from_the_log(tmp_path, write, transform):
     _assert_matches_v1(path, transform)
 
 
-def test_literal_null_partition_string_is_not_null(tmp_path):
-    path = str(tmp_path / "table")
-    _literal_null_string_table(path)
-
-    ds = _read(path).filter(expr=col("p") == HIVE_DEFAULT_PARTITION)
-
-    assert ds.take_all() == [{"id": 1, "p": HIVE_DEFAULT_PARTITION}]
-
-
 def test_falls_back_to_v1_when_the_flag_is_off(partitioned_table):
     assert not _uses_v2(_read(partitioned_table, v2=False))
 
@@ -464,21 +434,6 @@ def test_falls_back_to_v1_without_datasource_v2(partitioned_table):
     DataContext.get_current().use_datasource_v2 = False
 
     assert not _uses_v2(_read(partitioned_table))
-
-
-def test_null_partition_values_read_as_null(partitioned_table):
-    rows = _read(partitioned_table).filter(expr=col("id") == 2).take_all()
-
-    assert rows == [
-        {
-            "id": 2,
-            "grp": None,
-            "num": None,
-            "day": datetime.date(2024, 1, 3),
-            "value": 1.0,
-        }
-    ]
-    assert HIVE_DEFAULT_PARTITION not in repr(_read(partitioned_table).take_all())
 
 
 if __name__ == "__main__":

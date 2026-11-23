@@ -3050,8 +3050,7 @@ def read_orc(
         If you encounter a DataSourceV2 limitation, use the V1 reader by
         setting ``ray.data.DataContext.get_current().use_datasource_v2 = False``,
         or ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
-        Ray. This shared setting also affects ``read_parquet()`` and
-        ``read_delta()``.
+        Ray. This shared setting also affects ``read_parquet()``.
 
     Examples:
         Read an ORC file in remote storage or local storage.
@@ -6657,16 +6656,6 @@ def read_delta(
         ``name`` or ``id``) aren't supported yet, and ``read_delta`` raises
         ``NotImplementedError`` for them.
 
-    .. note::
-
-        Set ``ray.data.DataContext.get_current().use_delta_datasource_v2 = True``
-        (or ``RAY_DATA_USE_DELTA_DATASOURCE_V2=1``) to read through the
-        DataSourceV2 pipeline, which also needs ``use_datasource_v2``. It pins
-        the table version when ``read_delta`` is called, lists the data files
-        in Ray tasks rather than on the driver, and splits files into row-group
-        read units. Tables it can't read yet, such as ones with deletion
-        vectors, are read with the V1 reader.
-
     Examples:
 
         Read a local Delta table:
@@ -6735,8 +6724,6 @@ def read_delta(
             of the inner ANDs (this form needs ``deltalake`` 1.6.6 or later).
             Every column must be a partition column, so the result is exact. To
             filter on other columns, use :meth:`~ray.data.Dataset.filter`.
-            The DataSourceV2 reader doesn't apply these yet, so a read that
-            passes them uses the V1 reader.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -6822,7 +6809,7 @@ def read_delta(
 
     ctx = DataContext.get_current()
     dt = None
-    if ctx.use_datasource_v2 and ctx.use_delta_datasource_v2:
+    if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
         import deltalake
         from packaging.version import parse as parse_version
 

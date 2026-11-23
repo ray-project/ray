@@ -136,8 +136,8 @@ def resolve_data_file_path(logged_path: str) -> str:
         raise ValueError(
             f"The Delta log names a data file by absolute path ({logged_path!r}). "
             "The DataSourceV2 reader for `read_delta` only reads files under the "
-            "table directory. Set `DataContext.use_delta_datasource_v2 = False` "
-            "to read this table with the V1 reader."
+            "table directory. Set `DataContext.use_datasource_v2 = False` to "
+            "read this table with the V1 reader."
         )
     return urllib.parse.unquote(logged_path)
 
@@ -304,11 +304,12 @@ class _DeltaLogListing:
         """Yield the table's data files at the pinned version.
 
         ``paths`` holds the table label from ``DeltaDatasourceV2.paths`` and is
-        not read. Paths are relative to the table root and sorted, so a seeded
-        shuffle and ``preserve_order`` don't depend on the log's order.
-        Zero-size files are skipped and ``pruners`` applied, as the directory
-        listing does; a ``DeltaPartitionPruner`` gets each file's partition
-        values from the log.
+        not read. Paths are relative to the table root, in the order
+        ``deltalake`` lists the ``add`` actions. ``to_pyarrow_dataset`` lists
+        them in that order too, so ``preserve_order=True`` returns rows in the
+        V1 reader's order. Zero-size files are skipped and ``pruners``
+        applied, as the directory listing does; a ``DeltaPartitionPruner``
+        gets each file's partition values from the log.
         """
         add_actions = self._snapshot.add_actions()
         file_paths = [
@@ -330,15 +331,12 @@ class _DeltaLogListing:
                 else [None] * add_actions.num_rows,
             )
         )
-        file_infos = sorted(
-            (
-                FileInfo(path=path, size=size)
-                for path, size in zip(
-                    file_paths, add_actions[ADD_ACTION_SIZE_COLUMN].to_pylist()
-                )
-            ),
-            key=lambda info: info.path,
-        )
+        file_infos = [
+            FileInfo(path=path, size=size)
+            for path, size in zip(
+                file_paths, add_actions[ADD_ACTION_SIZE_COLUMN].to_pylist()
+            )
+        ]
         logger.debug(
             "Delta table %s version %d has %d data files",
             self._snapshot.table_uri,

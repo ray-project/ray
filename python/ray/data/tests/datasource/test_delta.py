@@ -25,7 +25,7 @@ def delta_reader(request, restore_data_context):
     """Run every test with both the V1 and the DataSourceV2 reader."""
     ctx = DataContext.get_current()
     ctx.use_datasource_v2 = True
-    ctx.use_delta_datasource_v2 = request.param == "v2"
+    ctx._use_delta_datasource_v2 = request.param == "v2"
     return request.param
 
 

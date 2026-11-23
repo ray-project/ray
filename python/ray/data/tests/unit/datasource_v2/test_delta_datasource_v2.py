@@ -44,10 +44,11 @@ def _listed_paths(indexer, **kwargs) -> List[str]:
 
 def _log_paths(path: str, version: Optional[int] = None) -> List[str]:
     table = deltalake.DeltaTable(path, version=version)
-    return sorted(
+    # In the log's order, which the listing keeps.
+    return [
         resolve_data_file_path(p)
         for p in pa.table(table.get_add_actions(flatten=True))["path"].to_pylist()
-    )
+    ]
 
 
 @pytest.fixture
