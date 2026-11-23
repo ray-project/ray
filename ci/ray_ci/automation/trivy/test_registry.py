@@ -1,4 +1,5 @@
 import hashlib
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -89,6 +90,23 @@ def test_a_crane_missing_from_the_runfiles_is_a_registry_error(
     monkeypatch.setattr(registry.runfiles, "Create", lambda: runfiles)
     with pytest.raises(registry.RegistryError, match="runfiles"):
         registry.crane_binary()
+
+
+@pytest.mark.parametrize(
+    "output",
+    ["", "latest", "WARN retrying\nsha256:" + "a" * 64, "sha256:" + "A" * 64],
+    ids=["empty", "a-tag", "extra-line", "upper-case"],
+)
+def test_digest_must_be_a_sha256_digest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, output: str
+):
+    crane = fake_crane(tmp_path, f"printf '%s\\n' {shlex.quote(output)}")
+    monkeypatch.setattr(registry, "crane_binary", lambda: crane)
+    with pytest.raises(registry.RegistryError, match="not a digest"):
+        registry.digest("repo:tag")
+    good = "sha256:" + "a" * 64
+    fake_crane(tmp_path, f"echo {good}")
+    assert registry.digest("repo:tag") == good
 
 
 def test_a_failed_blob_download_leaves_no_file(

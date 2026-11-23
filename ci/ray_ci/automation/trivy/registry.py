@@ -12,6 +12,7 @@ crane prints (whole manifests here) and depends on ray_ci_lib.
 
 import hashlib
 import json
+import re
 import subprocess
 from pathlib import Path
 from typing import Any, Optional, Sequence
@@ -22,6 +23,7 @@ import runfiles
 # pull, which can be several GB.
 CALL_TIMEOUT = 2 * 60
 TRANSFER_TIMEOUT = 30 * 60
+SHA256_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
 
 
 class RegistryError(Exception):
@@ -71,7 +73,10 @@ def digest(ref: str, platform: Optional[str] = None) -> str:
     args = ["digest", ref]
     if platform:
         args += ["--platform", platform]
-    return _crane(args).strip()
+    value = _crane(args).strip()
+    if not SHA256_DIGEST.fullmatch(value):
+        raise RegistryError(f"crane {' '.join(args)} printed {value!r}, not a digest")
+    return value
 
 
 def manifest(ref: str) -> dict[str, Any]:
