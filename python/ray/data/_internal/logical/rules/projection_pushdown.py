@@ -436,6 +436,21 @@ class ProjectionPushdown(Rule):
 
         # Step 2: Push projection into the data source if supported
         input_op = current_project.input_dependencies[0]
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        if isinstance(input_op, ReadFiles) and input_op.datasource_name == "Hive":
+            from ray.data._internal.compute import TaskPoolStrategy
+            from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
+                _HiveTableScanner,
+            )
+
+            if isinstance(input_op.scanner, _HiveTableScanner) and (
+                current_project.ray_remote_args
+                or current_project.ray_remote_args_fn is not None
+                or current_project.compute != TaskPoolStrategy()
+            ):
+                # Preserve execution requirements instead of dropping the Project.
+                return current_project
         if (
             isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
             and input_op.supports_projection_pushdown()

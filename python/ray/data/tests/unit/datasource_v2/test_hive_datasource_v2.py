@@ -7,6 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray.cloudpickle as cloudpickle
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource_v2.formats.hive import hive_datasource_v2
 from ray.data._internal.datasource_v2.formats.hive.hive_contract import (
     HiveReadSpec,
@@ -29,7 +30,10 @@ from ray.data._internal.datasource_v2.interfaces.pushdown import (
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.rules.projection_pushdown import ProjectionPushdown
 from ray.data._internal.metadata_exporter import sanitize_for_struct
+from ray.data.expressions import col
 
 _TABLE_SCHEMA = pa.schema(
     [
@@ -253,6 +257,30 @@ def test_table_scanner_capabilities_clone_and_projection():
     )
     with pytest.raises(ValueError, match="unavailable"):
         final.prune_columns(["id"])
+
+
+@pytest.mark.parametrize(
+    "options", [{"ray_remote_args": {"num_cpus": 2}}, {"compute": TaskPoolStrategy(2)}]
+)
+def test_hive_projection_keeps_explicit_execution_requirements(options):
+    read = _read(_table_scanner(), "Hive")
+    project = Project(exprs=[col("name")], input_dependencies=[read], **options)
+    result = ProjectionPushdown._push_projection_into_read_op(project)
+    assert result is project
+    assert result.input_dependencies[0] is read
+    default = Project(exprs=[col("name")], input_dependencies=[read])
+    pushed = ProjectionPushdown._push_projection_into_read_op(default)
+    assert isinstance(pushed, ReadFiles)
+    assert isinstance(pushed.scanner, _HiveTableScanner)
+    assert pushed.scanner.columns == ("name",)
+    parquet = _read(ParquetScanner(schema=_TABLE_SCHEMA), "ParquetV2")
+    parquet_project = Project(
+        exprs=[col("name")], input_dependencies=[parquet], **options
+    )
+    pushed_parquet = ProjectionPushdown._push_projection_into_read_op(parquet_project)
+    assert isinstance(pushed_parquet, ReadFiles)
+    assert isinstance(pushed_parquet.scanner, ParquetScanner)
+    assert pushed_parquet.scanner.columns == ("name",)
 
 
 @pytest.mark.parametrize(

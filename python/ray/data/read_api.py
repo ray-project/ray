@@ -4343,9 +4343,8 @@ def read_hive(
         Immediate operation cancellation or explicit connection cleanup isn't
         guaranteed.
 
-        Special column names use Hive's default
-        ``hive.support.quoted.identifiers=column`` mode. Special-name projection
-        isn't supported in the ``none`` mode.
+        For projections containing special column names, Ray reads all columns
+        and selects the requested columns locally.
 
     Notes:
         Direct reads retain Hive's schema. Widening supports only signed

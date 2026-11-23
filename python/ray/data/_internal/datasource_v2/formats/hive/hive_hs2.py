@@ -218,6 +218,7 @@ def read_hs2_batches(
     statement: Optional[str] = None,
     limit: Optional[int] = None,
     empty_projection: bool = False,
+    source_schema: Optional[pa.Schema] = None,
 ) -> Iterator[pa.Table]:
     """Execute one statement and yield bounded Arrow batches."""
     if spec.limit == 0 or limit == 0:
@@ -238,6 +239,8 @@ def read_hs2_batches(
         result_schema = (
             pa.schema([(_EMPTY_PROJECTION_COLUMN, pa.int32())])
             if empty_projection
+            else source_schema
+            if source_schema is not None
             else schema
         )
         _check_result_schema(description, result_schema, table_name)
@@ -249,6 +252,8 @@ def read_hs2_batches(
             if not rows:
                 break
             table = _to_arrow(rows, result_schema)
+            if source_schema is not None:
+                table = table.select(schema.names)
             if empty_projection:
                 # Zero-column blocks count as zero rows in Ray. Keep its existing
                 # physical stub; Scanner.read_schema() exposes the logical schema.

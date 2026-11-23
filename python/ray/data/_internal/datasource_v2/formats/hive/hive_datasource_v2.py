@@ -1,5 +1,6 @@
 """Single-query HiveServer2 datasource for the Ray Data V2 read path."""
 
+import re
 from dataclasses import dataclass, replace
 from typing import AbstractSet, Iterable, Iterator, List, Optional
 
@@ -135,9 +136,13 @@ class _HiveTableScanner(
         identifier = self._spec.table_identifier
         assert identifier is not None
         database, table = identifier
+        local_projection = self.columns is not None and any(
+            re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name) is None
+            for name in self.columns
+        )
         projection = (
             "*"
-            if self.columns is None
+            if self.columns is None or local_projection
             else ", ".join(quote_identifier(name) for name in self.columns)
         )
         if self.columns == ():
@@ -152,6 +157,7 @@ class _HiveTableScanner(
             statement=statement,
             limit=limit,
             empty_projection=self.columns == (),
+            **({"source_schema": self._schema} if local_projection else {}),
         )
 
 
