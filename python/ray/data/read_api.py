@@ -2685,33 +2685,14 @@ def read_csv(
     )
 
 
-def _text_read_uses_v2(
-    paths: Union[str, List[str]],
-    filesystem: Optional["pyarrow.fs.FileSystem"],
-    arrow_open_stream_args: Optional[Dict[str, Any]],
-) -> bool:
+def _text_read_uses_v2(arrow_open_stream_args: Optional[Dict[str, Any]]) -> bool:
     """Whether ``read_text`` routes through DataSource V2.
 
-    V2 has no ``open_stream_args``, and its listing needs file sizes that HTTP
-    servers often do not report, so those reads keep the V1 reader.
+    V2 has no ``open_stream_args``, so those reads keep the V1 reader.
     """
-    from ray.data.datasource.path_util import _is_http_filesystem, _is_http_url
-
-    if not DataContext.get_current().use_datasource_v2:
-        return False
-    if arrow_open_stream_args is not None:
-        return False
-    if any(_is_http_url(path) for path in _normalize_paths_to_strings(paths)):
-        return False
-    if filesystem is None:
-        return True
-    if _is_http_filesystem(filesystem):
-        return False
-    try:
-        from fsspec.implementations.http import HTTPFileSystem
-    except ImportError:
-        return True
-    return not isinstance(filesystem, HTTPFileSystem)
+    return (
+        DataContext.get_current().use_datasource_v2 and arrow_open_stream_args is None
+    )
 
 
 @PublicAPI
@@ -2750,8 +2731,8 @@ def read_text(
     Note:
         The DataSourceV2 reader is selected through the ``use_datasource_v2``
         setting of :class:`~ray.data.context.DataContext`. A read that sets
-        ``arrow_open_stream_args`` or reads over HTTP uses the V1 reader. If you
-        encounter a DataSourceV2 limitation, use the V1 reader by setting
+        ``arrow_open_stream_args`` uses the V1 reader. If you encounter a
+        DataSourceV2 limitation, use the V1 reader by setting
         ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
         ``RAY_DATA_USE_DATASOURCE_V2=0`` in the environment before importing
         Ray. This shared setting also affects ``read_parquet()`` and
@@ -2834,7 +2815,7 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
-    if _text_read_uses_v2(paths, filesystem, arrow_open_stream_args):
+    if _text_read_uses_v2(arrow_open_stream_args):
         from ray.data._internal.datasource_v2.formats.text.text_datasource_v2 import (
             TextDatasourceV2,
         )
