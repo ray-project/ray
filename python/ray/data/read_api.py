@@ -64,6 +64,7 @@ from ray.data._internal.datasource.parquet_datasource import (
     TensorColumnSchema,
 )
 from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.datasource.snowflake_datasource import SnowflakeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
 from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
@@ -651,7 +652,11 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
-    schema = datasource.infer_schema(sample)
+    if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
+        assert sample is not None
+        schema = datasource.infer_full_schema(sample, ray_remote_args=ray_remote_args)
+    else:
+        schema = datasource.infer_schema(sample)
     schema_elapsed = (
         time.perf_counter() - schema_started if schema_started is not None else None
     )
@@ -1872,13 +1877,12 @@ def read_parquet(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
-        planning, which can be expensive for large or remote datasets. Execution
-        reads footer metadata again. With more than 10,000 candidate files, the
-        reader warns before footer merging. Retained path and size metadata adds
-        O(files) data to serialized lineage.
-
-        Follow-up work for distributed planning-time footer reads and metadata
-        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
+        planning, which can be expensive for large or remote datasets. Larger
+        eligible reads distribute schema I/O across Ray tasks. Execution reads
+        footer metadata again.
+        With more than 10,000 candidate files, the reader warns before schema
+        merging. Retained path and size metadata adds O(files) data to serialized
+        lineage.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -3141,14 +3145,11 @@ def read_orc(
     .. note::
 
         ``merge_schema=True`` lists all eligible files and reads their schemas
-        on the driver during planning, which can be expensive for large or remote
-        datasets. The reader uses the merged schema, but Ray doesn't retain per-file
-        ORC metadata from schema inference for reuse during execution.
+        during planning, which can be expensive for large or remote datasets.
+        Larger eligible reads distribute schema I/O across bounded Ray tasks.
+        Execution reads ORC metadata again.
         With more than 10,000 candidate files, Ray warns before schema merging.
         Retained path and size metadata adds O(files) data to serialized lineage.
-
-        Follow-up work for distributed planning-time schema reads and metadata
-        reuse is tracked in https://github.com/ray-project/ray/issues/67040.
 
         The Dataset retains those candidate paths across actions. Files appended
         after discovery aren't included. Concurrent directory traversal isn't an
@@ -4793,6 +4794,12 @@ def read_snowflake(
 ) -> Dataset:
     """Read data from a Snowflake data set.
 
+    Ray runs the query once. Snowflake returns the result as result batches, which
+    the read tasks download in parallel as Arrow tables.
+
+    Snowflake ``NUMBER`` columns with a nonzero scale, like ``NUMBER(10, 2)``, are
+    read as ``float64``.
+
     Examples:
         >>> import ray  # doctest: +SKIP_EXAMPLE
         >>> connection_parameters = dict(
@@ -4809,7 +4816,10 @@ def read_snowflake(
         connection_parameters: Keyword arguments to pass to
             ``snowflake.connector.connect``. To view supported parameters, read
             https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
-        shard_keys: The keys to shard the data by.
+        shard_keys: The keys to shard the data by. If you set this, Ray reads with
+            :func:`~ray.data.read_sql` instead, which runs a separate query for each
+            output block that selects rows by a hash of these keys. You don't need
+            this for parallel reads.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
@@ -4821,10 +4831,10 @@ def read_snowflake(
             total number of tasks run or the total number of output blocks. By default,
             concurrency is dynamically decided based on the available resources.
         override_num_blocks: Override the number of output blocks from all read tasks.
-            This is used for sharding when shard_keys is provided.
-            By default, the number of output blocks is dynamically decided based on
-            input data size and available resources. You shouldn't manually set this
-            value in most cases.
+            Without ``shard_keys``, Ray creates at most one read task per result
+            batch. By default, the number of output blocks is dynamically decided
+            based on input data size and available resources. You shouldn't manually
+            set this value in most cases.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -4840,6 +4850,24 @@ def read_snowflake(
     Returns:
         A ``Dataset`` containing the data from the Snowflake data set.
     """  # noqa: E501
+    if shard_keys is None:
+        return read_datasource(
+            SnowflakeDatasource(sql=sql, connection_parameters=connection_parameters),
+            parallelism=parallelism,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
+
     import snowflake.connector
 
     def snowflake_connection_factory():
@@ -6269,6 +6297,14 @@ def read_lance(
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from one or more
     `Lance Datasets <https://lance-format.github.io/lance-python-doc/dataset.html>`_.
+
+    .. note::
+        Filtered reads leave row-count metadata unknown without scanning the
+        data during planning. ``count()`` executes the read. Non-stratified
+        ``train_test_split()`` uses materialized rows to determine split sizes.
+        Count-only reads may still read payload columns because this reader
+        does not support automatic projection pushdown. Use ``columns`` to
+        explicitly limit the columns read when appropriate.
 
     Examples:
         >>> import ray

@@ -2,7 +2,6 @@ import asyncio
 from typing import Optional, Type
 
 from vllm.outputs import RequestOutput
-from vllm.sampling_params import RequestOutputKind
 from vllm.v1.engine.async_llm import AsyncLLM
 
 from ray import serve
@@ -95,38 +94,19 @@ class LifecycleEventForwarder:
 class RequestTokenTracker:
     """Drives the request lifecycle hooks for one ``generate()`` stream."""
 
-    def __init__(
-        self,
-        forwarder: LifecycleEventForwarder,
-        request_id: str,
-        report_decode_progress: bool = False,
-    ):
+    def __init__(self, forwarder: LifecycleEventForwarder, request_id: str):
         self._forwarder = forwarder
         self._request_id = request_id
-        self._cumulative = 0
         self._prefill_marked = False
         self._finished = False
-        self._report_decode_progress = report_decode_progress
 
     def on_output(self, output: RequestOutput) -> None:
-        """Observe one engine ``RequestOutput`` (forwarded to the caller as-is).
-
-        vLLM streams either DELTA chunks or a single FINAL_ONLY chunk; both
-        carry only new tokens, so output progress simply accumulates.
-        """
-        step_tokens = sum(len(o.token_ids or []) for o in output.outputs)
-        if step_tokens == 0:
-            # No new tokens this step (e.g. a finish-only chunk).
+        """Observe one engine ``RequestOutput`` (forwarded to the caller as-is)."""
+        if self._prefill_marked or not any(o.token_ids for o in output.outputs):
             return
-        self._cumulative += step_tokens
-        if not self._prefill_marked:
-            # The first output token signals prefill completion.
-            self._prefill_marked = True
-            self._forwarder.report("on_prefill_complete", self._request_id)
-        if self._report_decode_progress:
-            self._forwarder.report(
-                "on_decode_progress", self._request_id, self._cumulative
-            )
+        # The first output token signals prefill completion.
+        self._prefill_marked = True
+        self._forwarder.report("on_prefill_complete", self._request_id)
 
     def finish(self) -> None:
         """Report completion exactly once."""
@@ -135,15 +115,12 @@ class RequestTokenTracker:
             self._forwarder.report("on_request_completed", self._request_id)
 
 
-def enable_token_tracking(
-    engine_cls: Type[AsyncLLM], report_decode_progress: bool = False
-) -> Type[AsyncLLM]:
+def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
     """Decorator adding KV-router request lifecycle tracking."""
 
     class TokenTrackingEngine(engine_cls):
         _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
         _resolve_warned: bool = False
-        _report_decode_progress: bool = report_decode_progress
 
         def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
             if self._lifecycle_forwarder is None:
@@ -174,23 +151,16 @@ def enable_token_tracking(
                 prompt, sampling_params, request_id, *args, **kwargs
             )
             forwarder = self._resolve_lifecycle_forwarder()
-            # CUMULATIVE repeats output-so-far per chunk; our accounting sums
-            # deltas, so skip it rather than over-count. vLLM's OpenAI layer only
-            # uses DELTA/FINAL_ONLY (*Request.to_sampling_params):
-            # https://github.com/vllm-project/vllm/tree/main/vllm/entrypoints/openai
-            if forwarder is None or (
-                sampling_params.output_kind == RequestOutputKind.CUMULATIVE
-            ):
+            if forwarder is None:
                 async for output in stream:
                     yield output
                 return
 
             lifecycle_request_id = get_serve_request_id() or request_id
-            tracker = RequestTokenTracker(
-                forwarder,
-                lifecycle_request_id,
-                report_decode_progress=self._report_decode_progress,
-            )
+            # TODO (jeffreywang): Track per request, not per generate call. Beam
+            # search runs many generate calls, so the first one frees the
+            # request's load early.
+            tracker = RequestTokenTracker(forwarder, lifecycle_request_id)
             try:
                 async for output in stream:
                     tracker.on_output(output)

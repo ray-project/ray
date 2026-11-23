@@ -21,6 +21,7 @@ from ray.train.health import (
     Reattempt,
     WorkerProbe,
 )
+from ray.train.health._internal.constants import ON_DEMAND_PROBE_GRACE_S
 from ray.train.health._internal.manager import (
     HealthManager,
     _to_health_state,
@@ -64,6 +65,7 @@ class Always(Evaluator):
         self.decision = decision
         self.seen = []
         self.resets = 0
+        self.shutdowns = 0
 
     def evaluate(self, state):
         self.seen.append(state)
@@ -71,6 +73,9 @@ class Always(Evaluator):
 
     def on_reset(self):
         self.resets += 1
+
+    def on_shutdown(self):
+        self.shutdowns += 1
 
 
 class Raises(Evaluator):
@@ -336,6 +341,25 @@ def test_reset_drops_the_results_and_resets_the_evaluators(fake_node_id):
     assert evaluator.resets == 1
 
 
+@pytest.mark.parametrize("hook", ["on_reset", "on_shutdown"])
+def test_evaluator_hooks_survive_a_failing_evaluator(fake_node_id, hook):
+    def boom():
+        raise RuntimeError("bug in evaluator")
+
+    broken, evaluator = Always(Noop()), Always(Noop())
+    setattr(broken, hook, boom)
+    manager = HealthManager([_check(evaluators=[broken, evaluator])])
+    _fake_temps(manager, [])
+
+    if hook == "on_reset":
+        manager.reset([])
+    else:
+        manager.shutdown()
+    assert (evaluator.resets, evaluator.shutdowns) == (
+        (1, 0) if hook == "on_reset" else (0, 1)
+    )
+
+
 def test_an_evicted_node_is_not_evicted_again(fake_node_id):
     evaluator = Always(Evict(reason="hot", target_nodes=["n1"]))
     manager = HealthManager([_check(evaluators=[evaluator])])
@@ -370,9 +394,7 @@ def test_on_demand_checks_run_apart_from_the_inflight_checks():
     manager = HealthManager([_check(evaluators=[Always(Reattempt(reason="hang"))])])
     _fake_temps(manager, [ProbeResult()])
     diagnosis = Always(Evict(reason="diagnosed", target_nodes=["n1"]))
-    manager.start_on_demand_checks(
-        [HealthCheck(evaluator_creator=lambda: [diagnosis])], timeout=10
-    )
+    manager.start_on_demand_checks([HealthCheck(evaluator_creator=lambda: [diagnosis])])
 
     assert manager.evaluate_inflight_checks(timeout=0) == Reattempt(reason="hang")
     assert manager.evaluate_on_demand_checks() == Evict(
@@ -386,7 +408,7 @@ def test_evaluate_waits_for_the_on_demand_checks_before_another_diagnose():
     _fake_temps(manager, [ProbeResult()] * 3)
     evict = Evict(reason="bad NIC", target_nodes=["n1"])
     manager.start_on_demand_checks(
-        [HealthCheck(evaluator_creator=lambda: [Always(evict)])], timeout=10
+        [HealthCheck(evaluator_creator=lambda: [Always(evict)])]
     )
     manager._node_monitor_group.poll_probe_results = mock.Mock(
         side_effect=[None, NodeMonitorGroupPollStatus(node_monitor_statuses={})]
@@ -405,7 +427,7 @@ def test_evaluate_keeps_a_diagnose_that_requires_idle_workers_while_others_run()
     manager = HealthManager([_check(evaluators=[Always(diagnose)])])
     _fake_temps(manager, [ProbeResult()])
     manager.start_on_demand_checks(
-        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])], timeout=10
+        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])]
     )
     manager._node_monitor_group.poll_probe_results = mock.Mock(return_value=None)
 
@@ -441,15 +463,39 @@ def test_on_demand_worker_probes_run_on_the_worker_group(fake_node_id):
                 probe_creator=lambda: [probe, Temp()],
                 evaluator_creator=lambda: [evaluator],
             )
-        ],
-        timeout=10,
+        ]
     )
-    worker_group.poll_probes_async.assert_called_once_with([probe], timeout_s=10)
+    assert worker_group.poll_probes_async.call_args.args == ([probe],)
 
     assert manager.evaluate_on_demand_checks() is None
     assert manager.evaluate_on_demand_checks() == Noop()
     (state,) = evaluator.seen
     assert state.probe_results["StepTime"] == {0: step_time}
+
+
+def test_on_demand_checks_wait_for_their_slowest_probe(fake_node_id):
+    manager = HealthManager([])
+    _fake_temps(manager, [])
+    worker_group = mock.Mock()
+    manager.reset(["n1"], worker_group)
+    temp, pid, step_time = Temp(), Pid(), StepTime()
+    temp.timeout_s, pid.timeout_s, step_time.timeout_s = 5.0, 20.0, 3.0
+
+    manager.start_on_demand_checks(
+        [
+            HealthCheck(
+                probe_creator=lambda: [temp, pid, step_time],
+                evaluator_creator=lambda: [Always(Noop())],
+            )
+        ]
+    )
+
+    manager._node_monitor_group.poll_probes_async.assert_called_once_with(
+        [temp, pid], timeout_s=20.0 + ON_DEMAND_PROBE_GRACE_S
+    )
+    worker_group.poll_probes_async.assert_called_once_with(
+        [step_time], timeout_s=3.0 + ON_DEMAND_PROBE_GRACE_S
+    )
 
 
 def test_on_demand_checks_decide_noop_before_any_start():
@@ -460,7 +506,7 @@ def test_on_demand_checks_decide_once(caplog, propagate_logs):
     manager = HealthManager([])
     _fake_temps(manager, [])
     manager.start_on_demand_checks(
-        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])], timeout=10
+        [HealthCheck(evaluator_creator=lambda: [Always(Noop())])]
     )
     assert manager.evaluate_on_demand_checks() == Noop()
     assert "found nothing to act on" in caplog.text
@@ -565,7 +611,7 @@ def test_on_demand_checks_poll_their_probes_once_on_each_node(ray_start_4_cpus):
         evaluator_creator=lambda: [evaluator],
     )
     try:
-        manager.start_on_demand_checks([check], timeout=30)
+        manager.start_on_demand_checks([check])
         assert _wait_for(manager.evaluate_on_demand_checks) == Reattempt(
             reason="diagnosed"
         )
