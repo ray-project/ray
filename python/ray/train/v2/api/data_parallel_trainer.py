@@ -24,6 +24,7 @@ from ray.train.base_trainer import (
 )
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.health.nccl_ras.check import nccl_hang_config
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -35,7 +36,6 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.callbacks.nccl_ras import NCCLRASCallback
 from ray.train.v2._internal.callbacks.placement_group_callback import (
     PlacementGroupCleanerCallback,
 )
@@ -54,7 +54,6 @@ from ray.train.v2._internal.execution.callback import RayTrainCallback
 from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import create_failure_policy
-from ray.train.v2._internal.execution.local_mode.utils import LocalController
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
@@ -96,8 +95,6 @@ class DataParallelTrainer:
         self.backend_config = backend_config or BackendConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
-
-        self.running_in_local_mode = self.scaling_config.num_workers == 0
 
         self.train_run_context = TrainRunContext(
             run_config=self.run_config,
@@ -171,36 +168,31 @@ class DataParallelTrainer:
                 This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
                 training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
-        train_fn = self._get_train_func()
-        if self.running_in_local_mode:
-            return self._initialize_and_run_local_controller(train_fn)
-        else:
-            train_fn_ref = ObjectRefWrapper(train_fn)
+        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
+            # The controller runs the NCCL hang detector. Its env vars are
+            # read here too, so that an invalid one raises a ValueError.
+            nccl_hang_config()
 
-            result = self._initialize_and_run_controller(
-                train_fn_ref=train_fn_ref,
-                scaling_policy=create_scaling_policy(self.scaling_config),
-                failure_policy=create_failure_policy(self.run_config.failure_config),
-                train_run_context=self.train_run_context,
-                callbacks=self._create_default_callbacks(),
-                validation_config=self.validation_config,
-            )
+        train_fn_ref = ObjectRefWrapper(self._get_train_func())
 
-            if result.error:
-                # NOTE: If the training run errored out, raise an error back to the
-                # user's driver script.
-                # For example, if the Train `FailurePolicy` runs out of retries,
-                # and one of the workers errors. The controller will exit, and
-                # the error will be raised here.
-                raise result.error
-
-            return result
-
-    def _get_local_controller(self) -> LocalController:
-        return LocalController(
-            experiment_name=self.run_config.name,
-            datasets=self.datasets,
+        result = self._initialize_and_run_controller(
+            train_fn_ref=train_fn_ref,
+            scaling_policy=create_scaling_policy(self.scaling_config),
+            failure_policy=create_failure_policy(self.run_config.failure_config),
+            train_run_context=self.train_run_context,
+            callbacks=self._create_default_callbacks(),
+            validation_config=self.validation_config,
         )
+
+        if result.error:
+            # NOTE: If the training run errored out, raise an error back to the
+            # user's driver script.
+            # For example, if the Train `FailurePolicy` runs out of retries,
+            # and one of the workers errors. The controller will exit, and
+            # the error will be raised here.
+            raise result.error
+
+        return result
 
     def _create_default_callbacks(self) -> List[RayTrainCallback]:
         # Initialize callbacks from environment variable
@@ -231,10 +223,6 @@ class DataParallelTrainer:
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
-        # TODO: NCCLRASCallback is experimental. Off by default for now
-        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
-            callbacks.append(NCCLRASCallback())
-
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
             callbacks.append(StateManagerCallback(datasets=self.datasets))
 
@@ -258,11 +246,6 @@ class DataParallelTrainer:
             [cb for cb in run_config_callbacks if not isinstance(cb, UserCallback)]
         )
         return callbacks
-
-    def _initialize_and_run_local_controller(
-        self, train_func: Callable[[], Any]
-    ) -> Result:
-        return self._get_local_controller().run(train_func)
 
     def _initialize_and_run_controller(self, **controller_init_kwargs) -> Result:
         env_vars = get_env_vars_to_propagate()

@@ -72,6 +72,9 @@ from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
+    from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+        OpRuntimeMetrics,
+    )
     from ray.data._internal.issue_detection.issue_detector_manager import (
         IssueDetectorManager,
     )
@@ -185,6 +188,8 @@ class StreamingExecutor(Executor, threading.Thread):
         dataset_id: str = "unknown_dataset",
     ):
         self._data_context = data_context
+        # Resolved once so the backend can't change mid-execution.
+        self._actor_only_backend = actor_only_backend_enabled(data_context)
         self._ranker = create_ranker()
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
@@ -208,7 +213,7 @@ class StreamingExecutor(Executor, threading.Thread):
         # Live object-store accounting. Only the actor-only backend feeds it, so
         # it stays None (and every ResourceBank method is unreachable) otherwise.
         self._resource_bank: Optional[ResourceBankBase] = (
-            ResourceBank() if actor_only_backend_enabled() else None
+            ResourceBank() if self._actor_only_backend else None
         )
 
         self._dataset_id = dataset_id
@@ -322,6 +327,21 @@ class StreamingExecutor(Executor, threading.Thread):
             self._lineage_tracker,
             resource_bank=self._resource_bank,
         )
+
+        if self._actor_only_backend:
+            # Reject shuffle / all-to-all ops and unsupported options here,
+            # while the topology is still just a plan: the actor-only backend
+            # has no implementation for them and would otherwise stall midway.
+            from ray.data._internal.experimental.execution.topology_validation import (
+                validate_actor_only_supported_topology,
+            )
+
+            validate_actor_only_supported_topology(self._topology, self._options)
+        else:
+            # Actor-only operators switch their DataContext to grouped
+            # block + metadata yields. If the same context later runs with the
+            # backend off, workers must go back to one object per yield.
+            self._data_context._use_grouped_streaming_generator_yields = False
 
         self._resource_manager = ResourceManager(
             self._topology,
@@ -811,6 +831,14 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{self._get_operator_id(op, i)}" for i, op in enumerate(self._topology)
         ]
 
+    def _get_phase_metrics(self) -> Dict[str, Dict[str, "OpRuntimeMetrics"]]:
+        """Returns each multi-phase operator's phase metrics, keyed by its tag."""
+        return {
+            self._get_operator_id(op, i): phase_metrics
+            for i, op in enumerate(self._topology)
+            if (phase_metrics := op.get_phase_metrics())
+        }
+
     def _get_state_dict(self, state):
         last_op, last_state = list(self._topology.items())[-1]
         return {
@@ -847,6 +875,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 [op.metrics for op in self._topology],
                 self._get_operator_tags(),
                 self._get_state_dict(state=state),
+                phase_metrics=self._get_phase_metrics(),
             )
             self._metrics_last_updated = now
 
