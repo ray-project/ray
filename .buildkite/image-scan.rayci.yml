@@ -5,7 +5,10 @@
 # trigger-postmerge and trigger-postmerge-nightly steps in
 # .buildkite/release-automation/pre_release.rayci.yml (not the macOS one).
 # release-automation waits on that postmerge build, so every step is
-# soft_fail: a scan must never block a release.
+# soft_fail: a scan must never block a release. soft_fail can't end a job
+# that hangs, so every step also has a timeout, several times its usual
+# run time (postmerge #20999: 3 min for the DBs, up to 15 per scan, 4 for
+# the report).
 # Tooling: ci/ray_ci/automation/trivy/.
 #
 # trivy_db stages the vulnerability DBs in the build's S3 folder once
@@ -22,6 +25,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: small
     soft_fail: true
+    timeout_in_minutes: 20
     tags:
       - docker
       - oss
@@ -40,6 +44,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: medium
     soft_fail: true
+    timeout_in_minutes: 60
     tags:
       - docker
       - oss
@@ -75,6 +80,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: medium
     soft_fail: true
+    timeout_in_minutes: 60
     tags:
       - docker
       - oss
@@ -95,6 +101,7 @@ steps:
     # Trivy only reads the layout, so arm64 images are scanned on x86_64.
     instance_type: medium
     soft_fail: true
+    timeout_in_minutes: 60
     tags:
       - docker
       - oss
@@ -131,6 +138,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: medium
     soft_fail: true
+    timeout_in_minutes: 60
     tags:
       - docker
       - oss
@@ -151,6 +159,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: medium
     soft_fail: true
+    timeout_in_minutes: 60
     tags:
       - docker
       - oss
@@ -175,6 +184,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: small
     soft_fail: true
+    timeout_in_minutes: 20
     allow_dependency_failure: true
     tags:
       - docker

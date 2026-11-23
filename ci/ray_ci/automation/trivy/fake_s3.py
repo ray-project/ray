@@ -12,7 +12,8 @@ class FakeS3:
         self.objects: dict[tuple[str, str], bytes] = {}
         # Keys whose upload fails, as when the role may not write there.
         self.denied: set[str] = set()
-        # Keys whose download fails, as on a 5xx that outlasts boto3's retries.
+        # Keys whose download or HEAD fails, as on a 5xx that outlasts boto3's
+        # retries.
         self.broken: set[str] = set()
 
     def upload_file(self, filename: str, bucket: str, key: str) -> None:
