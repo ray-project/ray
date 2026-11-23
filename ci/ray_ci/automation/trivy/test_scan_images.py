@@ -97,9 +97,47 @@ def test_build_targets_uses_the_wanda_ref_and_published_tags():
     ]
 
 
-def test_build_targets_rejects_unpublished_variants():
+@pytest.mark.parametrize(
+    ("images", "platform"),
+    [
+        pytest.param([("ray-llm", "3.12")], "tpu", id="platform-the-type-lacks"),
+        pytest.param([("foo", "3.12")], "cpu", id="unknown-type"),
+        pytest.param([("ray", "3.12")] * 2, "cpu", id="given-twice"),
+    ],
+)
+def test_build_targets_rejects_images_it_cannot_scan(images: list, platform: str):
+    """RayImage.validate checks each field on its own, so a combination like
+    ray tpu on aarch64 gets through, and fails later when crane can't find
+    the image."""
     with pytest.raises(click.BadParameter):
-        targets(("ray-llm", "3.12"), platform="tpu")
+        targets(*images, platform=platform)
+
+
+@pytest.mark.parametrize(
+    ("branch", "schedule", "published"),
+    [
+        ("releases/2.61.0", "", True),
+        ("master", "nightly", True),
+        # The publish step only does a dry run on these.
+        ("master", "", False),
+        ("someone/feature", "", False),
+    ],
+)
+def test_published_tags_only_when_the_build_publishes(
+    branch: str, schedule: str, published: bool
+):
+    (target,) = build_targets(
+        [("ray", "3.12")],
+        "cpu",
+        "x86_64",
+        WORK_REPO,
+        "abc123",
+        branch,
+        COMMIT,
+        schedule,
+        "false",
+    )
+    assert bool(target.status_record()["published_tags"]) is published
 
 
 @pytest.mark.parametrize(
@@ -119,8 +157,29 @@ def test_check_target(manifest_type: str, arch: str, expected_error: str):
         digest=mock.Mock(return_value="sha256:d1"),
     ):
         check_target(target, "x86_64")
-    assert expected_error in target.error
+    if expected_error:
+        assert expected_error in target.error
+    else:
+        assert target.error == ""
     assert target.digest == ("" if expected_error else "sha256:d1")
+
+
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            registry.RegistryError("crane digest x failed: boom"),
+            "crane digest x failed: boom",
+        ),
+        (KeyError("architecture"), "KeyError: 'architecture'"),
+    ],
+    ids=["registry-error", "unexpected"],
+)
+def test_check_target_records_why_it_failed(error: Exception, expected: str):
+    (target,) = targets(("ray", "3.12"))
+    with mock.patch.object(scan_images.registry, "digest", side_effect=error):
+        check_target(target, "x86_64")
+    assert (target.error, target.digest) == (expected, "")
 
 
 def test_docker_run_args_keep_trivy_contained():
