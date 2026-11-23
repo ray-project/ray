@@ -227,7 +227,7 @@ def download_results(store: ScanStore, dest: Path) -> tuple[list[str], dict[str,
         return ""
 
     wanted = [n for n in names if RESULT_NAME.match(n)]
-    # names() made the client; boto3 clients are thread-safe once made.
+    # The threads share the store's client; boto3 clients are thread-safe.
     with ThreadPoolExecutor(max_workers=DOWNLOAD_THREADS) as pool:
         errors = list(pool.map(fetch, wanted))
     failed = {}
