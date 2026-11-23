@@ -520,6 +520,12 @@ class HAProxyMetricsCollector:
         except Exception:
             sock.close()
             if self._close_count == close_count:
+                # Don't leave the socket file we bound behind.
+                if self._socket_path is not None:
+                    try:
+                        os.unlink(self._socket_path)
+                    except FileNotFoundError:
+                        pass
                 self._socket_path = None
             raise
 
