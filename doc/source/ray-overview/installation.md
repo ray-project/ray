@@ -379,7 +379,7 @@ We publish the dependencies that are installed in our `ray` Docker images for Py
 :::{tab-item} ray (Python 3.11)
 :sync: ray (Python 3.11)
 
-Ray version: nightly ([6fe11a7](https://github.com/ray-project/ray/commit/6fe11a7b4cc762dc3615ec1eaf216220e37c42b9))
+Ray version: nightly ([dfe9d1e](https://github.com/ray-project/ray/commit/dfe9d1e01c76a1f0416df5e5a07168f2acc46974))
 
 ```{literalinclude} ./pip_freeze_ray-py311-cpu.txt
 ```
