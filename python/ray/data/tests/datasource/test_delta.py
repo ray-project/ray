@@ -223,17 +223,16 @@ def test_delta_read_rejects_multiple_paths():
         ray.data.read_delta(["path1", "path2"])
 
 
-def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
+def test_delta_read_deletion_vectors_message_is_actionable(tmp_path, delta_reader):
     """A deletion-vector table must fail with advice that actually works.
 
-    Reading one is impossible through `to_pyarrow_dataset` -- pyarrow cannot
-    apply the deletion-vector bitmaps, so deltalake refuses rather than return
-    deleted rows, and no deltalake version changes that. The message therefore
-    has to point at the table property, not at a library upgrade.
+    Both readers read the data files with pyarrow, which cannot apply the
+    deletion-vector bitmaps, so they refuse rather than return deleted rows,
+    and no deltalake version changes that. The message therefore has to point
+    at the table property, not at a library upgrade.
 
     deltalake cannot *write* a table declaring the feature either, so the log
-    is written by hand. The DataSourceV2 reader leaves such a table to the V1
-    reader, so both readers fail the same way.
+    is written by hand.
     """
     path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
     write_deletion_vector_table(path)
@@ -254,8 +253,12 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
         assert recipe not in message, f"message should not prescribe {recipe!r}"
     # Does not send anyone chasing a library upgrade that cannot help.
     assert "deltalake>=" not in message
-    # Keeps the original error for anyone debugging deeper.
-    assert "not yet supported by the deltalake reader" in message
+    # Keeps the original error for anyone debugging deeper: V1's from
+    # deltalake, V2's own check.
+    if delta_reader == "v1":
+        assert "not yet supported by the deltalake reader" in message
+    else:
+        assert "protocol lists the `deletionVectors` reader feature" in message
 
 
 # Reader 2 / writer 5 tables declare no reader features, so deltalake's own
