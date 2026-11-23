@@ -1,3 +1,4 @@
+from itertools import repeat
 from typing import TYPE_CHECKING, Iterable, List, Optional
 
 import pyarrow as pa
@@ -125,21 +126,18 @@ def list_files_for_each_block(
                 metadatas = (
                     block[FILE_METADATA_COLUMN_NAME].to_pylist()
                     if FILE_METADATA_COLUMN_NAME in block.column_names
-                    else None
+                    else repeat(None)
                 )
-                for index, (path, size) in enumerate(
-                    zip(
-                        block[PATH_COLUMN_NAME].to_pylist(),
-                        block[FILE_SIZE_COLUMN_NAME].to_pylist(),
-                    )
+                for path, size, metadata in zip(
+                    block[PATH_COLUMN_NAME].to_pylist(),
+                    block[FILE_SIZE_COLUMN_NAME].to_pylist(),
+                    metadatas,
                 ):
                     yield FileInfo(
-                        path=path,
-                        size=size,
+                        path,
+                        size,
                         metadata=(
-                            FileMetadata.from_metadata(metadatas[index])
-                            if metadatas is not None
-                            else None
+                            FileMetadata.from_metadata(metadata) if metadata else None
                         ),
                     )
 
@@ -219,17 +217,15 @@ def sample_files(
             sampled_mtimes.append(file_info.mtime_ns)
         if max_files is not None and len(sampled_paths) >= max_files:
             break
-    manifest = FileManifest.construct_manifest(
+    return FileManifest.construct_manifest(
         paths=sampled_paths,
         sizes=sampled_sizes,
         chunk_metadatas=[None] * len(sampled_paths),
-    )
-    if include_mtime:
-        block = manifest.as_block()
-        assert isinstance(block, pa.Table)
-        return FileManifest(
-            block.append_column(
-                FILE_MTIME_COLUMN_NAME, pa.array(sampled_mtimes, type=pa.int64())
+        extra_columns=(
+            pa.table(
+                {FILE_MTIME_COLUMN_NAME: pa.array(sampled_mtimes, type=pa.int64())}
             )
-        )
-    return manifest
+            if include_mtime
+            else None
+        ),
+    )

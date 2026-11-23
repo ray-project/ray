@@ -760,6 +760,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             get_cached_file_metadata,
         )
         from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FILE_METADATA_COLUMN_NAME,
+            FileMetadata,
+        )
         from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
         from ray.data.context import DataContext
 
@@ -785,13 +789,22 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             )
             return metadata.num_rows
 
-        metadatas = file_manifest.file_metadatas or [None] * len(file_manifest)
-        files = [
-            FileInfo(str(path), size, metadata=metadata)
+        extra = file_manifest.extra_columns
+        metadatas = (
+            extra[FILE_METADATA_COLUMN_NAME].to_pylist()
+            if extra is not None and FILE_METADATA_COLUMN_NAME in extra.column_names
+            else [None] * len(file_manifest)
+        )
+        files = (
+            FileInfo(
+                str(path),
+                size,
+                metadata=FileMetadata.from_metadata(metadata) if metadata else None,
+            )
             for path, size, metadata in zip(
                 file_manifest.paths, file_manifest.known_file_sizes, metadatas
             )
-        ]
+        )
         with ThreadPoolExecutor() as executor:
             for num_rows in executor.map(_num_rows, files):
                 yield BlockMetadata(

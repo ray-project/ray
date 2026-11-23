@@ -400,9 +400,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
             supports_distributed_reads=self.supports_distributed_reads,
         )
         if result is None:
-            return super().infer_full_schema_with_metadata(
-                sample, ray_remote_args=ray_remote_args
-            )
+            return FullSchemaInferenceResult(self.infer_schema(sample))
         return FullSchemaInferenceResult(
             self._augment_schema(result.schema, sample), result.metadata
         )

@@ -12,6 +12,7 @@ from typing import (
 )
 
 import numpy as np
+import pyarrow as pa
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
@@ -25,6 +26,8 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileInfo,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FILE_METADATA_COLUMN_NAME,
+    FILE_METADATA_TYPE,
     ChunkMetadata,
     FileManifest,
     FileMetadata,
@@ -433,10 +436,30 @@ class NonSamplingFileIndexer(FileIndexer):
         # ``None`` where the filesystem didn't report a size.
         running_file_sizes: List[Optional[int]] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
-        running_metadatas: List[FileMetadata] = []
-        has_metadata = False
+        running_metadatas: List[Optional[FileMetadata]] = []
         manifests_count = 0
         files_count = 0
+
+        def _manifest() -> FileManifest:
+            extras = None
+            if any(value is not None for value in running_metadatas):
+                values = [
+                    value.to_metadata() if value else None
+                    for value in running_metadatas
+                ]
+                extras = pa.table(
+                    {
+                        FILE_METADATA_COLUMN_NAME: pa.array(
+                            values, type=FILE_METADATA_TYPE
+                        )
+                    }
+                )
+            return FileManifest.construct_manifest(
+                paths=running_paths,
+                sizes=running_file_sizes,
+                chunk_metadatas=running_chunk_metadatas,
+                extra_columns=extras,
+            )
 
         for file_info in file_infos:
             files_count += 1
@@ -444,37 +467,18 @@ class NonSamplingFileIndexer(FileIndexer):
                 running_paths.append(file_info.path)
                 running_file_sizes.append(file_info.size)
                 running_chunk_metadatas.append(chunk_metadata)
-                if file_info.metadata is not None and not has_metadata:
-                    running_metadatas = [FileMetadata()] * (len(running_paths) - 1)
-                    has_metadata = True
-                if has_metadata:
-                    running_metadatas.append(
-                        file_info.metadata
-                        if file_info.metadata is not None
-                        else FileMetadata()
-                    )
+                running_metadatas.append(file_info.metadata)
                 if len(running_paths) >= self._max_paths_per_output:
                     manifests_count += 1
-                    yield FileManifest.construct_manifest(
-                        paths=running_paths,
-                        sizes=running_file_sizes,
-                        chunk_metadatas=running_chunk_metadatas,
-                        file_metadatas=running_metadatas if has_metadata else None,
-                    )
+                    yield _manifest()
                     running_paths = []
                     running_file_sizes = []
                     running_chunk_metadatas = []
                     running_metadatas = []
-                    has_metadata = False
 
         if running_paths:
             manifests_count += 1
-            yield FileManifest.construct_manifest(
-                paths=running_paths,
-                sizes=running_file_sizes,
-                chunk_metadatas=running_chunk_metadatas,
-                file_metadatas=running_metadatas if has_metadata else None,
-            )
+            yield _manifest()
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "

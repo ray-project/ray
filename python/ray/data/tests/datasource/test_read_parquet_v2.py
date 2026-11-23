@@ -1438,10 +1438,6 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     tmp_path, restore_ctx, monkeypatch
 ):
     from ray.data._internal.datasource_v2.common import listing_utils
-    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-        FILE_METADATA_COLUMN_NAME,
-        FILE_METADATA_TYPE,
-    )
 
     monkeypatch.setattr(listing_utils, "DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE", 1)
     first = tmp_path / "a.parquet"
@@ -1463,7 +1459,7 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     monkeypatch.setattr(listing_utils, "sample_files", capture_discovered_file_infos)
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True)
+    ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True, num_cpus=0)
     list_files = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files, ListFiles)
     assert list_files.prelisted_file_infos is not None
@@ -1471,13 +1467,7 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     source = discovered_file_info_tables[0]
 
     assert len(blocks) == 2
-    assert all(
-        block.select(source.column_names).schema == source.schema for block in blocks
-    )
-    assert all(
-        block.schema.field(FILE_METADATA_COLUMN_NAME).type == FILE_METADATA_TYPE
-        for block in blocks
-    )
+    assert all(block.schema == source.schema for block in blocks)
     assert [path for block in blocks for path in block["__path"].to_pylist()] == source[
         "__path"
     ].to_pylist()

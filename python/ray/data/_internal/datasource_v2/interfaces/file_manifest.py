@@ -92,8 +92,8 @@ class FileMetadata:
         return asdict(self)
 
     @classmethod
-    def from_metadata(cls, value: Optional[Mapping[str, Any]]) -> "FileMetadata":
-        return cls(**value) if value is not None else cls()
+    def from_metadata(cls, value: Mapping[str, Any]) -> "FileMetadata":
+        return cls(**value)
 
 
 # The columns every manifest carries. A source may add its own beyond these;
@@ -174,20 +174,6 @@ class FileManifest:
     @cached_property
     def file_chunk_metadatas(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_chunk_metadatas).to_numpy()
-
-    @cached_property
-    def file_metadatas(self) -> Optional[List[FileMetadata]]:
-        """Whole-file metadata, or None when this stream has no metadata column."""
-        accessor = BlockAccessor.for_block(self._block)
-        assert isinstance(accessor, TableBlockAccessor)
-        if FILE_METADATA_COLUMN_NAME not in accessor.column_names():
-            return None
-        # This converts the already materialized manifest, not external input.
-        block = BlockAccessor.for_block(self._block).to_arrow()
-        return [
-            FileMetadata.from_metadata(value)
-            for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()
-        ]
 
     @cached_property
     def extra_columns(self) -> Optional[pa.Table]:
@@ -284,7 +270,6 @@ class FileManifest:
         paths: List[str],
         sizes: Sequence[Optional[int]],
         chunk_metadatas: List[Optional[ChunkMetadata]],
-        file_metadatas: Optional[List[FileMetadata]] = None,
         extra_columns: Optional[pa.Table] = None,
     ) -> "FileManifest":
         """Build a manifest from the required columns, plus any source columns.
@@ -295,7 +280,6 @@ class FileManifest:
                 ``None`` or ``NaN`` where the filesystem didn't report a size;
                 the manifest stores it as null.
             chunk_metadatas: Per-row chunk metadata, ``None`` for a whole file.
-            file_metadatas: Optional whole-file metadata, aligned with ``paths``.
             extra_columns: The source's own columns (see
                 :attr:`extra_columns`), one row each, in the same row order.
                 Appended as-is, so their Arrow types survive the round trip.
@@ -319,15 +303,6 @@ class FileManifest:
                 FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
             }
         )
-        if file_metadatas is not None:
-            assert len(file_metadatas) == len(paths)
-            block = block.append_column(
-                FILE_METADATA_COLUMN_NAME,
-                pa.array(
-                    [metadata.to_metadata() for metadata in file_metadatas],
-                    type=FILE_METADATA_TYPE,
-                ),
-            )
         if extra_columns is not None:
             assert extra_columns.num_rows == len(
                 paths

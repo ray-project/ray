@@ -277,13 +277,13 @@ def _infer_full_schema_on_workers(
     eligible = (
         supports_distributed_reads and len(paths) > _FULL_SCHEMA_INFERENCE_MIN_FILES
     )
-    if read_metadata is None and not eligible:
+    if not eligible:
         return None
     options = _schema_task_options(
         merge_label_selector(ray_remote_args, context.execution_options.label_selector),
         _FULL_SCHEMA_INFERENCE_NUM_CPUS,
     )
-    if not eligible or options is None:
+    if options is None:
         return None
     batch_size = _FULL_SCHEMA_INFERENCE_BATCH_SIZE
     window = min(
@@ -319,9 +319,9 @@ def _infer_full_schema_on_workers(
             _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES // _FILE_METADATA_RECORD_BYTES,
             1 + full_batches * row_slots + min(tail, row_slots),
         )
-        block = sample.as_block()
-        if isinstance(block, pa.Table) and FILE_MTIME_COLUMN_NAME in block.column_names:
-            mtimes = block[FILE_MTIME_COLUMN_NAME].to_pylist()
+        extra = sample.extra_columns
+        if extra is not None and FILE_MTIME_COLUMN_NAME in extra.column_names:
+            mtimes = extra[FILE_MTIME_COLUMN_NAME].to_pylist()
     row_remaining = row_limit
     start = 0
     first_result = True
@@ -429,69 +429,6 @@ def infer_full_schema_from_files(
     return result.schema if result is not None else None
 
 
-def _driver_read_all_metadata(
-    paths: List[str],
-    sizes: Optional[List[Optional[int]]],
-    filesystem: FileSystem,
-    format_name: str,
-    budget: int,
-    task_budget: int,
-    mtimes: Optional[List[Optional[int]]],
-    *,
-    read_metadata: Callable,
-) -> Optional[FullSchemaInferenceResult]:
-    context = DataContext.get_current()
-    batch_size = _FULL_SCHEMA_INFERENCE_BATCH_SIZE
-    row_slots = min(batch_size, task_budget // _FILE_METADATA_RECORD_BYTES)
-    full_batches, tail = divmod(len(paths), batch_size)
-    row_limit = min(
-        budget // _FILE_METADATA_RECORD_BYTES,
-        full_batches * row_slots + min(tail, row_slots),
-    )
-    row_remaining = row_limit
-    schemas: List[Tuple[int, pa.Schema]] = []
-    metadata_chunks: Dict[int, pa.Array] = {}
-    for start in range(0, len(paths), batch_size):
-        stop = min(start + batch_size, len(paths))
-        row_records = min(row_slots, stop - start, row_remaining)
-        row_remaining -= row_records
-        result = _read_schema_batch(
-            paths[start:stop],
-            sizes[start:stop] if sizes is not None else [None] * (stop - start),
-            filesystem,
-            None,
-            format_name,
-            context,
-            16,
-            read_metadata=read_metadata,
-            row_records=row_records,
-            mtimes=mtimes[start:stop] if mtimes is not None else None,
-        )
-        metadata_chunks[start] = (
-            result.metadata
-            if result.metadata is not None
-            else pa.nulls(stop - start, type=FILE_METADATA_TYPE)
-        )
-        for first_pos, value, parquet_encoded in result.schemas:
-            schemas.append((start + first_pos, _decode_schema(value, parquet_encoded)))
-    schemas.sort(key=lambda item: item[0])
-    return FullSchemaInferenceResult(
-        _merge_file_schemas(
-            [paths[index] for index, _ in schemas],
-            [schema for _, schema in schemas],
-            format_name,
-        ),
-        (
-            pa.chunked_array(
-                [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
-                type=FILE_METADATA_TYPE,
-            )
-            if row_limit
-            else None
-        ),
-    )
-
-
 def infer_full_schema_with_metadata_from_files(
     sample: FileManifest,
     filesystem: FileSystem,
@@ -501,40 +438,16 @@ def infer_full_schema_with_metadata_from_files(
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
 ) -> Optional[FullSchemaInferenceResult]:
-    """Read schemas and retain row counts within the metadata budget.
-
-    Return None when caching is disabled. A first-result timeout cancels
-    pending tasks and falls back directly to driver reads.
-    """
-    budget = _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES
-    task_budget = _FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES
+    """Read schemas and retain row counts only when worker planning succeeds."""
     if not _metadata_cache_enabled():
         return None
-    result = _infer_full_schema_on_workers(
+    return _infer_full_schema_on_workers(
         sample,
         filesystem,
         format_name=format_name,
         read_schema=None,
         ray_remote_args=ray_remote_args,
         supports_distributed_reads=supports_distributed_reads,
-        read_metadata=read_metadata,
-    )
-    if result is not None:
-        return result
-    block = sample.as_block()
-    mtimes = (
-        block[FILE_MTIME_COLUMN_NAME].to_pylist()
-        if isinstance(block, pa.Table) and FILE_MTIME_COLUMN_NAME in block.column_names
-        else None
-    )
-    return _driver_read_all_metadata(
-        sample.paths.tolist(),
-        sample.known_file_sizes,
-        filesystem,
-        format_name,
-        budget,
-        task_budget,
-        mtimes,
         read_metadata=read_metadata,
     )
 

@@ -2,6 +2,7 @@
 
 import json
 import os
+from typing import Any
 
 import pyarrow.fs as pafs
 from fsspec.implementations.local import LocalFileSystem
@@ -69,7 +70,7 @@ class UnknownSizeRecordingLocalFileSystem(RecordingLocalFileSystem):
         self.mtime_known = mtime_known
 
     def info(self, path, **kwargs):
-        result = super().info(path, **kwargs)
+        result: dict[str, Any] = dict(super().info(path, **kwargs))
         if result["type"] == "file":
             result["size"] = None
             if not self.mtime_known:

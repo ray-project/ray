@@ -5,31 +5,7 @@ import pyarrow.fs as pafs
 import pytest
 
 from ray.data._internal.datasource_v2.common import schema_inference as inference
-from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
-    OrcDatasourceV2,
-)
-from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
-    ParquetDatasourceV2,
-)
 from ray.data.context import DataContext
-
-
-def test_mtime_capability_respects_format_budget_and_schema_hook(monkeypatch):
-    class CustomParquet(ParquetDatasourceV2):
-        def infer_schema(self, sample):
-            return pa.schema([("custom", pa.int64())])
-
-    fs = pafs.LocalFileSystem()
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 4096)
-    monkeypatch.setattr(
-        inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 4096
-    )
-    parquet = ParquetDatasourceV2(["unused"], filesystem=fs)
-    assert parquet._retain_planning_metadata
-    assert not OrcDatasourceV2(["unused"], filesystem=fs)._retain_planning_metadata
-    assert not CustomParquet(["unused"], filesystem=fs)._retain_planning_metadata
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 0)
-    assert not parquet._retain_planning_metadata
 
 
 def test_schema_batch_preserves_per_file_metadata_budget():
