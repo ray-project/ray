@@ -468,9 +468,8 @@ def _python_range(versions: Sequence[str]) -> str:
     return ", ".join(f"py{v}" for v in unique)
 
 
-def _variant_parts(images: Sequence[Image]) -> list[str]:
+def _variant_parts(images: Sequence[Image], labels: Mapping[str, str]) -> list[str]:
     """Describe one image type's variants, as one cross product if possible."""
-    labels = _platform_labels({i.platform for i in images})
 
     def cross_product(subset: Sequence[Image]) -> Optional[str]:
         pythons = {i.python_version for i in subset}
@@ -508,17 +507,19 @@ def describe_images(images: Sequence[Image], everything: Sequence[Image]) -> str
     """Compact description of the image variants a finding appears in.
 
     For example "ray, ray-extra py3.11–3.14 · cu12.8 · x86_64", or
-    "all 184 images" when it appears in every scanned image.
+    "all 184 scanned images" when it appears in every scanned image.
     """
     if len(images) > 1 and set(images) == set(everything):
-        return f"all {len(images)} images"
+        return f"all {len(images)} scanned images"
+    # Labels from every image, so a label means the same platform in every row.
+    labels = _platform_labels({i.platform for i in [*images, *everything]})
     by_type: dict[str, list[Image]] = {}
     for image in images:
         by_type.setdefault(image.image_type, []).append(image)
     # Image types with identical variants share one description.
     types_by_parts: dict[tuple[str, ...], list[str]] = {}
     for image_type in sorted(by_type):
-        parts = tuple(_variant_parts(by_type[image_type]))
+        parts = tuple(_variant_parts(by_type[image_type], labels))
         types_by_parts.setdefault(parts, []).append(image_type)
     return "; ".join(
         f"{', '.join(types)} {part}"
@@ -536,7 +537,8 @@ def exit_code(scans: Sequence[ImageScan], issues: Sequence[str] = ()) -> int:
 
 
 def _cell(value: str) -> str:
-    return value.replace("|", "\\|").replace("\n", " ")
+    # Any line break, a bare "\r" included, would end the table row.
+    return re.sub(r"\s+", " ", value).replace("|", "\\|")
 
 
 def _cve(finding: Finding) -> str:
@@ -602,12 +604,19 @@ def _no_fix_table(
     return header + _limited(rows, max_rows)
 
 
+def _statements(group: Group) -> str:
+    # Each image type has its own ignore file, so the reasons can differ.
+    return "; ".join(
+        sorted({_cell(f.statement) for f in group.findings if f.statement})
+    )
+
+
 def _suppressed_table(
     groups: list[Group], everything: list[Image], max_rows: Optional[int]
 ) -> list[str]:
     rows = [
         f"| {_cve(g.finding)} | {g.finding.severity[0]} | `{_cell(g.finding.pkg_name)}` "
-        f"| {_cell(g.finding.statement)} | {describe_images(g.images, everything)} |"
+        f"| {_statements(g)} | {describe_images(g.images, everything)} |"
         for g in groups
     ]
     header = ["| CVE | Sev | Package | Statement | Images |", "|---|---|---|---|---|"]
@@ -714,18 +723,21 @@ def _per_image_table(scans: Sequence[ImageScan], max_rows: Optional[int]) -> lis
 
 
 def _scanner_text(scanner: Mapping[str, Any]) -> str:
-    trivy = scanner.get("trivy") or {}
-    db = scanner.get("db") or {}
-    text = ""
-    if trivy.get("version"):
-        text += f" · Trivy {trivy['version']}"
-    # trivy_db records the DB artifact's creation time; older metadata has
-    # the DB's own UpdatedAt.
-    db_date = db.get("updated_at") or db.get("created")
-    if db_date:
-        text += f" · DB {db_date[:10]}"
-        if db.get("blob"):
-            text += f" (`{db['blob'][:19]}`)"
+    """Trivy's version and the DB's date. A field of the wrong type reads as
+    missing, so bad metadata can't stop the report."""
+
+    def field(section: str, key: str) -> str:
+        record = scanner.get(section)
+        value = record.get(key) if isinstance(record, dict) else None
+        return value if isinstance(value, str) else ""
+
+    version = field("trivy", "version")
+    created, blob = field("db", "created"), field("db", "blob")
+    text = f" · Trivy {version}" if version else ""
+    if created:
+        text += f" · DB {created[:10]}"
+        if blob:
+            text += f" (`{blob[:19]}`)"
     return text
 
 
@@ -749,7 +761,11 @@ def render_markdown(
     scanned = [s for s in scans if s.scanned]
     fixable_images = sum(1 for s in scanned if _split_by_fixable(s)[0])
     no_fix_images = sum(1 for s in scanned if _split_by_fixable(s)[1])
-    no_fix_limit = min(NO_FIX_LIST_LIMIT, cve_list_limit or NO_FIX_LIST_LIMIT)
+    no_fix_limit = (
+        NO_FIX_LIST_LIMIT
+        if cve_list_limit is None
+        else min(NO_FIX_LIST_LIMIT, cve_list_limit)
+    )
 
     lines = [
         "## Trivy image scan: CRITICAL/HIGH",
@@ -850,7 +866,7 @@ def render_annotation(
 def annotation_style(scans: Sequence[ImageScan], code: int) -> str:
     if any(g.fixable for g in group_findings(scans)):
         return "error"
-    return "warning" if code == EXIT_INCOMPLETE else "success"
+    return "success" if code == EXIT_CLEAN else "warning"
 
 
 def build_info(env: Mapping[str, str]) -> dict[str, Any]:

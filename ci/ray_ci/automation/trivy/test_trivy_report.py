@@ -1,4 +1,5 @@
 import csv
+import dataclasses
 import gzip
 import json
 import re
@@ -59,7 +60,7 @@ SCANNER = {
     "trivy": {"version": "0.76.1", "tarball_sha256": "c7cbe313"},
     "db": {
         "blob": "sha256:f8fa030ece295d1e057521fa1dd9621ee06e547c6453f962014329ba7fb2fdee",
-        "updated_at": "2026-11-10T19:01:23Z",
+        "created": "2026-11-10T19:01:23Z",
     },
 }
 
@@ -524,7 +525,7 @@ ALL_PY = ["3.11", "3.12", "3.13", "3.14"]
         pytest.param(
             [make_image(python_version=v) for v in ALL_PY],
             [make_image(python_version=v) for v in ALL_PY],
-            "all 4 images",
+            "all 4 scanned images",
             id="every-scanned-image",
         ),
         pytest.param(
@@ -579,6 +580,21 @@ ALL_PY = ["3.11", "3.12", "3.13", "3.14"]
             [],
             "ray py3.12 · cu12.8.1, cu12.8.1-cudnn · x86_64",
             id="colliding-labels-use-full-names",
+        ),
+        pytest.param(
+            [make_image(platform="cu12.8.1-cudnn")],
+            [make_image(platform=p) for p in ("cu12.8.1-cudnn", "cu12.8.1", "cpu")],
+            "ray py3.12 · cu12.8.1-cudnn · x86_64",
+            id="labels-collide-elsewhere-in-the-build",
+        ),
+        pytest.param(
+            [
+                make_image(platform="cu12.8.1-cudnn"),
+                make_image(image_type="ray-llm", platform="cu12.8.0"),
+            ],
+            [],
+            "ray py3.12 · cu12.8.1-cudnn · x86_64; ray-llm py3.12 · cu12.8.0 · x86_64",
+            id="labels-collide-across-image-types",
         ),
     ],
 )
@@ -706,6 +722,25 @@ def test_exit_code(scans: list, issues: list, expected: int):
     assert exit_code(scans, issues) == expected
 
 
+@pytest.mark.parametrize(
+    ("scans", "code", "expected"),
+    [
+        ([scan_with(make_vuln())], EXIT_FINDINGS, "error"),
+        ([scan_with(make_vuln()), scan_with(error="boom")], EXIT_INCOMPLETE, "error"),
+        ([scan_with(error="boom")], EXIT_INCOMPLETE, "warning"),
+        # Any other failure, such as a report that couldn't be uploaded.
+        ([scan_with()], 1, "warning"),
+        (
+            [scan_with(make_vuln(FixedVersion="", Status="affected"))],
+            EXIT_CLEAN,
+            "success",
+        ),
+    ],
+)
+def test_annotation_style(scans: list, code: int, expected: str):
+    assert trivy_report.annotation_style(scans, code) == expected
+
+
 def test_annotation_stays_under_limit_and_says_so():
     vulns = [
         make_vuln(VulnerabilityID=f"CVE-2026-{i:05d}", PkgName=f"pkg{i}")
@@ -757,7 +792,7 @@ def test_write_report_end_to_end(tmp_path: Path):
     report = (out / "report.md").read_text()
     assert "4/5 images scanned" in report
     assert "`ray-py3.12-tpu`: crane pull failed" in report
-    assert "CVE-2026-102268" in report and "| all 4 images |" in report
+    assert "CVE-2026-102268" in report and "| all 4 scanned images |" in report
     assert "`linux-libc-dev`" in report
     assert "Trivy 0.76.1" in report and "DB 2026-11-10" in report
     assert report.endswith(NOTE + "\n")
@@ -1063,6 +1098,21 @@ def test_no_fix_per_image_counts_a_package_with_many_cves():
     assert "`vulns.csv` lists every CVE" in section(report, "No Fix Yet Per Image")
 
 
+@pytest.mark.parametrize(
+    ("cve_list_limit", "expected"), [(None, 10), (20, 10), (5, 5), (0, 0)]
+)
+def test_no_fix_cve_lists_follow_the_annotations_limit(
+    cve_list_limit: Optional[int], expected: int
+):
+    scans = [image_scan("ray-py3.12-cpu", make_vuln(**NO_FIX))]
+    report = trivy_report.render_markdown(
+        scans, SCANNER, files_note=NOTE, cve_list_limit=cve_list_limit
+    )
+    assert f"more than {expected} CVEs in an image shows a count;" in section(
+        report, "No Fix Yet Per Image"
+    )
+
+
 def test_annotation_shortens_cve_lists_before_dropping_rows():
     vulns = [
         make_vuln(VulnerabilityID=f"CVE-2026-{i:05d}", PkgName="pkg")
@@ -1077,6 +1127,63 @@ def test_annotation_shortens_cve_lists_before_dropping_rows():
     assert len(rows) == 2
     assert "`pkg` 1.0: 400 CVEs (0 C / 400 H)" in rows[0]
     assert "`report.md` lists every CVE" in section(body, "Fixable Images")
+
+
+@pytest.mark.parametrize(
+    ("scanner", "expected"),
+    [
+        pytest.param(
+            SCANNER, " · Trivy 0.76.1 · DB 2026-11-10 (`sha256:f8fa030ece29`)", id="ok"
+        ),
+        pytest.param({}, "", id="empty"),
+        pytest.param({"trivy": "0.76.1", "db": ["x"]}, "", id="sections-not-objects"),
+        pytest.param(
+            {"trivy": {"version": 76}, "db": {"created": 5, "blob": "sha256:1"}},
+            "",
+            id="values-not-text",
+        ),
+        pytest.param(
+            {"db": {"created": "2026-11-10T19:01:23Z", "blob": 5}},
+            " · DB 2026-11-10",
+            id="blob-not-text",
+        ),
+    ],
+)
+def test_scanner_fields_of_the_wrong_type_read_as_missing(scanner: dict, expected: str):
+    report = trivy_report.render_markdown(
+        [image_scan("ray-py3.12-cpu")], scanner, files_note=NOTE
+    )
+    assert report.splitlines()[2].endswith("1/1 images scanned" + expected)
+
+
+def test_suppressed_lists_the_statement_of_every_image_type():
+    scans = []
+    for name, statement in (
+        ("ray-py3.12-cpu", "not reachable"),
+        ("ray-extra-py3.12-cpu", "not reachable"),
+        ("ray-llm-py3.12-cpu", "awaiting a vendor fix"),
+    ):
+        scan = image_scan(name, make_vuln())
+        scan.findings = [
+            dataclasses.replace(f, suppressed=True, statement=statement)
+            for f in scan.findings
+        ]
+        scans.append(scan)
+    report = trivy_report.render_markdown(scans, SCANNER, files_note=NOTE)
+    (row,) = [
+        line
+        for line in section(report, "Suppressed").splitlines()
+        if "CVE-2026-0001" in line
+    ]
+    assert "| awaiting a vendor fix; not reachable | all 3 scanned images |" in row
+
+
+def test_text_from_a_scan_stays_on_one_line():
+    broken = ImageScan(
+        image=make_image(platform="tpu"), error="pull failed:\r\nretry\rgave up | 2x"
+    )
+    report = trivy_report.render_markdown([broken], SCANNER, files_note=NOTE)
+    assert "- `ray-py3.12-tpu-x86_64`: pull failed: retry gave up \\| 2x\n" in report
 
 
 if __name__ == "__main__":
