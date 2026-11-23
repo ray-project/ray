@@ -3,7 +3,10 @@ import time
 import pytest
 
 import ray
+from ray._common.test_utils import run_string_as_driver
 from ray.data.tests.conftest import *  # noqa
+
+pytestmark = pytest.mark.usefixtures("ray_start_2_cpus_shared")
 
 
 @ray.remote
@@ -50,6 +53,48 @@ def test_max_errored_blocks(
         assert res == list(range(num_errored_blocks, num_tasks))
         stats = ds._get_stats_summary()
         assert stats.extra_metrics["num_tasks_failed"] == num_errored_blocks
+
+
+@pytest.mark.parametrize(
+    "prefetch_on_thread", [False, True], ids=["inline", "threaded"]
+)
+def test_skipped_metadata_failure_does_not_exhaust_error_budget(
+    ray_start_2_cpus_shared, monkeypatch, prefetch_on_thread
+):
+    """Count a metadata failure once and keep output from subsequent inputs."""
+    # The fetch mode is read at import time, so use a fresh driver connected to
+    # the shared cluster instead of patching the executor or its Ray calls.
+    monkeypatch.setenv(
+        "RAY_DATA_METADATA_PREFETCH_ON_THREAD", str(int(prefetch_on_thread))
+    )
+    driver = f"""
+import pandas as pd
+import ray
+
+ray.init(address={ray_start_2_cpus_shared["address"]!r})
+context = ray.data.DataContext.get_current()
+context.max_errored_blocks = 1
+context.batch_to_block_arrow_format = False
+
+def encode(batch):
+    if batch["id"][0] != 0:
+        return pd.DataFrame({{"id": batch["id"]}})
+
+    class LocalValue:
+        pass
+
+    # Ray's cloudpickle can serialize the DataFrame, but standard pickle
+    # cannot encode the local class in its categorical schema. The task
+    # fails after yielding the block and before yielding its metadata.
+    return pd.DataFrame({{"id": pd.Categorical([LocalValue()])}})
+
+dataset = ray.data.range(2, override_num_blocks=2).map_batches(
+    encode, batch_size=1, max_retries=0
+)
+assert dataset.take_all() == [{{"id": 1}}]
+ray.shutdown()
+"""
+    run_string_as_driver(driver, timeout=60)
 
 
 def test_map_retry_after_partial_output_returns_every_row_once(restore_data_context):
