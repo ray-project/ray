@@ -34,7 +34,10 @@ def test_completed_batches_refill_with_slow_head(monkeypatch):
     state = dict(submitted=0)
     values = {}
 
-    def submit(batch, sizes, fs, fmt, context, rows, mtimes, **kwargs):
+    def submit(
+        batch, sizes, fs, read_schema, fmt, context, concurrency, fallback, **kw
+    ):
+        rows = kw["row_records"]
         assert rows * 32 <= 128
         ref = Mock(index=state["submitted"])
         state["submitted"] += 1
@@ -129,7 +132,8 @@ def test_probe_batch_reserves_available_row_slots(monkeypatch):
     remote.options.return_value = remote
     payload = pa.schema([("id", pa.int64())]).serialize().to_pybytes()
 
-    def submit(paths, sizes, fs, fmt, ctx, rows, mtimes, **kwargs):
+    def submit(paths, sizes, fs, read_schema, fmt, ctx, concurrency, fallback, **kw):
+        rows = kw["row_records"]
         values = [
             FileMetadata(int(p)).to_metadata() if i < rows else None
             for i, p in enumerate(paths)

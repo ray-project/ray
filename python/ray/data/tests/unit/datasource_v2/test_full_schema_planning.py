@@ -316,7 +316,9 @@ def test_full_schema_orders_bounded_out_of_order_results(monkeypatch):
         ]
     )
     monkeypatch.setattr(ray, "wait", wait)
-    monkeypatch.setattr(ray, "get", lambda ref: payloads[ref])
+    monkeypatch.setattr(
+        ray, "get", lambda ref: inference._SchemaBatchResult(payloads[ref], None)
+    )
     cancel = Mock()
     monkeypatch.setattr(ray, "cancel", cancel)
     merge = Mock(wraps=inference.unify_schemas_with_validation)
@@ -415,7 +417,11 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 1})
     monkeypatch.setattr(ray, "wait", lambda *a, **k: ([refs[0]], [refs[1]]))
     monkeypatch.setattr(
-        ray, "get", lambda ref: [(0, b"invalid", stage == "parquet_decode")]
+        ray,
+        "get",
+        lambda ref: inference._SchemaBatchResult(
+            [(0, b"invalid", stage == "parquet_decode")], None
+        ),
     )
     if stage == "decode":
         monkeypatch.setattr(
@@ -462,11 +468,12 @@ def test_worker_returns_first_position_for_exact_payload():
         4,
         read_metadata,
     )
-    assert [index for index, _, _ in result] == [0, 1, 3]
-    assert [payload for _, payload, _ in result] == [
+    assert result.metadata is None
+    assert [index for index, _, _ in result.schemas] == [0, 1, 3]
+    assert [payload for _, payload, _ in result.schemas] == [
         values[i].serialize().to_pybytes() for i in range(3)
     ]
-    assert all(not parquet_encoded for _, _, parquet_encoded in result)
+    assert all(not parquet_encoded for _, _, parquet_encoded in result.schemas)
     read_metadata.assert_not_called()
 
 
@@ -500,7 +507,8 @@ def test_worker_uses_original_metadata_only_for_encoding_failure(
         1,
         read_metadata,
     )
-    assert result == [(0, b"original metadata", True)]
+    assert result.schemas == [(0, b"original metadata", True)]
+    assert result.metadata is None
     read_metadata.assert_called_once_with("test.parquet", filesystem, 123)
 
 

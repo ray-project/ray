@@ -328,7 +328,7 @@ def test_deduplicated_schemas_keep_metadata_in_file_order(
         remote = Mock()
         remote.options.return_value = remote
         remote.remote.side_effect = lambda *args, **kwargs: Mock(
-            result=inference._read_schema_metadata_batch(*args, **kwargs)
+            result=inference._read_schema_batch(*args, **kwargs)
         )
         monkeypatch.setattr(inference, "cached_remote_fn", lambda *a, **k: remote)
         monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 2})
