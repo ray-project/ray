@@ -21,9 +21,14 @@ kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator \
 
 echo "--- Installing KubeRay cluster and port forward."
 
-helm install raycluster kuberay/ray-cluster \
+# Ray defaults to token auth, so `ray start --head` exits when the pod has no
+# token. Turn on KubeRay-managed auth, which generates the token
+# and injects it into every Ray container.
+# KubeRay accepts `authOptions` only with rayVersion >= 2.52.0.
+helm template raycluster kuberay/ray-cluster \
     --set image.repository=ray-ci \
     --set image.tag=kuberay-test \
+    --set head.rayVersion=2.52.0 \
     --set worker.replicas=2 \
     --set worker.resources.limits.cpu=500m \
     --set worker.resources.requests.cpu=500m \
@@ -32,10 +37,29 @@ helm install raycluster kuberay/ray-cluster \
     --set worker.resources.limits.memory=4Gi \
     --set worker.resources.requests.memory=4Gi \
     --set head.resources.limits.memory=4Gi \
-    --set head.resources.requests.memory=4Gi
+    --set head.resources.requests.memory=4Gi \
+    | kubectl patch --local -f - --type merge -o yaml \
+        -p '{"spec":{"authOptions":{"mode":"token"}}}' \
+    | kubectl apply -f -
 
-kubectl wait pod -l ray.io/cluster=raycluster-kuberay \
-    --for=condition=Ready=True --timeout=5m
+# Wait for the operator to create the pods; `kubectl wait` fails at once when
+# no pod matches the selector yet.
+for _ in {1..60}; do
+    if [[ -n "$(kubectl get pod -l ray.io/cluster=raycluster-kuberay -o name)" ]]; then
+        break
+    fi
+    sleep 2
+done
+if ! kubectl wait pod -l ray.io/cluster=raycluster-kuberay \
+    --for=condition=Ready=True --timeout=5m; then
+    kubectl get raycluster,pods -o wide || true
+    kubectl describe raycluster raycluster-kuberay || true
+    kubectl logs -l ray.io/cluster=raycluster-kuberay --all-containers \
+        --prefix --tail=50 || true
+    kubectl logs -l ray.io/cluster=raycluster-kuberay --all-containers \
+        --prefix --tail=50 --previous || true
+    exit 1
+fi
 kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265 &
 
 # Helm install chaos-mesh
