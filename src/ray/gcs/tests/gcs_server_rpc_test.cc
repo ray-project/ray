@@ -1341,6 +1341,28 @@ TEST_F(GcsLeaderElectionTestBase, TestPromotionAfterStopBeforeStartupIsIgnored) 
   EXPECT_FALSE(StorageHas(cluster_id_ns, kClusterIdKey));
 }
 
+// Stop() resets the KV manager, so the cluster-ID retry must not run after it. The io
+// context keeps running here, unlike in the GCS binary, so the 1s retry timer does fire.
+TEST_F(GcsLeaderElectionTestBase, TestStopDuringClusterIdWaitStopsRetrying) {
+  auto passive = MakePassiveServer("MockedPassiveGcsServer");
+  // Empty storage, so it stays parked on the cluster-ID wait.
+  ASSERT_FALSE(passive->WaitForStarted(std::chrono::seconds(2)));
+
+  std::promise<void> stopped;
+  passive->io_service().post(
+      [&passive, &stopped] {
+        passive->server().Stop();
+        stopped.set_value();
+      },
+      "test.StopDuringClusterIdWait");
+  stopped.get_future().wait();
+
+  // Covers several retry attempts.
+  std::this_thread::sleep_for(std::chrono::seconds(3));
+  EXPECT_FALSE(passive->server().IsStarted());
+  EXPECT_FALSE(StorageHas("cluster", kClusterIdKey));
+}
+
 // Leader election needs a node ID: the holder ID is derived from it, and without it two
 // heads on one host would compete under the same identity.
 TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresNodeId) {
@@ -1369,9 +1391,9 @@ TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresLeaseName) {
       "gcs_leader_election_lease_name must be set");
 }
 
-// The heads only agree on a leader's writes through storage they share, which in-memory
-// storage is not.
-TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresSharedStorage) {
+// The heads only agree on a leader's writes through storage they share. In-memory and
+// RocksDB storage are both local to one head.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresRedisStorage) {
   gcs::GcsServerConfig config =
       MakeGcsServerConfig("MockedGcsServerWithoutRedis", /*leader_elect=*/true);
   config.redis_address = "";
@@ -1381,7 +1403,17 @@ TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresSharedStorage) {
         instrumented_io_context io_service;
         gcs::GcsServer server(config, fake_metrics_, io_service);
       },
-      "GCS leader election requires shared external storage");
+      "GCS leader election requires Redis storage");
+#if defined(__linux__)
+  EXPECT_DEATH(
+      {
+        RayConfig::instance().gcs_storage() = gcs::GcsServer::kRocksDbStorage;
+        RayConfig::instance().gcs_storage_path() = ::testing::TempDir();
+        instrumented_io_context io_service;
+        gcs::GcsServer server(config, fake_metrics_, io_service);
+      },
+      "GCS leader election requires Redis storage");
+#endif
 }
 
 // Stop() must return, and release the lease, while a raylet still holds a RaySyncer

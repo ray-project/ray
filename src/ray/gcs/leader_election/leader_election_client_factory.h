@@ -40,8 +40,8 @@ class LeaderLeaseClientFactory {
   /**
    * @brief Resolves the namespace Create() uses for the Lease.
    *
-   * Falls back from `lease_namespace` to $POD_NAMESPACE, then to the pod's service
-   * account namespace file. Surrounding whitespace is ignored, and an empty value
+   * Falls back from `lease_namespace` to $RAY_CLUSTER_NAMESPACE, then to the pod's
+   * service account namespace file. Surrounding whitespace is ignored, and an empty value
    * falls through to the next source.
    *
    * @param lease_namespace The configured namespace. May be empty.

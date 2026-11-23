@@ -323,9 +323,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       std::move(observability_inner_publisher));
 
   if (config_.enable_gcs_leader_election) {
-    RAY_CHECK(storage_type_ != StorageType::IN_MEMORY)
-        << "GCS leader election requires shared external storage; in-memory storage "
-           "cannot be shared across heads.";
+    RAY_CHECK(storage_type_ == StorageType::REDIS_PERSIST)
+        << "GCS leader election requires Redis storage "
+           "(StorageType::REDIS_PERSIST).";
     // Runs on the elector's thread, but promotion must run on the default io context.
     auto on_started_leading = [this]() {
       io_context_provider_.GetDefaultIOContext().post([this]() { PromoteToLeader(); },
@@ -374,6 +374,9 @@ void GcsServer::Start() {
   RAY_LOG(INFO) << "GCS leader election is enabled. Starting in passive mode.";
   GetOrGenerateClusterId(
       {[this](ClusterID cluster_id) {
+         if (is_stopped_ || lease_lost_) {
+           return;
+         }
          rpc_server_.SetClusterId(cluster_id);
          if (!IsLeader()) {
            GcsInitData empty_init_data(*gcs_table_storage_);
@@ -390,10 +393,10 @@ void GcsServer::Start() {
                                      if (lease_lost_ || is_stopped_) {
                                        return;
                                      }
-                                     DoStart(*gcs_init_data);
-                                     // Init skipped these: leader election was enabled,
-                                     // so this GCS was still passive when they ran.
+                                     // Init skips these while passive. Written before
+                                     // DoStart() opens the port the head waits on.
                                      WriteActiveOnlyKeys();
+                                     DoStart(*gcs_init_data);
                                    },
                                    io_context_provider_.GetDefaultIOContext()});
        },
@@ -405,6 +408,10 @@ void GcsServer::Start() {
 
 void GcsServer::GetOrGenerateClusterId(
     Postable<void(ClusterID cluster_id)> continuation) {
+  // Also covers the retry timer and the compare-and-set retry, which re-enter here.
+  if (is_stopped_ || lease_lost_) {
+    return;
+  }
   instrumented_io_context &io_context = continuation.io_context();
   static std::string const kClusterIdNamespace = "cluster";
   kv_manager_->GetInstance().Get(
@@ -412,6 +419,9 @@ void GcsServer::GetOrGenerateClusterId(
       kClusterIdKey,
       {[this, continuation = std::move(continuation)](
            std::optional<std::string> provided_cluster_id) mutable {
+         if (is_stopped_ || lease_lost_) {
+           return;
+         }
          // 1. Existing cluster ID found in storage: use it.
          if (provided_cluster_id.has_value()) {
            ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
@@ -444,6 +454,11 @@ void GcsServer::GetOrGenerateClusterId(
          instrumented_io_context &io_ctx = continuation.io_context();
          ClusterID cluster_id = ClusterID::FromRandom();
          RAY_LOG(INFO).WithField(cluster_id) << "Generated new cluster ID.";
+         // A standby's head reads the v2 flag once it sees the cluster ID. Internal KV
+         // writes share one connection, so writing the flag first keeps that order.
+         if (config_.enable_gcs_leader_election) {
+           WriteActiveOnlyKeys();
+         }
          kv_manager_->GetInstance().Put(
              kClusterIdNamespace,
              kClusterIdKey,
@@ -451,6 +466,9 @@ void GcsServer::GetOrGenerateClusterId(
              false,
              {[this, cluster_id, continuation = std::move(continuation)](
                   bool added_entry) mutable {
+                if (is_stopped_ || lease_lost_) {
+                  return;
+                }
                 // overwrite=false makes this a compare-and-set, so losing it means
                 // another head persisted an ID between our Get and this Put. Any ID
                 // will do as long as the cluster agrees on one, so adopt the winner's
@@ -741,6 +759,16 @@ void GcsServer::Stop() {
       ray_event_recorder_->StopExportingEvents();
     }
 
+    // Shutdown() destroys the gRPC server, so handlers on the other dedicated contexts
+    // must stop first. The RaySyncer one keeps running so open streams can finish.
+    constexpr int syncer_idx =
+        GcsServerIOContextPolicy::GetDedicatedIOContextIndex<syncer::RaySyncer>();
+    const auto &dedicated_contexts = io_context_provider_.GetAllDedicatedIOContexts();
+    for (size_t i = 0; i < dedicated_contexts.size(); ++i) {
+      if (static_cast<int>(i) != syncer_idx) {
+        dedicated_contexts[i]->Stop();
+      }
+    }
     rpc_server_.Shutdown();
     io_context_provider_.StopAllDedicatedIOContexts();
     ray_syncer_.reset();

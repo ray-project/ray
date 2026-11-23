@@ -30,6 +30,10 @@ ray_cc_library(
 ray_cc_library(
     name = "k8s_constants",
     hdrs = ["k8s_constants.h"],
+    visibility = [
+        ":__subpackages__",
+        "//src/ray/gcs/leader_election:__pkg__",
+    ],
 )
 
 ray_cc_library(

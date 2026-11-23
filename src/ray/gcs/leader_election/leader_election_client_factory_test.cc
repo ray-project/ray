@@ -33,17 +33,17 @@ constexpr char kServiceAccountNamespaceFile[] =
 class LeaderLeaseClientFactoryTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    if (const char *value = std::getenv("POD_NAMESPACE"); value != nullptr) {
-      saved_pod_namespace_ = value;
+    if (const char *value = std::getenv("RAY_CLUSTER_NAMESPACE"); value != nullptr) {
+      saved_cluster_namespace_ = value;
     }
-    UnsetEnv("POD_NAMESPACE");
+    UnsetEnv("RAY_CLUSTER_NAMESPACE");
   }
 
   void TearDown() override {
-    if (saved_pod_namespace_.has_value()) {
-      SetEnv("POD_NAMESPACE", *saved_pod_namespace_);
+    if (saved_cluster_namespace_.has_value()) {
+      SetEnv("RAY_CLUSTER_NAMESPACE", *saved_cluster_namespace_);
     } else {
-      UnsetEnv("POD_NAMESPACE");
+      UnsetEnv("RAY_CLUSTER_NAMESPACE");
     }
   }
 
@@ -54,7 +54,7 @@ class LeaderLeaseClientFactoryTest : public ::testing::Test {
   }
 
  private:
-  std::optional<std::string> saved_pod_namespace_;
+  std::optional<std::string> saved_cluster_namespace_;
 };
 
 TEST_F(LeaderLeaseClientFactoryTest, CreatesClientForConfiguredNamespace) {
@@ -65,8 +65,8 @@ TEST_F(LeaderLeaseClientFactoryTest, UsesConfiguredNamespace) {
   EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace("ray-system"), "ray-system");
 }
 
-TEST_F(LeaderLeaseClientFactoryTest, ConfiguredNamespaceWinsOverPodNamespace) {
-  SetEnv("POD_NAMESPACE", "pod-ns");
+TEST_F(LeaderLeaseClientFactoryTest, ConfiguredNamespaceWinsOverClusterNamespace) {
+  SetEnv("RAY_CLUSTER_NAMESPACE", "cluster-ns");
   EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace("ray-system"), "ray-system");
 }
 
@@ -90,19 +90,19 @@ TEST_F(LeaderLeaseClientFactoryTest, CreatesClientForPaddedLeaseKey) {
             nullptr);
 }
 
-TEST_F(LeaderLeaseClientFactoryTest, FallsBackToPodNamespace) {
-  SetEnv("POD_NAMESPACE", "pod-ns");
-  EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace(""), "pod-ns");
+TEST_F(LeaderLeaseClientFactoryTest, FallsBackToClusterNamespace) {
+  SetEnv("RAY_CLUSTER_NAMESPACE", "cluster-ns");
+  EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace(""), "cluster-ns");
 }
 
-TEST_F(LeaderLeaseClientFactoryTest, PodNamespaceIsTrimmed) {
-  SetEnv("POD_NAMESPACE", "  pod-ns\n");
-  EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace(""), "pod-ns");
+TEST_F(LeaderLeaseClientFactoryTest, ClusterNamespaceIsTrimmed) {
+  SetEnv("RAY_CLUSTER_NAMESPACE", "  cluster-ns\n");
+  EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace(""), "cluster-ns");
 }
 
 TEST_F(LeaderLeaseClientFactoryTest, WhitespaceConfiguredNamespaceFallsThrough) {
-  SetEnv("POD_NAMESPACE", "pod-ns");
-  EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace("   "), "pod-ns");
+  SetEnv("RAY_CLUSTER_NAMESPACE", "cluster-ns");
+  EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace("   "), "cluster-ns");
 }
 
 TEST_F(LeaderLeaseClientFactoryTest, NoNamespaceAnywhereCrashes) {
@@ -113,21 +113,21 @@ TEST_F(LeaderLeaseClientFactoryTest, NoNamespaceAnywhereCrashes) {
                "Could not determine the namespace");
 }
 
-TEST_F(LeaderLeaseClientFactoryTest, EmptyPodNamespaceFallsThrough) {
+TEST_F(LeaderLeaseClientFactoryTest, EmptyClusterNamespaceFallsThrough) {
   if (HasServiceAccountNamespaceFile()) {
     GTEST_SKIP() << "Running in a pod with a service account namespace file.";
   }
-  SetEnv("POD_NAMESPACE", "");
+  SetEnv("RAY_CLUSTER_NAMESPACE", "");
   EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace(""), "");
   EXPECT_DEATH(LeaderLeaseClientFactory::Create("", "gcs-leader-lock"),
                "Could not determine the namespace");
 }
 
-TEST_F(LeaderLeaseClientFactoryTest, WhitespacePodNamespaceFallsThrough) {
+TEST_F(LeaderLeaseClientFactoryTest, WhitespaceClusterNamespaceFallsThrough) {
   if (HasServiceAccountNamespaceFile()) {
     GTEST_SKIP() << "Running in a pod with a service account namespace file.";
   }
-  SetEnv("POD_NAMESPACE", " \t\n");
+  SetEnv("RAY_CLUSTER_NAMESPACE", " \t\n");
   EXPECT_EQ(LeaderLeaseClientFactory::ResolveLeaseNamespace("   "), "");
   EXPECT_DEATH(LeaderLeaseClientFactory::Create("   ", "gcs-leader-lock"),
                "Could not determine the namespace");

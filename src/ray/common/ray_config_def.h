@@ -1268,8 +1268,8 @@ RAY_CONFIG(int, gcs_leader_election_retry_period_s, 2)
 // Required when leader election is enabled.
 RAY_CONFIG(std::string, gcs_leader_election_lease_name, "")
 
-// Namespace of the Lease. Empty falls back to $POD_NAMESPACE, then the pod's
-// service account namespace file.
+// Namespace of the Lease. Empty falls back to $RAY_CLUSTER_NAMESPACE, which KubeRay
+// sets on every Ray pod, then the pod's service account namespace file.
 RAY_CONFIG(std::string, gcs_leader_election_lease_namespace, "")
 
 // Whether to enable the ray event to send to the event aggregator.

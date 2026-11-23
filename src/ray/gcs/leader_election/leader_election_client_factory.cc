@@ -21,6 +21,7 @@
 
 #include "absl/strings/ascii.h"
 #include "ray/gcs/leader_election/k8s_lease_client.h"
+#include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/rpc/authentication/k8s_util.h"
 #include "ray/util/logging.h"
 
@@ -33,9 +34,9 @@ std::string LeaderLeaseClientFactory::ResolveLeaseNamespace(
   if (!lease_namespace.empty()) {
     return lease_namespace;
   }
-  if (const char *pod_namespace = std::getenv("POD_NAMESPACE");
-      pod_namespace != nullptr) {
-    lease_namespace = std::string(absl::StripAsciiWhitespace(pod_namespace));
+  if (const char *cluster_namespace = std::getenv(rpc::k8s::kRayClusterNamespaceEnvVar);
+      cluster_namespace != nullptr) {
+    lease_namespace = std::string(absl::StripAsciiWhitespace(cluster_namespace));
     if (!lease_namespace.empty()) {
       return lease_namespace;
     }
@@ -55,7 +56,7 @@ std::unique_ptr<LeaderLeaseClientInterface> LeaderLeaseClientFactory::Create(
   const std::string resolved_namespace = ResolveLeaseNamespace(lease_namespace);
   RAY_CHECK(!resolved_namespace.empty())
       << "Could not determine the namespace of the GCS leader lease. Set "
-         "RAY_gcs_leader_election_lease_namespace or POD_NAMESPACE.";
+         "RAY_gcs_leader_election_lease_namespace or RAY_CLUSTER_NAMESPACE.";
 
   // Ensure the in-cluster Kubernetes client configuration is initialized before any
   // K8sApiGet/Post/Put call. Otherwise those helpers return Status::Invalid until some
