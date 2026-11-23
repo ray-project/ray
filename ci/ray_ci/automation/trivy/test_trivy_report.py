@@ -54,7 +54,7 @@ SCANNER = {
     "trivy": {"version": "0.76.1", "tarball_sha256": "c7cbe313"},
     "db": {
         "blob": "sha256:f8fa030ece295d1e057521fa1dd9621ee06e547c6453f962014329ba7fb2fdee",
-        "updated_at": "2026-11-10T19:01:23Z",
+        "created": "2026-11-10T19:01:23Z",
     },
 }
 
