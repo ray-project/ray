@@ -38,6 +38,17 @@ def test_feature_hasher():
     assert hashed_features.iloc[1].sum() == 3
     assert all(hashed_features.iloc[1] <= 1)
 
+    indexed_df = token_counts.set_index(pd.Index([10, 20]))
+    indexed_result = hasher.transform_batch(indexed_df)
+    assert list(indexed_result.index) == [10, 20]
+    assert not indexed_result["hashed_features"].isna().any()
+    assert indexed_result.loc[10, "hashed_features"].sum() == 3
+    assert indexed_result.loc[20, "hashed_features"].sum() == 3
+
+    empty_result = hasher.transform_batch(token_counts.iloc[0:0])
+    assert len(empty_result) == 0
+    assert "hashed_features" in empty_result.columns
+
 
 def test_feature_hasher_serialization():
     """Test FeatureHasher serialization and deserialization functionality."""
