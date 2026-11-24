@@ -45,11 +45,6 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
-from ray.data._internal.experimental.execution.sizer.lifecycle import (
-    OpLifecycle,
-    OpLifecycles,
-    Released,
-)
 from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
     LocalityBasedActorPlacement,
 )
@@ -65,6 +60,11 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
     critical_ops,
     has_produced_output,
+)
+from ray.data._internal.experimental.execution.sizer.op_status import (
+    OpStatusKind,
+    OpStatusMachine,
+    Released,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
@@ -119,7 +119,7 @@ class OperatorSizer:
       capacity, grow balanced stages, fund the recipient from donors, shrink
       blocked surplus, or hold.
     - ``TransferPhase``: whether a transfer is open (``TransferBook``).
-    - ``OpLifecycle`` per op: whether it may be resized now.
+    - ``OpStatusKind`` per op: whether it may be resized now.
 
     Each tick runs in four steps:
 
@@ -173,7 +173,7 @@ class OperatorSizer:
         self._decision: Optional[Decision] = None
         self._telemetry = SizerTelemetry(dataset_id)
 
-    # --- lifecycle ------------------------------------------------------------
+    # --- bootstrap ------------------------------------------------------------
 
     def bootstrap(self, topology: "Topology") -> None:
         """Build the per-run state over ``topology``, then bring every pool up
@@ -181,12 +181,12 @@ class OperatorSizer:
         self._validate_topology(topology)
         self._topology = topology
         self._profiles = OpProfiles(topology)
-        self._lifecycles = OpLifecycles(self._profiles.actor_pool_ops)
+        self._statuses = OpStatusMachine(self._profiles.actor_pool_ops)
 
         self._policy = BottleneckPolicy(
             metrics=OptimizerMetrics(self._dataset_id),
             placement=self._placement,
-            lifecycles=self._lifecycles,
+            statuses=self._statuses,
         )
         self._how_many = OpSizingPolicy(profiles=self._profiles)
         self._bottleneck_observer = BottleneckObserver(
@@ -199,7 +199,7 @@ class OperatorSizer:
         """Bring every pool up to its initial (min) size, untargeted, in
         scarcity order."""
         for op in ordered_actor_pool_ops(self._topology, self._profiles.actor_pool_ops):
-            if not self._lifecycles.may_refill_to_min(op):
+            if not self._statuses.can_size_per_op(op):
                 continue  # held until its first input: no actors yet
             pool = op.actor_pool
             delta = pool.initial_size() - pool.serving_size()
@@ -247,7 +247,7 @@ class OperatorSizer:
         cluster_view: "DatasetReservationView",
         seconds_since_allocation_change: float,
     ) -> Optional[ClusterStateSnapshot]:
-        """Called every scheduling-loop step. Runs the per-step lifecycle
+        """Called every scheduling-loop step. Runs the per-step status
         transitions (counted in steps, so they must not wait for the
         cadence), then builds this tick's snapshot, or returns None while
         inside the cadence window.
@@ -255,7 +255,7 @@ class OperatorSizer:
         The cluster view is read once per step by the scheduling loop and
         handed in, so the bank and every step of a tick agree on it.
         """
-        self._lifecycles.on_step()
+        self._statuses.on_step()
         now = self._clock()
         if now - self._last_tick_t < self._cadence_s:
             return None
@@ -291,10 +291,10 @@ class OperatorSizer:
 
     @timed("prepare")
     def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> None:
-        """Advance the op states, take held ops' room out of the snapshot,
+        """Advance the op statuses, take held ops' room out of the snapshot,
         run the bottleneck model on what is left, and move the phase
         forward."""
-        self._lifecycles.on_tick()
+        self._statuses.on_tick()
         self._hold_for_held_ops(snapshot)
         # The bottleneck model, once per tick, before any decision debits
         # free capacity: the policy acts on it and the log line shows it.
@@ -451,7 +451,7 @@ class OperatorSizer:
         from here on.
 
         Every op starts no actors until its first input (see
-        ``OpLifecycle.AWAITING_FIRST_INPUT``), so waiting for all of them keeps
+        ``OpStatusKind.AWAITING_FIRST_INPUT``), so waiting for all of them keeps
         an op that has not started yet under the warmup equal share: the
         bottleneck policy never sizes its neighbors while it still has no
         actors.
@@ -507,14 +507,14 @@ class OperatorSizer:
         whose outputs only clear through the held op. Holding its room here
         keeps it out of every step's free map without starting an actor. It is
         held for its warmup share (``OpSizingPolicy.warmup_target``), and once
-        released the sizer grows it straight to the held count. Held whole per
+        released the sizer grows it straight to the held count (GRANT_HELD). Held whole per
         actor, every resource the actor needs, on the least contended nodes,
         as the ledger would place it; what does not fit is not held.
         PG-managed ops hold nothing here: their placement group is their room.
         """
         free = snapshot.free_by_node
         global_limits = snapshot.get_global_limits()
-        held_ops = self._lifecycles.ops_in(OpLifecycle.HELD)
+        held_ops = self._statuses.ops_in(OpStatusKind.HELD)
         for op in self._profiles.non_pg_ops:
             if op not in held_ops or op.has_completed():
                 continue
@@ -525,7 +525,7 @@ class OperatorSizer:
             floor = pool.serving_size()
             num_to_hold = target - floor
             if num_to_hold <= 0:
-                self._lifecycles.set_reserved(op, floor)
+                self._statuses.set_reserved(op, floor)
                 continue
             pressure = snapshot.constrained_op_count_by_node
             nodes = sorted(
@@ -535,7 +535,7 @@ class OperatorSizer:
             held = pack_actors(
                 free, nodes, op.actor_pool.per_actor_resource_usage(), num_to_hold
             )
-            self._lifecycles.set_reserved(op, floor + len(held))
+            self._statuses.set_reserved(op, floor + len(held))
             logger.debug(
                 "OperatorSizer: holding %d/%d actor(s) for %s until its first "
                 "input arrives",
@@ -590,11 +590,11 @@ class OperatorSizer:
             pool = op.actor_pool
             if op.has_completed():
                 continue
-            if not self._lifecycles.may_refill_to_min(op):
+            if not self._statuses.can_size_per_op(op):
                 # Held until its first input, or a transfer holds it: leave it
                 # alone so our pendings aren't mistaken for the transfer's.
                 continue
-            state = self._lifecycles.state(op)
+            status = self._statuses.status(op)
             want: Optional[ActorPoolScalingRequest] = None
             if pool.min_size() == pool.max_size():
                 pass  # fixed pool: only ever replenished to min
@@ -606,10 +606,11 @@ class OperatorSizer:
                 # Growth comes only from the bottleneck policy; per op, only
                 # idle actors are shed.
                 want = self._how_many.shrink_idle_delta(op, self._topology[op])
-            # Released from its hold this tick: grow straight into the room
-            # held for it while it waited (its warmup share), once. Capped
-            # below, like any want, at the work left once upstream is done.
-            grow_to = state.grow_to if isinstance(state, Released) else 0
+            # GRANT_HELD: released from its hold this tick, so grow straight
+            # into the room held for it while it waited (its warmup share),
+            # once. Capped below, like any want, at the work left once
+            # upstream is done.
+            grow_to = status.grow_to if isinstance(status, Released) else 0
             to_held = grow_to - pool.serving_size()
             if to_held > 0 and (want is None or want.delta < to_held):
                 want = ActorPoolScalingRequest.upscale(

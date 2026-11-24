@@ -1,6 +1,6 @@
 """Unit tests for the sizer's bottleneck policy: the phase and decision
 classifiers, each decision's handler (``BottleneckPolicy``), the transfer
-mechanics (``TransferBook``), free-capacity growth, and the ``OpLifecycles``
+mechanics (``TransferBook``), free-capacity growth, and the ``OpStatusMachine``
 they share. Duck-typed doubles; no cluster."""
 import logging
 import math
@@ -35,10 +35,13 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     PG_ELIGIBLE,
 )
-from ray.data._internal.experimental.execution.sizer.lifecycle import (
+from ray.data._internal.experimental.execution.sizer.op_status import (
+    Cooling,
+    Donating,
     Held,
-    OpLifecycle,
-    OpLifecycles,
+    IllegalStatusTransition,
+    OpStatusKind,
+    OpStatusMachine,
     Released,
 )
 from ray.data._internal.experimental.execution.sizer.policy import growth
@@ -257,25 +260,34 @@ def _ctx(**overrides) -> DecisionContext:
     return DecisionContext(**base)
 
 
-def _lifecycles(*ops, cooldown_steps=20) -> OpLifecycles:
-    return OpLifecycles(ops, cooldown_steps=cooldown_steps)
+def _statuses(*ops, cooldown_steps=20) -> OpStatusMachine:
+    return OpStatusMachine(ops, cooldown_steps=cooldown_steps)
 
 
-def _policy(metrics=None, lifecycles=None) -> BottleneckPolicy:
+def _policy(metrics=None, statuses=None) -> BottleneckPolicy:
     return BottleneckPolicy(
         cast(Any, metrics or _Metrics()),
         cast(Any, _Placement()),
-        lifecycles or _lifecycles(),
+        statuses or _statuses(),
     )
 
 
-def _book(metrics=None, lifecycles=None) -> TransferBook:
+def _book(metrics=None, statuses=None) -> TransferBook:
     return TransferBook(
         "bottleneck_transfer",
         cast(Any, metrics or _Metrics()),
         cast(Any, _Placement()),
-        lifecycles or _lifecycles(),
+        statuses or _statuses(),
     )
+
+
+def _open_transfer(book: TransferBook, transfer: TransferInFlight) -> None:
+    """Put ``transfer`` in flight as firing it would: the recipient receiving,
+    each donor donating to it."""
+    book.state.in_flight[transfer.recipient] = transfer
+    book._statuses.start_receiving(transfer.recipient)
+    for donor in transfer.donors:
+        book._statuses.start_donating(donor, transfer.recipient)
 
 
 def _donor_op(name: str = "donor", output_dependencies: tuple = ()) -> Any:
@@ -399,7 +411,7 @@ def _classify(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY)
         seconds_since_allocation_change=settle,
         phase=phase,
     )
-    return classify(ctx, _lifecycles())
+    return classify(ctx, _statuses())
 
 
 def test_classify_holds_in_warmup_and_without_a_model():
@@ -455,73 +467,108 @@ def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
     # Receiving a transfer: not grown into free capacity this tick.
     write = _op("Write", pool=_Pool(current=2))
     tick = _tick(named=[(write, 0.6)], eligibility={write: "yes: free"})
-    lifecycles = _lifecycles(write)
-    lifecycles.start_receiving(write)
+    statuses = _statuses(write)
+    statuses.start_receiving(write)
     ctx = _ctx(
         free={"node": ExecutionResources(cpu=3)}, non_pg_ops=[write], bottleneck=tick
     )
-    assert classify(ctx, lifecycles).kind is not DecisionKind.GROW_FREE
+    assert classify(ctx, statuses).kind is not DecisionKind.GROW_FREE
 
 
-# --- OpLifecycles ----------------------------------------------------------------
+# --- OpStatusMachine ------------------------------------------------------------
 
 
-def test_lifecycle_holds_an_op_until_its_first_input_then_releases_it_for_a_tick():
+def test_status_holds_an_op_until_its_first_input_then_releases_it_for_a_tick():
     write = _op("Write")
     write.pending_first_input = True
-    lifecycles = _lifecycles(write)
-    assert lifecycles.state(write) == Held(reserved=0)
-    assert not lifecycles.can_scale(write)
-    assert not lifecycles.may_refill_to_min(write)  # stays at zero actors
+    statuses = _statuses(write)
+    assert statuses.status(write) == Held(reserved=0)  # initial status
+    assert not statuses.can_scale(write)
+    assert not statuses.can_size_per_op(write)  # stays at zero actors
 
-    lifecycles.set_reserved(write, 4)
-    lifecycles.on_step()
-    lifecycles.on_tick()
-    assert lifecycles.state(write) == Held(reserved=4)  # still waiting
+    statuses.set_reserved(write, 4)
+    statuses.on_step()
+    statuses.on_tick()
+    assert statuses.status(write) == Held(reserved=4)  # still waiting
 
     # Its first input arrives: released for one tick with the room it held,
-    # which the how-many pass may size but the policy may not yet touch.
+    # which the per-op actions may size but the policy may not yet touch.
     write.pending_first_input = False
-    lifecycles.on_tick()
-    assert lifecycles.state(write) == Released(grow_to=4)
-    assert lifecycles.may_refill_to_min(write)
-    assert not lifecycles.can_scale(write)
+    statuses.on_tick()
+    assert statuses.status(write) == Released(grow_to=4)
+    assert statuses.can_size_per_op(write)
+    assert not statuses.can_scale(write)
 
-    lifecycles.on_tick()
-    assert lifecycles.kind(write) is OpLifecycle.ACTIVE
-    assert lifecycles.can_scale(write)
+    statuses.on_tick()
+    assert statuses.kind(write) is OpStatusKind.ACTIVE
+    assert statuses.can_scale(write)
 
 
-def test_lifecycle_transfer_states_block_scaling_until_activated():
+def test_status_transfer_statuses_block_scaling_until_activated():
     recipient, donor = _op("recipient"), _op("donor")
-    lifecycles = _lifecycles(recipient, donor)
-    lifecycles.start_receiving(recipient)
-    lifecycles.start_donating(donor, recipient)
-    assert lifecycles.kind(recipient) is OpLifecycle.RECEIVING
-    assert lifecycles.reason(donor) == "donating (to recipient)"
-    assert lifecycles.ops_in(OpLifecycle.DONATING) == {donor}
-    assert not lifecycles.can_scale(recipient) and not lifecycles.can_scale(donor)
+    statuses = _statuses(recipient, donor)
+    statuses.start_receiving(recipient)
+    statuses.start_donating(donor, recipient)
+    assert statuses.kind(recipient) is OpStatusKind.RECEIVING
+    assert statuses.status(donor) == Donating(recipient)
+    assert statuses.reason(donor) == "donating (to recipient)"
+    assert statuses.ops_in(OpStatusKind.DONATING) == {donor}
+    assert not statuses.can_scale(recipient) and not statuses.can_scale(donor)
 
-    lifecycles.activate(recipient)
-    assert lifecycles.can_scale(recipient)
-    assert lifecycles.reason(recipient) is None
-
-
-def test_lifecycle_cooldown_counts_scheduling_steps():
-    donor = _op("donor")
-    lifecycles = _lifecycles(donor, cooldown_steps=3)
-    lifecycles.start_cooling(donor)
-    for _ in range(2):
-        lifecycles.on_step()
-        assert lifecycles.kind(donor) is OpLifecycle.COOLING
-    lifecycles.on_step()
-    assert lifecycles.can_scale(donor)
+    statuses.activate(recipient)
+    assert statuses.can_scale(recipient)
+    assert statuses.reason(recipient) is None
 
 
-def test_lifecycle_reports_completed_ops():
-    op = _op("op")
+def test_status_cooldown_counts_scheduling_steps():
+    donor, recipient = _op("donor"), _op("recipient")
+    statuses = _statuses(donor, recipient, cooldown_steps=3)
+    statuses.start_donating(donor, recipient)
+    statuses.start_cooling(donor)
+    for left in (2, 1):
+        statuses.on_step()
+        assert statuses.status(donor) == Cooling(left)
+    statuses.on_step()
+    assert statuses.can_scale(donor)
+
+
+def test_status_completed_is_derived_and_a_reopened_op_resumes_active():
+    """Completed comes from the op itself, and overrides any stored status.
+    Lineage reconstruction can reopen a completed op; it then resumes as
+    active, not in whatever status it held when it completed."""
+    op, recipient = _op("op"), _op("recipient")
+    statuses = _statuses(op, recipient)
+    statuses.start_donating(op, recipient)
     op.has_completed = lambda: True
-    assert _lifecycles(op).kind(op) is OpLifecycle.COMPLETED
+    assert statuses.kind(op) is OpStatusKind.COMPLETED
+    statuses.start_cooling(op)  # a completed op is left alone
+    statuses.on_tick()
+
+    op.has_completed = lambda: False  # reopened
+    assert statuses.kind(op) is OpStatusKind.ACTIVE
+
+
+@pytest.mark.parametrize(
+    "setup, move",
+    [
+        # A held op has no input: no transfer may touch it.
+        pytest.param("held", "start_receiving", id="held-to-receiving"),
+        pytest.param("held", "start_cooling", id="held-to-cooling"),
+        # Cooling starts only when a donor's last transfer closes.
+        pytest.param("active", "start_cooling", id="active-to-cooling"),
+        # A recipient cannot donate before its transfer closes.
+        pytest.param("receiving", "start_donating", id="receiving-to-donating"),
+    ],
+)
+def test_status_illegal_transitions_raise(setup, move):
+    op, other = _op("op"), _op("other")
+    op.pending_first_input = setup == "held"
+    statuses = _statuses(op, other)
+    if setup == "receiving":
+        statuses.start_receiving(op)
+    args = (op, other) if move == "start_donating" else (op,)
+    with pytest.raises(IllegalStatusTransition):
+        getattr(statuses, move)(*args)
 
 
 # --- TransferBook: transfer mechanics ------------------------------------------
@@ -671,11 +718,14 @@ def test_transfer_lands_only_if_its_claimed_actors_are_running(lost, expected):
     recipient = _op("recipient", pool=_Pool(lost_ids=["claimed-actor"] if lost else ()))
     metrics = _Metrics()
     book = _book(metrics=metrics)
-    book.state.in_flight[recipient] = TransferInFlight(
-        recipient=recipient,
-        donors=frozenset({_donor_op()}),
-        started_t=1000.0,
-        claimed_ids=("claimed-actor",),
+    _open_transfer(
+        book,
+        TransferInFlight(
+            recipient=recipient,
+            donors=frozenset({_donor_op()}),
+            started_t=1000.0,
+            claimed_ids=("claimed-actor",),
+        ),
     )
 
     book.advance(_ctx(now=1000.0))
@@ -691,11 +741,14 @@ def test_transfer_whose_recipient_never_grew_closes_as_lost():
     recipient = _op("recipient", pool=_Pool(running_ids=["old-actor"]))
     metrics = _Metrics()
     book = _book(metrics=metrics)
-    book.state.in_flight[recipient] = TransferInFlight(
-        recipient=recipient,
-        donors=frozenset({_donor_op()}),
-        started_t=1000.0,
-        preexisting_ids=frozenset({"old-actor"}),
+    _open_transfer(
+        book,
+        TransferInFlight(
+            recipient=recipient,
+            donors=frozenset({_donor_op()}),
+            started_t=1000.0,
+            preexisting_ids=frozenset({"old-actor"}),
+        ),
     )
 
     book.advance(_ctx(now=1000.0))
@@ -710,8 +763,8 @@ def test_donor_cools_down_after_a_transfer_closes():
     # scheduling-loop steps after the transfer closes.
     donor = _op("donor", pool=_Pool(current=4))
     recipient = _op("recipient")
-    lifecycles = _lifecycles(donor, recipient, cooldown_steps=2)
-    book = _book(lifecycles=lifecycles)
+    statuses = _statuses(donor, recipient, cooldown_steps=2)
+    book = _book(statuses=statuses)
     book.state.in_flight[recipient] = TransferInFlight(
         recipient=recipient,
         donors=frozenset({donor}),
@@ -719,19 +772,19 @@ def test_donor_cools_down_after_a_transfer_closes():
         claimed_ids=("claimed",),
     )
     # What firing a transfer does.
-    lifecycles.start_receiving(recipient)
-    lifecycles.start_donating(donor, recipient)
+    statuses.start_receiving(recipient)
+    statuses.start_donating(donor, recipient)
 
     # Recipient has no pendings -> lands; the donor starts cooling down.
     book.advance(_ctx(now=1000.0))
     assert not book.state.in_flight
-    assert lifecycles.can_scale(recipient)
-    assert lifecycles.kind(donor) is OpLifecycle.COOLING
+    assert statuses.can_scale(recipient)
+    assert statuses.kind(donor) is OpStatusKind.COOLING
 
-    lifecycles.on_step()
-    assert not lifecycles.can_scale(donor)
-    lifecycles.on_step()
-    assert lifecycles.can_scale(donor)
+    statuses.on_step()
+    assert not statuses.can_scale(donor)
+    statuses.on_step()
+    assert statuses.can_scale(donor)
 
 
 def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
@@ -743,8 +796,8 @@ def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
     still_draining = _op(
         "still_draining", pool=_Pool(pending_ids={"node": ["draining-actor"]})
     )
-    lifecycles = _lifecycles(donor, landed, still_draining, cooldown_steps=1)
-    book = _book(lifecycles=lifecycles)
+    statuses = _statuses(donor, landed, still_draining, cooldown_steps=1)
+    book = _book(statuses=statuses)
     for recipient, claimed in (
         (landed, "landed-actor"),
         (still_draining, "draining-actor"),
@@ -755,19 +808,19 @@ def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
             started_t=1000.0,
             claimed_ids=(claimed,),
         )
-    lifecycles.start_donating(donor, landed)
+    statuses.start_donating(donor, landed)
 
     book.advance(_ctx(now=1000.0))
-    lifecycles.on_step()
+    statuses.on_step()
     assert set(book.state.in_flight) == {still_draining}  # only one closed
-    assert lifecycles.kind(donor) is OpLifecycle.DONATING
+    assert statuses.kind(donor) is OpStatusKind.DONATING
 
     # Once the last transfer lands, the cooldown starts, then ends.
     still_draining._pool.pending_ids = {}
     book.advance(_ctx(now=1000.0))
-    assert lifecycles.kind(donor) is OpLifecycle.COOLING
-    lifecycles.on_step()
-    assert lifecycles.can_scale(donor)
+    assert statuses.kind(donor) is OpStatusKind.COOLING
+    statuses.on_step()
+    assert statuses.can_scale(donor)
 
 
 @pytest.mark.parametrize(
@@ -965,11 +1018,11 @@ def test_bottleneck_transfer_holds_recipient_and_donors_until_it_closes():
         shares={labeled: None, gen: None},
         slack={gen: 11},
     )
-    lifecycles = _lifecycles(labeled, gen)
-    policy = _policy(lifecycles=lifecycles)
+    statuses = _statuses(labeled, gen)
+    policy = _policy(statuses=statuses)
     _apply_bottleneck(policy, tick, [labeled, gen])
-    assert lifecycles.kind(labeled) is OpLifecycle.RECEIVING
-    assert lifecycles.kind(gen) is OpLifecycle.DONATING
+    assert statuses.kind(labeled) is OpStatusKind.RECEIVING
+    assert statuses.kind(gen) is OpStatusKind.DONATING
     assert policy.transfer_phase is TransferPhase.IN_FLIGHT
 
 

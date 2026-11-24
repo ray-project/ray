@@ -61,10 +61,6 @@ from ray.data._internal.experimental.execution.sizer.capacity import (
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
-from ray.data._internal.experimental.execution.sizer.lifecycle import (
-    Held,
-    OpLifecycle,
-)
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
     PerOpSizingRequest,
@@ -74,6 +70,10 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
     build_op_profile,
     critical_ops,
+)
+from ray.data._internal.experimental.execution.sizer.op_status import (
+    Held,
+    OpStatusKind,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     OpOrderingSignals,
@@ -518,7 +518,7 @@ class _TestSizer(OperatorSizer):
         as every later step of a tick sees it."""
         snapshot = self.next_tick(force=force)
         assert snapshot is not None
-        self._lifecycles.on_tick()
+        self._statuses.on_tick()
         self._hold_for_held_ops(snapshot)
         return snapshot
 
@@ -530,8 +530,8 @@ class _TestSizer(OperatorSizer):
         return self._per_op_how_many(snapshot)
 
     @property
-    def lifecycles(self):
-        return self._lifecycles
+    def statuses(self):
+        return self._statuses
 
 
 def _placement_view(
@@ -837,7 +837,7 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
 
 def _reserved(sizer: _TestSizer, op) -> int:
     """The room held for ``op`` this tick (it must be held)."""
-    state = sizer._lifecycles.state(op)
+    state = sizer._statuses.status(op)
     assert isinstance(state, Held), state
     return state.reserved
 
@@ -852,7 +852,7 @@ def test_ops_awaiting_first_input_each_reserve_their_share():
     sizer, _ = _bootstrapped(*ops.values(), view=view)
 
     _snapshot_of(sizer)
-    held = sizer._lifecycles.ops_in(OpLifecycle.HELD)
+    held = sizer._statuses.ops_in(OpStatusKind.HELD)
     assert held == {ops["resize"], ops["features"], ops["write"]}
     assert _reserved(sizer, ops["features"]) == 5
     resize_reserved = _reserved(sizer, ops["resize"])
@@ -863,7 +863,7 @@ def test_ops_awaiting_first_input_each_reserve_their_share():
     # actor); the others stay held.
     assert request[ops["resize"]].delta == resize_reserved - 1
     assert request[ops["resize"]].reason == "held share (hold released)"
-    assert sizer._lifecycles.kind(ops["features"]) is OpLifecycle.HELD
+    assert sizer._statuses.kind(ops["features"]) is OpStatusKind.HELD
 
 
 def test_steady_how_many_only_sheds_idle_actors():
@@ -1539,12 +1539,12 @@ def test_non_active_op_gets_no_want():
     )
     sizer, topo = _bootstrapped(idle, short, warm=True)
     for op in (idle, short):
-        sizer.lifecycles.start_receiving(op)
+        sizer.statuses.start_receiving(op)
     for _ in range(5):  # longer than the idle-drain hysteresis
         assert _tick(sizer, topo).request == {}
 
     for op in (idle, short):
-        sizer.lifecycles.activate(op)
+        sizer.statuses.activate(op)
     requests = [_tick(sizer, topo).request for _ in range(5)]
     assert any(r.get(idle) and r[idle].delta < 0 for r in requests)
     assert requests[0][short].delta == 2

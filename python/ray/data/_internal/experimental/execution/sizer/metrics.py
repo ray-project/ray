@@ -41,7 +41,7 @@ class SizerMetrics:
         "data_sizer_tick_duration_s",
         description=(
             "OperatorSizer per-phase wall time in seconds, per tick. build:"
-            " per-step lifecycle transitions plus the tick's cluster snapshot,"
+            " per-step status transitions plus the tick's cluster snapshot,"
             " summed over the steps since the last tick | prepare: holds, the"
             " bottleneck model and the phase | decide: the bottleneck policy's"
             " decision | per_op_how_many: per-operator how_many | per_op_where:"

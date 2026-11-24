@@ -47,13 +47,13 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     OpPlacementView,
     max_placeable_actors,
 )
-from ray.data._internal.experimental.execution.sizer.lifecycle import OpLifecycles
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
 )
 from ray.data._internal.experimental.execution.sizer.models import (
     PlacedSizingRequest,
 )
+from ray.data._internal.experimental.execution.sizer.op_status import OpStatusMachine
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -540,7 +540,7 @@ class TransferBook:
 
     Owns every open transfer (``TransferState``) and moves each through its
     life: fired, placing as donors free capacity, then closed as landed,
-    lost or timed out. Recipient and donors are held in ``OpLifecycles``
+    lost or timed out. Recipient and donors are held in ``OpStatusMachine``
     from firing until close; donors then cool down there.
     """
 
@@ -549,12 +549,12 @@ class TransferBook:
         name: str,
         metrics: OptimizerMetrics,
         placement: "ActorPlacementStrategy",
-        lifecycles: OpLifecycles,
+        statuses: OpStatusMachine,
     ):
         self._name = name
         self._metrics = metrics
         self._placement = placement
-        self._lifecycles = lifecycles
+        self._statuses = statuses
         self.state = TransferState()
 
     @property
@@ -709,7 +709,7 @@ class TransferBook:
         while another transfer is still draining it.
         """
         del self.state.in_flight[transfer.recipient]
-        self._lifecycles.activate(transfer.recipient)
+        self._statuses.activate(transfer.recipient)
         if transfer.record is not None:
             transfer.record.closed_t = now
         still_donating_to = {
@@ -719,11 +719,11 @@ class TransferBook:
         }
         for donor in transfer.donors:
             if donor in still_donating_to:
-                self._lifecycles.start_donating(donor, still_donating_to[donor])
+                self._statuses.start_donating(donor, still_donating_to[donor])
                 continue
             # Wait until the donor's signals describe its smaller size
             # (SIZER_DONOR_COOLDOWN_STEPS scheduling-loop steps).
-            self._lifecycles.start_cooling(donor)
+            self._statuses.start_cooling(donor)
 
     # --- new transfers --------------------------------------------------------
 
@@ -863,9 +863,9 @@ class TransferBook:
         )
         # The recipient and its donors are the transfer's until it closes, so
         # nothing else resizes them mid-move.
-        self._lifecycles.start_receiving(recipient)
+        self._statuses.start_receiving(recipient)
         for donor in donor_ops:
-            self._lifecycles.start_donating(donor, recipient)
+            self._statuses.start_donating(donor, recipient)
         state.recent_transfers.append(record)
         state.logged_thrashing.discard(recipient)
         self._metrics.record_outcome(self._name, recipient.name, "fired")

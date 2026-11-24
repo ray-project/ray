@@ -8,7 +8,7 @@ Three machines run side by side, each with its own enum:
 - ``TransferPhase``: whether a transfer is open. A tick may grow an op into
   free capacity while a transfer is in flight, so this is not a decision.
 
-Per operator, ``lifecycle.OpLifecycle`` says whether the op may be resized.
+Per operator, ``op_status.OpStatus`` says whether the op may be resized.
 """
 
 from __future__ import annotations

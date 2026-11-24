@@ -32,7 +32,7 @@ class DecisionContext:
     The policy writes back debits to ``free`` / ``pg_free`` /
     ``unknown_pg_headroom`` for the capacity it claims. Those maps are the
     tick snapshot's own, so the how-many pass later in the tick sees the
-    debits. Holding an operator goes through ``OpLifecycles``, not this
+    debits. Holding an operator goes through ``OpStatusMachine``, not this
     context.
     """
 

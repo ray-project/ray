@@ -52,11 +52,12 @@ decision (``DecisionKind``)
     bottleneck into free capacity, grow balanced stages, fund the recipient
     from donors, shrink blocked surplus, or hold.
 
-lifecycle (``OpLifecycle``)
-    What the sizer may do to an op now (``OpState``, see ``lifecycle.py``):
-    held until its first input (room reserved, no actors), released (grows
-    to the held room, for one tick), active, receiving or donating in a
-    transfer, cooling down after donating, or completed.
+status (``OpStatus``)
+    What the sizer may do to an op now, a permission rather than a size (see
+    ``op_status.py`` for the full state machine): held until its first input
+    (room reserved, no actors), released (for one tick: grows to the room it
+    held), active (any action whose guard passes may resize it), receiving
+    or donating in a transfer, cooling down after donating, or completed.
 
 how_many
     Per-op wants that need no model: warmup equal shares, idle shedding,

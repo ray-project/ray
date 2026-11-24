@@ -17,7 +17,7 @@ from ray.data._internal.execution.execution_flags import (
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     PG_ELIGIBLE,
 )
-from ray.data._internal.experimental.execution.sizer.lifecycle import OpLifecycles
+from ray.data._internal.experimental.execution.sizer.op_status import OpStatusMachine
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -64,17 +64,17 @@ def classify_phase(
 
 
 def why_cannot_grow(
-    op: "ExperimentalActorPoolMapOperator", lifecycles: OpLifecycles
+    op: "ExperimentalActorPoolMapOperator", statuses: OpStatusMachine
 ) -> Optional[str]:
     """Why ``op`` may not grow this tick, or None."""
-    if not lifecycles.can_scale(op):
-        return f"lifecycle ({lifecycles.reason(op)})"
+    if not statuses.can_scale(op):
+        return f"status ({statuses.reason(op)})"
     if op.actor_pool.num_pending_actors() > 0:
         return "actors pending"
     return None
 
 
-def classify(ctx: DecisionContext, lifecycles: OpLifecycles) -> Decision:
+def classify(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
     """This tick's primary action, first match wins:
 
     | phase / model                       | condition                     | decision       |
@@ -101,7 +101,7 @@ def classify(ctx: DecisionContext, lifecycles: OpLifecycles) -> Decision:
     for op, _ in tick.snapshot.bottlenecks:
         if tick.assessment.eligibility.get(op) not in _FREE_ELIGIBLE:
             continue
-        blocked = why_cannot_grow(op, lifecycles)
+        blocked = why_cannot_grow(op, statuses)
         if blocked is not None:
             logger.debug(
                 "BottleneckPolicy: bottleneck %s not grown into free capacity: %s",
@@ -116,7 +116,7 @@ def classify(ctx: DecisionContext, lifecycles: OpLifecycles) -> Decision:
             )
 
     if not tick.snapshot.bottlenecks:
-        targets = _balanced_targets(ctx, lifecycles)
+        targets = _balanced_targets(ctx, statuses)
         if targets:
             return Decision(
                 DecisionKind.GROW_BALANCED, targets=targets, reason="balanced"
@@ -140,7 +140,7 @@ def classify(ctx: DecisionContext, lifecycles: OpLifecycles) -> Decision:
 
 
 def _balanced_targets(
-    ctx: DecisionContext, lifecycles: OpLifecycles
+    ctx: DecisionContext, statuses: OpStatusMachine
 ) -> Dict["ExperimentalActorPoolMapOperator", int]:
     """With no bottleneck named, every op that is nearly always busy (busy
     share at least 1 - arrow margin) and can grow: the stages are balanced
@@ -156,7 +156,7 @@ def _balanced_targets(
             shares.busy < 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
             or op.has_completed()
             or pool.serving_size() >= growth_ceiling(op, ctx)
-            or why_cannot_grow(op, lifecycles) is not None
+            or why_cannot_grow(op, statuses) is not None
         ):
             continue
         target = pool.serving_size() + balanced_step(op, ctx)

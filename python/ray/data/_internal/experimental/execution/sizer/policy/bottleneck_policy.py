@@ -59,13 +59,13 @@ from ray.data._internal.experimental.execution.sizer import placement_view
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
     max_placeable_actors,
 )
-from ray.data._internal.experimental.execution.sizer.lifecycle import OpLifecycles
 from ray.data._internal.experimental.execution.sizer.metrics import (
     OptimizerMetrics,
 )
 from ray.data._internal.experimental.execution.sizer.models import (
     PlacedSizingRequest,
 )
+from ray.data._internal.experimental.execution.sizer.op_status import OpStatusMachine
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -161,12 +161,12 @@ class BottleneckPolicy:
         self,
         metrics: OptimizerMetrics,
         placement: "ActorPlacementStrategy",
-        lifecycles: OpLifecycles,
+        statuses: OpStatusMachine,
     ):
         self._metrics = metrics
         self._placement = placement
-        self._lifecycles = lifecycles
-        self._book = TransferBook(self.name, metrics, placement, lifecycles)
+        self._statuses = statuses
+        self._book = TransferBook(self.name, metrics, placement, statuses)
         # Per donor: consecutive ticks it has had surplus toward the recipient.
         self._surplus_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
         # Per op: consecutive ticks it has been blocked with surplus while
@@ -201,7 +201,7 @@ class BottleneckPolicy:
         self._book.advance(ctx)
         # Open transfers place first, into the capacity ``advance`` held.
         requests = self._book.bring_up_held_actors()
-        decision = classify(ctx, self._lifecycles)
+        decision = classify(ctx, self._statuses)
         logger.debug(
             "BottleneckPolicy: phase=%s transfer=%s decision=%s%s (%s)",
             ctx.phase.value,
@@ -259,7 +259,7 @@ class BottleneckPolicy:
         requests: List[PlacedSizingRequest] = []
         if (
             self._book.phase is TransferPhase.IDLE
-            and why_cannot_grow(recipient, self._lifecycles) is None
+            and why_cannot_grow(recipient, self._statuses) is None
         ):
             # One transfer at a time: let the window refill before the next.
             requests.extend(self._transfer_to(recipient, tick, ctx))
@@ -500,7 +500,7 @@ class BottleneckPolicy:
                 shares is None
                 or op in named
                 or op.has_completed()
-                or not self._lifecycles.can_scale(op)
+                or not self._statuses.can_scale(op)
                 or blocked_by_op.get(op, 0.0) < _BLOCKED_SHARE_MIN
             ):
                 continue
@@ -641,7 +641,7 @@ class BottleneckPolicy:
                 or op in tick.stable
                 or op not in tick.snapshot.shares
                 or op.has_completed()
-                or not self._lifecycles.can_scale(op)
+                or not self._statuses.can_scale(op)
             ):
                 continue
             donors.append(
