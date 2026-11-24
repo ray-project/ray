@@ -1,22 +1,22 @@
 load("@py_deps_py310//:requirements.bzl", ci_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary")
 
-exports_files([
-    # Read by //ci/ray_ci/automation/trivy:build_report, for the images
-    # the scan steps should cover.
-    "image-scan.rayci.yml",
-    # Consumed by //ci/pipeline:test_doc_api_rules_sync, which reads the
-    # doc_api rule out of this file to keep it in sync with the API-page set.
-    "test.rules.txt",
-])
+# Consumed by //ci/pipeline:test_doc_api_rules_sync, which reads the doc_api
+# rule out of this file to keep it in sync with the API-page set.
+exports_files(["test.rules.txt"])
 
+# Read by //ci/ray_ci/automation/trivy:build_report, for the images the scan
+# steps should cover.
 exports_files(
-    [
-        # The push steps, which //ci/ray_ci/automation/trivy:test_build_report
-        # checks the scan steps against.
-        "build.rayci.yml",
-        "linux_aarch64.rayci.yml",
-    ],
+    ["image-scan.rayci.yml"],
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
+
+# Every pipeline file, which //ci/ray_ci/automation/trivy:test_build_report
+# searches for steps that publish images, to check the scans cover them.
+filegroup(
+    name = "pipelines",
+    srcs = glob(["**/*.yml"]),
     visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
 )
 
