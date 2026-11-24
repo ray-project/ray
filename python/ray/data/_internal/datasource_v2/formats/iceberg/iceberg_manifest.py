@@ -117,7 +117,7 @@ def manifest_from_scan_tasks(
                 # 64-bit offsets, since a packed bin's tasks can pass binary's
                 # 2 GiB limit.
                 SCAN_TASK_COLUMN_NAME: pa.array(
-                    [cloudpickle.dumps(_without_column_stats(task)) for task in tasks],
+                    [pickle_scan_task(task) for task in tasks],
                     type=pa.large_binary(),
                 ),
             }
@@ -125,12 +125,22 @@ def manifest_from_scan_tasks(
     )
 
 
+def pickle_scan_task(task: "FileScanTask") -> bytes:
+    """``task`` as a manifest row carries it."""
+    return cloudpickle.dumps(_without_column_stats(task))
+
+
 def scan_tasks_from_manifest(manifest: FileManifest) -> Iterator["FileScanTask"]:
     """Unpickle each manifest row's scan task, in row order."""
+    for task in scan_tasks_by_row(manifest):
+        assert task is not None, "a row-group run without deletes has no scan task"
+        yield task
+
+
+def scan_tasks_by_row(manifest: FileManifest) -> Iterator[Optional["FileScanTask"]]:
+    """Each row's scan task, ``None`` for a row-group run without deletes."""
     for data in manifest.as_block()[SCAN_TASK_COLUMN_NAME].to_pylist():
-        # Rows ``iceberg_parquet_route`` listed carry none.
-        assert data is not None, "a row-group run has no scan task"
-        yield cloudpickle.loads(data)
+        yield None if data is None else cloudpickle.loads(data)
 
 
 # The ``DataFile`` fields listing reads and the reader never does.
