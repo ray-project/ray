@@ -49,7 +49,7 @@ def _pa_is_in(left: Any, right: Any) -> Any:
     return pc.is_in(left, right)
 
 
-def _pd_widen_for_number(value: Any, other: Any) -> Any:
+def _recast_via_widening(value: Any, other: Any) -> Any:
     """Widen a narrow NumPy column used with a Python number to 64 bits.
 
     Arrow blocks treat a Python number as 64-bit, so int8 ``x + 100`` is 200
@@ -69,8 +69,8 @@ def _pd_widen_for_number(value: Any, other: Any) -> Any:
 def _pd_arithmetic(op: Callable[[Any, Any], Any]) -> Callable[[Any, Any], Any]:
     def apply(left: Any, right: Any) -> Any:
         return op(
-            _pd_widen_for_number(value=left, other=right),
-            _pd_widen_for_number(value=right, other=left),
+            _recast_via_widening(value=left, other=right),
+            _recast_via_widening(value=right, other=left),
         )
 
     return apply
@@ -81,8 +81,8 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.SUB: _pd_arithmetic(op=operator.sub),
     Operation.MUL: _pd_arithmetic(op=operator.mul),
     Operation.DIV: _pd_arithmetic(op=operator.truediv),
-    Operation.MOD: _pd_arithmetic(op=operator.mod),
-    Operation.FLOORDIV: _pd_arithmetic(op=operator.floordiv),
+    Operation.MOD: operator.mod,
+    Operation.FLOORDIV: operator.floordiv,
     Operation.GT: operator.gt,
     Operation.LT: operator.lt,
     Operation.GE: operator.ge,
@@ -174,13 +174,17 @@ def _is_integer(value: Any) -> bool:
 
 def _pa_true_divide(left: Any, right: Any) -> Any:
     # Python's ``/`` divides integers as floats; PyArrow truncates them.
+    # Pushed filters pass PyArrow expressions, which this doesn't cast.
     if _is_integer(value=left) and _is_integer(value=right):
+        # ``safe=False`` rounds integers above 2**53 instead of raising.
         left, right = (
-            side.cast(pa.float64())
+            side.cast(pa.float64(), safe=False)
             if isinstance(side, (pa.Array, pa.ChunkedArray, pa.Scalar))
             else float(side)
             for side in (left, right)
         )
+        # Checked, so integer division by zero still raises.
+        return pc.divide_checked(left, right)
     return pc.divide(left, right)
 
 

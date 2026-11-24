@@ -234,8 +234,9 @@ class TestBasicArithmetic:
             (pa.array([-7, 7, 100], pa.int8()), col("x") + 100, lambda x: x + 100),
             (pa.array([0.1], pa.float32()), col("x") + 0.1, lambda x: x + 0.1),
             (pa.array([-7, 7]), col("x") / 2, lambda x: x / 2),
+            (pa.array([2**53 + 1]), col("x") / 1, lambda x: x / 1),
         ],
-        ids=["int8_add", "float32_add", "int_div"],
+        ids=["int8_add", "float32_add", "int_div", "int_div_above_2_53"],
     )
     def test_matches_python(self, values, expr, python, block_format):
         """Arrow and pandas blocks both give Python's answer and result type."""
