@@ -279,9 +279,9 @@ class OperatorSizer:
         """Hold room for held ops, run the bottleneck model, advance the
         phase, then how many, where, apply."""
         self._prepare_tick(snapshot)
-        decisions, how_many = self._how_many(snapshot)
-        where = self._per_op_where(how_many, snapshot)
-        self._apply(decisions, where)
+        decisions, how_many = self._per_op_how_many(snapshot)
+        where = self._per_op_where(how_many, snapshot, decisions)
+        self._apply(where)
         return how_many, where
 
     @timed("prepare")
@@ -300,7 +300,7 @@ class OperatorSizer:
         self._advance_phase()
 
     @timed("how_many")
-    def _how_many(
+    def _per_op_how_many(
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PerOpSizingRequest]:
         """Step 1: pick one action per op, then clamp the per-op upscales.
@@ -318,6 +318,12 @@ class OperatorSizer:
         """
         decisions = self._policy.decide(self._decision_context(snapshot))
         self._decision = self._policy.last_decision
+        self._telemetry.log_decisions(
+            self.phase,
+            self._decision,
+            decisions,
+            {op: self._statuses.status(op) for op in decisions},
+        )
         ledger = ConstraintAwareCapacityLedger(snapshot)
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
         self._grant_within_capacity(snapshot.ordered_ops, decisions, ledger, request)
@@ -326,9 +332,13 @@ class OperatorSizer:
 
     @timed("per_op_where")
     def _per_op_where(
-        self, request: PerOpSizingRequest, snapshot: ClusterStateSnapshot
+        self,
+        request: PerOpSizingRequest,
+        snapshot: ClusterStateSnapshot,
+        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
     ) -> PlacedSizingRequest:
-        """Step 2: resolve each per-op delta to nodes.
+        """Step 2: resolve each per-op delta to nodes, and pass along the
+        bottleneck model's requests, which already name theirs.
 
         1. shed off nodes being removed from the dataset's allocation
         2. resolve downscales to the nodes they shed from
@@ -338,8 +348,13 @@ class OperatorSizer:
         every time, so a failed placement or a slow drain retries when the
         per-op rules ask for the delta again next tick.
         """
+        bottleneck = tuple(
+            (op, placed)
+            for op, decision in decisions.items()
+            for placed in decision.placed
+        )
         if not request.request and not snapshot.nodes_to_reclaim:
-            return PlacedSizingRequest(request={})
+            return PlacedSizingRequest(request={}, bottleneck=bottleneck)
 
         reserved = dict(snapshot.reserved_by_node)
         # Copy: place_upscales spends from this map; the snapshot stays intact.
@@ -389,25 +404,14 @@ class OperatorSizer:
         )
 
         self._telemetry.log_placement(reserved, free, placed, self._placement)
-        return PlacedSizingRequest(request=placed)
+        return PlacedSizingRequest(request=placed, bottleneck=bottleneck)
 
     @timed("apply")
-    def _apply(
-        self,
-        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
-        where: PlacedSizingRequest,
-    ) -> None:
-        """Step 3: hand every placed request to the pools: the bottleneck
-        model's (from ``decisions``) and the per-op ones (``where``). One op
-        never has both, since each op gets one action per tick."""
+    def _apply(self, where: PlacedSizingRequest) -> None:
+        """Step 3: hand every placed request to the pools."""
         requests: List[
             Tuple[ExperimentalActorPoolMapOperator, PlacedScalingRequest]
-        ] = [
-            (op, placed)
-            for op, decision in decisions.items()
-            for placed in decision.placed
-        ]
-        requests.extend(where.request.items())
+        ] = [*where.bottleneck, *where.request.items()]
         # Downscales before upscales. The sort is stable, so an op's own
         # requests keep their order.
         for op, req in sorted(requests, key=lambda entry: entry[1].delta):

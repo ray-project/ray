@@ -1213,8 +1213,6 @@ class BottleneckObserver:
     def log_tick(
         self, tick: BottleneckTick["ExperimentalActorPoolMapOperator"]
     ) -> None:
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
         logger.debug(
             "BottleneckObserver: %s",
             format_snapshot(tick.snapshot, self._names, tick.assessment),

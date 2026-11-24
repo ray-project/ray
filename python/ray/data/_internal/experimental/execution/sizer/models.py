@@ -50,10 +50,18 @@ class PerOpSizingRequest:
 
 @dataclass(frozen=True)
 class PlacedSizingRequest:
-    """What scale_where resolved: the same deltas, now saying which nodes gain
-    actors and which shed them."""
+    """Everything one tick hands the pools, each request naming its nodes.
+
+    ``request``: what scale_where placed for the per-op actions, one request
+    per op. ``bottleneck``: what the bottleneck model already placed (it
+    picks its own nodes), in the order to apply them; an op can have several,
+    such as a donor that sheds on several nodes. No op is in both.
+    """
 
     request: Dict["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"]
+    bottleneck: Tuple[
+        Tuple["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"], ...
+    ] = ()
 
 
 @dataclass

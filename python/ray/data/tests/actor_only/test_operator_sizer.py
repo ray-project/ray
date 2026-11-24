@@ -44,6 +44,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     DrainReason,
+    ScaleUpRequest,
     _DrainingActorInfo,
 )
 from ray.data._internal.experimental.execution.operators.placement_constraints import (
@@ -87,6 +88,7 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
 from ray.data._internal.experimental.execution.sizer.operator_sizer import OperatorSizer
 from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
 from ray.data._internal.experimental.execution.sizer.policy.states import (
+    OpDecision,
     OpRule,
     SizerPhase,
 )
@@ -530,7 +532,7 @@ class _TestSizer(OperatorSizer):
         transitions, the holds and the tick's phase update."""
         snapshot = self.held_snapshot(force=force)
         self._advance_phase()
-        _, how_many = self._how_many(snapshot)
+        _, how_many = self._per_op_how_many(snapshot)
         return how_many
 
     @property
@@ -1097,7 +1099,7 @@ def test_warmup_latches_off_on_critical_op_first_output():
     sizer._advance_phase()
     # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
     assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
-    assert sizer._how_many(snapshot)[1].request == {}
+    assert sizer._per_op_how_many(snapshot)[1].request == {}
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
@@ -2835,6 +2837,35 @@ def _recorded_phases(monkeypatch, telemetry: SizerTelemetry) -> List[Tuple[str, 
         lambda phase, seconds: observed.append((phase, seconds)),
     )
     return observed
+
+
+def test_log_decisions_names_each_ops_status_rule_and_reason(caplog, propagate_logs):
+    """One debug line per tick says why each op is sized as it is."""
+    grown = _FakeOp("Grown", _FakePool(min_size=1, max_size=10, cpu=1))
+    held = _FakeOp("Held", _FakePool(min_size=1, max_size=10, cpu=1))
+    shed = _FakeOp("Shed", _FakePool(min_size=1, max_size=10, cpu=1))
+    decisions = {
+        grown: OpDecision(
+            OpRule.GROW_FREE,
+            placed=(ScaleUpRequest.on_nodes(["n1", "n1"], reason="grow free"),),
+        ),
+        held: OpDecision(OpRule.NONE),
+        shed: OpDecision(
+            OpRule.SHED_IDLE,
+            request=ActorPoolScalingRequest.downscale(delta=-2, reason="idle"),
+        ),
+    }
+    statuses = {grown: Active(), held: Held(reserved=4), shed: Active()}
+    with caplog.at_level(logging.DEBUG):
+        SizerTelemetry("test-ds").log_decisions(
+            SizerPhase.STEADY, None, cast(Any, decisions), cast(Any, statuses)
+        )
+    (line,) = [r.getMessage() for r in caplog.records if "tick:" in r.getMessage()]
+    assert line == (
+        "OperatorSizer tick: phase=steady decision=none | "
+        "Grown[active]: grow_free +2 (grow free); Held[held]: none; "
+        "Shed[active]: shed_idle -2 (idle)"
+    )
 
 
 def test_record_tick_emits_and_clears_collected_timings(monkeypatch):

@@ -35,8 +35,14 @@ PG-managed
 
 State machine (``operator_sizer``, ``policy``)
 ----------------------------------------------
+step
+    One pass of the executor's scheduling loop, many times a second. The
+    sizer counts some things in steps, such as a donor's cooldown.
+
 tick
-    One sizing evaluation, performed every ``SIZER_CADENCE_S``.
+    A step on which the sizer decides, at most once per ``SIZER_CADENCE_S``
+    (about a second or two). Every tick is a step; most steps are not ticks.
+    A tick runs: how many, where, apply.
 
 phase (``SizerPhase``)
     WARMUP until every op has received input and every critical op has
@@ -59,16 +65,22 @@ status (``OpStatus``)
     held), active (any action whose guard passes may resize it), receiving
     or donating in a transfer, cooling down after donating, or completed.
 
+rule (``OpRule``)
+    The one action that sized an op this tick. From the bottleneck model:
+    GROW_FREE, GROW_BALANCED, FUND, DONATE, SHRINK_SURPLUS. Per op:
+    RELEASE_POOL, GRANT_HELD, WARMUP_SHARE, SHED_IDLE, REFILL_TO_MIN. Or
+    NONE.
+
 how_many
-    Per-op wants that need no model: warmup equal shares, idle shedding,
-    min-size refill, releasing completed pools.
+    The tick's first step: ``SizingPolicy.decide`` picks one rule per op,
+    then the ledger clamps each per-op upscale to what still fits.
 
 has work
     The op has queued input or tasks in flight.
 
 ledger
-    The free capacity available during one sizing tick, debited as how_many
-    requests are granted.
+    The free capacity left during one tick. The how-many step debits it as
+    it grants per-op upscales.
 
 
 Bottleneck model (``bottleneck_observer``)

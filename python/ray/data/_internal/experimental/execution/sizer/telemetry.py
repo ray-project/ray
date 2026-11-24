@@ -30,6 +30,12 @@ if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
         ActorPlacementStrategy,
     )
+    from ray.data._internal.experimental.execution.sizer.op_status import OpStatus
+    from ray.data._internal.experimental.execution.sizer.policy.states import (
+        Decision,
+        OpDecision,
+        SizerPhase,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +99,37 @@ class SizerTelemetry:
                 op.name,
             )
             self._release_logged_size[op] = num_actors_to_release
+
+    def log_decisions(
+        self,
+        phase: "SizerPhase",
+        decision: Optional["Decision"],
+        decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
+        statuses: Dict[ExperimentalActorPoolMapOperator, "OpStatus"],
+    ) -> None:
+        """Log, once per tick, why each op is sized the way it is: the
+        phase, the bottleneck decision, and each op's status, rule, delta and
+        reason. The delta is before the ledger clamps it."""
+        parts = []
+        for op, op_decision in decisions.items():
+            status = statuses[op].kind.name.lower()
+            rule = op_decision.rule.name.lower()
+            if op_decision.request is not None:
+                delta = op_decision.request.delta
+                reason = op_decision.request.reason
+            elif op_decision.placed:
+                delta = sum(req.delta for req in op_decision.placed)
+                reason = op_decision.placed[0].reason
+            else:
+                parts.append(f"{op.name}[{status}]: {rule}")
+                continue
+            parts.append(f"{op.name}[{status}]: {rule} {delta:+d} ({reason})")
+        logger.debug(
+            "OperatorSizer tick: phase=%s decision=%s | %s",
+            phase.value,
+            f"{decision.kind.value} ({decision.reason})" if decision else "none",
+            "; ".join(parts),
+        )
 
     def log_request_summary(
         self, request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"]
