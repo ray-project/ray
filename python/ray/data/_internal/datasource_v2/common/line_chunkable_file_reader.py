@@ -52,9 +52,10 @@ Design decisions:
 - CSV chunks after the first have no header. The CSV subclass names their
   columns from the file's own header line, which its indexer reads once
   while listing and stores in each chunk's metadata.
-- Parsing uses pyarrow only (``pds.CsvFileFormat`` and
-  ``pds.JsonFileFormat``), no pandas. JSON input must be JSON Lines; a
-  top-level array can't be split by lines.
+- Parsing uses pyarrow (``pds.CsvFileFormat`` and ``pds.JsonFileFormat``). A
+  subclass may parse the lines ``_read_chunk_lines`` returns with another
+  library, as ``read_json(lines=True)`` does with pandas. JSON input must be
+  JSON Lines; a top-level array can't be split by lines.
 - ``row_hash`` needs each chunk's first row number, but line numbers are
   unknown. A chunk numbers its rows from its starting byte instead, which is
   unique because a chunk has fewer rows than bytes. The numbers depend on
@@ -65,7 +66,7 @@ Design decisions:
   override, so JSONL carries nothing for it.
 """
 
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -256,9 +257,9 @@ class LineChunkableFileReader(FileReader):
         with fragment_to_read.fragment.open() as file:
             return memoryview(file.read_buffer())
 
-    def _read_chunk_fragment(
+    def _read_chunk_lines(
         self, fragment_to_read: ReadUnitFragment
-    ) -> Optional[pds.Fragment]:
+    ) -> Optional[memoryview]:
         """Fetch a chunk unit's whole lines; ``None`` when it holds no rows."""
         unit = fragment_to_read.unit
         with fragment_to_read.fragment.open() as file:
@@ -267,10 +268,18 @@ class LineChunkableFileReader(FileReader):
                 index=unit.index, chunk_size=self._chunk_size, file_size=file_size
             )
             lines = read_line_aligned(file, start=start, end=end, file_size=file_size)
-        if not lines:
+        return lines or None
+
+    def _read_chunk_fragment(
+        self, fragment_to_read: ReadUnitFragment
+    ) -> Optional[pds.Fragment]:
+        """Fetch a chunk unit's whole lines as a fragment; ``None`` when it holds no rows."""
+        lines = self._read_chunk_lines(fragment_to_read)
+        if lines is None:
             return None
+        unit = fragment_to_read.unit
         return self._make_chunk_fragment(
-            lines, starts_at_file_start=start == 0, path=unit.source
+            lines, starts_at_file_start=unit.index == 0, path=unit.source
         )
 
     @override
@@ -291,6 +300,20 @@ class LineChunkableFileReader(FileReader):
             ]
             scanner_kwargs = {**scanner_kwargs, "columns": columns}
         yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+
+    @override
+    def _on_disk_column_names(self, dataset: pds.Dataset) -> Set[str]:
+        """Count a requested column the plan schema lacks as read from the file.
+
+        The plan schema is a sample of the files, so a column absent from it may
+        still be in a file. It is read and null-filled where a file lacks it, by
+        ``_get_scan_schema``, instead of being treated as synthesized and dropped.
+        """
+        schema = self._schema
+        planned = set(schema.names) if schema is not None else set()
+        synthesized = {column.name for column in self._synthesized_columns}
+        unsampled = set(self._columns or ()) - planned - synthesized
+        return super()._on_disk_column_names(dataset) | unsampled
 
     @override
     def _get_scan_schema(

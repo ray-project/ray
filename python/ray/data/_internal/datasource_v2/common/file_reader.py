@@ -52,6 +52,10 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
 
+# Maximum number of concurrent Python fragment scans per read task.
+# A value of 1 or less makes the task scan fragments sequentially.
+_MAX_FRAGMENT_WORKERS = env_integer("RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS", 64)
+
 
 class FileFormat(str, Enum):
     PARQUET = "parquet"
@@ -243,21 +247,8 @@ class FileReader(Reader[FileManifest]):
                 )
         return table
 
-    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read data from the input bucket and yield Arrow tables.
-
-        This method is called on workers to perform the actual read operation.
-        It should respect all pushdowns configured on this reader.
-
-        Args:
-            input_split: Work unit describing what data to read.
-
-        Yields:
-            pa.Table: PyArrow Tables containing the read data.
-        """
-        if len(input_split) == 0:
-            return
-
+    def _make_dataset(self, input_split: FileManifest) -> pds.Dataset:
+        """Return a ``pds.Dataset`` over the manifest's files."""
         # Dedupe paths before handing them to pyarrow. A manifest can carry
         # multiple rows per file — chunking emits one row per row-group
         # slice, and a user may deliberately list the same file more than
@@ -289,13 +280,39 @@ class FileReader(Reader[FileManifest]):
             schema=self._file_dataset_schema,
             ignore_prefixes=self._ignore_prefixes,
         )
+        return dataset
+
+    def _on_disk_column_names(self, dataset: pds.Dataset) -> Set[str]:
+        """Return the names of the columns pyarrow reads from the files.
+
+        A requested column outside this set is synthesized after the read:
+        a partition key, ``path`` or ``row_hash``.
+        """
+        return set(dataset.schema.names)
+
+    def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
+        """Read data from the input bucket and yield Arrow tables.
+
+        This method is called on workers to perform the actual read operation.
+        It should respect all pushdowns configured on this reader.
+
+        Args:
+            input_split: Work unit describing what data to read.
+
+        Yields:
+            pa.Table: PyArrow Tables containing the read data.
+        """
+        if len(input_split) == 0 or (self._limit is not None and self._limit <= 0):
+            return
+
+        dataset = self._make_dataset(input_split)
 
         # Split the requested columns into ones the on-disk file has
         # (pyarrow reads these) and ones we need to synthesize post-read
         # (hive partition keys, ``path``, ``row_hash``). ``self._columns
         # is None`` means "no projection" — read every file column and
         # synthesize every available partition/synthesized column.
-        on_disk_column_names = set(dataset.schema.names)
+        on_disk_column_names = self._on_disk_column_names(dataset)
         if self._columns is None:
             columns_to_read_from_file: Optional[List[str]] = None
             columns_to_synthesize: Optional[Set[str]] = None
@@ -319,11 +336,8 @@ class FileReader(Reader[FileManifest]):
         for table, position in self._read_fragment_batches(
             dataset, scanner_kwargs, input_split
         ):
-            if self._limit is not None:
-                if rows_read >= self._limit:
-                    break
-                if len(table) > self._limit - rows_read:
-                    table = table.slice(0, self._limit - rows_read)
+            if self._limit is not None and len(table) > self._limit - rows_read:
+                table = table.slice(0, self._limit - rows_read)
 
             if self._partition_parser is not None:
                 table = self._apply_partition_values(
@@ -370,6 +384,8 @@ class FileReader(Reader[FileManifest]):
             self._on_batch_read(table)
             rows_read += len(table)
             yield table
+            if self._limit is not None and rows_read >= self._limit:
+                return
 
     def _resolve_batch_size(self, dataset: pds.Dataset, manifest: FileManifest) -> int:
         """Return the batch size to use for scanning.
@@ -500,12 +516,12 @@ class FileReader(Reader[FileManifest]):
         (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
         the same per-fragment pattern via ``fragment.to_batches``.
 
-        When there is more than one fragment and
-        ``execution_options.preserve_order`` is False, fragments are
-        read concurrently via :func:`make_async_gen`. We still pass
-        ``preserve_ordering=True`` so concurrent reads emit blocks in
-        fragment order; otherwise Ray Data task retries (block
-        reconstruction) could produce a different block sequence.
+        When multiple workers are available and
+        ``execution_options.preserve_order`` is False, fragments are read
+        concurrently via :func:`make_async_gen`. We pass
+        ``preserve_ordering=True`` so a retried task yields its batches in
+        the same order. That order depends on the worker count, so the
+        fragment worker limit must be the same on every node.
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
@@ -526,15 +542,13 @@ class FileReader(Reader[FileManifest]):
         if not fragments_with_offsets:
             return
 
-        num_workers = len(fragments_with_offsets)
+        num_workers = min(len(fragments_with_offsets), _MAX_FRAGMENT_WORKERS)
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs
             )
             return
 
-        # Set `preserve_ordering=True` to ensure deterministic output ordering.
-        # This is required so that Ray Data task retries (block reconstruction)
         yield from make_async_gen(
             base_iterator=iter(fragments_with_offsets),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
@@ -581,13 +595,13 @@ class FileReader(Reader[FileManifest]):
                 f"read fragment {fragment.path}",
                 match=ctx.retried_io_errors,
             ):
-                if table.num_rows > 0:
+                if len(table) > 0:
                     yield table, ReadUnitPosition(
                         unit=fragment_to_read.unit,
                         rows_before=rows_before,
                         unit_start_row=fragment_to_read.unit_start_row,
                     )
-                    rows_before += table.num_rows
+                    rows_before += len(table)
 
     def _iter_unit_tables(
         self,
