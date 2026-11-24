@@ -603,9 +603,8 @@ class TransferBook:
     def _hold_owed_capacity(self, ctx: DecisionContext) -> None:
         """Hold, in the tick's ledger, what each open transfer is still owed.
 
-        The book advances before the policy decides, and the policy runs
-        before the how-many pass, so this hold comes before anything else this
-        tick can spend the capacity. As many owed actors as the node's free
+        The book advances before anything else this tick decides, so this
+        hold comes before anything else can spend the capacity. As many owed actors as the node's free
         capacity fits are brought up by ``bring_up_held_actors``; the rest of
         the hold keeps the node's partial free capacity for the recipient
         while donors drain.

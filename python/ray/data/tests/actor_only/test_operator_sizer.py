@@ -64,8 +64,7 @@ from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
 )
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
-    PerOpSizingRequest,
-    PlacedSizingRequest,
+    PlacedRequests,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
@@ -527,13 +526,12 @@ class _TestSizer(OperatorSizer):
         self._hold_for_held_ops(snapshot)
         return snapshot
 
-    def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
-        """One how-many step's per-op requests, after the step's status
-        transitions, the holds and the tick's phase update."""
+    def how_many(self, *, force: bool = True) -> Dict[Any, ActorPoolScalingRequest]:
+        """One how-many step's counts (the decisions WHERE places), after the
+        step's status transitions, the holds and the tick's phase update."""
         snapshot = self.held_snapshot(force=force)
         self._advance_phase()
-        _, how_many = self._per_op_how_many(snapshot)
-        return how_many
+        return _counts(self._per_op_how_many(snapshot))
 
     @property
     def statuses(self):
@@ -610,7 +608,12 @@ def _mark_modeled(sizer: _TestSizer, *ops) -> None:
     )
 
 
-def _tick(sizer: _TestSizer, topo=None) -> PerOpSizingRequest:
+def _counts(decisions) -> Dict[Any, ActorPoolScalingRequest]:
+    """The decisions that carry a count, by op."""
+    return {op: d.request for op, d in decisions.items() if d.request is not None}
+
+
+def _tick(sizer: _TestSizer, topo=None) -> Dict[Any, ActorPoolScalingRequest]:
     return sizer.how_many()
 
 
@@ -636,7 +639,7 @@ def _ticks_until_idle_drain(sizer: _TestSizer, op, limit: int = 20) -> int:
     """Ticks until ``op`` gets an idle-drain request. Equal to the hysteresis
     exactly when its idle streak starts from zero."""
     for n in range(1, limit + 1):
-        req = sizer.how_many().request.get(op)
+        req = sizer.how_many().get(op)
         if req is not None and req.reason == "drain (idle)":
             return n
     raise AssertionError(f"{op.name} never drained")
@@ -692,10 +695,10 @@ def test_op_awaiting_first_input_gets_no_actors_until_it_arrives():
     assert len(read._pool.scaled) == 1
     assert write._pool.scaled == []
     assert not write.waited_for_min_actors
-    assert write not in _tick(sizer).request
+    assert write not in _tick(sizer)
 
     write.pending_first_input = False
-    assert _tick(sizer).request[write].delta >= 1
+    assert _tick(sizer)[write].delta >= 1
 
 
 def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
@@ -724,7 +727,7 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
     )
     assert target is not None and target > write._pool.min_size()
 
-    assert write not in _tick(sizer).request
+    assert write not in _tick(sizer)
     free = _snapshot_of(sizer).free_by_node["node0"]
     # Minus read's running actor, minus write's held share.
     assert (free.cpu, free.memory) == (16 - 1 - target, 20 - 1 - target)
@@ -734,7 +737,7 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
     read.metrics.num_task_outputs_generated = 1
     write.pending_first_input = False
     _mark_modeled(sizer, read, write)
-    request = _tick(sizer).request
+    request = _tick(sizer)
     assert request[write].delta == target
     assert request[write].reason == "held share (hold released)"
 
@@ -825,7 +828,7 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
     for name in ("read", "resize", "features"):
         ops[name].metrics.num_task_outputs_generated = 1
 
-    assert write not in _tick(sizer).request
+    assert write not in _tick(sizer)
     snapshot = _snapshot_of(sizer)
     assert _reserved(sizer, write) == 4
     # 61.6 - 3 running 1-actor stages (2.4 + 2.4 + 3.3) - 4 held x 2.4.
@@ -835,12 +838,12 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
 
     write.pending_first_input = False
     _mark_modeled(sizer, *ops.values())
-    request = _tick(sizer).request
+    request = _tick(sizer)
     assert request[write].delta == 4
     assert request[write].reason == "held share (hold released)"
     # One-time: the fake pool applies nothing, so next tick it is merely
     # below min size again.
-    assert _tick(sizer).request[write].reason == "below min size"
+    assert _tick(sizer)[write].reason == "below min size"
 
 
 def _reserved(sizer: _TestSizer, op) -> int:
@@ -866,7 +869,7 @@ def test_ops_awaiting_first_input_each_reserve_their_share():
     resize_reserved = _reserved(sizer, ops["resize"])
 
     ops["resize"].pending_first_input = False
-    request = _tick(sizer).request
+    request = _tick(sizer)
     # resize's hold released: one grant to its held count (it already has 1
     # actor); the others stay held.
     assert request[ops["resize"]].delta == resize_reserved - 1
@@ -1023,8 +1026,8 @@ def test_steady_how_many_only_sheds_idle_actors():
     topo[busy]._enqueued = 20
 
     for _ in range(sizer._policy.per_op.downscale_hysteresis - 1):
-        assert _tick(sizer).request == {}
-    request = _tick(sizer).request
+        assert _tick(sizer) == {}
+    request = _tick(sizer)
     assert busy not in request
     assert request[idle].delta < 0
 
@@ -1042,7 +1045,7 @@ def test_unmodeled_op_keeps_its_warmup_share_after_warmup():
         op.metrics.num_task_outputs_generated = 1
     _mark_modeled(sizer, seen)
 
-    request = _tick(sizer).request
+    request = _tick(sizer)
     assert sizer.phase is SizerPhase.MODEL_WARMING
     assert seen not in request
     capacity = ExecutionResources(cpu=32.0, gpu=0.0)
@@ -1099,7 +1102,7 @@ def test_warmup_latches_off_on_critical_op_first_output():
     sizer._advance_phase()
     # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
     assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
-    assert sizer._per_op_how_many(snapshot)[1].request == {}
+    assert _counts(sizer._per_op_how_many(snapshot)) == {}
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
@@ -1557,16 +1560,16 @@ def test_warmup_equal_share_targets():
     # min_reserved_cpu = 3 (a, b, write at min 1 x 1 cpu); 3 autoscaled cpu
     # ops. ceiling = (100 - 3) * 0.8 / 3 = 25.87 -> target 25 -> delta 24.
     for key in ("a", "b"):
-        assert result.request[ops[key]].delta == 24, key
-    assert ops["write"] not in result.request
+        assert result[ops[key]].delta == 24, key
+    assert ops["write"] not in result
     # Fixed GPU pool at size: no resize request.
-    assert ops["infer"] not in result.request
+    assert ops["infer"] not in result
 
     # GPU ops size against the GPU share: min_reserved_gpu = 1;
     # ceiling = (8 - 1) * 0.8 / 1 = 5.6 -> target 5 -> delta 4.
     gpu_op = _FakeOp("GpuMap", _FakePool(min_size=1, max_size=40, gpu=1, running=1))
     sizer, topo = _bootstrapped(gpu_op, cpu=100.0, gpu=8.0)
-    assert _tick(sizer, topo).request[gpu_op].delta == 4
+    assert _tick(sizer, topo)[gpu_op].delta == 4
 
 
 @pytest.mark.parametrize("upstream_has_output", [False, True])
@@ -1584,11 +1587,11 @@ def test_warmup_holds_ops_at_min_until_upstream_produces_output(upstream_has_out
     result = _tick(sizer, topo)
 
     # The source is never gated. Share: (100 - 2) * 0.8 / 2 = 39.2 -> 39.
-    assert result.request[source].delta == 38
+    assert result[source].delta == 38
     if upstream_has_output:
-        assert result.request[op].delta == 38
+        assert result[op].delta == 38
     else:
-        assert op not in result.request
+        assert op not in result
 
 
 @pytest.mark.parametrize(
@@ -1620,7 +1623,7 @@ def test_upscale_is_capped_at_remaining_work_once_upstream_completes(
     )
     sizer, topo = _bootstrapped(upstream, op, enqueued=40, cpu=100.0, gpu=0.0)
 
-    assert _tick(sizer, topo).request[op].delta == expected_delta
+    assert _tick(sizer, topo)[op].delta == expected_delta
 
 
 def test_warmup_share_survives_float_division():
@@ -1628,7 +1631,7 @@ def test_warmup_share_survives_float_division():
     # would leave the pool one actor short of its 32-actor share.
     op = _FakeOp("op", _FakePool(min_size=1, max_size=100, cpu=0.1, running=1))
     sizer, topo = _bootstrapped(op, cpu=4.1, gpu=0.0)
-    assert _tick(sizer, topo).request[op].delta == 31
+    assert _tick(sizer, topo)[op].delta == 31
 
 
 def test_warmup_pg_ops_share_their_placement_group():
@@ -1666,9 +1669,9 @@ def test_warmup_pg_ops_share_their_placement_group():
     result = sizer.how_many()
     # (10 GPU - 2 floors) * 0.8 / 2 = 3.2 -> target 3 -> +2 each.
     for op in pg_ops:
-        assert result.request[op].delta == 2, op.name
+        assert result[op].delta == 2, op.name
     # Non-PG share: (8 - 1) * 0.8 / 1 = 5.6 -> target 5 -> +4.
-    assert result.request[plain].delta == 4
+    assert result[plain].delta == 4
 
 
 def test_non_active_op_gets_no_want():
@@ -1684,11 +1687,11 @@ def test_non_active_op_gets_no_want():
     for op in (idle, short):
         sizer.statuses.start_receiving(op)
     for _ in range(5):  # longer than the idle-drain hysteresis
-        assert _tick(sizer, topo).request == {}
+        assert _tick(sizer, topo) == {}
 
     for op in (idle, short):
         sizer.statuses.activate(op)
-    requests = [_tick(sizer, topo).request for _ in range(5)]
+    requests = [_tick(sizer, topo) for _ in range(5)]
     assert any(r.get(idle) and r[idle].delta < 0 for r in requests)
     assert requests[0][short].delta == 2
 
@@ -1697,15 +1700,15 @@ def test_warmup_is_upscale_only_and_holds_while_pending():
     # Above the warmup target: warmup must not downscale.
     big = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, running=90))
     sizer, topo = _bootstrapped(big, cpu=100.0)
-    assert big not in _tick(sizer, topo).request
+    assert big not in _tick(sizer, topo)
 
     # A granted upscale that is still pending is not re-requested.
     op = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, running=1))
     sizer, topo = _bootstrapped(op, cpu=100.0)
-    delta = _tick(sizer, topo).request[op].delta
+    delta = _tick(sizer, topo)[op].delta
     assert delta > 0
     op._pool.pending = delta
-    assert op not in _tick(sizer, topo).request
+    assert op not in _tick(sizer, topo)
 
 
 def test_critical_op_discovery_walks_past_ops_that_never_report_task_outputs():
@@ -1805,9 +1808,9 @@ def test_fixed_pool_replenished_below_min_only(running: int, expected_delta):
     sizer, topo = _bootstrapped(fixed)
     result = _tick(sizer, topo)
     if expected_delta is None:
-        assert fixed not in result.request
+        assert fixed not in result
     else:
-        req = result.request[fixed]
+        req = result[fixed]
         assert (req.delta, req.reason) == (expected_delta, "below min size")
 
 
@@ -1830,9 +1833,9 @@ def test_below_min_grants_full_min_in_order():
     result = _tick(sizer, topo)
     # Consumer (sink-most) then producer are granted; producer's min 30 is
     # clamped to the remaining capacity, exhausting the cluster.
-    assert result.request[consumer].delta == 1
-    assert result.request[producer].delta == 15
-    assert src not in result.request or result.request[src].delta == 0
+    assert result[consumer].delta == 1
+    assert result[producer].delta == 15
+    assert src not in result or result[src].delta == 0
 
 
 @pytest.mark.parametrize(
@@ -1853,7 +1856,7 @@ def test_below_min_requests_what_fits(cluster_cpu: float, expected_placed: int):
     )
     sizer, topo = _bootstrapped(src, mapper, cpu=cluster_cpu, gpu=0)
     result = _tick(sizer, topo)
-    placed = sum(max(0, req.delta) for req in result.request.values())
+    placed = sum(max(0, req.delta) for req in result.values())
     assert placed == expected_placed
 
 
@@ -1886,9 +1889,9 @@ def test_below_min_constrained_op_granted_full_min():
     )
     sizer, topo = _bootstrapped(peer1, pinned, peer2, peer3, view=view)
     req = _tick(sizer, topo)
-    assert req.request[pinned].delta == 4
+    assert req[pinned].delta == 4
     for peer in (peer1, peer2, peer3):
-        assert req.request[peer].delta >= 1
+        assert req[peer].delta >= 1
 
 
 def test_completed_op_released_with_force():
@@ -1897,10 +1900,10 @@ def test_completed_op_released_with_force():
     sizer, topo = _bootstrapped(done)
     for _ in range(3):
         # The request keeps firing so attrition continues.
-        req = _tick(sizer, topo).request[done]
+        req = _tick(sizer, topo)[done]
         assert (req.delta, req.force) == (-10, True)
     pool.running = 4  # attrition removed 6 idle actors
-    assert _tick(sizer, topo).request[done].delta == -4
+    assert _tick(sizer, topo)[done].delta == -4
 
 
 def test_source_op_not_released_at_startup():
@@ -1908,7 +1911,7 @@ def test_source_op_not_released_at_startup():
     # done and force-released.
     src = _FakeOp("ReadFiles", _FakePool(min_size=1, max_size=500, cpu=1, running=4))
     sizer, topo = _bootstrapped(src, cpu=100.0)
-    req = _tick(sizer, topo).request[src]
+    req = _tick(sizer, topo)[src]
     assert req.delta > 0 and not req.force
 
 
@@ -1955,7 +1958,7 @@ def test_warm_backpressured_pool_never_shed(
     sizer, topo = _bootstrapped(op, enqueued=enqueued, warm=True, cpu=1000.0, gpu=8.0)
     op.out_backpressure = out_backpressure
     for _ in range(SIZER_DOWNSCALE_HYSTERESIS + extra_ticks):
-        req = _tick(sizer, topo).request.get(op)
+        req = _tick(sizer, topo).get(op)
         assert req is None or req.delta >= 0, f"shed a backpressured pool: {req}"
 
 
@@ -2035,7 +2038,7 @@ def test_warm_backpressured_producer_holds(producer, consumer, cpu, ticks_fn, ex
     topo[producer_op]._enqueued = producer["enq"]
     topo[consumer_op]._enqueued = consumer["enq"]
     for _ in range(ticks_fn(SIZER_DOWNSCALE_HYSTERESIS)):
-        req = _tick(sizer, topo).request.get(producer_op)
+        req = _tick(sizer, topo).get(producer_op)
         assert _PRODUCER_HOLD_CHECKS[expect](req), f"{expect} violated: {req}"
 
 
@@ -2062,7 +2065,7 @@ def test_warm_loop_holds_saturated_op_at_demand(producer_bp, bottleneck_pool):
     topo[bottleneck]._enqueued = 2  # shallow queue: demand 7 <= current 10
     bottleneck.out_backpressure = (0, 10)
     producer.out_backpressure = producer_bp
-    assert bottleneck not in _tick(sizer, topo).request
+    assert bottleneck not in _tick(sizer, topo)
 
 
 # The drain arm fires only on a TRULY idle input: an empty queue with busy
@@ -2088,7 +2091,7 @@ def test_warm_drain_arm_requires_truly_idle_input(
         assert _ticks_until_idle_drain(sizer, op) == SIZER_DOWNSCALE_HYSTERESIS
         return
     for _ in range(SIZER_DOWNSCALE_HYSTERESIS + 1):  # past hysteresis, no drain
-        assert op not in _tick(sizer, topo).request
+        assert op not in _tick(sizer, topo)
     # The streak never built: once truly idle, the drain takes a full streak.
     op._pool.in_flight = 0
     assert _ticks_until_idle_drain(sizer, op) == SIZER_DOWNSCALE_HYSTERESIS
@@ -2099,7 +2102,7 @@ def test_warm_pending_gate_blocks_all_arms(caplog, propagate_logs):
     sizer, topo = _bootstrapped(op, warm=True, cpu=1000.0, gpu=8.0)
     with caplog.at_level(logging.DEBUG):
         results = [_tick(sizer, topo) for _ in range(SIZER_DOWNSCALE_HYSTERESIS + 2)]
-    assert all(op not in r.request for r in results)
+    assert all(op not in r for r in results)
     assert any("sizing in flight" in r.getMessage() for r in caplog.records)
     # Frozen, not building: once the pendings land, the drain takes a full
     # streak.
@@ -2143,7 +2146,7 @@ def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
 
     # embed wants its min of 10 but only 8 A100 GPUs are free -> capped at 8.
     req = _tick(sizer, topo)
-    assert req.request[embed].delta == 8
+    assert req[embed].delta == 8
 
 
 def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
@@ -2169,8 +2172,8 @@ def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
     req = _tick(sizer, topo)
     # sink: 5 below min, of which 3 are reclaimed -> only 2 consume free,
     # leaving 8 CPU. up: 8 below min, and it gets all 8.
-    assert req.request[sink].delta == 5
-    assert req.request[up].delta == 8
+    assert req[sink].delta == 5
+    assert req[up].delta == 8
 
 
 # --- capacity ledger -----------------------------------------------------------
@@ -2878,12 +2881,11 @@ def test_record_tick_emits_and_clears_collected_timings(monkeypatch):
     telemetry.add_timing_phase("how_many", 0.002)
     telemetry.add_timing_phase("build", 0.003)  # a later step's build adds up
 
-    empty = (PerOpSizingRequest(request={}), PlacedSizingRequest(request={}))
-    telemetry.record_tick({}, *empty)
+    telemetry.record_tick({}, {}, PlacedRequests(by_op={}))
     assert observed == [("build", pytest.approx(0.004)), ("how_many", 0.002)]
 
     observed.clear()
-    telemetry.record_tick({}, *empty)
+    telemetry.record_tick({}, {}, PlacedRequests(by_op={}))
     assert observed == []
 
 
@@ -2910,9 +2912,7 @@ def test_timed_adds_each_call_to_its_phase(monkeypatch):
     owner.work(3)
     with pytest.raises(ValueError):
         owner.fail()
-    owner._telemetry.record_tick(
-        {}, PerOpSizingRequest(request={}), PlacedSizingRequest(request={})
-    )
+    owner._telemetry.record_tick({}, {}, PlacedRequests(by_op={}))
     assert [phase for phase, _ in observed] == ["work", "fail"]
     assert all(seconds >= 0 for _, seconds in observed)
 

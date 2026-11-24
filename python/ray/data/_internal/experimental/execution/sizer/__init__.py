@@ -72,15 +72,17 @@ rule (``OpRule``)
     NONE.
 
 how_many
-    The tick's first step: ``SizingPolicy.decide`` picks one rule per op,
-    then the ledger clamps each per-op upscale to what still fits.
+    The tick's first step: ``SizingPolicy.decide`` picks one rule per op.
+    Each decision is a count that already fits, or requests that already
+    name their nodes (a transfer picks its own). WHERE then places the
+    counts.
 
 has work
     The op has queued input or tasks in flight.
 
 ledger
-    The free capacity left during one tick. The how-many step debits it as
-    it grants per-op upscales.
+    The free capacity left during one tick (``ConstraintAwareCapacityLedger``).
+    Every decision in the how-many step checks and spends it.
 
 
 Bottleneck model (``bottleneck_observer``)

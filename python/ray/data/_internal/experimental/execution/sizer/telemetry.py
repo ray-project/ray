@@ -20,12 +20,10 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
 )
 from ray.data._internal.experimental.execution.sizer.metrics import SizerMetrics
 from ray.data._internal.experimental.execution.sizer.models import (
-    PerOpSizingRequest,
-    PlacedSizingRequest,
+    PlacedRequests,
 )
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
         ActorPlacementStrategy,
@@ -71,7 +69,6 @@ class SizerTelemetry:
         self._dataset_id = dataset_id
         self._metrics = SizerMetrics(dataset_id)
         # Last summaries logged, to suppress repeats.
-        self._last_request_summary: Optional[str] = None
         self._last_placement_summary: Optional[str] = None
         self._last_capacity_summary: Optional[str] = None
         self._last_shortfall_summary: Optional[str] = None
@@ -117,18 +114,6 @@ class SizerTelemetry:
             f"{decision.kind.value} ({decision.reason})" if decision else "none",
             "; ".join(parts),
         )
-
-    def log_request_summary(
-        self, request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"]
-    ) -> None:
-        if not request:
-            return
-        summary = "; ".join(
-            f"{op.name}: {req.delta:+d} ({req.reason})" for op, req in request.items()
-        )
-        if summary != self._last_request_summary:
-            logger.debug("OperatorSizer: requests %s", summary)
-            self._last_request_summary = summary
 
     # --- scale_where ---------------------------------------------------------
 
@@ -236,8 +221,8 @@ class SizerTelemetry:
     def record_tick(
         self,
         topology: "Topology",
-        how_many: PerOpSizingRequest,
-        where: PlacedSizingRequest,
+        decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
+        where: PlacedRequests,
     ) -> None:
         """Close out one evaluation: emit and clear the phase timings
         collected since the last tick, then the actor deltas.
@@ -250,30 +235,44 @@ class SizerTelemetry:
         for phase, seconds in timings.items():
             self._metrics.record_tick_duration(phase, seconds)
 
-        if not how_many.request and not where.request:
+        decided = {
+            op: (
+                d.request.delta
+                if d.request is not None
+                else sum(r.delta for r in d.placed)
+            )
+            for op, d in decisions.items()
+            if d.request is not None or d.placed
+        }
+        placed = {op: sum(r.delta for r in reqs) for op, reqs in where.by_op.items()}
+        if not decided and not placed:
             return
 
-        for phase, placed in (
-            ("per_op_how_many", how_many.request),
-            ("per_op_where", where.request),
+        for phase, deltas in (
+            ("per_op_how_many", decided),
+            ("per_op_where", placed),
         ):
-            for op, r in placed.items():
+            for op, delta in deltas.items():
                 self._metrics.record_actor_delta(
-                    operator=topology[op].op_tag(), phase=phase, delta=r.delta
+                    operator=topology[op].op_tag(), phase=phase, delta=delta
                 )
 
         up = down = 0
         per_op = []
-        for op, r in where.request.items():
-            if not r.delta:
+        for op, delta in placed.items():
+            if not delta:
                 continue
-            per_op.append(f"{op.name}:{r.delta:+d}")
-            if r.delta > 0:
-                up += r.delta
+            per_op.append(f"{op.name}:{delta:+d}")
+            if delta > 0:
+                up += delta
             else:
-                down -= r.delta
+                down -= delta
         nodes = {
-            node for r in where.request.values() if r.delta > 0 for node in r.nodes
+            node
+            for reqs in where.by_op.values()
+            for r in reqs
+            if r.delta > 0
+            for node in r.nodes
         }
         logger.debug(
             "OperatorSizer tick: (%s ms) | "
@@ -284,7 +283,7 @@ class SizerTelemetry:
             ),
             up,
             down,
-            len(where.request),
+            len(where.by_op),
             ", ".join(per_op),
             len(nodes),
         )

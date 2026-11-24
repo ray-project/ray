@@ -59,8 +59,7 @@ logger = logging.getLogger(__name__)
 
 class PerOpRules:
     """Sizes each op from its own state. ``decide`` picks the action; the
-    sizer's grant pass then clamps any upscale to what the cluster can
-    place."""
+    policy then cuts any upscale to what the ledger still has free."""
 
     def __init__(
         self,
@@ -192,8 +191,8 @@ class PerOpRules:
         op's equal share of what it sizes against: the allocation for non-PG
         ops, its PG's bundles for static-PG ops (``_pg_warmup_ceiling``). An
         op whose PG capacity is unknown has nothing to inspect and takes
-        ratio x its pool's max size. Either way the ledger then clamps the
-        grant to what fits per node / bundle.
+        ratio x its pool's max size. Either way the policy then cuts it to
+        what the ledger has free per node / bundle.
 
         Upscale only: a shrinking share just stops further growth, and the
         delta self-zeroes because serving_size() counts pendings. An op holds

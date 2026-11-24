@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
@@ -50,8 +50,7 @@ from ray.data._internal.experimental.execution.sizer.metrics import (
 )
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
-    PerOpSizingRequest,
-    PlacedSizingRequest,
+    PlacedRequests,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
@@ -266,20 +265,20 @@ class OperatorSizer:
     ) -> None:
         """One sizing tick against the snapshot, then its telemetry. The
         snapshot's free maps are debited along the way."""
-        how_many, where = self._run_tick(cluster_state_snapshot)
-        self._telemetry.record_tick(self._topology, how_many, where)
+        decisions, where = self._run_tick(cluster_state_snapshot)
+        self._telemetry.record_tick(self._topology, decisions, where)
 
     @timed("tick")
     def _run_tick(
         self, snapshot: ClusterStateSnapshot
-    ) -> Tuple[PerOpSizingRequest, PlacedSizingRequest]:
+    ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PlacedRequests]:
         """Hold room for held ops, run the bottleneck model, advance the
         phase, then how many, where, apply."""
         self._prepare_tick(snapshot)
-        decisions, how_many = self._per_op_how_many(snapshot)
-        where = self._per_op_where(how_many, snapshot, decisions)
+        decisions = self._per_op_how_many(snapshot)
+        where = self._per_op_where(decisions, snapshot)
         self._apply(where)
-        return how_many, where
+        return decisions, where
 
     @timed("prepare")
     def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> None:
@@ -299,13 +298,15 @@ class OperatorSizer:
     @timed("how_many")
     def _per_op_how_many(
         self, snapshot: ClusterStateSnapshot
-    ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PerOpSizingRequest]:
+    ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
         """Step 1: pick one action per op (``SizingPolicy.decide``).
 
-        Every action checks and spends capacity in the tick's ledger, in the
-        tick's op order. The bottleneck model's requests name their nodes; the
-        per-op requests are counts that already fit, and the op order is also
-        WHERE's placement order, so step 2 can place them all.
+        Each decision is either a count (``request``) or requests that
+        already name their nodes (``placed``): a decision whose outcome
+        depends on the node, like a transfer, picks the nodes itself. Every
+        action checks and spends capacity in the tick's ledger, in the tick's
+        op order. That is also WHERE's placement order, so step 2 can place
+        every count.
 
         Capacity this tick's downscales will free is not credited: a running
         victim holds its resources until it is dead, so the ledger sees it on
@@ -319,23 +320,16 @@ class OperatorSizer:
             decisions,
             {op: self._statuses.status(op) for op in decisions},
         )
-        request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        for op in snapshot.ordered_ops:
-            want = decisions[op].request if op in decisions else None
-            if want is not None:
-                request[op] = want
-        self._telemetry.log_request_summary(request)
-        return decisions, PerOpSizingRequest(request=request)
+        return decisions
 
     @timed("per_op_where")
     def _per_op_where(
         self,
-        request: PerOpSizingRequest,
-        snapshot: ClusterStateSnapshot,
         decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
-    ) -> PlacedSizingRequest:
-        """Step 2: resolve each per-op delta to nodes, and pass along the
-        bottleneck model's requests, which already name theirs.
+        snapshot: ClusterStateSnapshot,
+    ) -> PlacedRequests:
+        """Step 2: give every decision its nodes. Decisions that already
+        name theirs pass through; each count is placed here:
 
         1. shed off nodes being removed from the dataset's allocation
         2. resolve downscales to the nodes they shed from
@@ -345,13 +339,27 @@ class OperatorSizer:
         every time, so a failed placement or a slow drain retries when the
         per-op rules ask for the delta again next tick.
         """
-        bottleneck = tuple(
-            (op, placed)
-            for op, decision in decisions.items()
-            for placed in decision.placed
-        )
-        if not request.request and not snapshot.nodes_to_reclaim:
-            return PlacedSizingRequest(request={}, bottleneck=bottleneck)
+        counts: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
+        for op in snapshot.ordered_ops:
+            want = decisions[op].request if op in decisions else None
+            if want is not None:
+                counts[op] = want
+        placed = self._place_counts(counts, snapshot)
+        by_op = {
+            op: decision.placed for op, decision in decisions.items() if decision.placed
+        }
+        for op, req in placed.items():
+            by_op[op] = (*by_op.get(op, ()), req)
+        return PlacedRequests(by_op=by_op)
+
+    def _place_counts(
+        self,
+        request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
+        snapshot: ClusterStateSnapshot,
+    ) -> Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest]:
+        """Nodes for each count, plus the sheds off nodes being reclaimed."""
+        if not request and not snapshot.nodes_to_reclaim:
+            return {}
 
         reserved = dict(snapshot.reserved_by_node)
         # Copy: place_upscales spends from this map; the snapshot stays intact.
@@ -365,11 +373,11 @@ class OperatorSizer:
             nodes_to_reclaim=snapshot.nodes_to_reclaim,
             profiles=self._profiles,
         )
-        views = build_placement_views(request=request.request, capacity=snapshot)
+        views = build_placement_views(request=request, capacity=snapshot)
         # Nodes the capacity-short upscalers want freed, so downscales shed
         # where the freed capacity actually helps.
         favored = compute_favored_nodes(
-            request=request.request,
+            request=request,
             views=views,
             reserved=reserved,
             free=free,
@@ -381,7 +389,7 @@ class OperatorSizer:
         # upscales can immediately reuse.
         place_downscales(
             placed=placed,
-            request=request.request,
+            request=request,
             views=views,
             favored=favored,
             free=free,
@@ -390,7 +398,7 @@ class OperatorSizer:
         )
         place_upscales(
             placed=placed,
-            request=request.request,
+            request=request,
             views=views,
             free=free,
             placement=self._placement,
@@ -401,14 +409,12 @@ class OperatorSizer:
         )
 
         self._telemetry.log_placement(reserved, free, placed, self._placement)
-        return PlacedSizingRequest(request=placed, bottleneck=bottleneck)
+        return placed
 
     @timed("apply")
-    def _apply(self, where: PlacedSizingRequest) -> None:
+    def _apply(self, where: PlacedRequests) -> None:
         """Step 3: hand every placed request to the pools."""
-        requests: List[
-            Tuple[ExperimentalActorPoolMapOperator, PlacedScalingRequest]
-        ] = [*where.bottleneck, *where.request.items()]
+        requests = [(op, req) for op, reqs in where.by_op.items() for req in reqs]
         # Downscales before upscales. The sort is stable, so an op's own
         # requests keep their order.
         for op, req in sorted(requests, key=lambda entry: entry[1].delta):

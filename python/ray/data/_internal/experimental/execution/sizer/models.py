@@ -1,8 +1,8 @@
 """What the sizer's phases hand each other.
 
-Per-operator deltas before placement (``PerOpSizingRequest``) and after
-(``PlacedSizingRequest``), and the capacity one tick decides against
-(``ClusterStateSnapshot``).
+The placed requests one tick hands the pools (``PlacedRequests``), a
+batch of placed requests the policy builds (``PlacedSizingRequest``), and the
+capacity one tick decides against (``ClusterStateSnapshot``).
 """
 
 from __future__ import annotations
@@ -30,7 +30,6 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
 )
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
@@ -39,29 +38,23 @@ if TYPE_CHECKING:
     )
 
 
-# Should these have developerAPIs?
 @dataclass(frozen=True)
-class PerOpSizingRequest:
-    """What the how-many pass decided: per operator, how many actors to add or
-    remove. Not yet tied to any node."""
+class PlacedRequests:
+    """What WHERE hands APPLY: every request of the tick, each naming its
+    nodes.
 
-    request: Dict["ExperimentalActorPoolMapOperator", "ActorPoolScalingRequest"]
+    ``by_op``: per op, its requests in the order to apply them. Usually one;
+    a donor that sheds on several nodes has one per node.
+    """
+
+    by_op: Dict["ExperimentalActorPoolMapOperator", Tuple["PlacedScalingRequest", ...]]
 
 
 @dataclass(frozen=True)
 class PlacedSizingRequest:
-    """Everything one tick hands the pools, each request naming its nodes.
-
-    ``request``: what scale_where placed for the per-op actions, one request
-    per op. ``bottleneck``: what the bottleneck model already placed (it
-    picks its own nodes), in the order to apply them; an op can have several,
-    such as a donor that sheds on several nodes. No op is in both.
-    """
+    """A batch of placed requests the policy builds, one per op."""
 
     request: Dict["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"]
-    bottleneck: Tuple[
-        Tuple["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"], ...
-    ] = ()
 
 
 @dataclass

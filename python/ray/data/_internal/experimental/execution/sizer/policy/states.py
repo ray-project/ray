@@ -103,9 +103,10 @@ class OpRule(enum.Enum):
 
 @dataclass(frozen=True)
 class OpDecision:
-    """One op's action this tick. A per-op action sets ``request``, which the
-    sizer still clamps and places. A bottleneck action sets ``placed``: its
-    requests already name their nodes, in the order to apply them."""
+    """One op's action this tick. It sets at most one of the two:
+    ``request``, a count that already fits and that WHERE places; or
+    ``placed``, requests that already name their nodes, in the order to apply
+    them (a bottleneck action, whose outcome depends on the node)."""
 
     rule: OpRule
     request: Optional["ActorPoolScalingRequest"] = None
