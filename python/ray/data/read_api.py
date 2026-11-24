@@ -2603,10 +2603,9 @@ def read_csv(
         Column types are inferred per piece, so :meth:`Dataset.schema` before
         execution is a guess from the first about 1 MiB of up to 16 sampled
         files, and one file's pieces can produce different types for the same
-        column. A newline inside a quoted or escaped value isn't supported in
-        split reads: a piece cut at one fails to parse (pass
-        ``parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True)`` to
-        read such files whole) or can return wrong rows.
+        column. A piece ending inside a quoted value raises ``ValueError``.
+        Pass ``parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True)``
+        to read files containing quoted newlines without splitting them.
         ``arrow_open_stream_args``, and CSV options other than
         ``read_options``, ``parse_options`` and ``convert_options``, use the V1
         reader. To use the V1 reader everywhere, set

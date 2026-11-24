@@ -2,6 +2,7 @@ import os
 
 import pandas as pd
 import pyarrow as pa
+import pyarrow.csv as pcsv
 import pyarrow.parquet as pq
 import pytest
 from fsspec.implementations.http import HTTPFileSystem
@@ -245,6 +246,27 @@ def test_read_csv_v2_splits_large_files(
     assert sorted(row["id"] for row in rows) == list(range(1000))
     assert {row["year"] for row in rows} == {"2024"}
     assert {row["path"] for row in rows} == {path}
+
+
+def test_read_csv_v2_rejects_a_quoted_value_split_across_chunks(
+    ray_start_regular_shared, tmp_path, csv_v2_small_chunks, monkeypatch
+):
+    head = 'text\n"first\n'
+    path = tmp_path / "quoted.csv"
+    path.write_text(head + 'second"\nplain\n')
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "0")
+
+    with pytest.raises(ValueError, match="newlines_in_values"):
+        ray.data.read_csv(str(path), partitioning=None).take_all()
+
+    rows = ray.data.read_csv(
+        str(path),
+        partitioning=None,
+        parse_options=pcsv.ParseOptions(newlines_in_values=True),
+    ).take_all()
+
+    assert rows == [{"text": "first\nsecond"}, {"text": "plain"}]
 
 
 def test_read_csv_v2_preserve_order_keeps_chunks_in_order(
