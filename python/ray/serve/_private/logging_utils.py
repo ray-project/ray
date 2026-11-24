@@ -239,20 +239,36 @@ def log_access_log_filter(record: logging.LogRecord) -> bool:
     return not record.serve_access_log
 
 
-def get_component_logger_file_path() -> Optional[str]:  # type: ignore[return]
+# Absolute path of this process's Serve component log file, recorded by
+# configure_component_logger(). The path is read from here rather than from the
+# handler: a library calling logging.config.dictConfig (vLLM does at startup)
+# closes every existing handler, which leaves MemoryHandler.target as None.
+_component_log_file_path: Optional[str] = None
+
+
+def get_component_logger_file_path() -> Optional[str]:
     """Returns the relative file path for the Serve logger, if it exists.
 
     If a logger was configured through configure_component_logger() for the Serve
     component that's calling this function, this returns the location of the log file
     relative to the ray logs directory.
+
+    Never raises: Replica.is_allocated() calls this, and the controller treats an
+    exception there as a failed replica when it recovers live replicas.
     """
-    logger = logging.getLogger(SERVE_LOGGER_NAME)
-    for handler in logger.handlers:
-        if isinstance(handler, logging.handlers.MemoryHandler):
-            absolute_path = handler.target.baseFilename  # type: ignore[union-attr]
-            ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()  # type: ignore[attr-defined]
-            if absolute_path.startswith(ray_logs_dir):
-                return absolute_path[len(ray_logs_dir) :]
+    absolute_path = _component_log_file_path
+    if absolute_path is None:
+        logger = logging.getLogger(SERVE_LOGGER_NAME)
+        for handler in logger.handlers:
+            if isinstance(handler, logging.handlers.MemoryHandler):
+                absolute_path = getattr(handler.target, "baseFilename", None)
+                break
+    if absolute_path is None:
+        return None
+    ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()  # type: ignore[attr-defined]
+    if absolute_path.startswith(ray_logs_dir):
+        return absolute_path[len(ray_logs_dir) :]
+    return None
 
 
 class StreamToLogger(object):
@@ -353,6 +369,9 @@ def configure_component_logger(
 
     This logger will *not* propagate its log messages to the parent logger(s).
     """
+    global _component_log_file_path
+    _component_log_file_path = None
+
     logger = logging.getLogger(SERVE_LOGGER_NAME)
     logger.propagate = False
     logger.setLevel(logging_config.log_level)
@@ -404,8 +423,9 @@ def configure_component_logger(
         suffix=".log",
     )
 
+    log_file_path = os.path.join(logs_dir, log_file_name)
     file_handler = logging.handlers.RotatingFileHandler(
-        os.path.join(logs_dir, log_file_name),
+        log_file_path,
         maxBytes=max_bytes,
         backupCount=backup_count,
     )
@@ -444,6 +464,7 @@ def configure_component_logger(
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)
+    _component_log_file_path = log_file_path
 
 
 def configure_default_serve_logger():
