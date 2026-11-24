@@ -524,7 +524,9 @@ def test_a_failed_report_still_leaves_a_warning_annotation(tmp_path: Path):
     assert annotation.name == "trivy-scan.warning.md"
     body = annotation.read_text()
     assert "report failed" in body
-    assert "ValueError: more than one scan step scans ['ray-py3.11-tpu']" in body
+    assert (
+        "ValueError: ray-py3.11-tpu is scanned twice, by step images_scan_tpu" in body
+    )
 
 
 def test_the_failure_annotation_cannot_break_its_markdown():
