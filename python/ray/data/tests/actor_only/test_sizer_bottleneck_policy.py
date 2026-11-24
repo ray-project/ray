@@ -134,8 +134,6 @@ class _Pool:
         # Claimed actors that left the pool without starting (cancelled/died).
         self.lost_ids = set(lost_ids)
         self.running_ids = list(running_ids)
-        # (limit, node_id) of every reclaim_draining_actors call.
-        self.reclaims = []
 
     def total_size(self):
         return self._current
@@ -176,10 +174,6 @@ class _Pool:
     def has_actor(self, actor_id):
         return actor_id not in self.lost_ids
 
-    def reclaim_draining_actors(self, *, limit, node_id=None):
-        self.reclaims.append((limit, node_id))
-        return limit
-
     def get_logical_ids(self):
         pending = [a for ids in self.pending_ids.values() for a in ids]
         return self.running_ids + pending
@@ -194,7 +188,7 @@ class _Op:
         self._view = view or _view()
         self.output_dependencies = list(output_dependencies)
         self._pool._reclaimable = reclaimable
-        self.pending_on_start = False
+        self.pending_first_input = False
 
     def placement_constraint(self):
         return PlacementConstraint()
@@ -202,8 +196,8 @@ class _Op:
     def has_completed(self):
         return False
 
-    def awaiting_on_start(self):
-        return self.pending_on_start
+    def awaiting_first_input(self):
+        return self.pending_first_input
 
     @property
     def actor_pool(self):
@@ -470,17 +464,17 @@ def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
 # --- OpLifecycles ----------------------------------------------------------------
 
 
-def test_lifecycle_releases_an_op_once_its_on_start_runs():
+def test_lifecycle_releases_an_op_once_its_first_input_arrives():
     write = _op("Write")
-    write.pending_on_start = True
+    write.pending_first_input = True
     lifecycles = _lifecycles(write)
-    assert lifecycles.state(write) is OpLifecycle.AWAITING_ON_START
+    assert lifecycles.state(write) is OpLifecycle.AWAITING_FIRST_INPUT
     assert not lifecycles.can_scale(write)
 
     lifecycles.on_step()
     assert not lifecycles.can_scale(write)  # still waiting
 
-    write.pending_on_start = False
+    write.pending_first_input = False
     lifecycles.on_step()
     assert lifecycles.state(write) is OpLifecycle.ACTIVE
     assert lifecycles.can_scale(write)
@@ -600,10 +594,7 @@ def test_transfer_opens_one_transfer_per_node():
 
 def test_transfer_times_out_while_still_owed():
     # A donor that never frees its slot leaves the recipient owed: after the
-    # timeout the transfer closes as timed out and stops holding capacity. Its
-    # victim may never finish draining (its outputs can need the recipient to
-    # be consumed), so the timeout gives it back to the donor; otherwise each
-    # retry would strand one more donor actor.
+    # timeout the transfer closes as timed out and stops holding capacity.
     donor = _donor_op()
     recipient = _op("recipient")
     metrics = _Metrics()
@@ -622,7 +613,6 @@ def test_transfer_times_out_while_still_owed():
     assert not book.state.in_flight
     assert metrics.actions[-1] == ("bottleneck_transfer", "recipient", "timeout")
     assert late.free["node"].cpu == 0.5  # no longer held
-    assert donor._pool.reclaims == [(1, "node")]
 
 
 def test_transfer_timeout_restarts_when_actors_are_placed():
@@ -658,9 +648,6 @@ def test_transfer_timeout_restarts_when_actors_are_placed():
     assert metrics.actions[-1] == ("bottleneck_transfer", "recipient", "timeout")
     (cancel,) = cancelled
     assert cancel.nodes == ("node",)
-    # The victim's node was placed on, so its victim drained and is not
-    # reclaimed.
-    assert donor._pool.reclaims == []
 
 
 @pytest.mark.parametrize(

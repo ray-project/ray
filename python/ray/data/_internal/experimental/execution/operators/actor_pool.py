@@ -1255,21 +1255,13 @@ class _ExperimentalActorPool(AutoscalingActorPool):
             ActorStatus.IDLE if state.num_tasks_in_flight == 0 else ActorStatus.ACTIVE,
         )
 
-    def _reclaimable_draining_actors(
-        self, node_id: Optional[NodeIdStr] = None
-    ) -> List[ActorHandle]:
+    def _reclaimable_draining_actors(self) -> List[ActorHandle]:
         """Draining actors a reclaim may take, in reclaim order: busiest first
         (most tasks in flight, then most outstanding outputs), since reclaiming
         that actor rescues the most work from a slow drain. Ties keep
-        drain-start order. Actors losing their node are excluded. With
-        ``node_id``, only actors on that node."""
+        drain-start order. Actors losing their node are excluded."""
         candidates = [
-            actor
-            for actor, info in self._draining_actors.items()
-            if info.reclaimable
-            and (
-                node_id is None or self._running_actors[actor].actor_location == node_id
-            )
+            actor for actor, info in self._draining_actors.items() if info.reclaimable
         ]
         candidates.sort(
             key=lambda actor: (
@@ -1305,17 +1297,15 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         released). Used to keep the output queue's prioritized set in sync."""
         return {self._running_actors[actor].actor_id for actor in self._draining_actors}
 
-    def reclaim_draining_actors(
-        self, *, limit: int, node_id: Optional[NodeIdStr] = None
-    ) -> int:
+    def reclaim_draining_actors(self, *, limit: int) -> int:
         """Reclaim up to ``limit`` draining actors back into the running pool
         (inverse of ``begin_draining``), busiest first. Returns the number
         reclaimed. Saves actor startup + capacity churn vs killing and
-        recreating. With ``node_id``, only actors on that node."""
+        recreating."""
         if limit <= 0:
             return 0
         reclaimed = 0
-        for actor in self._reclaimable_draining_actors(node_id)[:limit]:
+        for actor in self._reclaimable_draining_actors()[:limit]:
             state = self._running_actors[actor]
             self._cancel_draining(actor, cause="reclaimed")
             # Re-admit to the scheduling heaps (it now passes the draining

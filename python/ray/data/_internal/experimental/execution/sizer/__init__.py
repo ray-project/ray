@@ -39,8 +39,10 @@ tick
     One sizing evaluation, performed every ``SIZER_CADENCE_S``.
 
 phase (``SizerPhase``)
-    WARMUP until every critical op has produced output: there is no feedback
-    yet, so each op is sized to an equal share of the allocation.
+    WARMUP until every op has received input and every critical op has
+    produced output: there is no feedback yet, so each op is sized to an
+    equal share of the allocation. An op starts no actors before its first
+    input; its share is held for it until then.
     MODEL_WARMING until the bottleneck model has seen a full window of every
     unfinished op (the ones it has not seen keep their equal share). STEADY
     after that.
@@ -51,7 +53,7 @@ decision (``DecisionKind``)
     from donors, shrink blocked surplus, or hold.
 
 lifecycle (``OpLifecycle``)
-    Whether an op may be resized now: awaiting its on_start, active,
+    Whether an op may be resized now: awaiting its first input, active,
     receiving or donating in a transfer, cooling down after donating, or
     completed.
 

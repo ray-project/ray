@@ -15,9 +15,6 @@ from ray.data._internal.execution.operators.top_n_operator import (
     TopNMergeOperator,
 )
 from ray.data._internal.logical.optimizers import get_execution_plan
-from ray.data._internal.logical.rules.top_n_rewrite import (
-    TOP_N_REWRITE_ENABLED_CONFIG_KEY,
-)
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -31,7 +28,7 @@ def test_top_n_planner_routes_to_local_map_and_final_merge(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     ds = ray.data.range(10, override_num_blocks=2).sort("id").limit(3)
 
     dag = get_execution_plan(ds._logical_plan)[0].dag
@@ -53,7 +50,7 @@ def test_top_n_shuffle_v2_end_to_end(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
 
     rows = [{"a": i % 4, "b": i} for i in range(10)]
     random.Random(0).shuffle(rows)
@@ -79,7 +76,7 @@ def test_top_n_shuffle_v2_handles_non_adjacent_sort_and_large_limit(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
 
     ds = (
         ray.data.range(5, override_num_blocks=2)
@@ -101,7 +98,7 @@ def test_top_n_shuffle_v2_handles_empty_input(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
 
     result = ray.data.range(0, override_num_blocks=2).sort("id").limit(3).take_all()
 
@@ -114,7 +111,7 @@ def test_top_n_shuffle_v2_preserves_typed_empty_arrow_schema(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     schema = pa.schema([("key", pa.int64()), ("value", pa.string())])
     ds = ray.data.from_arrow([schema.empty_table()]).sort("key").limit(3)
 
@@ -131,7 +128,7 @@ def test_top_n_shuffle_v2_preserves_typed_empty_pandas_schema(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     frame = pd.DataFrame(
         {
             "key": pd.Series(dtype="int64"),
@@ -154,7 +151,7 @@ def test_top_n_shuffle_v2_preserves_invalid_key_error(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
 
     with pytest.raises(ValueError, match="there's no such column"):
         ray.data.range(5).sort("missing").limit(3).take_all()
@@ -168,7 +165,7 @@ def test_top_n_merges_candidates_in_batches_under_memory_pressure(
 ) -> None:
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     # Constrain the executor's logical budget, not the physical object store.
     ctx.execution_options.resource_limits = ExecutionResources(
         cpu=cpu_limit, object_store_memory=1024
@@ -219,7 +216,7 @@ def test_top_n_partial_batch_unblocks_waiting_upstream(
     # Flush the first row before waiting instead of buffering it with the next row.
     ctx.target_max_block_size = 1
     ctx.target_min_block_size = 1
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     gate: Any = ray.remote(Gate).options(num_cpus=0).remote()
     submissions = []
     operators = []
@@ -284,7 +281,7 @@ def test_top_n_shuffle_v2_arrow_nulls_last(
         pa.table({"key": [1, 2], "row_id": [2, 3]}),
     ]
 
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     result = ray.data.from_arrow(blocks).sort("key").limit(3).take_all()
 
     assert result == [
@@ -307,14 +304,14 @@ def test_top_n_shuffle_v2_matches_global_sort_with_arrow_nan(
         pa.table({"key": [float("nan"), 4.0, 3.0], "row_id": [3, 4, 5]}),
     ]
 
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, False)
+    ctx.enable_top_n_rewrite = False
     baseline = (
         ray.data.from_arrow(blocks)
         .sort("key", descending=descending)
         .limit(5)
         .take_all()
     )
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     top_n = (
         ray.data.from_arrow(blocks)
         .sort("key", descending=descending)
@@ -336,7 +333,7 @@ def test_top_n_shuffle_v2_pandas_block(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     frame = pd.DataFrame({"key": [3, 1, 2], "value": ["c", "a", "b"]})
 
     result = ray.data.from_pandas(frame).sort("key").limit(2).take_all()
@@ -353,7 +350,7 @@ def test_top_n_shuffle_v2_allows_any_rows_at_boundary_tie(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     rows = [
         {"key": 0, "row_id": 0},
         {"key": 1, "row_id": 1},
@@ -381,7 +378,7 @@ def test_top_n_shuffle_v2_promotes_compatible_block_schemas(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     null_block = pa.table(
         {
             "key": pa.array([0], type=pa.int64()),
@@ -412,7 +409,7 @@ def test_top_n_shuffle_v2_normalizes_mixed_arrow_and_pandas_blocks(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     arrow_ds = ray.data.from_arrow(pa.table({"key": [3, 1]}))
     pandas_ds = ray.data.from_pandas(pd.DataFrame({"key": [4, 2]}))
 
@@ -427,7 +424,7 @@ def test_top_n_shuffle_v2_mixed_direction_secondary_nulls(
 ):
     ctx = DataContext.get_current()
     ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ctx.set_config(TOP_N_REWRITE_ENABLED_CONFIG_KEY, True)
+    ctx.enable_top_n_rewrite = True
     blocks = [
         pa.table({"a": [2, 1], "b": [None, 0]}),
         pa.table({"a": [2, 1], "b": [1, None]}),

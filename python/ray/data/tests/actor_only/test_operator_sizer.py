@@ -285,11 +285,11 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         committed: Optional[Dict[str, ExecutionResources]] = None,
         # The part of ``committed`` held by draining actors.
         draining: Optional[Dict[str, ExecutionResources]] = None,
-        # An ``on_start`` (e.g. ``on_write_start``) registered but not yet run.
-        awaiting_on_start=False,
+        # No input bundle queued yet (the sizer starts no actors until one).
+        awaiting_first_input=False,
     ):
         self._fake_name = name
-        self.pending_on_start = awaiting_on_start
+        self.pending_first_input = awaiting_first_input
         self._name = name
         self._id = name
         self._user_set_ray_remote_args = dict(user_ray_remote_args or {})
@@ -379,8 +379,8 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
     def wait_for_min_actors(self):
         self.waited_for_min_actors = True
 
-    def awaiting_on_start(self):
-        return self.pending_on_start
+    def awaiting_first_input(self):
+        return self.pending_first_input
 
     def process_draining_actors(self):
         return 0
@@ -663,7 +663,7 @@ def _linear_pipeline(running=1):
 # --- bootstrap and validation --------------------------------------------------
 
 
-def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
+def test_op_awaiting_first_input_gets_no_actors_until_it_arrives():
     # Creating an actor serializes the MapTransformer, so an actor created
     # before ``on_write_start`` ships a datasink without the state it sets
     # (Iceberg: table metadata is None). Such an op stays at zero actors,
@@ -673,7 +673,7 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
         "write",
         _FakePool(min_size=1, max_size=10, cpu=1),
         inputs=[read],
-        awaiting_on_start=True,
+        awaiting_first_input=True,
     )
     sizer, _ = _bootstrapped(read, write)
 
@@ -683,17 +683,17 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     assert not write.waited_for_min_actors
     assert write not in _tick(sizer).request
 
-    write.pending_on_start = False
+    write.pending_first_input = False
     assert _tick(sizer).request[write].delta >= 1
 
 
-def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
-    # An op held at zero actors until its on_start runs must still find room
-    # when it does. Without a hold, upstream ops can take every node's space
+def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
+    # An op held at zero actors until its first input arrives must still find
+    # room when it does. Without a hold, upstream ops can take every node's space
     # first and the op (e.g. a Write sink) can then never grow past its first
     # actor. Its warmup share stays out of the tick's free capacity, with
     # memory held as well as CPU, so every phase sizes and places around it;
-    # once on_start runs it grows straight to that share.
+    # once its input arrives it grows straight to that share.
     read = _FakeOp(
         "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=1, running=1)
     )
@@ -701,7 +701,7 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
         "write",
         _FakePool(min_size=1, max_size=10, cpu=1, memory=1),
         inputs=[read],
-        awaiting_on_start=True,
+        awaiting_first_input=True,
     )
     view = DatasetReservationView(
         reserved_by_node={"node0": ExecutionResources(cpu=16, memory=20)},
@@ -718,17 +718,17 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs():
     # Minus read's running actor, minus write's held share.
     assert (free.cpu, free.memory) == (16 - 1 - target, 20 - 1 - target)
 
-    # on_start runs on write's first input, so read has produced output.
+    # Write's first input arrives, so read has produced output.
     # Modeled: past warmup the held grant, not the equal share, grows it.
     read.metrics.num_task_outputs_generated = 1
-    write.pending_on_start = False
+    write.pending_first_input = False
     _mark_modeled(sizer, read, write)
     request = _tick(sizer).request
     assert request[write].delta == target
     assert request[write].reason == "held share (hold released)"
 
 
-def _video_pipeline(write_awaiting_on_start=False):
+def _video_pipeline(write_awaiting_first_input=False):
     """video_object_detection's shape on one 32 CPU / 8 GPU / 61.6 memory
     node: three 1-CPU, 2.4-memory stages around a 1-GPU, 3.3-memory one."""
     read = _FakeOp(
@@ -752,10 +752,10 @@ def _video_pipeline(write_awaiting_on_start=False):
             max_size=100,
             cpu=1,
             memory=2.4 * GiB,
-            running=0 if write_awaiting_on_start else 1,
+            running=0 if write_awaiting_first_input else 1,
         ),
         inputs=(features,),
-        awaiting_on_start=write_awaiting_on_start,
+        awaiting_first_input=write_awaiting_first_input,
     )
     view = DatasetReservationView(
         reserved_by_node={
@@ -802,13 +802,13 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
 
 
 def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
-    # Write waits on its on_start: no actor yet, but its memory-aware share (4)
-    # is held, memory included. Once on_start runs (its first input, after
-    # warmup ended), it grows straight to the held count in one grant.
-    ops, view = _video_pipeline(write_awaiting_on_start=True)
+    # Write waits on its first input: no actor yet, but its memory-aware share
+    # (4) is held, memory included. Once the input arrives (after warmup
+    # ended), it grows straight to the held count in one grant.
+    ops, view = _video_pipeline(write_awaiting_first_input=True)
     write = ops["write"]
     sizer, _ = _bootstrapped(*ops.values(), view=view)
-    # Upstream is producing (so only Write's on_start hold is in play).
+    # Upstream is producing (so only Write's first-input hold is in play).
     for name in ("read", "resize", "features"):
         ops[name].metrics.num_task_outputs_generated = 1
 
@@ -820,7 +820,7 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
         (61.6 - 8.1 - 9.6) * GiB, rel=1e-6
     )
 
-    write.pending_on_start = False
+    write.pending_first_input = False
     _mark_modeled(sizer, *ops.values())
     request = _tick(sizer).request
     assert request[write].delta == 4
@@ -1579,6 +1579,32 @@ def test_latch_waits_for_every_branch_of_a_union():
     left.metrics.num_task_outputs_generated = 1
     assert in_warmup_after_tick()  # right is still cold
     right.metrics.num_task_outputs_generated = 1
+    assert not in_warmup_after_tick()
+
+
+@pytest.mark.parametrize("release", ["input_arrives", "op_completes"])
+def test_latch_waits_for_ops_awaiting_first_input(release):
+    """A write held at zero actors until its first input is not a critical
+    op, but warmup must not end before it can scale: otherwise the warm phase
+    sizes its upstream from feedback while the write has no actors at all. An
+    op that completes without ever getting input does not hold warmup open."""
+    read = _FakeOp("Read", _FakePool(min_size=1, max_size=4, cpu=1))
+    write = _write_op(
+        "Write",
+        _FakePool(min_size=1, max_size=4, cpu=1),
+        inputs=[read],
+        awaiting_first_input=True,
+    )
+    topo = _topology(read, write)
+    _, in_warmup_after_tick = _warmup_probe(topo)
+
+    assert critical_ops(topo) == (read,)
+    read.metrics.num_task_outputs_generated = 1
+    assert in_warmup_after_tick()  # write has no input yet
+    if release == "input_arrives":
+        write.pending_first_input = False
+    else:
+        write._completed = True
     assert not in_warmup_after_tick()
 
 

@@ -37,12 +37,17 @@ from ray.data._internal.planner import create_planner
 from ray.data.aggregate import (
     AbsMax,
     AggregateFn,
+    AsList,
     Count,
     CountDistinct,
     Max,
     Mean,
+    Quantile,
+    Std,
     Sum,
+    TopKUnique,
     Unique,
+    ValueCounter,
 )
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
@@ -542,9 +547,13 @@ def _filter_join_sum_add_column() -> Dataset:
 def test_restored_shuffle_is_planned_as_without_elimination(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
+    restore_data_context,
     monkeypatch,
     build: Callable[[], Dataset],
 ):
+    # Keep sort().limit() as Sort + Limit so the downstream Limit still blocks
+    # fusion into the reduce.
+    restore_data_context.enable_top_n_rewrite = False
     ds = build()
     names = [op.name for op in _physical_dag(ds).post_order_iter()]
     assert not any("mode=complete" in name for name in names)
@@ -614,8 +623,20 @@ def test_global_aggregation_keeps_shuffle(ray_start_regular_shared_2_cpus):
         (("k",), (CountDistinct(on="v"),), False),
         (("k",), (Unique(on="v"),), False),
         (("k",), (Sum(on="v"), CountDistinct(on="v")), False),
+        (
+            ("k",),
+            (
+                AbsMax(on="v"),
+                Std(on="v"),
+                AsList(on="v"),
+                Quantile(on="v"),
+                ValueCounter(on="v"),
+                TopKUnique(on="v", k=2),
+            ),
+            True,
+        ),
         # Python engine.
-        (("k",), (AbsMax(on="v"),), False),
+        (("k",), (TopKUnique(on="v", k=2, encode_lists=True),), False),
     ],
 )
 def test_complete_aggregation_support(

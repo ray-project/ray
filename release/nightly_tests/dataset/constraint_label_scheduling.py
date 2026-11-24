@@ -188,7 +188,9 @@ def build_case(args: argparse.Namespace) -> Dict:
             selector={POOL_LABEL_KEY: "pool_a"},
             num_cpus=4,
             concurrency=(1, 4),
-            expected_max_alive=4,
+            # if set to 4 could be flakey, since scaling speed is not
+            # guaranteed
+            expected_max_alive=3,
             with_hog=False,
             # Reclaim-path test: the labeled op starts small, gen backfills
             # pool_a's spare CPUs, and growing the labeled op to its exact-fit

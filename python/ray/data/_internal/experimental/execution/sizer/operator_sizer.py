@@ -441,18 +441,32 @@ class OperatorSizer:
             self.phase = phase
 
     def _warmup_complete(self, now: float) -> bool:
-        """Whether WARMUP ends this tick: every critical op has produced its
-        first output, so the pipeline is flowing end to end and feedback
-        beats feedforward from here on.
+        """Whether WARMUP ends this tick: every actor-pool op has received its
+        first input and every critical op has produced its first output, so
+        the pipeline is flowing end to end and feedback beats feedforward
+        from here on.
 
-        A critical op that finished without producing (an empty branch of a
-        union) does not hold warmup open. Nor does one that never produces
+        Every op starts no actors until its first input (see
+        ``OpLifecycle.AWAITING_FIRST_INPUT``), so waiting for all of them keeps
+        an op that has not started yet under the warmup equal share: the
+        bottleneck policy never sizes its neighbors while it still has no
+        actors.
+
+        An op that finished without input or output (an empty branch of a
+        union) does not hold warmup open. Nor does one that gets neither
         within the warmup timeout: leaving warmup early only hands sizing to
         the bottleneck policy, which can still move capacity to it.
         """
         if self._warmup_started_t is None:
             self._warmup_started_t = now
         waiting_on = [op for op in self._critical_ops if not has_produced_output(op)]
+        waiting_on += [
+            op
+            for op in self._profiles.actor_pool_ops
+            if op.awaiting_first_input()
+            and not op.has_completed()
+            and op not in waiting_on
+        ]
         if not waiting_on:
             logger.info(
                 "OperatorSizer: warmup complete (%s produced first output)",
@@ -463,8 +477,8 @@ class OperatorSizer:
         if now - self._warmup_started_t < self._warmup_timeout_s:
             return False
         logger.warning(
-            "OperatorSizer: warmup timed out after %.0fs with no output yet "
-            "from %s; leaving warmup.",
+            "OperatorSizer: warmup timed out after %.0fs still waiting on "
+            "first input or output from %s; leaving warmup.",
             now - self._warmup_started_t,
             ", ".join(op.name for op in waiting_on),
         )
@@ -481,14 +495,15 @@ class OperatorSizer:
 
     def _held_ops(self) -> List[ExperimentalActorPoolMapOperator]:
         """Non-PG ops kept from growing into their share for now: waiting on
-        their ``on_start`` (no actor may start before it runs), and ops kept
-        at min until every upstream actor-pool op has produced output."""
+        their first input (no actor starts before it: there is nothing to run,
+        and an ``on_start`` runs on it), and ops kept at min until every
+        upstream actor-pool op has produced output."""
         return [
             op
             for op in self._profiles.non_pg_ops
             if not op.has_completed()
             and (
-                op.awaiting_on_start()
+                op.awaiting_first_input()
                 or not all(
                     has_produced_output(prev) for prev in self._profiles.prev_ops[op]
                 )
@@ -499,7 +514,8 @@ class OperatorSizer:
         self, snapshot: ClusterStateSnapshot
     ) -> Dict[ExperimentalActorPoolMapOperator, int]:
         """Take each held op's room out of ``snapshot.free_by_node``; return
-        how many actors each got held.
+        how many actors each held op has room for (an entry for every held
+        op, so an op missing from it is one whose hold has ended).
 
         A held op (e.g. a Write sink before its first input) gets no room of
         its own, so upstream ops can take every node's space first; getting it
@@ -519,15 +535,18 @@ class OperatorSizer:
             target = self._how_many.warmup_target(op, global_limits, snapshot.pg_slots)
             if target is None:
                 target = pool.min_size()
-            # An op awaiting on_start may request nothing yet, so its min is
-            # held too. Any other held op's shortfall below min is requested
-            # this tick ("below min size"); holding it as well would keep that
-            # room from the op itself.
+            # An op awaiting its first input may request nothing yet, so its
+            # min is held too. Any other held op's shortfall below min is
+            # requested this tick ("below min size"); holding it as well would
+            # keep that room from the op itself.
             floor = pool.serving_size()
-            if not op.awaiting_on_start():
+            if not op.awaiting_first_input():
                 floor = max(floor, pool.min_size())
             num_to_hold = target - floor
             if num_to_hold <= 0:
+                # Still held, with nothing to hold this tick: recorded anyway,
+                # so ``_note_held_ops`` does not read it as released.
+                held_actors_by_op[op] = floor
                 continue
             pressure = snapshot.constrained_op_count_by_node
             nodes = sorted(
@@ -604,8 +623,8 @@ class OperatorSizer:
             if op.has_completed():
                 continue
             if not self._lifecycles.can_scale(op):
-                # A transfer holds this op, or its ``on_start`` hasn't run
-                # yet. Leave it alone so our pendings aren't mistaken for
+                # A transfer holds this op, or it hasn't received its first
+                # input yet. Leave it alone so our pendings aren't mistaken for
                 # the transfer's.
                 continue
             want: Optional[ActorPoolScalingRequest] = None

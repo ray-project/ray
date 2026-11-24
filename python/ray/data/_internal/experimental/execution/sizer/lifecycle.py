@@ -2,11 +2,11 @@
 
 Two things resize pools: the bottleneck policy and the per-op how-many pass. A
 transfer must hold both its donors and its recipient until the move lands,
-or the how-many pass (or the next decision) would undo it; an op whose
-``on_start`` has not run must stay at zero actors. Both are states here, and
+or the how-many pass (or the next decision) would undo it; an op that has not
+received its first input must stay at zero actors. Both are states here, and
 only an ``ACTIVE`` op may be resized.
 
-    AWAITING_ON_START --(on_start ran)--> ACTIVE
+    AWAITING_FIRST_INPUT --(first bundle queued)--> ACTIVE
     ACTIVE --(transfer fires)--> RECEIVING (recipient) / DONATING (donors)
     RECEIVING --(transfer closes)--> ACTIVE
     DONATING --(its last transfer closes)--> COOLING --(cooldown steps)--> ACTIVE
@@ -30,10 +30,11 @@ logger = logging.getLogger(__name__)
 
 
 class OpLifecycle(enum.Enum):
-    # Its ``on_start`` (e.g. ``on_write_start``) has not run: its first actor
-    # would serialize the MapTransformer without the state ``on_start`` sets,
-    # so it stays at zero actors.
-    AWAITING_ON_START = "awaiting first input to run on_start"
+    # It has not queued its first input bundle, so it stays at zero actors:
+    # there is nothing for them to run yet, and an ``on_start`` (e.g.
+    # ``on_write_start``) runs on that bundle and must run before the first
+    # actor serializes the MapTransformer with the state it sets.
+    AWAITING_FIRST_INPUT = "awaiting first input"
     ACTIVE = "active"
     RECEIVING = "receiving a capacity transfer"
     DONATING = "donating"
@@ -61,8 +62,8 @@ class OpLifecycles:
         # Scheduling-loop steps a cooling donor has left.
         self._cooldown_left: Dict["ExperimentalActorPoolMapOperator", int] = {}
         for op in ops:
-            if op.awaiting_on_start():
-                self._set(op, OpLifecycle.AWAITING_ON_START)
+            if op.awaiting_first_input():
+                self._set(op, OpLifecycle.AWAITING_FIRST_INPUT)
 
     # --- queries ----------------------------------------------------------
 
@@ -93,10 +94,13 @@ class OpLifecycles:
 
     def on_step(self) -> None:
         """Advance the time-driven transitions; called once per
-        scheduling-loop step: release ops whose ``on_start`` has run, and
+        scheduling-loop step: release ops that have received their first input, and
         count down cooling donors."""
         for op, state in list(self._state.items()):
-            if state is OpLifecycle.AWAITING_ON_START and not op.awaiting_on_start():
+            if (
+                state is OpLifecycle.AWAITING_FIRST_INPUT
+                and not op.awaiting_first_input()
+            ):
                 self.activate(op)
             elif state is OpLifecycle.COOLING:
                 left = self._cooldown_left.get(op, 0) - 1

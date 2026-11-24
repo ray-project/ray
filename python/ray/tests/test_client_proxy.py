@@ -1,6 +1,8 @@
 import json
 import os
 import random
+import signal
+import subprocess
 import sys
 import time
 from glob import glob
@@ -19,6 +21,7 @@ from ray._common.test_utils import (
     wait_for_condition,
 )
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
+from ray._private.test_utils import wait_for_pid_to_exit
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
 
@@ -80,6 +83,118 @@ def test_proxy_manager_lifecycle(shutdown_only):
 
     assert len(pm._free_ports) == 2
     assert pm._get_unused_port() == free_ports[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="There is no fork on Windows.")
+def test_specific_server_spawn_runs_no_python_in_child(shutdown_only):
+    """
+    Tests that the proxier spawns a specific server without running Python code
+    in the forked child.
+    """
+    pm, _ = start_ray_and_proxy_manager(n_ports=1)
+    client = "client1"
+    pm.create_specific_server(client)
+
+    # Python only runs at-fork hooks in the child of a Popen that is passed a
+    # preexec_fn. This hook makes such a child exit before it starts the server.
+    spawning = True
+    os.register_at_fork(after_in_child=lambda: spawning and os._exit(1))
+    try:
+        assert pm.start_specific_server(client, JobConfig())
+    finally:
+        spawning = False
+
+    process = pm._get_server_for_client(client).process_handle_future.result().process
+    process.kill()
+    process.wait(10)
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Reads the signal mask from /proc.")
+def test_specific_server_blocks_sigint(shutdown_only):
+    """
+    Tests that a specific server is started with SIGINT blocked.
+    """
+    pm, _ = start_ray_and_proxy_manager(n_ports=1)
+    client = "client1"
+
+    pm.create_specific_server(client)
+    assert pm.start_specific_server(client, JobConfig())
+    grpc.channel_ready_future(pm.get_channel(client)).result(timeout=5)
+    process = pm._get_server_for_client(client).process_handle_future.result().process
+
+    with open(f"/proc/{process.pid}/status") as f:
+        sig_blk = next(line for line in f if line.startswith("SigBlk:"))
+    assert int(sig_blk.split()[1], 16) & (1 << (signal.SIGINT - 1))
+
+    process.kill()
+    process.wait(10)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="The proxier does not pass its pid to specific servers on Windows.",
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25051 --port 0"],
+    indirect=True,
+)
+def test_specific_server_exits_when_proxier_dies(call_ray_start, tmp_path):
+    """
+    Tests that a specific server exits when the proxier dies, even if a
+    launcher set through py_executable runs the server as a child process.
+    """
+    launcher = tmp_path / "launcher.sh"
+    launcher.write_text(f'{sys.executable} "$@"\n')
+    runtime_env = {"py_executable": f"bash {launcher}"}
+
+    with ray.client("localhost:25051").env(runtime_env).connect():
+        (proxier_process,) = [
+            process
+            for process in psutil.process_iter(["cmdline"])
+            if "ray.util.client.server" in (process.info["cmdline"] or [])
+            and "--port=25051" in process.info["cmdline"]
+        ]
+        launcher_and_server = proxier_process.children(recursive=True)
+        assert len(launcher_and_server) == 2
+
+        proxier_process.kill()
+        for process in launcher_and_server:
+            wait_for_pid_to_exit(process.pid)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="The proxier does not pass its pid to specific servers on Windows.",
+)
+@pytest.mark.parametrize("reaped", [True, False])
+def test_specific_server_exits_if_proxier_is_already_dead(shutdown_only, reaped):
+    """
+    Tests that a specific server exits if the proxier is already dead when the
+    server starts, whether or not the proxier has been reaped.
+    """
+    address = ray.init().address_info["address"]
+    # Stands in for the dead proxier. It is a zombie until it is waited for.
+    proxier_process = subprocess.Popen([sys.executable, "-c", ""])
+    if reaped:
+        proxier_process.wait()
+
+    server = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ray.util.client.server",
+            f"--address={address}",
+            "--port=0",
+            "--mode=specific-server",
+            f"--proxier-pid={proxier_process.pid}",
+        ],
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=30,
+    )
+    assert f"pid {proxier_process.pid} is not running, exiting" in server.stderr
+    proxier_process.wait()
 
 
 @pytest.mark.skipif(

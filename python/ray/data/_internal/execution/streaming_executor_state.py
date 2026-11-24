@@ -1565,4 +1565,9 @@ def format_op_state_summary(
     if extra_summary:
         desc += f"; Obj store: {extra_summary}"
 
+    # Lineage reconstruction status; empty unless reconstruction is enabled.
+    reconstruction = op_state.op.lineage_reconstruction_progress_str()
+    if reconstruction:
+        desc += f"; {reconstruction}"
+
     return desc
