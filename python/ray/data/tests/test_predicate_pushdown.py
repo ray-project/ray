@@ -198,6 +198,25 @@ def test_division_filter_matches_in_memory_filter(
     assert keeps_filter == (data_filter or not use_datasource_v2)
 
 
+def test_division_filter_on_a_partition_skips_pruned_files(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    """A pushed partition ``/`` filter doesn't open the files it prunes."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    for value in (6, 7):
+        os.makedirs(tmp_path / f"p={value}")
+    pq.write_table(pa.table({"x": [2]}), tmp_path / "p=7" / "data.parquet")
+    # Not a Parquet file, so a read that opens it fails.
+    (tmp_path / "p=6" / "data.parquet").write_bytes(b"not parquet")
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        partitioning=Partitioning("hive", field_types={"p": int}),
+        schema=pa.schema([("x", pa.int64()), ("p", pa.int64())]),
+    )
+
+    assert ds.filter(expr=(col("p") / 2) == 3.5).take_all() == [{"x": 2, "p": 7}]
+
+
 def test_synthesized_path_residual_preserves_read_constraints(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):

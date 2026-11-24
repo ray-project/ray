@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from hypothesis import given, settings, strategies as st
+from hypothesis import example, given, settings, strategies as st
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit
@@ -54,7 +54,7 @@ def _column_and_number(draw):
     else:
         element = st.floats(-1e6, 1e6, width=column_type.bit_width)
         number = draw(st.floats(-300, 300))
-    values = draw(st.lists(element, min_size=1, max_size=5))
+    values = draw(st.lists(st.one_of(st.none(), element), min_size=1, max_size=5))
     number_on_left = draw(st.booleans())
     if symbol == "/":
         # Python raises on division by zero.
@@ -66,6 +66,8 @@ def _column_and_number(draw):
 
 
 def _python_answer(symbol, left, right):
+    if left is None or right is None:
+        return None
     if symbol == "/":
         # Integers round to float64 first, as in NumPy. Above 2**53 Python's
         # own ``/`` can differ in the last digit.
@@ -288,6 +290,9 @@ class TestBasicArithmetic:
     def test_arithmetic_with_a_number_matches_python(self, block_format, case):
         """Arrow and pandas blocks both give Python's answer and result type."""
         values, symbol, number, number_on_left = case
+        if block_format == "pandas":
+            # NumPy integer columns can't hold nulls.
+            values = values.drop_null()
         operation = _OPERATORS[symbol]
         if number_on_left:
             expr = operation(number, col("x"))
@@ -301,6 +306,30 @@ class TestBasicArithmetic:
         actual = result.to_pylist() if block_format == "arrow" else result.tolist()
         assert actual == expected
         assert [type(value) for value in actual] == [type(value) for value in expected]
+        if symbol == "/":
+            # ``ds.schema()`` reports the plan-time type; both are float64.
+            assert expr.get_type(table.schema) == pa.float64()
+            assert pa.array(result).type == pa.float64()
+
+    @settings(max_examples=100, derandomize=True, deadline=None)
+    @given(
+        symbol=st.sampled_from(["//", "%"]),
+        values=st.lists(st.floats(-1e6, 1e6, width=32), min_size=1, max_size=5),
+        number=st.floats(-300, 300).filter(lambda number: number != 0),
+    )
+    # Widening float32 0.7 to float64 first gives 0.0 and 0.7, not 1.0 and 0.0.
+    @example(symbol="//", values=[0.7], number=0.7)
+    @example(symbol="%", values=[0.7], number=0.7)
+    def test_pandas_floordiv_and_mod_keep_the_column_width(
+        self, symbol, values, number
+    ):
+        """pandas blocks leave ``//`` and ``%`` to NumPy at the column's width."""
+        series = pd.Series(np.array(values, np.float32))
+        operation = operator.floordiv if symbol == "//" else operator.mod
+        result = eval_expr(operation(col("x"), number), pd.DataFrame({"x": series}))
+        pd.testing.assert_series_equal(
+            result, operation(series, number), check_names=False
+        )
 
     # ── Floor division and modulo on Arrow blocks with negative operands ──
 
