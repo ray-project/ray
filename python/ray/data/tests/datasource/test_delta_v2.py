@@ -255,8 +255,9 @@ def test_seeded_shuffle_permutes_the_files(tmp_path):
         deltalake.write_deltalake(path, pa.table({"x": [i]}), mode="append")
 
     def listed_paths(ds: ray.data.Dataset) -> List[str]:
-        # Footer reads finish in any order; keep the listing's.
-        return [row["__path"] for row in _list_files(ds, preserve_order=True)]
+        # ``FooterReader.read_footers`` yields the footers in the listed order,
+        # whatever order they're read in.
+        return [row["__path"] for row in _list_files(ds)]
 
     unshuffled = listed_paths(_read(path))
     shuffled = listed_paths(_read(path, shuffle=FileShuffleConfig(seed=11)))

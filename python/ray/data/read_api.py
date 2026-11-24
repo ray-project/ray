@@ -6809,7 +6809,14 @@ def read_delta(
 
     ctx = DataContext.get_current()
     dt = None
-    if ctx.use_datasource_v2 and ctx._use_delta_datasource_v2:
+    # The V2 reader doesn't turn ``partition_filters`` into partition pruning
+    # yet, so it would read every partition. Such a read goes to the V1
+    # reader without opening the table for the V2 checks.
+    if (
+        ctx.use_datasource_v2
+        and ctx._use_delta_datasource_v2
+        and partition_filters is None
+    ):
         import deltalake
         from packaging.version import parse as parse_version
 
@@ -6830,16 +6837,10 @@ def read_delta(
             storage_options=storage_options,
             **({} if loads_files else {"without_files": True}),
         )
-        unsupported_reason = (
-            # The V2 reader doesn't turn ``partition_filters`` into partition
-            # pruning yet, so it would read every partition.
-            "`partition_filters` was passed"
-            if partition_filters is not None
-            else delta_datasource_v2_unsupported_reason(
-                checked_table,
-                include_paths=include_paths,
-                arrow_parquet_args=arrow_parquet_args,
-            )
+        unsupported_reason = delta_datasource_v2_unsupported_reason(
+            checked_table,
+            include_paths=include_paths,
+            arrow_parquet_args=arrow_parquet_args,
         )
         if unsupported_reason is None:
             datasource_v2 = DeltaDatasourceV2(

@@ -113,6 +113,23 @@ def test_lists_files_outside_partition_directories(partitioned_table, monkeypatc
     assert indexer._partition_values_by_path == {"part-0.parquet": {"grp": "x"}}
 
 
+def test_skips_only_empty_files(partitioned_table, monkeypatch):
+    """A file of unknown size stays in: its footer read finds the size."""
+    monkeypatch.setattr(
+        DeltaTableSnapshot,
+        "add_actions",
+        lambda self: pa.table(
+            {
+                "path": ["sized", "unknown", "empty"],
+                "size_bytes": pa.array([10, None, 0], pa.int64()),
+                "partition.grp": ["x"] * 3,
+            }
+        ),
+    )
+
+    assert _listed_paths(_indexer(partitioned_table)) == ["sized", "unknown"]
+
+
 @pytest.mark.parametrize(
     "logged",
     [

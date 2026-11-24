@@ -272,7 +272,6 @@ class _DeltaLogListing:
     _partition_schema: pa.Schema
     _shuffle_config: Optional["FileShuffleConfig"]
     _partition_values_by_path: Dict[str, PartitionValues]
-    _num_records_by_path: Dict[str, Optional[int]]
 
     def _init_delta_listing(
         self,
@@ -291,7 +290,6 @@ class _DeltaLogListing:
         self._shuffle_config = shuffle_config
         # Filled by ``list_file_infos``, in the listing task.
         self._partition_values_by_path = {}
-        self._num_records_by_path = {}
 
     def list_file_infos(
         self,
@@ -307,9 +305,9 @@ class _DeltaLogListing:
         not read. Paths are relative to the table root, in the order
         ``deltalake`` lists the ``add`` actions. ``to_pyarrow_dataset`` lists
         them in that order too, so ``preserve_order=True`` returns rows in the
-        V1 reader's order. Zero-size files are skipped and ``pruners``
-        applied, as the directory listing does; a ``DeltaPartitionPruner``
-        gets each file's partition values from the log.
+        V1 reader's order. Empty files are skipped and ``pruners`` applied, as
+        the directory listing does; a ``DeltaPartitionPruner`` gets each
+        file's partition values from the log.
         """
         add_actions = self._snapshot.add_actions()
         file_paths = [
@@ -322,15 +320,7 @@ class _DeltaLogListing:
                 partition_values_as_strings(add_actions, self._partition_schema),
             )
         )
-        # ``deltalake`` leaves the column out when no file has stats.
-        self._num_records_by_path = dict(
-            zip(
-                file_paths,
-                add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
-                if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
-                else [None] * add_actions.num_rows,
-            )
-        )
+        self._remember_add_actions(file_paths, add_actions)
         file_infos = [
             FileInfo(path=path, size=size)
             for path, size in zip(
@@ -349,12 +339,21 @@ class _DeltaLogListing:
         self, file_infos: Iterable[FileInfo], pruners: List["FilePruner"]
     ) -> Iterator[FileInfo]:
         for info in file_infos:
-            if not info.size:
-                logger.warning(f"Skipping zero-size file: {info.path!r}")
+            # A file of unknown size stays in: its footer read finds the size.
+            if info.size == 0:
+                logger.warning(f"Skipping empty data file: {info.path!r}")
                 continue
             if not all(self._pruner_includes(pruner, info.path) for pruner in pruners):
                 continue
             yield info
+
+    def _remember_add_actions(
+        self, file_paths: Sequence[str], add_actions: pa.Table
+    ) -> None:
+        """Keep what a subclass needs from the listed ``add`` actions.
+
+        ``file_paths`` are the ``add_actions`` paths, resolved.
+        """
 
     def _pruner_includes(self, pruner: FilePruner, path: str) -> bool:
         if isinstance(pruner, DeltaPartitionPruner):
@@ -494,6 +493,22 @@ class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
             snapshot=snapshot,
             filesystem=filesystem,
             partition_schema=partition_schema,
+        )
+        # Filled by ``list_file_infos``, in the listing task.
+        self._num_records_by_path: Dict[str, Optional[int]] = {}
+
+    @override
+    def _remember_add_actions(
+        self, file_paths: Sequence[str], add_actions: pa.Table
+    ) -> None:
+        # ``deltalake`` leaves the column out when no file has stats.
+        self._num_records_by_path = dict(
+            zip(
+                file_paths,
+                add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
+                if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
+                else [None] * add_actions.num_rows,
+            )
         )
 
     @override
