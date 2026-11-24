@@ -1,4 +1,5 @@
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -6,6 +7,7 @@ import pytest
 import runfiles
 import yaml
 
+from ci.ray_ci.automation import push_ray_image
 from ci.ray_ci.automation.trivy import build_report
 from ci.ray_ci.automation.trivy.build_report import expected_images
 from ci.ray_ci.ray_image import RayImage
@@ -55,6 +57,56 @@ def test_expected_images_reads_plain_and_array_steps():
         "tpu",
         "x86_64",
     )
+
+
+PUSH_TARGET = "//ci/ray_ci/automation:push_ray_image"
+PUSH_FILES = ("build.rayci.yml", "linux_aarch64.rayci.yml")
+
+
+def published_images(pipeline: dict) -> set:
+    """(type, python, platform, arch) of every image the push steps publish,
+    read with push_ray_image's own option parser."""
+    images = set()
+    for step in pipeline.get("steps") or []:
+        commands = step.get("commands") or step.get("command") or []
+        commands = [commands] if isinstance(commands, str) else commands
+        array = step.get("array") or {}
+        for command in (c for c in commands if PUSH_TARGET in c):
+            for python in array.get("python") or [""]:
+                for platform in array.get("platform") or [""]:
+                    expanded = command.replace("{{array.python}}", python)
+                    expanded = expanded.replace("{{array.platform}}", platform)
+                    args = shlex.split(expanded.split(PUSH_TARGET, 1)[1])
+                    params = push_ray_image.main.make_context(
+                        "push_ray_image",
+                        args[args.index("--") + 1 :],
+                        resilient_parsing=True,
+                    ).params
+                    for p in params["platform"]:
+                        images.add(
+                            (
+                                params["image_type"],
+                                params["python_version"],
+                                p,
+                                params["architecture"],
+                            )
+                        )
+    return images
+
+
+def test_the_scan_steps_cover_exactly_what_the_push_steps_publish():
+    """A Python version or platform added to a push step must be scanned too:
+    the report's coverage check reads only the scan steps."""
+    published = set()
+    for name in PUSH_FILES:
+        path = runfiles.Create().Rlocation(f"io_ray/.buildkite/{name}")
+        published |= published_images(yaml.safe_load(Path(path).read_text()))
+    scanned = {
+        (i.image_type, i.python_version, i.platform, i.architecture)
+        for i in expected_images(real_pipeline())
+    }
+    assert len(published) == 184
+    assert scanned == published
 
 
 def test_the_pipeline_asks_for_every_published_image_once():

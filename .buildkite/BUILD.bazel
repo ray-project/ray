@@ -10,6 +10,16 @@ exports_files([
     "test.rules.txt",
 ])
 
+exports_files(
+    [
+        # The push steps, which //ci/ray_ci/automation/trivy:test_build_report
+        # checks the scan steps against.
+        "build.rayci.yml",
+        "linux_aarch64.rayci.yml",
+    ],
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
+
 py_binary(
     name = "copy_files",
     srcs = ["copy_files.py"],

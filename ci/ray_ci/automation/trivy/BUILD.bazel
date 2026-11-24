@@ -197,7 +197,10 @@ py_test(
     name = "test_build_report",
     size = "small",
     srcs = ["test_build_report.py"],
-    data = glob(["testdata/*.json"]),
+    data = glob(["testdata/*.json"]) + [
+        "//.buildkite:build.rayci.yml",
+        "//.buildkite:linux_aarch64.rayci.yml",
+    ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
@@ -206,6 +209,7 @@ py_test(
     deps = [
         ":build_report",
         "//ci/ray_ci:ray_ci_lib",
+        "//ci/ray_ci/automation",
         ci_require("bazel-runfiles"),
         ci_require("pytest"),
         ci_require("pyyaml"),
