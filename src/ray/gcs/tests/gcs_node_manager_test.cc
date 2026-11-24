@@ -207,6 +207,13 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                 .death_info()
                 .reason_message(),
             "mock reason message");
+  const int64_t end_time_ms = node_manager.GetAllDeadNodes()
+                                  .at(NodeID::FromBinary(node->node_id()))
+                                  ->end_time_ms();
+  const auto &dead_timestamp =
+      ray_event_03.node_lifecycle_event().state_transitions(0).timestamp();
+  ASSERT_EQ(dead_timestamp.seconds() * 1000 + dead_timestamp.nanos() / 1000000,
+            end_time_ms);
 }
 
 TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
@@ -453,7 +460,9 @@ TEST_F(GcsNodeManagerTest, TestInitializeEmitsNodeEventsForLoadedNodes) {
 
   std::map<std::string, rpc::events::NodeLifecycleEvent> lifecycle_by_node_id;
   std::set<std::string> defined_node_ids;
-  for (auto &event : fake_ray_event_recorder_->FlushBuffer()) {
+  auto events = fake_ray_event_recorder_->FlushBuffer();
+  ASSERT_EQ(events.size(), 4);
+  for (auto &event : events) {
     auto ray_event = std::move(*event).Serialize().value();
     if (ray_event.event_type() == rpc::events::RayEvent::NODE_DEFINITION_EVENT) {
       defined_node_ids.insert(ray_event.node_definition_event().node_id());

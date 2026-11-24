@@ -39,10 +39,10 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
     state_transition.mutable_resources()->insert(data.resources_total().begin(),
                                                  data.resources_total().end());
   } else {
-    // The recorded death time, not now: a restarted GCS re-sends DEAD events for nodes
-    // that died before it started.
-    state_transition.mutable_timestamp()->CopyFrom(
-        AbslTimeNanosToProtoTimestamp(data.end_time_ms() * 1000000));
+    // DEAD transitions carry the recorded death time, so a DEAD event a restarted GCS
+    // re-sends keeps the real death time.
+    state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
+        absl::ToInt64Nanoseconds(absl::Milliseconds(data.end_time_ms()))));
     state_transition.set_state(rpc::events::NodeLifecycleEvent::DEAD);
     auto death_info = state_transition.mutable_death_info();
     death_info->set_reason_message(data.death_info().reason_message());
