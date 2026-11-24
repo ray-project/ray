@@ -4,11 +4,15 @@
 these drive it directly against local Parquet fixtures. No Ray cluster needed.
 """
 
+import operator
+import tempfile
 import time
+from pathlib import Path
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from hypothesis import HealthCheck, example, given, settings, strategies as st
 from pyarrow.fs import LocalFileSystem
 
 from ray.data._internal.datasource_v2.common.file_pruners import (
@@ -18,6 +22,7 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     FooterReader,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -206,6 +211,48 @@ def test_declared_schema_cast_prevents_raw_statistics_pruning(tmp_path):
     )._read_and_chunk(FileInfo(path, size))
     assert len(chunks.row_groups) == 1
     assert not chunks.row_groups[0].fully_matched
+
+
+_INT_TYPES = [pa.int8(), pa.int16(), pa.int32(), pa.int64()]
+
+
+@settings(
+    max_examples=200,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(
+    operation=st.sampled_from([operator.add, operator.sub, operator.mul]),
+    stored=st.sampled_from(_INT_TYPES),
+    read=st.sampled_from(_INT_TYPES + [None]),
+    value=st.integers(-100, 100),
+    matches=st.booleans(),
+)
+# int8 100 * 100 wraps to 16, but a read that widens ``x`` to int64 gives 10000.
+@example(
+    operation=operator.mul, stored=pa.int8(), read=pa.int64(), value=100, matches=True
+)
+def test_arithmetic_prunes_only_files_stored_at_the_read_types(
+    tmp_path, operation, stored, read, value, matches
+):
+    """An arithmetic filter drops a row group only when the read drops its rows."""
+    table = pa.table({"x": pa.array([value], stored)})
+    path, size = _write(
+        Path(tempfile.mkdtemp(dir=tmp_path)) / "data.parquet", table, row_group_size=1
+    )
+    read_schema = pa.schema([("x", read)]) if read is not None else None
+    expression = operation(col("x"), col("x"))
+    read_table = table if read_schema is None else table.cast(read_schema)
+    answer = eval_expr(expression, read_table)[0].as_py()
+
+    chunks = _reader(
+        filter_expr=expression == (answer if matches else answer + 1),
+        read_schema=read_schema,
+    )._read_and_chunk(FileInfo(path, size))
+
+    # Only a file stored at the read's types is pruned on arithmetic.
+    assert (len(chunks.row_groups) == 0) == (not matches and read == stored)
 
 
 class _FakeStatistics:

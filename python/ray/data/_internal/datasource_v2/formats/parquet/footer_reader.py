@@ -91,6 +91,18 @@ _FLOAT_PHYSICAL_TYPES = frozenset({"FLOAT", "DOUBLE"})
 _FLOAT16_LOGICAL_TYPE = "FLOAT16"
 
 
+def _is_stored_as_read(
+    expr: "Expr", physical_schema: pa.Schema, read_schema: pa.Schema
+) -> bool:
+    """Whether the file stores every column of ``expr`` at the read's type."""
+    return all(
+        physical_schema.get_field_index(name) != -1
+        and read_schema.get_field_index(name) != -1
+        and physical_schema.field(name).type == read_schema.field(name).type
+        for name in get_column_references(expr)
+    )
+
+
 def _is_float_leaf(column: ColumnSchema) -> bool:
     """Whether a Parquet leaf holds floating-point values, and so maybe NaN."""
     if column.physical_type in _FLOAT_PHYSICAL_TYPES:
@@ -136,6 +148,7 @@ class FooterReader:
         partitioning: Partitioning | None = None,
         partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
+        read_schema: pa.Schema | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -161,6 +174,10 @@ class FooterReader:
         )
         self.logical_schema = (
             partition_pruner.schema if partition_pruner is not None else logical_schema
+        )
+        # The column types the read computes arithmetic with.
+        self._read_schema = (
+            self.logical_schema if self.logical_schema is not None else read_schema
         )
         self._predicate = combine_predicates(
             filter_expr,
@@ -307,12 +324,16 @@ class FooterReader:
                 )
         physical = split.data_predicate
         logical_schema = self.logical_schema
+        read_schema = self._read_schema
         physical_schema = (
-            schema.to_arrow_schema() if logical_schema is not None else None
+            schema.to_arrow_schema()
+            if logical_schema is not None
+            or (self._has_arithmetic and read_schema is not None)
+            else None
         )
         if physical is not None and self._has_arithmetic:
-            # Arithmetic prunes only with a known read schema: without one the
-            # read may widen this file's columns, which changes the result.
+            # Arithmetic prunes a file only when the file stores the columns at
+            # the types the read computes with: a wider read changes the result.
             conjuncts = list(flatten_predicate_chain(physical, Operation.AND))
             typed = [
                 conjunct
@@ -320,6 +341,12 @@ class FooterReader:
                 if not has_column_arithmetic(expr=conjunct)
                 or (
                     physical_schema is not None
+                    and read_schema is not None
+                    and _is_stored_as_read(
+                        expr=conjunct,
+                        physical_schema=physical_schema,
+                        read_schema=read_schema,
+                    )
                     and conjunct._is_pyarrow_convertible(schema=physical_schema)
                 )
             ]

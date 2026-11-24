@@ -743,7 +743,7 @@ def _read_datasource_v2(
 
     list_files_op = ListFiles(
         paths=list(datasource.paths),
-        file_indexer=indexer,
+        file_indexer=indexer.with_read_schema(schema),
         filesystem=filesystem,
         source_paths=list(source_paths),
         prelisted_file_infos=prelisted_file_infos,

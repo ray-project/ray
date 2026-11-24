@@ -252,6 +252,30 @@ def test_arithmetic_filter_on_files_of_different_widths(
     )
 
 
+def test_arithmetic_filter_skips_files_without_a_user_schema(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    """Listing gets the inferred read schema, so arithmetic skips files."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    for value in (1, 100):
+        pq.write_table(
+            pa.table({"x": pa.array([value], pa.int8())}),
+            tmp_path / f"{value}.parquet",
+        )
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=(col("x") + 100) == 200)
+
+    optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+    (list_files,) = get_operators_of_type(optimized_plan, ListFiles)
+    listed = list_files.file_indexer.list_files(
+        pa.array(list_files.paths),
+        filesystem=list_files.filesystem,
+        predicate=list_files.predicate,
+    )
+
+    assert sum(len(manifest) for manifest in listed) == 1
+    assert ds.take_all() == [{"x": 100}]
+
+
 def test_division_filter_on_a_partition_skips_pruned_files(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):
