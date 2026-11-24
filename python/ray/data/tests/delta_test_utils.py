@@ -2,6 +2,7 @@
 
 import json
 import os
+from typing import Any, Dict, List
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -104,6 +105,153 @@ def write_column_mapped_table(path: str, mode: str) -> None:
                 "dataChange": True,
             }
         },
+    ]
+    with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
+        f.write("\n".join(json.dumps(action) for action in actions) + "\n")
+
+
+# The logical table ``write_mapped_table`` writes, as ``read_delta`` returns it.
+MAPPED_TABLE_ROWS = [
+    {"id": 1, "s": {"n": "x"}, "grp": "a", "extra": None},
+    {"id": 2, "s": {"n": "y"}, "grp": "a", "extra": None},
+    {"id": 10, "s": {"n": "z"}, "grp": "b", "extra": 5},
+    {"id": 11, "s": None, "grp": "b", "extra": None},
+]
+
+
+def write_mapped_table(path: str, mode: str) -> None:
+    """Write a column-mapped, partitioned Delta table as Databricks writes one.
+
+    deltalake can't write column mapping, so the log is written by hand. The
+    table has the columns ``id`` (long), ``s`` (struct with the field ``n``),
+    ``grp`` (string, the partition column) and ``extra`` (long, added after the
+    first file was written). Its two data files hold the rows of
+    ``MAPPED_TABLE_ROWS``, one file per ``grp``, and, like Databricks's:
+
+    - name every column by its physical name, nested fields too;
+    - store the partition column as well;
+    - carry a materialized row-tracking column that isn't a table column;
+    - leave out ``extra`` in the first file, written before it was added.
+
+    The log's statistics are keyed by physical name. In ``id`` mode the files
+    name their columns differently from the log's physical names (as after a
+    column rename), so only the Parquet field ids match them.
+
+    Args:
+        path: Directory to create the table in. Must not exist yet.
+        mode: ``"name"`` or ``"id"``.
+    """
+    os.makedirs(os.path.join(path, "_delta_log"))
+    physical = {
+        "id": "col-id",
+        "s": "col-s",
+        "n": "col-n",
+        "grp": "col-grp",
+        "extra": "col-extra",
+    }
+    field_ids = {"id": 1, "s": 2, "n": 3, "grp": 4, "extra": 5}
+    row_id_column = "_row-id-col-6f1"
+
+    def file_name(logical: str) -> str:
+        # In ``id`` mode the files' names differ from the log's physical names.
+        return physical[logical] + ("-renamed" if mode == "id" else "")
+
+    def file_field(logical: str, data_type: pa.DataType) -> pa.Field:
+        return pa.field(
+            file_name(logical),
+            data_type,
+            metadata={b"PARQUET:field_id": str(field_ids[logical]).encode()},
+        )
+
+    nested = pa.struct([file_field("n", pa.string())])
+    add_actions = []
+    for grp, rows in (("a", MAPPED_TABLE_ROWS[:2]), ("b", MAPPED_TABLE_ROWS[2:])):
+        fields = [
+            file_field("id", pa.int64()),
+            file_field("s", nested),
+            file_field("grp", pa.string()),
+            pa.field(row_id_column, pa.int64()),
+        ]
+        columns: List[List[Any]] = [
+            [row["id"] for row in rows],
+            [
+                None if row["s"] is None else {file_name("n"): row["s"]["n"]}
+                for row in rows
+            ],
+            [grp] * len(rows),
+            list(range(100, 100 + len(rows))),
+        ]
+        if grp == "b":
+            fields.append(file_field("extra", pa.int64()))
+            columns.append([row["extra"] for row in rows])
+        relative = f"{physical['grp']}={grp}/part-0.parquet"
+        data_file = os.path.join(path, relative)
+        os.makedirs(os.path.dirname(data_file))
+        pq.write_table(
+            pa.Table.from_arrays(
+                [pa.array(c, f.type) for c, f in zip(columns, fields)],
+                schema=pa.schema(fields),
+            ),
+            data_file,
+        )
+        ids = [row["id"] for row in rows]
+        add_actions.append(
+            {
+                "add": {
+                    "path": relative,
+                    "partitionValues": {physical["grp"]: grp},
+                    "size": os.path.getsize(data_file),
+                    "modificationTime": 0,
+                    "dataChange": True,
+                    "stats": json.dumps(
+                        {
+                            "numRecords": len(rows),
+                            "minValues": {physical["id"]: min(ids)},
+                            "maxValues": {physical["id"]: max(ids)},
+                            "nullCount": {physical["id"]: 0},
+                        }
+                    ),
+                }
+            }
+        )
+
+    def log_field(logical: str, data_type: Any) -> Dict[str, Any]:
+        return {
+            "name": logical,
+            "type": data_type,
+            "nullable": True,
+            "metadata": {
+                "delta.columnMapping.id": field_ids[logical],
+                "delta.columnMapping.physicalName": physical[logical],
+            },
+        }
+
+    schema = {
+        "type": "struct",
+        "fields": [
+            log_field("id", "long"),
+            log_field("s", {"type": "struct", "fields": [log_field("n", "string")]}),
+            log_field("grp", "string"),
+            log_field("extra", "long"),
+        ],
+    }
+    actions = [
+        {"protocol": {"minReaderVersion": 2, "minWriterVersion": 5}},
+        {
+            "metaData": {
+                "id": "3c3a3d8e-0000-4000-8000-000000000002",
+                "format": {"provider": "parquet", "options": {}},
+                "schemaString": json.dumps(schema),
+                "partitionColumns": ["grp"],
+                "configuration": {
+                    "delta.columnMapping.mode": mode,
+                    "delta.columnMapping.maxColumnId": "5",
+                    "delta.rowTracking.materializedRowIdColumnName": row_id_column,
+                },
+                "createdTime": 0,
+            }
+        },
+        *add_actions,
     ]
     with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
         f.write("\n".join(json.dumps(action) for action in actions) + "\n")

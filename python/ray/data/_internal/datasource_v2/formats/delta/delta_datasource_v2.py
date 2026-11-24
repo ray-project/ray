@@ -31,6 +31,10 @@ from typing_extensions import override
 
 from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
+from ray.data._internal.datasource_v2.formats.delta.delta_column_mapping import (
+    DeltaColumnMapping,
+    column_mapping_mode,
+)
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     ADD_ACTION_PATH_COLUMN,
     DeltaFileIndexer,
@@ -76,8 +80,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# ``delta.columnMapping.mode`` values this reader handles.
+_SUPPORTED_COLUMN_MAPPING_MODES = frozenset({"none", "name"})
+
 # Reader features this reader handles. ``columnMapping`` only with the mapping
-# mode ``none``, which ``check_delta_table_is_readable`` checks.
+# modes above, which ``check_delta_table_is_readable`` checks.
 #
 # `v2Checkpoint` only changes how the log is stored: checkpoints can list the
 # data files in sidecar files. deltalake replays them when it lists the add
@@ -206,18 +213,20 @@ def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -
 
     Raises:
         NotImplementedError: If the table needs a feature this reader doesn't
-            support yet: column mapping, a reader version or feature it
-            doesn't know, or a partition column type it doesn't parse.
+            support yet: a column mapping mode other than ``name``, a reader
+            version or feature it doesn't know, or a partition column type it
+            doesn't parse.
         RuntimeError: If the table declares deletion vectors.
         ValueError: If ``include_paths`` would replace the table's own
             ``path`` column.
     """
     protocol = table.protocol()
     metadata = table.metadata()
-    mode = (metadata.configuration or {}).get("delta.columnMapping.mode") or "none"
+    mode = column_mapping_mode(metadata.configuration)
     # Reader version 2 and the ``columnMapping`` feature only allow column
-    # mapping. With the mode ``none``, the data files use the column names.
-    if mode.lower() != "none":
+    # mapping. With the mode ``none``, the data files use the column names;
+    # with ``name``, the reader reads them by their physical names.
+    if mode not in _SUPPORTED_COLUMN_MAPPING_MODES:
         raise column_mapping_error(mode)
     features = set(protocol.reader_features or [])
     if "deletionVectors" in features:
@@ -299,12 +308,15 @@ class DeltaTableInfo:
         version: The version the table was opened at.
         schema: The table schema.
         partition_columns: The partition columns.
+        column_mapping: How the data files name the columns, or ``None`` if
+            they use the table's column names.
     """
 
     table_uri: str
     version: int
     schema: pa.Schema
     partition_columns: Tuple[str, ...]
+    column_mapping: Optional[DeltaColumnMapping] = None
 
     @classmethod
     def from_table(
@@ -323,11 +335,14 @@ class DeltaTableInfo:
             Exception: What ``check_delta_table_is_readable`` raises.
         """
         check_delta_table_is_readable(table, include_paths=include_paths)
+        schema = pa.schema(table.schema().to_arrow())
+        metadata = table.metadata()
         return cls(
             table_uri=table.table_uri,
             version=table.version(),
-            schema=pa.schema(table.schema().to_arrow()),
-            partition_columns=tuple(table.metadata().partition_columns),
+            schema=schema,
+            partition_columns=tuple(metadata.partition_columns),
+            column_mapping=DeltaColumnMapping.of(metadata.configuration, schema),
         )
 
 
@@ -477,6 +492,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             loaded_add_actions=loaded_add_actions,
         )
         self._table_schema = info.schema
+        self._column_mapping = info.column_mapping
         self._partition_columns: List[str] = list(info.partition_columns)
         self._partition_schema = pa.schema(
             [self._table_schema.field(name) for name in self._partition_columns]
@@ -546,6 +562,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             small_shuffle_chunk_size=(
                 DataContext.get_current().small_shuffle_chunk_size
             ),
+            column_mapping=self._column_mapping,
         )
 
     def get_file_partitioner(
@@ -583,4 +600,5 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             table_uri=self._snapshot.table_uri,
             version=self._snapshot.version,
             version_pinned_by_caller=self._version_pinned_by_caller,
+            column_mapping=self._column_mapping,
         )
