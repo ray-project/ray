@@ -187,6 +187,7 @@ py_binary(
     data = ["//.buildkite:image-scan.rayci.yml"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
+        ":registry",
         ":scan_images",
         ":scan_store",
         ":trivy_db",
@@ -213,6 +214,7 @@ py_test(
         "//ci/ray_ci:ray_ci_lib",
         "//ci/ray_ci/automation",
         ci_require("bazel-runfiles"),
+        ci_require("botocore"),
         ci_require("click"),
         ci_require("pytest"),
         ci_require("pyyaml"),

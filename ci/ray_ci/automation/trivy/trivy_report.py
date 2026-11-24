@@ -1026,16 +1026,17 @@ def resolve_path(path: Path) -> Path:
     return Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")) / path
 
 
-def load_metadata(path: Path) -> tuple[dict[str, Any], str]:
-    """Read the scanner metadata, or say why it can't be used.
+def load_metadata(path: Path, source: str) -> tuple[dict[str, Any], str]:
+    """Read the scanner metadata, downloaded from ``source``, or say why it
+    can't be used.
 
     Without it, results can't be tied to a Trivy binary or DB snapshot, so a
     missing file is an issue, not something to skip silently.
     """
     try:
         data = json.loads(path.read_text())
-    except (OSError, ValueError) as e:
-        return {}, f"scanner metadata unreadable ({path}): {e}"
+    except (OSError, ValueError, RecursionError) as e:
+        return {}, f"scanner metadata unreadable ({source}): {e}"
     if not isinstance(data, dict):
-        return {}, f"scanner metadata in {path} is not a JSON object"
+        return {}, f"scanner metadata in {source} is not a JSON object"
     return data, ""

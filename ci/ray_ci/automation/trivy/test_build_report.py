@@ -10,6 +10,7 @@ from unittest import mock
 import pytest
 import runfiles
 import yaml
+from botocore.exceptions import ClientError
 from click.testing import CliRunner
 
 from ci.ray_ci.automation import push_ray_image
@@ -18,6 +19,7 @@ from ci.ray_ci.automation.trivy.build_report import expected_images
 from ci.ray_ci.automation.trivy.fake_s3 import FakeS3
 from ci.ray_ci.automation.trivy.scan_store import BUCKET, MAX_POOL_CONNECTIONS
 from ci.ray_ci.automation.trivy.trivy_report import (
+    EXIT_CLEAN,
     EXIT_FINDINGS,
     EXIT_INCOMPLETE,
     MISSING_STATUS,
@@ -175,6 +177,20 @@ def test_the_pipeline_asks_for_every_published_image_once():
         "ray-llm-extra-py3.12-cu13.0.0-cudnn",
         "ray-extra-py3.14-cu13.3.1-cudnn-aarch64",
     } <= set(names)
+
+
+def test_the_report_waits_for_every_scan_step():
+    """A scan step the report doesn't wait for races it: its images would
+    show up as not scanned."""
+    steps = [s for s in real_pipeline()["steps"] if isinstance(s, dict)]
+    (report,) = [s for s in steps if s.get("key") == "trivy_report"]
+    scans = {
+        s["key"] + ("(*)" if "array" in s else "")
+        for s in steps
+        if expected_images({"steps": [s]})
+    }
+    assert len(scans) >= 2
+    assert {"trivy_db", *scans} <= set(report["depends_on"])
 
 
 SCAN = "bazel run //ci/ray_ci/automation/trivy:scan_images --"
@@ -487,17 +503,20 @@ def test_a_failed_report_upload_fails_a_clean_build(tmp_path: Path, caplog):
     (annotation,) = (tmp_path / "annotations").iterdir()
     assert annotation.name == "trivy-scan.warning.md"
     body = annotation.read_text()
-    assert "the report could not be uploaded to S3: upload to s3://" in body
-    assert "AccessDenied" in body
     footer = body.rstrip().splitlines()[-1]
-    assert f"{PREFIX}/report/" not in footer
+    assert "The report could not be uploaded to S3 (`upload to s3://" in footer
+    assert "AccessDenied" in footer
+    assert "Kept for 30 days" not in footer
     assert "only in this job's `trivy/report/` artifacts" in footer
+    # Every image was scanned: the failed upload isn't a coverage gap.
+    assert "### Incomplete" not in body
     # The artifacts say the same as the annotation.
     report = (tmp_path / "out" / "report.md").read_text()
-    assert "the report could not be uploaded to S3" in report
-    assert "only in this job's `trivy/report/` artifacts" in report
+    assert report.rstrip().splitlines()[-1] == footer
+    assert "### Incomplete" not in report
     summary = json.loads((tmp_path / "out" / "summary.json").read_text())
-    assert any("could not be uploaded" in issue for issue in summary["issues"])
+    assert summary["exit_code"] == EXIT_CLEAN
+    assert summary["issues"] == []
 
 
 def test_a_failed_report_upload_keeps_the_findings_exit_code(tmp_path: Path):
@@ -511,7 +530,9 @@ def test_a_failed_report_upload_keeps_the_findings_exit_code(tmp_path: Path):
     assert result.exit_code == EXIT_FINDINGS, result.output
     (annotation,) = (tmp_path / "annotations").iterdir()
     assert annotation.name == "trivy-scan.error.md"
-    assert "the report could not be uploaded to S3" in annotation.read_text()
+    assert "The report could not be uploaded to S3" in annotation.read_text()
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["exit_code"] == EXIT_FINDINGS
 
 
 def test_a_failed_report_still_leaves_a_warning_annotation(tmp_path: Path):
@@ -588,6 +609,81 @@ def test_a_failed_download_keeps_the_status_records_error(
     report = (tmp_path / "out" / "report.md").read_text()
     assert f"`ray-py3.11-tpu`: {error}" in report
     assert "could not download" not in report
+
+
+def test_a_failed_listing_is_named_on_every_image(tmp_path: Path):
+    """Nothing was checked, so no image's line may say its job didn't run."""
+    s3 = FakeS3()
+    put_metadata(s3)
+    put_scan(s3, "ray-py3.11-tpu", CLEAN_RESULT)
+    denied = ClientError(
+        {"Error": {"Code": "AccessDenied", "Message": "Access Denied"}},
+        "ListObjectsV2",
+    )
+    with mock.patch.object(s3, "paginate", side_effect=denied):
+        result = run(tmp_path, s3)
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "could not list the scan results: listing of s3://" in report
+    assert report.count(f": {build_report.UNLISTED}") == 5
+    assert MISSING_STATUS not in report
+
+
+def test_unreadable_metadata_is_named_by_its_s3_url(tmp_path: Path):
+    s3 = FakeS3()
+    s3.put(BUCKET, f"{PREFIX}/db/metadata.json", b"[" * 100_000)
+    put_scan(s3, "ray-py3.11-tpu", CLEAN_RESULT)
+    result = run(tmp_path, s3, {"steps": [PIPELINE["steps"][2]]})
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert f"scanner metadata unreadable (s3://{BUCKET}/{PREFIX}/db/metadata.json)" in (
+        report
+    )
+
+
+def test_a_result_name_ending_in_a_newline_is_ignored(tmp_path: Path, caplog):
+    s3 = FakeS3()
+    put_metadata(s3)
+    put_scan(s3, "ray-py3.11-tpu", CLEAN_RESULT)
+    stray = f"{PREFIX}/results/ray-py3.11-tpu.status.json\n"
+    s3.put(BUCKET, stray, b"{}")
+    s3.broken.add(stray)
+    result = run(tmp_path, s3, {"steps": [PIPELINE["steps"][2]]})
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert "Ignoring unexpected file" in caplog.text
+
+
+def test_results_no_scan_step_asks_for_are_issues(tmp_path: Path):
+    """The report can't vouch for them; each is named, and only once."""
+    s3 = FakeS3()
+    put_metadata(s3)
+    put_scan(s3, "ray-py3.11-tpu", CLEAN_RESULT)
+    put_scan(s3, "ray-py3.10-cpu", CLEAN_RESULT)
+    put_scan(s3, "ray-py3.10-gpu", CLEAN_RESULT)
+    s3.broken.add(f"{PREFIX}/results/ray-py3.10-gpu.json.gz")
+    result = run(tmp_path, s3, {"steps": [PIPELINE["steps"][2]]})
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    for name in ("ray-py3.10-cpu", "ray-py3.10-gpu"):
+        assert (
+            f"`{name}`: has a status record, but no scan step asks for this image"
+        ) in report
+    assert report.count("could not download its result") == 1
+
+
+def test_an_old_annotation_file_cannot_replace_this_runs(tmp_path: Path):
+    """post-command posts every file for the context, in name order."""
+    annotations = tmp_path / "annotations"
+    annotations.mkdir()
+    (annotations / "trivy-scan.warning.md").write_text("an old run's")
+    (annotations / "other.info.md").write_text("another context's")
+    s3 = FakeS3()
+    put_metadata(s3)
+    put_scan(s3, "ray-py3.11-tpu", CLEAN_RESULT)
+    result = run(tmp_path, s3, {"steps": [PIPELINE["steps"][2]]})
+    assert result.exit_code == EXIT_CLEAN, result.output
+    names = sorted(p.name for p in annotations.iterdir())
+    assert names == ["other.info.md", "trivy-scan.success.md"]
 
 
 def test_the_download_threads_fit_the_connection_pool():
