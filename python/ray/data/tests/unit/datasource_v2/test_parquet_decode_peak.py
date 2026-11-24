@@ -61,7 +61,12 @@ def _peak(path, rows, columns=None, threads=1):
     """PyArrow's peak bytes scanning ``path`` as a Ray read task."""
     task = json.dumps([str(path), columns, threads])
     result = subprocess.run(
-        [sys.executable, "-c", _SCAN, task], capture_output=True, text=True, check=True
+        [sys.executable, "-c", _SCAN, task],
+        capture_output=True,
+        text=True,
+        check=True,
+        # One allocator, whatever the caller's environment selects.
+        env={**os.environ, "ARROW_DEFAULT_MEMORY_POOL": "system"},
     )
     scanned, peak = map(int, result.stdout.split())
     assert scanned == rows
