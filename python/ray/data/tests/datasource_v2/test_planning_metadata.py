@@ -1,6 +1,7 @@
 import os
 from collections import Counter
 from contextlib import nullcontext
+from dataclasses import replace
 
 import pyarrow as pa
 import pyarrow.fs as pafs
@@ -9,6 +10,9 @@ import pytest
 
 import ray
 from ray.data._internal.datasource_v2.common import schema_inference as inference
+from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
+    _read_parquet_metadata,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
@@ -17,6 +21,8 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_METADATA_TYPE,
     FileManifest,
 )
+from ray.data._internal.logical.operators import ListFiles
+from ray.data.context import DataContext
 from ray.data.tests.schema_planning_utils import (
     UnknownSizeRecordingLocalFileSystem,
     read_schema_records,
@@ -46,6 +52,49 @@ def planning_files(tmp_path, monkeypatch, request):
         timestamp = 1_600_000_000 + i
         os.utime(path, (timestamp, timestamp))
     return paths
+
+
+def test_schema_batch_preserves_per_file_metadata_budget(planning_files):
+    paths = planning_files[1:]
+    filesystem = pafs.LocalFileSystem()
+    infos = filesystem.get_file_info(paths)
+
+    result = inference._read_schema_batch(
+        paths,
+        [info.size for info in infos],
+        filesystem,
+        None,
+        "Parquet",
+        DataContext.get_current(),
+        2,
+        read_metadata=_read_parquet_metadata,
+        row_records=2,
+        mtimes=[info.mtime_ns for info in infos],
+    )
+    assert [position for position, _, _ in result.schemas] == [0]
+    metadata = result.metadata
+    assert metadata is not None
+    assert metadata.to_pylist() == [
+        {"num_rows": 1, "mtime_ns": infos[0].mtime_ns},
+        {"num_rows": 2, "mtime_ns": infos[1].mtime_ns},
+        None,
+    ]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_prelisted_files_have_unknown_output_schema(
+    planning_files, ray_start_regular_shared_2_cpus, datasource_v2
+):
+    dataset = ray.data.read_parquet(planning_files, merge_schema=True, num_cpus=1)
+    op = next(
+        op
+        for op in dataset._logical_plan.dag.post_order_iter()
+        if isinstance(op, ListFiles)
+    )
+    assert op.prelisted_file_infos
+    assert FILE_METADATA_COLUMN_NAME in op.prelisted_file_infos[0].column_names
+    assert op.infer_schema() is None
+    assert replace(op, prelisted_file_infos=[]).infer_schema() is None
 
 
 @pytest.mark.parametrize("datasource_v2", [True], indirect=True)

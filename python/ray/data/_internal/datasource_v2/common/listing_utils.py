@@ -1,5 +1,5 @@
 from itertools import repeat
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
 
@@ -49,6 +49,20 @@ def partition_files(
     partitioner.finalize()
     while partitioner.has_partition():
         yield partitioner.next_partition().as_block()
+
+
+def batch_file_infos(
+    file_infos: Iterable[FileInfo], batch_size: int
+) -> Iterator[List[FileInfo]]:
+    """Group file infos into ``batch_size`` batches, keeping size-less rows."""
+    batch: List[FileInfo] = []
+    for file_info in file_infos:
+        batch.append(file_info)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def _build_pruners(
