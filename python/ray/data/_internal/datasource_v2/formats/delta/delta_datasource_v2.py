@@ -103,6 +103,37 @@ _IGNORED_SCAN_OPTIONS = frozenset(
 
 _INT32_MAX = 2**31 - 1
 
+# The oldest ``deltalake`` release ``read_delta`` is tested with.
+MIN_DELTALAKE_VERSION = (1, 5, 0)
+
+
+def check_deltalake_version(installed: str) -> None:
+    """Raise if the installed ``deltalake`` is older than ``read_delta`` supports.
+
+    Only the release numbers are compared, so a pre-release or development
+    build of a supported release (``1.6.0rc1``, ``1.5.0.dev0``) passes. A
+    version string that doesn't parse, such as a vendored build's, passes too.
+
+    Args:
+        installed: ``deltalake.__version__``.
+
+    Raises:
+        ImportError: If the release is older than ``MIN_DELTALAKE_VERSION``.
+    """
+    from packaging.version import InvalidVersion, Version
+
+    try:
+        release = Version(installed).release
+    except InvalidVersion:
+        return
+    if release < MIN_DELTALAKE_VERSION:
+        minimum = ".".join(map(str, MIN_DELTALAKE_VERSION))
+        raise ImportError(
+            f"`ray.data.read_delta` needs deltalake {minimum} or later, but "
+            f"{installed} is installed. Upgrade it with `pip install -U "
+            f"'deltalake>={minimum}'`."
+        )
+
 
 def column_mapping_error(mode: str) -> NotImplementedError:
     """The error for a table that uses column mapping.
