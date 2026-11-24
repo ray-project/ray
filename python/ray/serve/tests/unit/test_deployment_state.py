@@ -2,7 +2,7 @@ import sys
 from collections import defaultdict
 from copy import deepcopy
 from types import SimpleNamespace
-from typing import Any, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
@@ -29,6 +29,7 @@ from ray.serve._private.common import (
     ReplicaState,
     TargetCapacityDirection,
     TimeStampedValue,
+    gang_id_from_pg_name,
 )
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve._private.constants import (
@@ -90,6 +91,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
+from ray.serve.gang import GangContext
 from ray.serve.schema import LoggingConfig, ReplicaRank
 from ray.util.placement_group import validate_placement_group
 
@@ -4908,6 +4910,202 @@ def test_gang_pg_leak_detection_removes_unoccupied_pg(mock_deployment_state_mana
         create_deployment_state_manager(placement_group_names=[gang_pg_name])
 
     mock_remove.assert_called_once()
+
+
+class TestRestoreGangReservations:
+    """A restarted controller reserves the gang PGs its recovering replicas run in.
+
+    The controller learns a recovering member's gang only once the member recovers.
+    Without restoring the reservation, a gang whose every member fails recovery is
+    covered by none, so its detached PG is never freed: the startup leak scan ran
+    while the members were still alive, and the replacement gang can't be placed on
+    the PG's resources.
+    """
+
+    @pytest.fixture
+    def restart_with_recovering_gang(
+        self, mock_deployment_state_manager
+    ) -> Tuple[Callable, List[str]]:
+        """Run a 2-member gang, then return restart(actor_pg_ids=...) that restarts
+        the controller with the PG APIs patched and returns (new_dsm, new_ds,
+        old_pg_name)."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm = create_dsm(create_placement_group_fn_override=MockPlacementGroup)
+        info, v1 = deployment_info(
+            version="1",
+            num_replicas=2,
+            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+        )
+        dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        dsm.save_checkpoint()
+        ds = dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+        dsm.update()
+        for replica in ds._replicas.get():
+            replica._actor.set_ready()
+        dsm.update()
+        check_counts(ds, total=2, by_state=[(ReplicaState.RUNNING, 2, v1)])
+        (old_pg_name,) = [r.pg_name for r in ds._gang_reservations.values()]
+        actor_names = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+        REMOVED_GANG_PG_NAMES.clear()
+
+        def restart(
+            actor_pg_ids: Callable[[], Dict[str, str]],
+        ) -> Tuple[DeploymentStateManager, DeploymentState, str]:
+            with patch(
+                "ray.util.placement_group_table",
+                return_value={"pg-old": {"name": old_pg_name}},
+            ), patch("ray.util.get_placement_group"), patch(
+                "ray.util.remove_placement_group"
+            ) as mock_remove, patch.object(
+                # The members are alive, so the startup leak scan keeps their PG.
+                ds_mod,
+                "get_active_placement_group_ids",
+                return_value={"pg-old"},
+            ), patch.object(
+                ds_mod, "get_actor_placement_group_ids", side_effect=actor_pg_ids
+            ):
+                new_dsm = create_dsm(
+                    actor_names,
+                    placement_group_names=[old_pg_name],
+                    create_placement_group_fn_override=MockPlacementGroup,
+                )
+            mock_remove.assert_not_called()
+            new_ds = new_dsm._get_deployment_state_for_testing(TEST_DEPLOYMENT_ID)
+            check_counts(new_ds, total=2, by_state=[(ReplicaState.RECOVERING, 2, v1)])
+            return new_dsm, new_ds, old_pg_name
+
+        return restart, actor_names
+
+    @staticmethod
+    def _stop_all_recovering(
+        new_dsm: DeploymentStateManager, new_ds: DeploymentState
+    ) -> None:
+        for replica in new_ds._replicas.get():
+            replica._actor.set_failed_to_start()
+        new_dsm.update()
+        for replica in new_ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        new_dsm.update()
+
+    def test_pg_freed_when_whole_gang_fails_recovery(
+        self, restart_with_recovering_gang
+    ):
+        restart, actor_names = restart_with_recovering_gang
+        new_dsm, new_ds, old_pg_name = restart(
+            lambda: {name: "pg-old" for name in actor_names}
+        )
+
+        self._stop_all_recovering(new_dsm, new_ds)
+
+        assert REMOVED_GANG_PG_NAMES == [old_pg_name]
+
+    def test_pg_kept_when_gang_recovers(self, restart_with_recovering_gang):
+        restart, actor_names = restart_with_recovering_gang
+        new_dsm, new_ds, _ = restart(lambda: {name: "pg-old" for name in actor_names})
+
+        for replica in new_ds._replicas.get():
+            replica._actor.set_ready()
+        new_dsm.update()
+
+        check_counts(new_ds, total=2, by_state=[(ReplicaState.RUNNING, 2, None)])
+        assert REMOVED_GANG_PG_NAMES == []
+
+    def test_registration_widens_restored_reservation(
+        self, restart_with_recovering_gang
+    ):
+        """A recovering member's registration widens the restored reservation to
+        the full gang, and leaves a colliding gang's reservation untouched."""
+        restart, actor_names = restart_with_recovering_gang
+        _, new_ds, old_pg_name = restart(lambda: {n: "pg-old" for n in actor_names})
+        gang_id = gang_id_from_pg_name(old_pg_name)
+        reservation = new_ds._gang_reservations[gang_id]
+        a, b = (replica.replica_id for replica in new_ds._replicas.get())
+        assert reservation.member_ids == {a, b}
+
+        # A gang member that wasn't recovering at restart (e.g., already gone).
+        missed = ReplicaID("missed", deployment_id=TEST_DEPLOYMENT_ID)
+        new_ds._register_gang_replica(
+            a,
+            GangContext(
+                gang_id=gang_id,
+                rank=0,
+                world_size=3,
+                member_replica_ids=[a.unique_id, b.unique_id, missed.unique_id],
+                pg_name=old_pg_name,
+            ),
+        )
+        assert reservation.member_ids == {a, b, missed}
+        assert new_ds._gang_id_by_member_id[missed] == gang_id
+
+        # Another gang whose ID collides doesn't touch this reservation.
+        other = ReplicaID("other", deployment_id=TEST_DEPLOYMENT_ID)
+        new_ds._register_gang_replica(
+            other,
+            GangContext(
+                gang_id=gang_id,
+                rank=0,
+                world_size=1,
+                member_replica_ids=[other.unique_id],
+                pg_name=f"{old_pg_name}_other",
+            ),
+        )
+        assert reservation.pg_name == old_pg_name
+        assert reservation.member_ids == {a, b, missed}
+        assert other not in new_ds._gang_id_by_member_id
+
+    def test_partial_lookup_keeps_pg_of_recovering_member(
+        self, restart_with_recovering_gang
+    ):
+        """A partial actor listing must not free the PG under a missed member.
+
+        The listing may omit a member (an actor not yet ALIVE, or a truncated
+        result). Reserving only the members found would free the PG as soon as
+        those stop, killing a missed member that is still recovering in it, so a
+        partial lookup restores nothing and the PG is kept.
+        """
+        restart, actor_names = restart_with_recovering_gang
+        new_dsm, new_ds, old_pg_name = restart(lambda: {actor_names[0]: "pg-old"})
+        replicas = new_ds._replicas.get()
+        listed = next(
+            r for r in replicas if r.replica_id.to_full_id_str() == actor_names[0]
+        )
+        missed = next(r for r in replicas if r is not listed)
+
+        # The listed member fails and stops while the missed one is still
+        # RECOVERING in the same PG.
+        listed._actor.set_failed_to_start()
+        new_dsm.update()
+        for replica in new_ds._replicas.get(states=[ReplicaState.STOPPING]):
+            replica._actor.set_done_stopping()
+        new_dsm.update()
+        assert missed in new_ds._replicas.get(states=[ReplicaState.RECOVERING])
+        assert REMOVED_GANG_PG_NAMES == []
+
+        # The missed member then recovers; its PG is still there.
+        missed._actor._gang_context = GangContext(
+            gang_id=gang_id_from_pg_name(old_pg_name),
+            rank=1,
+            world_size=2,
+            member_replica_ids=[r.replica_id.unique_id for r in (listed, missed)],
+            pg_name=old_pg_name,
+        )
+        missed._actor.set_ready()
+        new_dsm.update()
+        assert missed in new_ds._replicas.get(states=[ReplicaState.RUNNING])
+        assert REMOVED_GANG_PG_NAMES == []
+
+    def test_lookup_failure_does_not_block_recovery(self, restart_with_recovering_gang):
+        """If the PGs can't be looked up, recovery proceeds as before."""
+        restart, _ = restart_with_recovering_gang
+
+        def unavailable() -> Dict[str, str]:
+            raise ConnectionError("state API unavailable")
+
+        new_dsm, new_ds, _ = restart(unavailable)
+
+        assert new_ds._gang_reservations == {}
+        self._stop_all_recovering(new_dsm, new_ds)
+        assert REMOVED_GANG_PG_NAMES == []
 
 
 @pytest.fixture

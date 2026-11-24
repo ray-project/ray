@@ -57,6 +57,7 @@ from ray.serve._private.common import (
     ReplicaState,
     RequestRoutingInfo,
     RunningReplicaInfo,
+    gang_id_from_pg_name,
 )
 from ray.serve._private.config import (
     DeploymentConfig,
@@ -113,6 +114,7 @@ from ray.serve._private.utils import (
     JavaActorHandleProxy,
     check_obj_ref_ready_nowait,
     get_active_placement_group_ids,
+    get_actor_placement_group_ids,
     get_capacity_adjusted_num_replicas,
     get_deployment_actor_name,
     get_random_string,
@@ -3344,6 +3346,10 @@ class GangReservation:
 
     Keyed on expected membership, not registered membership: a recovering member
     cannot name its own gang yet, but it is still holding the PG.
+
+    A reservation restored at controller recovery lists the recovering members
+    found in the PG then, not necessarily the whole gang; _register_gang_replica
+    widens it to the full membership when a member recovers.
     """
 
     pg_name: str
@@ -5496,6 +5502,52 @@ class DeploymentState:
         self.health_check_gauge.set(value, tags={"replica": replica_unique_id})
         self._health_gauge_cache[replica_unique_id] = (value, now)
 
+    def has_recovering_replicas(self) -> bool:
+        return self._replicas.count(states=[ReplicaState.RECOVERING]) > 0
+
+    def restore_gang_reservations(
+        self, gang_pg_name_by_actor_name: Dict[str, str]
+    ) -> None:
+        """Reserve the gang PGs that recovering replicas' actors run in.
+
+        A recovering member names its gang only once it recovers. Restoring the
+        reservation up front lets _reclaim_empty_gang_placement_groups free the PG
+        even when every member fails recovery.
+
+        Restores nothing unless every recovering replica of a gang deployment was
+        found in a gang PG. A partial actor listing (an actor not yet ALIVE, or a
+        truncated result) could otherwise reserve a gang for only some of the
+        members still in its PG, and freeing it once those stop would kill the
+        rest. Without the reservation the PG may leak, as before, but no member
+        is killed.
+        """
+        if not self._is_gang_deployment:
+            return
+        members_by_pg_name: Dict[str, Set[ReplicaID]] = defaultdict(set)
+        for replica in self._replicas.get(states=[ReplicaState.RECOVERING]):
+            pg_name = gang_pg_name_by_actor_name.get(
+                replica.replica_id.to_full_id_str()
+            )
+            if pg_name is None:
+                logger.warning(
+                    f"Couldn't find the gang placement group of recovering "
+                    f"{replica.replica_id}; not restoring gang reservations for "
+                    f"{self._id}."
+                )
+                return
+            members_by_pg_name[pg_name].add(replica.replica_id)
+
+        for pg_name, member_ids in members_by_pg_name.items():
+            # The same key _register_gang_replica uses once a member recovers.
+            gang_id = gang_id_from_pg_name(pg_name)
+            if gang_id in self._gang_reservations:
+                continue
+            self._gang_reservations[gang_id] = GangReservation(
+                pg_name=pg_name, member_ids=member_ids
+            )
+            for member_id in member_ids:
+                self._gang_id_by_member_id[member_id] = gang_id
+
     def _register_gang_replica(
         self, replica_id: ReplicaID, gang_context: GangContext
     ) -> None:
@@ -5504,15 +5556,25 @@ class DeploymentState:
         self._gang_id_by_replica[replica_id] = gang_id
         self._replicas_by_gang_id[gang_id].add(replica_id)
 
-        if not gang_context.pg_name or gang_id in self._gang_reservations:
+        if not gang_context.pg_name:
             return
         member_ids = {
             ReplicaID(unique_id, deployment_id=self._id)
             for unique_id in gang_context.member_replica_ids
         }
-        self._gang_reservations[gang_id] = GangReservation(
-            pg_name=gang_context.pg_name, member_ids=member_ids
-        )
+        reservation = self._gang_reservations.get(gang_id)
+        if reservation is None:
+            self._gang_reservations[gang_id] = GangReservation(
+                pg_name=gang_context.pg_name, member_ids=member_ids
+            )
+        elif reservation.pg_name == gang_context.pg_name:
+            # A reservation restored at controller recovery lists only the members
+            # found in the PG then; widen it to the gang's full membership so the
+            # PG isn't freed while a member missed then is still running.
+            reservation.member_ids |= member_ids
+        else:
+            # Another gang with a colliding ID holds this key; keep it as is.
+            return
         for member_id in member_ids:
             self._gang_id_by_member_id[member_id] = gang_id
 
@@ -7116,6 +7178,56 @@ class DeploymentStateManager:
                 self._app_deployment_mapping[deployment_id.app_name].add(
                     deployment_id.name
                 )
+
+        self._restore_gang_reservations(all_current_placement_group_names)
+
+    def _restore_gang_reservations(
+        self, all_current_placement_group_names: List[str]
+    ) -> None:
+        """Rebuild the gang reservations of recovering replicas from the cluster.
+
+        Gang reservations live only in controller memory. Without this, a recovering
+        member is registered only once it recovers, so a gang whose every member
+        fails recovery is covered by no reservation and its detached PG is never
+        freed. Looking up which gang PG each recovering replica's actor runs in lets
+        the normal reclaim free the PG once the members are gone.
+
+        Best effort: if the PGs or actors can't be listed, recovery proceeds as
+        before, without the reservations.
+        """
+        gang_pg_names = {
+            name
+            for name in all_current_placement_group_names
+            if name.startswith(GANG_PG_NAME_PREFIX)
+        }
+        if not gang_pg_names or not any(
+            deployment_state.has_recovering_replicas()
+            for deployment_state in self._deployment_states.values()
+        ):
+            return
+
+        try:
+            pg_name_by_id = {
+                pg_id_hex: entry["name"]
+                for pg_id_hex, entry in ray.util.placement_group_table().items()
+                if entry.get("name") in gang_pg_names
+            }
+            actor_pg_ids = get_actor_placement_group_ids()
+        except Exception:
+            logger.exception(
+                "Failed to look up the gang placement groups of recovering "
+                "replicas; their placement groups may not be freed if they fail "
+                "recovery."
+            )
+            return
+
+        gang_pg_name_by_actor_name = {
+            actor_name: pg_name_by_id[pg_id]
+            for actor_name, pg_id in actor_pg_ids.items()
+            if pg_id in pg_name_by_id
+        }
+        for deployment_state in self._deployment_states.values():
+            deployment_state.restore_gang_reservations(gang_pg_name_by_actor_name)
 
     def shutdown(self):
         """Shutdown all running replicas by notifying the controller, and leave

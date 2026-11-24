@@ -17,6 +17,7 @@ from ray.serve._private.utils import (
     calculate_remaining_timeout,
     extract_self_if_method_call,
     get_active_placement_group_ids,
+    get_actor_placement_group_ids,
     get_all_live_placement_group_names,
     get_current_actor_id,
     get_head_node_id,
@@ -561,6 +562,45 @@ def test_get_active_placement_group_ids(ray_instance):
         return True
 
     wait_for_condition(check_active_placement_group_ids, timeout=10)
+
+
+def test_get_actor_placement_group_ids(ray_instance):
+    """Maps alive, named Serve actors in a PG to the PG's ID, and nothing else."""
+
+    @ray.remote(num_cpus=0.1)
+    class DummyActor:
+        def ready(self):
+            return True
+
+    pg = ray.util.placement_group([{"CPU": 0.1}, {"CPU": 0.1}], name="pg_named")
+    assert pg.wait()
+    named_on_pg = DummyActor.options(
+        name="named_on_pg",
+        namespace=SERVE_NAMESPACE,
+        placement_group=pg,
+        placement_group_bundle_index=0,
+    ).remote()
+    unnamed_on_pg = DummyActor.options(
+        namespace=SERVE_NAMESPACE,
+        placement_group=pg,
+        placement_group_bundle_index=1,
+    ).remote()
+    named_no_pg = DummyActor.options(
+        name="named_no_pg", namespace=SERVE_NAMESPACE
+    ).remote()
+    ray.get(
+        [
+            named_on_pg.ready.remote(),
+            unnamed_on_pg.ready.remote(),
+            named_no_pg.ready.remote(),
+        ]
+    )
+
+    def check_actor_placement_group_ids():
+        assert get_actor_placement_group_ids() == {"named_on_pg": pg.id.hex()}
+        return True
+
+    wait_for_condition(check_actor_placement_group_ids, timeout=10)
 
 
 def test_is_running_in_asyncio_loop_false():

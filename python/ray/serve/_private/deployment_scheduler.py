@@ -16,12 +16,12 @@ from ray._raylet import (  # type: ignore[attr-defined]
 )
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
-    GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
     DeploymentID,
     GangPlacementGroupRequest,
     GangReservationResult,
     ReplicaID,
+    make_gang_pg_name,
 )
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
@@ -971,11 +971,7 @@ class DeploymentScheduler:
                 fallback_strategy = None
 
             gang_id = uuid.uuid4().hex[:8]
-            pg_name = (
-                f"{GANG_PG_NAME_PREFIX}{deployment_id.app_name}"
-                f"_{deployment_id.name}"
-                f"_{gang_index}_{gang_id}"
-            )
+            pg_name = make_gang_pg_name(deployment_id, gang_index, gang_id)
 
             try:
                 pg = self._create_placement_group_fn(
