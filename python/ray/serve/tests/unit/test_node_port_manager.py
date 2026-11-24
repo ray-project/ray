@@ -372,6 +372,7 @@ def test_prune_reclaims_port_allocated_after_last_prune_when_alive_unchanged(
     # A starting replica allocates a port and then crashes before next prune.
     port_dead = manager.allocate_port("replica-starting-dead", RequestProtocol.HTTP)
     assert manager.is_port_allocated("replica-starting-dead", RequestProtocol.HTTP)
+    assert manager._last_pruned_alive == {"replica-alive", "replica-starting-dead"}
 
     # Next prune sees the same alive set {"replica-alive"}, but must still reclaim
     # and quarantine replica-starting-dead's port.
@@ -379,6 +380,14 @@ def test_prune_reclaims_port_allocated_after_last_prune_when_alive_unchanged(
     assert not manager.is_port_allocated("replica-starting-dead", RequestProtocol.HTTP)
     assert port_dead in manager._http_allocator._quarantined_ports
     assert manager.get_port("replica-alive", RequestProtocol.HTTP) == port_alive
+    assert manager._last_pruned_alive == {"replica-alive"}
+
+    # If a newly allocated replica survives into the next prune tick, _last_pruned_alive
+    # already includes it so _prune_replica_ports can be skipped in steady state.
+    port_surviving = manager.allocate_port("replica-surviving", RequestProtocol.HTTP)
+    assert manager._last_pruned_alive == {"replica-alive", "replica-surviving"}
+    NodePortManager.prune({node_id: {"replica-alive", "replica-surviving"}})
+    assert manager.get_port("replica-surviving", RequestProtocol.HTTP) == port_surviving
 
 
 def test_prune_reclaims_recovered_port_when_alive_unchanged(
@@ -400,10 +409,12 @@ def test_prune_reclaims_recovered_port_when_alive_unchanged(
     recovered_http = port_range_constants["RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT"] + 2
     NodePortManager.update_ports([(node_id, "replica-stale", recovered_http, None)])
     assert manager.is_port_allocated("replica-stale", RequestProtocol.HTTP)
+    assert manager._last_pruned_alive == {"replica-alive", "replica-stale"}
 
     NodePortManager.prune({node_id: {"replica-alive"}})
     assert not manager.is_port_allocated("replica-stale", RequestProtocol.HTTP)
     assert recovered_http in manager._http_allocator._quarantined_ports
+    assert manager._last_pruned_alive == {"replica-alive"}
 
 
 if __name__ == "__main__":
