@@ -170,23 +170,24 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
                 cluster_state_snapshot=cluster_state_snapshot
             )
 
-        # TODO(Justin: This probably should be part of the sizing in this case,
-        # since we scaling up and down the number of actors. Like it should
-        # be called here, but the method can be part of the sizer.
+        # TODO(Justin): This is only here until the old backend is gone, but otherwise,
+        # this can be shunted inside op.refresh_state() in the base class.
         self._expire_pending_actors(topology)
-        self._resource_bank.drain_consumed_blocks()
         self._release_drained_actors_of_completed_ops(topology)
+        self._resource_bank.drain_consumed_blocks()
 
+        # 5. Launch tasks
         self._launch_tasks()
+
+        # 6. Update metrics and logs
         self._sizer.observe_after_launch()
         self._sample_output_backpressure(topology)
-
         self._actor_only_metrics.maybe_update(
             topology=topology, resource_bank=self._resource_bank
         )
         self._report_current_usage()
 
-        # Node-level autoscaling only; actor-pool sizing belongs to the sizer.
+        # 7. Node-level cluster autoscaling.
         self._cluster_autoscaler.try_trigger_scaling()
 
         return self._finalize_scheduling_loop_step(topology)
