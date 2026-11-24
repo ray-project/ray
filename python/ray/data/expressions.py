@@ -190,8 +190,62 @@ class _ExprVisitor(ABC, Generic[T]):
         pass
 
 
+# Operators whose PyArrow result depends on the operand types.
+_ARITHMETIC_OPERATIONS = frozenset(
+    {
+        Operation.ADD,
+        Operation.SUB,
+        Operation.MUL,
+        Operation.DIV,
+        Operation.MOD,
+        Operation.FLOORDIV,
+    }
+)
+
+
+def _typed_literal(value: Any) -> "pyarrow.compute.Expression":
+    """``value`` as a PyArrow literal that keeps its own type.
+
+    PyArrow narrows a plain literal to the column's type, so int8 ``x + 100``
+    wraps to -56, while Ray's row filter computes it in int64.
+    """
+    scalar = pyarrow.scalar(value)
+    return pc.scalar(scalar).cast(scalar.type)
+
+
 class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
-    """Visitor that converts Ray Data expressions to PyArrow compute expressions."""
+    """Visitor that converts Ray Data expressions to PyArrow compute expressions.
+
+    A PyArrow expression has no types until it is bound to a file, so its
+    arithmetic can differ from Ray's row filter. With ``schema``, arithmetic is
+    built from the operand types and computes what the row filter computes.
+    """
+
+    def __init__(self, schema: Optional["pyarrow.Schema"] = None):
+        self._schema = schema
+
+    def _visit_arithmetic(self, expr: "BinaryExpr") -> "pyarrow.compute.Expression":
+        from ray.data._internal.planner.plan_expression.expression_evaluator import (
+            _ARROW_EXPR_OPS_MAP,
+        )
+
+        left_type = expr.left.get_type(self._schema)
+        right_type = expr.right.get_type(self._schema)
+        if left_type is None or right_type is None:
+            raise ValueError(
+                f"Can't resolve the operand types of {expr} from the schema."
+            )
+        left, right = (
+            _typed_literal(side.value)
+            if isinstance(side, LiteralExpr)
+            else self.visit(side)
+            for side in (expr.left._unalias(), expr.right._unalias())
+        )
+        operation = _ARROW_EXPR_OPS_MAP[expr.op]
+        if expr.op in (Operation.SUB, Operation.MUL):
+            # PyArrow picks the result type itself once the literals are typed.
+            return operation(left, right)
+        return operation(left, right, types=(left_type, right_type))
 
     def visit_column(self, expr: "ColumnExpr") -> "pyarrow.compute.Expression":
         return pc.field(expr.name)
@@ -219,6 +273,9 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
             result = pc.is_in(left, right)
             return pc.invert(result) if expr.op == Operation.NOT_IN else result
 
+        if self._schema is not None and expr.op in _ARITHMETIC_OPERATIONS:
+            return self._visit_arithmetic(expr)
+
         left = self.visit(expr.left)
         right = self.visit(expr.right)
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
@@ -245,7 +302,12 @@ class _PyArrowExpressionVisitor(_ExprVisitor["pyarrow.compute.Expression"]):
     def visit_udf(self, expr: "UDFExpr") -> "pyarrow.compute.Expression":
         if isinstance(expr, PyArrowComputeUDFExpr):
             args = [self.visit(a) for a in expr.args]
-            return expr.pc_func(*args, *expr.pc_positional, **expr.pc_kwargs)
+            positional = expr.pc_positional
+            # pyrefly: ignore[missing-attribute]  # pc functions are runtime-generated.
+            if self._schema is not None and expr.pc_func is pc.power:
+                # The exponent is an operand, so PyArrow would narrow it too.
+                positional = [_typed_literal(value) for value in positional]
+            return expr.pc_func(*args, *positional, **expr.pc_kwargs)
         raise TypeError("UDF expressions cannot be converted to PyArrow expressions")
 
     def visit_download(self, expr: "DownloadExpr") -> "pyarrow.compute.Expression":
@@ -275,7 +337,11 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
 
     This mirrors the node/operation support of :class:`_PyArrowExpressionVisitor`
     but only inspects the expression structure, it never builds PyArrow objects.
+    With ``schema``, arithmetic must also resolve to a type against it.
     """
+
+    def __init__(self, schema: Optional["pyarrow.Schema"] = None):
+        self._schema = schema
 
     def visit_column(self, expr: "ColumnExpr") -> bool:
         return True
@@ -296,11 +362,15 @@ class _PyArrowConvertibilityVisitor(_ExprVisitor[bool]):
             _ARROW_EXPR_OPS_MAP,
         )
 
-        return (
+        if not (
             expr.op in _ARROW_EXPR_OPS_MAP
             and self.visit(expr.left)
             and self.visit(expr.right)
-        )
+        ):
+            return False
+        if self._schema is not None and expr.op in _ARITHMETIC_OPERATIONS:
+            return expr.get_type(self._schema) is not None
+        return True
 
     def visit_unary(self, expr: "UnaryExpr") -> bool:
         from ray.data._internal.planner.plan_expression.expression_evaluator import (
@@ -407,8 +477,16 @@ class Expr(ABC):
         """Compare two expression ASTs for structural equality."""
         raise NotImplementedError
 
-    def to_pyarrow(self) -> "pyarrow.compute.Expression":
+    def to_pyarrow(
+        self, schema: Optional["pyarrow.Schema"] = None
+    ) -> "pyarrow.compute.Expression":
         """Convert this Ray Data expression to a PyArrow compute expression.
+
+        Args:
+            schema: Schema of the data the expression will run on. With it,
+                arithmetic computes the same values as Ray Data does on a
+                block. Without it, PyArrow's own rules apply: integer ``/``
+                truncates and a number takes the column's width.
 
         Returns:
             A PyArrow compute expression equivalent to this Ray Data expression.
@@ -417,9 +495,11 @@ class Expr(ABC):
             ValueError: If the expression contains operations not supported by PyArrow.
             TypeError: If the expression type cannot be converted to PyArrow.
         """
-        return _PyArrowExpressionVisitor().visit(self)
+        return _PyArrowExpressionVisitor(schema=schema).visit(self)
 
-    def _is_pyarrow_convertible(self) -> bool:
+    def _is_pyarrow_convertible(
+        self, schema: Optional["pyarrow.Schema"] = None
+    ) -> bool:
         """Return whether this expression can be lowered to PyArrow.
 
         Used by predicate pushdown to decide whether a filter can be pushed into
@@ -431,11 +511,15 @@ class Expr(ABC):
         It does not build any PyArrow objects (see
         :class:`_PyArrowConvertibilityVisitor`).
 
+        Args:
+            schema: If given, arithmetic must also resolve to a type against
+                it, as ``to_pyarrow(schema)`` requires.
+
         Returns:
             Whether this expression can be lowered to a PyArrow compute
             expression.
         """
-        return _PyArrowConvertibilityVisitor().visit(self)
+        return _PyArrowConvertibilityVisitor(schema=schema).visit(self)
 
     @functools.cached_property
     def _idempotent(self) -> bool:
@@ -957,10 +1041,6 @@ class Expr(ABC):
     def _unalias(self) -> "Expr":
         return self
 
-    def _has_division(self) -> bool:
-        """Whether this expression uses ``/``."""
-        return False
-
     def get_type(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.DataType"]:
         """Resolve the output PyArrow data type given the input schema.
 
@@ -1177,13 +1257,6 @@ class BinaryExpr(Expr):
     def nullable(self, input_schema: "pyarrow.Schema") -> bool:
         return self.left.nullable(input_schema) or self.right.nullable(input_schema)
 
-    def _has_division(self) -> bool:
-        return (
-            self.op == Operation.DIV
-            or self.left._has_division()
-            or self.right._has_division()
-        )
-
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
@@ -1235,9 +1308,6 @@ class UnaryExpr(Expr):
         if self.op in (Operation.IS_NULL, Operation.IS_NOT_NULL):
             return False
         return self.operand.nullable(input_schema)
-
-    def _has_division(self) -> bool:
-        return self.operand._has_division()
 
 
 @dataclass(frozen=True)
@@ -1495,9 +1565,6 @@ class PyArrowComputeUDFExpr(UDFExpr):
     pc_func: Callable[..., pyarrow.Array] = field(default=None)  # type: ignore[assignment]
     pc_positional: Tuple[Any, ...] = field(default=())
     pc_kwargs: Dict[str, Any] = field(default_factory=dict)
-
-    def _has_division(self) -> bool:
-        return any(arg._has_division() for arg in self.args)
 
     def structurally_equals(self, other: Any) -> bool:
         if not isinstance(other, PyArrowComputeUDFExpr):
@@ -1843,9 +1910,6 @@ class AliasExpr(Expr):
 
     def _unalias(self) -> "Expr":
         return self.expr
-
-    def _has_division(self) -> bool:
-        return self.expr._has_division()
 
     def structurally_equals(self, other: Any) -> bool:
         return (

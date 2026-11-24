@@ -68,7 +68,6 @@ from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_co
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
-from ray.data.util.expression_utils import division_column_names
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -482,9 +481,6 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 and schema.get_field_index(name) != -1
                 and physical_schema.field(name).type != schema.field(name).type
             }
-            # A root file's partition filter with ``/`` reaches here; PyArrow
-            # would truncate integer division.
-            unsafe |= division_column_names(predicate=physical_predicate)
             if unsafe:
                 split = _split_predicate_by_columns(physical_predicate, unsafe)
                 physical_predicate = split.data_predicate
@@ -508,7 +504,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             )
             local_kwargs["columns"] = physical_columns
         local_kwargs["filter"] = (
-            physical_predicate.to_pyarrow() if physical_predicate is not None else None
+            physical_predicate.to_pyarrow(schema=schema)
+            if physical_predicate is not None
+            else None
         )
         needed = (
             None if self._columns is None else set(self._columns) | residual_columns

@@ -724,7 +724,9 @@ class _HiveOrcFileReader(OrcFileReader):
         kwargs.update(columns=projection, filter=None)
         scanner = fragment.scanner(schema=pa.schema(fields), **kwargs)
         predicate = (
-            self._predicate.to_pyarrow() if self._predicate is not None else None
+            self._predicate.to_pyarrow(schema=schema)
+            if self._predicate is not None
+            else None
         )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])

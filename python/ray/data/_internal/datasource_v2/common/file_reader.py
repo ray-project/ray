@@ -325,7 +325,9 @@ class FileReader(Reader[FileManifest]):
         scanner_kwargs = {
             "columns": columns_to_read_from_file,
             "filter": (
-                self._predicate.to_pyarrow() if self._predicate is not None else None
+                self._predicate.to_pyarrow(schema=self._schema)
+                if self._predicate is not None
+                else None
             ),
             "batch_size": self._resolve_batch_size(dataset, input_split),
             "batch_readahead": _ARROW_SCANNER_BATCH_READAHEAD,

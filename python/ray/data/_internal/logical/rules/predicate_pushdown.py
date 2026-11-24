@@ -1,12 +1,10 @@
 import copy
 from dataclasses import dataclass, is_dataclass, replace
-from typing import AbstractSet, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     append_unique_predicate,
-)
-from ray.data._internal.datasource_v2.interfaces.pushdown import (
-    SupportsPartitionPruning,
+    has_column_arithmetic,
 )
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -235,19 +233,18 @@ class PredicatePushdown(Rule):
 
     @classmethod
     def _split_by_convertibility(
-        cls, predicate: Expr, partition_columns: AbstractSet[str]
+        cls, predicate: Expr, pushes_arithmetic: bool
     ) -> _ConvertibilitySplit:
         """Split the top level ``AND`` chain into PyArrow-convertible conjuncts and the rest.
 
-        A conjunct with ``/`` is pushed only on partition columns, which Ray
-        evaluates itself; PyArrow would truncate integer division.
+        Arithmetic is pushed only into a V2 file read, which types it with the
+        read's schema; untyped, PyArrow computes it differently from Ray.
         """
         convertible: List[Expr] = []
         residual: List[Expr] = []
         for conjunct in flatten_predicate_chain(predicate, Operation.AND):
             if conjunct._is_pyarrow_convertible() and (
-                not conjunct._has_division()
-                or set(get_column_references(conjunct)) <= partition_columns
+                pushes_arithmetic or not has_column_arithmetic(expr=conjunct)
             ):
                 convertible.append(conjunct)
             else:
@@ -280,13 +277,10 @@ class PredicatePushdown(Rule):
             # stay as a Filter. Split the top level AND chain so the convertible
             # conjuncts can still be pushed while the residual ones are kept as
             # a Filter above the read.
-            partition_columns = (
-                input_op.scanner.partition_columns
-                if isinstance(input_op, ReadFiles)
-                and isinstance(input_op.scanner, SupportsPartitionPruning)
-                else set()
+            split = cls._split_by_convertibility(
+                predicate=predicate_expr,
+                pushes_arithmetic=isinstance(input_op, ReadFiles),
             )
-            split = cls._split_by_convertibility(predicate_expr, partition_columns)
 
             if split.convertible is None:
                 return filter_op

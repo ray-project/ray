@@ -131,22 +131,34 @@ def test_pushed_filter_matches_in_memory_filter(
     assert [row["id"] for row in pushed] == [row["id"] for row in in_memory]
 
 
+_ARITHMETIC = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": operator.truediv,
+    "//": operator.floordiv,
+    "%": operator.mod,
+}
+
+
 @st.composite
-def _division_filter_case(draw):
-    """Rows of a data column ``x`` and a partition ``p``, and filters dividing them."""
+def _arithmetic_filter_case(draw):
+    """Rows of an int8 column ``x`` and a partition ``p``, and arithmetic filters."""
     size = draw(st.integers(1, 6))
     rows = {
-        name: draw(st.lists(st.integers(-7, 7), min_size=size, max_size=size))
+        name: draw(st.lists(st.integers(-100, 100), min_size=size, max_size=size))
         for name in ("x", "p")
     }
     conjuncts = []
     for _ in range(draw(st.integers(1, 2))):
         name = draw(st.sampled_from(["x", "p"]))
-        divisor = draw(st.sampled_from([2, -2, 0.5]))
+        operation = _ARITHMETIC[draw(st.sampled_from(list(_ARITHMETIC)))]
+        # 100 takes ``x`` past int8; 0.5 makes the result a float.
+        number = draw(st.sampled_from([2, -3, 100, 0.5]))
         compare = draw(st.sampled_from([operator.eq, operator.lt, operator.ge]))
-        # A row's own quotient, so truncating an odd value flips that row.
-        threshold = draw(st.sampled_from(rows[name])) / divisor
-        conjuncts.append(compare(col(name) / divisor, threshold))
+        # A row's own result, so a wrapped or truncated value flips that row.
+        threshold = operation(draw(st.sampled_from(rows[name])), number)
+        conjuncts.append(compare(operation(col(name), number), threshold))
     return rows, functools.reduce(operator.and_, conjuncts)
 
 
@@ -155,15 +167,18 @@ def _division_filter_case(draw):
     [("parquet", False), ("parquet", True), ("orc", True)],
 )
 @settings(
-    max_examples=15,
+    max_examples=25,
     derandomize=True,
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
-@given(case=_division_filter_case())
+@given(case=_arithmetic_filter_case())
 # A root file stores p=7, which PyArrow's truncating 7 / 2 would drop.
 @example(case=({"x": [1], "p": [7]}, (col("p") / 2) == 3.5))
-def test_division_filter_matches_in_memory_filter(
+# PyArrow alone wraps int8 100 + 100 to -56 and truncates -7 // 2 to -3.
+@example(case=({"x": [100], "p": [0]}, (col("x") + 100) == 200))
+@example(case=({"x": [-7], "p": [0]}, (col("x") // 2) == -4))
+def test_arithmetic_filter_matches_in_memory_filter(
     ray_start_regular_shared,
     tmp_path,
     monkeypatch,
@@ -171,7 +186,7 @@ def test_division_filter_matches_in_memory_filter(
     use_datasource_v2,
     case,
 ):
-    """A pushed ``/`` filter keeps Ray's rows, and V2 prunes partitions with it."""
+    """A V2 read takes the whole arithmetic filter and keeps Ray's rows."""
     rows, predicate = case
     monkeypatch.setattr(
         ray.data.DataContext.get_current(), "use_datasource_v2", use_datasource_v2
@@ -181,12 +196,17 @@ def test_division_filter_matches_in_memory_filter(
     for value in set(rows["p"]):
         os.makedirs(f"{root}/p={value}")
         x = [x for x, p in zip(rows["x"], rows["p"]) if p == value]
-        write(pa.table({"x": x}), f"{root}/p={value}/data.{file_format}")
+        write(pa.table({"x": pa.array(x, pa.int8())}), f"{root}/p={value}/data")
     if file_format == "parquet" and use_datasource_v2:
         # A root file stores ``p`` itself, so the reader applies the ``p`` filter.
-        write(pa.table(rows), f"{root}/root.parquet")
+        root_rows = {"x": pa.array(rows["x"], pa.int8()), "p": rows["p"]}
+        write(pa.table(root_rows), f"{root}/root")
     read = ray.data.read_parquet if file_format == "parquet" else ray.data.read_orc
-    ds = read(root, partitioning=Partitioning("hive", field_types={"p": int}))
+    ds = read(
+        root,
+        partitioning=Partitioning("hive", field_types={"p": int}),
+        file_extensions=None,
+    )
 
     pushed = ds.filter(expr=predicate)
     in_memory = ds.materialize().filter(expr=predicate)
@@ -194,8 +214,42 @@ def test_division_filter_matches_in_memory_filter(
         (row["x"], row["p"]) for row in in_memory.take_all()
     )
     keeps_filter = "Filter" in _get_optimized_plan(pushed)
-    data_filter = "x" in get_column_references(predicate)
-    assert keeps_filter == (data_filter or not use_datasource_v2)
+    assert keeps_filter == (not use_datasource_v2)
+
+
+@settings(
+    max_examples=15,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(
+    symbol=st.sampled_from(["+", "-", "*"]),
+    narrow=st.integers(-100, 100),
+    wide=st.integers(-100, 100),
+)
+# int8 100 * 100 wraps to 16, but the read widens ``x`` to int64 first.
+@example(symbol="*", narrow=100, wide=100)
+def test_arithmetic_filter_on_files_of_different_widths(
+    ray_start_regular_shared, tmp_path, monkeypatch, symbol, narrow, wide
+):
+    """A file's own integer width doesn't decide a pushed filter."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    root = tempfile.mkdtemp(dir=tmp_path)
+    for name, value, width in (
+        ("narrow", narrow, pa.int8()),
+        ("wide", wide, pa.int64()),
+    ):
+        pq.write_table(pa.table({"x": pa.array([value], width)}), f"{root}/{name}")
+    operation = _ARITHMETIC[symbol]
+    predicate = operation(col("x"), col("x")) == operation(narrow, narrow)
+    ds = ray.data.read_parquet(root, file_extensions=None)
+
+    pushed = ds.filter(expr=predicate)
+    in_memory = ds.materialize().filter(expr=predicate)
+    assert sorted(row["x"] for row in pushed.take_all()) == sorted(
+        row["x"] for row in in_memory.take_all()
+    )
 
 
 def test_division_filter_on_a_partition_skips_pruned_files(

@@ -15,6 +15,7 @@ import operator
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pds
 import pytest
 from hypothesis import example, given, settings, strategies as st
 
@@ -63,6 +64,50 @@ def _column_and_number(draw):
         elif number == 0:
             number = 1
     return pa.array(values, column_type), symbol, number, number_on_left
+
+
+_ALL_OPERATORS = {**_OPERATORS, "//": operator.floordiv, "%": operator.mod}
+
+
+@st.composite
+def _typed_expression(draw):
+    """A table of two numeric columns with nulls, and arithmetic over them."""
+    columns = {}
+    for name in ("x", "y"):
+        column_type = draw(
+            st.sampled_from(_INT_TYPES + [pa.uint64(), pa.float32(), pa.float64()])
+        )
+        if pa.types.is_integer(column_type):
+            info = np.iinfo(column_type.to_pandas_dtype())
+            element = st.integers(int(info.min), int(info.max))
+        else:
+            element = st.floats(width=column_type.bit_width)
+        values = draw(st.lists(st.none() | element, min_size=3, max_size=3))
+        columns[name] = pa.array(values, column_type)
+
+    def operand():
+        return draw(
+            st.sampled_from([col("x"), col("y")])
+            | st.integers(-300, 300)
+            | st.floats(-300, 300)
+        )
+
+    expr = col("x")
+    for _ in range(draw(st.integers(1, 2))):
+        operation = _ALL_OPERATORS[draw(st.sampled_from(list(_ALL_OPERATORS)))]
+        other = operand()
+        expr = operation(other, expr) if draw(st.booleans()) else operation(expr, other)
+    return pa.table(columns), expr
+
+
+def _outcome(compute):
+    """The result's type and values, or the error it raises."""
+    try:
+        result = compute()
+    except Exception as error:
+        return type(error).__name__
+    # ``repr`` so that NaN equals NaN.
+    return repr((result.type, result.to_pylist()))
 
 
 def _python_answer(symbol, left, right):
@@ -330,6 +375,27 @@ class TestBasicArithmetic:
         pd.testing.assert_series_equal(
             result, operation(series, number), check_names=False
         )
+
+    @settings(max_examples=500, derandomize=True, deadline=None)
+    @given(case=_typed_expression())
+    # int8 ``x + 100`` wraps to -56 if the literal takes the column's width.
+    @example(case=(pa.table({"x": pa.array([100], pa.int8())}), col("x") + 100))
+    @example(case=(pa.table({"x": [7, -7]}), col("x") / 2))
+    @example(case=(pa.table({"x": [7, -7], "y": [0, 2]}), col("x") // col("y")))
+    @example(case=(pa.table({"x": pa.array([3], pa.int8())}), col("x").power(5)))
+    @example(
+        case=(
+            pa.table({"x": pa.array(["a", None]).dictionary_encode(), "y": ["b", "c"]}),
+            (col("x") + col("y")) + "!",
+        )
+    )
+    def test_to_pyarrow_with_schema_matches_row_filter(self, case):
+        """A pushed filter's arithmetic gives the row filter's types and values."""
+        table, expr = case
+        pushed = expr.to_pyarrow(schema=table.schema)
+        assert _outcome(
+            lambda: pds.dataset(table).to_table(columns={"out": pushed})["out"]
+        ) == _outcome(lambda: pa.chunked_array([eval_expr(expr, table)]))
 
     # ── Floor division and modulo on Arrow blocks with negative operands ──
 

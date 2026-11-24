@@ -3,7 +3,7 @@ from __future__ import annotations
 import ast
 import logging
 import operator
-from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 import pandas as pd
@@ -99,15 +99,21 @@ _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
 }
 
 
+# Operand types of a ``pc.Expression`` pair. An expression has no type until it
+# is bound to a file, so ``Expr.to_pyarrow(schema)`` passes them in.
+_Types = Tuple[pa.DataType, pa.DataType]
+
+
 def _is_pa_string_type(t: pa.DataType) -> bool:
     return pa.types.is_string(t) or pa.types.is_large_string(t)
 
 
+def _decoded(t: pa.DataType) -> pa.DataType:
+    return t.value_type if pa.types.is_dictionary(t) else t
+
+
 def _is_pa_string_like(x: Union[pa.Array, pa.ChunkedArray]) -> bool:
-    t = x.type
-    if pa.types.is_dictionary(t):
-        t = t.value_type
-    return _is_pa_string_type(t)
+    return _is_pa_string_type(_decoded(x.type))
 
 
 def _pa_decode_dict_string_array(x: Union[pa.Array, pa.ChunkedArray]) -> Any:
@@ -145,7 +151,15 @@ def _to_pa_string_input(x: Any) -> Any:
     )
 
 
-def _pa_add_or_concat(left: Any, right: Any) -> Any:
+def _pa_add_or_concat(left: Any, right: Any, types: Optional[_Types] = None) -> Any:
+    if types is not None:
+        if not any(_is_pa_string_type(_decoded(t)) for t in types):
+            return pc.add(left, right)
+        left, right = (
+            side.cast(pa.string()) if pa.types.is_dictionary(t) else side
+            for side, t in zip((left, right), types)
+        )
+        return pc.binary_join_element_wise(left, right, "")
     if isinstance(left, pa.Scalar):
         left = left.as_py()
     if isinstance(right, pa.Scalar):
@@ -172,8 +186,14 @@ def _is_integer_operand(x: Any) -> bool:
     return isinstance(x, (int, np.integer)) and not isinstance(x, (bool, np.bool_))
 
 
+def _are_integers(left: Any, right: Any, types: Optional[_Types]) -> bool:
+    if types is not None:
+        return pa.types.is_integer(types[0]) and pa.types.is_integer(types[1])
+    return _is_integer_operand(left) and _is_integer_operand(right)
+
+
 def _to_arrow(x: Any) -> Any:
-    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar, pc.Expression)):
         return x
     return pa.scalar(x)
 
@@ -184,7 +204,7 @@ def _as_float64(x: Any) -> Any:
     return pc.cast(_to_arrow(x), pa.float64())
 
 
-def _pa_floor_divide(left: Any, right: Any) -> Any:
+def _pa_floor_divide(left: Any, right: Any, types: Optional[_Types] = None) -> Any:
     """Floor division (``//``) with Python semantics.
 
     ``pc.divide`` truncates toward zero for integers, so ``pc.floor`` of that
@@ -192,35 +212,47 @@ def _pa_floor_divide(left: Any, right: Any) -> Any:
     operands, subtract one whenever the division was inexact and the operands
     have opposite signs. Division by zero still raises, as ``pc.divide`` does.
 
-    ``pc.Expression`` operands (predicate pushdown) have no type until they are
-    bound to a schema, so the integer check can't be made. They are divided in
+    ``pc.Expression`` operands have no type until they are bound to a schema.
+    Without ``types`` the integer check can't be made, so they are divided in
     float64 instead, which floors correctly for integers below 2**53 and is a
     no-op for floats. Unlike the integer path, this doesn't raise on a zero
     divisor.
     """
-    if isinstance(left, pc.Expression) or isinstance(right, pc.Expression):
+    if types is None and (
+        isinstance(left, pc.Expression) or isinstance(right, pc.Expression)
+    ):
         return pc.floor(pc.divide(_as_float64(left), _as_float64(right)))
     quotient = pc.divide(left, right)
-    if _is_integer_operand(left) and _is_integer_operand(right):
+    if _are_integers(left, right, types):
         left_arrow, right_arrow = _to_arrow(left), _to_arrow(right)
         remainder = pc.subtract(left_arrow, pc.multiply(quotient, right_arrow))
-        needs_adjust = pc.and_(
+        # Both sides are null on the same rows, so this equals ``pc.and_``,
+        # which PyArrow expressions don't have.
+        needs_adjust = pc.and_kleene(
             pc.not_equal(remainder, 0),
             pc.not_equal(pc.less(left_arrow, 0), pc.less(right_arrow, 0)),
         )
-        quotient = pc.subtract(quotient, pc.cast(needs_adjust, quotient.type))
+        # The quotient is at least as wide as the left side, so subtracting
+        # in the left side's type doesn't change its type.
+        adjust_type = quotient.type if types is None else types[0]
+        quotient = pc.subtract(quotient, needs_adjust.cast(adjust_type))
     return pc.floor(quotient)
 
 
-def _pa_true_divide(left: Any, right: Any) -> Any:
+def _pa_mod(left: Any, right: Any, types: Optional[_Types] = None) -> Any:
+    # r = N - floor(N / M) * M
+    quotient = _pa_floor_divide(left, right, types)
+    return pc.subtract(left, pc.multiply(quotient, right))
+
+
+def _pa_true_divide(left: Any, right: Any, types: Optional[_Types] = None) -> Any:
     # Python's ``/`` divides integers as floats; PyArrow truncates them.
-    # Pushed filters pass PyArrow expressions, which this doesn't cast.
-    if _is_integer_operand(left) and _is_integer_operand(right):
+    if _are_integers(left, right, types):
         # ``safe=False`` rounds integers above 2**53 instead of raising.
         left, right = (
-            side.cast(pa.float64(), safe=False)
-            if isinstance(side, (pa.Array, pa.ChunkedArray, pa.Scalar))
-            else float(side)
+            float(side)
+            if isinstance(side, (int, np.integer))
+            else side.cast(pa.float64(), safe=False)
             for side in (left, right)
         )
         # Checked, so integer division by zero still raises.
@@ -234,11 +266,7 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
     Operation.DIV: _pa_true_divide,
-    Operation.MOD: lambda left, right: (
-        # Modulo op is essentially:
-        #   r = N - floor(N/M) * M
-        pc.subtract(left, pc.multiply(_pa_floor_divide(left, right), right))
-    ),
+    Operation.MOD: _pa_mod,
     Operation.FLOORDIV: _pa_floor_divide,
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
