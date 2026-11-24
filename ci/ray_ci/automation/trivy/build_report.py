@@ -203,6 +203,8 @@ def expected_images(pipeline: Mapping[str, Any]) -> list[Image]:
 
 
 RESULT_FILES = {".status.json": "status record", ".json.gz": "result"}
+# trivy_report's error for a scanned image whose result file isn't there.
+NO_RESULT_FILE = "no result file"
 
 
 def download_results(store: ScanStore, dest: Path) -> tuple[list[str], dict[str, str]]:
@@ -240,10 +242,11 @@ def download_results(store: ScanStore, dest: Path) -> tuple[list[str], dict[str,
 def explain_failed_downloads(
     scans: Sequence[ImageScan], failed: Mapping[str, str]
 ) -> list[ImageScan]:
-    """A scan whose result failed to download says so, not "no result file"."""
+    """A scan whose result failed to download says so, not "no result file".
+    Any other error comes from its status record, and is the real cause."""
     return [
         dataclasses.replace(s, error=failed[s.image.name])
-        if s.image.name in failed and not s.scanned
+        if s.error == NO_RESULT_FILE and s.image.name in failed
         else s
         for s in scans
     ]

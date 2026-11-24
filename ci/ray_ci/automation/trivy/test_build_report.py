@@ -561,6 +561,35 @@ def test_a_failed_download_is_named_on_its_image(tmp_path: Path):
     assert f"`ray-py3.11-tpu`: {MISSING_STATUS}" in report
 
 
+@pytest.mark.parametrize(
+    "status, error",
+    [
+        pytest.param(None, "crane pull failed", id="scan-failed"),
+        pytest.param(b"{", "malformed status record: ", id="malformed-status"),
+    ],
+)
+def test_a_failed_download_keeps_the_status_records_error(
+    tmp_path: Path, status: Optional[bytes], error: str
+):
+    """Only a missing result is explained by its failed download; any other
+    error comes from the status record and is the real cause."""
+    s3 = FakeS3()
+    put_metadata(s3)
+    pipeline = {"steps": [PIPELINE["steps"][2]]}
+    put_scan(s3, "ray-py3.11-tpu", None)
+    key = f"{PREFIX}/results/ray-py3.11-tpu"
+    if status is not None:
+        s3.put(BUCKET, f"{key}.status.json", status)
+    # A result left by an earlier attempt, whose download fails.
+    s3.put(BUCKET, f"{key}.json.gz", gzip.compress(json.dumps(CLEAN_RESULT).encode()))
+    s3.broken.add(f"{key}.json.gz")
+    result = run(tmp_path, s3, pipeline)
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert f"`ray-py3.11-tpu`: {error}" in report
+    assert "could not download" not in report
+
+
 def test_the_download_threads_fit_the_connection_pool():
     assert build_report.DOWNLOAD_THREADS <= MAX_POOL_CONNECTIONS
 
