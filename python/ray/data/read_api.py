@@ -4238,7 +4238,6 @@ def read_webdataset(
     Note:
         With ``DataContext.use_datasource_v2`` enabled:
 
-        - ``preserve_order`` doesn't guarantee shard order.
         - A field whose dtype differs between shards fails the read.
         - The default decoder returns grayscale images as ``(H, W, 1)``.
         - Arrays in one field whose number of dimensions differs between

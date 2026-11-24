@@ -6,6 +6,7 @@ so each tar shard is read by one read task.
 
 from __future__ import annotations
 
+import dataclasses
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Literal, Optional, Union
 
 import numpy as np
@@ -154,12 +155,14 @@ class WebDatasetDatasourceV2(FileDataSourceV2):
     ) -> Optional[RoundRobinPartitioner]:
         if hints is None:
             return None
+        if DataContext.get_current().execution_options.preserve_order:
+            # One bucket fills in listing order; several deal shards round-robin.
+            hints = dataclasses.replace(hints, num_buckets=1)
         encoding_ratio = (
             WEBDATASET_ENCODING_RATIO_RAW
             if self._decoder is None
             else WEBDATASET_ENCODING_RATIO_DECODED
         )
-        # TODO: Use an order-preserving partitioner.
         return RoundRobinPartitioner(
             WebDatasetInMemorySizeEstimator(encoding_ratio), hints=hints
         )

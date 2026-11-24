@@ -588,6 +588,26 @@ def test_read_webdataset_forwards_ray_remote_args(ray_start_2_cpus, tmp_path):
     assert len(ds.take_all()) == 1
 
 
+def test_read_webdataset_preserve_order_keeps_shards_in_order(
+    ray_start_2_cpus, tmp_path, use_datasource_v2, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+    # Two read tasks for five shards: round-robin would deal shards 0, 2, 4 to
+    # the first task and 1, 3 to the second.
+    monkeypatch.setattr(ctx, "read_op_min_num_blocks", 2)
+    monkeypatch.setattr(ctx, "target_min_block_size", 1)
+    for i in range(5):
+        with TarWriter(os.path.join(tmp_path, f"data-{i:06d}.tar")) as writer:
+            writer.write(f"{i:06d}.cls", str(i).encode())
+
+    rows = ray.data.read_webdataset(str(tmp_path), decoder=None).take_all()
+
+    assert [row["__key__"] for row in rows] == [f"{i:06d}" for i in range(5)]
+
+
 def test_default_decoder_rejects_disallowed_image_format():
     # EPS bytes in a member named `.jpg`. PIL picks a plugin by file signature,
     # not extension, and the EPS plugin shells out to Ghostscript. The default
