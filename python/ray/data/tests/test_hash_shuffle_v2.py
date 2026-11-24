@@ -1,6 +1,7 @@
 import gc
 import glob
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import MagicMock, patch
@@ -1123,25 +1124,40 @@ def test_disk_shuffle_teardown_cleans_nodes_without_mapper_handles():
     )
 
     with (
-        patch(f"{module}.ray.nodes", return_value=nodes),
+        patch(f"{module}.ray.nodes", return_value=nodes) as get_nodes,
         patch(f"{module}.teardown_disk_shuffle") as cleanup,
     ):
         regroup_op.teardown()
 
-    cleanup.assert_called_once()
-    cleanup_targets = set(cleanup.call_args.args[0])
+        get_nodes.assert_called_once()
+        cleanup.assert_called_once()
 
-    assert cleanup_targets == {
-        (shuffle_id, "node-a"),
-        (shuffle_id, "node-b"),
-    }
+        cleanup_targets = set(cleanup.call_args.args[0])
+        assert cleanup_targets == {
+            (shuffle_id, "node-a"),
+            (shuffle_id, "node-b"),
+        }
+
+        assert not regroup_op._planned_shuffle_ids
+
+        # Repeated teardown must not query nodes or schedule cleanup again.
+        get_nodes.reset_mock()
+        cleanup.reset_mock()
+
+        regroup_op.teardown()
+
+        get_nodes.assert_not_called()
+        cleanup.assert_called_once_with(set())
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Requires Linux SIGINT cancellation semantics",
+)
 def test_disk_shuffle_mid_map_cancel_cleans_directories():
     """A cancelled mapper must not strand its already-created disk shuffle dir."""
     import os
     import subprocess
-    import sys
     import textwrap
 
     # A separate process isolates SIGINT from the pytest runner and starts a
@@ -1267,6 +1283,8 @@ def test_disk_shuffle_mid_map_cancel_cleans_directories():
     """
     )
 
+    # Keep the temporary root short to avoid exceeding the Unix domain
+    # socket path length limit during Ray initialization.
     with tempfile.TemporaryDirectory(prefix="rds_", dir="/tmp") as tmp_dir:
         env = os.environ.copy()
         env.pop("RAY_ADDRESS", None)

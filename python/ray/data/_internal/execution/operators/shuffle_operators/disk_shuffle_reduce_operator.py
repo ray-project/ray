@@ -287,6 +287,7 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         teardown_disk_shuffle(shuffle_nodes)
 
         self._file_servers.clear()
+        self._planned_shuffle_ids.clear()
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
         self._handle_bundles.clear()
