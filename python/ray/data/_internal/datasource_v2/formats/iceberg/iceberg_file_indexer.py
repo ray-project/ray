@@ -1,9 +1,9 @@
 """``FileIndexer`` that lists an Iceberg table by asking PyIceberg to plan it.
 
-Runs in the ``ListFiles`` task. It plans a catalog-less ``DataScan`` from the
-table metadata and ``FileIO`` the driver loaded, since the catalog's config may
-exist only on the driver, and turns the planned ``FileScanTask``s into manifest
-blocks of up to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
+Runs in the ``ListFiles`` task. It plans a ``DataScan`` from the table metadata
+and ``FileIO`` the driver loaded, since the catalog's config may exist only on
+the driver, and turns the planned ``FileScanTask``s into manifest blocks of up
+to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
 
     plan_files() -> FileScanTask per data file -> manifest_from_scan_tasks
                  -> FileManifest blocks -> OnlineBinPacker -> read units
@@ -11,11 +11,17 @@ blocks of up to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
 Planning reads Iceberg metadata only, never a data file. It prunes on
 ``read_iceberg``'s ``row_filter``; the scanner takes no Ray filters, so no
 predicate reaches listing.
+
+When the table's REST catalog plans scans on its server, the task rebuilds the
+catalog from the properties the driver resolved (``ServerSidePlanning``) and
+gives it to the ``DataScan``, so PyIceberg asks the server for the file list
+instead of reading the manifests itself, as ``Table.scan`` does on the driver.
 """
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
@@ -25,6 +31,8 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
+    Type,
 )
 
 from typing_extensions import override
@@ -40,9 +48,10 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
+    from pyiceberg.catalog.rest import RestCatalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
-    from pyiceberg.table import FileScanTask
+    from pyiceberg.table import FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
@@ -59,6 +68,56 @@ logger = logging.getLogger(__name__)
 _FILES_PER_MANIFEST_BLOCK = 1024
 
 
+@dataclass(frozen=True)
+class ServerSidePlanning:
+    """What a listing task needs to have the table's REST catalog plan the scan."""
+
+    # The driver's catalog class, so a ``RestCatalog`` subclass plans the same way.
+    catalog_class: Type["RestCatalog"]
+    catalog_name: str
+    # As the driver resolved them, server config included. Not new to the task:
+    # ``table.io``'s properties already hold them. Never logged: they carry
+    # credentials.
+    catalog_properties: Dict[str, Any] = field(repr=False)
+    table_identifier: Tuple[str, ...]
+
+    @classmethod
+    def for_table(cls, table: "Table") -> Optional["ServerSidePlanning"]:
+        """Return how to reach the table's planning server.
+
+        Args:
+            table: A table the driver loaded.
+
+        Returns:
+            ``None`` unless the table's catalog is a REST catalog whose server
+            plans scans and whose config turns that on; then listing plans
+            locally.
+        """
+        from pyiceberg.catalog.rest import RestCatalog
+
+        catalog = table.catalog
+        # Older PyIceberg releases can't plan on the server.
+        supports_server_side_planning = getattr(
+            catalog, "supports_server_side_planning", None
+        )
+        if (
+            not isinstance(catalog, RestCatalog)
+            or supports_server_side_planning is None
+            or not supports_server_side_planning()
+        ):
+            return None
+        return cls(
+            catalog_class=type(catalog),
+            catalog_name=catalog.name,
+            catalog_properties=dict(catalog.properties),
+            table_identifier=table.name(),
+        )
+
+    def load_catalog(self) -> "RestCatalog":
+        """Rebuild the driver's catalog, which fetches the server's config again."""
+        return self.catalog_class(self.catalog_name, **self.catalog_properties)
+
+
 class IcebergFileIndexer(FileIndexer):
     """Lists an Iceberg table's data files with ``plan_files()``, one row each."""
 
@@ -70,12 +129,14 @@ class IcebergFileIndexer(FileIndexer):
         scan_kwargs: Dict[str, Any],
         snapshot_id: Optional[int],
         row_filter: "BooleanExpression",
+        server_side_planning: Optional[ServerSidePlanning] = None,
     ):
         self._table_metadata = table_metadata
         self._io = io
         self._scan_kwargs = scan_kwargs
         self._snapshot_id = snapshot_id
         self._row_filter = row_filter
+        self._server_side_planning = server_side_planning
 
     @override
     def list_files(
@@ -130,12 +191,20 @@ class IcebergFileIndexer(FileIndexer):
     def _plan_files(self) -> Iterator["FileScanTask"]:
         from pyiceberg.table import DataScan
 
-        # Not ``Table.scan``: there is no catalog in this task.
+        # Not ``Table.scan``: the ``Table`` stays on the driver. A ``DataScan``
+        # with a catalog that plans on its server asks it for the file list.
+        planning_kwargs: Dict[str, Any] = {}
+        if self._server_side_planning is not None:
+            planning_kwargs = {
+                "catalog": self._server_side_planning.load_catalog(),
+                "table_identifier": self._server_side_planning.table_identifier,
+            }
         scan = DataScan(
             table_metadata=self._table_metadata,
             io=self._io,
             row_filter=self._row_filter,
             snapshot_id=self._snapshot_id,
+            **planning_kwargs,
             **self._scan_kwargs,
         )
         logger.debug(
