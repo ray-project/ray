@@ -511,8 +511,6 @@ class VLLMEngine(LLMEngine):
                     serve.get_replica_context().replica_id.unique_id
                 ),
                 dp_rank=self.llm_config.engine_kwargs.get("data_parallel_rank") or 0,
-                # Routers drop events whose block size differs from theirs.
-                block_size=block_size,
             )
             self._routing_stats[KV_LIFECYCLE_METADATA_KEY] = {
                 "endpoint": lifecycle_endpoint

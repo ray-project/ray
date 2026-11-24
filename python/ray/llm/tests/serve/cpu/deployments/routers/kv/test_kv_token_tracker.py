@@ -199,7 +199,7 @@ def _active_requests(tracker: KVTokenTracker, worker_id: int) -> int:
 def _start_publisher(worker_id: int) -> LifecyclePublisher:
     """An engine replica's lifecycle publisher for ``worker_id``'s requests."""
     publisher = LifecyclePublisher()
-    publisher.endpoint = publisher.start(worker_id=worker_id, dp_rank=0, block_size=16)
+    publisher.endpoint = publisher.start(worker_id=worker_id, dp_rank=0)
     return publisher
 
 

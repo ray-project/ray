@@ -9,7 +9,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
 )
 
 if TYPE_CHECKING:
-    from dynamo.llm import ActiveSequenceEventPublisher
+    from dynamo.llm import WorkerSequenceEventPublisher
 
 logger = get_logger(__name__)
 
@@ -27,18 +27,17 @@ class LifecyclePublisher:
     """
 
     def __init__(self):
-        self._publisher: Optional["ActiveSequenceEventPublisher"] = None
+        self._publisher: Optional["WorkerSequenceEventPublisher"] = None
 
-    def start(self, worker_id: int, dp_rank: int, block_size: int) -> str:
+    def start(self, worker_id: int, dp_rank: int) -> str:
         """Bind a publisher and return the endpoint to advertise."""
-        from dynamo.llm import ActiveSequenceEventPublisher
+        from dynamo.llm import WorkerSequenceEventPublisher
 
-        self._publisher = ActiveSequenceEventPublisher(
+        self._publisher = WorkerSequenceEventPublisher(
             model_name=SELECTION_MODEL_NAME,
             routing_group=SELECTION_ROUTING_GROUP,
             worker_id=worker_id,
             dp_rank=dp_rank,
-            block_size=block_size,
         )
         port = self._publisher.endpoint.rsplit(":", 1)[1]
         endpoint = f"tcp://{ray.util.get_node_ip_address()}:{port}"
