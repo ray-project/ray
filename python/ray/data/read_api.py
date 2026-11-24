@@ -660,9 +660,9 @@ def _read_datasource_v2(
     schema_elapsed = (
         time.perf_counter() - schema_started if schema_started is not None else None
     )
-    # Rebuilt with the schema: the listing op's indexer sizes files as they will
-    # decode, which can depend on it; the one above only lists the sample's paths.
-    indexer = datasource._get_file_indexer(schema=schema)
+    # The listing op's indexer sizes files as they will decode, which can depend on
+    # the schema; until here it only listed the sample's paths.
+    indexer = indexer.with_read_schema(schema)
     prelisted_file_infos = None
     if sample_all_files_for_schema:
         assert sample is not None

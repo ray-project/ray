@@ -8,6 +8,7 @@ from typing import (
     Optional,
 )
 
+import pyarrow as pa
 from pyarrow.fs import FileSystem
 
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -44,6 +45,10 @@ class FileIndexer(ABC):
         with the same traversal settings.
         """
         return None
+
+    def with_read_schema(self, schema: pa.Schema) -> "FileIndexer":
+        """An indexer that knows the schema the read casts to; ``self`` if unused."""
+        return self
 
     @abstractmethod
     def list_files(

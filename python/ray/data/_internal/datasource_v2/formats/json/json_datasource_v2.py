@@ -210,13 +210,13 @@ class JsonDatasourceV2(LineChunkableDatasourceV2):
         return not self._parse_options.newlines_in_values
 
     @override
-    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
+    def _get_file_indexer(self) -> FileIndexer:
         if self._can_split_files() and not self._lines:
             return _JsonLinesFileIndexer(
                 chunk_size=self._chunk_size,
                 ignore_missing_paths=self._ignore_missing_paths,
             )
-        return super()._get_file_indexer(schema=schema)
+        return super()._get_file_indexer()
 
     @override
     def _read_file_schema(self, path: str) -> pa.Schema:
