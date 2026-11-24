@@ -62,6 +62,19 @@ class Scanner(ABC, Generic[InputSplit]):
         """
         return False
 
+    def exact_row_count(self) -> Optional[int]:
+        """The number of rows this scan returns, if known without any task.
+
+        ``ReadFiles.infer_metadata`` reports it, so ``Dataset.count()`` can
+        answer on the driver from metadata the source has already loaded, such
+        as a table-level row count.
+
+        Default ``None``. As with :meth:`metadata_row_count_is_exact`, return
+        ``None`` whenever any pushdown or construction argument can reduce the
+        rows: the number is returned to the user as the answer.
+        """
+        return None
+
     def prune_input_split(self, input_split: InputSplit) -> InputSplit:
         """Drop the parts of ``input_split`` this scan is known not to read.
 

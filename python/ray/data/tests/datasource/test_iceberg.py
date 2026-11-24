@@ -24,6 +24,11 @@ from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.manifest import DataFile, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.table import FileScanTask, Table
+from pyiceberg.table.snapshots import (
+    TOTAL_EQUALITY_DELETES,
+    TOTAL_POSITION_DELETES,
+    TOTAL_RECORDS,
+)
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -4148,6 +4153,123 @@ class TestIcebergDatasourceV2:
         expected = expected[(expected["col_c"] >= 3) & (expected["col_a"] >= 1.5)]
         assert len(expected) > 0
         assert rows_same(ds.to_pandas(), expected)
+
+    def test_count_is_answered_from_the_snapshot_summary(self, restore_data_context):
+        """``count()`` reads the snapshot's ``total-records`` and runs no task."""
+        restore_data_context.use_datasource_v2 = True
+        table = self._load_table()
+        expected = len(table.scan().to_arrow())
+        assert table.current_snapshot().summary[TOTAL_RECORDS] == str(expected)
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+
+        assert ds._meta_count() == expected
+        assert ds.count() == expected
+        assert ds.select_columns(["col_a"])._meta_count() == expected
+
+    @pytest.mark.parametrize(
+        "make_dataset",
+        [
+            lambda read: read().filter(expr=col("col_c") >= 3),
+            lambda read: read(row_filter="col_c >= 3"),
+        ],
+        ids=["filter", "row_filter"],
+    )
+    def test_snapshot_count_declines_under_a_filter(
+        self, restore_data_context, make_dataset
+    ):
+        """The summary counts the whole snapshot, so a filter declines it."""
+        restore_data_context.use_datasource_v2 = True
+
+        def read(**kwargs):
+            return read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                **kwargs,
+            )
+
+        ds = make_dataset(read)
+        assert ds._meta_count() is None
+        expected = len(
+            self._load_table()
+            .scan(row_filter=pyi_expr.GreaterThanOrEqual("col_c", 3))
+            .to_arrow()
+        )
+        assert expected > 0
+        assert ds.count() == expected
+
+    def test_snapshot_count_declines_under_a_limit(self, restore_data_context):
+        """A scanner holding a limit doesn't report the snapshot's count."""
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        restore_data_context.use_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        (read_files,) = [
+            op for op in _walk(ds._logical_plan.dag) if isinstance(op, ReadFiles)
+        ]
+        assert read_files.scanner.exact_row_count() is not None
+        assert read_files.scanner.push_limit(7).exact_row_count() is None
+        assert ds.limit(7).count() == 7
+
+    @pytest.mark.parametrize(
+        "overrides",
+        [
+            {TOTAL_RECORDS: None},
+            {TOTAL_POSITION_DELETES: None},
+            {TOTAL_EQUALITY_DELETES: None},
+            {TOTAL_POSITION_DELETES: "3"},
+            {TOTAL_EQUALITY_DELETES: "3"},
+            {TOTAL_RECORDS: "not a number"},
+        ],
+        ids=[
+            "no_records",
+            "no_position_deletes",
+            "no_equality_deletes",
+            "position_deletes",
+            "equality_deletes",
+            "not_a_number",
+        ],
+    )
+    def test_snapshot_count_declines_an_incomplete_summary(self, overrides):
+        """A missing key, a delete, or a non-number in the summary declines."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2 import (  # noqa: E501
+            IcebergDatasourceV2,
+        )
+
+        datasource = IcebergDatasourceV2(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        assert datasource._snapshot_row_count() is not None
+        snapshot_id = datasource.snapshot_id
+        assert snapshot_id is not None
+        snapshot = datasource.table.snapshot_by_id(snapshot_id)
+        assert snapshot is not None and snapshot.summary is not None
+        # The datasource's own loaded copy of the metadata; the catalog's is untouched.
+        for key, value in overrides.items():
+            if value is None:
+                snapshot.summary._additional_properties.pop(key)
+            else:
+                snapshot.summary[key] = value
+        assert datasource._snapshot_row_count() is None
+
+    def test_snapshot_count_of_a_table_with_no_snapshot(self, empty_iceberg_table):
+        """A table nothing was written to counts zero."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2 import (  # noqa: E501
+            IcebergDatasourceV2,
+        )
+
+        datasource = IcebergDatasourceV2(
+            table_identifier=empty_iceberg_table,
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        assert datasource.snapshot_id is None
+        assert datasource._snapshot_row_count() == 0
 
 
 if __name__ == "__main__":

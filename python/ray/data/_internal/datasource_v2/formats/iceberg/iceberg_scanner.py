@@ -10,6 +10,9 @@ split at its ``&`` (``iceberg_filter_pushdown.split_predicate``). Parts Iceberg
 can evaluate go into ``ArrowScan``'s row filter; float parts whose NaN rows
 PyArrow's statistics could drop are applied by the reader after the read, so
 their columns are read too; the rest stay in a ``Filter`` above the read.
+
+With no filter or limit, it reports the pinned snapshot's row count from the
+snapshot summary, so ``count()`` runs no task.
 """
 
 from __future__ import annotations
@@ -77,6 +80,8 @@ class IcebergScanner(
     case_sensitive: bool = True
     # The accepted Ray predicate: ``scan`` and ``after_read`` parts only.
     predicate: Optional[Expr] = None
+    # Rows in the pinned snapshot, from its summary; ``None`` if it doesn't say.
+    snapshot_row_count: Optional[int] = None
 
     def _pruned_schema(self) -> "Schema":
         from pyiceberg.schema import Schema
@@ -126,6 +131,23 @@ class IcebergScanner(
             ``True`` unless a limit has been pushed into this scanner.
         """
         return self.limit is None
+
+    @override
+    def exact_row_count(self) -> Optional[int]:
+        """The snapshot's row count, when no filter or limit is set.
+
+        The summary counts the whole snapshot, so any filter declines it, even
+        one Iceberg answers per file.
+        """
+        from pyiceberg.expressions import AlwaysTrue
+
+        if (
+            self.limit is not None
+            or self.predicate is not None
+            or not isinstance(self.row_filter, AlwaysTrue)
+        ):
+            return None
+        return self.snapshot_row_count
 
     @override
     def push_filters(self, predicate: Expr) -> Tuple["IcebergScanner", Optional[Expr]]:
