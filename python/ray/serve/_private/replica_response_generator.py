@@ -61,11 +61,12 @@ class ReplicaResponseGenerator(_ProxyResponseGeneratorBase):
         if not next_result_task.done():
             next_result_task.cancel()
         try:
-            result = (await asyncio.gather(next_result_task, return_exceptions=True))[0]
-            if isinstance(result, Exception) and not isinstance(
-                result, (RequestCancelledError, StopAsyncIteration)
-            ):
-                raise result
+            await next_result_task
+        except (RequestCancelledError, StopAsyncIteration):
+            pass
+        except asyncio.CancelledError:
+            if not next_result_task.done():
+                raise
         finally:
             if not next_result_task.done():
                 next_result_task.add_done_callback(swallow_cancelled)

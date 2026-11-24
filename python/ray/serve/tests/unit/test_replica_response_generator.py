@@ -164,6 +164,45 @@ class TestReplicaResponseGenerator:
 
         assert not result_gen.ag_running
 
+    async def test_base_exception_during_cancel_is_not_suppressed(self):
+        """Critical BaseExceptions (e.g. KeyboardInterrupt) raised while
+        cancelling next_result_task must propagate and not be suppressed.
+        """
+        started = asyncio.Event()
+
+        class CustomBaseException(BaseException):
+            pass
+
+        async def gen_raising_base_exception() -> AsyncGenerator[str, None]:
+            started.set()
+            try:
+                await asyncio.sleep(10)
+                yield "item"
+            except asyncio.CancelledError:
+                raise CustomBaseException("fatal base exception")
+
+        disconnect_fut = asyncio.get_running_loop().create_future()
+        result_gen = gen_raising_base_exception()
+        replica_response_generator = ReplicaResponseGenerator(
+            result_gen,
+            disconnected_task=disconnect_fut,
+        )
+
+        async def trigger_disconnect():
+            await started.wait()
+            disconnect_fut.set_result(None)
+
+        asyncio.create_task(trigger_disconnect())
+
+        with pytest.raises(CustomBaseException, match="fatal base exception"):
+            try:
+                async for _ in replica_response_generator:
+                    pass
+            finally:
+                await result_gen.aclose()
+
+        assert not result_gen.ag_running
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
