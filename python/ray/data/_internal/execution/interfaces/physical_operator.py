@@ -438,13 +438,9 @@ class DataOpTask(OpTask):
             # next call.
             try:
                 object_size = metadata_fetcher.in_data_ready_get_object_size(self)
-            except Exception as exc:
-                # Keep tracked losses intact for lineage reconstruction. Other
-                # failed pairs must be consumed before propagating their error:
-                # if the executor tolerates it, the next poll must advance rather
-                # than count the same metadata failure against the budget again.
-                if isinstance(exc, ObjectLostError) and self.is_lineage_tracked:
-                    raise
+            except Exception:
+                # Consume the failed pair so a later poll can't count it again
+                # if the executor tolerates the error.
                 self._pending_block_ref = ray.ObjectRef.nil()
                 self._pending_meta_ref = ray.ObjectRef.nil()
                 raise

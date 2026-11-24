@@ -6,6 +6,7 @@ import ray
 from ray._common.test_utils import run_string_as_driver
 from ray.data.tests.conftest import *  # noqa
 
+# Start the shared cluster before any test can auto-initialize Ray.
 pytestmark = pytest.mark.usefixtures("ray_start_2_cpus_shared")
 
 
