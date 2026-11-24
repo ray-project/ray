@@ -123,19 +123,14 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
         #       invocation
+        #
+        # Static args are part of the `cached_remote_fn` cache key, so per-operator
+        # values (the operator id label and the isolation `runtime_env`) are set in
+        # `_get_dynamic_ray_remote_args` instead.
         ray_remote_static_args = {
             **(self._ray_remote_args or {}),
             "num_returns": "streaming",
-            "_labels": {self._OPERATOR_ID_LABEL_KEY: self.id},
         }
-
-        # Ray Core doesn't share workers for tasks with different `runtime_env`s. We use
-        # this property to implicitly ensure that this operator's tasks run on isolated
-        # workers.
-        if self._isolate_workers:
-            ray_remote_static_args = self._add_unique_runtime_env(
-                ray_remote_static_args
-            )
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
@@ -148,7 +143,8 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         ray_remote_args = copy.deepcopy(ray_remote_args)
 
         runtime_env = ray_remote_args.get("runtime_env", {})
-        env_vars = ray_remote_args.get("env_vars", {})
+        # Env vars live under `runtime_env`; keep the user's and add the operator id.
+        env_vars = runtime_env.get("env_vars", {})
         env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
         runtime_env["env_vars"] = env_vars
 
@@ -186,6 +182,11 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             **(ray_remote_args.pop("_labels", None) or {}),
             self._OPERATOR_ID_LABEL_KEY: self.id,
         }
+        # Ray Core doesn't share workers for tasks with different `runtime_env`s. We
+        # use this property to implicitly ensure that this operator's tasks run on
+        # isolated workers.
+        if self._isolate_workers:
+            ray_remote_args = self._add_unique_runtime_env(ray_remote_args)
         return ray_remote_args
 
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
@@ -280,7 +281,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
     def _num_lineage_reconstruction_tasks(self) -> int:
         # Reconstruction tasks inherit the labels of the task they replay, so
-        # they carry the `_OPERATOR_ID_LABEL_KEY` attached in `__init__`.
+        # they carry the `_OPERATOR_ID_LABEL_KEY` set in `_get_dynamic_ray_remote_args`.
         task_infos = get_local_ongoing_lineage_reconstruction_tasks()
         return sum(
             num_tasks

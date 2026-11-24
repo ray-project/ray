@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray._common.usage import usage_lib
+from ray.actor import _ActorClassMethodMetadata
 from ray.data._internal.execution.lineage_tracker import LineageTracker
 from ray.data._internal.execution.operators.hash_shuffle import (
     HashShufflingOperatorBase,
@@ -15,7 +16,10 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.issue_detection.issue_detector import IssueType
 from ray.data._internal.usage import collector, poller, util
-from ray.data._internal.usage.actor import _UsageCollectionActor
+from ray.data._internal.usage.actor import (
+    _UsageCollectionActor,
+    get_or_create_usage_collection_actor,
+)
 from ray.data._internal.usage.execution_callback import UsageCallback
 
 
@@ -684,6 +688,19 @@ def test_cluster_metrics_disabled_skips_poller(
     assert entry["performance"] == {
         "lineage_reconstruction": {"num_object_lost_task_failures": 0}
     }
+
+
+def test_get_or_create_reuses_the_actor_class():
+    """Repeated calls must not add entries to Ray's actor method metadata cache."""
+    ray.init(ignore_reinit_error=True)
+    actor = get_or_create_usage_collection_actor()
+    # If the actor was created before the cache was last reset, getting it adds
+    # one entry for the handle's methods. Measure after that.
+    get_or_create_usage_collection_actor()
+    cache_size = len(_ActorClassMethodMetadata._cache)
+    for _ in range(3):
+        assert get_or_create_usage_collection_actor()._actor_id == actor._actor_id
+    assert len(_ActorClassMethodMetadata._cache) == cache_size
 
 
 if __name__ == "__main__":

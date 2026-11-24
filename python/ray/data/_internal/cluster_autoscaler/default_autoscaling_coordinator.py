@@ -825,19 +825,22 @@ def _add_bundle_in_place(target: ResourceDict, bundle: ResourceDict) -> None:
             target[key] = target.get(key, 0) + amount
 
 
+# Run on the head node, which lives as long as the cluster. Every requester on the
+# cluster shares this detached actor. Defined once because each `ray.remote(...)`
+# call on a class adds an entry to Ray's actor method metadata cache.
+_AutoscalingCoordinatorActorClass = ray.remote(
+    num_cpus=0,
+    resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+    max_restarts=-1,
+    max_task_retries=-1,
+)(_AutoscalingCoordinatorActor)
+
 _get_or_create_lock = threading.Lock()
 
 
 def get_or_create_autoscaling_coordinator():
     """Get or create the AutoscalingCoordinator detached actor on the head node."""
-    # Run on the head node, which lives as long as the cluster. Every requester
-    # on the cluster shares this detached actor.
-    actor_cls = ray.remote(
-        num_cpus=0,
-        resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-        max_restarts=-1,
-        max_task_retries=-1,
-    )(_AutoscalingCoordinatorActor).options(
+    actor_cls = _AutoscalingCoordinatorActorClass.options(
         name="AutoscalingCoordinator",
         namespace="AutoscalingCoordinator",
         get_if_exists=True,

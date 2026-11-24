@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
+from ray.actor import _ActorClassMethodMetadata
 from ray.cluster_utils import Cluster
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     STANDARD_RESOURCE_TYPES,
@@ -465,6 +466,21 @@ def test_coordinator_actor_runs_on_the_head_node(cluster):
     ray.util.remove_placement_group(pg)
     cluster.remove_node(worker)
     assert ray.get(coordinator.get_reserved_resources.remote("r"), timeout=60) == {}
+
+
+def test_get_or_create_reuses_the_actor_class(ray_start_regular_shared):
+    """Repeated calls must not add entries to Ray's actor method metadata cache."""
+    coordinator = get_or_create_autoscaling_coordinator()
+    # If the actor was created before the cache was last reset (for example, by
+    # an earlier test in this cluster), getting it adds one entry for the
+    # handle's methods. Measure after that.
+    get_or_create_autoscaling_coordinator()
+    cache_size = len(_ActorClassMethodMetadata._cache)
+    for _ in range(3):
+        assert (
+            get_or_create_autoscaling_coordinator()._actor_id == coordinator._actor_id
+        )
+    assert len(_ActorClassMethodMetadata._cache) == cache_size
 
 
 @pytest.fixture

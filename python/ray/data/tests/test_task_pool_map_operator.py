@@ -3,7 +3,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
+from ray.actor import _ActorClassMethodMetadata
 from ray.core.generated import common_pb2
+from ray.data import TaskPoolStrategy
+from ray.data._internal import remote_fn
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.task_pool_map_operator import (
@@ -121,6 +124,83 @@ def test_dynamic_remote_args_keep_operator_id_label(
         **(user_labels or {}),
         TaskPoolMapOperator._OPERATOR_ID_LABEL_KEY: op.id,
     }
+
+
+def test_operators_with_same_remote_args_share_map_task(
+    ray_start_regular_shared, restore_data_context
+):
+    """The operator id must not be part of the `cached_remote_fn` cache key."""
+    data_context = ray.data.DataContext.get_current()
+
+    def make_op():
+        return TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+            data_context=data_context,
+            ray_remote_args={"num_cpus": 1},
+        )
+
+    op1, op2 = make_op(), make_op()
+    assert op1.id != op2.id
+    assert op1._map_task is op2._map_task
+
+
+@pytest.mark.parametrize("isolate_workers", [False, True])
+def test_isolated_operators_share_map_task(
+    ray_start_regular_shared, restore_data_context, isolate_workers
+):
+    """The isolation `runtime_env` is per operator, so it must not be in the cache key."""
+    data_context = ray.data.DataContext.get_current()
+
+    def make_op():
+        return TaskPoolMapOperator(
+            map_transformer=MagicMock(),
+            input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+            data_context=data_context,
+            ray_remote_args={
+                "num_cpus": 1,
+                "runtime_env": {"env_vars": {"USER_VAR": "1"}},
+            },
+            isolate_workers=isolate_workers,
+        )
+
+    op1, op2 = make_op(), make_op()
+    assert op1._map_task is op2._map_task
+
+    env_vars = op1._get_dynamic_ray_remote_args()["runtime_env"]["env_vars"]
+    expected = {"USER_VAR": "1"}
+    if isolate_workers:
+        expected["__RAY_DATA_OPERATOR_ID"] = op1.id
+    assert env_vars == expected
+
+
+@pytest.mark.parametrize("pipeline", ["map_batches", "take", "isolated_read"])
+def test_repeated_executions_do_not_grow_driver_caches(
+    ray_start_regular_shared, restore_data_context, pipeline
+):
+    """Running the same pipeline again must not add entries to driver-side caches."""
+    ray.data.DataContext.get_current().isolate_read_workers = (
+        pipeline == "isolated_read"
+    )
+
+    def run():
+        ds = ray.data.range(4, override_num_blocks=2).map_batches(
+            lambda batch: batch, compute=TaskPoolStrategy(size=1)
+        )
+        if pipeline == "take":
+            # Stops partway through a block, so the limit operator slices it.
+            ds.take(3)
+        else:
+            ds.take_all()
+
+    run()
+    sizes = (len(remote_fn.CACHED_FUNCTIONS), len(_ActorClassMethodMetadata._cache))
+    for _ in range(5):
+        run()
+    assert (
+        len(remote_fn.CACHED_FUNCTIONS),
+        len(_ActorClassMethodMetadata._cache),
+    ) == sizes
 
 
 def _lineage_reconstruction_task(operator_id: str):
