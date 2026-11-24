@@ -865,6 +865,10 @@ void GcsNodeManager::Initialize(const GcsInitData &gcs_init_data) {
       dead_nodes_.emplace(node_id, std::make_shared<rpc::GcsNodeInfo>(node_info));
       sorted_dead_node_list_.emplace_back(node_id, node_info.end_time_ms());
     }
+    // Re-send every loaded node's state: an event emitted while the head's event
+    // aggregator was down (e.g. a DEAD event during head failover) was lost, and
+    // consumers only converge if they see the stored state again.
+    WriteNodeExportEvent(node_info, /*is_register_event*/ true);
   }
   std::sort(
       sorted_dead_node_list_.begin(),
