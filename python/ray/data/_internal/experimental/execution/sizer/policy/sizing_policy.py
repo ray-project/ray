@@ -104,9 +104,6 @@ if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
-    from ray.data._internal.experimental.execution.operators.actor_pool_models import (  # noqa: E501
-        PlacedScalingRequest,
-    )
     from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
         ActorPlacementStrategy,
     )
@@ -161,14 +158,35 @@ def max_step_size(b: int, max_size: int) -> int:
     )
 
 
-# The rule each bottleneck decision gives the ops it touches. FUND_RECIPIENT
-# gives FUND to the recipient and DONATE to everyone else it touches.
-_RULE_BY_KIND: Dict[DecisionKind, OpRule] = {
-    DecisionKind.GROW_FREE: OpRule.GROW_FREE,
-    DecisionKind.GROW_BALANCED: OpRule.GROW_BALANCED,
-    DecisionKind.FUND_RECIPIENT: OpRule.DONATE,
-    DecisionKind.SHRINK_SURPLUS: OpRule.SHRINK_SURPLUS,
-}
+OpDecisions = Dict["ExperimentalActorPoolMapOperator", OpDecision]
+
+
+def _add(
+    decisions: OpDecisions, rule: OpRule, requests: List[PlacedSizingRequest]
+) -> OpDecisions:
+    """Add each placed request to its op's decision under ``rule``. An op
+    already decided this tick keeps its rule and gets the request appended,
+    in order. Returns ``decisions``."""
+    for request in requests:
+        for op, req in request.request.items():
+            prev = decisions.get(op)
+            if prev is None:
+                decisions[op] = OpDecision(rule, placed=(req,))
+            else:
+                decisions[op] = OpDecision(prev.rule, placed=(*prev.placed, req))
+    return decisions
+
+
+def _merge(decisions: OpDecisions, more: OpDecisions) -> None:
+    """Add ``more`` into ``decisions``. An op in both keeps its first rule and
+    gets the later requests appended, in order."""
+    for op, decision in more.items():
+        prev = decisions.get(op)
+        decisions[op] = (
+            decision
+            if prev is None
+            else OpDecision(prev.rule, placed=(*prev.placed, *decision.placed))
+        )
 
 
 def _within_capacity(
@@ -221,9 +239,10 @@ class SizingPolicy:
         # Per op: consecutive ticks it has been blocked with surplus while
         # there was no recipient.
         self._blocked_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
+        # Each handler carries out one bottleneck decision and names the rule
+        # for every op it resizes.
         self._handlers: Dict[
-            DecisionKind,
-            Callable[[Decision, DecisionContext], List[PlacedSizingRequest]],
+            DecisionKind, Callable[[Decision, DecisionContext], OpDecisions]
         ] = {
             DecisionKind.GROW_FREE: self._grow_free,
             DecisionKind.GROW_BALANCED: self._grow_balanced,
@@ -244,16 +263,15 @@ class SizingPolicy:
         """Capacity open transfers hold for their recipients' owed actors."""
         return self._book.held_capacity_by_node()
 
-    def decide(
-        self, ctx: DecisionContext
-    ) -> Dict["ExperimentalActorPoolMapOperator", OpDecision]:
+    def decide(self, ctx: DecisionContext) -> OpDecisions:
         """One tick: one ``OpDecision`` per op.
 
         1. Advance open transfers, and bring up the actors they owe their
            recipients (FUND).
-        2. Classify the bottleneck decision and carry it out (GROW_FREE,
-           GROW_BALANCED, FUND / DONATE, SHRINK_SURPLUS). These requests
-           already name their nodes.
+        2. Classify the tick (one ``DecisionKind``) and run its handler. The
+           handler names the rule for each op it resizes (GROW_FREE,
+           GROW_BALANCED, DONATE, SHRINK_SURPLUS), and its requests already
+           name their nodes.
         3. Run the per-op rules for every op that steps 1 and 2 did not
            touch, in the tick's op order, and grant each upscale only what
            is still free. A completed op always gets its per-op action.
@@ -261,20 +279,9 @@ class SizingPolicy:
         Every step checks and spends capacity in ``ctx.capacity``, so a
         later step never hands out capacity an earlier one took.
         """
-        placed: Dict[
-            "ExperimentalActorPoolMapOperator",
-            Tuple[OpRule, List["PlacedScalingRequest"]],
-        ] = {}
-
-        def add(requests: List[PlacedSizingRequest], rule_for) -> None:
-            for request in requests:
-                for op, req in request.request.items():
-                    _, reqs = placed.setdefault(op, (rule_for(op), []))
-                    reqs.append(req)
-
         self._book.advance(ctx)
         # Open transfers place first, into the capacity ``advance`` held.
-        add(self._book.bring_up_held_actors(), lambda op: OpRule.FUND)
+        decisions = _add({}, OpRule.FUND, self._book.bring_up_held_actors())
 
         decision = classify(ctx, self._statuses)
         self.last_decision = decision
@@ -286,24 +293,8 @@ class SizingPolicy:
             "".join(f" {op.name}->{target}" for op, target in decision.targets.items()),
             decision.reason,
         )
-        default_rule = _RULE_BY_KIND.get(decision.kind)
-        if default_rule is not None:
-            add(
-                self._handlers[decision.kind](decision, ctx),
-                lambda op: (
-                    OpRule.FUND
-                    if decision.kind is DecisionKind.FUND_RECIPIENT
-                    and op in decision.targets
-                    else default_rule
-                ),
-            )
-        else:
-            self._handlers[decision.kind](decision, ctx)
+        _merge(decisions, self._handlers[decision.kind](decision, ctx))
 
-        decisions: Dict["ExperimentalActorPoolMapOperator", OpDecision] = {
-            op: OpDecision(rule, placed=tuple(reqs))
-            for op, (rule, reqs) in placed.items()
-        }
         if ctx.snapshot is not None:
             for op in ctx.snapshot.ordered_ops:
                 if op in decisions and not op.has_completed():
@@ -321,22 +312,16 @@ class SizingPolicy:
 
     # --- decision handlers ----------------------------------------------------
 
-    def _hold(
-        self, decision: Decision, ctx: DecisionContext
-    ) -> List[PlacedSizingRequest]:
+    def _hold(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
         if decision.reason == HOLD_CLUSTER_SETTLING:
             self._metrics.record_refusal(self.name, decision.reason)
-        return []
+        return {}
 
-    def _grow_free(
-        self, decision: Decision, ctx: DecisionContext
-    ) -> List[PlacedSizingRequest]:
-        return self._grow_each(decision, ctx)
+    def _grow_free(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+        return _add({}, OpRule.GROW_FREE, self._grow_each(decision, ctx))
 
-    def _grow_balanced(
-        self, decision: Decision, ctx: DecisionContext
-    ) -> List[PlacedSizingRequest]:
-        return self._grow_each(decision, ctx)
+    def _grow_balanced(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+        return _add({}, OpRule.GROW_BALANCED, self._grow_each(decision, ctx))
 
     def _grow_each(
         self, decision: Decision, ctx: DecisionContext
@@ -355,9 +340,10 @@ class SizingPolicy:
                 requests.append(grown)
         return requests
 
-    def _fund_recipient(
-        self, decision: Decision, ctx: DecisionContext
-    ) -> List[PlacedSizingRequest]:
+    def _fund_recipient(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+        """Only donors shrink this tick (DONATE). The recipient's actors come
+        up on later ticks, as donors free their room (FUND, in
+        ``bring_up_held_actors``)."""
         (recipient,) = decision.targets
         tick = ctx.bottleneck
         assert tick is not None
@@ -370,15 +356,13 @@ class SizingPolicy:
             # One transfer at a time: let the window refill before the next.
             requests.extend(self._transfer_to(recipient, tick, ctx))
         requests.extend(self._shrink_toward_keep(recipient, tick, ctx))
-        return requests
+        return _add({}, OpRule.DONATE, requests)
 
-    def _shrink_surplus(
-        self, decision: Decision, ctx: DecisionContext
-    ) -> List[PlacedSizingRequest]:
+    def _shrink_surplus(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
         tick = ctx.bottleneck
         assert tick is not None
         self._surplus_streak.clear()
-        return self._shrink_blocked_surplus(tick, ctx)
+        return _add({}, OpRule.SHRINK_SURPLUS, self._shrink_blocked_surplus(tick, ctx))
 
     def _transfer_to(
         self,

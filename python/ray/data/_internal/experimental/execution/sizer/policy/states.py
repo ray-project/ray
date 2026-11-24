@@ -1,15 +1,19 @@
-"""The sizer's state machine: its phase, and each tick's decision.
+"""The sizer's phase, and the enums and records of each tick's decision.
 
-Three machines run side by side, each with its own enum:
+State that carries across ticks:
 
 - ``SizerPhase``: the whole sizer, only ever moving forward.
-- ``DecisionKind``: in a phase that decides from the bottleneck model, the
-  one primary action a tick takes (``classify`` in ``decision``).
 - ``TransferPhase``: whether a transfer is open. A tick may grow an op into
   free capacity while a transfer is in flight, so this is not a decision.
+- Per operator, ``op_status.OpStatus``: whether the op may be resized.
 
-Per operator, ``op_status.OpStatus`` says whether the op may be resized, and
-``OpRule`` says which per-op action sized it this tick (``per_op``).
+Each tick's decision, recomputed every tick with no memory:
+
+- ``DecisionKind``: what the whole pipeline does this tick (``classify`` in
+  ``decision``). It picks the handler that runs, and is logged.
+- ``OpRule``: what happened to one op this tick. The handler for the
+  ``DecisionKind`` names the rule for each op it resizes; the per-op rules
+  (``per_op``) name it for the rest.
 """
 
 from __future__ import annotations
@@ -41,7 +45,9 @@ class SizerPhase(enum.Enum):
 
 
 class DecisionKind(enum.Enum):
-    """One tick's primary action, in priority order."""
+    """What the whole pipeline does this tick, in priority order. The ops it
+    resizes get the ``OpRule`` of the same name (FUND_RECIPIENT: DONATE for
+    each donor)."""
 
     # A named bottleneck has room in free capacity (or its placement group):
     # grow it there toward its growth target.
@@ -78,7 +84,8 @@ class OpRule(enum.Enum):
     """The action that sized one op this tick (``SizingPolicy.decide``).
 
     The first five come from the bottleneck model and place their actors
-    themselves; the rest are per-op actions (``PerOpRules.decide``).
+    themselves; the rest are per-op actions (``PerOpRules.decide``). FUND
+    brings up the actors an open transfer owes its recipient.
     """
 
     GROW_FREE = "grow a bottleneck into free capacity"
