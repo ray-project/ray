@@ -16,8 +16,9 @@ by Parquet's footer indexer, which also gives the memory decoding it takes
 sizes.
 
 Planning reads Iceberg metadata only. It prunes on ``read_iceberg``'s
-``row_filter``; the scanner takes no Ray filters, so no predicate reaches
-listing. The Parquet footers are read once planning is done.
+``row_filter`` ANDed with the predicate the scanner accepted, in the planning
+form ``iceberg_filter_pushdown`` gives it. The Parquet footers are read once
+planning is done.
 
 When the table's REST catalog plans scans on its server, the task rebuilds the
 catalog from the properties the driver resolved (``ServerSidePlanning``) and
@@ -44,6 +45,10 @@ from typing import (
 
 from typing_extensions import override
 
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_filter_pushdown import (
+    split_predicate,
+    to_iceberg_filter,
+)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing import (
     IcebergFooterSizing,
 )
@@ -198,13 +203,14 @@ class IcebergFileIndexer(FileIndexer):
         """Plan the table and yield the surviving files, one row each.
 
         ``excluded_read_unit_ids`` are file paths, since a read unit is a whole
-        file. ``projected_columns`` sizes each row, and with
-        ``reads_footers`` its Parquet files' footers are read to do so.
-        ``limit`` is applied by the reader; stopping listing early from
-        Iceberg's per-file row counts is a follow-up. The other arguments don't
-        apply and are ignored.
+        file. ``predicate`` is the scanner's accepted predicate, planned with
+        ``read_iceberg``'s ``row_filter``. ``projected_columns`` sizes each
+        row, and with ``reads_footers`` its Parquet files' footers are read to
+        do so. ``limit`` is applied by the reader; stopping listing early from
+        Iceberg's per-file row counts is a follow-up. The other arguments
+        don't apply and are ignored.
         """
-        scan = self._data_scan()
+        scan = self._data_scan(predicate)
         field_ids = _projected_field_ids(
             projection=scan.projection(),
             columns=projected_columns,
@@ -267,9 +273,27 @@ class IcebergFileIndexer(FileIndexer):
         for task in self._data_scan().plan_files():
             yield FileInfo(path=task.file.file_path, size=task.file.file_size_in_bytes)
 
-    def _data_scan(self) -> "DataScan":
+    def _data_scan(self, predicate: Optional["Expr"] = None) -> "DataScan":
         from pyiceberg.table import DataScan
 
+        row_filter = self._row_filter
+        if predicate is not None:
+            schema = self._table_metadata.schema()
+            case_sensitive = self._scan_kwargs.get("case_sensitive", True)
+            parts = split_predicate(
+                predicate, schema=schema, case_sensitive=case_sensitive
+            )
+            assert not parts.residual, f"the scanner never accepts {parts.residual}"
+            row_filter = to_iceberg_filter(
+                row_filter, parts.scan, schema=schema, case_sensitive=case_sensitive
+            )
+            row_filter = to_iceberg_filter(
+                row_filter,
+                parts.after_read,
+                schema=schema,
+                case_sensitive=case_sensitive,
+                nan_safe=True,
+            )
         # Not ``Table.scan``: the ``Table`` stays on the driver. A ``DataScan``
         # with a catalog that plans on its server asks it for the file list.
         planning_kwargs: Dict[str, Any] = {}
@@ -281,7 +305,7 @@ class IcebergFileIndexer(FileIndexer):
         scan = DataScan(
             table_metadata=self._table_metadata,
             io=self._io,
-            row_filter=self._row_filter,
+            row_filter=row_filter,
             selected_fields=self._selected_fields,
             snapshot_id=self._snapshot_id,
             **planning_kwargs,
@@ -291,7 +315,7 @@ class IcebergFileIndexer(FileIndexer):
             "Planning Iceberg scan of %s (snapshot %s, filter %s)",
             self._table_metadata.location,
             self._snapshot_id,
-            self._row_filter,
+            row_filter,
         )
         return scan
 
