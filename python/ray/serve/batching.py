@@ -182,6 +182,7 @@ class _BatchQueue:
                 in sequences, etc.
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
+        self._deferred_request: Optional[_SingleRequest] = None
         self.max_batch_size = max_batch_size
         self.batch_wait_timeout_s = batch_wait_timeout_s
         self.max_concurrent_batches = max_concurrent_batches
@@ -263,7 +264,7 @@ class _BatchQueue:
         self.max_batch_size = new_max_batch_size
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
-    def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
+    def put(self, request: _SingleRequest) -> None:
         self.queue.put_nowait(request)
         self.requests_available_event.set()
 
@@ -279,7 +280,8 @@ class _BatchQueue:
 
     def _record_queue_length(self) -> None:
         self._batch_queue_length_gauge.set(
-            self.queue.qsize(), tags={"function_name": self._function_name}
+            self.queue.qsize() + (self._deferred_request is not None),
+            tags={"function_name": self._function_name},
         )
 
     async def wait_for_batch(self) -> Tuple[List[_SingleRequest], int]:
@@ -295,7 +297,13 @@ class _BatchQueue:
         """
 
         batch = []
-        first_item = await self.queue.get()  # Block until first item arrives
+        first_item = self._deferred_request
+        self._deferred_request = None
+        if first_item is not None and first_item.future.cancelled():
+            first_item = None
+            self._record_queue_length()
+        if first_item is None:
+            first_item = await self.queue.get()
 
         # Cache current max_batch_size and batch_wait_timeout_s for this batch.
         max_batch_size = self.max_batch_size
@@ -311,7 +319,8 @@ class _BatchQueue:
                     "implementation of the batch_size_fn."
                 )
                 # Set exception on the future so the caller receives it
-                first_item.future.set_exception(exc)
+                _set_exception_if_not_done(first_item.future, exc)
+                self._record_queue_length()
                 return [], 0
 
         batch.append(first_item)
@@ -338,9 +347,6 @@ class _BatchQueue:
 
             # Custom batch size function logic
             if self.batch_size_fn is not None:
-                # Add all new arrivals to the batch.
-                # Track items we need to put back if they don't fit
-                deferred_item = None
                 while not self.queue.empty():
                     next_item = self.queue.get_nowait()
                     # Temporarily add to check size
@@ -348,40 +354,27 @@ class _BatchQueue:
                     new_size = self._compute_batch_size(batch)
 
                     if new_size > max_batch_size:
-                        # Would exceed limit, remove it and save for later
-                        batch.pop()
-                        deferred_item = next_item
+                        # Keep this request ahead of newer arrivals.
+                        self._deferred_request = batch.pop()
                         break
-                    # Size is OK, keep it in the batch (already added above)
-
-                # Put deferred item back in queue for next batch
-                if deferred_item is not None:
-                    # NOTE: The deferred item goes to the back of the queue (FIFO),
-                    # so newer requests may be processed before it. Consider using
-                    # asyncio.PriorityQueue if strict ordering is required.
-                    self.queue.put_nowait(deferred_item)
-                    # Compute final batch size before breaking (batch is now valid
-                    # after popping the deferred item).
-                    current_batch_size = self._compute_batch_size(batch)
-                    # break the loop early because the deferred item is too large to fit in the batch
-                    break
             else:
                 # Default behavior: use original len() check logic
                 while len(batch) < max_batch_size and not self.queue.empty():
                     batch.append(self.queue.get_nowait())
 
-            # Only clear the put event if the queue is empty. If it's not empty
-            # we can start constructing a new batch immediately in the next loop.
+            # Keep the event set while a request is waiting, including a deferred
+            # request.
             # The code that puts items into the queue runs on the same event loop
             # as this code, so there's no race condition between the time we
             # get objects in the queue (and clear the event) and when objects
             # get added to the queue.
-            if self.queue.empty():
+            if self.queue.empty() and self._deferred_request is None:
                 self.requests_available_event.clear()
 
             current_batch_size = self._compute_batch_size(batch)
             if (
-                time.time() - timeout_start_time >= batch_wait_timeout_s
+                self._deferred_request is not None
+                or time.time() - timeout_start_time >= batch_wait_timeout_s
                 or current_batch_size >= max_batch_size
             ):
                 break
@@ -946,6 +939,9 @@ def batch(
             based on custom metrics such as total nodes in graphs, total tokens
             in sequences, or other domain-specific measures. If None, the batch
             size is computed as len(batch).
+            If adding a request would exceed ``max_batch_size``, Serve ends the
+            current batch and considers that request first for the next batch
+            if it's still active.
 
     Returns:
         The decorated async function/method (when ``_func`` is supplied) or a

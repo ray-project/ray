@@ -9,13 +9,14 @@ import pytest
 
 import ray
 from ray import serve
+from ray._common.signature import DUMMY_TYPE
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.test_utils import passthrough_decorator
 from ray.serve._private.utils import extract_self_if_method_call
-from ray.serve.batching import _BatchQueue
+from ray.serve.batching import _BatchQueue, _SingleRequest
 from ray.serve.exceptions import RayServeException
 
 # Setup the global replica context for the test.
@@ -1235,6 +1236,60 @@ async def test_batch_size_fn_deferred_item_early_break():
     assert (
         len(batches_processed) == 2
     ), f"Expected 2 separate batches, got {batches_processed}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cancel_deferred", [False, True], ids=["active", "cancelled"])
+async def test_batch_size_fn_prioritizes_deferred_request(cancel_deferred):
+    with patch("ray.serve.batching.Gauge") as gauge:
+        queue = _BatchQueue(
+            max_batch_size=10,
+            batch_wait_timeout_s=0,
+            max_concurrent_batches=1,
+            batch_size_fn=sum,
+        )
+
+    def enqueue(size: int) -> _SingleRequest:
+        request = _SingleRequest(
+            self_arg=None,
+            flattened_args=[DUMMY_TYPE, size],
+            future=asyncio.get_running_loop().create_future(),
+            request_context=serve.context._get_serve_request_context(),
+            trace_context=None,
+        )
+        queue.put(request)
+        return request
+
+    first = enqueue(6)
+    deferred = enqueue(10)
+    third = enqueue(4)
+    assert await queue.wait_for_batch() == ([first], 6)
+    gauge.return_value.set.assert_called_with(2, tags={"function_name": "unknown"})
+
+    # The fourth request arrives while the deferred request is still waiting.
+    fourth = enqueue(6)
+    if cancel_deferred:
+        deferred.future.cancel()
+    else:
+        assert await queue.wait_for_batch() == ([deferred], 10)
+
+    assert await queue.wait_for_batch() == ([third, fourth], 10)
+    gauge.return_value.set.assert_called_with(0, tags={"function_name": "unknown"})
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_dispatches_full_deferred_batch_immediately():
+    @serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=60,
+        batch_size_fn=sum,
+    )
+    async def batch_handler(sizes):
+        return sizes
+
+    assert await asyncio.wait_for(
+        asyncio.gather(batch_handler(6), batch_handler(10)), timeout=1
+    ) == [6, 10]
 
 
 @pytest.mark.asyncio

@@ -64,6 +64,8 @@ By default, Ray Serve measures batch size as the number of items in the batch (`
 
 Use the `batch_size_fn` parameter to define a custom metric for batch size. Serve calls `batch_size_fn` with a list that holds each request's value for the method's first parameter after `self`. Pass that value as the first argument of each call, either positionally or by keyword. For example, with `async def predict(self, items, *, tag)`, both `await self.predict(text, tag="t")` and `await self.predict(items=text, tag="t")` pass `text` to `batch_size_fn`.
 
+If adding a request would exceed `max_batch_size`, Serve ends the current batch and considers that request first for the next batch if it's still active.
+
 :::{note}
 Serve raises a `TypeError` for a call that leaves out the method's first parameter or passes another keyword argument before it. It raises the same error when that parameter is `**kwargs`, or is `*args` and the call passes more than one value.
 :::
