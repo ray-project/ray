@@ -381,7 +381,7 @@ class FooterReader:
         ``physical_schema`` is the Arrow form of ``schema`` when the caller
         already converted it, so the file's schema is not converted twice.
         """
-        if not self._has_modelable_leaves:
+        if predicate is None or not self._has_modelable_leaves:
             return plain
         try:
             if physical_schema is None:
@@ -529,8 +529,18 @@ class FooterReader:
             # which is always safe (falls back to the post-filter stop).
             # ``prune_filter`` matches the same rows as the original, and its
             # negation can prune where ``~original`` cannot.
-            not_fully_ids = self._try_split_by_row_group(
-                fragment=fragment, expr=~per_file.prune_filter, path=path
+            # ``prune_filter`` is never None alongside a PyArrow
+            # ``file_filter`` -- the deriver returns the plain form or a
+            # rewrite of it -- but the type keeps the possibility, and the
+            # negation test treats an absent filter like any other split
+            # failure: fail closed.
+            prune_filter = per_file.prune_filter
+            not_fully_ids = (
+                self._try_split_by_row_group(
+                    fragment=fragment, expr=~prune_filter, path=path
+                )
+                if prune_filter is not None
+                else None
             )
             not_fully = set(rg_indices) if not_fully_ids is None else set(not_fully_ids)
             # The negation test alone is not sufficient: ``~filter`` can prune a

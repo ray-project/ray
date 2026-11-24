@@ -25,6 +25,11 @@ if TYPE_CHECKING:
 # lexicographic order jumps from U+D7FF straight to U+E000.
 _SURROGATE_RANGE = range(0xD800, 0xDFFF + 1)
 
+# The bound constants are built as Arrow scalars, which cannot represent
+# integers outside int64.
+_INT64_MIN = -(1 << 63)
+_INT64_MAX = (1 << 63) - 1
+
 
 def _add_statistics_bounds(expr: Expr, schema: pa.Schema) -> Expr:
     """Rewrite the leaves PyArrow cannot prune with into statistics bounds.
@@ -114,7 +119,9 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
     ):
         return None
 
-    max_value = np.iinfo(value_type.to_pandas_dtype()).max
+    info = np.iinfo(value_type.to_pandas_dtype())
+    max_value = info.max
+    min_value = info.min
 
     # Python ints avoid overflow in NumPy scalar subtraction.
     offset_val = int(offset)
@@ -124,7 +131,21 @@ def _bound_addition_comparison(expr: Expr, schema: pa.Schema) -> Expr | None:
     if not 0 < offset_val <= max_value:
         return None
 
-    lower = column >= threshold - offset_val
+    # The bound constant becomes an Arrow scalar, so it must fit int64:
+    # below INT64_MIN, ``column >= threshold - offset_val`` raises out of
+    # the rewrite instead of returning rows. A constant below the column's
+    # minimum keeps every non-null row, which is exactly what the
+    # unrepresentable bound would on the column's values, and the leaf kept
+    # below handles the wrapped region, so clamping there returns the same
+    # rows. A constant above int64 (a uint64 literal target, which the
+    # original filter evaluates at a wider type) has no representable
+    # equivalent, so the leaf is left untouched instead.
+    lower_val = threshold - offset_val
+    if lower_val < _INT64_MIN:
+        lower_val = min_value
+    elif lower_val > _INT64_MAX:
+        return None
+    lower = column >= lower_val
     if pa.types.is_unsigned_integer(value_type) and pa.types.is_int64(
         pa.scalar(offset).type
     ):
@@ -138,7 +159,7 @@ def _bound_starts_with(expr: Expr, schema: pa.Schema) -> Expr | None:
     """``str.starts_with(col, p)`` as the string range the prefix spans."""
     if not (
         isinstance(expr, PyArrowComputeUDFExpr)
-        and expr.pc_func is pc.starts_with
+        and expr.pc_func is pc.starts_with  # pyrefly: ignore[missing-attribute]
         and len(expr.args) == 1
         and isinstance(expr.args[0], ColumnExpr)
         and len(expr.pc_positional) == 1
@@ -201,4 +222,6 @@ def _has_modelable_leaf(expr: Expr | None) -> bool:
         )
     if isinstance(expr, UnaryExpr):
         return _has_modelable_leaf(expr=expr.operand)
-    return isinstance(expr, PyArrowComputeUDFExpr) and expr.pc_func is pc.starts_with
+    return isinstance(expr, PyArrowComputeUDFExpr) and (
+        expr.pc_func is pc.starts_with  # pyrefly: ignore[missing-attribute]
+    )
