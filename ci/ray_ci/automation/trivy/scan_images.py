@@ -813,6 +813,9 @@ def main(
 
 if __name__ == "__main__":
     # Only as a program: importers keep their own logging and signal handling.
-    logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+    # force, as importing ci.ray_ci.utils already gave the root logger a handler.
+    logging.basicConfig(
+        level=logging.INFO, format="%(message)s", stream=sys.stdout, force=True
+    )
     signal.signal(signal.SIGTERM, _exit_on_sigterm)
     main()
