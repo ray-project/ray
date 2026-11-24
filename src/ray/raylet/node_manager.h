@@ -1005,8 +1005,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
 
-  /// Received moves pinned as the primary copy, and received moves whose pin
-  /// failed (the object left the store before it could be pinned).
+  /// Received moves pinned as the primary copy, and received moves that were not
+  /// pinned: the owner is missing or dead, the copy left the store, or it is pending
+  /// deletion.
   uint64_t num_moved_objects_pinned_ = 0;
   uint64_t num_moved_objects_pin_failed_ = 0;
 
