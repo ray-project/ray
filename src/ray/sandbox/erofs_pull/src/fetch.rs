@@ -88,20 +88,20 @@ fn proxy_bypass(no_proxy: Option<&str>, host: &str) -> bool {
         return true;
     }
     let host = host.to_lowercase();
-    // urllib's _splitport: a trailing ":<digits>" is the port. An IPv6
-    // address loses its brackets, so "::1" matches "[::1]:5000", as in curl.
+    // urllib's _splitport: a trailing ":<digits>" is the port. An IPv6 host
+    // keeps its brackets, as in urllib, so "::1" doesn't match "[::1]:5000"
+    // ("[::1]" does): erofs-pull bypasses the proxy exactly where Ray's own
+    // registry requests do.
     let hostonly = match host.rsplit_once(':') {
         Some((name, port)) if port.bytes().all(|c| c.is_ascii_digit()) => name,
         _ => host.as_str(),
     };
-    let unbracketed = |name: &str| name.trim_start_matches('[').trim_end_matches(']').to_string();
-    let hostonly = unbracketed(hostonly);
     for name in no_proxy.split(',') {
         let name = name.trim().trim_start_matches('.').to_lowercase();
         if name.is_empty() {
             continue;
         }
-        if hostonly == unbracketed(&name) || host == name {
+        if hostonly == name || host == name {
             return true;
         }
         let suffix = format!(".{name}");
@@ -222,9 +222,8 @@ pub struct Blob {
 #[derive(Clone)]
 struct Resolved {
     url: String,
-    /// Whether to send the registry's headers: not to storage on another
-    /// origin it redirects to, which (like S3 with a presigned URL) may
-    /// refuse a second auth.
+    /// Whether to send the registry's headers: not to storage it redirects
+    /// to, which (like S3 with a presigned URL) may refuse a second auth.
     auth: bool,
     /// Whether the server answers `Range` requests.
     ranged: bool,
@@ -368,11 +367,10 @@ impl Blob {
                     match resp.status() {
                         301 | 302 | 303 | 307 | 308 => {
                             let loc = resp.header("location").ok_or("redirect without location")?;
-                            let next = join_url(&url, loc);
-                            // Credentials stay on the registry's origin, as
-                            // with urllib and curl.
-                            auth = auth && origin(&next) == origin(&url);
-                            url = next;
+                            url = join_url(&url, loc);
+                            // Dropped on every redirect, same host or not, as
+                            // extraction's `_registry_request` does.
+                            auth = false;
                         }
                         206 => {
                             return Ok(Resolved {
@@ -561,14 +559,6 @@ fn join_url(base: &str, location: &str) -> String {
     format!("{path}{sep}{location}")
 }
 
-/// A URL's scheme and authority, lowercased, to tell whether a redirect
-/// leaves the origin.
-fn origin(url: &str) -> String {
-    let (scheme, rest) = url.split_once("://").unwrap_or(("", url));
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    format!("{scheme}://{authority}").to_ascii_lowercase()
-}
-
 fn request(remote: &Remote, url: &str, auth: bool, range: Option<(u64, u64)>) -> Result<ureq::Response, String> {
     let (agent, proxy_authorization) = remote.route(url);
     let mut req = agent.get(url);
@@ -670,7 +660,7 @@ impl Read for BlobReader {
 
 #[cfg(test)]
 mod tests {
-    use super::{base64, digest_hex, join_url, origin, parse_proxy, proxy_bypass, without_queries};
+    use super::{base64, digest_hex, join_url, parse_proxy, proxy_bypass, without_queries};
 
     #[test]
     fn query_strings_stay_out_of_error_messages() {
@@ -719,25 +709,11 @@ mod tests {
         assert!(proxy_bypass(Some("*"), "anything"));
         assert!(!proxy_bypass(None, "localhost"));
         assert!(!proxy_bypass(Some(""), "localhost"));
-        // IPv6 addresses, with or without brackets.
-        for no in ["::1", "[::1]", "[::1]:5000"] {
+        // IPv6 hosts keep their brackets, as in urllib.
+        for no in ["[::1]", "[::1]:5000"] {
             assert!(proxy_bypass(Some(no), "[::1]:5000"), "{no}");
         }
-        assert!(proxy_bypass(Some("::1"), "[::1]"));
-        assert!(!proxy_bypass(Some("::1"), "[::2]:5000"));
-    }
-
-    #[test]
-    fn credentials_stay_on_the_registry_origin() {
-        let registry = "https://registry.example/v2/repo/blobs/sha256:abc";
-        assert_eq!(origin(registry), origin("HTTPS://Registry.example/storage/x?sig=1"));
-        for other in [
-            "https://cdn.example/x",
-            "http://registry.example/x",
-            "https://registry.example:8443/x",
-        ] {
-            assert_ne!(origin(registry), origin(other), "{other}");
-        }
+        assert!(!proxy_bypass(Some("::1"), "[::1]:5000"));
     }
 
     #[test]

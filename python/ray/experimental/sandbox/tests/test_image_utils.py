@@ -1734,6 +1734,11 @@ def erofs_pull(fake_mkfs_erofs, monkeypatch):
     monkeypatch.setenv("PATH", path)
     image_utils.mkfs_erofs_path.cache_clear()
     monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", _EROFS_PULL_UNDER_TEST)
+    # Extraction makes missing parent directories 0o777 & ~umask; erofs-pull
+    # makes them 0o755 on every node. Compare them under the usual umask.
+    umask = os.umask(0o022)
+    yield
+    os.umask(umask)
 
 
 def _erofs_tree(image, path="/"):
@@ -1913,6 +1918,26 @@ def test_pull_without_mkfs_erofs_or_erofs_pull(tmp_path, fake_docker_hub, monkey
         )
     assert "erofs-pull" not in str(info.value)
     assert not (tmp_path / "images" / ".blobs").exists()
+
+
+def test_erofs_pull_downloads_once_where_range_is_ignored(
+    tmp_path, erofs_pull, monkeypatch
+):
+    """Storage that ignores ``Range`` answers erofs-pull's one-byte probe with
+    the whole blob, which erofs-pull reads rather than asking for it again."""
+    ranges = []
+
+    def serve_blob(index, handler, blob):
+        ranges.append(handler.headers.get("Range"))
+        _send(handler, blob)
+
+    layers = [_layer(("a", os.urandom(1 << 20), {}))]
+    with _serve_image(monkeypatch, layers, serve_blob) as image:
+        image_dir = pull_and_extract_container_image(
+            image, images_dir=str(tmp_path / "images")
+        )
+    assert ranges == ["bytes=0-0"]
+    assert os.path.exists(os.path.join(image_dir, ROOTFS_IMAGE))
 
 
 def test_failed_erofs_pull_without_mkfs_erofs(tmp_path, erofs_pull, monkeypatch):
