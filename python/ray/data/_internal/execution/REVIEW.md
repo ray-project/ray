@@ -19,6 +19,18 @@ Ensure that the streaming executor loop is not slow, as a slow loop reduces over
 - `RefBundle` ownership is respected: `owns_blocks` is set correctly, and
   bundles are destroyed/freed exactly once. Flag paths where blocks can be
   neither consumed nor freed (object store leak) or freed twice.
+- No reference outlives the bundle that owns it. `destroy_if_owned` only
+  records the deallocation for memory tracing — blocks are reclaimed by Ray
+  reference counting once no Python reference to the `ObjectRef` remains, so
+  anything still holding one keeps the block in the object store after the
+  executor has accounted it as freed. Check that an `ObjectRef` or `RefBundle`
+  captured in a closure, a retry/backpressure buffer, a stats or metrics dict,
+  or an operator's output queue is dropped (or the queue `clear()`ed) on the
+  consume, cancel, and failure paths alike. Reference cycles are the same bug
+  with a delay: a cycle through an operator, its bundles, or a captured `self`
+  defers reclamation to the cyclic collector, so a leak shows up as memory
+  that frees "eventually" under GC pressure rather than at consume time —
+  prefer breaking the cycle over relying on `gc`.
 - New/changed operators keep `OpRuntimeMetrics` and internal queue accounting
   consistent (inputs/outputs, object store bytes, pending task counts) —
   the resource manager and backpressure decisions are driven by these numbers.
