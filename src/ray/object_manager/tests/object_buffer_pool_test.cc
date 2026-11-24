@@ -186,14 +186,13 @@ TEST_F(ObjectBufferPoolTest, TestDeferredRelease) {
       obj_id, chunk_size_, 0, 0, fake_data_, /*defer_release=*/true));
   EXPECT_EQ(fake_plasma_client_->sealed_objects, (std::vector<ObjectID>{obj_id}));
   EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
+  // Only the store reference is kept: nothing in the pool tracks the sealed object.
+  AssertNoLeaks();
 
-  // The sealed object is neither aborted nor created again while its release is
-  // deferred.
+  // A pull cancelled while the release is deferred doesn't abort the sealed object.
   object_buffer_pool_.AbortCreate(obj_id);
   EXPECT_TRUE(fake_plasma_client_->aborted_objects.empty());
   EXPECT_TRUE(fake_plasma_client_->released_objects.empty());
-  ASSERT_FALSE(
-      object_buffer_pool_.CreateChunk(obj_id, owner_address, chunk_size_, 0, 0).ok());
 
   object_buffer_pool_.ReleaseObject(obj_id);
   EXPECT_EQ(fake_plasma_client_->released_objects, (std::vector<ObjectID>{obj_id}));

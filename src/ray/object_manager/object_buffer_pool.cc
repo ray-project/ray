@@ -172,25 +172,18 @@ bool ObjectBufferPool::WriteChunk(const ObjectID &object_id,
       return false;
     }
     RAY_CHECK_OK(store_client_->Seal(object_id));
-    it->second.sealed_ = true;
     RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
                    << ", last chunk index: " << chunk_index;
     if (!defer_release) {
       RAY_CHECK_OK(store_client_->Release(object_id));
-      create_buffer_state_.erase(it);
     }
+    create_buffer_state_.erase(it);
     return true;
   }
 }
 
 void ObjectBufferPool::ReleaseObject(const ObjectID &object_id) {
-  absl::MutexLock lock(&pool_mutex_);
-  auto it = create_buffer_state_.find(object_id);
-  RAY_CHECK(it != create_buffer_state_.end())
-      << "Object " << object_id << " has no CreateBufferState entry";
-  RAY_CHECK(it->second.sealed_) << "Object " << object_id << " is not sealed";
   RAY_CHECK_OK(store_client_->Release(object_id));
-  create_buffer_state_.erase(it);
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
@@ -208,20 +201,11 @@ void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
   pool_mutex_.Await(absl::Condition(&no_copy_inflight));
   // Mutex is acquired, no copy inflight, safe to abort the object_id.
   auto it = create_buffer_state_.find(object_id);
-  if (it == create_buffer_state_.end()) {
-    return;
+  if (it != create_buffer_state_.end()) {
+    RAY_CHECK_OK(store_client_->Release(object_id));
+    RAY_CHECK_OK(store_client_->Abort(object_id));
+    create_buffer_state_.erase(object_id);
   }
-  if (it->second.sealed_) {
-    // For move semantics: a received move is sealed but its store reference is not
-    // yet released (WriteChunk with defer_release), so its CreateBufferState entry
-    // can still be here when the pull is cancelled. The store rejects Abort on a
-    // sealed object, and ReleaseObject drops the reference and the entry once the
-    // object is pinned, so there is nothing to do.
-    return;
-  }
-  RAY_CHECK_OK(store_client_->Release(object_id));
-  RAY_CHECK_OK(store_client_->Abort(object_id));
-  create_buffer_state_.erase(object_id);
 }
 
 std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
