@@ -15,9 +15,10 @@ several data files once per file; ``IcebergConfig.read_file_tasks_sequentially
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, Optional
+from typing import TYPE_CHECKING, Iterator, Optional, Set
 
 import pyarrow as pa
+from typing_extensions import override
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
@@ -25,7 +26,12 @@ from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
+from ray.data.block import BlockMetadata
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -33,11 +39,12 @@ if TYPE_CHECKING:
     from pyiceberg.io import FileIO
     from pyiceberg.io.pyarrow import ArrowScan
     from pyiceberg.schema import Schema
+    from pyiceberg.table import FileScanTask
     from pyiceberg.table.metadata import TableMetadata
 
 
 @DeveloperAPI
-class IcebergFileReader(Reader[FileManifest]):
+class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
     """Decodes a manifest's files with PyIceberg's ``ArrowScan``, one at a time.
 
     ``ArrowScan`` reads Parquet and ORC data files; Avro ones raise
@@ -119,3 +126,141 @@ class IcebergFileReader(Reader[FileManifest]):
             for record_batch in self._scan(limit=remaining).to_record_batches([task]):
                 rows_read += record_batch.num_rows
                 yield record_batch
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        """Yield one ``BlockMetadata`` per file, with ``num_rows`` from Iceberg.
+
+        A file's ``record_count`` is written into Iceberg's own manifests, so
+        for most files this touches no data at all -- not even a Parquet
+        footer, unlike the equivalent path for a plain Parquet read.
+
+        It is an *upper* bound on two kinds of file, and each is handled rather
+        than assumed away. A file with delete files has rows that are still
+        counted but must not be returned, and a file whose per-file residual is
+        not ``AlwaysTrue`` has rows the filter rejects. Either way the count
+        comes from decoding the file, which is what PyIceberg's own ``count()``
+        does.
+
+        The residual is what makes a filtered ``count()`` worth attempting at
+        all: a filter on a partition column leaves every listed file with an
+        ``AlwaysTrue`` residual, so the whole count stays free. A filter on a
+        data column leaves none of them, and every file is decoded -- the same
+        work the ordinary read path would have done. Residuals are trusted only
+        for filters ``_residuals_match_arrow`` accepts.
+
+        Args:
+            file_manifest: The read unit's manifest, as the listing wrote it.
+
+        Yields:
+            BlockMetadata: One per file in ``file_manifest``, in order.
+        """
+        from pyiceberg.expressions import AlwaysTrue
+
+        trust_residuals = _residuals_match_arrow(self._row_filter)
+        for task in scan_tasks_from_manifest(manifest=file_manifest):
+            if (
+                trust_residuals
+                and isinstance(task.residual, AlwaysTrue)
+                and not task.delete_files
+            ):
+                num_rows = task.file.record_count
+            else:
+                num_rows = self._count_by_reading(task)
+            yield BlockMetadata(
+                num_rows=num_rows,
+                size_bytes=None,
+                exec_stats=None,
+                input_files=None,
+            )
+
+    def _count_by_reading(self, task: "FileScanTask") -> int:
+        """Rows ``task`` actually yields, by decoding it.
+
+        ``self._projected_schema`` is whatever the scanner asked for, which on
+        the count path is a stub field no file has (see
+        ``IcebergScanner.create_reader``), so the only columns decoded are the
+        ones the row filter names. PyIceberg reads those alongside the
+        projection, so the filter still binds. ``limit`` is deliberately not
+        passed: a partial read would undercount, and ``available_metadata``
+        already declines when a limit is set.
+
+        No ``raise_on_pickle_object_columns`` here, unlike ``read``: the batches
+        are counted and dropped, never handed to anyone and never unpickled, so
+        there is nothing to protect. A caller who then reads the data gets the
+        check from ``read``.
+
+        Args:
+            task: One Iceberg scan task, naming a single data file.
+
+        Returns:
+            The number of rows the task yields after filters and deletes.
+        """
+        return sum(
+            batch.num_rows for batch in self._scan(None).to_record_batches([task])
+        )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        # A limit would make the answer a partial count, and unlike a row
+        # filter there is nothing in the metadata that could account for it.
+        # Only ``NUM_ROWS``: Iceberg records a file's *compressed* size, which
+        # is not what a byte-metadata consumer means.
+        if self._limit is not None:
+            return set()
+        return {MetadataType.NUM_ROWS}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        # ``None`` means one task per manifest, and a manifest is already one
+        # bin-packed read unit. The Parquet reader batches to bound how many
+        # footers one task fetches; here the counts are in the manifest, so
+        # there is no per-file IO to spread out.
+        return None
+
+
+def _residuals_match_arrow(row_filter: "BooleanExpression") -> bool:
+    """Whether an ``AlwaysTrue`` residual means ``ArrowScan`` keeps every row.
+
+    Iceberg plans residuals from partition values with ``null != 3`` true, but
+    PyArrow evaluates it as null and drops the row. So only filters built from
+    operators that treat null the same way in both qualify.
+    """
+    from pyiceberg.expressions import (
+        AlwaysFalse,
+        AlwaysTrue,
+        And,
+        EqualTo,
+        GreaterThan,
+        GreaterThanOrEqual,
+        In,
+        IsNaN,
+        IsNull,
+        LessThan,
+        LessThanOrEqual,
+        NotNull,
+        Or,
+    )
+    from pyiceberg.expressions.visitors import rewrite_not
+
+    def agrees(expr: "BooleanExpression") -> bool:
+        if isinstance(expr, (And, Or)):
+            return agrees(expr.left) and agrees(expr.right)
+        return isinstance(
+            expr,
+            (
+                AlwaysTrue,
+                AlwaysFalse,
+                EqualTo,
+                GreaterThan,
+                GreaterThanOrEqual,
+                In,
+                IsNaN,
+                IsNull,
+                LessThan,
+                LessThanOrEqual,
+                NotNull,
+            ),
+        )
+
+    return agrees(rewrite_not(row_filter))

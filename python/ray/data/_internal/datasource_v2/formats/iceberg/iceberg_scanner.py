@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import pyarrow as pa
+from typing_extensions import override
 
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (
     IcebergFileReader,
@@ -82,6 +83,30 @@ class IcebergScanner(
             return self.schema
         # The schema the reader projects to, so the column order matches.
         return schema_to_pyarrow(self._pruned_schema(), include_field_ids=False)
+
+    @override
+    def metadata_row_count_is_exact(self) -> bool:
+        """A row filter is fine here; a limit is not.
+
+        Iceberg plans a *residual* per file: the part of the filter that the
+        file's partition values do not already satisfy. Where the residual is
+        ``AlwaysTrue`` every row of the file passes, so the file's recorded
+        ``record_count`` is the post-filter count, and a filter on a partition
+        column makes that true of every file the scan lists.
+        ``IcebergFileReader.read_metadata`` checks the residual per file and
+        decodes the ones that need it, so the answer is exact either way.
+
+        A limit is different: it is applied while reading, and nothing in the
+        metadata says which files it will stop at.
+
+        Column pruning changes a block's width, never its height. Delete files
+        are not visible here at all -- they are a property of a file, not of
+        the scan -- and are likewise handled per file in ``read_metadata``.
+
+        Returns:
+            ``True`` unless a limit has been pushed into this scanner.
+        """
+        return self.limit is None
 
     def create_reader(self) -> IcebergFileReader:
         pruned = self._pruned_schema()
