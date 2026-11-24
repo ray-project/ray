@@ -23,15 +23,12 @@ from ray._raylet import (
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E402,E501
-    _SHUFFLE_FILE_SERVER_NAMESPACE,
     ShuffleDiskError,
-    ShuffleFileServer,
     ShuffleHandle,
     _build_range_index,
     _compute_prefetch_layout,
     _counts_to_array,
     _fetch_from_file_server,
-    _file_server_name,
     _group_by_server,
     _handles_to_sources,
     _is_disk_exhausted,
@@ -50,6 +47,7 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     PartitionFn,
     ReduceFn,
     TaskScopedPartitioner,
+    cap_polars_threads,
     resolve_partition_fn,
 )
 from ray.data._internal.output_buffer import (
@@ -57,6 +55,7 @@ from ray.data._internal.output_buffer import (
     OutputBlockSizeOption,
 )
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -66,7 +65,6 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 _DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 # CAP on fetch connections per reducer: n_threads = min(#file-servers, this).
@@ -127,18 +125,6 @@ def _write_disk_shuffle_file(
             combined_input = transform_pyarrow.concat(arrow_inputs, promote_types=True)
             blocks = (block_transformer(combined_input),)
     node_id = ray.get_runtime_context().get_node_id()
-    # Ensure the file-server actor exists (get_if_exists=True → reuse across
-    # mappers on the same node). We don't need to keep the handle: reducers
-    # will look the file server up by name via ``ray.get_actor``.
-    ShuffleFileServer.options(  # pyrefly: ignore[missing-attribute]
-        name=_file_server_name(shuffle_id, node_id),
-        namespace=_SHUFFLE_FILE_SERVER_NAMESPACE,
-        get_if_exists=True,
-        lifetime="detached",
-        max_restarts=-1,
-        scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
-        num_cpus=0,
-    ).remote(out_dir)
 
     os.makedirs(out_dir, exist_ok=True)
     final_path = os.path.join(out_dir, f"map_{map_id}.shf")
@@ -202,9 +188,6 @@ def _write_disk_shuffle_file(
         # Dense per-partition range index (see _build_range_index): row ``p`` is
         # ``(offset, length)`` of partition ``p``'s frame.
         "index_ranges": _idx_ranges,
-        # ShuffleFileServer identity: reducers rebuild the actor name from
-        # (shuffle_id, node_id) and call ``ray.get_actor`` when they need
-        # the handle.
         "shuffle_id": shuffle_id,
         "node_id": node_id,
         "map_id": map_id,
@@ -250,6 +233,9 @@ class DiskShuffleWriteFn:
         self._block_transformer = block_transformer
 
     def __call__(self, blocks: Iterable[Block], ctx: "TaskContext") -> Iterator[Block]:
+        # Set in the task, not through a runtime env, which would make the
+        # writer unfusable with the upstream read or map.
+        cap_polars_threads()
         handle = _write_disk_shuffle_file(
             blocks,
             partition_fn=self._partition_fn,
@@ -327,7 +313,7 @@ def _disk_shuffle_reduce_task(
         out: List[List[pa.Table]] = []
         for tables, schema in zip(tables_by_input, schemas_by_input):
             if not tables and schema is not None:
-                tables = [schema.empty_table()]
+                tables = [_create_empty_table(schema)]
             out.append(tables)
         return out
 
@@ -382,7 +368,7 @@ def _disk_shuffle_reduce_task(
                 if not emit_empty_partition:
                     return
                 assert output_schema is not None
-                yield output_schema.empty_table()
+                yield _create_empty_table(output_schema)
 
         else:
 

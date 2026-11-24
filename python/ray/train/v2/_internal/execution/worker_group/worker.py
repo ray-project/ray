@@ -26,7 +26,7 @@ from ray.data._internal.iterator.push_split_iterator import (
     PushSplitReceiverMixin,
 )
 from ray.train import Checkpoint
-from ray.train.health._internal.probe_utils import ScheduledProbe
+from ray.train.health._internal.probe_utils import OnDemandPolls, ScheduledProbe
 from ray.train.health.probe import ProbeResult, WorkerProbe
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_WORKER_LOGGING,
@@ -262,7 +262,8 @@ class RayTrainWorker(PushSplitReceiverMixin):
         )
 
     def _sample_probe(self, scheduled_probe: ScheduledProbe) -> None:
-        """Poll the probe every ``poll_interval_s`` until the worker exits.
+        """Poll the probe every ``poll_interval_s``, from the start of one poll
+        to the start of the next, until the worker exits.
 
         Args:
             scheduled_probe: The probe and its interval.
@@ -270,11 +271,13 @@ class RayTrainWorker(PushSplitReceiverMixin):
         probe = scheduled_probe.probe
         train_context = get_train_context()
         while True:
+            started = time.monotonic()
             result = poll_probe(probe)
             # Each probe's thread writes here while poll_status() copies the dict.
             with train_context.health_lock:
                 train_context.probe_results[probe.probe_name()] = result
-            time.sleep(scheduled_probe.poll_interval_s)
+            elapsed_s = time.monotonic() - started
+            time.sleep(max(0.0, scheduled_probe.poll_interval_s - elapsed_s))
 
     def clear_result_queue(self) -> bool:
         """Drain the result queue, discarding any pending training reports.
@@ -385,34 +388,29 @@ def poll_probe(probe: WorkerProbe) -> ProbeResult:
     return result
 
 
-def start_on_demand_probes(probes: List[WorkerProbe]) -> None:
-    """Start polling probes once on this worker, in a thread of their own. Get
-    their results with ``get_on_demand_probe_results()``.
+def start_on_demand_probes(probes: List[WorkerProbe], timeout_s: float) -> None:
+    """Start polling probes once on this worker, each in a thread of its own,
+    and return. Get their results with ``get_on_demand_probe_results()``.
 
     Args:
         probes: The probes to poll.
+        timeout_s: How long the probes have to return.
     """
-
-    def poll_on_demand_probes() -> Dict[str, ProbeResult]:
-        return {probe.probe_name(): poll_probe(probe) for probe in probes}
-
-    runner = ThreadRunner()
-    runner.run(poll_on_demand_probes)
-    get_train_context().on_demand_probe_runner = runner
+    get_train_context().on_demand_polls = OnDemandPolls(probes, poll_probe, timeout_s)
 
 
 def get_on_demand_probe_results() -> Optional[Dict[str, ProbeResult]]:
     """Get the results of the probes that ``start_on_demand_probes()`` polls.
 
     Returns:
-        ``{probe name: ProbeResult}``, or ``None`` while they run.
+        ``{probe name: ProbeResult}``, with a ``TimeoutError`` result for each
+        probe still running after the ``timeout_s`` they were started with.
+        ``None`` while a probe is still running within it.
 
     Raises:
         RuntimeError: If no on-demand probes were started on this worker.
     """
-    runner = get_train_context().on_demand_probe_runner
-    if runner is None:
+    polls = get_train_context().on_demand_polls
+    if polls is None:
         raise RuntimeError("No on-demand probes were started on this worker.")
-    if runner.is_running():
-        return None
-    return runner.get_return_value()
+    return polls.results()

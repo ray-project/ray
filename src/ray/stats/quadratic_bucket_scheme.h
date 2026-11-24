@@ -18,6 +18,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -32,6 +34,8 @@ namespace stats {
 
   Bucket boundaries follow the formula: boundary = scale * b * (b + 1) / 2
   Bucket widths grow linearly: 1x, 2x, 3x, 4x...
+  Each bucket includes its upper boundary and excludes its lower boundary,
+  as Prometheus histograms do (see ToBucket).
 
   This provides fine granularity where most data is (low latencies) and coarse
   granularity for rare outliers (high latencies).
@@ -63,7 +67,30 @@ class QuadraticBucketScheme {
   int NumBuckets() const { return num_buckets_; }
 
   /**
+    Get the inclusive upper bound of a bucket.
+
+    @param bucket The bucket index, in [0, num_buckets - 1].
+    @return The inclusive upper bound of the bucket.
+   */
+  double UpperBound(int bucket) const;
+
+  /**
+    Get the finite bucket upper bounds, for an explicit-bucket histogram.
+
+    @return UpperBound(b) for b in [0, num_buckets - 2]. Explicit-bucket
+    histograms (OpenTelemetry, Prometheus) add an implicit +inf bucket after
+    the last bound, which serves as this scheme's overflow bucket, so a value
+    lands in the same bucket there as in ToBucket.
+   */
+  std::vector<double> ExplicitBounds() const;
+
+  /**
     Map a value to its corresponding bucket index.
+
+    Buckets include their upper bound and exclude their lower bound, i.e. bucket
+    b holds values in (UpperBound(b - 1), UpperBound(b)]. This matches
+    Prometheus `le` buckets and OpenTelemetry explicit bucket histograms, so a
+    value lands in the same bucket here as in the exported histogram.
 
     @param value The value to map to a bucket.
     @return The bucket index for this value, clamped to [0, num_buckets - 1].

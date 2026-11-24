@@ -53,6 +53,7 @@ from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.snowflake_datasink import SnowflakeDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
@@ -115,6 +116,7 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.aggregate import (
     AggregateFn,
     AggregateFnV2,
@@ -2413,10 +2415,6 @@ class Dataset:
             if sort is not False:
                 warnings.warn(
                     "`sort` is ignored when `target_num_rows_per_block` is set."
-                )
-            if shuffle:
-                warnings.warn(
-                    "`shuffle` is ignored when `target_num_rows_per_block` is set."
                 )
         else:
             if strict:
@@ -4977,9 +4975,11 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> ds = ray.data.read_binary_files(
+            ...     "s3://anonymous@ray-example-data/pdf-sample_0.pdf"
+            ... )
             >>> ds.input_files()
-            ['ray-example-data/iris.csv']
+            ['ray-example-data/pdf-sample_0.pdf']
 
         Returns:
             The list of input files used to create the dataset, or an empty
@@ -6318,6 +6318,11 @@ class Dataset:
     ) -> None:
         """Write this ``Dataset`` to a Snowflake table.
 
+        Each write task loads its rows with ``write_pandas``, which stages them as
+        Parquet files and runs ``COPY INTO``. If the table doesn't exist, Snowflake
+        creates it with column types inferred from the data. Otherwise, the rows are
+        appended to it.
+
         Examples:
 
             >>> import ray  # doctest: +SKIP_EXAMPLE
@@ -6332,7 +6337,10 @@ class Dataset:
             >>> ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
 
         Args:
-            table: The name of the table to write to.
+            table: The name of the table to write to, optionally qualified as
+                ``schema.table`` or ``database.schema.table``. Unquoted names aren't
+                case-sensitive, and double-quoted names are, as in Snowflake SQL.
+                Column names are case-sensitive.
             connection_parameters: Keyword arguments to pass to
                 ``snowflake.connector.connect``. To view supported parameters, read
                 https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
@@ -6343,21 +6351,8 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
         """  # noqa: E501
-        import snowflake.connector
-
-        def snowflake_connection_factory():
-            return snowflake.connector.connect(**connection_parameters)
-
-        # Get column names from the dataset schema
-        column_names = self.schema().names
-
-        # Generate the SQL insert statement
-        columns_str = ", ".join(f'"{col}"' for col in column_names)
-        placeholders = ", ".join(["%s"] * len(column_names))
-        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders})"
-        self.write_sql(
-            sql,
-            connection_factory=snowflake_connection_factory,
+        self.write_datasink(
+            SnowflakeDatasink(table=table, connection_parameters=connection_parameters),
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
@@ -7435,7 +7430,13 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
-            Dataset(num_rows=?, schema=...)
+            shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized)
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -7457,7 +7458,8 @@ class Dataset:
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
-            +- Dataset(num_rows=?, schema=...)
+            +- ReadFilesCsvV2
+               +- Dataset(num_rows=?, schema=...)
             >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -7677,7 +7679,7 @@ class Dataset:
                         }
                     )
                 else:
-                    meta = schema.empty_table().to_pandas()
+                    meta = _create_empty_table(schema).to_pandas()
 
         dfs = []
         for ref_bundle in self.iter_internal_ref_bundles():
@@ -7717,7 +7719,7 @@ class Dataset:
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
-            dtypes = schema.empty_table().to_pandas().dtypes
+            dtypes = _create_empty_table(schema).to_pandas().dtypes
         else:
             raise NotImplementedError(f"Unsupported format of schema {schema}")
         index_value = parse_index(pd.RangeIndex(-1))
@@ -7846,7 +7848,9 @@ class Dataset:
                     # `BlockAccessor.to_pandas()` path used for non-empty blocks
                     # so the two agree on column types (types_mapper, tensor
                     # casting, etc.).
-                    df = BlockAccessor.for_block(base_schema.empty_table()).to_pandas()
+                    df = BlockAccessor.for_block(
+                        _create_empty_table(base_schema)
+                    ).to_pandas()
                 else:
                     import pandas
 
@@ -8266,7 +8270,13 @@ class Dataset:
             >>> serialized_ds = ds.serialize_lineage()
             >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
             >>> print(ds)
-            Dataset(num_rows=?, schema=...)
+            shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized)
 
 
         Returns:
@@ -8329,7 +8339,13 @@ class Dataset:
             >>> serialized_ds = ds.serialize_lineage()
             >>> ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
             >>> print(ds)
-            Dataset(num_rows=?, schema=...)
+            shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized)
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.

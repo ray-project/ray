@@ -1,3 +1,5 @@
+import warnings
+
 import numpy as np
 import pytest
 
@@ -213,6 +215,27 @@ def test_repartition_invalid_inputs(
             target_num_rows_per_block=target_num_rows_per_block,
             shuffle=shuffle,
         )
+
+
+def test_repartition_target_num_rows_per_block_shuffle_does_not_warn(
+    ray_start_regular_shared_2_cpus, disable_fallback_to_object_extension
+):
+    """Regression test for https://github.com/ray-project/ray/issues/67604."""
+    with warnings.catch_warnings(record=True) as caught:
+        # pytest.ini ignores warnings by default; force capture so a stale
+        # "shuffle is ignored" warning is observable.
+        warnings.simplefilter("always")
+        with pytest.raises(
+            ValueError,
+            match="`shuffle` must be False when `target_num_rows_per_block` is set.",
+        ):
+            ray.data.range(10).repartition(target_num_rows_per_block=10, shuffle=True)
+
+    assert not any(
+        "`shuffle` is ignored when `target_num_rows_per_block` is set."
+        in str(warning.message)
+        for warning in caught
+    ), [str(warning.message) for warning in caught]
 
 
 @pytest.mark.parametrize("shuffle", [True, False])
