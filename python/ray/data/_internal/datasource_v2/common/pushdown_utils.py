@@ -236,6 +236,36 @@ def has_column_arithmetic(expr: Expr) -> bool:
     return False
 
 
+def has_division(expr: Expr) -> bool:
+    """Whether ``expr`` uses ``/``.
+
+    Ray divides integers as floats, but ``Expr.to_pyarrow()`` can't see column
+    types, so the PyArrow filter it builds truncates them.
+    """
+    expr = expr._unalias()
+    if isinstance(expr, BinaryExpr):
+        return (
+            expr.op == Operation.DIV
+            or has_division(expr=expr.left)
+            or has_division(expr=expr.right)
+        )
+    if isinstance(expr, UnaryExpr):
+        return has_division(expr=expr.operand)
+    if isinstance(expr, PyArrowComputeUDFExpr):
+        return any(has_division(expr=arg) for arg in expr.args)
+    return False
+
+
+def division_column_names(predicate: Expr) -> Set[str]:
+    """Columns of the top-level ``AND`` conjuncts that use ``/``."""
+    return {
+        name
+        for conjunct in flatten_predicate_chain(predicate, Operation.AND)
+        if has_division(expr=conjunct)
+        for name in get_column_references(conjunct)
+    }
+
+
 @dataclass
 class _SplitPredicateResult:
     """Result of splitting a predicate by column type.

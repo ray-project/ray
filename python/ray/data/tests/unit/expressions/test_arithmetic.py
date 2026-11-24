@@ -10,13 +10,68 @@ This module tests:
 """
 
 import math
+import operator
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from hypothesis import given, settings, strategies as st
 
 from ray.data._internal.planner.plan_expression.expression_evaluator import eval_expr
 from ray.data.expressions import BinaryExpr, Operation, UDFExpr, col, lit
+
+_OPERATORS = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": operator.truediv,
+}
+_INT_TYPES = [
+    pa.int8(),
+    pa.int16(),
+    pa.int32(),
+    pa.int64(),
+    pa.uint8(),
+    pa.uint16(),
+    pa.uint32(),
+]
+
+
+@st.composite
+def _column_and_number(draw):
+    """A column, ``+ - * /``, and a number of the column's kind on either side."""
+    symbol = draw(st.sampled_from(list(_OPERATORS)))
+    column_type = draw(st.sampled_from(_INT_TYPES + [pa.float32(), pa.float64()]))
+    if pa.types.is_integer(column_type):
+        info = np.iinfo(column_type.to_pandas_dtype())
+        low, high = int(info.min), int(info.max)
+        if symbol != "/":
+            # Keeps ``x * 300`` inside int64.
+            low, high = max(low, -(2**53)), min(high, 2**53)
+        element = st.integers(low, high)
+        number = draw(st.integers(-300, 300))
+    else:
+        element = st.floats(-1e6, 1e6, width=column_type.bit_width)
+        number = draw(st.floats(-300, 300))
+    values = draw(st.lists(element, min_size=1, max_size=5))
+    number_on_left = draw(st.booleans())
+    if symbol == "/":
+        # Python raises on division by zero.
+        if number_on_left:
+            values = [value if value != 0 else 1 for value in values]
+        elif number == 0:
+            number = 1
+    return pa.array(values, column_type), symbol, number, number_on_left
+
+
+def _python_answer(symbol, left, right):
+    if symbol == "/":
+        # Integers round to float64 first, as in NumPy. Above 2**53 Python's
+        # own ``/`` can differ in the last digit.
+        return float(left) / float(right)
+    return _OPERATORS[symbol](left, right)
+
 
 # ──────────────────────────────────────
 # Basic Arithmetic Operations
@@ -228,23 +283,22 @@ class TestBasicArithmetic:
         )
 
     @pytest.mark.parametrize("block_format", ["arrow", "pandas"])
-    @pytest.mark.parametrize(
-        "values,expr,python",
-        [
-            (pa.array([-7, 7, 100], pa.int8()), col("x") + 100, lambda x: x + 100),
-            (pa.array([0.1], pa.float32()), col("x") + 0.1, lambda x: x + 0.1),
-            (pa.array([-7, 7]), col("x") / 2, lambda x: x / 2),
-            (pa.array([2**53 + 1]), col("x") / 1, lambda x: x / 1),
-        ],
-        ids=["int8_add", "float32_add", "int_div", "int_div_above_2_53"],
-    )
-    def test_matches_python(self, values, expr, python, block_format):
+    @settings(max_examples=300, derandomize=True, deadline=None)
+    @given(case=_column_and_number())
+    def test_arithmetic_with_a_number_matches_python(self, block_format, case):
         """Arrow and pandas blocks both give Python's answer and result type."""
+        values, symbol, number, number_on_left = case
+        operation = _OPERATORS[symbol]
+        if number_on_left:
+            expr = operation(number, col("x"))
+            expected = [_python_answer(symbol, number, v) for v in values.to_pylist()]
+        else:
+            expr = operation(col("x"), number)
+            expected = [_python_answer(symbol, v, number) for v in values.to_pylist()]
         table = pa.table({"x": values})
         block = table if block_format == "arrow" else table.to_pandas()
         result = eval_expr(expr, block)
         actual = result.to_pylist() if block_format == "arrow" else result.tolist()
-        expected = [python(value) for value in values.to_pylist()]
         assert actual == expected
         assert [type(value) for value in actual] == [type(value) for value in expected]
 

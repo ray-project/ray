@@ -6,6 +6,7 @@ import pyarrow.dataset as pds
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -194,10 +195,11 @@ class OrcFileReader(FileReader):
                         if name in partition_columns
                     }
                 )
+                # Ray's evaluator, so ``/`` divides integers as floats.
                 partition_matches = (
-                    partition_table.filter(
-                        split.partition_predicate.to_pyarrow()
-                    ).num_rows
+                    ArrowBlockAccessor(partition_table)
+                    .filter(split.partition_predicate)
+                    .num_rows
                     > 0
                 )
 

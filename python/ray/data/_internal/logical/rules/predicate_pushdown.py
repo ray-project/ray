@@ -1,11 +1,15 @@
 import copy
 from dataclasses import dataclass, is_dataclass, replace
-from typing import Dict, List, Optional, Tuple
+from typing import AbstractSet, Dict, List, Optional, Tuple
 
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     append_unique_predicate,
     combine_predicate_chain,
     flatten_predicate_chain,
+    has_division,
+)
+from ray.data._internal.datasource_v2.interfaces.pushdown import (
+    SupportsPartitionPruning,
 )
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -24,6 +28,7 @@ from ray.data._internal.logical.operators import (
     Limit,
     Project,
     RandomShuffle,
+    ReadFiles,
     Repartition,
     Union,
 )
@@ -228,12 +233,21 @@ class PredicatePushdown(Rule):
         return visitor.visit(predicate_expr)
 
     @classmethod
-    def _split_by_convertibility(cls, predicate: Expr) -> _ConvertibilitySplit:
-        """Split the top level ``AND`` chain into PyArrow-convertible conjuncts and the rest."""
+    def _split_by_convertibility(
+        cls, predicate: Expr, partition_columns: AbstractSet[str]
+    ) -> _ConvertibilitySplit:
+        """Split the top level ``AND`` chain into PyArrow-convertible conjuncts and the rest.
+
+        A conjunct with ``/`` is pushed only on partition columns, which Ray
+        evaluates itself; PyArrow would truncate integer division.
+        """
         convertible: List[Expr] = []
         residual: List[Expr] = []
         for conjunct in flatten_predicate_chain(predicate, Operation.AND):
-            if conjunct._is_pyarrow_convertible():
+            if conjunct._is_pyarrow_convertible() and (
+                not has_division(expr=conjunct)
+                or set(get_column_references(conjunct)) <= partition_columns
+            ):
                 convertible.append(conjunct)
             else:
                 residual.append(conjunct)
@@ -265,7 +279,13 @@ class PredicatePushdown(Rule):
             # stay as a Filter. Split the top level AND chain so the convertible
             # conjuncts can still be pushed while the residual ones are kept as
             # a Filter above the read.
-            split = cls._split_by_convertibility(predicate_expr)
+            partition_columns = (
+                input_op.scanner.partition_columns
+                if isinstance(input_op, ReadFiles)
+                and isinstance(input_op.scanner, SupportsPartitionPruning)
+                else set()
+            )
+            split = cls._split_by_convertibility(predicate_expr, partition_columns)
 
             if split.convertible is None:
                 return filter_op
