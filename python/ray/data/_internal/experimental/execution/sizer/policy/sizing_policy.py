@@ -419,7 +419,7 @@ class SizingPolicy:
         ctx: DecisionContext,
         active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> List[PlacedSizingRequest]:
-        nodes = self._transfer_book.transfer_nodes(recipient, ctx)
+        nodes = ctx.capacity.free_nodes(recipient)
         if not nodes:
             return []
         pool = recipient.actor_pool

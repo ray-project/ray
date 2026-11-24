@@ -624,7 +624,7 @@ def _fire(book, recipient, donor, ctx, removable=1):
         per_actor=donor.actor_pool.per_actor_resource_usage(),
         removable=removable,
     )
-    nodes = book.transfer_nodes(recipient, ctx)
+    nodes = ctx.capacity.free_nodes(recipient)
     plan, refusal = book.plan(recipient, 1, nodes, [donor_capacity], ctx)
     assert plan is not None, refusal
     return book.fire(recipient, plan, {donor: donor_capacity}, ctx)
@@ -686,14 +686,18 @@ def test_transfer_places_the_recipient_once_donor_capacity_frees():
     assert metrics.actions[-1] == ("bottleneck_transfer", "recipient", "landed")
 
 
-def test_transfer_opens_one_transfer_per_node():
-    # A node an open transfer still owes on is not a node for another one.
-    donor = _donor_op()
+def test_fire_refuses_a_second_open_transfer():
+    # One transfer at a time: firing another while one is open is a bug.
+    donor, other_donor = _donor_op(), _donor_op("other_donor")
     first, second = _op("first"), _op("second")
     book = _book()
-    ctx = _ctx(free={"node": ExecutionResources(cpu=0)}, non_pg_ops=[donor, first])
+    ctx = _ctx(
+        free={"node": ExecutionResources(cpu=0)},
+        non_pg_ops=[donor, other_donor, first, second],
+    )
     _fire(book, first, donor, ctx)
-    assert book.transfer_nodes(second, _ctx(non_pg_ops=[second])) == []
+    with pytest.raises(AssertionError, match="still open"):
+        _fire(book, second, other_donor, ctx)
 
 
 def test_transfer_times_out_while_still_owed():

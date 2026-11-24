@@ -741,22 +741,6 @@ class TransferBook:
                 )
         return requests
 
-    def transfer_nodes(
-        self,
-        recipient: "ExperimentalActorPoolMapOperator",
-        ctx: DecisionContext,
-    ) -> List[NodeIdStr]:
-        """Return the nodes the recipient may run on, minus any node where an
-        open transfer has not yet brought up all of its recipient's actors.
-        """
-        busy_nodes = {
-            node
-            for transfer in self.state.in_flight.values()
-            for node, owed in transfer.owed_by_node.items()
-            if owed > 0
-        }
-        return [n for n in ctx.capacity.free_nodes(recipient) if n not in busy_nodes]
-
     def plan(
         self,
         recipient: "ExperimentalActorPoolMapOperator",
@@ -792,8 +776,17 @@ class TransferBook:
         timeout_s: float = SIZER_TRANSFER_TIMEOUT_S,
     ) -> List[PlacedSizingRequest]:
         """Fire a planned transfer: drain its victims, hold the recipient's
-        capacity, open it in flight. [] if it would thrash."""
+        capacity, open it in flight. [] if it would thrash.
+
+        Only one transfer is open at a time (the policy fires one only when
+        the book is IDLE), so a transfer never shares a node with another
+        open transfer.
+        """
         state = self.state
+        assert not state.in_flight, (
+            f"transfer to {recipient.name} fired while "
+            f"{[op.name for op in state.in_flight]} still open"
+        )
         pool = recipient.actor_pool
         donor_ops = frozenset(op for p in plan for op in p.victims_by_donor())
         if self._is_thrashing(recipient, donor_ops, ctx.now):
