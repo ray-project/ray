@@ -147,10 +147,10 @@ class OperatorSizer:
         }
         for op in self._awaiting_first_input:
             self._guard.block(op, "awaiting first input")
-        # Actors last held for each op awaiting its first input, and the
-        # one-time grant to that count queued when the input arrives.
+        # Actors held for each op awaiting its first input. Each tick refreshes
+        # the entries of ops still waiting; a released op keeps its entry until
+        # the WANT pass pops it as a one-time grant up to that count.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
-        self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
         # submits an async RPC and serves the answer on a later call).
@@ -216,7 +216,7 @@ class OperatorSizer:
         t1 = time.perf_counter()
         if ctx is None:
             return
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._record_held_actors(ctx)
 
         self._cross_op_optimize(ctx, seconds_since_allocation_change)
         t2 = time.perf_counter()
@@ -238,6 +238,12 @@ class OperatorSizer:
             e2e_s=t5 - t0,
         )
 
+    def _record_held_actors(self, ctx: TickContext) -> None:
+        """Refresh the held count of each op still awaiting its first input.
+        An op released earlier this step keeps the count from the last tick."""
+        for op in self._awaiting_first_input:
+            self._held_actors_by_op[op] = ctx.capacity.held_actors_by_op.get(op, 0)
+
     def _release_started_ops(self) -> None:
         """Let ops that have now received their first input scale."""
         started = {
@@ -245,9 +251,6 @@ class OperatorSizer:
         }
         for op in started:
             self._guard.release(op)
-            held = self._held_actors_by_op.pop(op, 0)
-            if held > 0:
-                self._grow_to_held[op] = held
         self._awaiting_first_input -= started
 
     def _observe(self) -> None:
@@ -355,7 +358,7 @@ class OperatorSizer:
                 )
             # Released on its first input: grow straight into the room held
             # for it while it waited (its warmup share), once.
-            held = self._grow_to_held.pop(op, 0)
+            held = self._held_actors_by_op.pop(op, 0)
             to_held = held - pool.serving_size()
             if to_held > 0 and (want is None or want.delta < to_held):
                 want = ActorPoolScalingRequest.upscale(

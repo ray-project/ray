@@ -472,7 +472,7 @@ class _TestSizer(OperatorSizer):
         self._release_started_ops()
         ctx = self.next_tick(force=force)
         assert ctx is not None
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._record_held_actors(ctx)
         return self._per_op_how_many(ctx)
 
     @property
