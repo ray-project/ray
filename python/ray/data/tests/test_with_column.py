@@ -672,14 +672,16 @@ def test_with_column_multiple_callable_class_udfs(ray_start_regular_shared):
             return pc.add(x, self.addend)
 
     # Create dataset
-    ds = ray.data.range(5)
+    # Materialize the input and give each UDF actor half a CPU so that both actor
+    # pools fit on the 1-CPU cluster in whichever order Ray starts them.
+    ds = ray.data.range(5).materialize()
 
     # Use multiple callable class UDFs
     times_two = Multiplier(2)
     plus_ten = Adder(10)
 
-    result = ds.with_column("doubled", times_two(col("id"))).with_column(
-        "plus_ten", plus_ten(col("id"))
+    result = ds.with_column("doubled", times_two(col("id")), num_cpus=0.5).with_column(
+        "plus_ten", plus_ten(col("id")), num_cpus=0.5
     )
 
     result_df = result.to_pandas()
@@ -714,15 +716,17 @@ def test_with_column_same_callable_class_different_constructor_args(
             return pc.multiply(x, self.factor)
 
     # Create dataset
-    ds = ray.data.range(5)
+    # Materialize the input and give each UDF actor half a CPU so that both actor
+    # pools fit on the 1-CPU cluster in whichever order Ray starts them.
+    ds = ray.data.range(5).materialize()
 
     # Use the SAME class with DIFFERENT constructor arguments
     times_two = Multiplier(2)
     times_three = Multiplier(3)
 
-    result = ds.with_column("times_two", times_two(col("id"))).with_column(
-        "times_three", times_three(col("id"))
-    )
+    result = ds.with_column(
+        "times_two", times_two(col("id")), num_cpus=0.5
+    ).with_column("times_three", times_three(col("id")), num_cpus=0.5)
 
     print(result.explain())
 
