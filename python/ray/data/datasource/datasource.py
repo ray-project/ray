@@ -1,10 +1,10 @@
+import abc
 import copy
-import types
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, final
 
 import numpy as np
 
-from ray.data._internal.untrusted_unpickling import guard_datasource_call
+from ray.data._internal.untrusted_unpickling import forbid_untrusted_unpickling
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
@@ -148,8 +148,26 @@ class _DatasourcePredicatePushdownMixin:
         return clone
 
 
+class _GuardedConstructionMeta(abc.ABCMeta):
+    """Constructs every datasource with unpickling of untrusted bytes refused.
+
+    Datasource constructors often list, sample or open the files they read, so
+    ``SomeDatasource(...)`` runs under the same guard as ``get_read_tasks``.
+    Based on ``ABCMeta`` so subclasses that also inherit ``ABC`` don't conflict.
+    Unpickling a datasource doesn't call the class, so it isn't affected.
+    """
+
+    def __call__(cls, *args, **kwargs):
+        with forbid_untrusted_unpickling():
+            return super().__call__(*args, **kwargs)
+
+
 @PublicAPI
-class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdownMixin):
+class Datasource(
+    _DatasourceProjectionPushdownMixin,
+    _DatasourcePredicatePushdownMixin,
+    metaclass=_GuardedConstructionMeta,
+):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
     User may subclass this class to implement a custom datasource. The subclass should
@@ -195,18 +213,39 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         """Initialize the datasource and its mixins."""
         _DatasourcePredicatePushdownMixin.__init__(self)
 
-    def __init_subclass__(cls, **kwargs):
-        super().__init_subclass__(**kwargs)
-        # Driver-side datasource code runs with the forbid flag set (read tasks
-        # are covered by the read operator). ``getattr`` also catches methods
-        # inherited from mixins; wrapping is idempotent. ``Datasource``'s own
-        # stubs stay unwrapped so ``should_create_reader`` can detect them.
-        for name in ("__init__", "get_read_tasks", "estimate_inmemory_data_size"):
-            fn = getattr(cls, name, None)
-            if fn is Datasource.__dict__.get(name):
-                continue
-            if isinstance(fn, types.FunctionType):
-                setattr(cls, name, guard_datasource_call(fn))
+    @final
+    def guarded_get_read_tasks(
+        self, parallelism: int, **kwargs: Any
+    ) -> List["ReadTask"]:
+        """Call :meth:`get_read_tasks` with unpickling of untrusted bytes refused.
+
+        Ray Data plans reads through this method, never ``get_read_tasks``
+        directly, so datasource code that parses external bytes can't unpickle
+        them. Implement :meth:`get_read_tasks`; don't override this method.
+
+        Args:
+            parallelism: The requested read parallelism.
+            **kwargs: Passed through to :meth:`get_read_tasks`.
+
+        Returns:
+            The read tasks returned by :meth:`get_read_tasks`.
+        """
+        with forbid_untrusted_unpickling():
+            return self.get_read_tasks(parallelism, **kwargs)
+
+    @final
+    def guarded_estimate_inmemory_data_size(self) -> Optional[int]:
+        """Call :meth:`estimate_inmemory_data_size` with unpickling refused.
+
+        Ray Data calls this method, never ``estimate_inmemory_data_size``
+        directly. Implement :meth:`estimate_inmemory_data_size`; don't override
+        this method.
+
+        Returns:
+            The estimate returned by :meth:`estimate_inmemory_data_size`.
+        """
+        with forbid_untrusted_unpickling():
+            return self.estimate_inmemory_data_size()
 
     @Deprecated
     def create_reader(self, **read_args) -> "Reader":
@@ -296,6 +335,19 @@ class Reader:
     For example, it is useful for :class:`Datasets <ray.data.Dataset>` to know the
     in-memory size of the read prior to executing it.
     """
+
+    # See ``Datasource.guarded_get_read_tasks``.
+    @final
+    def guarded_get_read_tasks(
+        self, parallelism: int, **kwargs: Any
+    ) -> List["ReadTask"]:
+        with forbid_untrusted_unpickling():
+            return self.get_read_tasks(parallelism, **kwargs)
+
+    @final
+    def guarded_estimate_inmemory_data_size(self) -> Optional[int]:
+        with forbid_untrusted_unpickling():
+            return self.estimate_inmemory_data_size()
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         """Return an estimate of the in-memory data size, or None if unknown.

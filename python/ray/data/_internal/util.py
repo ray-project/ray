@@ -191,7 +191,7 @@ def _autodetect_parallelism(
     max_reasonable_parallelism = sys.maxsize
 
     if mem_size is None and datasource_or_legacy_reader:
-        mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
+        mem_size = datasource_or_legacy_reader.guarded_estimate_inmemory_data_size()
     if (
         mem_size is not None
         # Guard against non-scalar types (e.g. numpy arrays) that would cause

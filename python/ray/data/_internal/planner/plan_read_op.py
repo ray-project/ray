@@ -19,10 +19,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.operators import Read
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.untrusted_unpickling import (
-    forbid_untrusted_unpickling,
-    guard_iterator,
-)
+from ray.data._internal.untrusted_unpickling import guard_iterator
 from ray.data._internal.util import _warn_on_high_parallelism
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -79,13 +76,11 @@ def plan_read_op(
             parallelism is not None
         ), "Read parallelism must be set by the optimizer before execution"
 
-        # Get the original read tasks with the forbid unpickling flag set.
-        with forbid_untrusted_unpickling():
-            read_tasks = op.datasource_or_legacy_reader.get_read_tasks(
-                parallelism,
-                per_task_row_limit=op.per_block_limit,
-                data_context=data_context,
-            )
+        read_tasks = op.datasource_or_legacy_reader.guarded_get_read_tasks(
+            parallelism,
+            per_task_row_limit=op.per_block_limit,
+            data_context=data_context,
+        )
 
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 

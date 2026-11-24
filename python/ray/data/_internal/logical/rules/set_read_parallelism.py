@@ -34,7 +34,7 @@ def compute_additional_split_factor(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
     )
     num_read_tasks = len(
-        datasource_or_legacy_reader.get_read_tasks(detected_parallelism)
+        datasource_or_legacy_reader.guarded_get_read_tasks(detected_parallelism)
     )
     expected_block_size = None
     if mem_size:

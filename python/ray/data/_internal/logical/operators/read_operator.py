@@ -144,7 +144,7 @@ class Read(
             return BlockMetadataWithSchema.from_metadata(empty_meta, schema=None)
 
         # HACK: Try to get a single read task to get the metadata.
-        read_tasks = self.datasource.get_read_tasks(1)
+        read_tasks = self.datasource.guarded_get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
             empty_meta = BlockMetadata(

@@ -909,7 +909,9 @@ def read_datasource(
     )
 
     # TODO(hchen/chengsu): Remove the duplicated get_read_tasks call here
-    read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
+    read_tasks = datasource_or_legacy_reader.guarded_get_read_tasks(
+        requested_parallelism
+    )
 
     stats = DatasetStats(
         metadata={

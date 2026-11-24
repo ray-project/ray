@@ -1,9 +1,10 @@
 """Refuse to unpickle untrusted bytes while Ray Data datasource code runs.
 
 Datasource code turns bytes Ray doesn't control into blocks. It runs with a
-per-thread "forbid" flag set: on the driver (datasource constructor,
-``get_read_tasks``, ``estimate_inmemory_data_size``, V2 schema sampling) and in
-read tasks around each ``next()`` of a read function.
+per-thread "forbid" flag set: on the driver (datasource construction, and
+``get_read_tasks`` and ``estimate_inmemory_data_size`` called through
+``Datasource``'s guarded entry points, and V2 schema sampling) and in read tasks
+around each ``next()`` of a read function.
 
 How it works: every unpickler (C ``pickle.loads``, ``pickle.Unpickler`` and its
 subclasses, ``ray.cloudpickle``) raises the ``pickle.find_class`` audit event
@@ -26,7 +27,6 @@ variable: it covers the thread that set it, not helper threads a library starts.
 """
 
 import contextvars
-import functools
 import os
 import sys
 import threading
@@ -158,20 +158,3 @@ def _guarded(
         if close is not None:
             with forbid_untrusted_unpickling(hint):
                 close()
-
-
-_GUARDED_ATTR = "_ray_unpickling_guarded"
-
-
-def guard_datasource_call(fn: Callable) -> Callable:
-    """Wrap a datasource method so it runs with the forbid flag set. Idempotent."""
-    if getattr(fn, _GUARDED_ATTR, False):
-        return fn
-
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        with forbid_untrusted_unpickling():
-            return fn(*args, **kwargs)
-
-    setattr(wrapper, _GUARDED_ATTR, True)
-    return wrapper

@@ -1,6 +1,10 @@
 # Bugbot Rules
 
 ## Rule: Unpickling in Ray Data readers
+- If Ray Data code calls a datasource's or reader's `get_read_tasks` or `estimate_inmemory_data_size` directly instead of `guarded_get_read_tasks` / `guarded_estimate_inmemory_data_size`, post:
+
+> ⚠️ Only the `guarded_*` entry points run datasource code under the unpickling guard. Call those instead.
+
 - If a change adds a place that runs datasource, scanner, reader, indexer or metadata-reader code that can open external bytes (a driver call, planner op, optimizer rule, actor method or task), or starts a thread that does, and that code is not under `forbid_untrusted_unpickling()` / `guard_iterator` (threads: `contextvars.copy_context().run`), post:
 
 > ⚠️ This runs code that reads external bytes outside the unpickling guard. Wrap it in `forbid_untrusted_unpickling()` (or `guard_iterator` for a generator), and start helper threads with `contextvars.copy_context().run` so they inherit the flag.

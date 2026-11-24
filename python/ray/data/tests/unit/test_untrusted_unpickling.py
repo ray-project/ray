@@ -7,6 +7,7 @@ and Ray-internal ``ray.get`` under the guard are covered end to end by
 ``python/ray/data/tests/test_untrusted_unpickling.py``.
 """
 
+import abc
 import io
 import multiprocessing
 import os
@@ -14,6 +15,7 @@ import pickle
 import sys
 import threading
 import types
+from typing import Any, Dict
 
 import numpy as np
 import pyarrow as pa
@@ -28,12 +30,10 @@ from ray.data._internal.untrusted_unpickling import (
     UntrustedUnpicklingError,
     allow_unsafe_unpickling,
     forbid_untrusted_unpickling,
-    guard_datasource_call,
     guard_iterator,
     is_unpickling_forbidden,
 )
-from ray.data.block import BlockMetadata
-from ray.data.datasource import Datasource, ReadTask
+from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import Reader
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -365,69 +365,108 @@ class _RecordingDatasource(Datasource):
 
     def __init__(self):
         super().__init__()
-        self.seen = {"__init__": is_unpickling_forbidden()}
+        self.seen: Dict[str, Any] = {"__init__": is_unpickling_forbidden()}
 
     def estimate_inmemory_data_size(self):
         self.seen["estimate_inmemory_data_size"] = is_unpickling_forbidden()
         return None
 
     def get_read_tasks(self, parallelism, per_task_row_limit=None, data_context=None):
-        self.seen["get_read_tasks"] = is_unpickling_forbidden()
-        return [
-            ReadTask(
-                lambda: [pa.table({"a": [1]})],
-                BlockMetadata(
-                    num_rows=1, size_bytes=8, input_files=None, exec_stats=None
-                ),
-            )
-        ]
+        self.seen["get_read_tasks"] = (is_unpickling_forbidden(), per_task_row_limit)
+        return []
 
 
-class _RecordingSubclass(_RecordingDatasource):
+class _AbstractBase(abc.ABC):
+    @abc.abstractmethod
+    def extra(self) -> int:
+        ...
+
+
+class _AbcDatasource(_AbstractBase, _RecordingDatasource):
+    """A datasource that also inherits ``ABC`` must not hit a metaclass conflict."""
+
+    def extra(self) -> int:
+        return 1
+
+
+class _OuterDatasource(_RecordingDatasource):
+    """Builds another datasource in its constructor, as some readers do."""
+
     def __init__(self):
         super().__init__()
-        self.seen["subclass__init__"] = is_unpickling_forbidden()
+        self.inner = _RecordingDatasource()
 
 
-class _ReadTasksMixin:
-    def get_read_tasks(self, parallelism, per_task_row_limit=None, data_context=None):
-        return [is_unpickling_forbidden()]
+def test_datasource_construction_is_guarded():
+    for ds in (_RecordingDatasource(), _AbcDatasource(), _OuterDatasource()):
+        assert ds.seen["__init__"] is True
+    assert _OuterDatasource().inner.seen["__init__"] is True
+    assert not is_unpickling_forbidden()
 
 
-class _MixinDatasource(_ReadTasksMixin, Datasource):
+def test_datasource_construction_refuses_unpickling():
+    class _UnpicklesInInit(Datasource):
+        def __init__(self, blob):
+            super().__init__()
+            self.value = pickle.loads(blob)
+
+    with pytest.raises(UntrustedUnpicklingError):
+        _UnpicklesInInit(CLASS_PICKLE)
+
+
+def test_datasource_round_trips_through_pickle_outside_construction():
+    # Unpickling doesn't call the class, so shipping a datasource to workers
+    # isn't refused, and the guard isn't left set.
+    ds = _RecordingDatasource()
+    with forbid_untrusted_unpickling():
+        blob = pickle.dumps(ds)
+    copy = pickle.loads(blob)
+    assert isinstance(copy, _RecordingDatasource)
+    assert not is_unpickling_forbidden()
+
+
+def test_abstract_datasource_still_rejects_missing_methods():
+    class _Missing(_AbstractBase, Datasource):
+        pass
+
+    with pytest.raises(TypeError, match="abstract"):
+        _Missing()  # pyrefly: ignore[bad-instantiation]
+    assert not is_unpickling_forbidden()
+
+
+class _RecordingLegacyReader(Reader):
+    def __init__(self):
+        self.seen = {}
+
     def estimate_inmemory_data_size(self):
+        self.seen["estimate_inmemory_data_size"] = is_unpickling_forbidden()
         return None
 
-
-def test_datasource_hooks_from_mixin_run_guarded():
-    assert _MixinDatasource().get_read_tasks(1) == [True]
-
-
-def test_legacy_reader_datasource_still_detected():
-    # Wrapping must not make the base ``get_read_tasks`` stub look implemented.
-    class _LegacyDatasource(Datasource):
-        def create_reader(self, **read_args) -> Reader:
-            raise AssertionError("not called")
-
-    ds = _LegacyDatasource()
-    assert ds.should_create_reader
-    assert _LegacyDatasource.get_read_tasks is Datasource.get_read_tasks
+    def get_read_tasks(self, parallelism):
+        self.seen["get_read_tasks"] = is_unpickling_forbidden()
+        return []
 
 
-def test_datasource_hooks_run_guarded():
-    ds = _RecordingSubclass()
-    ds.estimate_inmemory_data_size()
-    ds.get_read_tasks(1)
+def test_datasource_guarded_entry_points():
+    ds = _RecordingDatasource()
+    assert ds.guarded_estimate_inmemory_data_size() is None
+    assert ds.guarded_get_read_tasks(1, per_task_row_limit=5) == []
     assert ds.seen == {
         "__init__": True,
-        "subclass__init__": True,
         "estimate_inmemory_data_size": True,
-        "get_read_tasks": True,
+        "get_read_tasks": (True, 5),
     }
-    # Wrapping happens once per defining class and never double-wraps.
-    for fn in (_RecordingSubclass.__init__, _RecordingDatasource.__init__):
-        assert guard_datasource_call(fn) is fn
+    # The hooks themselves are not wrapped; only the entry points guard.
+    ds.get_read_tasks(1)
+    assert ds.seen["get_read_tasks"] == (False, None)
     assert not is_unpickling_forbidden()
+
+
+def test_legacy_reader_guarded_entry_points():
+    reader = _RecordingLegacyReader()
+    reader.guarded_estimate_inmemory_data_size()
+    reader.guarded_get_read_tasks(1)
+    assert reader.seen == {"estimate_inmemory_data_size": True, "get_read_tasks": True}
 
 
 if __name__ == "__main__":
