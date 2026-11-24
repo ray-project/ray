@@ -264,7 +264,7 @@ class _BatchQueue:
         self.max_batch_size = new_max_batch_size
         self._warn_if_max_batch_size_exceeds_max_ongoing_requests()
 
-    def put(self, request: _SingleRequest) -> None:
+    def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
         self.requests_available_event.set()
 
@@ -297,11 +297,12 @@ class _BatchQueue:
         """
 
         batch = []
-        first_item = self._deferred_request
+        deferred_request = self._deferred_request
         self._deferred_request = None
-        if first_item is not None and first_item.future.cancelled():
-            first_item = None
+        if deferred_request is not None and deferred_request.future.cancelled():
+            deferred_request = None
             self._record_queue_length()
+        first_item = deferred_request
         if first_item is None:
             first_item = await self.queue.get()
 
@@ -319,8 +320,9 @@ class _BatchQueue:
                     "implementation of the batch_size_fn."
                 )
                 # Set exception on the future so the caller receives it
-                _set_exception_if_not_done(first_item.future, exc)
-                self._record_queue_length()
+                first_item.future.set_exception(exc)
+                if deferred_request is not None:
+                    self._record_queue_length()
                 return [], 0
 
         batch.append(first_item)
