@@ -432,7 +432,7 @@ def _classify(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY)
         seconds_since_allocation_change=settle,
         phase=phase,
     )
-    return classify_decision(ctx, _statuses())
+    return classify_decision(ctx, frozenset(ops))
 
 
 def test_classify_holds_in_warmup_and_without_a_model():
@@ -493,7 +493,21 @@ def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
     ctx = _ctx(
         free={"node": ExecutionResources(cpu=3)}, non_pg_ops=[write], bottleneck=tick
     )
-    assert classify_decision(ctx, statuses).kind is not DecisionKind.GROW_FREE
+    active = statuses.active_ops([write])
+    assert classify_decision(ctx, active).kind is not DecisionKind.GROW_FREE
+
+
+def test_decide_rejects_a_handler_that_resizes_an_op_that_is_not_active():
+    write = _op("Write", pool=_Pool(current=2))
+    statuses = _statuses(write)
+    statuses.start_receiving(write)
+    policy = _policy(statuses=statuses)
+    # No model: the tick is HOLD. Its handler resizes the Receiving op.
+    policy._handlers[DecisionKind.HOLD] = lambda decision, ctx, active: {
+        write: OpDecision(OpRule.GROW_FREE)
+    }
+    with pytest.raises(AssertionError, match="not Active"):
+        policy.decide(_ctx(non_pg_ops=[write]))
 
 
 # --- OpStatusMachine ------------------------------------------------------------

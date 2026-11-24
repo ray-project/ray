@@ -8,7 +8,7 @@ it does it (``sizing_policy``).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, AbstractSet, Dict, Optional
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
@@ -17,7 +17,6 @@ from ray.data._internal.execution.execution_flags import (
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     PG_ELIGIBLE,
 )
-from ray.data._internal.experimental.execution.sizer.op_status import OpStatusMachine
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -49,17 +48,21 @@ HOLD_CLUSTER_SETTLING = "cluster_settling"
 
 
 def why_cannot_grow(
-    op: "ExperimentalActorPoolMapOperator", statuses: OpStatusMachine
+    op: "ExperimentalActorPoolMapOperator",
+    active: AbstractSet["ExperimentalActorPoolMapOperator"],
 ) -> Optional[str]:
-    """Why ``op`` may not grow this tick, or None."""
-    if not statuses.is_active(op):
-        return f"status ({statuses.reason(op)})"
+    """Why ``op`` may not grow this tick, or None. ``active``: the ops the
+    bottleneck move may resize this tick (``SizingPolicy.decide``)."""
+    if op not in active:
+        return "not active"
     if op.actor_pool.num_pending_actors() > 0:
         return "actors pending"
     return None
 
 
-def classify_decision(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
+def classify_decision(
+    ctx: DecisionContext, active: AbstractSet["ExperimentalActorPoolMapOperator"]
+) -> Decision:
     """This tick's primary action, first match wins:
 
     | phase / model                       | condition                     | decision       |
@@ -86,7 +89,7 @@ def classify_decision(ctx: DecisionContext, statuses: OpStatusMachine) -> Decisi
     for op, _ in tick.snapshot.bottlenecks:
         if tick.assessment.eligibility.get(op) not in _FREE_ELIGIBLE:
             continue
-        blocked = why_cannot_grow(op, statuses)
+        blocked = why_cannot_grow(op, active)
         if blocked is not None:
             logger.debug(
                 "SizingPolicy: bottleneck %s not grown into free capacity: %s",
@@ -103,7 +106,7 @@ def classify_decision(ctx: DecisionContext, statuses: OpStatusMachine) -> Decisi
             )
 
     if not tick.snapshot.bottlenecks:
-        targets = _balanced_targets(ctx, statuses)
+        targets = _balanced_targets(ctx, active)
         if targets:
             return Decision(
                 kind=DecisionKind.GROW_BALANCED,
@@ -132,7 +135,7 @@ def classify_decision(ctx: DecisionContext, statuses: OpStatusMachine) -> Decisi
 
 
 def _balanced_targets(
-    ctx: DecisionContext, statuses: OpStatusMachine
+    ctx: DecisionContext, active: AbstractSet["ExperimentalActorPoolMapOperator"]
 ) -> Dict["ExperimentalActorPoolMapOperator", int]:
     """With no bottleneck named, every op that is nearly always busy (busy
     share at least 1 - arrow margin) and can grow: the stages are balanced
@@ -148,7 +151,7 @@ def _balanced_targets(
             shares.busy < 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
             or op.has_completed()
             or pool.serving_size() >= growth_ceiling(op, ctx.topology.get(op))
-            or why_cannot_grow(op, statuses) is not None
+            or why_cannot_grow(op, active) is not None
         ):
             continue
         target = pool.serving_size() + balanced_step(op, ctx)

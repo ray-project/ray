@@ -234,7 +234,15 @@ class SizingPolicy:
         # Each handler carries out one bottleneck decision and names the rule
         # for every op it resizes.
         self._handlers: Dict[
-            DecisionKind, Callable[[Decision, DecisionContext], OpDecisions]
+            DecisionKind,
+            Callable[
+                [
+                    Decision,
+                    DecisionContext,
+                    AbstractSet["ExperimentalActorPoolMapOperator"],
+                ],
+                OpDecisions,
+            ],
         ] = {
             DecisionKind.GROW_FREE: self._grow_free,
             DecisionKind.GROW_BALANCED: self._grow_balanced,
@@ -259,10 +267,12 @@ class SizingPolicy:
 
         1. Advance open transfers, and bring up the actors they owe their
            recipients (FUND).
-        2. Classify the tick (one ``DecisionKind``) and run its handler. The
-           handler names the rule for each op it resizes (GROW_FREE,
-           GROW_BALANCED, DONATE, SHRINK_SURPLUS), and its requests already
-           name their nodes.
+        2. Classify the tick (one ``DecisionKind``) and run its handler over
+           the Active ops only, read once from the op statuses. The handler
+           names the rule for each op it resizes (GROW_FREE, GROW_BALANCED,
+           DONATE, SHRINK_SURPLUS), and its requests already name their
+           nodes. Steps 1 and 2 never share an op: step 1's ops are never
+           Active, and step 2's always are; ``decide`` asserts both.
         3. Run the per-op rules for every op that steps 1 and 2 did not
            touch, in the tick's op order, and grant each upscale only what
            is still free. A completed op always gets its per-op action.
@@ -278,9 +288,17 @@ class SizingPolicy:
             requests=self._transfer_book.bring_up_held_actors(),
         )
 
+        # The ops the bottleneck move may resize, read once after the
+        # transfers advance (closing one makes its recipient Active).
+        active = self._statuses.active_ops(ctx.apmo_profiles.actor_pool_ops)
+        # Open transfers only fund their recipients, which are Receiving (or
+        # Completed), never Active.
+        funded_active = op_decisions.keys() & active
+        assert not funded_active, f"transfers funded Active ops: {funded_active}"
+
         # 2. Given the current state of the pipeline, classify the best
         # decision to make.
-        decision = classify_decision(ctx, self._statuses)
+        decision = classify_decision(ctx, active)
         self.last_decision = decision
         logger.debug(
             "SizingPolicy: phase=%s transfer=%s decision=%s%s (%s)",
@@ -291,14 +309,12 @@ class SizingPolicy:
             decision.reason,
         )
 
-        # The open transfers only fund ``Receiving`` ops and every handler
-        # only resizes ``Active`` ones, so the two never share an op.
-        for op, op_decision in self._handlers[decision.kind](decision, ctx).items():
-            assert op not in op_decisions, (
-                f"{op.name} decided twice: {op_decisions[op].rule} and "
-                f"{op_decision.rule}"
-            )
-            op_decisions[op] = op_decision
+        # The handler only resizes Active ops, so it never shares an op with
+        # the transfers above.
+        moved = self._handlers[decision.kind](decision, ctx, active)
+        not_active = moved.keys() - active
+        assert not not_active, f"{decision.kind} resized ops not Active: {not_active}"
+        op_decisions.update(moved)
 
         if ctx.snapshot is not None:
             for op in ctx.snapshot.ordered_ops:
@@ -317,19 +333,34 @@ class SizingPolicy:
 
     # --- decision handlers ----------------------------------------------------
 
-    def _hold(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+    def _hold(
+        self,
+        decision: Decision,
+        ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
+    ) -> OpDecisions:
         if decision.reason == HOLD_CLUSTER_SETTLING:
             self._metrics.record_refusal(self.name, decision.reason)
         return {}
 
-    def _grow_free(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+    def _grow_free(
+        self,
+        decision: Decision,
+        ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
+    ) -> OpDecisions:
         return _update_decision_with_requests(
             curr_decision={},
             rule=OpRule.GROW_FREE,
             requests=self._grow_each(decision, ctx),
         )
 
-    def _grow_balanced(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+    def _grow_balanced(
+        self,
+        decision: Decision,
+        ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
+    ) -> OpDecisions:
         return _update_decision_with_requests(
             curr_decision={},
             rule=OpRule.GROW_BALANCED,
@@ -353,7 +384,12 @@ class SizingPolicy:
                 requests.append(grown)
         return requests
 
-    def _fund_recipient(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+    def _fund_recipient(
+        self,
+        decision: Decision,
+        ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
+    ) -> OpDecisions:
         """Only donors shrink this tick (DONATE). The recipient's actors come
         up on later ticks, as donors free their room (FUND, in
         ``bring_up_held_actors``)."""
@@ -364,23 +400,28 @@ class SizingPolicy:
         requests: List[PlacedSizingRequest] = []
         if (
             self._transfer_book.phase is TransferPhase.IDLE
-            and why_cannot_grow(recipient, self._statuses) is None
+            and why_cannot_grow(recipient, active) is None
         ):
             # One transfer at a time: let the window refill before the next.
-            requests.extend(self._transfer_to(recipient, tick, ctx))
-        requests.extend(self._shrink_toward_keep(recipient, tick, ctx))
+            requests.extend(self._transfer_to(recipient, tick, ctx, active))
+        requests.extend(self._shrink_toward_keep(recipient, tick, ctx, active))
         return _update_decision_with_requests(
             curr_decision={}, rule=OpRule.DONATE, requests=requests
         )
 
-    def _shrink_surplus(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
+    def _shrink_surplus(
+        self,
+        decision: Decision,
+        ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
+    ) -> OpDecisions:
         tick = ctx.bottleneck
         assert tick is not None
         self._surplus_streak.clear()
         return _update_decision_with_requests(
             curr_decision={},
             rule=OpRule.SHRINK_SURPLUS,
-            requests=self._shrink_blocked_surplus(tick, ctx),
+            requests=self._shrink_blocked_surplus(tick, ctx, active),
         )
 
     def _transfer_to(
@@ -388,6 +429,7 @@ class SizingPolicy:
         recipient: "ExperimentalActorPoolMapOperator",
         tick: "BottleneckTick",
         ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> List[PlacedSizingRequest]:
         nodes = self._transfer_book.transfer_nodes(recipient, ctx)
         if not nodes:
@@ -403,7 +445,7 @@ class SizingPolicy:
                 b,
             )
             return []
-        views = self._donor_views(recipient, tick, ctx)
+        views = self._donor_views(recipient, tick, ctx, active)
         if not views:
             self._metrics.record_refusal(self.name, "no_donor")
             return []
@@ -504,6 +546,7 @@ class SizingPolicy:
         recipient: "ExperimentalActorPoolMapOperator",
         tick: "BottleneckTick",
         ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> List[PlacedSizingRequest]:
         """Drain one actor from each donor that has had surplus toward the
         recipient for a streak of ticks: its keep size is its actors less its
@@ -531,7 +574,7 @@ class SizingPolicy:
         recipient_nodes = ctx.schedulable_nodes.get(recipient, frozenset())
         requests: List[PlacedSizingRequest] = []
         seen = set()
-        for donor in self._donor_views(recipient, tick, ctx):
+        for donor in self._donor_views(recipient, tick, ctx, active):
             op = donor.op
             seen.add(op)
             donor_pool = op.actor_pool
@@ -583,7 +626,10 @@ class SizingPolicy:
         return requests
 
     def _shrink_blocked_surplus(
-        self, tick: "BottleneckTick", ctx: DecisionContext
+        self,
+        tick: "BottleneckTick",
+        ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> List[PlacedSizingRequest]:
         """With no recipient: drain one actor from each op whose output edge
         is blocked (budget full while the consumer had no idle slot) at least
@@ -611,7 +657,7 @@ class SizingPolicy:
                 shares is None
                 or op in named
                 or op.has_completed()
-                or not self._statuses.is_active(op)
+                or op not in active
                 or blocked_by_op.get(op, 0.0) < _BLOCKED_SHARE_MIN
             ):
                 continue
@@ -740,10 +786,11 @@ class SizingPolicy:
         recipient: "ExperimentalActorPoolMapOperator",
         tick: "BottleneckTick",
         ctx: DecisionContext,
+        active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> List[DonorCapacity]:
         """Candidate donors: non-PG ops the model has shares for, other than
         the recipient and every stable bottleneck (never take from an op that
-        was a bottleneck within the last window), and ACTIVE. Their
+        was a bottleneck within the last window), and in ``active``. Their
         removable count is set per b' from slack."""
         donors: List[DonorCapacity] = []
         for op in ctx.apmo_profiles.non_pg_ops:
@@ -752,7 +799,7 @@ class SizingPolicy:
                 or op in tick.stable
                 or op not in tick.snapshot.shares
                 or op.has_completed()
-                or not self._statuses.is_active(op)
+                or op not in active
             ):
                 continue
             donors.append(

@@ -214,6 +214,12 @@ class OpStatusMachine:
         actors (see ``why_cannot_grow``)."""
         return self.kind(op) is OpStatusKind.ACTIVE
 
+    def active_ops(
+        self, ops: Iterable["ExperimentalActorPoolMapOperator"]
+    ) -> FrozenSet["ExperimentalActorPoolMapOperator"]:
+        """The ops in ``ops`` that are ``Active`` (see ``is_active``)."""
+        return frozenset(op for op in ops if self.is_active(op))
+
     def can_size_per_op(self, op: "ExperimentalActorPoolMapOperator") -> bool:
         """Whether the per-op actions (WARMUP_SHARE, GRANT_HELD, SHED_IDLE,
         REFILL_TO_MIN) may resize ``op`` now: an ``Active`` or ``Released``
