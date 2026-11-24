@@ -187,7 +187,10 @@ def test_block_udf_disables_pruning(partitioned_data, scanned_groups):
 
     def transform(table):
         return table.set_column(
-            table.schema.get_field_index("x"), "x", pc.add(table["x"], 100)
+            table.schema.get_field_index("x"),
+            "x",
+            # pyrefly: ignore[missing-attribute]  # PyArrow generates compute functions.
+            pc.add(table["x"], 100),
         )
 
     ds = _read_partitioned(root, table.schema, _block_udf=transform)
@@ -250,6 +253,7 @@ def test_residual_preserves_row_evaluation(
 
 @udf(return_dtype=DataType.from_arrow(pa.bool_()))
 def y_above_7(y):
+    # pyrefly: ignore[missing-attribute]  # PyArrow generates compute functions.
     return pc.greater(y, 7)
 
 
