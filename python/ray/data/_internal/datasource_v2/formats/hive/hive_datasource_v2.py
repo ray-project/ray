@@ -93,6 +93,20 @@ class _HiveScanner(Scanner[FileManifest]):
         return _HiveReader(self._spec, self._schema)
 
 
+class _ProtectedHiveReadSpec:
+    """Keep connection settings out of dataclass-based metadata exports."""
+
+    def __init__(self, spec: HiveReadSpec):
+        self.spec = spec
+
+    def __repr__(self) -> str:
+        return "<Hive read spec>"
+
+    def __deepcopy__(self, memo):
+        # dataclasses.asdict deep-copies non-dataclass values before exporting.
+        return self
+
+
 @dataclass(frozen=True, eq=False)
 class _HiveTableScanner(
     Scanner[FileManifest],
@@ -101,8 +115,12 @@ class _HiveTableScanner(
 ):
     """Immutable table scan with projection and limit pushdown."""
 
-    _spec: HiveReadSpec
+    _protected_spec: _ProtectedHiveReadSpec
     _schema: pa.Schema
+
+    @property
+    def _spec(self) -> HiveReadSpec:
+        return self._protected_spec.spec
 
     def read_schema(self) -> pa.Schema:
         if self.columns is None:
@@ -185,5 +203,5 @@ class HiveDatasourceV2(DataSourceWithMetadata[FileManifest]):
 
     def create_scanner(self, schema: pa.Schema, filesystem=None, **options) -> Scanner:
         if self._spec.table is not None:
-            return _HiveTableScanner(self._spec, schema)
+            return _HiveTableScanner(_ProtectedHiveReadSpec(self._spec), schema)
         return _HiveScanner(self._spec, schema)

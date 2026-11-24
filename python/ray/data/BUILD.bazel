@@ -226,7 +226,11 @@ py_test(
 py_test(
     name = "test_hive",
     size = "small",
-    srcs = ["tests/datasource/test_hive.py"],
+    srcs = [
+        "tests/datasource/test_hive.py",
+        "tests/unit/datasource_v2/test_hive_hs2.py",
+    ],
+    main = "tests/datasource/test_hive.py",
     tags = [
         "exclusive",
         "team:data",
@@ -269,6 +273,26 @@ py_test(
     name = "test_hive_integration",
     size = "large",
     srcs = ["tests/datasource/test_hive_integration.py"],
+    tags = [
+        "data_integration",
+        "exclusive",
+        "hive_integration",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_hive_pushdown_integration",
+    size = "large",
+    srcs = [
+        "tests/datasource/test_hive_integration.py",
+        "tests/datasource/test_hive_pushdown_integration.py",
+    ],
+    main = "tests/datasource/test_hive_pushdown_integration.py",
     tags = [
         "data_integration",
         "exclusive",

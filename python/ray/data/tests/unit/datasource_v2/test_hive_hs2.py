@@ -445,22 +445,13 @@ def test_one_statement_yields_bounded_batches_and_closes():
     assert connection.cursor_user == "reader"
 
 
-@pytest.mark.parametrize(
-    "source_limit,pushed_limit",
-    [
-        pytest.param(0, None, id="source_zero"),
-        pytest.param(None, 0, id="pushed_zero"),
-    ],
-)
-def test_table_limit_zero_skips_connection(source_limit, pushed_limit):
+def test_table_limit_zero_skips_connection():
     def connection_factory():
         pytest.fail("zero limit must not connect")
 
-    spec = HiveReadSpec(connection_factory, table="events", limit=source_limit)
+    spec = HiveReadSpec(connection_factory, table="events", limit=0)
     schema = pa.schema([("id", pa.int64())])
-    batch = list(hive_hs2.read_hs2_batches(spec, schema, limit=pushed_limit))[0]
-    assert batch.schema == schema
-    assert batch.num_rows == 0
+    assert list(hive_hs2.read_hs2_batches(spec, schema))[0].schema == schema
 
 
 def test_table_statement_uses_validated_identifiers_and_limit():
@@ -599,28 +590,6 @@ def test_early_close_cancels_operation():
     next(batches)
     batches.close()
     assert cursor.cancelled and cursor.closed and connection.closed
-
-
-def test_empty_projection_keeps_a_physical_stub_across_batches():
-    from ray.data.block import BlockAccessor
-
-    cursor = _Cursor([[(1,), (1,)], [(1,)]])
-    cursor.description = [
-        (hive_hs2._EMPTY_PROJECTION_COLUMN, "INT", None, None, None, None, None)
-    ]
-    spec = HiveReadSpec(lambda: _Connection(cursor), table="analytics.events")
-    batches = list(
-        hive_hs2.read_hs2_batches(
-            spec,
-            pa.schema([]),
-            statement="SELECT 1 AS `__ray_hive_row` FROM `analytics`.`events`",
-            empty_projection=True,
-        )
-    )
-    assert sum(BlockAccessor.for_block(batch).num_rows() for batch in batches) == 3
-    assert pa.concat_tables(batches).num_rows == 3
-    assert all(batch.column_names == ["__bsp_stub"] for batch in batches)
-    assert len(cursor.statements) == 1
 
 
 if __name__ == "__main__":

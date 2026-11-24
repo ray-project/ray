@@ -306,18 +306,6 @@ class ReadFiles(
             object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
 
-    def _get_args(self) -> Dict[str, Any]:
-        args = super()._get_args()
-        if self.datasource_name == "Hive":
-            from ray.data._internal.datasource_v2.formats.hive.hive_datasource_v2 import (
-                _HiveTableScanner,
-            )
-
-            if isinstance(self.scanner, _HiveTableScanner):
-                # Scanner dataclass fields include the read specification.
-                args["_scanner"] = "<Hive table scanner>"
-        return args
-
     def infer_schema(self) -> Optional["pa.Schema"]:
         # Scanner schema reflects any applied projection pushdown
         # (``scanner.prune_columns`` / empty projection from
