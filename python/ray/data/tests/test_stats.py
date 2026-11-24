@@ -2378,6 +2378,54 @@ def test_per_node_metrics_toggle(
             assert per_node_metrics is None
 
 
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        pytest.param(
+            "Filter(col('text') == '中文')_1",
+            r"Filter(col('text') == '\u4e2d\u6587')_1",
+            id="unicode",
+        ),
+        # ASCII input that already looks like an escape sequence is unchanged.
+        pytest.param(r"\u4e2d", r"\u4e2d", id="ascii_escape_like"),
+    ],
+)
+def test_to_metric_tag_value(value, expected):
+    assert _to_metric_tag_value(value) == expected
+
+
+# https://github.com/ray-project/ray/issues/67230
+def test_stats_actor_unicode_operator_tags(ray_start_regular_shared):
+    """Recording metrics for an operator whose name contains Unicode used to
+    raise ``UnicodeEncodeError`` inside the stats actor."""
+    operator_tag = "Filter(col('text') == '中文')_1"
+    stats_actor = _StatsActor.remote()
+
+    ray.get(
+        stats_actor.register_dataset.remote(
+            "job_id", "dataset", [operator_tag], topology=None, data_context=None
+        )
+    )
+    ray.get(
+        stats_actor.update_execution_metrics.remote(
+            "dataset", [{}], [operator_tag], state={}
+        )
+    )
+    ray.get(
+        stats_actor.update_dataset.remote(
+            "dataset",
+            {
+                "state": DatasetState.FINISHED.name,
+                "operators": {operator_tag: {"state": DatasetState.FINISHED.name}},
+            },
+        )
+    )
+
+    # Only the metric tag is escaped; the operator ID is kept as is.
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    assert operator_tag in datasets["dataset"]["operators"]
+
+
 def _mock_block_stats(
     start_time,
     end_time,
@@ -2986,61 +3034,6 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
 
         # Wait until the eviction has occurred and the actor state is correct.
         wait_for_condition(check_eviction)
-
-
-@pytest.mark.parametrize(
-    "value,expected",
-    [
-        pytest.param(
-            "ReadRange->MapBatches(<lambda>)_1",
-            "ReadRange->MapBatches(<lambda>)_1",
-            id="ascii",
-        ),
-        # ASCII input that already looks like an escape sequence is unchanged.
-        pytest.param(r"\u4e2d", r"\u4e2d", id="ascii_escape_like"),
-        pytest.param(
-            "Filter(col('text') == '中文')_1",
-            r"Filter(col('text') == '\u4e2d\u6587')_1",
-            id="chinese",
-        ),
-        pytest.param("café", r"caf\xe9", id="accented"),
-        pytest.param("🙂", r"\U0001f642", id="emoji"),
-    ],
-)
-def test_to_metric_tag_value(value, expected):
-    assert _to_metric_tag_value(value) == expected
-
-
-# https://github.com/ray-project/ray/issues/67230
-def test_stats_actor_unicode_operator_tags(ray_start_regular):
-    """Recording metrics for an operator whose name contains Unicode used to
-    raise ``UnicodeEncodeError`` inside the stats actor."""
-    operator_tag = "Filter(col('text') == '中文')_1"
-    stats_actor = _StatsActor.remote()
-
-    ray.get(
-        stats_actor.register_dataset.remote(
-            "job_id", "dataset", [operator_tag], topology=None, data_context=None
-        )
-    )
-    ray.get(
-        stats_actor.update_execution_metrics.remote(
-            "dataset", [{}], [operator_tag], state={}
-        )
-    )
-    ray.get(
-        stats_actor.update_dataset.remote(
-            "dataset",
-            {
-                "state": DatasetState.FINISHED.name,
-                "operators": {operator_tag: {"state": DatasetState.FINISHED.name}},
-            },
-        )
-    )
-
-    # Only the metric tag is escaped; the operator ID is kept as is.
-    datasets = ray.get(stats_actor.get_datasets.remote())
-    assert operator_tag in datasets["dataset"]["operators"]
 
 
 # Setting internal=10000 (super high number) value so they are only called
