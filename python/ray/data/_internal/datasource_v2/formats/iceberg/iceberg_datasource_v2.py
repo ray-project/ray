@@ -49,8 +49,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bytes per read task. A Parquet file's size is its decoded bytes, estimated from
-# its footer as for Parquet; any other file's is its size on disk.
+# Estimated decoded bytes per read task, as for Parquet. A Parquet file's size
+# comes from its footer, else its read columns' bytes times 5; any other file's
+# is its size on disk.
 _BIN_PACKING_BYTES = env_integer("RAY_DATA_ICEBERG_BIN_PACKING_BYTES", 128 * MiB)
 
 

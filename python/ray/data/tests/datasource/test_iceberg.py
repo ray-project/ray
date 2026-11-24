@@ -31,11 +31,13 @@ from ray.data import read_iceberg
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.iceberg_datasource import (
     IcebergDatasource,
-    _estimate_inmemory_file_size,
     _get_read_task,
 )
 from ray.data._internal.datasource.parquet_datasource import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+)
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_utils import (
+    _estimate_inmemory_file_size,
 )
 from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
@@ -3639,6 +3641,29 @@ class TestIcebergDatasourceV2:
         assert ServerSidePlanning.for_table(rest_table) is None
         assert ServerSidePlanning.for_table(self._load_table()) is None
 
+    def test_listing_sizes_files_by_the_columns_read(self):
+        """Without footer reads, a file is its read columns' bytes times 5, as in V1."""
+
+        def sizes(columns):
+            return {
+                path: chunk.size_bytes
+                for path, chunk in self._listed_chunks(
+                    columns, reads_footers=False
+                ).items()
+            }
+
+        files = [task.file for task in self._load_table().scan().plan_files()]
+        assert sizes(["col_a"]) == {
+            file.file_path: file.column_sizes[1]
+            * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+            for file in files
+        }
+        assert sizes(None) == {
+            file.file_path: sum(file.column_sizes.values())
+            * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+            for file in files
+        }
+
     def test_listing_sizes_parquet_files_from_their_footers(self):
         """A Parquet file is sized at its decoded bytes, with the memory decoding takes."""
         chunks = self._listed_chunks(["col_a"])
@@ -3657,7 +3682,8 @@ class TestIcebergDatasourceV2:
         files = {task.file.file_path: task.file for task in table.scan().plan_files()}
         renamed = self._listed_chunks(["col_b_renamed"])
         assert {path: chunk.size_bytes for path, chunk in renamed.items()} == {
-            path: file.file_size_in_bytes for path, file in files.items()
+            path: file.column_sizes[2] * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT
+            for path, file in files.items()
         }
         assert all(chunk.memory_bytes is None for chunk in renamed.values())
         assert all(

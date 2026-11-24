@@ -18,8 +18,8 @@ mapping, and no schema the table has had stored a column the read uses, or a
 field nested in it, under another name. A data file then stores each column
 under its current name or not at all, which is how the footer reader finds it.
 A file is sized this way when it is Parquet and lives on the filesystem of the
-table's location. Every other file keeps its size on disk
-(``file_size_in_bytes``) and requests no memory.
+table's location. Every other file keeps the ``column_sizes`` estimate
+(``_estimate_inmemory_file_size``) and requests no memory.
 
 The estimate is for what ``ArrowScan`` returns: the read schema is the
 projected Iceberg schema as Arrow types, which every batch is cast to. Delete

@@ -8,10 +8,12 @@ to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
     plan_files() -> FileScanTask per data file -> manifest_from_scan_tasks
                  -> FileManifest blocks -> OnlineBinPacker -> read units
 
-A Parquet file is sized at its decoded bytes for the columns the read decodes
-(``projected_columns``, else the scan's projection), estimated from its footer
+Each row is sized by the columns the read decodes (``projected_columns``, else
+the scan's projection), so a narrow read of a wide table packs many files per
+read task. A Parquet file's size is its decoded bytes, estimated from its footer
 by Parquet's footer indexer, which also gives the memory decoding it takes
-(``iceberg_footer_sizing``). Any other file is sized at its bytes on disk.
+(``iceberg_footer_sizing``); any other file is sized from Iceberg's per-column
+sizes.
 
 Planning reads Iceberg metadata only. It prunes on ``read_iceberg``'s
 ``row_filter``; the scanner takes no Ray filters, so no predicate reaches
@@ -35,6 +37,7 @@ from typing import (
     Iterable,
     List,
     Optional,
+    Set,
     Tuple,
     Type,
 )
@@ -58,6 +61,7 @@ if TYPE_CHECKING:
     from pyiceberg.catalog.rest import RestCatalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
+    from pyiceberg.schema import Schema
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
@@ -163,7 +167,7 @@ class IcebergFileIndexer(FileIndexer):
         are per-file IO, and the copy skips them.
 
         Returns:
-            A copy that sizes every file at its bytes on disk.
+            A copy that sizes every file from Iceberg's per-column sizes.
         """
         return IcebergFileIndexer(
             table_metadata=self._table_metadata,
@@ -194,12 +198,18 @@ class IcebergFileIndexer(FileIndexer):
         """Plan the table and yield the surviving files, one row each.
 
         ``excluded_read_unit_ids`` are file paths, since a read unit is a whole
-        file. With ``reads_footers``, each Parquet file's footer is read to size
-        it for ``projected_columns``. ``limit`` is applied by the reader;
-        stopping listing early from Iceberg's per-file row counts is a
-        follow-up. The other arguments don't apply and are ignored.
+        file. ``projected_columns`` sizes each row, and with
+        ``reads_footers`` its Parquet files' footers are read to do so.
+        ``limit`` is applied by the reader; stopping listing early from
+        Iceberg's per-file row counts is a follow-up. The other arguments don't
+        apply and are ignored.
         """
         scan = self._data_scan()
+        field_ids = _projected_field_ids(
+            projection=scan.projection(),
+            columns=projected_columns,
+            case_sensitive=scan.case_sensitive,
+        )
         tasks: List["FileScanTask"] = []
         for task in scan.plan_files():
             if excluded_read_unit_ids and task.file.file_path in excluded_read_unit_ids:
@@ -209,6 +219,7 @@ class IcebergFileIndexer(FileIndexer):
         for start in range(0, len(tasks), _FILES_PER_MANIFEST_BLOCK):
             yield manifest_from_scan_tasks(
                 tasks=tasks[start : start + _FILES_PER_MANIFEST_BLOCK],
+                projected_field_ids=field_ids,
                 decoded_sizes=decoded_sizes,
             )
 
@@ -283,3 +294,19 @@ class IcebergFileIndexer(FileIndexer):
             self._row_filter,
         )
         return scan
+
+
+def _projected_field_ids(
+    *, projection: "Schema", columns: Optional[List[str]], case_sensitive: bool
+) -> Optional[Set[int]]:
+    """Top-level field ids the read decodes; ``None`` sizes the whole file."""
+    if columns is None:
+        return {field.field_id for field in projection.columns}
+    if not columns:
+        # ``count()`` reads no columns. Sizing its files at zero would pack the
+        # whole table into one read task, so size them as whole files instead.
+        return None
+    return {
+        projection.find_field(name, case_sensitive=case_sensitive).field_id
+        for name in columns
+    }
