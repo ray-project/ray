@@ -2,7 +2,7 @@
 
 Both functions only read: they never claim capacity or resize a pool, so
 what the sizer will do this tick can be tested (and logged) apart from how
-it does it (``bottleneck_policy``).
+it does it (``sizing_policy``).
 """
 
 from __future__ import annotations
@@ -104,7 +104,7 @@ def classify(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
         blocked = why_cannot_grow(op, statuses)
         if blocked is not None:
             logger.debug(
-                "BottleneckPolicy: bottleneck %s not grown into free capacity: %s",
+                "SizingPolicy: bottleneck %s not grown into free capacity: %s",
                 op.name,
                 blocked,
             )

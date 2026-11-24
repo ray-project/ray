@@ -1,12 +1,12 @@
 """Unit tests for the sizer's bottleneck policy: the phase and decision
-classifiers, each decision's handler (``BottleneckPolicy``), the transfer
+classifiers, each decision's handler (``SizingPolicy``), the transfer
 mechanics (``TransferBook``), free-capacity growth, and the ``OpStatusMachine``
 they share. Duck-typed doubles; no cluster."""
 import logging
 import math
 import sys
 from types import SimpleNamespace
-from typing import Any, Dict, cast
+from typing import Any, Dict, List, cast
 
 import pytest
 
@@ -35,6 +35,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     PG_ELIGIBLE,
 )
+from ray.data._internal.experimental.execution.sizer.models import PlacedSizingRequest
 from ray.data._internal.experimental.execution.sizer.op_status import (
     Cooling,
     Donating,
@@ -45,10 +46,6 @@ from ray.data._internal.experimental.execution.sizer.op_status import (
     Released,
 )
 from ray.data._internal.experimental.execution.sizer.policy import growth
-from ray.data._internal.experimental.execution.sizer.policy.bottleneck_policy import (  # noqa: E501
-    BottleneckPolicy,
-    transfer_timeout_s,
-)
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
@@ -59,8 +56,14 @@ from ray.data._internal.experimental.execution.sizer.policy.decision import (
     classify,
     classify_phase,
 )
+from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (  # noqa: E501
+    SizingPolicy,
+    transfer_timeout_s,
+)
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     DecisionKind,
+    OpDecision,
+    OpRule,
     SizerPhase,
     TransferPhase,
 )
@@ -264,12 +267,23 @@ def _statuses(*ops, cooldown_steps=20) -> OpStatusMachine:
     return OpStatusMachine(ops, cooldown_steps=cooldown_steps)
 
 
-def _policy(metrics=None, statuses=None) -> BottleneckPolicy:
-    return BottleneckPolicy(
+def _policy(metrics=None, statuses=None) -> SizingPolicy:
+    return SizingPolicy(
         cast(Any, metrics or _Metrics()),
         cast(Any, _Placement()),
         statuses or _statuses(),
+        profiles=cast(Any, None),  # only the per-op rules read it
     )
+
+
+def _decide(policy: SizingPolicy, ctx) -> List[PlacedSizingRequest]:
+    """One tick of ``policy``; returns the bottleneck model's placed
+    requests, one per op request, in the order to apply them."""
+    return [
+        PlacedSizingRequest(request={op: placed})
+        for op, decision in policy.decide(ctx).items()
+        for placed in decision.placed
+    ]
 
 
 def _book(metrics=None, statuses=None) -> TransferBook:
@@ -383,7 +397,7 @@ def _apply_bottleneck(
         seconds_since_allocation_change=settle,
         growth_ceiling=dict(growth_ceiling or {}),
     )
-    _, requests = policy.step(ctx)
+    requests = _decide(policy, ctx)
     return ctx, policy.transfers.state, requests
 
 
@@ -1363,6 +1377,44 @@ def test_named_bottleneck_grows_into_free_capacity_before_it_is_stable():
     assert not state.in_flight
 
 
+def test_decide_gives_every_op_one_action_and_the_model_wins(monkeypatch):
+    """Every op in the tick's order gets one action. Write grows into free
+    capacity (GROW_FREE), so the per-op rules skip it this tick; Read gets
+    its per-op action."""
+    write = _op("Write", pool=_Pool(current=2))
+    read = _op("Read")
+    tick = _tick(
+        recipient=None,
+        named=[(write, 0.6)],
+        eligibility={write: "yes: free"},
+        shares={write: None},
+        target={write: 4},
+    )
+    policy = _policy()
+    per_op_calls = []
+    monkeypatch.setattr(
+        policy.per_op,
+        "decide",
+        lambda op, **_: per_op_calls.append(op) or OpDecision(OpRule.SHED_IDLE),
+    )
+    ctx = _ctx(
+        free={"node": ExecutionResources(cpu=3.0)},
+        non_pg_ops=[write, read],
+        bottleneck=tick,
+        topology={write: None, read: None},
+        snapshot=cast(Any, SimpleNamespace(ordered_ops=(read, write))),
+    )
+
+    decisions = policy.decide(ctx)
+
+    assert set(decisions) == {read, write}
+    assert decisions[write].rule is OpRule.GROW_FREE
+    # Read competes for the same 3 free CPUs, so Write's share is 3 // 2 = 1.
+    assert decisions[write].placed[0].nodes == ("node",)
+    assert decisions[read] == OpDecision(OpRule.SHED_IDLE)
+    assert per_op_calls == [read]
+
+
 @pytest.mark.parametrize("ceiling, grown", [(3, 1), (2, 0)])
 def test_free_growth_stays_within_the_growth_ceiling(ceiling, grown):
     # Upstream is done and Write's remaining work needs ``ceiling`` actors:
@@ -1474,7 +1526,7 @@ def _apply_pg_bottleneck(policy, tick, pg_op, *, bundle_free_cpu, others=()):
         pg_free={bundle: ExecutionResources(cpu=bundle_free_cpu)},
         bottleneck=tick,
     )
-    _, requests = policy.step(ctx)
+    requests = _decide(policy, ctx)
     return ctx, policy.transfers.state, requests, bundle
 
 
@@ -1593,6 +1645,7 @@ def test_bottleneck_free_share_does_not_charge_reclaimed_actors():
     )
     ctx, _, requests = _apply_bottleneck(_policy(), tick, [recipient, peer], free_cpu=6)
     request = requests[0].request[recipient]
+    assert isinstance(request, ScaleUpRequest)
     assert request.num_to_reclaim == 4
     assert len(request.nodes) == 3
     assert request.delta == 7

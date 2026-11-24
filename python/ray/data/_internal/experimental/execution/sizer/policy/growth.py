@@ -187,7 +187,7 @@ def free_growth_share(
     )
     share = max(1, math.floor(slots / max(1, competitors))) if slots else 0
     logger.debug(
-        "BottleneckPolicy: %s free-capacity growth cap=%d "
+        "SizingPolicy: %s free-capacity growth cap=%d "
         "(placeable=%d, competing_ops=%d)",
         op.name,
         share,
@@ -231,7 +231,7 @@ def plan_free_growth(
     ceiling = growth_ceiling(op, ctx)
     if size >= ceiling:
         logger.debug(
-            "BottleneckPolicy: %s not grown: at its growth ceiling (%d)",
+            "SizingPolicy: %s not grown: at its growth ceiling (%d)",
             op.name,
             ceiling,
         )
@@ -244,7 +244,7 @@ def plan_free_growth(
             for n in free_schedulable_nodes(ctx, op)
         ):
             logger.debug(
-                "BottleneckPolicy: %s not grown into free capacity: no allowed "
+                "SizingPolicy: %s not grown into free capacity: no allowed "
                 "node has room after capacity held for transfers",
                 op.name,
             )
@@ -252,7 +252,7 @@ def plan_free_growth(
     num_to_reclaim = min(step, pool.num_reclaimable_draining_actors())
     num_new = min(step - num_to_reclaim, free_growth_share(op, ctx))
     if num_to_reclaim + num_new <= 0:
-        logger.debug("BottleneckPolicy: %s not grown: placement group full", op.name)
+        logger.debug("SizingPolicy: %s not grown: placement group full", op.name)
         return None
     return FreeGrowth(num_to_reclaim=num_to_reclaim, num_new=num_new)
 
@@ -276,7 +276,7 @@ def apply_free_growth(
         )
         if grown is not None:
             logger.debug(
-                "BottleneckPolicy: %s %s grows +%d into its placement group",
+                "SizingPolicy: %s %s grows +%d into its placement group",
                 reason,
                 op.name,
                 grown.request[op].delta,
@@ -291,7 +291,7 @@ def apply_free_growth(
     if not targets and not growth.num_to_reclaim:
         return None
     logger.debug(
-        "BottleneckPolicy: %s %s grows +%d into free capacity",
+        "SizingPolicy: %s %s grows +%d into free capacity",
         reason,
         op.name,
         len(targets) + growth.num_to_reclaim,

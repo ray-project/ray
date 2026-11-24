@@ -1,10 +1,14 @@
-"""Carry out the tick's decision: grow the pipeline's bottleneck, funding
-it from donors' slack.
+"""The sizer's one policy: each tick, one action per op.
+
+``SizingPolicy.decide`` returns an ``OpDecision`` for every op. It first acts
+on the bottleneck model, then sizes every op the model left alone with the
+per-op rules (``PerOpRules``: release a completed pool, grow to held room,
+grow toward the warmup share, shed idle actors, refill to min size).
 
 The bottleneck model (``bottleneck_observer``) names, each tick, the
 bottlenecks and the most severe stable one that can use capacity (the
-recipient). ``decision.classify`` turns that into one ``DecisionKind``;
-``BottleneckPolicy`` carries it out:
+recipient). ``decision.classify`` turns that into one ``DecisionKind``, and
+the policy carries it out:
 
 - GROW_FREE: the bottleneck grows into free capacity toward its growth
   target b' = ceil(b / (1 - w)), w the largest share of time a neighbour
@@ -65,6 +69,7 @@ from ray.data._internal.experimental.execution.sizer.metrics import (
 from ray.data._internal.experimental.execution.sizer.models import (
     PlacedSizingRequest,
 )
+from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 from ray.data._internal.experimental.execution.sizer.op_status import OpStatusMachine
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
@@ -79,9 +84,12 @@ from ray.data._internal.experimental.execution.sizer.policy.growth import (
     growth_ceiling,
     plan_free_growth,
 )
+from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     Decision,
     DecisionKind,
+    OpDecision,
+    OpRule,
     TransferPhase,
 )
 from ray.data._internal.experimental.execution.sizer.policy.transfer import (
@@ -94,6 +102,9 @@ from ray.data._internal.experimental.execution.sizer.policy.transfer import (
 if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
+    )
+    from ray.data._internal.experimental.execution.operators.actor_pool_models import (  # noqa: E501
+        PlacedScalingRequest,
     )
     from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
         ActorPlacementStrategy,
@@ -149,10 +160,20 @@ def max_step_size(b: int, max_size: int) -> int:
     )
 
 
-class BottleneckPolicy:
-    """Decide each tick from the bottleneck model, and carry the decision
-    out. Owns what persists across ticks: open transfers (``TransferBook``)
-    and the surplus streaks."""
+# The rule each bottleneck decision gives the ops it touches. FUND_RECIPIENT
+# gives FUND to the recipient and DONATE to everyone else it touches.
+_RULE_BY_KIND: Dict[DecisionKind, OpRule] = {
+    DecisionKind.GROW_FREE: OpRule.GROW_FREE,
+    DecisionKind.GROW_BALANCED: OpRule.GROW_BALANCED,
+    DecisionKind.FUND_RECIPIENT: OpRule.DONATE,
+    DecisionKind.SHRINK_SURPLUS: OpRule.SHRINK_SURPLUS,
+}
+
+
+class SizingPolicy:
+    """Decides one action per op each tick. Owns what persists across ticks:
+    open transfers (``TransferBook``), the surplus streaks, and the per-op
+    rules' idle streaks."""
 
     # The metrics label for this policy's actions and refusals.
     name = "bottleneck_transfer"
@@ -162,8 +183,12 @@ class BottleneckPolicy:
         metrics: OptimizerMetrics,
         placement: "ActorPlacementStrategy",
         statuses: OpStatusMachine,
+        profiles: OpProfiles,
     ):
         self._metrics = metrics
+        self.per_op = PerOpRules(profiles=profiles)
+        # The bottleneck decision of the last tick, for logs and tests.
+        self.last_decision: Optional[Decision] = None
         self._placement = placement
         self._statuses = statuses
         self._book = TransferBook(self.name, metrics, placement, statuses)
@@ -195,23 +220,75 @@ class BottleneckPolicy:
         """Capacity open transfers hold for their recipients' owed actors."""
         return self._book.held_capacity_by_node()
 
-    def step(self, ctx: DecisionContext) -> Tuple[Decision, List[PlacedSizingRequest]]:
-        """One tick: advance open transfers, place the actors they can bring
-        up now, then classify and carry out this tick's decision."""
+    def decide(
+        self, ctx: DecisionContext
+    ) -> Dict["ExperimentalActorPoolMapOperator", OpDecision]:
+        """One tick: one ``OpDecision`` per op.
+
+        1. Advance open transfers, and bring up the actors they owe their
+           recipients (FUND).
+        2. Classify the bottleneck decision and carry it out (GROW_FREE,
+           GROW_BALANCED, FUND / DONATE, SHRINK_SURPLUS). These requests
+           already name their nodes.
+        3. Run the per-op rules for every op that steps 1 and 2 did not
+           touch. A completed op always gets its per-op action.
+        """
+        placed: Dict[
+            "ExperimentalActorPoolMapOperator",
+            Tuple[OpRule, List["PlacedScalingRequest"]],
+        ] = {}
+
+        def add(requests: List[PlacedSizingRequest], rule_for) -> None:
+            for request in requests:
+                for op, req in request.request.items():
+                    _, reqs = placed.setdefault(op, (rule_for(op), []))
+                    reqs.append(req)
+
         self._book.advance(ctx)
         # Open transfers place first, into the capacity ``advance`` held.
-        requests = self._book.bring_up_held_actors()
+        add(self._book.bring_up_held_actors(), lambda op: OpRule.FUND)
+
         decision = classify(ctx, self._statuses)
+        self.last_decision = decision
         logger.debug(
-            "BottleneckPolicy: phase=%s transfer=%s decision=%s%s (%s)",
+            "SizingPolicy: phase=%s transfer=%s decision=%s%s (%s)",
             ctx.phase.value,
             self._book.phase.value,
             decision.kind.value,
             "".join(f" {op.name}->{target}" for op, target in decision.targets.items()),
             decision.reason,
         )
-        requests.extend(self._handlers[decision.kind](decision, ctx))
-        return decision, requests
+        default_rule = _RULE_BY_KIND.get(decision.kind)
+        if default_rule is not None:
+            add(
+                self._handlers[decision.kind](decision, ctx),
+                lambda op: (
+                    OpRule.FUND
+                    if decision.kind is DecisionKind.FUND_RECIPIENT
+                    and op in decision.targets
+                    else default_rule
+                ),
+            )
+        else:
+            self._handlers[decision.kind](decision, ctx)
+
+        decisions: Dict["ExperimentalActorPoolMapOperator", OpDecision] = {
+            op: OpDecision(rule, placed=tuple(reqs))
+            for op, (rule, reqs) in placed.items()
+        }
+        if ctx.snapshot is not None:
+            for op in ctx.snapshot.ordered_ops:
+                if op in decisions and not op.has_completed():
+                    continue
+                decisions[op] = self.per_op.decide(
+                    op,
+                    status=self._statuses.status(op),
+                    phase=ctx.phase,
+                    modeled=op in ctx.modeled_ops,
+                    snapshot=ctx.snapshot,
+                    op_state=ctx.topology[op],
+                )
+        return decisions
 
     # --- decision handlers ----------------------------------------------------
 
@@ -288,7 +365,7 @@ class BottleneckPolicy:
         ceiling = growth_ceiling(recipient, ctx)
         if b >= ceiling:
             logger.debug(
-                "BottleneckPolicy: bottleneck %s (b=%d) not funded: at its "
+                "SizingPolicy: bottleneck %s (b=%d) not funded: at its "
                 "growth ceiling",
                 recipient.name,
                 b,
@@ -346,7 +423,7 @@ class BottleneckPolicy:
         if best is None:
             self._metrics.record_refusal(self.name, "victims_insufficient")
             logger.debug(
-                "BottleneckPolicy: bottleneck %s (b=%d) cannot be funded now: "
+                "SizingPolicy: bottleneck %s (b=%d) cannot be funded now: "
                 "no idle or pending donor actor frees a node it may use",
                 recipient.name,
                 b,
@@ -367,7 +444,7 @@ class BottleneckPolicy:
         fired = self._book.fire(recipient, plan, donors_by_op, ctx, timeout_s=timeout_s)
         if not fired:
             logger.debug(
-                "BottleneckPolicy: bottleneck %s %d -> %d not fired: it would "
+                "SizingPolicy: bottleneck %s %d -> %d not fired: it would "
                 "reverse a recent transfer (thrash guard)",
                 recipient.name,
                 b,
@@ -376,7 +453,7 @@ class BottleneckPolicy:
             return fired
         severity = dict(tick.assessment.stable).get(recipient, float("nan"))
         logger.debug(
-            "BottleneckPolicy: bottleneck %s (sev=%.2f) %d -> %d from %s; "
+            "SizingPolicy: bottleneck %s (sev=%.2f) %d -> %d from %s; "
             "victim ttf max=%.0fs, timeout=%.0fs",
             recipient.name,
             severity,
@@ -446,7 +523,7 @@ class BottleneckPolicy:
                 continue
             self._surplus_streak[op] = 0
             logger.debug(
-                "BottleneckPolicy: surplus %s -1 on %s (slack %d toward %s at "
+                "SizingPolicy: surplus %s -1 on %s (slack %d toward %s at "
                 "%d -> %d; victim ttf %.0fs)",
                 op.name,
                 node,
@@ -535,7 +612,7 @@ class BottleneckPolicy:
                 continue
             self._blocked_streak[op] = 0
             logger.debug(
-                "BottleneckPolicy: blocked surplus %s -1 on %s (blocked %.2f, "
+                "SizingPolicy: blocked surplus %s -1 on %s (blocked %.2f, "
                 "keep %d of %d; victim ttf %.0fs)",
                 op.name,
                 node,
@@ -586,7 +663,7 @@ class BottleneckPolicy:
             return False
         consumer, share = starved
         logger.debug(
-            "BottleneckPolicy: %s not shrunk: %s it feeds is starved %.2f",
+            "SizingPolicy: %s not shrunk: %s it feeds is starved %.2f",
             op.name,
             consumer.name,
             share,

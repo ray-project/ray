@@ -4,7 +4,7 @@ A transfer fires by draining victims on the recipient's nodes and holding
 those nodes' capacity for the recipient's owed actors; it places them as the
 victims free their slots, and closes once they run (or times out). Who
 receives and who donates is the bottleneck policy's call
-(``bottleneck_policy``); this module only plans and carries out the move.
+(``sizing_policy``); this module only plans and carries out the move.
 """
 
 from __future__ import annotations
@@ -456,7 +456,7 @@ def _log_closest_miss(
         return
     closest = min(misses, key=lambda p: sum(p.resource_shortfall.values()))
     logger.debug(
-        "BottleneckPolicy: transfer refused: %s needs %s; best node %s "
+        "SizingPolicy: transfer refused: %s needs %s; best node %s "
         "still short by %s after all eligible victims.",
         recipient.name,
         {dim: getattr(recipient_per_actor, dim) for dim in PLACEMENT_RESOURCE_DIMS},
@@ -655,7 +655,7 @@ class TransferBook:
                     pool.has_actor(a) for a in transfer.claimed_ids
                 )
                 logger.debug(
-                    "BottleneckPolicy: transfer to %s closed %s (%.0fs after claim)",
+                    "SizingPolicy: transfer to %s closed %s (%.0fs after claim)",
                     recipient.name,
                     "landed" if landed else "lost",
                     ctx.now - transfer.started_t,
@@ -688,7 +688,7 @@ class TransferBook:
                         )
                     )
                 logger.warning(
-                    "BottleneckPolicy: transfer to %s made no progress for %.0fs "
+                    "SizingPolicy: transfer to %s made no progress for %.0fs "
                     "with %d actor(s) never placed; claim cancelled.",
                     recipient.name,
                     transfer.timeout_s,
@@ -819,7 +819,7 @@ class TransferBook:
             if recipient not in state.logged_thrashing:
                 state.logged_thrashing.add(recipient)
                 logger.debug(
-                    "BottleneckPolicy: transfer to %s from %s refused: it would "
+                    "SizingPolicy: transfer to %s from %s refused: it would "
                     "undo a transfer still open or closed under %.0fs ago.",
                     recipient.name,
                     "/".join(sorted(d.name for d in donor_ops)),
@@ -870,7 +870,7 @@ class TransferBook:
         state.logged_thrashing.discard(recipient)
         self._metrics.record_outcome(self._name, recipient.name, "fired")
         logger.debug(
-            "BottleneckPolicy: transfer +%d %s across %d node(s) from %s",
+            "SizingPolicy: transfer +%d %s across %d node(s) from %s",
             sum(p.num_recipient_actors for p in plan),
             recipient.name,
             len(plan),

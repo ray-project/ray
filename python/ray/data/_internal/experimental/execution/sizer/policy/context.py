@@ -71,6 +71,11 @@ class DecisionContext:
         "ExperimentalActorPoolMapOperator",
         Tuple["ExperimentalActorPoolMapOperator", ...],
     ] = field(default_factory=dict)
+    # The snapshot this context reads, for the per-op rules (warmup shares,
+    # the op order). None in tests that only exercise the bottleneck model.
+    snapshot: Optional["ClusterStateSnapshot"] = None
+    # Ops the bottleneck model has seen a full window of.
+    modeled_ops: AbstractSet["ExperimentalActorPoolMapOperator"] = frozenset()
 
     @classmethod
     def from_snapshot(
@@ -88,6 +93,7 @@ class DecisionContext:
             "ExperimentalActorPoolMapOperator",
             Tuple["ExperimentalActorPoolMapOperator", ...],
         ],
+        modeled_ops: AbstractSet["ExperimentalActorPoolMapOperator"] = frozenset(),
     ) -> "DecisionContext":
         """This tick's context over ``snapshot`` plus the sizer's own state.
 
@@ -110,6 +116,8 @@ class DecisionContext:
             unknown_pg_headroom=snapshot.unknown_pg_headroom_by_op,
             growth_ceiling=growth_ceiling,
             next_ops=next_ops,
+            snapshot=snapshot,
+            modeled_ops=modeled_ops,
         )
 
     @property

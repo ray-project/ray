@@ -530,7 +530,7 @@ class _TestSizer(OperatorSizer):
         transitions, the holds and the tick's phase update."""
         snapshot = self.held_snapshot(force=force)
         self._advance_phase()
-        return self._per_op_how_many(snapshot)
+        return self._per_op_how_many(snapshot, self._decide(snapshot))
 
     @property
     def statuses(self):
@@ -716,7 +716,7 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
-    target = sizer._per_op.warmup_target(
+    target = sizer._policy.per_op.warmup_target(
         write, view.reserved_by_node["node0"], PlacementGroupSlots()
     )
     assert target is not None and target > write._pool.min_size()
@@ -784,7 +784,7 @@ def test_warmup_share_respects_memory_after_gpu_ops():
     sizer, _ = _bootstrapped(*ops.values(), view=view)
     capacity = view.reserved_by_node["node0"]
     targets = {
-        name: sizer._per_op.warmup_target(op, capacity, PlacementGroupSlots())
+        name: sizer._policy.per_op.warmup_target(op, capacity, PlacementGroupSlots())
         for name, op in ops.items()
     }
 
@@ -806,7 +806,9 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
     sizer, _ = _bootstrapped(read, write, cpu=32)
     capacity = ExecutionResources(cpu=32, gpu=4)
     # (32 - 2 floors) x 0.8 / 2 = 12.
-    assert sizer._per_op.warmup_target(read, capacity, PlacementGroupSlots()) == 12
+    assert (
+        sizer._policy.per_op.warmup_target(read, capacity, PlacementGroupSlots()) == 12
+    )
 
 
 def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
@@ -988,7 +990,7 @@ def test_per_op_rules_dispatch(
     snapshot = sizer.next_tick()
     assert snapshot is not None
 
-    decision = sizer._per_op.decide(
+    decision = sizer._policy.per_op.decide(
         op,
         status=status,
         phase=phase,
@@ -1017,7 +1019,7 @@ def test_steady_how_many_only_sheds_idle_actors():
     sizer, topo = _bootstrapped(busy, idle, enqueued=0, warm=True)
     topo[busy]._enqueued = 20
 
-    for _ in range(sizer._per_op.downscale_hysteresis - 1):
+    for _ in range(sizer._policy.per_op.downscale_hysteresis - 1):
         assert _tick(sizer).request == {}
     request = _tick(sizer).request
     assert busy not in request
@@ -1041,7 +1043,7 @@ def test_unmodeled_op_keeps_its_warmup_share_after_warmup():
     assert sizer.phase is SizerPhase.MODEL_WARMING
     assert seen not in request
     capacity = ExecutionResources(cpu=32.0, gpu=0.0)
-    target = sizer._per_op.warmup_target(unseen, capacity, PlacementGroupSlots())
+    target = sizer._policy.per_op.warmup_target(unseen, capacity, PlacementGroupSlots())
     assert target is not None and target > 1
     assert (request[unseen].delta, request[unseen].reason) == (
         target - 1,
@@ -1094,7 +1096,7 @@ def test_warmup_latches_off_on_critical_op_first_output():
     sizer._advance_phase()
     # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
     assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
-    assert sizer._per_op_how_many(snapshot).request == {}
+    assert sizer._per_op_how_many(snapshot, sizer._decide(snapshot)).request == {}
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
@@ -2041,7 +2043,7 @@ def test_warm_backpressured_producer_holds(producer, consumer, cpu, ticks_fn, ex
 
 
 # How-many never grows an op past warmup, whatever its producer does: growth
-# is the bottleneck policy's (see test_sizer_bottleneck_policy).
+# is the sizing policy's (see test_sizer_bottleneck_policy).
 @pytest.mark.parametrize(
     "producer_bp,bottleneck_pool",
     [

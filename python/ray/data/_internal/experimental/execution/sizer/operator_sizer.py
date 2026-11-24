@@ -68,16 +68,15 @@ from ray.data._internal.experimental.execution.sizer.op_status import (
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
 )
-from ray.data._internal.experimental.execution.sizer.policy.bottleneck_policy import (  # noqa: E501
-    BottleneckPolicy,
-)
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
 from ray.data._internal.experimental.execution.sizer.policy.decision import (
     classify_phase,
 )
-from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
+from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (
+    SizingPolicy,
+)
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     Decision,
     OpDecision,
@@ -110,30 +109,28 @@ class OperatorSizer:
 
     A state machine, evaluated once per sizing tick:
 
-    - ``SizerPhase`` (``classify_phase``): WARMUP until every critical op has
-      produced output, MODEL_WARMING until the bottleneck model has seen a
-      full window of every unfinished op, then STEADY.
-    - ``Decision`` (``policy.decision.classify``): the tick's one primary
-      action from the bottleneck model -- grow a bottleneck into free
-      capacity, grow balanced stages, fund the recipient from donors, shrink
-      blocked surplus, or hold.
-    - ``TransferPhase``: whether a transfer is open (``TransferBook``).
-    - ``OpStatusKind`` per op: whether it may be resized now.
+    - ``SizerPhase`` (``classify_phase``): WARMUP until every op has received
+      input and every critical op has produced output, MODEL_WARMING until
+      the bottleneck model has seen a full window of every unfinished op,
+      then STEADY.
+    - ``OpStatus`` per op (``op_status``): what the sizer may do to it now.
+    - ``OpRule`` per op: the one action that sized it this tick.
 
     Each tick runs in four steps:
 
-    1. DECIDE    Advance open transfers, classify the decision and carry it
-                 out (``BottleneckPolicy``). Its requests already name their
-                 nodes and are applied at once, so the steps below see the
-                 capacity they claimed.
-    2. HOW MANY  ``PerOpRules.decide`` picks each op's per-op action
-                 (``OpRule``): release a completed pool, grow to held room,
-                 grow toward the warmup share, shed idle actors, or refill to
-                 min size. The ledger (``ConstraintAwareCapacityLedger``)
-                 clamps each upscale to what the cluster can place.
-    3. WHERE     Each how-many delta resolved to nodes by the
-                 ``ActorPlacementStrategy``; the pool picks the actors.
-    4. APPLY     The resolved requests handed to the pools.
+    1. DECIDE    ``SizingPolicy.decide`` picks one action per op (``OpRule``).
+                 It acts on the bottleneck model first: grow a bottleneck or
+                 balanced stages into free capacity, fund the recipient from
+                 donors, or shed blocked surplus. Those requests already name
+                 their nodes, and we apply them at once, so the steps below
+                 see the room they took. Every other op gets a per-op action:
+                 release a completed pool, grow to held room, grow toward the
+                 warmup share, shed idle actors, or refill to min size.
+    2. HOW MANY  The ledger (``ConstraintAwareCapacityLedger``) clamps each
+                 per-op upscale to what the cluster can place.
+    3. WHERE     The ``ActorPlacementStrategy`` picks nodes for each delta;
+                 the pool picks the actors.
+    4. APPLY     We hand the placed requests to the pools.
 
     Alongside, it gives back capacity when the coordinator shrinks this
     dataset's slice: the tick reports where we now hold more than we are
@@ -182,12 +179,12 @@ class OperatorSizer:
         self._profiles = OpProfiles(topology)
         self._statuses = OpStatusMachine(self._profiles.actor_pool_ops)
 
-        self._policy = BottleneckPolicy(
+        self._policy = SizingPolicy(
             metrics=OptimizerMetrics(self._dataset_id),
             placement=self._placement,
             statuses=self._statuses,
+            profiles=self._profiles,
         )
-        self._per_op = PerOpRules(profiles=self._profiles)
         self._bottleneck_observer = BottleneckObserver(
             profiles=self._profiles, clock=self._clock
         )
@@ -282,8 +279,8 @@ class OperatorSizer:
         """Hold room for held ops, run the bottleneck model, advance the
         phase, then decide, how many, where, apply."""
         self._prepare_tick(snapshot)
-        self._decide(snapshot)
-        how_many = self._per_op_how_many(snapshot)
+        decisions = self._decide(snapshot)
+        how_many = self._per_op_how_many(snapshot, decisions)
         where = self._per_op_where(how_many, snapshot)
         self._apply(where)
         return how_many, where
@@ -304,31 +301,34 @@ class OperatorSizer:
         self._advance_phase()
 
     @timed("decide")
-    def _decide(self, snapshot: ClusterStateSnapshot) -> None:
-        """Step 1: classify this tick's decision and carry it out.
+    def _decide(
+        self, snapshot: ClusterStateSnapshot
+    ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
+        """Step 1: the policy picks one action per op, and we apply the
+        bottleneck model's requests at once.
 
-        This lands before how_many on purpose: a decision debits what it claims
-        (or holds for a later tick) off the shared free map, and what it
-        places becomes targeted pendings in committed accounting, so how_many
-        already sees the space it reserved. Ops a transfer claimed are no
-        longer ACTIVE, so how_many leaves them alone this tick.
+        Those requests already name their nodes. They debit what they claim
+        from the shared free map, and their pendings count as committed, so
+        the how-many pass below already sees the room they took.
         """
-        self._decision, requests = self._policy.step(self._decision_context(snapshot))
-        for placed in requests:
-            self._apply(placed)
+        decisions = self._policy.decide(self._decision_context(snapshot))
+        self._decision = self._policy.last_decision
+        for op, decision in decisions.items():
+            for placed in decision.placed:
+                self._apply(PlacedSizingRequest(request={op: placed}))
+        return decisions
 
     @timed("per_op_how_many")
-    def _per_op_how_many(self, snapshot: ClusterStateSnapshot) -> PerOpSizingRequest:
-        """Step 2: the per-op actions, which do not need the model.
+    def _per_op_how_many(
+        self,
+        snapshot: ClusterStateSnapshot,
+        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
+    ) -> PerOpSizingRequest:
+        """Step 2: grant the per-op actions' requests.
 
-        Two passes over the operators, in the tick's shared order:
-
-        - DECIDE  ``PerOpRules.decide`` picks each op's action from its own
-                  state. It does not look at capacity, so order does not
-                  matter here.
-        - GRANT   clamp each upscale to what the cluster can hold and debit
-                  it. Grant order is placement order, so step 3 can place
-                  everything granted here.
+        Clamp each upscale to what the cluster can hold, and debit it, in the
+        tick's op order. Grant order is placement order, so step 3 can place
+        everything granted here.
 
         Capacity this tick's downscales will free is not credited: a running
         victim holds its resources until it is dead, so the ledger sees it
@@ -336,7 +336,6 @@ class OperatorSizer:
         """
         ledger = ConstraintAwareCapacityLedger(snapshot)
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        decisions = self._decide_per_op(snapshot)
         self._grant_within_capacity(snapshot.ordered_ops, decisions, ledger, request)
         self._telemetry.log_request_summary(request)
         return PerOpSizingRequest(request=request)
@@ -509,7 +508,9 @@ class OperatorSizer:
             if op not in held_ops or op.has_completed():
                 continue
             pool = op.actor_pool
-            target = self._per_op.warmup_target(op, global_limits, snapshot.pg_slots)
+            target = self._policy.per_op.warmup_target(
+                op, global_limits, snapshot.pg_slots
+            )
             if target is None:
                 target = pool.min_size()
             floor = pool.serving_size()
@@ -558,30 +559,15 @@ class OperatorSizer:
                 op: self._growth_ceiling(op) for op in self._profiles.actor_pool_ops
             },
             next_ops=self._profiles.next_ops,
+            modeled_ops=frozenset(self._modeled_ops),
         )
 
     def _growth_ceiling(self, op: ExperimentalActorPoolMapOperator) -> int:
         """The pool's bounded max size, or less once every upstream op has
         completed and the remaining work needs fewer actors."""
         ceiling = op.actor_pool.bounded_max_size()
-        remaining = self._per_op.remaining_work_cap(op, self._topology[op])
+        remaining = self._policy.per_op.remaining_work_cap(op, self._topology[op])
         return ceiling if remaining is None else min(ceiling, remaining)
-
-    def _decide_per_op(
-        self, snapshot: ClusterStateSnapshot
-    ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
-        """DECIDE pass: each op's per-op action, from ``PerOpRules.decide``."""
-        return {
-            op: self._per_op.decide(
-                op,
-                status=self._statuses.status(op),
-                phase=self.phase,
-                modeled=op in self._modeled_ops,
-                snapshot=snapshot,
-                op_state=self._topology[op],
-            )
-            for op in snapshot.ordered_ops
-        }
 
     def _grant_within_capacity(
         self,

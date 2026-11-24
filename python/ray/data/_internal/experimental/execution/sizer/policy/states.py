@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Mapping, Optional
+from typing import TYPE_CHECKING, Mapping, Optional, Tuple
 
 if TYPE_CHECKING:
     from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
+    )
+    from ray.data._internal.experimental.execution.operators.actor_pool_models import (  # noqa: E501
+        PlacedScalingRequest,
     )
 
 
@@ -72,8 +75,17 @@ class Decision:
 
 
 class OpRule(enum.Enum):
-    """The per-op action that sized one op this tick (``PerOpRules.decide``)."""
+    """The action that sized one op this tick (``SizingPolicy.decide``).
 
+    The first five come from the bottleneck model and place their actors
+    themselves; the rest are per-op actions (``PerOpRules.decide``).
+    """
+
+    GROW_FREE = "grow a bottleneck into free capacity"
+    GROW_BALANCED = "grow a balanced stage into free capacity"
+    FUND = "receive actors from a capacity transfer"
+    DONATE = "give actors to a bottleneck"
+    SHRINK_SURPLUS = "shed blocked surplus"
     RELEASE_POOL = "release the pool of a completed op"
     GRANT_HELD = "grow to the room held for it"
     WARMUP_SHARE = "grow toward its warmup share"
@@ -84,8 +96,10 @@ class OpRule(enum.Enum):
 
 @dataclass(frozen=True)
 class OpDecision:
-    """One op's per-op action this tick, and the request it makes (None when
-    it changes nothing)."""
+    """One op's action this tick. A per-op action sets ``request``, which the
+    sizer still clamps and places. A bottleneck action sets ``placed``: its
+    requests already name their nodes, in the order to apply them."""
 
     rule: OpRule
     request: Optional["ActorPoolScalingRequest"] = None
+    placed: Tuple["PlacedScalingRequest", ...] = ()

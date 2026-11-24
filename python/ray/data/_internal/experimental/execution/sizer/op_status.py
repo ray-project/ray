@@ -210,17 +210,14 @@ class OpStatusMachine:
     def can_scale(self, op: "ExperimentalActorPoolMapOperator") -> bool:
         """Whether the policy may resize ``op`` now (grow it, transfer to or
         from it, shed its surplus): only an ``Active`` op."""
-        return self._status.get(op, _ACTIVE).kind is OpStatusKind.ACTIVE
+        return self.kind(op) is OpStatusKind.ACTIVE
 
     def can_size_per_op(self, op: "ExperimentalActorPoolMapOperator") -> bool:
         """Whether the per-op actions (WARMUP_SHARE, GRANT_HELD, SHED_IDLE,
         REFILL_TO_MIN) may resize ``op`` now: an ``Active`` or ``Released``
         op. A completed op is released by the how-many pass, which checks
         completion first."""
-        return self._status.get(op, _ACTIVE).kind in (
-            OpStatusKind.ACTIVE,
-            OpStatusKind.RELEASED,
-        )
+        return self.kind(op) in (OpStatusKind.ACTIVE, OpStatusKind.RELEASED)
 
     def reason(self, op: "ExperimentalActorPoolMapOperator") -> Optional[str]:
         """Why ``op`` may not be resized, or None if it may."""
