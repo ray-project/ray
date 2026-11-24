@@ -102,7 +102,6 @@ py_binary(
     deps = [
         ":registry",
         ":scan_store",
-        ci_require("bazel-runfiles"),
         ci_require("click"),
     ],
 )
