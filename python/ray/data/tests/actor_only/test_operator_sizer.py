@@ -2899,7 +2899,7 @@ def test_log_decisions_names_each_ops_status_rule_and_reason(caplog, propagate_l
         )
     (line,) = [r.getMessage() for r in caplog.records if "tick:" in r.getMessage()]
     assert line == (
-        "OperatorSizer tick: phase=steady decision=none | "
+        "OperatorSizer tick: phase=steady move=none | "
         "Grown[active]: grow_free +2 (grow free); Held[held]: none; "
         "Shed[active]: shed_idle -2 (idle)"
     )

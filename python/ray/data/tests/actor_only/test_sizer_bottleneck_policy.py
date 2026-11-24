@@ -59,16 +59,20 @@ from ray.data._internal.experimental.execution.sizer.policy.decision import (
     HOLD_CLUSTER_SETTLING,
     HOLD_NO_MODEL,
     HOLD_WARMUP,
-    classify_decision,
+    choose_bottleneck_move,
 )
 from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (  # noqa: E501
     SizingPolicy,
     transfer_timeout_s,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    DecisionKind,
+    FundRecipient,
+    GrowBalanced,
+    GrowFree,
+    Hold,
     OpDecision,
     OpRule,
+    ShrinkSurplus,
     SizerPhase,
     TransferPhase,
 )
@@ -424,7 +428,7 @@ def _apply_bottleneck(policy, tick, ops, *, free_cpu=0.0, settle=999.0):
 # --- phase and decision classification -----------------------------------------
 
 
-def _classify(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY):
+def _choose_move(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY):
     ctx = _ctx(
         free={"node": ExecutionResources(cpu=free_cpu)},
         non_pg_ops=list(ops),
@@ -432,29 +436,29 @@ def _classify(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY)
         seconds_since_allocation_change=settle,
         phase=phase,
     )
-    return classify_decision(ctx, frozenset(ops))
+    return choose_bottleneck_move(ctx, frozenset(ops))
 
 
-def test_classify_holds_in_warmup_and_without_a_model():
+def test_choose_move_holds_in_warmup_and_without_a_model():
     write = _op("Write", pool=_Pool(current=2))
     tick = _tick(named=[(write, 0.6)], eligibility={write: "yes: free"})
-    warm = _classify(tick, [write], free_cpu=3, phase=SizerPhase.WARMUP)
-    assert (warm.kind, warm.reason) == (DecisionKind.HOLD, HOLD_WARMUP)
-    no_model = _classify(None, [write], free_cpu=3)
-    assert (no_model.kind, no_model.reason) == (DecisionKind.HOLD, HOLD_NO_MODEL)
+    warm = _choose_move(tick, [write], free_cpu=3, phase=SizerPhase.WARMUP)
+    assert warm == Hold(HOLD_WARMUP)
+    no_model = _choose_move(None, [write], free_cpu=3)
+    assert no_model == Hold(HOLD_NO_MODEL)
 
 
 @pytest.mark.parametrize(
     "scenario, expected",
     [
-        ("named-with-room", DecisionKind.GROW_FREE),
-        ("named-without-room-stable", DecisionKind.FUND_RECIPIENT),
-        ("named-without-room-settling", DecisionKind.HOLD),
-        ("nothing-named-busy", DecisionKind.GROW_BALANCED),
-        ("nothing-named-idle", DecisionKind.SHRINK_SURPLUS),
+        ("named-with-room", GrowFree),
+        ("named-without-room-stable", FundRecipient),
+        ("named-without-room-settling", Hold),
+        ("nothing-named-busy", GrowBalanced),
+        ("nothing-named-idle", ShrinkSurplus),
     ],
 )
-def test_classify_picks_one_decision_by_priority(scenario, expected):
+def test_choose_move_by_priority(scenario, expected):
     write = _op("Write", pool=_Pool(current=2))
     read = _op("Read", pool=_Pool(current=2))
     settle = 999.0
@@ -476,15 +480,17 @@ def test_classify_picks_one_decision_by_priority(scenario, expected):
     else:
         busy = 0.95 if scenario.endswith("busy") else 0.5
         tick = _tick(shares={read: SimpleNamespace(busy=busy)})
-    decision = _classify(tick, [write, read], free_cpu=free_cpu, settle=settle)
-    assert decision.kind is expected
-    if expected is DecisionKind.HOLD:
-        assert decision.reason == HOLD_CLUSTER_SETTLING
-    if expected is DecisionKind.GROW_FREE:
-        assert dict(decision.targets) == {write: 4}
+    move = _choose_move(tick, [write, read], free_cpu=free_cpu, settle=settle)
+    assert type(move) is expected
+    if expected is Hold:
+        assert move == Hold(HOLD_CLUSTER_SETTLING)
+    if expected is GrowFree:
+        assert move == GrowFree(write, 4)
+    if expected is FundRecipient:
+        assert move == FundRecipient(write)
 
 
-def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
+def test_choose_move_skips_a_named_bottleneck_held_by_a_transfer():
     # Receiving a transfer: not grown into free capacity this tick.
     write = _op("Write", pool=_Pool(current=2))
     tick = _tick(named=[(write, 0.6)], eligibility={write: "yes: free"})
@@ -494,7 +500,7 @@ def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
         free={"node": ExecutionResources(cpu=3)}, non_pg_ops=[write], bottleneck=tick
     )
     active = statuses.active_ops([write])
-    assert classify_decision(ctx, active).kind is not DecisionKind.GROW_FREE
+    assert not isinstance(choose_bottleneck_move(ctx, active), GrowFree)
 
 
 def test_decide_rejects_a_handler_that_resizes_an_op_that_is_not_active():
@@ -502,8 +508,8 @@ def test_decide_rejects_a_handler_that_resizes_an_op_that_is_not_active():
     statuses = _statuses(write)
     statuses.start_receiving(write)
     policy = _policy(statuses=statuses)
-    # No model: the tick is HOLD. Its handler resizes the Receiving op.
-    policy._handlers[DecisionKind.HOLD] = lambda decision, ctx, active: {
+    # A move that resizes the Receiving op.
+    policy._make_move = lambda move, ctx, active: {  # type: ignore[method-assign]
         write: OpDecision(OpRule.GROW_FREE)
     }
     with pytest.raises(AssertionError, match="not Active"):

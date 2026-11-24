@@ -71,7 +71,6 @@ from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import
     SizingPolicy,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    Decision,
     OpDecision,
     SizerPhase,
 )
@@ -161,7 +160,6 @@ class OperatorSizer:
         # eventually all ops are, but in the beginning the observer needs
         # to gather data before classifying as bottleneck or not
         self._modeled_ops: Set[ExperimentalActorPoolMapOperator] = set()
-        self._decision: Optional[Decision] = None
         self._telemetry = SizerTelemetry(dataset_id)
 
     # --- bootstrap ------------------------------------------------------------
@@ -322,10 +320,9 @@ class OperatorSizer:
             modeled_ops=frozenset(self._modeled_ops),
         )
         decisions = self._policy.decide(decision_ctx)
-        self._decision = self._policy.last_decision
         self._telemetry.log_decisions(
             self.phase,
-            self._decision,
+            self._policy.last_move,
             decisions,
             {op: self._statuses.status(op) for op in decisions},
         )

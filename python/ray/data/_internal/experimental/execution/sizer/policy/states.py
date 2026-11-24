@@ -9,18 +9,19 @@ State that carries across ticks:
 
 Each tick's decision, recomputed every tick with no memory:
 
-- ``DecisionKind``: what the whole pipeline does this tick (``classify`` in
-  ``decision``). It picks the handler that runs, and is logged.
-- ``OpRule``: what happened to one op this tick. The handler for the
-  ``DecisionKind`` names the rule for each op it resizes; the per-op rules
-  (``per_op``) name it for the rest.
+- ``BottleneckMove``: the one move the bottleneck model makes this tick
+  (``choose_bottleneck_move`` in ``decision``): ``GrowFree``,
+  ``GrowBalanced``, ``FundRecipient``, ``ShrinkSurplus`` or ``Hold``. Each
+  carries only what it needs.
+- ``OpRule``: what happened to one op this tick. The move names the rule for
+  each op it resizes; the per-op rules (``per_op``) name it for the rest.
 """
 
 from __future__ import annotations
 
 import enum
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Mapping, Optional, Tuple
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, ClassVar, Mapping, Optional, Tuple, Union
 
 if TYPE_CHECKING:
     from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
@@ -44,40 +45,70 @@ class SizerPhase(enum.Enum):
     STEADY = "steady"
 
 
-class DecisionKind(enum.Enum):
-    """What the whole pipeline does this tick, in priority order. The ops it
-    resizes get the ``OpRule`` of the same name (FUND_RECIPIENT: DONATE for
-    each donor)."""
-
-    # A named bottleneck has room in free capacity (or its placement group):
-    # grow it there toward its growth target.
-    GROW_FREE = "grow bottleneck into free capacity"
-    # Nothing is named and some ops are nearly always busy: the stages are
-    # balanced, so each grows by a share of the free capacity.
-    GROW_BALANCED = "grow balanced stages"
-    # A stable recipient with no free room: fund it from donors' slack
-    # (one transfer at a time), and drain donors' surplus toward it.
-    FUND_RECIPIENT = "fund recipient"
-    # No recipient: drain ops mostly blocked behind their consumer.
-    SHRINK_SURPLUS = "shrink blocked surplus"
-    # Nothing to do (warmup, no model yet, the cluster still settling).
-    HOLD = "hold"
-
-
 class TransferPhase(enum.Enum):
     IDLE = "idle"
     IN_FLIGHT = "in flight"
 
 
+# --- the bottleneck move: one per tick, chosen by ``choose_bottleneck_move`` --
+#
+# Each move resizes only Active ops, and names the ``OpRule`` of each op it
+# resizes. ``name`` is what the logs show; ``reason`` is why it was chosen.
+
+
 @dataclass(frozen=True)
-class Decision:
-    kind: DecisionKind
-    # GROW_FREE / GROW_BALANCED: each op to grow and the size to grow it
-    # toward. FUND_RECIPIENT: the recipient and its growth target.
-    targets: Mapping["ExperimentalActorPoolMapOperator", int] = field(
-        default_factory=dict
-    )
-    reason: str = ""
+class GrowFree:
+    """A named bottleneck has room in free capacity (or its placement
+    group): grow ``op`` toward ``target`` (GROW_FREE)."""
+
+    op: "ExperimentalActorPoolMapOperator"
+    target: int
+    name: ClassVar[str] = "grow bottleneck into free capacity"
+    reason: ClassVar[str] = "bottleneck"
+
+
+@dataclass(frozen=True)
+class GrowBalanced:
+    """Nothing is named and some ops are nearly always busy: the stages are
+    balanced, so each op in ``targets`` grows toward its size by a share of
+    the free capacity (GROW_BALANCED)."""
+
+    targets: Mapping["ExperimentalActorPoolMapOperator", int]
+    name: ClassVar[str] = "grow balanced stages"
+    reason: ClassVar[str] = "balanced"
+
+
+@dataclass(frozen=True)
+class FundRecipient:
+    """A stable recipient with no free room: fund ``recipient`` from donors'
+    slack (one transfer at a time), and drain donors' surplus toward it.
+    Only donors shrink this tick (DONATE); the recipient's actors come up on
+    later ticks (FUND)."""
+
+    recipient: "ExperimentalActorPoolMapOperator"
+    name: ClassVar[str] = "fund recipient"
+    reason: ClassVar[str] = "stable recipient"
+
+
+@dataclass(frozen=True)
+class ShrinkSurplus:
+    """No recipient: drain ops mostly blocked behind their consumer
+    (SHRINK_SURPLUS)."""
+
+    name: ClassVar[str] = "shrink blocked surplus"
+    reason: ClassVar[str] = "no recipient"
+
+
+@dataclass(frozen=True)
+class Hold:
+    """Resize nothing: warmup, no model yet, or the cluster still settling
+    (``reason``)."""
+
+    reason: str
+    name: ClassVar[str] = "hold"
+
+
+BottleneckMove = Union[GrowFree, GrowBalanced, FundRecipient, ShrinkSurplus, Hold]
 
 
 class OpRule(enum.Enum):

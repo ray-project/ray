@@ -7,24 +7,24 @@ grow toward the warmup share, shed idle actors, refill to min size).
 
 The bottleneck model (``bottleneck_observer``) names, each tick, the
 bottlenecks and the most severe stable one that can use capacity (the
-recipient). ``decision.classify`` turns that into one ``DecisionKind``, and
-the policy carries it out:
+recipient). ``decision.choose_bottleneck_move`` turns that into one
+``BottleneckMove``, and the policy makes it (``_make_move``):
 
-- GROW_FREE: the bottleneck grows into free capacity toward its growth
+- ``GrowFree``: the bottleneck grows into free capacity toward its growth
   target b' = ceil(b / (1 - w)), w the largest share of time a neighbour
   waits on it. New actors are capped at a share of free placeable capacity
   among unfinished, growable operators competing for the same resource
   class and placement domain (at least one actor when any fits). A
   PG-managed op grows into its own placement group.
-- GROW_BALANCED: with no bottleneck named, every op that is nearly always
+- ``GrowBalanced``: with no bottleneck named, every op that is nearly always
   busy grows by ``growth.balanced_step`` into free capacity.
-- FUND_RECIPIENT: with no transfer in flight, pick b', the largest size up
+- ``FundRecipient``: with no transfer in flight, pick b', the largest size up
   to the growth target that donors can fund, every non-bottleneck op giving
   at most its slack at b' (b'/b more work on the recipient's path, the same
   off it). Victims are only pending or idle actors, fastest to free first;
   busy surplus drains passively instead (``_shrink_toward_keep``) and
-  reaches the recipient through GROW_FREE on a later tick.
-- SHRINK_SURPLUS: with no recipient, drain ops mostly blocked behind their
+  reaches the recipient through ``GrowFree`` on a later tick.
+- ``ShrinkSurplus``: with no recipient, drain ops mostly blocked behind their
   consumer down toward what they need.
 
 Every growth stays within the op's growth ceiling (its pool's max size, or
@@ -41,9 +41,9 @@ import math
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
-    Callable,
     Dict,
     List,
+    Mapping,
     Optional,
     Tuple,
 )
@@ -77,7 +77,7 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
 )
 from ray.data._internal.experimental.execution.sizer.policy.decision import (
     HOLD_CLUSTER_SETTLING,
-    classify_decision,
+    choose_bottleneck_move,
     why_cannot_grow,
 )
 from ray.data._internal.experimental.execution.sizer.policy.growth import (
@@ -87,10 +87,14 @@ from ray.data._internal.experimental.execution.sizer.policy.growth import (
 )
 from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    Decision,
-    DecisionKind,
+    BottleneckMove,
+    FundRecipient,
+    GrowBalanced,
+    GrowFree,
+    Hold,
     OpDecision,
     OpRule,
+    ShrinkSurplus,
     TransferPhase,
 )
 from ray.data._internal.experimental.execution.sizer.policy.transfer import (
@@ -181,6 +185,18 @@ def _update_decision_with_requests(
     return curr_decision
 
 
+def _move_targets(move: BottleneckMove) -> str:
+    """The ops ``move`` names and their sizes, for the log."""
+    match move:
+        case GrowFree(op=op, target=target):
+            return f" {op.name}->{target}"
+        case GrowBalanced(targets=targets):
+            return "".join(f" {op.name}->{target}" for op, target in targets.items())
+        case FundRecipient(recipient=recipient):
+            return f" {recipient.name}"
+    return ""
+
+
 def _within_capacity(
     op: "ExperimentalActorPoolMapOperator", decision: OpDecision, ctx: DecisionContext
 ) -> OpDecision:
@@ -222,7 +238,7 @@ class SizingPolicy:
         self._metrics = metrics
         self.per_op = PerOpRules(profiles=profiles)
         # The bottleneck decision of the last tick, for logs and tests.
-        self.last_decision: Optional[Decision] = None
+        self.last_move: Optional[BottleneckMove] = None
         self._placement = placement
         self._statuses = statuses
         self._transfer_book = TransferBook(self.name, metrics, placement, statuses)
@@ -231,25 +247,6 @@ class SizingPolicy:
         # Per op: consecutive ticks it has been blocked with surplus while
         # there was no recipient.
         self._blocked_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
-        # Each handler carries out one bottleneck decision and names the rule
-        # for every op it resizes.
-        self._handlers: Dict[
-            DecisionKind,
-            Callable[
-                [
-                    Decision,
-                    DecisionContext,
-                    AbstractSet["ExperimentalActorPoolMapOperator"],
-                ],
-                OpDecisions,
-            ],
-        ] = {
-            DecisionKind.GROW_FREE: self._grow_free,
-            DecisionKind.GROW_BALANCED: self._grow_balanced,
-            DecisionKind.FUND_RECIPIENT: self._fund_recipient,
-            DecisionKind.SHRINK_SURPLUS: self._shrink_surplus,
-            DecisionKind.HOLD: self._hold,
-        }
 
     @property
     def transfers(self) -> TransferBook:
@@ -267,8 +264,8 @@ class SizingPolicy:
 
         1. Advance open transfers, and bring up the actors they owe their
            recipients (FUND).
-        2. Classify the tick (one ``DecisionKind``) and run its handler over
-           the Active ops only, read once from the op statuses. The handler
+        2. Choose one bottleneck move and make it (``_make_move``), over
+           the Active ops only, read once from the op statuses. The move
            names the rule for each op it resizes (GROW_FREE, GROW_BALANCED,
            DONATE, SHRINK_SURPLUS), and its requests already name their
            nodes. Steps 1 and 2 never share an op: step 1's ops are never
@@ -296,24 +293,22 @@ class SizingPolicy:
         funded_active = op_decisions.keys() & active
         assert not funded_active, f"transfers funded Active ops: {funded_active}"
 
-        # 2. Given the current state of the pipeline, classify the best
-        # decision to make.
-        decision = classify_decision(ctx, active)
-        self.last_decision = decision
+        # 2. The one bottleneck move of this tick, over the Active ops.
+        move = choose_bottleneck_move(ctx, active)
+        self.last_move = move
         logger.debug(
-            "SizingPolicy: phase=%s transfer=%s decision=%s%s (%s)",
+            "SizingPolicy: phase=%s transfer=%s move=%s%s (%s)",
             ctx.phase.value,
             self._transfer_book.phase.value,
-            decision.kind.value,
-            "".join(f" {op.name}->{target}" for op, target in decision.targets.items()),
-            decision.reason,
+            move.name,
+            _move_targets(move),
+            move.reason,
         )
-
-        # The handler only resizes Active ops, so it never shares an op with
-        # the transfers above.
-        moved = self._handlers[decision.kind](decision, ctx, active)
+        # The move only resizes Active ops, so it never shares an op with the
+        # transfers above.
+        moved = self._make_move(move, ctx, active)
         not_active = moved.keys() - active
-        assert not not_active, f"{decision.kind} resized ops not Active: {not_active}"
+        assert not not_active, f"{move.name} resized ops not Active: {not_active}"
         op_decisions.update(moved)
 
         if ctx.snapshot is not None:
@@ -331,69 +326,74 @@ class SizingPolicy:
                 op_decisions[op] = _within_capacity(op, wanted, ctx)
         return op_decisions
 
-    # --- decision handlers ----------------------------------------------------
+    # --- the bottleneck move ---------------------------------------------------
 
-    def _hold(
+    def _make_move(
         self,
-        decision: Decision,
+        move: BottleneckMove,
         ctx: DecisionContext,
         active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> OpDecisions:
-        if decision.reason == HOLD_CLUSTER_SETTLING:
-            self._metrics.record_refusal(self.name, decision.reason)
-        return {}
-
-    def _grow_free(
-        self,
-        decision: Decision,
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> OpDecisions:
-        return _update_decision_with_requests(
-            curr_decision={},
-            rule=OpRule.GROW_FREE,
-            requests=self._grow_each(decision, ctx),
-        )
-
-    def _grow_balanced(
-        self,
-        decision: Decision,
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> OpDecisions:
-        return _update_decision_with_requests(
-            curr_decision={},
-            rule=OpRule.GROW_BALANCED,
-            requests=self._grow_each(decision, ctx),
-        )
+        """Resize the ops ``move`` names, each under its ``OpRule``."""
+        match move:
+            case GrowFree(op=op, target=target):
+                return _update_decision_with_requests(
+                    curr_decision={},
+                    rule=OpRule.GROW_FREE,
+                    requests=self._grow_each({op: target}, move.reason, ctx),
+                )
+            case GrowBalanced(targets=targets):
+                return _update_decision_with_requests(
+                    curr_decision={},
+                    rule=OpRule.GROW_BALANCED,
+                    requests=self._grow_each(targets, move.reason, ctx),
+                )
+            case FundRecipient(recipient=recipient):
+                return _update_decision_with_requests(
+                    curr_decision={},
+                    rule=OpRule.DONATE,
+                    requests=self._fund_recipient(recipient, ctx, active),
+                )
+            case ShrinkSurplus():
+                return _update_decision_with_requests(
+                    curr_decision={},
+                    rule=OpRule.SHRINK_SURPLUS,
+                    requests=self._shrink_surplus(ctx, active),
+                )
+            case Hold(reason=reason):
+                if reason == HOLD_CLUSTER_SETTLING:
+                    self._metrics.record_refusal(self.name, reason)
+                return {}
+        raise AssertionError(f"unknown bottleneck move: {move}")
 
     def _grow_each(
-        self, decision: Decision, ctx: DecisionContext
+        self,
+        targets: Mapping["ExperimentalActorPoolMapOperator", int],
+        reason: str,
+        ctx: DecisionContext,
     ) -> List[PlacedSizingRequest]:
-        """Grow every op in the decision toward its target, in order, each
+        """Grow every op in ``targets`` toward its size, in order, each
         planned against the free capacity the ones before it left."""
         requests: List[PlacedSizingRequest] = []
-        for op, target in decision.targets.items():
+        for op, target in targets.items():
             growth = plan_free_growth(op, target, ctx)
             if growth is None:
                 continue
-            grown = apply_free_growth(
-                op, growth, ctx, self._placement, reason=decision.reason
-            )
+            grown = apply_free_growth(op, growth, ctx, self._placement, reason=reason)
             if grown is not None:
                 requests.append(grown)
         return requests
 
     def _fund_recipient(
         self,
-        decision: Decision,
+        recipient: "ExperimentalActorPoolMapOperator",
         ctx: DecisionContext,
         active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> OpDecisions:
-        """Only donors shrink this tick (DONATE). The recipient's actors come
-        up on later ticks, as donors free their room (FUND, in
+    ) -> List[PlacedSizingRequest]:
+        """The donors' downscales: a new transfer to ``recipient`` when none
+        is open, and drains of donors' surplus toward it. The recipient's
+        actors come up on later ticks, as donors free their room (FUND, in
         ``bring_up_held_actors``)."""
-        (recipient,) = decision.targets
         tick = ctx.bottleneck
         assert tick is not None
         self._blocked_streak.clear()
@@ -405,24 +405,17 @@ class SizingPolicy:
             # One transfer at a time: let the window refill before the next.
             requests.extend(self._transfer_to(recipient, tick, ctx, active))
         requests.extend(self._shrink_toward_keep(recipient, tick, ctx, active))
-        return _update_decision_with_requests(
-            curr_decision={}, rule=OpRule.DONATE, requests=requests
-        )
+        return requests
 
     def _shrink_surplus(
         self,
-        decision: Decision,
         ctx: DecisionContext,
         active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> OpDecisions:
+    ) -> List[PlacedSizingRequest]:
         tick = ctx.bottleneck
         assert tick is not None
         self._surplus_streak.clear()
-        return _update_decision_with_requests(
-            curr_decision={},
-            rule=OpRule.SHRINK_SURPLUS,
-            requests=self._shrink_blocked_surplus(tick, ctx, active),
-        )
+        return self._shrink_blocked_surplus(tick, ctx, active)
 
     def _transfer_to(
         self,

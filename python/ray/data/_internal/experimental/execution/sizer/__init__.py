@@ -53,10 +53,11 @@ phase (``SizerPhase``)
     unfinished op (the ones it has not seen keep their equal share). STEADY
     after that.
 
-decision (``DecisionKind``)
-    The one primary action a tick takes from the bottleneck model: grow a
-    bottleneck into free capacity, grow balanced stages, fund the recipient
-    from donors, shrink blocked surplus, or hold.
+bottleneck move (``BottleneckMove``)
+    The one move a tick makes from the bottleneck model: grow a bottleneck
+    into free capacity (``GrowFree``), grow balanced stages
+    (``GrowBalanced``), fund the recipient from donors (``FundRecipient``),
+    shrink blocked surplus (``ShrinkSurplus``), or ``Hold``.
 
 status (``OpStatus``)
     What the sizer may do to an op now, a permission rather than a size (see

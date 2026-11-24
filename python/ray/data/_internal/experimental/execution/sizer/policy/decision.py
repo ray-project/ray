@@ -26,8 +26,12 @@ from ray.data._internal.experimental.execution.sizer.policy.growth import (
     plan_free_growth,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    Decision,
-    DecisionKind,
+    BottleneckMove,
+    FundRecipient,
+    GrowBalanced,
+    GrowFree,
+    Hold,
+    ShrinkSurplus,
 )
 
 if TYPE_CHECKING:
@@ -60,20 +64,21 @@ def why_cannot_grow(
     return None
 
 
-def classify_decision(
+def choose_bottleneck_move(
     ctx: DecisionContext, active: AbstractSet["ExperimentalActorPoolMapOperator"]
-) -> Decision:
-    """This tick's primary action, first match wins:
+) -> BottleneckMove:
+    """This tick's one bottleneck move, over the Active ops only. First
+    match wins:
 
-    | phase / model                       | condition                     | decision       |
+    | phase / model                       | condition                     | move           |
     |-------------------------------------|-------------------------------|----------------|
-    | WARMUP                              |                               | HOLD           |
-    | no model yet                        |                               | HOLD           |
-    | a named bottleneck, eligible free   | it can grow, room fits        | GROW_FREE      |
-    | no bottleneck named                 | a nearly-always-busy op fits  | GROW_BALANCED  |
-    | allocation changed recently         |                               | HOLD           |
-    | a stable recipient                  |                               | FUND_RECIPIENT |
-    | no recipient                        |                               | SHRINK_SURPLUS |
+    | WARMUP                              |                               | Hold           |
+    | no model yet                        |                               | Hold           |
+    | a named bottleneck, eligible free   | it can grow, room fits        | GrowFree       |
+    | no bottleneck named                 | a nearly-always-busy op fits  | GrowBalanced   |
+    | allocation changed recently         |                               | Hold           |
+    | a stable recipient                  |                               | FundRecipient  |
+    | no recipient                        |                               | ShrinkSurplus  |
 
     Growing into free capacity drains nothing and is cheap to undo, so it
     runs before the cluster settles (when it is most needed) and does not
@@ -81,10 +86,10 @@ def classify_decision(
     """
     if ctx.warmup:
         # Warmup sizes from equal shares; the model has no data yet.
-        return Decision(DecisionKind.HOLD, reason=HOLD_WARMUP)
+        return Hold(HOLD_WARMUP)
     tick = ctx.bottleneck
     if tick is None:
-        return Decision(DecisionKind.HOLD, reason=HOLD_NO_MODEL)
+        return Hold(HOLD_NO_MODEL)
 
     for op, _ in tick.snapshot.bottlenecks:
         if tick.assessment.eligibility.get(op) not in _FREE_ELIGIBLE:
@@ -99,39 +104,24 @@ def classify_decision(
             continue
         target = tick.growth_target(op)
         if plan_free_growth(op, target, ctx) is not None:
-            return Decision(
-                kind=DecisionKind.GROW_FREE,
-                targets={op: target},
-                reason="bottleneck",
-            )
+            return GrowFree(op, target)
 
     if not tick.snapshot.bottlenecks:
         targets = _balanced_targets(ctx, active)
         if targets:
-            return Decision(
-                kind=DecisionKind.GROW_BALANCED,
-                targets=targets,
-                reason="balanced",
-            )
+            return GrowBalanced(targets)
 
     # Moving capacity corrects a settled allocation; while the cluster is
     # still resizing, growth is the autoscaler's move.
     if ctx.seconds_since_allocation_change < SIZER_CLUSTER_SETTLE_S:
-        return Decision(DecisionKind.HOLD, reason=HOLD_CLUSTER_SETTLING)
+        return Hold(HOLD_CLUSTER_SETTLING)
 
     recipient = tick.assessment.recipient
     if recipient is None:
         # Surplus is shrunk toward a recipient that wants the capacity; with
         # none, only blocked surplus is, for the memory it pins.
-        return Decision(
-            kind=DecisionKind.SHRINK_SURPLUS,
-            reason="no recipient",
-        )
-    return Decision(
-        kind=DecisionKind.FUND_RECIPIENT,
-        targets={recipient: tick.growth_target(recipient)},
-        reason="stable recipient",
-    )
+        return ShrinkSurplus()
+    return FundRecipient(recipient)
 
 
 def _balanced_targets(

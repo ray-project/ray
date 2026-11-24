@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     )
     from ray.data._internal.experimental.execution.sizer.op_status import OpStatus
     from ray.data._internal.experimental.execution.sizer.policy.states import (
-        Decision,
+        BottleneckMove,
         OpDecision,
         SizerPhase,
     )
@@ -87,12 +87,12 @@ class SizerTelemetry:
     def log_decisions(
         self,
         phase: "SizerPhase",
-        decision: Optional["Decision"],
+        move: Optional["BottleneckMove"],
         decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
         statuses: Dict[ExperimentalActorPoolMapOperator, "OpStatus"],
     ) -> None:
         """Log, once per tick, why each op is sized the way it is: the
-        phase, the bottleneck decision, and each op's status, rule, delta and
+        phase, the bottleneck move, and each op's status, rule, delta and
         reason. The delta is what fits after the ledger."""
         parts = []
         for op, op_decision in decisions.items():
@@ -109,9 +109,9 @@ class SizerTelemetry:
                 continue
             parts.append(f"{op.name}[{status}]: {rule} {delta:+d} ({reason})")
         logger.debug(
-            "OperatorSizer tick: phase=%s decision=%s | %s",
+            "OperatorSizer tick: phase=%s move=%s | %s",
             phase.value,
-            f"{decision.kind.value} ({decision.reason})" if decision else "none",
+            f"{move.name} ({move.reason})" if move else "none",
             "; ".join(parts),
         )
 
