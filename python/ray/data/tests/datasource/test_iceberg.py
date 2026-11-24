@@ -3968,6 +3968,120 @@ class TestIcebergDatasourceV2:
         assert len(read().take_all()) == 1
         assert read().count() == 1
 
+    def test_count_takes_record_count_when_bounds_prove_the_filter(
+        self, restore_data_context, clean_table
+    ):
+        """A data-column filter that a file's bounds prove marks it ``fully_matched``.
+
+        Only the file whose every ``col_a`` passes is counted from metadata;
+        one that straddles the filter, or holds a null, is decoded.
+        """
+        from pyiceberg.conversions import from_bytes
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            scan_tasks_from_manifest,
+        )
+        from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+            FileChunk,
+        )
+
+        _, table = clean_table
+        _append_files(table, [{"col_a": 1, "col_c": 1}, {"col_a": 2, "col_c": 1}])
+        _append_files(table, [{"col_a": 5, "col_c": 2}, {"col_a": 6, "col_c": 2}])
+        _append_files(table, [{"col_a": None, "col_c": 3}, {"col_a": 7, "col_c": 3}])
+        restore_data_context.use_datasource_v2 = True
+        predicate = col("col_a") >= 2
+
+        matched_lower_bounds = []
+        field = self._load_table().schema().find_field("col_a")
+        for manifest in self._indexer().list_files(
+            None, filesystem=None, predicate=predicate
+        ):
+            tasks = scan_tasks_from_manifest(manifest)
+            for task, chunk in zip(tasks, manifest.file_chunk_metadatas):
+                if FileChunk.from_metadata(chunk).fully_matched:
+                    lower = task.file.lower_bounds[field.field_id]
+                    matched_lower_bounds.append(from_bytes(field.field_type, lower))
+        assert matched_lower_bounds == [5]
+
+        def read():
+            return read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+            ).filter(expr=predicate)
+
+        assert read().count() == len(read().take_all()) == 4
+
+    @pytest.mark.parametrize(
+        "row_filter,overrides,expected",
+        [
+            (pyi_expr.GreaterThanOrEqual("x", 2), {}, True),
+            (pyi_expr.GreaterThanOrEqual("x", 3), {}, False),
+            (pyi_expr.GreaterThanOrEqual("x", 2), {"null_value_counts": {1: 1}}, False),
+            (pyi_expr.GreaterThanOrEqual("x", 2), {"null_value_counts": {}}, False),
+            (pyi_expr.GreaterThanOrEqual("f", 1.0), {}, True),
+            (pyi_expr.GreaterThanOrEqual("f", 1.0), {"nan_value_counts": {}}, False),
+            (pyi_expr.NotEqualTo("x", 1), {}, False),
+            (pyi_expr.NotEqualTo("x", 1), {"residual": pyi_expr.AlwaysTrue()}, False),
+            (pyi_expr.EqualTo("x", 9), {"residual": pyi_expr.AlwaysTrue()}, True),
+            (pyi_expr.GreaterThanOrEqual("x", 2), {"delete_files": {"d"}}, False),
+            (pyi_expr.GreaterThanOrEqual("x", 2), {"filters_after_read": True}, False),
+        ],
+        ids=[
+            "bounds_prove",
+            "bounds_straddle",
+            "null_in_column",
+            "no_null_count",
+            "float_with_nan_count",
+            "float_without_nan_count",
+            "not_equal",
+            "not_equal_with_true_residual",
+            "true_residual",
+            "delete_files",
+            "after_read_filter",
+        ],
+    )
+    def test_every_row_matches(self, row_filter, overrides, expected):
+        """``RowMatchCheck`` proves a file only when nothing could drop a row.
+
+        ``!=`` fails closed even when PyIceberg's strict evaluator, or an
+        ``AlwaysTrue`` residual, says every row matches: Iceberg treats
+        ``null != 1`` as true and PyArrow drops the row.
+        """
+        from pyiceberg.conversions import to_bytes
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_row_match import (  # noqa: E501
+            RowMatchCheck,
+        )
+
+        long_type, double_type = pyi_types.LongType(), pyi_types.DoubleType()
+        schema = pyi_schema.Schema(
+            pyi_types.NestedField(1, "x", long_type, required=False),
+            pyi_types.NestedField(2, "f", double_type, required=False),
+        )
+        data_file = SimpleNamespace(
+            file_path="data.parquet",
+            record_count=4,
+            value_counts={1: 4, 2: 4},
+            null_value_counts=overrides.get("null_value_counts", {1: 0, 2: 0}),
+            nan_value_counts=overrides.get("nan_value_counts", {2: 0}),
+            lower_bounds={1: to_bytes(long_type, 2), 2: to_bytes(double_type, 1.0)},
+            upper_bounds={1: to_bytes(long_type, 5), 2: to_bytes(double_type, 3.0)},
+        )
+        task = SimpleNamespace(
+            file=data_file,
+            residual=overrides.get("residual", row_filter),
+            delete_files=overrides.get("delete_files", set()),
+        )
+        check = RowMatchCheck(
+            schema=schema,
+            row_filter=row_filter,
+            case_sensitive=True,
+            filters_after_read=overrides.get("filters_after_read", False),
+        )
+
+        assert check.every_row_matches(task) == expected
+
     def test_read_metadata_subtracts_deleted_rows(self, tmp_path):
         """A file with delete files is counted by reading it, not by metadata.
 

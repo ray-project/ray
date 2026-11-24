@@ -31,7 +31,10 @@ from ray.data._internal.arrow_block import (
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     scan_tasks_from_manifest,
 )
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
 from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
@@ -168,20 +171,10 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         for most files this touches no data at all -- not even a Parquet
         footer, unlike the equivalent path for a plain Parquet read.
 
-        It is an *upper* bound on two kinds of file, and each is handled rather
-        than assumed away. A file with delete files has rows that are still
-        counted but must not be returned, and a file whose per-file residual is
-        not ``AlwaysTrue`` has rows the filter rejects. Either way the count
-        comes from decoding the file, which is what PyIceberg's own ``count()``
-        does. So does every file under an after-read filter, whose residual
-        was planned with ``| is_nan`` and so can keep rows Ray drops.
-
-        The residual is what makes a filtered ``count()`` worth attempting at
-        all: a filter on a partition column leaves every listed file with an
-        ``AlwaysTrue`` residual, so the whole count stays free. A filter on a
-        data column leaves none of them, and every file is decoded -- the same
-        work the ordinary read path would have done. Residuals are trusted only
-        for filters ``_residuals_match_arrow`` accepts.
+        ``record_count`` is exact only for a file the listing marked
+        ``fully_matched``: no delete files, and every row passes the filter
+        (``iceberg_row_match``). Any other file is counted by decoding it,
+        which is what PyIceberg's own ``count()`` does.
 
         Args:
             file_manifest: The read unit's manifest, as the listing wrote it.
@@ -189,16 +182,9 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         Yields:
             BlockMetadata: One per file in ``file_manifest``, in order.
         """
-        from pyiceberg.expressions import AlwaysTrue
-
-        trust_residuals = _residuals_match_arrow(self._row_filter)
-        for task in scan_tasks_from_manifest(manifest=file_manifest):
-            if (
-                trust_residuals
-                and isinstance(task.residual, AlwaysTrue)
-                and not task.delete_files
-                and self._after_read_filter is None
-            ):
+        tasks = scan_tasks_from_manifest(manifest=file_manifest)
+        for task, chunk in zip(tasks, file_manifest.file_chunk_metadatas):
+            if chunk is not None and FileChunk.from_metadata(chunk).fully_matched:
                 num_rows = task.file.record_count
             else:
                 num_rows = self._count_by_reading(task)
@@ -253,50 +239,3 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         # footers one task fetches; here the counts are in the manifest, so
         # there is no per-file IO to spread out.
         return None
-
-
-def _residuals_match_arrow(row_filter: "BooleanExpression") -> bool:
-    """Whether an ``AlwaysTrue`` residual means ``ArrowScan`` keeps every row.
-
-    Iceberg plans residuals from partition values with ``null != 3`` true, but
-    PyArrow evaluates it as null and drops the row. So only filters built from
-    operators that treat null the same way in both qualify.
-    """
-    from pyiceberg.expressions import (
-        AlwaysFalse,
-        AlwaysTrue,
-        And,
-        EqualTo,
-        GreaterThan,
-        GreaterThanOrEqual,
-        In,
-        IsNaN,
-        IsNull,
-        LessThan,
-        LessThanOrEqual,
-        NotNull,
-        Or,
-    )
-    from pyiceberg.expressions.visitors import rewrite_not
-
-    def agrees(expr: "BooleanExpression") -> bool:
-        if isinstance(expr, (And, Or)):
-            return agrees(expr.left) and agrees(expr.right)
-        return isinstance(
-            expr,
-            (
-                AlwaysTrue,
-                AlwaysFalse,
-                EqualTo,
-                GreaterThan,
-                GreaterThanOrEqual,
-                In,
-                IsNaN,
-                IsNull,
-                LessThan,
-                LessThanOrEqual,
-                NotNull,
-            ),
-        )
-
-    return agrees(rewrite_not(row_filter))
