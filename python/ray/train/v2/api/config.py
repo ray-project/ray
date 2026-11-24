@@ -129,6 +129,11 @@ class ScalingConfig(ScalingConfigV1):
                 f"Invalid ScalingConfig(num_workers={self.num_workers}): "
                 f"min_workers={self.min_workers} must be <= max_workers={self.max_workers}."
             )
+        if self.elasticity_enabled and self.max_workers == 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "max_workers must be at least 1."
+            )
 
         self._validate_tpu_config()
 

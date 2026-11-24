@@ -25,3 +25,7 @@ class Evaluator(abc.ABC):
     def on_reset(self) -> None:
         """Clear any state kept across evaluations, such as a history of
         results. Called at the start of each attempt of the training run."""
+
+    def on_shutdown(self) -> None:
+        """Clear anything the evaluator reports outside the run, such as
+        metrics. Called at the end of each attempt of the training run."""

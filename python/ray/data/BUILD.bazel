@@ -118,7 +118,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
@@ -307,6 +307,20 @@ py_test(
     tags = [
         "exclusive",
         "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_snowflake_unit",
+    size = "small",
+    srcs = ["tests/datasource/test_snowflake_unit.py"],
+    tags = [
+        "exclusive",
         "team:data",
     ],
     deps = [

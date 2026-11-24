@@ -15,6 +15,7 @@ from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import (
     Semaphore,
     calculate_remaining_timeout,
+    extract_self_if_method_call,
     get_active_placement_group_ids,
     get_all_live_placement_group_names,
     get_current_actor_id,
@@ -31,6 +32,31 @@ from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_DEPLOY_GROUP_PINNED_URI,
 )
+
+
+def test_extract_self_stops_unwrapping_non_callable_regression_67117():
+    class NonCallableWrapper:
+        def __init__(self):
+            self.wrapper_was_probed = False
+
+        @property
+        def __wrapped__(self):
+            if self.wrapper_was_probed:
+                raise AssertionError("inspect.unwrap continued past a non-callable")
+
+            self.wrapper_was_probed = True
+            return object()
+
+    def method():
+        pass
+
+    class FirstArgument:
+        pass
+
+    first_argument = FirstArgument()
+    first_argument.method = NonCallableWrapper()
+
+    assert extract_self_if_method_call([first_argument], method) is None
 
 
 def test_serialize():
