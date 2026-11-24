@@ -72,8 +72,12 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
     critical_ops,
 )
 from ray.data._internal.experimental.execution.sizer.op_status import (
+    Active,
+    Completed,
     Held,
     OpStatusKind,
+    Receiving,
+    Released,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     OpOrderingSignals,
@@ -81,11 +85,10 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
 )
 from ray.data._internal.experimental.execution.sizer.operator_sizer import OperatorSizer
+from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
 from ray.data._internal.experimental.execution.sizer.policy.states import (
+    OpRule,
     SizerPhase,
-)
-from ray.data._internal.experimental.execution.sizer.scale_how_many import (
-    OpSizingPolicy,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
     place_downscales,
@@ -713,7 +716,7 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
-    target = sizer._how_many.warmup_target(
+    target = sizer._per_op.warmup_target(
         write, view.reserved_by_node["node0"], PlacementGroupSlots()
     )
     assert target is not None and target > write._pool.min_size()
@@ -781,7 +784,7 @@ def test_warmup_share_respects_memory_after_gpu_ops():
     sizer, _ = _bootstrapped(*ops.values(), view=view)
     capacity = view.reserved_by_node["node0"]
     targets = {
-        name: sizer._how_many.warmup_target(op, capacity, PlacementGroupSlots())
+        name: sizer._per_op.warmup_target(op, capacity, PlacementGroupSlots())
         for name, op in ops.items()
     }
 
@@ -803,7 +806,7 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
     sizer, _ = _bootstrapped(read, write, cpu=32)
     capacity = ExecutionResources(cpu=32, gpu=4)
     # (32 - 2 floors) x 0.8 / 2 = 12.
-    assert sizer._how_many.warmup_target(read, capacity, PlacementGroupSlots()) == 12
+    assert sizer._per_op.warmup_target(read, capacity, PlacementGroupSlots()) == 12
 
 
 def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
@@ -866,6 +869,141 @@ def test_ops_awaiting_first_input_each_reserve_their_share():
     assert sizer._statuses.kind(ops["features"]) is OpStatusKind.HELD
 
 
+@pytest.mark.parametrize(
+    "status, phase, modeled, pool_kwargs, completed, rule, delta",
+    [
+        pytest.param(
+            Completed(),
+            SizerPhase.STEADY,
+            True,
+            dict(running=3),
+            True,
+            OpRule.RELEASE_POOL,
+            -3,
+            id="completed-releases-pool",
+        ),
+        pytest.param(
+            Completed(),
+            SizerPhase.STEADY,
+            True,
+            dict(running=0),
+            True,
+            OpRule.NONE,
+            None,
+            id="completed-empty-pool",
+        ),
+        pytest.param(
+            Held(reserved=4),
+            SizerPhase.WARMUP,
+            False,
+            dict(running=0),
+            False,
+            OpRule.NONE,
+            None,
+            id="held-gets-nothing",
+        ),
+        pytest.param(
+            Receiving(),
+            SizerPhase.STEADY,
+            True,
+            dict(running=2),
+            False,
+            OpRule.NONE,
+            None,
+            id="transfer-owns-it",
+        ),
+        pytest.param(
+            Active(),
+            SizerPhase.WARMUP,
+            False,
+            dict(min_size=2, max_size=2, running=2),
+            False,
+            OpRule.NONE,
+            None,
+            id="fixed-pool",
+        ),
+        pytest.param(
+            Active(),
+            SizerPhase.WARMUP,
+            False,
+            dict(running=1),
+            False,
+            OpRule.WARMUP_SHARE,
+            78,
+            id="warmup-share",
+        ),
+        pytest.param(
+            Active(),
+            SizerPhase.MODEL_WARMING,
+            False,
+            dict(running=1),
+            False,
+            OpRule.WARMUP_SHARE,
+            78,
+            id="unmodeled-keeps-warmup-share",
+        ),
+        pytest.param(
+            Active(),
+            SizerPhase.MODEL_WARMING,
+            True,
+            dict(running=1),
+            False,
+            OpRule.NONE,
+            None,
+            id="modeled-not-idle",
+        ),
+        pytest.param(
+            Released(grow_to=90),
+            SizerPhase.STEADY,
+            True,
+            dict(running=1),
+            False,
+            OpRule.GRANT_HELD,
+            89,
+            id="released-grows-to-held",
+        ),
+        pytest.param(
+            Active(),
+            SizerPhase.STEADY,
+            True,
+            dict(min_size=3, running=1),
+            False,
+            OpRule.REFILL_TO_MIN,
+            2,
+            id="below-min-refills",
+        ),
+    ],
+)
+def test_per_op_rules_dispatch(
+    status, phase, modeled, pool_kwargs, completed, rule, delta
+):
+    """``PerOpRules.decide`` picks one action per op from its status, the
+    sizer phase and whether the model has seen it. On one 100-CPU node the
+    warmup share is (100 - 1 floor) x 0.8 = 79.2 -> 79 actors: 78 more than
+    the 1 running."""
+    kwargs = dict(min_size=1, max_size=100, cpu=1)
+    kwargs.update(pool_kwargs)
+    op = _FakeOp("op", _FakePool(**kwargs), completed=completed)
+    sizer, topo = _bootstrapped(op, cpu=100.0, gpu=0.0)
+    snapshot = sizer.next_tick()
+    assert snapshot is not None
+
+    decision = sizer._per_op.decide(
+        op,
+        status=status,
+        phase=phase,
+        modeled=modeled,
+        snapshot=snapshot,
+        op_state=topo[op],
+    )
+    assert decision.rule is rule
+    if delta is None:
+        assert decision.request is None
+    else:
+        assert decision.request is not None
+        assert decision.request.delta == delta
+
+
 def test_steady_how_many_only_sheds_idle_actors():
     # Past warmup, growth comes only from the bottleneck policy: an op with
     # work and demand gets no upscale from how_many, and an idle op is still
@@ -879,7 +1017,7 @@ def test_steady_how_many_only_sheds_idle_actors():
     sizer, topo = _bootstrapped(busy, idle, enqueued=0, warm=True)
     topo[busy]._enqueued = 20
 
-    for _ in range(sizer._how_many.downscale_hysteresis - 1):
+    for _ in range(sizer._per_op.downscale_hysteresis - 1):
         assert _tick(sizer).request == {}
     request = _tick(sizer).request
     assert busy not in request
@@ -903,7 +1041,7 @@ def test_unmodeled_op_keeps_its_warmup_share_after_warmup():
     assert sizer.phase is SizerPhase.MODEL_WARMING
     assert seen not in request
     capacity = ExecutionResources(cpu=32.0, gpu=0.0)
-    target = sizer._how_many.warmup_target(unseen, capacity, PlacementGroupSlots())
+    target = sizer._per_op.warmup_target(unseen, capacity, PlacementGroupSlots())
     assert target is not None and target > 1
     assert (request[unseen].delta, request[unseen].reason) == (
         target - 1,
@@ -1785,7 +1923,7 @@ def test_backlog_actor_target_formula():
     )
     op._fake_metrics.average_num_inputs_per_task = 2
     topo = _topology(op, enqueued=40)  # 20 tasks; total 40
-    assert OpSizingPolicy(OpProfiles(topo)).backlog_actor_target(op, topo[op]) == 23
+    assert PerOpRules(OpProfiles(topo)).backlog_actor_target(op, topo[op]) == 23
 
 
 # An output-backpressured pool must HOLD (never shed) when draining it would

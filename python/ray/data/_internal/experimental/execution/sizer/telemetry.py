@@ -81,7 +81,7 @@ class SizerTelemetry:
         """Add ``seconds`` to ``phase``'s total for the current tick."""
         self._timings[phase] = self._timings.get(phase, 0.0) + seconds
 
-    # --- scale_how_many -------------------------------------------------------
+    # --- how-many pass -------------------------------------------------------
 
     def log_completed_release(
         self, op: ExperimentalActorPoolMapOperator, num_actors_to_release: int

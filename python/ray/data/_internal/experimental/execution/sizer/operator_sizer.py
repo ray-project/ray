@@ -64,7 +64,6 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
 from ray.data._internal.experimental.execution.sizer.op_status import (
     OpStatusKind,
     OpStatusMachine,
-    Released,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
@@ -78,12 +77,12 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
 from ray.data._internal.experimental.execution.sizer.policy.decision import (
     classify_phase,
 )
+from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     Decision,
+    OpDecision,
+    OpRule,
     SizerPhase,
-)
-from ray.data._internal.experimental.execution.sizer.scale_how_many import (
-    OpSizingPolicy,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
     build_placement_views,
@@ -127,11 +126,11 @@ class OperatorSizer:
                  out (``BottleneckPolicy``). Its requests already name their
                  nodes and are applied at once, so the steps below see the
                  capacity they claimed.
-    2. HOW MANY  Per-op wants that do not need the model (``OpSizingPolicy``):
-                 equal-share growth before the model has data for an op,
-                 idle shedding, min-size refill, the grant to a released
-                 held op, and releasing completed pools -- clamped to what
-                 the cluster can place (``ConstraintAwareCapacityLedger``).
+    2. HOW MANY  ``PerOpRules.decide`` picks each op's per-op action
+                 (``OpRule``): release a completed pool, grow to held room,
+                 grow toward the warmup share, shed idle actors, or refill to
+                 min size. The ledger (``ConstraintAwareCapacityLedger``)
+                 clamps each upscale to what the cluster can place.
     3. WHERE     Each how-many delta resolved to nodes by the
                  ``ActorPlacementStrategy``; the pool picks the actors.
     4. APPLY     The resolved requests handed to the pools.
@@ -188,7 +187,7 @@ class OperatorSizer:
             placement=self._placement,
             statuses=self._statuses,
         )
-        self._how_many = OpSizingPolicy(profiles=self._profiles)
+        self._per_op = PerOpRules(profiles=self._profiles)
         self._bottleneck_observer = BottleneckObserver(
             profiles=self._profiles, clock=self._clock
         )
@@ -320,16 +319,16 @@ class OperatorSizer:
 
     @timed("per_op_how_many")
     def _per_op_how_many(self, snapshot: ClusterStateSnapshot) -> PerOpSizingRequest:
-        """Step 2: the per-op wants that do not need the model.
+        """Step 2: the per-op actions, which do not need the model.
 
         Two passes over the operators, in the tick's shared order:
 
-        - WANT    each op's desired delta from its own state alone (see
-                  OpSizingPolicy). Capacity is not consulted, so order does not
+        - DECIDE  ``PerOpRules.decide`` picks each op's action from its own
+                  state. It does not look at capacity, so order does not
                   matter here.
-        - GRANT   clamp each want to what the cluster can hold and debit it.
-                  Grant order is placement order, so anything granted here is
-                  placeable in step 3 by construction.
+        - GRANT   clamp each upscale to what the cluster can hold and debit
+                  it. Grant order is placement order, so step 3 can place
+                  everything granted here.
 
         Capacity this tick's downscales will free is not credited: a running
         victim holds its resources until it is dead, so the ledger sees it
@@ -337,8 +336,8 @@ class OperatorSizer:
         """
         ledger = ConstraintAwareCapacityLedger(snapshot)
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        wants = self._collect_wants(snapshot)
-        self._grant_within_capacity(snapshot.ordered_ops, wants, ledger, request)
+        decisions = self._decide_per_op(snapshot)
+        self._grant_within_capacity(snapshot.ordered_ops, decisions, ledger, request)
         self._telemetry.log_request_summary(request)
         return PerOpSizingRequest(request=request)
 
@@ -353,8 +352,8 @@ class OperatorSizer:
         3. resolve upscales to the nodes new actors land on
 
         Stateless across ticks: placement is re-derived from current state
-        every time, so a failed placement or a slow drain simply retries when
-        scale_how_many re-emits its delta next tick.
+        every time, so a failed placement or a slow drain retries when the
+        per-op rules ask for the delta again next tick.
         """
         if not request.request and not snapshot.nodes_to_reclaim:
             return PlacedSizingRequest(request={})
@@ -488,15 +487,6 @@ class OperatorSizer:
         )
         return True
 
-    def _awaits_model(self, op: ExperimentalActorPoolMapOperator) -> bool:
-        """Whether ``op`` still grows toward its equal share: in warmup, or
-        after it while the model has not had a full window of it."""
-        return self.phase is SizerPhase.WARMUP or (
-            self.phase is SizerPhase.MODEL_WARMING and op not in self._modeled_ops
-        )
-
-    # --- held ops -----------------------------------------------------------------
-
     def _hold_for_held_ops(self, snapshot: ClusterStateSnapshot) -> None:
         """Take each held op's room out of ``snapshot.free_by_node``, and
         record it on its ``Held`` state.
@@ -506,7 +496,7 @@ class OperatorSizer:
         node's space first, and getting it back then means draining actors
         whose outputs only clear through the held op. Holding its room here
         keeps it out of every step's free map without starting an actor. It is
-        held for its warmup share (``OpSizingPolicy.warmup_target``), and once
+        held for its warmup share (``PerOpRules.warmup_target``), and once
         released the sizer grows it straight to the held count (GRANT_HELD). Held whole per
         actor, every resource the actor needs, on the least contended nodes,
         as the ledger would place it; what does not fit is not held.
@@ -519,7 +509,7 @@ class OperatorSizer:
             if op not in held_ops or op.has_completed():
                 continue
             pool = op.actor_pool
-            target = self._how_many.warmup_target(op, global_limits, snapshot.pg_slots)
+            target = self._per_op.warmup_target(op, global_limits, snapshot.pg_slots)
             if target is None:
                 target = pool.min_size()
             floor = pool.serving_size()
@@ -574,103 +564,41 @@ class OperatorSizer:
         """The pool's bounded max size, or less once every upstream op has
         completed and the remaining work needs fewer actors."""
         ceiling = op.actor_pool.bounded_max_size()
-        remaining = self._how_many.remaining_work_cap(op, self._topology[op])
+        remaining = self._per_op.remaining_work_cap(op, self._topology[op])
         return ceiling if remaining is None else min(ceiling, remaining)
 
-    def _collect_wants(
+    def _decide_per_op(
         self, snapshot: ClusterStateSnapshot
-    ) -> Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest]:
-        """WANT pass: each op's desired delta from its own state.
-
-        A pool below min_size wants at least enough to reach it (fixed pools
-        included). Completed ops are left to GRANT, which releases them.
-        """
-        wants: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        for op in snapshot.ordered_ops:
-            pool = op.actor_pool
-            if op.has_completed():
-                continue
-            if not self._statuses.can_size_per_op(op):
-                # Held until its first input, or a transfer holds it: leave it
-                # alone so our pendings aren't mistaken for the transfer's.
-                continue
-            status = self._statuses.status(op)
-            want: Optional[ActorPoolScalingRequest] = None
-            if pool.min_size() == pool.max_size():
-                pass  # fixed pool: only ever replenished to min
-            elif self._awaits_model(op):
-                want = self._how_many.warmup_delta(
-                    op, snapshot.get_global_limits(), snapshot.pg_slots
-                )
-            else:
-                # Growth comes only from the bottleneck policy; per op, only
-                # idle actors are shed.
-                want = self._how_many.shrink_idle_delta(op, self._topology[op])
-            # GRANT_HELD: released from its hold this tick, so grow straight
-            # into the room held for it while it waited (its warmup share),
-            # once. Capped below, like any want, at the work left once
-            # upstream is done.
-            grow_to = status.grow_to if isinstance(status, Released) else 0
-            to_held = grow_to - pool.serving_size()
-            if to_held > 0 and (want is None or want.delta < to_held):
-                want = ActorPoolScalingRequest.upscale(
-                    delta=to_held, reason="held share (hold released)"
-                )
-            want = self._cap_at_remaining_work(op, want)
-            below_min = pool.min_size() - pool.serving_size()
-            if below_min > 0 and (want is None or want.delta < below_min):
-                want = ActorPoolScalingRequest.upscale(
-                    delta=below_min, reason="below min size"
-                )
-            if want is not None:
-                wants[op] = want
-        return wants
-
-    def _cap_at_remaining_work(
-        self,
-        op: ExperimentalActorPoolMapOperator,
-        want: Optional[ActorPoolScalingRequest],
-    ) -> Optional[ActorPoolScalingRequest]:
-        """Trim an upscale to the actors ``op``'s remaining work can use."""
-        if want is None or want.delta <= 0:
-            return want
-        cap = self._how_many.remaining_work_cap(op, self._topology[op])
-        if cap is None:
-            return want
-        allowed = cap - op.actor_pool.serving_size()
-        if allowed <= 0:
-            return None
-        return ActorPoolScalingRequest.upscale(
-            delta=min(want.delta, allowed), reason=want.reason
-        )
+    ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
+        """DECIDE pass: each op's per-op action, from ``PerOpRules.decide``."""
+        return {
+            op: self._per_op.decide(
+                op,
+                status=self._statuses.status(op),
+                phase=self.phase,
+                modeled=op in self._modeled_ops,
+                snapshot=snapshot,
+                op_state=self._topology[op],
+            )
+            for op in snapshot.ordered_ops
+        }
 
     def _grant_within_capacity(
         self,
         ordered_ops: Sequence[ExperimentalActorPoolMapOperator],
-        wants: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
+        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
         ledger: ConstraintAwareCapacityLedger,
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
     ) -> None:
-        """GRANT pass: clamp each want to what fits, in placement order."""
+        """GRANT pass: clamp each upscale to what fits, in placement order.
+        Downscales pass through."""
         for op in ordered_ops:
-            pool = op.actor_pool
-
-            # Completed: release the whole pool, pending and running alike
-            # (force=True skips the debounce). Running actors drain before
-            # they are released, so in-flight work still finishes.
-            if op.has_completed():
-                if pool.serving_size() > 0:
-                    self._telemetry.log_completed_release(op, pool.serving_size())
-                    request[op] = ActorPoolScalingRequest.downscale(
-                        delta=-pool.serving_size(),
-                        force=True,
-                        reason="operator completed",
-                    )
+            decision = decisions.get(op)
+            if decision is None or decision.request is None:
                 continue
-
-            want = wants.get(op)
-            if want is None:
-                continue
+            want = decision.request
+            if decision.rule is OpRule.RELEASE_POOL:
+                self._telemetry.log_completed_release(op, op.actor_pool.serving_size())
             if want.delta < 0:
                 request[op] = want
                 continue

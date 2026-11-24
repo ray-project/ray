@@ -3,7 +3,7 @@ are shed.
 
 Nothing here keeps state between ticks: placement is re-derived from current
 state every time, so a failed placement or a slow drain simply retries when
-scale_how_many re-emits its delta.
+the how-many pass asks for the delta again.
 """
 
 from __future__ import annotations
@@ -300,7 +300,7 @@ def place_upscales(
 
     for op in upscale_ops:
         req = request[op]
-        # PG-managed op: capacity was already capped in scale_how_many (PG
+        # PG-managed op: capacity was already capped in the how-many pass (PG
         # bundle count or user concurrency), and the op's placement group
         # picks the node. Emit untargeted -- no free-map math, no strategy --
         # reclaiming draining actors first as usual.
@@ -333,7 +333,7 @@ def place_upscales(
         nodes = placement.place_upscale(view, free=free, count=new_n)
         if len(nodes) < new_n:
             # The free map has no room for the remainder: drop it and let
-            # scale_how_many re-request it next tick. Every placement stays
+            # the how-many pass request it again next tick. Every placement stays
             # under the locality strategy -- no untargeted fallback.
             telemetry.log_placement_shortfall(
                 op=op,

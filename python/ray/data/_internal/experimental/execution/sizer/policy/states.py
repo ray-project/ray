@@ -8,16 +8,18 @@ Three machines run side by side, each with its own enum:
 - ``TransferPhase``: whether a transfer is open. A tick may grow an op into
   free capacity while a transfer is in flight, so this is not a decision.
 
-Per operator, ``op_status.OpStatus`` says whether the op may be resized.
+Per operator, ``op_status.OpStatus`` says whether the op may be resized, and
+``OpRule`` says which per-op action sized it this tick (``per_op``).
 """
 
 from __future__ import annotations
 
 import enum
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Mapping
+from typing import TYPE_CHECKING, Mapping, Optional
 
 if TYPE_CHECKING:
+    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
@@ -67,3 +69,23 @@ class Decision:
         default_factory=dict
     )
     reason: str = ""
+
+
+class OpRule(enum.Enum):
+    """The per-op action that sized one op this tick (``PerOpRules.decide``)."""
+
+    RELEASE_POOL = "release the pool of a completed op"
+    GRANT_HELD = "grow to the room held for it"
+    WARMUP_SHARE = "grow toward its warmup share"
+    SHED_IDLE = "shed idle actors"
+    REFILL_TO_MIN = "refill to min size"
+    NONE = "no change"
+
+
+@dataclass(frozen=True)
+class OpDecision:
+    """One op's per-op action this tick, and the request it makes (None when
+    it changes nothing)."""
+
+    rule: OpRule
+    request: Optional["ActorPoolScalingRequest"] = None

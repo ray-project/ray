@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 # Should these have developerAPIs?
 @dataclass(frozen=True)
 class PerOpSizingRequest:
-    """What scale_how_many decided: per operator, how many actors to add or
+    """What the how-many pass decided: per operator, how many actors to add or
     remove. Not yet tied to any node."""
 
     request: Dict["ExperimentalActorPoolMapOperator", "ActorPoolScalingRequest"]
@@ -115,7 +115,7 @@ class ClusterStateSnapshot:
     ] = field(default_factory=dict)
 
     # The order every step walks operators in (scarcest first), so grants in
-    # scale_how_many line up with placements in scale_where.
+    # the how-many pass line up with placements in scale_where.
     ordered_ops: Tuple["ExperimentalActorPoolMapOperator", ...] = ()
     # How long the coordinator's per-node slice has been unchanged.
     seconds_since_allocation_change: float = float("inf")

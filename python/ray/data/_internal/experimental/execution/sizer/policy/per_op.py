@@ -1,10 +1,10 @@
-"""Per-op how_many: what one operator wants from its own state alone.
+"""Per-op rules: how to size one op from its own state alone.
 
-Growth from feedback is the bottleneck policy's (``policy``). What is left
-per op: the equal share an op grows toward before the bottleneck model has
-data for it (warmup, and ops the model has not seen yet), shedding actors
-once an op has gone idle, and the actors its remaining work can use once
-every upstream op has completed."""
+The bottleneck policy grows ops from feedback. Each tick, ``PerOpRules.decide``
+picks one per-op action for every op (``OpRule``): release a completed pool,
+grow to held room, grow toward the warmup share, shed idle actors, or refill
+to min size. Every upscale is capped at the actors the op's remaining work can
+use."""
 
 from __future__ import annotations
 
@@ -30,6 +30,17 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
     has_produced_output,
 )
+from ray.data._internal.experimental.execution.sizer.op_status import (
+    Active,
+    Completed,
+    OpStatus,
+    Released,
+)
+from ray.data._internal.experimental.execution.sizer.policy.states import (
+    OpDecision,
+    OpRule,
+    SizerPhase,
+)
 from ray.data._internal.experimental.execution.sizer.signals import BoolStreak
 
 if TYPE_CHECKING:
@@ -39,17 +50,17 @@ if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
+    from ray.data._internal.experimental.execution.sizer.models import (
+        ClusterStateSnapshot,
+    )
 
 logger = logging.getLogger(__name__)
 
 
-class OpSizingPolicy:
-    """The per-operator wants: equal-share growth before the model has data,
-    and idle shedding.
-
-    These deltas are what the operator *wants*; the sizer's grant pass clamps
-    them to what the cluster can actually place.
-    """
+class PerOpRules:
+    """Sizes each op from its own state. ``decide`` picks the action; the
+    sizer's grant pass then clamps any upscale to what the cluster can
+    place."""
 
     def __init__(
         self,
@@ -68,6 +79,104 @@ class OpSizingPolicy:
             )
         # Consecutive idle ticks per op, for the hysteretic drain arm.
         self._idle_streaks: Dict["PhysicalOperator", BoolStreak] = {}
+
+    # --- dispatch -------------------------------------------------------------
+
+    def decide(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        *,
+        status: OpStatus,
+        phase: SizerPhase,
+        modeled: bool,
+        snapshot: "ClusterStateSnapshot",
+        op_state: "OpState",
+    ) -> OpDecision:
+        """Pick the per-op action for ``op`` this tick.
+
+        The first matching row picks the action:
+
+            status Completed, actors left           RELEASE_POOL
+            status not Active or Released           none
+            fixed-size pool                         none
+            phase WARMUP, or MODEL_WARMING and the
+              model has not seen the op yet         WARMUP_SHARE
+            otherwise                               SHED_IDLE
+
+        Then, in order:
+        - On a Released op, GRANT_HELD replaces a smaller upscale.
+        - Every upscale is capped at the actors the remaining work can use.
+        - Below min size, REFILL_TO_MIN replaces a smaller request.
+        """
+        pool = op.actor_pool
+        if isinstance(status, Completed):
+            if pool.serving_size() == 0:
+                return OpDecision(OpRule.NONE)
+            return OpDecision(
+                OpRule.RELEASE_POOL,
+                ActorPoolScalingRequest.downscale(
+                    delta=-pool.serving_size(),
+                    # Release pending and running actors alike. Running actors
+                    # drain first, so in-flight work still finishes.
+                    force=True,
+                    reason="operator completed",
+                ),
+            )
+        if not isinstance(status, (Active, Released)):
+            return OpDecision(OpRule.NONE)
+
+        rule = OpRule.NONE
+        want: Optional[ActorPoolScalingRequest] = None
+        if pool.min_size() != pool.max_size():
+            if phase is SizerPhase.WARMUP or (
+                phase is SizerPhase.MODEL_WARMING and not modeled
+            ):
+                rule = OpRule.WARMUP_SHARE
+                want = self.warmup_delta(
+                    op, snapshot.get_global_limits(), snapshot.pg_slots
+                )
+            else:
+                rule = OpRule.SHED_IDLE
+                want = self.shrink_idle_delta(op, op_state)
+
+        if isinstance(status, Released):
+            to_held = status.grow_to - pool.serving_size()
+            if to_held > 0 and (want is None or want.delta < to_held):
+                rule = OpRule.GRANT_HELD
+                want = ActorPoolScalingRequest.upscale(
+                    delta=to_held, reason="held share (hold released)"
+                )
+
+        want = self._cap_at_remaining_work(op, want, op_state)
+
+        below_min = pool.min_size() - pool.serving_size()
+        if below_min > 0 and (want is None or want.delta < below_min):
+            rule = OpRule.REFILL_TO_MIN
+            want = ActorPoolScalingRequest.upscale(
+                delta=below_min, reason="below min size"
+            )
+        if want is None:
+            return OpDecision(OpRule.NONE)
+        return OpDecision(rule, want)
+
+    def _cap_at_remaining_work(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        want: Optional[ActorPoolScalingRequest],
+        op_state: "OpState",
+    ) -> Optional[ActorPoolScalingRequest]:
+        """Trim an upscale to the actors ``op``'s remaining work can use."""
+        if want is None or want.delta <= 0:
+            return want
+        cap = self.remaining_work_cap(op, op_state)
+        if cap is None:
+            return want
+        allowed = cap - op.actor_pool.serving_size()
+        if allowed <= 0:
+            return None
+        return ActorPoolScalingRequest.upscale(
+            delta=min(want.delta, allowed), reason=want.reason
+        )
 
     # --- warmup: feedforward equal share --------------------------------------
 

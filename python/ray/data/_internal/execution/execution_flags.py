@@ -109,7 +109,7 @@ SIZER_RESERVATION_RATIO: float = env_float("RAY_DATA_SIZER_RESERVATION_RATIO", 0
 # Idle-shrink step, as a fraction of the pool's current size.
 SIZER_DOWNSCALE_FACTOR: float = env_float("RAY_DATA_SIZER_DOWNSCALE_FACTOR", 0.1)
 
-# Consecutive fully-idle sizing ticks before scale_how_many drains a pool.
+# Consecutive fully-idle sizing ticks before the how-many pass drains a pool.
 SIZER_DOWNSCALE_HYSTERESIS: int = env_integer("RAY_DATA_SIZER_DOWNSCALE_HYSTERESIS", 3)
 
 # Backlog-target utilization divisor: once every upstream op has completed,
