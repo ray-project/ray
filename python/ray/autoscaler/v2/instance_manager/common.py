@@ -5,12 +5,11 @@ from typing import Dict, List, Optional, Set
 from ray._private.ray_constants import env_integer
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
-# Upper bound on retained status-history entries per instance. The history is
-# append-only and read only for the most recent transitions (e.g. latest
-# details, per-status timestamps), so trimming the oldest entries bounds the
-# memory a single long-lived or repeatedly-stuck instance can hold while
-# preserving every read done by the reconciler. Floored at 10 so a
-# misconfigured env var cannot trim the history to empty, which would trip the
+# Upper bound on retained status-history entries per instance. The history
+# retains the most recent transitions (e.g. latest details, per-status timestamps).
+# InstanceManager separately tracks lifetime counts and first timestamps used
+# by the reconciler, so trimming entries does not affect its decisions. Floored at
+# 10 so a misconfigured env var cannot trim the history to empty, which would trip the
 # `len(status_times_ns) >= 1` assertion in `has_timeout`.
 MAX_STATUS_HISTORY_LENGTH = max(
     10, env_integer("RAY_AUTOSCALER_INSTANCE_MAX_STATUS_HISTORY_LENGTH", 200)
@@ -18,8 +17,7 @@ MAX_STATUS_HISTORY_LENGTH = max(
 
 
 class InstanceUtil:
-    """
-    A helper class to group updates and operations on an Instance object defined
+    """A helper class to group updates and operations on an Instance object defined
     in instance_manager.proto
     """
 
@@ -37,8 +35,7 @@ class InstanceUtil:
         status: Instance.InstanceStatus,
         details: str = "",
     ) -> Instance:
-        """
-        Returns a new instance with the given status.
+        """Returns a new instance with the given status.
 
         Args:
             instance_id: The instance id.
@@ -59,15 +56,12 @@ class InstanceUtil:
 
     @staticmethod
     def random_instance_id() -> str:
-        """
-        Returns a random instance id.
-        """
+        """Returns a random instance id."""
         return str(uuid.uuid4())
 
     @staticmethod
     def is_cloud_instance_allocated(instance_status: Instance.InstanceStatus) -> bool:
-        """
-        Returns True if the instance is in a status where there could exist
+        """Returns True if the instance is in a status where there could exist
         a cloud instance allocated by the cloud provider.
         """
         assert instance_status != Instance.UNKNOWN
@@ -86,8 +80,7 @@ class InstanceUtil:
 
     @staticmethod
     def is_ray_running(instance_status: Instance.InstanceStatus) -> bool:
-        """
-        Returns True if the instance is in a status where the ray process is
+        """Returns True if the instance is in a status where the ray process is
         running on the cloud instance.
             i.e. RAY_RUNNING, RAY_STOP_REQUESTED, RAY_STOPPING
         """
@@ -105,8 +98,7 @@ class InstanceUtil:
 
     @staticmethod
     def is_ray_pending(instance_status: Instance.InstanceStatus) -> bool:
-        """
-        Returns True if the instance is in a status where the ray process is
+        """Returns True if the instance is in a status where the ray process is
         pending to be started on the cloud instance.
 
         """
@@ -124,8 +116,7 @@ class InstanceUtil:
         return True
 
     def is_ray_running_reachable(instance_status: Instance.InstanceStatus) -> bool:
-        """
-        Returns True if the instance is in a status where it may transition
+        """Returns True if the instance is in a status where it may transition
         to RAY_RUNNING status.
         """
         return Instance.RAY_RUNNING in InstanceUtil.get_reachable_statuses(
@@ -177,9 +168,9 @@ class InstanceUtil:
                 details=details,
             )
         )
-        # Bound the append-only history so an instance that is repeatedly stuck
+        # Bound the history so an instance that is repeatedly stuck
         # or retried before reaching a terminal state cannot grow unboundedly.
-        # Only the most recent transitions are ever read, so drop the oldest.
+        # InstanceManager retains lifetime counts and first timestamps separately.
         # Delete one at a time (not a slice) since slice deletion on a protobuf
         # repeated field is not supported across all protobuf versions.
         while len(instance.status_history) > MAX_STATUS_HISTORY_LENGTH:
@@ -187,8 +178,7 @@ class InstanceUtil:
 
     @staticmethod
     def has_timeout(instance: Instance, timeout_s: int) -> bool:
-        """
-        Returns True if the instance has been in the current status for more
+        """Returns True if the instance has been in the current status for more
         than the given timeout.
 
         Args:
@@ -395,8 +385,7 @@ class InstanceUtil:
         instance: Instance,
         select_instance_status: Optional["Instance.InstanceStatus"] = None,
     ) -> List["Instance.StatusHistory"]:
-        """
-        Returns the status history of the instance.
+        """Returns the status history of the instance.
 
         Args:
             instance: The instance.
@@ -423,8 +412,7 @@ class InstanceUtil:
         instance: Instance,
         select_instance_status: Optional["Instance.InstanceStatus"] = None,
     ) -> Optional["Instance.StatusHistory"]:
-        """
-        Returns the last status transition of the instance.
+        """Returns the last status transition of the instance.
 
         Args:
             instance: The instance.
@@ -445,8 +433,7 @@ class InstanceUtil:
         instance: Instance,
         select_instance_status: Optional["Instance.InstanceStatus"] = None,
     ) -> List[int]:
-        """
-        Returns a list of timestamps of the instance status update.
+        """Returns a list of timestamps of the instance status update.
 
         Args:
             instance: The instance.
@@ -468,8 +455,7 @@ class InstanceUtil:
         cls,
         instance_status: Instance.InstanceStatus,
     ) -> Set["Instance.InstanceStatus"]:
-        """
-        Returns the set of instance status that is reachable from the given
+        """Returns the set of instance status that is reachable from the given
         instance status following the status transitions.
         This method is memoized.
         Args:
@@ -504,16 +490,13 @@ class InstanceUtil:
 
     @classmethod
     def _compute_reachable(cls):
-        """
-        Computes and memorize the from status sets for each status machine with
+        """Computes and memorize the from status sets for each status machine with
         a DFS search.
         """
         valid_transitions = cls.get_valid_transitions()
 
         def dfs(graph, start, visited):
-            """
-            Regular DFS algorithm to find all reachable nodes from a given node.
-            """
+            """Regular DFS algorithm to find all reachable nodes from a given node."""
             for next_node in graph[start]:
                 if next_node not in visited:
                     # We delay adding the visited set here so we could capture

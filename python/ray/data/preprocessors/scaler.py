@@ -103,10 +103,15 @@ class StandardScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -292,10 +297,15 @@ class MinMaxScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -445,10 +455,15 @@ class MaxAbsScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -615,18 +630,28 @@ class RobustScaler(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately scale."""
         return self._columns
 
     @property
     def quantile_range(self) -> Tuple[float, float]:
+        """The lower and upper quantiles used to scale the data."""
         return self._quantile_range
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     @property
     def quantile_precision(self) -> int:
+        """The accuracy parameter, K, of the KLL sketch used to compute quantiles.
+
+        Higher values yield lower error but use more memory.
+        """
         return self._quantile_precision
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:

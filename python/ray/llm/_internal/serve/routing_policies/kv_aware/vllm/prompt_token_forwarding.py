@@ -7,6 +7,10 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.metrics import (
+    TokenizationBypassOutcome,
+    record_tokenization_bypass,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.token_channel import (
     TokenStore,
     decode_prompt_token_ids,
@@ -77,6 +81,7 @@ def inject_prompt_token_ids(
 
     entry = store.pop(token_key)
     if entry is None:
+        record_tokenization_bypass(TokenizationBypassOutcome.MISS)
         return
 
     try:
@@ -88,10 +93,12 @@ def inject_prompt_token_ids(
             token_key,
             e,
         )
+        record_tokenization_bypass(TokenizationBypassOutcome.INVALID)
         return
     # vLLM rejects an empty forwarded list instead of tokenizing the prompt
     # (vllm-project/vllm#55771).
     if not token_ids:
+        record_tokenization_bypass(TokenizationBypassOutcome.INVALID)
         return
 
     kv_transfer_params = getattr(request, "kv_transfer_params", None)
@@ -99,6 +106,7 @@ def inject_prompt_token_ids(
         kv_transfer_params = {}
         request.kv_transfer_params = kv_transfer_params
     kv_transfer_params["prompt_token_ids"] = token_ids
+    record_tokenization_bypass(TokenizationBypassOutcome.SUCCESS)
 
 
 def _install_prompt_token_forwarding(

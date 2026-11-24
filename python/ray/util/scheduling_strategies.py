@@ -170,8 +170,7 @@ LabelMatchExpressionsT = Dict[str, Union[In, NotIn, Exists, DoesNotExist]]
 
 @PublicAPI(stability="alpha")
 class NodeLabelSchedulingStrategy:
-    """
-    Label based node affinity scheduling strategy
+    """Label based node affinity scheduling strategy
 
     scheduling_strategy=NodeLabelSchedulingStrategy({
         "region": In("us"),

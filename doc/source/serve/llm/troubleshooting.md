@@ -102,7 +102,9 @@ Each Ray release is fully tested with a compatible vLLM version.
 
 | Ray release | vLLM version |
 | ----------- | ------------ |
-| nightly     | 0.32.0       |
+| nightly     | 0.34.0       |
+| 2.61.0      | 0.33.0       |
+| 2.60.0      | 0.29.0       |
 | 2.59.0      | 0.27.0       |
 | 2.58.0      | 0.26.0       |
 | 2.57.0      | 0.25.1       |

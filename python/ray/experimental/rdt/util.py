@@ -50,8 +50,7 @@ def register_tensor_transport(
     transport_manager_class: type[TensorTransportManager],
     data_type: type,
 ):
-    """
-    Register a new tensor transport for use in Ray. Note that this needs to be called
+    """Register a new tensor transport for use in Ray. Note that this needs to be called
     before you create the actors that will use the transport. The actors also
     need to be created in the same process from which you call this function.
 
@@ -154,8 +153,7 @@ def get_tensor_transport_manager(
 def register_custom_tensor_transports_on_actor(
     actor: "ray.actor.ActorHandle",
 ) -> Optional[ObjectRef]:
-    """
-    If there's no custom transports to register, returns None.
+    """If there's no custom transports to register, returns None.
     Otherwise returns an ObjectRef for a task on the actor that will register the custom transports.
     """
     global transport_manager_info
@@ -300,15 +298,23 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
 
     This enables pool-based memory management for NIXL transfers, which can improve
     performance by avoiding repeated memory registration/deregistration. The pool is
-    registered once with NIXL and individual tensors are copied into it on ``ray.put``.
+    registered once with NIXL.
 
-    Only the tensors passed to ``ray.put`` are copied (by their own byte size),
-    not their full underlying storage. Contiguous tensors from a single
-    ``ray.put`` are packed into as few pool blocks as the free list allows.
+    On the sender side, only the tensors passed to ``ray.put`` are copied (by their
+    own byte size), not their full underlying storage. Contiguous tensors from a
+    single ``ray.put`` are packed into as few pool blocks as the free list allows.
     Pool blocks are freed when the ``ObjectRef`` goes out of scope.
 
     Each tensor is placed on a multiple of its own element size, so tensors
     sharing a dtype pack with no padding between them.
+
+    On the receiver side, incoming tensors are read into the pool when ``ray.get``
+    fetches via NIXL, then copied out into ordinary tensors and the pool blocks
+    are returned as soon as the transfer completes. The tensor you get back is
+    independent of the pool, so the pool size only bounds how much data can be
+    in flight at once, not how much received data you can hold. If user-supplied
+    target buffers are used instead, the pool is bypassed and the traditional
+    register/deregister path is used.
 
     If the pool has insufficient space for an allocation,
     :class:`NixlOutOfMemoryError` is raised.

@@ -269,6 +269,21 @@ class RefBundle:
 
         return self._cached_preferred_locations
 
+    def get_preferred_object_locations_from_metadata(self) -> Dict[NodeIdStr, int]:
+        """Producing-node -> total bytes, from block metadata alone (no
+        object-store location RPCs). Blocks whose producing node is unknown
+        contribute nothing."""
+        from ray.data.block import UNKNOWN_NODE_ID
+
+        preferred_locations: Dict[NodeIdStr, int] = {}
+        for bm in self.metadata:
+            if bm.node_id != UNKNOWN_NODE_ID:
+                preferred_locations[bm.node_id] = preferred_locations.get(
+                    bm.node_id, 0
+                ) + (bm.size_bytes or 0)
+
+        return preferred_locations
+
     def _get_cached_metadata(self) -> Dict[ObjectRef, "_ObjectMetadata"]:
         if self._cached_object_meta is None:
             # This call is pretty fast for owned objects (~5k/s), so we don't need to

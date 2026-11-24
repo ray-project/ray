@@ -63,6 +63,16 @@ class LocalityMixin:
     with the handle. It adds necessary attributes and methods to keep track of
     locality scopes and offer the helpers to apply locality routing and
     rank replicas based on locality.
+
+    Args:
+        self_node_id: ID of the node that the handle runs on.
+        prefer_local_node_routing: Whether to prefer replicas on the same node
+            as the handle.
+        prefer_local_az_routing: Whether to prefer replicas in the same
+            availability zone as the handle.
+        self_availability_zone: Availability zone that the handle runs in.
+        *args: Positional arguments passed to the next class in the MRO.
+        **kwargs: Keyword arguments passed to the next class in the MRO.
     """
 
     def __init__(
@@ -174,6 +184,12 @@ class LocalityMixin:
         Rank 0 is the list of replicas that are on the same node.
         Rank 1 is the list of replicas that are on the same availability zone.
         Rank 2 is the list of all other replicas.
+
+        Args:
+            replicas: The replicas to rank.
+
+        Returns:
+            Three lists of replicas, ordered by rank.
         """
         ranked_replicas: List[List[RunningReplica]] = [[] for _ in range(3)]
         for replica in replicas:
@@ -201,6 +217,7 @@ class MultiplexMixin:
 
     # Provided by the composed RequestRouter.
     _pending_requests_by_model_id: DefaultDict[str, Deque[PendingRequest]]
+    _first_pending_request_for_model_id: Callable[[str], Optional[PendingRequest]]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -228,15 +245,9 @@ class MultiplexMixin:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
             return None
 
-        model_id = request_metadata.multiplexed_model_id
-        candidates = self._pending_requests_by_model_id.get(model_id)
-        while candidates:
-            pr = candidates[0]
-            if not pr.future.done():
-                return pr
-            candidates.popleft()
-        self._pending_requests_by_model_id.pop(model_id, None)
-        return None
+        return self._first_pending_request_for_model_id(
+            request_metadata.multiplexed_model_id
+        )
 
     def _discard_multiplexed_replica_ids_on_replica_actor_died(
         self, replica_id: ReplicaID
@@ -367,6 +378,13 @@ class MultiplexMixin:
         Rank 0 is the list of replicas that have the multiplexed model ID.
         Rank 1 is the list of replicas that have the fewest multiplexed models.
         Rank 2 is the list of all other replicas.
+
+        Args:
+            replicas: The replicas to rank.
+            multiplexed_model_id: The model ID that the request targets.
+
+        Returns:
+            Three lists of replicas, ordered by rank.
         """
         replica_ids_with_multiplexed_model = (
             self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
@@ -462,7 +480,32 @@ class FIFOMixin:
 
 @PublicAPI(stability="alpha")
 class RequestRouter(ABC):
-    """Abstract interface for a request router (how the router calls it)."""
+    """Abstract interface for a request router (how the router calls it).
+
+    Serve constructs the router, then calls ``initialize_state`` with the
+    config's ``request_router_kwargs``.
+
+    Args:
+        deployment_id: ID of the deployment that the router routes to.
+        handle_source: Where the handle that owns the router runs, such as a
+            proxy or a replica.
+        self_actor_id: ID of the actor that the router runs in, if any. Used
+            as a metric tag.
+        self_actor_handle: Handle to the actor that the router runs in. A
+            router on a proxy pushes this handle to each new replica.
+        use_replica_queue_len_cache: Whether to track replica queue lengths in
+            a local cache.
+        get_curr_time_s: Function that returns the current time in seconds.
+            Defaults to ``time.time``.
+        create_replica_wrapper_func: Function that wraps a
+            ``RunningReplicaInfo`` in a ``RunningReplica``.
+        initial_backoff_s: Initial backoff, in seconds, before retrying to
+            route a request.
+        backoff_multiplier: Multiplier applied to the backoff after each retry.
+        max_backoff_s: Maximum backoff, in seconds, between retries.
+        *args: Positional arguments passed to mixins.
+        **kwargs: Keyword arguments passed to mixins.
+    """
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
@@ -803,11 +846,23 @@ class RequestRouter(ABC):
     def create_replica_wrapper(
         self, replica_info: RunningReplicaInfo
     ) -> RunningReplica:
+        """Wrap replica information in a ``RunningReplica``.
+
+        Args:
+            replica_info: Information about a running replica.
+
+        Returns:
+            The wrapped replica.
+        """
         assert self._create_replica_wrapper_func is not None
         return self._create_replica_wrapper_func(replica_info)
 
     def on_replica_actor_died(self, replica_id: ReplicaID):
-        """Drop replica from replica set so it's not considered for future requests."""
+        """Drop replica from replica set so it's not considered for future requests.
+
+        Args:
+            replica_id: ID of the replica.
+        """
         self._replicas.pop(replica_id, None)
         self._replicas_list = list(self._replicas.values())
         self._replica_id_set.discard(replica_id)
@@ -818,7 +873,11 @@ class RequestRouter(ABC):
             self._discard_multiplexed_replica_ids_on_replica_actor_died(replica_id)
 
     def on_replica_actor_unavailable(self, replica_id: ReplicaID):
-        """Invalidate cache entry so active probing is required for the next request."""
+        """Invalidate cache entry so active probing is required for the next request.
+
+        Args:
+            replica_id: ID of the replica.
+        """
         self._replica_queue_len_cache.invalidate_key(replica_id)
         self._queue_len_gauge_last_update.pop(replica_id, None)
 
@@ -837,10 +896,36 @@ class RequestRouter(ABC):
         """Remove a pending request from the dict indices."""
         internal_id = pending_request.metadata.internal_request_id
         self._pending_requests_by_id.pop(internal_id, None)
-        # Note: We don't eagerly remove from _pending_requests_by_model_id here
-        # because finding the item in the list would be O(n). Instead, we use lazy
-        # cleanup in _get_pending_request_matching_multiplexed_model_id() which
-        # removes done entries during lookup, amortizing the cleanup cost.
+
+        model_id = pending_request.metadata.multiplexed_model_id
+        if model_id:
+            # Every completed or cancelled request calls this method, so the key
+            # is dropped once its last request is done, even for routers without
+            # FIFOMixin, which never look up by model ID.
+            self._first_pending_request_for_model_id(model_id)
+
+    def _first_pending_request_for_model_id(
+        self, model_id: str
+    ) -> Optional[PendingRequest]:
+        """Pop done requests from the front of the model ID's deque.
+
+        Finding a request in the deque would be O(n), so done entries are popped
+        from the front instead. Entries done out of order are popped once the
+        ones ahead of them are done.
+
+        Args:
+            model_id: The multiplexed model ID to clean up.
+
+        Returns:
+            The first pending request, or None after dropping the key.
+        """
+        candidates = self._pending_requests_by_model_id.get(model_id)
+        while candidates:
+            if not candidates[0].future.done():
+                return candidates[0]
+            candidates.popleft()
+        self._pending_requests_by_model_id.pop(model_id, None)
+        return None
 
     def _insert_pending_request_sorted(
         self, queue: Deque[PendingRequest], pending_request: PendingRequest
@@ -866,13 +951,22 @@ class RequestRouter(ABC):
         queue.insert(index, pending_request)
 
     def on_new_queue_len_info(self, replica_id: ReplicaID, num_ongoing_requests: int):
-        """Update queue length cache with new info received from replica."""
+        """Update queue length cache with new info received from replica.
+
+        Args:
+            replica_id: ID of the replica that reported its queue length.
+            num_ongoing_requests: The number of requests ongoing on the replica.
+        """
         if self._use_replica_queue_len_cache:
             self._replica_queue_len_cache.update(replica_id, num_ongoing_requests)
             self._update_router_queue_len_gauge(replica_id, num_ongoing_requests)
 
     def on_send_request(self, replica_id: ReplicaID):
-        """Increment queue length cache when a request is sent to a replica."""
+        """Increment queue length cache when a request is sent to a replica.
+
+        Args:
+            replica_id: ID of the replica.
+        """
         if self._use_replica_queue_len_cache:
             num_ongoing_requests = self._replica_queue_len_cache.get(replica_id) or 0
             new_queue_len = num_ongoing_requests + 1
@@ -889,6 +983,9 @@ class RequestRouter(ABC):
 
         Should NOT be called for rejected requests — on_new_queue_len_info
         already corrects the cache with the replica's actual queue length.
+
+        Args:
+            replica_id: ID of the replica.
         """
         if self._use_replica_queue_len_cache:
             current = self._replica_queue_len_cache.get(replica_id)
@@ -902,6 +999,9 @@ class RequestRouter(ABC):
 
         When the set of replicas changes, we may spawn additional routing tasks
         if there are pending requests.
+
+        Args:
+            replicas: The full set of replicas available for routing.
         """
         new_replicas = {}
         new_replica_id_set = set()
@@ -1466,6 +1566,13 @@ class RequestRouter(ABC):
         not actively probe the replicas for their queue length.
 
         If input candidates is `None`, all replicas are considered.
+
+        Args:
+            candidates: The replicas to select from. Defaults to all replicas.
+
+        Returns:
+            The candidates whose cached queue length is unknown or below their
+            ``max_ongoing_requests``.
         """
         if candidates is None:
             candidates = self._replicas_list
@@ -1517,6 +1624,11 @@ class RequestRouter(ABC):
         ``result`` is ``None`` when the caller only picks the replica and sends
         the request itself (for example, the direct-streaming LLM ingress
         router, which returns the replica to HAProxy).
+
+        Args:
+            pending_request: The request that was routed.
+            replica_id: ID of the replica that the request was routed to.
+            result: The result of sending the request, or ``None``.
         """
         pass
 

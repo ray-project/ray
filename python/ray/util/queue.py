@@ -9,11 +9,21 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="beta")
 class Empty(queue.Empty):
+    """Raised when getting an item from an empty Queue.
+
+    A non-blocking get raises it at once, and a blocking get raises it on timeout.
+    """
+
     pass
 
 
 @PublicAPI(stability="beta")
 class Full(queue.Full):
+    """Raised when putting an item into a full Queue.
+
+    A non-blocking put raises it at once, and a blocking put raises it on timeout.
+    """
+
     pass
 
 
@@ -39,17 +49,15 @@ class Queue:
             need to pass in custom resource requirements, for example.
 
     Examples:
-        .. testcode::
-
-            from ray.util.queue import Queue
-            q = Queue()
-            items = list(range(10))
-            for item in items:
-                q.put(item)
-            for item in items:
-                assert item == q.get()
-            # Create Queue with the underlying actor reserving 1 CPU.
-            q = Queue(actor_options={"num_cpus": 1})
+        >>> from ray.util.queue import Queue
+        >>> q = Queue()
+        >>> items = list(range(10))
+        >>> for item in items:
+        ...     q.put(item)
+        >>> for item in items:
+        ...     assert item == q.get()
+        >>> # Create Queue with the underlying actor reserving 1 CPU.
+        >>> q = Queue(actor_options={"num_cpus": 1})
     """
 
     def __init__(self, maxsize: int = 0, actor_options: Optional[Dict] = None) -> None:
@@ -67,19 +75,36 @@ class Queue:
         return self.size()
 
     def size(self) -> int:
-        """The size of the queue."""
+        """The size of the queue.
+
+        Returns:
+            The number of items in the queue.
+        """
         return ray.get(self.actor.qsize.remote())
 
     def qsize(self) -> int:
-        """The size of the queue."""
+        """The size of the queue.
+
+        Returns:
+            The number of items in the queue.
+        """
         return self.size()
 
     def empty(self) -> bool:
-        """Whether the queue is empty."""
+        """Whether the queue is empty.
+
+        Returns:
+            True if the queue has no items, otherwise False.
+        """
         return ray.get(self.actor.empty.remote())
 
     def full(self) -> bool:
-        """Whether the queue is full."""
+        """Whether the queue is full.
+
+        Returns:
+            True if the queue holds ``maxsize`` items, otherwise False. A queue with
+            a ``maxsize`` of zero is never full.
+        """
         return ray.get(self.actor.full.remote())
 
     def put(

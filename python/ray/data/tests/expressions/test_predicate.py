@@ -5,19 +5,12 @@ These tests require Ray and test end-to-end predicate expression evaluation.
 
 import pandas as pd
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-pytestmark = pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="Expression integration tests require PyArrow >= 20.0.0",
-)
 
 
 class TestPredicateIntegration:
@@ -212,6 +205,18 @@ class TestPredicateIntegration:
                 ],
                 [True, True, False, False],
                 "membership_filter",
+            ),
+            pytest.param(
+                col("category").is_in(["A", "B"]),
+                [{"category": None}, {"category": None}],
+                [False, False],
+                "membership_filter_all_null",
+            ),
+            pytest.param(
+                col("category").is_in([1, 2]),
+                [{"category": None}, {"category": None}],
+                [False, False],
+                "membership_filter_all_null_ints",
             ),
             pytest.param(
                 (col("score") >= 50) & (col("grade") != "F"),

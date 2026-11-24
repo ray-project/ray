@@ -156,8 +156,7 @@ class EventHead(
 
     @routes.post("/report_events")
     async def report_events(self, request):
-        """
-        Report events to the dashboard.
+        """Report events to the dashboard.
         The request body is a JSON array of event strings in type string.
         Response should contain {"success": true}.
         """

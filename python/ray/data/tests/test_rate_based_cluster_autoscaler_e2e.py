@@ -204,8 +204,9 @@ def test_pads_request_with_cpu_bundles_when_object_store_is_full(
 
     def _record_pad(self, resource_request, **kwargs):
         before = len(resource_request)
-        original_pad(self, resource_request, **kwargs)
+        padding = original_pad(self, resource_request, **kwargs)
         padded.append(len(resource_request) - before)
+        return padding
 
     monkeypatch.setattr(
         RateBasedClusterAutoscaler,
@@ -270,20 +271,26 @@ def test_blocked_on_consumer_when_consumer_is_slow(
     )
     ds = make_dataset()
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
-    next(it)
+    try:
+        next(it)
 
-    # The consumer has pulled a single output and now pauses, like a slow consumer.
-    gauge = RollingLogicalUtilizationGauge(
-        ds._current_executor._resource_manager, cluster_util_avg_window_s=3
-    )
-    start = time.time()
+        # The consumer has pulled a single output and now pauses, like a slow
+        # consumer.
+        gauge = RollingLogicalUtilizationGauge(
+            ds._current_executor._resource_manager, cluster_util_avg_window_s=3
+        )
+        start = time.time()
 
-    def blocked_on_consumer():
-        gauge.observe()
-        # Look at a full window, not just the first readings.
-        return time.time() - start >= 3 and gauge.is_blocked_on_consumer()
+        def blocked_on_consumer():
+            gauge.observe()
+            # Look at a full window, not just the first readings.
+            return time.time() - start >= 3 and gauge.is_blocked_on_consumer()
 
-    wait_for_condition(blocked_on_consumer, timeout=30)
+        wait_for_condition(blocked_on_consumer, timeout=30)
+    finally:
+        # Drain so the iteration threads exit before Ray shuts down.
+        for _ in it:
+            pass
 
 
 if __name__ == "__main__":

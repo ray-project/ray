@@ -9,6 +9,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import run_string_as_driver
 from ray.serve._private.utils import inside_ray_client_context
+from ray.tests.conftest import hold_test_auth_mode
 
 
 @pytest.fixture(scope="module")
@@ -18,24 +19,25 @@ def ray_client_instance():
     subprocess.check_output(["ray", "stop", "--force"])
     # ray start's default; outside the ephemeral range, so nothing grabs it mid-start.
     port = 10001
-    subprocess.check_output(
-        [
-            "ray",
-            "start",
-            "--head",
-            "--num-cpus",
-            "16",
-            "--ray-client-server-port",
-            f"{port}",
-            # Bazel points usage reports at 127.0.0.1:8000, so the first one, sent 60s
-            # after start, would hit whichever test app holds route "/".
-            "--disable-usage-stats",
-        ]
-    )
-    try:
-        yield f"localhost:{port}"
-    finally:
-        subprocess.check_output(["ray", "stop", "--force"])
+    with hold_test_auth_mode():
+        subprocess.check_output(
+            [
+                "ray",
+                "start",
+                "--head",
+                "--num-cpus",
+                "16",
+                "--ray-client-server-port",
+                f"{port}",
+                # Bazel points usage reports at 127.0.0.1:8000, so the first one, sent
+                # 60s after start, would hit whichever test app holds route "/".
+                "--disable-usage-stats",
+            ]
+        )
+        try:
+            yield f"localhost:{port}"
+        finally:
+            subprocess.check_output(["ray", "stop", "--force"])
 
 
 @pytest.fixture

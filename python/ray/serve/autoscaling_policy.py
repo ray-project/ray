@@ -352,6 +352,12 @@ def replica_queue_length_autoscaling_policy(
     actually scaled. See config options for more details.  Assumes
     `get_decision_num_replicas` is called once every CONTROL_LOOP_PERIOD_S
     seconds.
+
+    Args:
+        ctx: The deployment's autoscaling context.
+
+    Returns:
+        A tuple of the target number of replicas and the updated policy state.
     """
     # Adding this guard makes the public policy safe to call directly.
     cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)

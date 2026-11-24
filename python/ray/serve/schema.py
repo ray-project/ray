@@ -32,6 +32,7 @@ from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
     DEFAULT_ROLLING_UPDATE_PERCENTAGE,
+    DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
@@ -235,6 +236,13 @@ class TracingConfig(BaseModel):
 
             # Enable tracing with default exporter
             serve.start(tracing_config=TracingConfig(enabled=True))
+
+    Tracing configuration is fixed when Serve starts. To change it, shut down
+    and restart Serve with the new config.
+
+    Fields you don't set default from the ``RAY_SERVE_TRACING_*`` environment
+    variables of the Serve controller, which can be set through
+    ``controller_options.runtime_env.env_vars``.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -248,11 +256,18 @@ class TracingConfig(BaseModel):
         ),
     )
     exporter_import_path: str = Field(
-        default_factory=lambda: RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH,
+        default_factory=lambda: (
+            RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH
+            or DEFAULT_TRACING_EXPORTER_IMPORT_PATH
+        ),
         description=(
-            "Import path to a custom tracing exporter function. Defaults to the "
-            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable. "
-            "If empty and tracing is enabled, the default file-based exporter is used."
+            "Import path to a tracing exporter function. Defaults to the "
+            "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH environment variable, or the "
+            "built-in file-based exporter if it isn't set. Must not be empty. "
+            "A custom exporter takes no arguments and returns a list of "
+            "SpanProcessors. When Serve starts, the controller calls it once to "
+            "validate it and then shuts the returned processors down, so it "
+            "must return promptly."
         ),
     )
     sampling_ratio: float = Field(
@@ -268,6 +283,13 @@ class TracingConfig(BaseModel):
     def validate_sampling_ratio(cls, v):
         if v < 0.0 or v > 1.0:
             raise ValueError(f"sampling_ratio must be between 0.0 and 1.0, got {v}.")
+        return v
+
+    @field_validator("exporter_import_path")
+    @classmethod
+    def validate_exporter_import_path(cls, v):
+        if not v:
+            raise ValueError("exporter_import_path must not be empty.")
         return v
 
 
@@ -368,12 +390,13 @@ class RayActorOptionsSchema(BaseModel):
 
 @PublicAPI(stability="stable")
 class DeploymentSchema(BaseModel):
+    """Options for one deployment within a Serve application.
+
+    Include one in ``ServeApplicationSchema.deployments`` to override the options
+    that the deployment's code sets.
+    """
+
     model_config = ConfigDict(populate_by_name=True)
-    """
-    Specifies options for one deployment within a Serve application. For each deployment
-    this can optionally be included in `ServeApplicationSchema` to override deployment
-    options specified in code.
-    """
 
     name: str = Field(
         ..., description=("Globally-unique name identifying this deployment.")
@@ -735,6 +758,12 @@ class DeploymentSchema(BaseModel):
         }
 
     def is_autoscaling_configured(self) -> bool:
+        """Whether this schema turns on autoscaling for the deployment.
+
+        Returns:
+            True if ``num_replicas`` is ``"auto"`` or ``autoscaling_config`` is
+            set.
+        """
         return self.num_replicas == "auto" or self.autoscaling_config not in [
             None,
             DEFAULT.VALUE,
@@ -894,6 +923,7 @@ class ServeApplicationSchema(BaseModel):
 
     @property
     def deployment_names(self) -> List[str]:
+        """Names of the deployments that this application schema configures."""
         return [d.name for d in self.deployments]
 
     @field_validator("runtime_env")
@@ -983,6 +1013,10 @@ class ServeApplicationSchema(BaseModel):
         """Returns an empty app schema dictionary.
 
         Schema can be used as a representation of an empty Serve application config.
+
+        Returns:
+            A dict with an empty ``import_path``, ``runtime_env``, and
+            ``deployments``.
         """
 
         return {
@@ -1220,6 +1254,9 @@ class ServeDeploySchema(BaseModel):
         """Returns an empty deploy schema dictionary.
 
         Schema can be used as a representation of an empty Serve deploy config.
+
+        Returns:
+            A dict with an empty ``applications`` list.
         """
 
         return {"applications": []}
@@ -1293,6 +1330,9 @@ class ApplicationStatus(str, Enum):
         0 is reserved for UNKNOWN. Values are ordered by severity/state progression:
         0=UNKNOWN, 1=DEPLOY_FAILED, 2=UNHEALTHY, 3=NOT_STARTED,
         4=DELETING, 5=DEPLOYING, 6=RUNNING
+
+        Returns:
+            The numeric value for this status.
         """
         mapping = {
             ApplicationStatus.DEPLOY_FAILED: 1,
@@ -1413,6 +1453,8 @@ class ReplicaDetails(ServeActorDetails):
 
 @PublicAPI(stability="alpha")
 class AutoscalingMetricsHealth(str, Enum):
+    """Health of a deployment's autoscaling metrics collection pipeline."""
+
     HEALTHY = "healthy"
     DELAYED = "delayed"
     UNAVAILABLE = "unavailable"
@@ -1420,6 +1462,8 @@ class AutoscalingMetricsHealth(str, Enum):
 
 @PublicAPI(stability="alpha")
 class AutoscalingStatus(str, Enum):
+    """Current scaling direction of a deployment, or ``STABLE``."""
+
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
     STABLE = "STABLE"
@@ -1500,6 +1544,13 @@ class DeploymentDetails(BaseModel):
             "change over time for autoscaling deployments, but will remain a constant "
             "number for other deployments."
         )
+    )
+    num_running_replicas_at_target_version: Optional[NonNegativeInt] = Field(
+        default=None,
+        description=(
+            "The number of RUNNING replicas at the current target version. "
+            "This field is unset when the value is unavailable."
+        ),
     )
     required_resources: Dict = Field(
         description="The resources required per replica of this deployment."
@@ -1676,6 +1727,8 @@ class ProxyDetails(ServeActorDetails):
 
 @PublicAPI(stability="alpha")
 class Target(BaseModel):
+    """One address in a ``TargetGroup``."""
+
     model_config = ConfigDict(frozen=True)
 
     ip: str = Field(description="IP address of the target.")
@@ -1686,6 +1739,8 @@ class Target(BaseModel):
 
 @PublicAPI(stability="alpha")
 class TargetGroup(BaseModel):
+    """The targets that serve one route prefix over one protocol."""
+
     model_config = ConfigDict(frozen=True)
 
     targets: List[Target] = Field(description="List of targets for the given route.")
@@ -1740,7 +1795,15 @@ class DurationStats(BaseModel):
 
     @classmethod
     def from_values(cls, values: List[float]) -> "DurationStats":
-        """Compute statistics from a list of values."""
+        """Compute statistics from a list of values.
+
+        Args:
+            values: The measurements to summarize.
+
+        Returns:
+            The mean, population standard deviation, minimum, and maximum of
+            ``values``, or all zeros if ``values`` is empty.
+        """
         if not values:
             return cls()
 
@@ -1975,6 +2038,10 @@ class ServeInstanceDetails(BaseModel):
         """Empty Serve instance details dictionary.
 
         Represents no Serve instance running on the cluster.
+
+        Returns:
+            A dict with empty ``controller_info``, ``proxies``, and
+            ``applications``, and ``target_capacity`` set to None.
         """
 
         return {
@@ -2109,7 +2176,13 @@ class TaskProcessorAdapter(ABC):
 
     @abstractmethod
     def initialize(self, consumer_concurrency: int = DEFAULT_CONSUMER_CONCURRENCY):
-        """Initialize the task processor."""
+        """Initialize the task processor.
+
+        Args:
+            consumer_concurrency: Number of tasks the consumer processes
+                concurrently. A Serve task consumer passes its deployment's
+                ``max_ongoing_requests``.
+        """
         pass
 
     @abstractmethod

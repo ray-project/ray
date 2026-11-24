@@ -4,7 +4,7 @@ Maps the ``unit_ids`` of a ``FileChunk`` row (the explicit surviving row groups
 a bin assigns to a file) to PyArrow ``ParquetFileFragment`` subsets for reading, and
 names the read unit each subset stands for.
 """
-from typing import Callable, Iterable, List, TypeVar
+from typing import Callable, Iterable, List, Optional, TypeVar
 
 import pyarrow.dataset as pds
 
@@ -48,6 +48,7 @@ def _fragments_from_row_group_ids(
     row_group_ids: Iterable[int],
     *,
     per_row_group_offsets: bool,
+    file_size: Optional[int],
 ) -> List[ReadUnitFragment]:
     """Slice ``fragment`` to the explicit physical ``row_group_ids`` of one bin.
 
@@ -66,6 +67,10 @@ def _fragments_from_row_group_ids(
     pre-filter row offset within the file, so per-row values stay unique and
     match physical row positions even when pruned groups make the surviving
     set non-contiguous. This branch reads the footer once for the offsets.
+
+    ``file_size`` is the file's on-disk size from the listing, or ``None`` if
+    unknown. The lazy sub-fragment is built from the path alone, so without
+    it opening the file costs an extra request for the size (a HEAD on S3).
     """
     ids = sorted(row_group_ids)
     if not ids:
@@ -84,6 +89,7 @@ def _fragments_from_row_group_ids(
             filesystem=fragment.filesystem,
             partition_expression=fragment.partition_expression,
             row_groups=ids,
+            file_size=file_size,
         )
         return [ReadUnitFragment(lazy, ReadUnit(id=path, source=path, count=1))]
 

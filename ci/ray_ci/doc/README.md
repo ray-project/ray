@@ -49,7 +49,10 @@ rayci applies to PR builds before it marks step dependencies.
 - **`docstring-only`.** `check_docstring_only.py` is the scope guard, run as
   `ci/lint/lint.sh docstring_only_scope` from the `lint: validate docstring-only
   scope` step in `.buildkite/lint.rayci.yml`. It fails unless every changed file
-  is a modified `.py` file whose `ast` is unchanged once docstrings are removed.
+  is a modified Python or Cython file whose code is unchanged once docstrings
+  are removed. It compares the `ast` of a `.py` or `.pyi` file and the
+  `tokenize` tokens of a `.pyx`, `.pxi`, or `.pxd` file, keeping the Cython
+  build comments and `cdef extern from` C blocks as code.
   The `doc: docstring examples` step in `.buildkite/others.rayci.yml` runs
   `run_docstring_examples.sh`, which keeps the changed modules under
   `python/ray` that a CPU `doctest()` target covers and runs

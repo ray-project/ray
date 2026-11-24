@@ -23,6 +23,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+from typing import Any, Dict, Optional, Tuple
+
 import gymnasium as gym
 
 try:
@@ -74,20 +76,47 @@ def _flatten_obs(obs):
 
 @PublicAPI
 class DMCEnv(gym.Env):
+    """A `gym.Env` wrapper for a task from the DeepMind Control Suite.
+
+    Actions are normalized to the range [-1.0, 1.0] and rescaled to the task's
+    action bounds. Observations are either the task's flattened state or rendered
+    pixels.
+
+    Args:
+        domain_name: The Control Suite domain to load, such as `"cartpole"`.
+        task_name: The task within the domain to load, such as `"swingup"`.
+        task_kwargs: Keyword arguments to pass to the task, through
+            `dm_control.suite.load()`.
+        visualize_reward: Whether to color the rendered scene by the reward,
+            through `dm_control.suite.load()`.
+        from_pixels: Whether observations are rendered images instead of the
+            flattened task state.
+        height: The height of rendered images, in pixels.
+        width: The width of rendered images, in pixels.
+        camera_id: The ID of the camera to render images from.
+        frame_skip: The number of task steps to repeat each action for.
+        environment_kwargs: Keyword arguments to pass to the environment, through
+            `dm_control.suite.load()`.
+        channels_first: Whether pixel observations have shape
+            `(3, height, width)` instead of `(height, width, 3)`.
+        preprocess: Whether to rescale pixel observations from [0, 255] to
+            [-0.5, 0.5].
+    """
+
     def __init__(
         self,
-        domain_name,
-        task_name,
-        task_kwargs=None,
-        visualize_reward=False,
-        from_pixels=False,
-        height=64,
-        width=64,
-        camera_id=0,
-        frame_skip=2,
-        environment_kwargs=None,
-        channels_first=True,
-        preprocess=True,
+        domain_name: str,
+        task_name: str,
+        task_kwargs: Optional[dict] = None,
+        visualize_reward: bool = False,
+        from_pixels: bool = False,
+        height: int = 64,
+        width: int = 64,
+        camera_id: int = 0,
+        frame_skip: int = 2,
+        environment_kwargs: Optional[dict] = None,
+        channels_first: bool = True,
+        preprocess: bool = True,
     ):
         self._from_pixels = from_pixels
         self._height = height
@@ -175,17 +204,39 @@ class DMCEnv(gym.Env):
 
     @property
     def observation_space(self):
+        """The observation space, for pixel observations or the flattened state.
+
+        For pixel observations, this is a uint8 `Box` from 0 to 255, or a float32
+        `Box` from -0.5 to 0.5 if `preprocess` is set.
+        """
         return self._observation_space
 
     @property
     def state_space(self):
+        """The space of the task's flattened state, even with pixel observations."""
         return self._state_space
 
     @property
     def action_space(self):
+        """The normalized action space, a float32 `Box` from -1.0 to 1.0."""
         return self._norm_action_space
 
-    def step(self, action):
+    def step(
+        self, action: np.ndarray
+    ) -> Tuple[np.ndarray, float, bool, bool, Dict[str, Any]]:
+        """Rescales the action and steps the task `frame_skip` times.
+
+        Stops early if the task's episode ends.
+
+        Args:
+            action: The action, in the normalized action space.
+
+        Returns:
+            The observation after the last step, the sum of the rewards, False as
+            `terminated`, whether the task's episode ended as `truncated`, and an
+            info dict with the physics state from before the step as
+            `"internal_state"` and the last time step's `"discount"`.
+        """
         assert self._norm_action_space.contains(action)
         action = self._convert_action(action)
         assert self._true_action_space.contains(action)
@@ -205,13 +256,42 @@ class DMCEnv(gym.Env):
         extra["discount"] = time_step.discount
         return obs, reward, terminated, truncated, extra
 
-    def reset(self, *, seed=None, options=None):
+    def reset(
+        self, *, seed: Optional[int] = None, options: Optional[dict] = None
+    ) -> Tuple[np.ndarray, Dict[str, Any]]:
+        """Resets the task.
+
+        Args:
+            seed: Ignored. Pass a seed to the task through `task_kwargs` instead.
+            options: Ignored.
+
+        Returns:
+            The first observation and an empty info dict.
+        """
         time_step = self._env.reset()
         self.current_state = _flatten_obs(time_step.observation)
         obs = self._get_obs(time_step)
         return obs, {}
 
-    def render(self, mode="rgb_array", height=None, width=None, camera_id=0):
+    def render(
+        self,
+        mode: str = "rgb_array",
+        height: Optional[int] = None,
+        width: Optional[int] = None,
+        camera_id: int = 0,
+    ) -> np.ndarray:
+        """Renders an image of the task's current state.
+
+        Args:
+            mode: The render mode. Only `"rgb_array"` is supported.
+            height: The image height in pixels. Defaults to the env's `height`.
+            width: The image width in pixels. Defaults to the env's `width`.
+            camera_id: The ID of the camera to render from. 0 falls back to the
+                env's `camera_id`.
+
+        Returns:
+            The rendered RGB image.
+        """
         assert mode == "rgb_array", "only support for rgb_array mode"
         height = height or self._height
         width = width or self._width

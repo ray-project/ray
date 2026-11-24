@@ -186,8 +186,7 @@ def _read_records(
     file: "pyarrow.NativeFile",
     path: str,
 ) -> Iterable[memoryview]:
-    """
-    Read records from TFRecord file.
+    """Read records from TFRecord file.
 
     A TFRecord file contains a sequence of records. The file can only be read
     sequentially. Each record is stored in the following formats:

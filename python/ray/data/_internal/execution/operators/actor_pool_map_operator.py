@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import functools
 import logging
 import time
 import uuid
@@ -21,11 +22,14 @@ from typing import (
 
 from typing_extensions import override
 
+from ray.data._internal.execution.interfaces.common import LogicalActorId
+
 if TYPE_CHECKING:
     import pyarrow as pa
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 import ray
 from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
@@ -52,7 +56,9 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     ReportsExtraResourceUsage,
     TaskContext,
+    actor_resource_dict,
 )
+from ray.data._internal.execution.interfaces.task_context import RerunPolicy
 from ray.data._internal.execution.node_trackers.actor_location import (
     ActorLocationTracker,
     get_or_create_actor_location_tracker,
@@ -70,12 +76,14 @@ from ray.data._internal.utils.cached_ray_internals import (
     get_local_ongoing_lineage_reconstruction_tasks,
 )
 from ray.data._internal.utils.heapdict import heapdict
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import UNKNOWN_NODE_ID, Block, BlockMetadata
 from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
     DataContext,
 )
 from ray.types import ObjectRef
+from ray.util.debug import log_once
+from ray.util.scheduling_strategies import SchedulingStrategyT
 
 logger = logging.getLogger(__name__)
 
@@ -83,13 +91,71 @@ _ACTOR_STATE_DEAD = gcs_pb2.ActorTableData.ActorState.DEAD
 _ACTOR_STATE_ALIVE = gcs_pb2.ActorTableData.ActorState.ALIVE
 _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 
-# Type alias for the logical identifier of an actor (used in labels and actor-to-id maps).
-LogicalActorId = str
+# Ray Core options that apply to each map *task*, not actor creation.
+# `ray.remote(**actor_args)` rejects these;
+_ACTOR_TASK_REMOTE_ARG_KEYS: Tuple[str, ...] = (
+    "_generator_backpressure_num_objects",
+    "retry_exceptions",
+)
+# Task-style options (e.g. from a promoted `TaskPoolStrategy`) renamed to their
+# actor-method equivalent.
+_ACTOR_TASK_REMOTE_ARG_RENAMES: Dict[str, str] = {"max_retries": "max_task_retries"}
+# Task-style options with no actor-method equivalent: Data forces
+# `num_returns="streaming"`, actors are long-lived (`max_calls`), and
+# `_num_objects_per_yield` can't be set per actor-method call.
+_ACTOR_TASK_UNSUPPORTED_KEYS: Tuple[str, ...] = (
+    "num_returns",
+    "max_calls",
+    "_num_objects_per_yield",
+)
+
+
+def _pop_actor_task_remote_args(
+    ray_remote_args: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Move per-task remote args out of ``ray_remote_args``.
+
+    Mutates ``ray_remote_args`` in place and returns the popped task args,
+    renamed to valid ``ActorMethod.options`` keys. Unsupported keys are dropped.
+    """
+    task_args = {
+        key: ray_remote_args.pop(key)
+        for key in _ACTOR_TASK_REMOTE_ARG_KEYS
+        if key in ray_remote_args
+    }
+    for key, actor_key in _ACTOR_TASK_REMOTE_ARG_RENAMES.items():
+        if key in ray_remote_args:
+            task_args[actor_key] = ray_remote_args.pop(key)
+    dropped = [key for key in _ACTOR_TASK_UNSUPPORTED_KEYS if key in ray_remote_args]
+    for key in dropped:
+        ray_remote_args.pop(key)
+    if dropped and log_once(f"actor_task_unsupported_args_{dropped}"):
+        logger.warning(
+            f"Ignoring remote args {dropped}: not supported for actor tasks."
+        )
+    return task_args
 
 
 def get_map_worker_cls_name(op_name: str) -> str:
     """Return the dynamic class name used for actor pool map workers."""
     return f"MapWorker({op_name})"
+
+
+def _actor_task_rerun_policy(
+    task_args: Dict[str, Any], actor_args: Dict[str, Any]
+) -> RerunPolicy:
+    """The errors on which Ray reruns an actor task.
+
+    Ray reruns an actor task only while ``max_task_retries`` allows it. The task
+    option overrides the actor's, and Ray defaults it to 0, as it stays when
+    ``max_restarts=0``.
+    """
+    max_task_retries = task_args.get(
+        "max_task_retries", actor_args.get("max_task_retries", 0)
+    )
+    if max_task_retries == 0:
+        return RerunPolicy.from_retry_exceptions(False)
+    return RerunPolicy.from_retry_exceptions(task_args.get("retry_exceptions", False))
 
 
 class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
@@ -121,10 +187,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
-        ray_actor_task_remote_args: Optional[Dict[str, Any]] = None,
         target_max_block_size_override: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        generator_backpressure_disabled: bool = False,
+        is_read_op: bool = False,
     ):
         """Create an ActorPoolMapOperator instance.
 
@@ -149,9 +216,9 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray remote args for this op's tasks.
-                See :func:`ray.remote` for details.
-            ray_actor_task_remote_args: Ray Core options passed to map actor tasks.
+            ray_remote_args: Customize the ray remote args for this op. Per-task
+                options (see ``_ACTOR_TASK_REMOTE_ARG_KEYS``) are routed onto
+                actor tasks; the rest are actor-creation options.
             target_max_block_size_override: The target maximum number of bytes to
                 include in an output block.
             on_start: Optional callback invoked with the schema from the first input
@@ -159,7 +226,14 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches actors
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            generator_backpressure_disabled: If ``True``, apply no
+                streaming-generator backpressure to this operator's actor tasks
+                (no per-task or actor-wide buffer bounds).
+            is_read_op: Whether this op reads from a datasource.
         """
+        ray_remote_args = dict(ray_remote_args or {})
+        actor_task_remote_args = _pop_actor_task_remote_args(ray_remote_args)
+
         super().__init__(
             map_transformer,
             input_op,
@@ -174,10 +248,12 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             ray_remote_args,
             on_start,
             default_logical_memory_enabled,
+            generator_backpressure_disabled,
         )
 
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
+
         self._ray_remote_args = self._apply_default_remote_args(
             self._ray_remote_args, self.data_context
         )
@@ -191,17 +267,15 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 )
             self._ray_remote_args["max_concurrency"] = max_concurrency
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
-            ray_actor_task_remote_args, self.data_context
+            actor_task_remote_args, self.data_context
         )
         map_worker_cls_name = get_map_worker_cls_name(self.name)
         # We set the actor class name to include operator name to disambiguate
         # logs in the Actor Pool
         self._map_worker_cls_name = map_worker_cls_name
-        # HACK: Without this, all actors show up as `_MapWorker` in Grafana, so we can’t
-        # tell which operator they belong to. To fix that, we dynamically create a new
-        # class per operator with a unique name.
-        self._map_worker_cls = type(map_worker_cls_name, (_MapWorker,), {})
+        self._map_worker_cls = self._create_map_worker_cls(map_worker_cls_name)
 
+        self.is_read_op = is_read_op
         self._actor_pool = self._create_actor_pool(compute_strategy)
         # A queue of bundles awaiting dispatch to actors.
         self._bundle_queue = create_bundle_queue()
@@ -260,9 +334,20 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         )
         return config
 
-    @staticmethod
+    def _create_map_worker_cls(self, map_worker_cls_name: str) -> type:
+        """The ``_MapWorker`` subclass this operator's actors are created from.
+
+        HACK: Without this, all actors show up as `_MapWorker` in Grafana, so
+        we can't tell which operator they belong to. To fix that, we
+        dynamically create a new class per operator with a unique name.
+        Overridable so a backend can further configure the class.
+        """
+        return type(map_worker_cls_name, (_MapWorker,), {})
+
     def _apply_default_actor_task_remote_args(
-        ray_actor_task_remote_args: Optional[Dict[str, Any]], data_context: DataContext
+        self,
+        ray_actor_task_remote_args: Optional[Dict[str, Any]],
+        data_context: DataContext,
     ) -> Dict[str, Any]:
         """Apply defaults to the actor task remote args."""
         if ray_actor_task_remote_args is None:
@@ -275,7 +360,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(ray_actor_task_remote_args)
 
-        if (
+        if self._generator_backpressure_disabled:
+            # Emit no backpressure keys: Ray core treats an absent
+            # ``_generator_backpressure_num_objects`` as disabled.
+            pass
+        elif (
             "_generator_backpressure_num_objects" not in ray_actor_task_remote_args
             and data_context._max_num_blocks_in_streaming_gen_buffer is not None
         ):
@@ -293,38 +382,55 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         options: ExecutionOptions,
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ):
         self._actor_locality_enabled = options.actor_locality_enabled
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
 
         self._actor_cls = ray.remote(**self._ray_remote_args)(self._map_worker_cls)
+        self._scale_to_initial_size()
+        self.wait_for_min_actors()
+
+    def _scale_to_initial_size(self) -> None:
+        """Create the pool's initial actors (untargeted; Ray core places them).
+
+        Overridden by the experimental operator, where initial sizing goes
+        through the sizer's constraint-aware placement instead.
+        """
         self._actor_pool.scale(
             ActorPoolScalingRequest(
                 delta=self._actor_pool.initial_size(), reason="scaling to initial size"
             )
         )
 
-        # If `wait_for_min_actors_s` is specified and is positive, then
-        # Actor Pool will block until min number of actors is provisioned.
-        #
-        # Otherwise, all actors will be provisioned asynchronously.
-        if self.data_context.wait_for_min_actors_s > 0:
-            refs = self._actor_pool.get_pending_actor_refs()
+    def wait_for_min_actors(self) -> None:
+        """Block until the pool's initial actors are up when
+        ``wait_for_min_actors_s`` is set (> 0); otherwise actors are
+        provisioned asynchronously.
 
-            logger.debug(
-                f"{self._name}: Waiting for {len(refs)} pool actors to start "
-                f"(for {self.data_context.wait_for_min_actors_s}s)..."
+        The experimental operator overrides this with a size-derived budget
+        and a stall abort.
+        """
+        configured = self.data_context.wait_for_min_actors_s
+        if configured <= 0:
+            return
+        refs = self._actor_pool.get_pending_actor_refs()
+
+        logger.debug(
+            f"{self._name}: Waiting for {len(refs)} pool actors to start "
+            f"(for {configured}s)..."
+        )
+
+        try:
+            ray.get(refs, timeout=configured)
+        except ray.exceptions.GetTimeoutError:
+            raise ray.exceptions.GetTimeoutError(
+                "Timed out while starting actors. "
+                "This may mean that the cluster does not have "
+                "enough resources for the requested actor pool."
             )
-
-            try:
-                timeout = self.data_context.wait_for_min_actors_s
-                ray.get(refs, timeout=timeout)
-            except ray.exceptions.GetTimeoutError:
-                raise ray.exceptions.GetTimeoutError(
-                    "Timed out while starting actors. "
-                    "This may mean that the cluster does not have "
-                    "enough resources for the requested actor pool."
-                )
 
     def can_add_input(self) -> bool:
         """NOTE: PLEASE READ CAREFULLY
@@ -337,23 +443,33 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             should be able to launch a task.
 
         """
-        return self._actor_pool.can_schedule_task()
+        return self._actor_pool.can_schedule_task(
+            bundle=None, actor_locality_enabled=self._actor_locality_enabled
+        )
 
     def _start_actor(
-        self, labels: Dict[str, str], logical_actor_id: LogicalActorId
+        self,
+        labels: Dict[str, str],
+        logical_actor_id: LogicalActorId,
+        scheduling_strategy: SchedulingStrategyT = None,
     ) -> Tuple[ActorHandle, ObjectRef, ExecutionResources]:
         """Start a new actor and add it to the actor pool as a pending actor.
 
         Args:
             labels: The key-value labels to launch the actor with.
             logical_actor_id: The logical id of the actor.
+            scheduling_strategy: Placement resolved by the caller for this
+                actor (e.g. a ``NodeAffinitySchedulingStrategy``). ``None``
+                keeps the operator's default.
 
         Returns:
             A tuple of the actor handle, the object ref to the actor's location,
             and the actual resource usage for this actor.
         """
         assert self._actor_cls is not None
-        actual_remote_args = dict(self._merge_ray_remote_args())
+        actual_remote_args = dict(
+            self._merge_ray_remote_args(scheduling_strategy=scheduling_strategy)
+        )
         extra_labels = actual_remote_args.pop("_labels", {})
         actor_resource_usage = ExecutionResources(
             cpu=actual_remote_args.get("num_cpus", 0),
@@ -394,6 +510,11 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self._submit_metadata_task(
             res_ref,
             lambda: _task_done_callback(res_ref),
+        )
+        # The logical usage above cannot express custom resources, so record the
+        # exact creation request separately for the cluster autoscaler.
+        self._actor_pool.record_resource_request(
+            actor, actor_resource_dict(actual_remote_args)
         )
         return actor, res_ref, actor_resource_usage
 
@@ -467,13 +588,9 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
             self._metrics.on_input_dequeued(bundle, input_index=0)
             input_blocks = [entry.ref for entry in bundle.blocks]
-            self._actor_pool.on_task_submitted(actor)
+            self._actor_pool.on_task_submitted(actor, input_bundle=bundle)
 
-            ctx = TaskContext(
-                task_idx=self._next_data_task_idx,
-                op_name=self.name,
-                target_max_block_size_override=self.target_max_block_size_override,
-            )
+            ctx = self._create_task_context(actor)
             actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
@@ -488,33 +605,88 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 **self.get_map_task_kwargs(),
             )
 
-            def _task_done_callback(actor_to_return):
+            def _task_done_callback(
+                inputs: RefBundle,
+                task_index: int,
+                exception: Optional[Exception],
+                actor_to_return: ActorHandle,
+            ):
                 # Return the actor that was running the task to the pool.
-                self._actor_pool.on_task_completed(actor_to_return)
-
-            from functools import partial
+                self._actor_pool.on_task_completed(actor_to_return, input_bundle=inputs)
 
             self._submit_data_task(
-                gen, bundle, partial(_task_done_callback, actor_to_return=actor)
+                gen=gen,
+                inputs=bundle,
+                task_done_callback=functools.partial(
+                    _task_done_callback,
+                    actor_to_return=actor,
+                ),
             )
 
             num_submitted_tasks += 1
 
-            # Update locality metrics
-            if (
-                self._actor_pool.get_actor_location(actor)
-                in bundle.get_preferred_object_locations()
-            ):
-                self._locality_hits += 1
-            else:
-                self._locality_misses += 1
+            self._record_locality_metrics(
+                bundle,
+                self._actor_pool.get_actor_location(actor),
+                bundle.get_preferred_object_locations(),
+            )
 
         return num_submitted_tasks
 
-    def _merge_ray_remote_args(self) -> Dict[str, Any]:
+    def _record_locality_metrics(
+        self,
+        bundle: RefBundle,
+        actor_node_id: NodeIdStr,
+        preferred_locs: Dict[NodeIdStr, int],
+    ) -> None:
+        """Record the locality hit/miss and the cross-node input transfer for a
+        task dispatched to an actor on ``actor_node_id``.
+
+        ``preferred_locs`` is the bundle's node -> bytes map as the caller's
+        actor selection saw it (object-store locations here, block metadata in
+        the experimental operator), so hits and misses agree with the placement
+        decision. Blocks whose producing node is unknown are not counted as
+        remote.
+        """
+        if actor_node_id in preferred_locs:
+            self._locality_hits += 1
+        else:
+            self._locality_misses += 1
+        remote_bytes = 0
+        remote_blocks = 0
+        for bm in bundle.metadata:
+            if bm.node_id != UNKNOWN_NODE_ID and bm.node_id != actor_node_id:
+                remote_bytes += bm.size_bytes or 0
+                remote_blocks += 1
+        if remote_blocks:
+            self._metrics.bytes_remote_inputs_read += remote_bytes
+            self._metrics.num_remote_blocks_read += remote_blocks
+
+    def _create_task_context(self, actor: ActorHandle) -> TaskContext:
+        """Build the ``TaskContext`` for a task submitted to ``actor``."""
+        return TaskContext(
+            task_idx=self._next_data_task_idx,
+            op_name=self.name,
+            target_max_block_size_override=self.target_max_block_size_override,
+            rerun_policy=self._actor_rerun_policy(),
+        )
+
+    def _actor_rerun_policy(self) -> RerunPolicy:
+        """The errors on which Ray reruns this operator's actor tasks."""
+        return _actor_task_rerun_policy(
+            self._ray_actor_task_remote_args, self._ray_remote_args
+        )
+
+    def _merge_ray_remote_args(
+        self, scheduling_strategy: SchedulingStrategyT = None
+    ) -> Dict[str, Any]:
         """When `self._ray_remote_args_fn` is specified, this method should
         be called prior to initializing the new worker in order to get new
         remote args passed to the worker.
+
+        Args:
+            scheduling_strategy: Placement resolved for this specific actor;
+                when given it overrides the operator-wide default.
 
         Returns:
             The merged remote args used to create the actor class.
@@ -522,10 +694,26 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         remote_args = self._ray_remote_args.copy()
         if self._ray_remote_args_fn:
             remote_args.update(self._ray_remote_args_fn())
+        # ``ray_remote_args_fn`` can reintroduce per-task keys; route them
+        # onto actor tasks so actor creation / ``.options()`` stays valid.
+        extra_task_args = _pop_actor_task_remote_args(remote_args)
+        if extra_task_args:
+            self._ray_actor_task_remote_args.update(extra_task_args)
         remote_args = merge_label_selector(
             remote_args, self.data_context.execution_options.label_selector
         )
+        if scheduling_strategy is not None:
+            remote_args["scheduling_strategy"] = scheduling_strategy
         return remote_args
+
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Report the exact shape of every actor this operator is holding.
+
+        Actors are the operator's demand; its tasks run on actors that are
+        already counted, so the base implementation (which walks in-flight
+        tasks) would report nothing for an actor pool.
+        """
+        return self._actor_pool.get_resource_requests()
 
     def has_next(self) -> bool:
         # In case there are still enqueued bundles remaining, try to
@@ -545,10 +733,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         return super().has_next()
 
     def all_inputs_done(self):
-        # Call base implementation to handle any leftover bundles. This may or may not
-        # trigger task dispatch.
-        super().all_inputs_done()
-
         if self._metrics.num_inputs_received < self._actor_pool.min_size():
             warnings.warn(
                 f"The minimum number of concurrent actors for '{self.name}' is set to "
@@ -559,6 +743,10 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
                 "You might be able to increase the number of concurrent tasks by "
                 "configuring `override_num_blocks` earlier in the pipeline."
             )
+
+        # Call base implementation to handle any leftover bundles. This may or may not
+        # trigger task dispatch.
+        super().all_inputs_done()
 
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
@@ -630,9 +818,8 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         res["restarting_actors"] = self._actor_pool.num_restarting_actors()
         return res
 
-    @staticmethod
     def _apply_default_remote_args(
-        ray_remote_args: Dict[str, Any], data_context: DataContext
+        self, ray_remote_args: Dict[str, Any], data_context: DataContext
     ) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
@@ -661,6 +848,18 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
 
+    @property
+    def actor_pool(self) -> AutoscalingActorPool:
+        """This operator's actor pool.
+
+        Read-only accessor for collaborators that need the pool's own
+        bookkeeping (e.g. ``ResourceBank`` sizing the prebuffered object-store
+        footprint from ``max_actor_concurrency``). It is also what makes this
+        operator satisfy the structural ``ActorPoolOperator`` protocol, so
+        removing it silently turns actor-aware accounting off.
+        """
+        return self._actor_pool
+
     def per_task_resource_allocation(self) -> ExecutionResources:
         # For Actor tasks resource allocation is determined as:
         #   - Per actor resource allocation divided by
@@ -687,8 +886,6 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         self, actor_pool: "AutoscalingActorPool"
     ) -> int:
         """Actors that have been recreated to lineage reconstruct an object."""
-        assert isinstance(actor_pool, _ActorPool), actor_pool
-
         logical_id_label_key = actor_pool.get_logical_id_label_key()
 
         # `get_local_ongoing_lineage_reconstruction_tasks` returns every task this
@@ -704,7 +901,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
         # Actors still in the pool are already counted by normal accounting, so only
         # the released ones are extra.
-        return len(reconstructing_actors - set(actor_pool._get_logical_ids()))
+        return len(reconstructing_actors - set(actor_pool.get_logical_ids()))
 
     def refresh_state(self):
         """Updates internal state"""
@@ -783,6 +980,7 @@ class _MapWorker:
             ctx,
             *blocks,
             slices=slices,
+            actor_id=self._logical_actor_id,
             **kwargs,
         )
 
@@ -843,7 +1041,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def __init__(
         self,
-        create_actor_fn: "Callable[[Dict[str, str]], Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]]",
+        create_actor_fn: "Callable[[Dict[str, str], LogicalActorId], Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]]",
         config: AutoscalingActorConfig,
         map_worker_cls_name: str = "MapWorker",
         debounce_period_s: int = _ACTOR_POOL_SCALE_DOWN_DEBOUNCE_PERIOD_S,
@@ -851,9 +1049,10 @@ class _ActorPool(AutoscalingActorPool):
         """Initialize the actor pool.
 
         Args:
-            create_actor_fn: Callable that takes key-value labels as input and
-                creates an actor with those labels. Returns the actor handle, a
-                reference to the actor's node ID, and the actor's resource usage.
+            create_actor_fn: Callable that takes key-value labels and the
+                actor's logical id as input and creates an actor with those
+                labels. Returns the actor handle, a reference to the actor's
+                node ID, and the actor's resource usage.
             config: Configuration for the autoscaling actor pool, including
                 min/max/initial pool sizes, concurrency, and resource usage.
             map_worker_cls_name: Name of the map worker class for logging
@@ -878,6 +1077,10 @@ class _ActorPool(AutoscalingActorPool):
         # Per-actor resource usage, needed because ray_remote_args_fn can
         # produce different resources for each actor.
         self._actor_resource_usage: Dict[ActorHandle, ExecutionResources] = {}
+        # Per-actor exact creation request, reported to the cluster autoscaler.
+        # Kept alongside the usage above rather than folded into it because
+        # ``ExecutionResources`` cannot express custom resources.
+        self._actor_resource_requests: Dict[ActorHandle, Dict[str, float]] = {}
         # Cached aggregate resource counters.
         self._total_usage = ExecutionResources.zero()
         self._pending_or_restarting_usage = ExecutionResources.zero()
@@ -915,6 +1118,12 @@ class _ActorPool(AutoscalingActorPool):
     def num_restarting_actors(self) -> int:
         """Restarting actors are all the running actors not in ALIVE state."""
         return self._num_restarting_actors
+
+    @override
+    def num_draining_actors(self) -> int:
+        """Always 0: this pool kills actors outright rather than draining them,
+        so ``serving_size`` and ``current_size`` always agree here."""
+        return 0
 
     @override
     def num_active_actors(self) -> int:
@@ -991,7 +1200,7 @@ class _ActorPool(AutoscalingActorPool):
             self._release_running_actor(actor)
 
     @override
-    def on_task_submitted(self, actor: ActorHandle):
+    def on_task_submitted(self, actor: ActorHandle, input_bundle: RefBundle):
         state = self._running_actors[actor]
         state.num_tasks_in_flight += 1
         self._total_num_tasks_in_flight += 1
@@ -1046,6 +1255,7 @@ class _ActorPool(AutoscalingActorPool):
             # This must happen for all exceptions, not just RayError, to prevent
             # memory leaks where dead actor handles remain in _actor_to_logical_id.
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1069,6 +1279,20 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
+
+    def record_resource_request(
+        self, actor: ActorHandle, request: Dict[str, float]
+    ) -> None:
+        """Record the exact resource request an actor was created with.
+
+        Called by the operator as it creates each actor, since only the
+        operator knows the remote args the actor was launched with.
+        """
+        self._actor_resource_requests[actor] = request
+
+    @override
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        return list(self._actor_resource_requests.values())
 
     @override
     def select_actors(
@@ -1120,7 +1344,7 @@ class _ActorPool(AutoscalingActorPool):
         return target_actor
 
     @override
-    def on_task_completed(self, actor: ActorHandle):
+    def on_task_completed(self, actor: ActorHandle, input_bundle: RefBundle):
         """Called when a task completes. Returns the provided actor to the pool."""
         state = self._running_actors.get(actor)
         if state is None:
@@ -1141,10 +1365,29 @@ class _ActorPool(AutoscalingActorPool):
             if node_heap is not None and actor in node_heap:
                 node_heap[actor] = rank
 
-    # === End of overriding methods of AutoscalingActorPool ===
-
-    def _get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
+    @override
+    def get_actor_logical_id(self, actor: ActorHandle) -> LogicalActorId:
         return self._actor_to_logical_id[actor]
+
+    @override
+    def get_logical_ids(self) -> List[LogicalActorId]:
+        """Get the logical IDs for pending and running actors in the actor pool.
+
+        We can't use Ray Core actor IDs because we need to identify actors by labels,
+        but labels must be set before creation, and actor IDs aren't available until
+        after.
+        """
+        return list(self._actor_to_logical_id.values())
+
+    @override
+    def current_logical_usage(self) -> ExecutionResources:
+        return self._total_usage
+
+    @override
+    def pending_logical_usage(self) -> ExecutionResources:
+        return self._pending_or_restarting_usage
+
+    # === End of overriding methods of AutoscalingActorPool ===
 
     def _can_apply_request(self, req: ActorPoolScalingRequest) -> bool:
         """Returns whether Actor Pool is able to execute scaling request"""
@@ -1278,15 +1521,6 @@ class _ActorPool(AutoscalingActorPool):
             resource_usage
         )
 
-    def _get_logical_ids(self) -> List[LogicalActorId]:
-        """Get the logical IDs for pending and running actors in the actor pool.
-
-        We can't use Ray Core actor IDs because we need to identify actors by labels,
-        but labels must be set before creation, and actor IDs aren't available until
-        after.
-        """
-        return list(self._actor_to_logical_id.values())
-
     def _remove_inactive_actor(self) -> bool:
         """Kills a single pending or idle actor, if any actors are pending/idle.
 
@@ -1306,6 +1540,7 @@ class _ActorPool(AutoscalingActorPool):
             ready_ref = next(iter(self._pending_actors.keys()))
             actor = self._pending_actors.pop(ready_ref)
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1331,6 +1566,7 @@ class _ActorPool(AutoscalingActorPool):
         self._pending_actors.clear()
         for actor in pending.values():
             usage = self._actor_resource_usage.pop(actor)
+            self._actor_resource_requests.pop(actor, None)
             self._total_usage = self._total_usage.subtract(usage)
             self._pending_or_restarting_usage = (
                 self._pending_or_restarting_usage.subtract(usage)
@@ -1391,6 +1627,7 @@ class _ActorPool(AutoscalingActorPool):
         del self._actor_to_logical_id[actor]
 
         usage = self._actor_resource_usage.pop(actor)
+        self._actor_resource_requests.pop(actor, None)
         self._total_usage = self._total_usage.subtract(usage)
         if actor_state.is_restarting:
             self._pending_or_restarting_usage = (
@@ -1427,12 +1664,6 @@ class _ActorPool(AutoscalingActorPool):
 
         return None
 
-    def current_logical_usage(self) -> ExecutionResources:
-        return self._total_usage
-
-    def pending_logical_usage(self) -> ExecutionResources:
-        return self._pending_or_restarting_usage
-
 
 class _NodeAwareActorPool(_ActorPool):
     """An actor pool that avoids launching tasks to Actors on draining nodes. We assume
@@ -1448,7 +1679,7 @@ class _NodeAwareActorPool(_ActorPool):
         # Must be called before _update_running_actor_state() (see refresh_actor_state).
         self._actor_node_id_map_snapshot: Dict[
             LogicalActorId, NodeIdStr
-        ] = get_actor_locations(tuple(self._get_logical_ids()))
+        ] = get_actor_locations(tuple(self.get_logical_ids()))
         self._draining_nodes_snapshot: Dict[NodeIdStr, int] = get_draining_nodes()
 
         super().refresh_actor_state()
@@ -1481,7 +1712,7 @@ class _NodeAwareActorPool(_ActorPool):
         # NOTE:
         #   - We fallback to previous location if information is stale
         #   - Actor locations are not updated in the base implementation
-        logical_id = self._get_actor_logical_id(actor)
+        logical_id = self.get_actor_logical_id(actor)
         node_id = (
             self._actor_node_id_map_snapshot.get(logical_id) or state.actor_location
         )

@@ -71,6 +71,7 @@ ray_cc_library(
     name = "quadratic_bucket_scheme",
     srcs = ["quadratic_bucket_scheme.cc"],
     hdrs = ["quadratic_bucket_scheme.h"],
+    visibility = [":__subpackages__"],
     deps = [
         "//src/ray/util:logging",
     ],
@@ -110,5 +111,17 @@ ray_cc_library(
         ":stats_metric",
         "//src/ray/observability:metric_interface",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "bucket_histogram_metric",
+    srcs = ["bucket_histogram_metric.cc"],
+    hdrs = ["bucket_histogram_metric.h"],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":quadratic_bucket_scheme",
+        ":stats_metric",
+        "//src/ray/observability:metric_interface",
     ],
 )

@@ -176,14 +176,20 @@ class OrdinalEncoder(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately encode."""
         return self._columns
 
     @property
     def encode_lists(self) -> bool:
+        """Whether list elements are encoded individually instead of as whole lists."""
         return self._encode_lists
 
     @property
     def output_columns(self) -> Optional[List[str]]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -452,14 +458,23 @@ class OneHotEncoder(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately encode."""
         return self._columns
 
     @property
     def max_categories(self) -> Dict[str, int]:
+        """The maximum number of features to create for each column.
+
+        A column that isn't in the mapping gets a feature for every category.
+        """
         return self._max_categories
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -492,6 +507,18 @@ class OneHotEncoder(SerializablePreprocessorBase):
         return BatchFormat.ARROW
 
     def safe_get(self, v: Any, stats: Dict[str, int]):
+        """Look up the encoded index of a value.
+
+        Lists and arrays are converted to tuples before the lookup.
+
+        Args:
+            v: The value to look up.
+            stats: A mapping from category values to encoded indices.
+
+        Returns:
+            The index that ``stats`` maps ``v`` to, or ``-1`` if ``v`` is missing from
+            ``stats`` or is unhashable.
+        """
         if isinstance(v, (list, np.ndarray)):
             v = tuple(v)
         if isinstance(v, Hashable):
@@ -739,14 +766,23 @@ class MultiHotEncoder(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to separately encode."""
         return self._columns
 
     @property
     def max_categories(self) -> Dict[str, int]:
+        """The maximum number of features to create for each column.
+
+        A column that isn't in the mapping gets a feature for every unique category.
+        """
         return self._max_categories
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -907,10 +943,15 @@ class LabelEncoder(SerializablePreprocessorBase):
 
     @property
     def label_column(self) -> str:
+        """The column that contains the labels to encode."""
         return self._label_column
 
     @property
     def output_column(self) -> str:
+        """The name of the column that contains the encoded labels.
+
+        Same as ``label_column`` if you didn't set ``output_column``.
+        """
         return self._output_column
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -979,9 +1020,19 @@ class LabelEncoder(SerializablePreprocessorBase):
         return df
 
     def get_input_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor reads.
+
+        Returns:
+            A list that contains ``label_column``.
+        """
         return [self._label_column]
 
     def get_output_columns(self) -> List[str]:
+        """Return the names of the columns this preprocessor writes.
+
+        Returns:
+            A list that contains ``output_column``.
+        """
         return [self._output_column]
 
     def _get_serializable_fields(self) -> Dict[str, Any]:
@@ -1098,14 +1149,24 @@ class Categorizer(SerializablePreprocessorBase):
 
     @property
     def columns(self) -> List[str]:
+        """The columns to convert to ``pd.CategoricalDtype``."""
         return self._columns
 
     @property
     def dtypes(self) -> Optional[Dict[str, pd.CategoricalDtype]]:
+        """The ``pd.CategoricalDtype`` to use for each column.
+
+        The categories of columns that aren't in this mapping are inferred during
+        fitting.
+        """
         return self._dtypes
 
     @property
     def output_columns(self) -> List[str]:
+        """The names of the transformed columns.
+
+        Same as ``columns`` if you didn't set ``output_columns``.
+        """
         return self._output_columns
 
     def _fit(self, dataset: "Dataset") -> Preprocessor:
@@ -1231,8 +1292,7 @@ def _is_null(value: Any) -> bool:
 def unique_post_fn(
     drop_na_values: bool = False, batch_format: BatchFormat = None
 ) -> Callable:
-    """
-    Returns a post-processing function that generates an encoding map by
+    """Returns a post-processing function that generates an encoding map by
     sorting the unique values produced during aggregation or stats computation.
 
     Args:
@@ -1251,8 +1311,7 @@ def unique_post_fn(
     """
 
     def gen_value_index(values: List) -> Dict[Any, int]:
-        """
-        Generate an encoding map from a list of unique values using Python sorting.
+        """Generate an encoding map from a list of unique values using Python sorting.
 
         Args:
             values: List of unique values to encode (can include lists/tuples).

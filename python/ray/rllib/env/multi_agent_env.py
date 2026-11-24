@@ -82,8 +82,7 @@ class MultiAgentEnv(gym.Env):
         Returns:
             New observations for each ready agent.
 
-        .. testcode::
-            :skipif: True
+        .. code-block:: python
 
             from ray.rllib.env.multi_agent_env import MultiAgentEnv
             class MyMultiAgentEnv(MultiAgentEnv):
@@ -92,7 +91,7 @@ class MultiAgentEnv(gym.Env):
             obs, infos = env.reset(seed=42, options={})
             print(obs)
 
-        .. testoutput::
+        .. code-block:: text
 
             {
                 "car_0": [2.4, 1.6],
@@ -127,31 +126,24 @@ class MultiAgentEnv(gym.Env):
             4) Truncated values for each ready agent.
             5) Info values for each agent id (may be empty dicts).
 
-        .. testcode::
-            :skipif: True
-
-            env = ...
-            obs, rewards, terminateds, truncateds, infos = env.step(action_dict={
-                "car_0": 1, "car_1": 0, "traffic_light_1": 2,
-            })
-            print(rewards)
-
-            print(terminateds)
-
-            print(infos)
-
-        .. testoutput::
-
+        Examples:
+            >>> env = ...  # doctest: +SKIP_EXAMPLE
+            >>> obs, rewards, terminateds, truncateds, infos = env.step(action_dict={
+            ...     "car_0": 1, "car_1": 0, "traffic_light_1": 2,
+            ... })
+            >>> print(rewards)
             {
                 "car_0": 3,
                 "car_1": -1,
                 "traffic_light_1": 0,
             }
+            >>> print(terminateds)
             {
                 "car_0": False,    # car_0 is still running
                 "car_1": True,     # car_1 is terminated
                 "__all__": False,  # the env is not terminated
             }
+            >>> print(infos)
             {
                 "car_0": {},  # info for car_0
                 "car_1": {},  # info for car_1
@@ -167,6 +159,18 @@ class MultiAgentEnv(gym.Env):
         pass
 
     def get_observation_space(self, agent_id: AgentID) -> gym.Space:
+        """Returns the observation space of the given agent.
+
+        Looks up `agent_id` in `self.observation_spaces`. If that's None, falls back
+        to the old API stack's `self.observation_space`: its entry for `agent_id` if
+        it's a `gym.spaces.Dict` that contains `agent_id`, otherwise the whole space.
+
+        Args:
+            agent_id: The ID of the agent whose observation space to return.
+
+        Returns:
+            The observation space of the agent with ID `agent_id`.
+        """
         if self.observation_spaces is not None:
             return self.observation_spaces[agent_id]
 
@@ -184,6 +188,18 @@ class MultiAgentEnv(gym.Env):
             return self.observation_space
 
     def get_action_space(self, agent_id: AgentID) -> gym.Space:
+        """Returns the action space of the given agent.
+
+        Looks up `agent_id` in `self.action_spaces`. If that's None, falls back to
+        the old API stack's `self.action_space`: its entry for `agent_id` if it's a
+        `gym.spaces.Dict` that contains `agent_id`, otherwise the whole space.
+
+        Args:
+            agent_id: The ID of the agent whose action space to return.
+
+        Returns:
+            The action space of the agent with ID `agent_id`.
+        """
         if self.action_spaces is not None:
             return self.action_spaces[agent_id]
 
@@ -202,10 +218,15 @@ class MultiAgentEnv(gym.Env):
 
     @property
     def num_agents(self) -> int:
+        """The number of agents currently active in the env, `len(self.agents)`."""
         return len(self.agents)
 
     @property
     def max_num_agents(self) -> int:
+        """The number of agents that can ever appear in the env.
+
+        This is `len(self.possible_agents)`.
+        """
         return len(self.possible_agents)
 
     # fmt: off
@@ -246,18 +267,16 @@ class MultiAgentEnv(gym.Env):
             A new MultiAgentEnv (a `GroupAgentsWrapper` around `self`), in which the
             agents of each group are combined into one single (grouped) agent.
 
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.env.multi_agent_env import MultiAgentEnv
-            class MyMultiAgentEnv(MultiAgentEnv):
-                # define your env here
-                ...
-            env = MyMultiAgentEnv(...)
-            grouped_env = env.with_agent_groups(env, {
-              "group1": ["agent1", "agent2", "agent3"],
-              "group2": ["agent4", "agent5"],
-            })
+        Examples:
+            >>> from ray.rllib.env.multi_agent_env import MultiAgentEnv  # doctest: +SKIP_EXAMPLE
+            >>> class MyMultiAgentEnv(MultiAgentEnv):
+            ...     # define your env here
+            ...     ...
+            >>> env = MyMultiAgentEnv(...)
+            >>> grouped_env = env.with_agent_groups({
+            ...   "group1": ["agent1", "agent2", "agent3"],
+            ...   "group2": ["agent4", "agent5"],
+            ... })
 
         """
 
@@ -363,30 +382,25 @@ def make_multi_agent(
         (default=1). The rest of the config dict will be passed on to the
         underlying single-agent env's constructor.
 
-    .. testcode::
-        :skipif: True
-
-        from ray.rllib.env.multi_agent_env import make_multi_agent
-        # By gym string:
-        ma_cartpole_cls = make_multi_agent("CartPole-v1")
-        # Create a 2 agent multi-agent cartpole.
-        ma_cartpole = ma_cartpole_cls({"num_agents": 2})
-        obs = ma_cartpole.reset()
-        print(obs)
-
-        # By env-maker callable:
-        from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
-        ma_stateless_cartpole_cls = make_multi_agent(
-           lambda config: StatelessCartPole(config))
-        # Create a 3 agent multi-agent stateless cartpole.
-        ma_stateless_cartpole = ma_stateless_cartpole_cls(
-           {"num_agents": 3})
-        print(obs)
-
-    .. testoutput::
-
-        {0: [...], 1: [...]}
-        {0: [...], 1: [...], 2: [...]}
+    Examples:
+        >>> from ray.rllib.env.multi_agent_env import make_multi_agent
+        >>> # By gym string:
+        >>> ma_cartpole_cls = make_multi_agent("CartPole-v1")
+        >>> # Create a 2 agent multi-agent cartpole.
+        >>> ma_cartpole = ma_cartpole_cls({"num_agents": 2})
+        >>> obs, infos = ma_cartpole.reset()
+        >>> print(obs)
+        {0: array([...], dtype=float32), 1: array([...], dtype=float32)}
+        >>> # By env-maker callable:
+        >>> from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+        >>> ma_stateless_cartpole_cls = make_multi_agent(
+        ...    lambda config: StatelessCartPole(config))
+        >>> # Create a 3 agent multi-agent stateless cartpole.
+        >>> ma_stateless_cartpole = ma_stateless_cartpole_cls(
+        ...    {"num_agents": 3})
+        >>> obs, infos = ma_stateless_cartpole.reset()
+        >>> print(obs)
+        {0: array([...], dtype=float32), 1: array([...], dtype=float32), 2: array([...], dtype=float32)}
     """
 
     class MultiEnv(MultiAgentEnv):
