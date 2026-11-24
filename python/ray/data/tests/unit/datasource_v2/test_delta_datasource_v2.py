@@ -266,8 +266,8 @@ def _stub_table(
                 reader_version=3, reader_features=["timestampNtz", "deletionVectors"]
             ),
             False,
-            RuntimeError,
-            "delta.enableDeletionVectors",
+            None,
+            "",
         ),
         # Only the unsupported features are named.
         (

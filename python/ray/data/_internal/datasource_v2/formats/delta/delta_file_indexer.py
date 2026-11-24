@@ -34,6 +34,7 @@ from typing import (
     Set,
 )
 
+import numpy as np
 import pyarrow as pa
 from typing_extensions import override
 
@@ -87,6 +88,11 @@ PARTITION_VALUES_COLUMN = "__delta_partition_values"
 # The manifest column that carries each file's row count from the log to the
 # reader, for ``count()``. Null when the writer recorded no stats.
 NUM_RECORDS_COLUMN = "__delta_num_records"
+
+# The column, of the loaded ``add`` actions and of the manifests, that carries
+# the positions in its file of the rows a file's deletion vector deletes:
+# ``list<int64>``, sorted, null for a file without one.
+DELETED_ROWS_COLUMN = "__delta_deleted_rows"
 
 # One file's partition values, by column, as ``partition_values_as_strings``
 # writes them. ``None`` is a null value.
@@ -177,7 +183,9 @@ def load_add_actions(
         the layout of the latest checkpoint, so a version reloaded after a
         checkpoint written with its rows in another order would otherwise list
         its files in another order. A column-mapped table's statistics columns
-        are renamed to the logical column names.
+        are renamed to the logical column names. For a table with deletion
+        vectors, ``DELETED_ROWS_COLUMN`` holds each file's deleted row
+        positions.
     """
     # ``deltalake`` returns an arro3-core table, not a PyArrow one; ``pa.table``
     # converts it through the Arrow C stream interface.
@@ -190,6 +198,9 @@ def load_add_actions(
         add_actions = add_actions.rename_columns(
             [renames.get(name, name) for name in add_actions.column_names]
         )
+    if "deletionVectors" in (table.protocol().reader_features or []):
+        # Before ``partition_filters``, so every deletion vector matches a file.
+        add_actions = _with_deleted_rows(table, add_actions)
     if partition_filters is not None:
         file_paths = [
             resolve_data_file_path(path)
@@ -203,6 +214,58 @@ def load_add_actions(
         )
     return add_actions.replace_schema_metadata(
         {_ADD_ACTIONS_VERSION_KEY: str(table.version()).encode()}
+    )
+
+
+def _with_deleted_rows(table: "DeltaTable", add_actions: pa.Table) -> pa.Table:
+    """``add_actions`` with ``DELETED_ROWS_COLUMN``, from the deletion vectors.
+
+    ``DeltaTable.deletion_vectors()`` gives a keep/delete flag for every row of
+    each file that has a deletion vector, and loads them all into memory. Only
+    the deleted positions are kept, one short list per file, which is what the
+    listing hands the read tasks.
+
+    Args:
+        table: The table, opened at the version to read.
+        add_actions: Its ``add`` actions, all of them.
+
+    Returns:
+        ``add_actions`` with ``DELETED_ROWS_COLUMN``.
+
+    Raises:
+        ValueError: If a deletion vector names a file that isn't among the
+            ``add`` actions, rather than return the rows it deletes.
+    """
+    file_paths = [
+        resolve_data_file_path(path)
+        for path in add_actions[ADD_ACTION_PATH_COLUMN].to_pylist()
+    ]
+    index_of_path = {path: i for i, path in enumerate(file_paths)}
+    deleted: List[Optional[List[int]]] = [None] * len(file_paths)
+    # ``deletion_vectors()`` names each file by its URI, the table URI followed
+    # by the file's URL-encoded path.
+    table_prefix = table.table_uri.rstrip("/") + "/"
+    reader = pa.RecordBatchReader.from_stream(table.deletion_vectors())
+    for batch in reader:
+        selection_vectors = batch.column("selection_vector")
+        for i, uri in enumerate(batch.column("filepath").to_pylist()):
+            relative = (
+                urllib.parse.unquote(uri[len(table_prefix) :])
+                if uri.startswith(table_prefix)
+                else None
+            )
+            index = index_of_path.get(relative) if relative is not None else None
+            if index is None:
+                raise ValueError(
+                    f"A deletion vector of the Delta table {table.table_uri!r} "
+                    f"names the file {uri!r}, which isn't one of the table's "
+                    "data files, so the rows it deletes can't be skipped."
+                )
+            keep = selection_vectors[i].values.to_numpy(zero_copy_only=False)
+            deleted[index] = np.flatnonzero(~keep).tolist()
+    return add_actions.append_column(
+        pa.field(DELETED_ROWS_COLUMN, pa.list_(pa.int64())),
+        pa.array(deleted, pa.list_(pa.int64())),
     )
 
 
@@ -440,6 +503,7 @@ class _DeltaLogListing:
         self._column_mapping = column_mapping
         # Filled by ``list_file_infos``, in the listing task.
         self._partition_values_by_path = {}
+        self._deleted_rows_by_path: Dict[str, List[int]] = {}
 
     def list_file_infos(
         self,
@@ -498,6 +562,17 @@ class _DeltaLogListing:
                 file_paths,
                 partition_values_as_strings(add_actions, self._partition_schema),
             )
+        )
+        self._deleted_rows_by_path = (
+            {
+                path: deleted
+                for path, deleted in zip(
+                    file_paths, add_actions[DELETED_ROWS_COLUMN].to_pylist()
+                )
+                if deleted
+            }
+            if DELETED_ROWS_COLUMN in add_actions.column_names
+            else {}
         )
         self._remember_add_actions(file_paths, add_actions)
         file_infos = [
@@ -593,7 +668,9 @@ class _DeltaLogListing:
         """List manifests from the log, through the base class.
 
         For a partitioned table, each manifest row also carries its file's
-        partition values from the log, in ``PARTITION_VALUES_COLUMN``.
+        partition values from the log, in ``PARTITION_VALUES_COLUMN``, and a
+        file with a deletion vector its deleted row positions, in
+        ``DELETED_ROWS_COLUMN``.
         """
         self._default_shuffle(kwargs)
         # The base class's ``list_files`` would list through
@@ -620,6 +697,10 @@ class _DeltaLogListing:
                 kwargs["projected_columns"] = self._column_mapping.physical_names(
                     kwargs["projected_columns"]
                 )
+        if self._deleted_rows_by_path:
+            # The footers count deleted rows too, so they can't tell when the
+            # listing has enough rows for a ``limit``: list every file.
+            kwargs.pop("limit", None)
         # pyrefly: ignore[missing-attribute]
         manifests = super().list_files_from_file_infos(
             file_infos,
@@ -627,14 +708,16 @@ class _DeltaLogListing:
             predicate=predicate,
             **kwargs,
         )
-        yield from self._with_partition_values(manifests)
+        yield from self._with_log_columns(manifests)
 
-    def _with_partition_values(
+    def _with_log_columns(
         self, manifests: Iterable[FileManifest]
     ) -> Iterator[FileManifest]:
+        """Add each file's partition values and deleted rows from the log."""
         # Added after the base listing, whose row-group shuffle rebuilds its
         # rows from the required columns only.
-        if len(self._partition_schema) == 0:
+        has_partitions = len(self._partition_schema) > 0
+        if not has_partitions and not self._deleted_rows_by_path:
             yield from manifests
             return
         values_type = partition_values_type(self._partition_schema)
@@ -642,18 +725,24 @@ class _DeltaLogListing:
             block = manifest.as_block()
             # Listing manifests are always built as Arrow tables.
             assert isinstance(block, pa.Table)
-            values = pa.array(
-                [
-                    self._partition_values_by_path[path]
-                    for path in manifest.paths.tolist()
-                ],
-                type=values_type,
-            )
-            yield FileManifest(
-                block.append_column(
-                    pa.field(PARTITION_VALUES_COLUMN, values_type), values
+            paths = manifest.paths.tolist()
+            if has_partitions:
+                block = block.append_column(
+                    pa.field(PARTITION_VALUES_COLUMN, values_type),
+                    pa.array(
+                        [self._partition_values_by_path[path] for path in paths],
+                        type=values_type,
+                    ),
                 )
-            )
+            if self._deleted_rows_by_path:
+                block = block.append_column(
+                    pa.field(DELETED_ROWS_COLUMN, pa.list_(pa.int64())),
+                    pa.array(
+                        [self._deleted_rows_by_path.get(path) for path in paths],
+                        type=pa.list_(pa.int64()),
+                    ),
+                )
+            yield FileManifest(block)
 
     def _default_shuffle(self, list_files_kwargs: Dict[str, Any]) -> None:
         if list_files_kwargs.get("shuffle_config") is None:
@@ -746,14 +835,20 @@ class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
         self, file_paths: Sequence[str], add_actions: pa.Table
     ) -> None:
         # ``deltalake`` leaves the column out when no file has stats.
-        self._num_records_by_path = dict(
-            zip(
-                file_paths,
-                add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
-                if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
-                else [None] * add_actions.num_rows,
-            )
+        num_records = (
+            add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
+            if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
+            else [None] * add_actions.num_rows
         )
+        # The log counts the rows a deletion vector deletes too.
+        self._num_records_by_path = {
+            path: (
+                count - len(self._deleted_rows_by_path.get(path, ()))
+                if count is not None
+                else None
+            )
+            for path, count in zip(file_paths, num_records)
+        }
 
     @override
     def list_files(

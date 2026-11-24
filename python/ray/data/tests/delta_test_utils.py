@@ -2,28 +2,82 @@
 
 import json
 import os
-from typing import Any, Dict, List
+import struct
+from typing import Any, Dict, Iterable, List
 
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+_Z85_ALPHABET = (
+    "0123456789abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#"
+)
+
+
+def _z85(data: bytes) -> str:
+    """Z85-encode ``data``, zero-padded to a multiple of 4 bytes."""
+    data += b"\0" * (-len(data) % 4)
+    chars = []
+    for i in range(0, len(data), 4):
+        value = int.from_bytes(data[i : i + 4], "big")
+        block = []
+        for _ in range(5):
+            value, digit = divmod(value, 85)
+            block.append(_Z85_ALPHABET[digit])
+        chars.extend(reversed(block))
+    return "".join(chars)
+
+
+def _roaring_bitmap_array(positions: Iterable[int]) -> bytes:
+    """Serialize ``positions`` as Delta's RoaringBitmapArray.
+
+    The format: a magic number, the number of 32-bit bitmaps, then for each its
+    high 32 bits and a portable 32-bit Roaring bitmap made of array containers.
+    """
+    by_high: Dict[int, List[int]] = {}
+    for position in sorted(set(positions)):
+        by_high.setdefault(position >> 32, []).append(position & 0xFFFFFFFF)
+    out = struct.pack("<iq", 1681511377, len(by_high))
+    for high, lows in sorted(by_high.items()):
+        containers: Dict[int, List[int]] = {}
+        for low in lows:
+            containers.setdefault(low >> 16, []).append(low & 0xFFFF)
+        header = struct.pack("<II", 12346, len(containers))
+        for key, values in sorted(containers.items()):
+            header += struct.pack("<HH", key, len(values) - 1)
+        offsets, data = b"", b""
+        first = len(header) + 4 * len(containers)
+        for _, values in sorted(containers.items()):
+            offsets += struct.pack("<I", first + len(data))
+            data += b"".join(struct.pack("<H", value) for value in values)
+        out += struct.pack("<i", high) + header + offsets + data
+    return out
+
+
+# The data files ``write_deletion_vector_table`` writes: two row groups of
+# three rows, then one of three, and the rows their deletion vectors delete.
+DELETION_VECTOR_FILES = {
+    "part-0.parquet": ([0, 1, 2, 3, 4, 5], [1, 4]),
+    "part-1.parquet": ([10, 11, 12], []),
+}
+# The rows ``read_delta`` returns from it.
+DELETION_VECTOR_TABLE_ROWS = [0, 2, 3, 5, 10, 11, 12]
+
 
 def write_deletion_vector_table(path: str) -> None:
-    """Write a one-file Delta table that declares the deletion vectors feature.
+    """Write a Delta table whose first file has a deletion vector.
 
-    deltalake can't write such a table, so the log is written by hand. No
-    deletion vector is written: readers reject the table for declaring the
-    feature.
+    deltalake can't write deletion vectors, so the log is written by hand,
+    with the deletion vector inline: Z85-encoded in the ``add`` action, as
+    Databricks writes small ones. The files and deleted rows are
+    ``DELETION_VECTOR_FILES``; the table column is ``x``.
 
     Args:
         path: Directory to create the table in. Must not exist yet.
     """
     os.makedirs(os.path.join(path, "_delta_log"))
-    data_file = os.path.join(path, "part-0.parquet")
-    pq.write_table(pa.table({"id": pa.array([1, 2, 3], pa.int64())}), data_file)
-
-    field = {"name": "id", "type": "long", "nullable": True, "metadata": {}}
-    actions = [
+    field = {"name": "x", "type": "long", "nullable": True, "metadata": {}}
+    actions: List[Dict[str, Any]] = [
         {
             "protocol": {
                 "minReaderVersion": 3,
@@ -42,16 +96,37 @@ def write_deletion_vector_table(path: str) -> None:
                 "createdTime": 0,
             }
         },
-        {
-            "add": {
-                "path": "part-0.parquet",
-                "partitionValues": {},
-                "size": os.path.getsize(data_file),
-                "modificationTime": 0,
-                "dataChange": True,
-            }
-        },
     ]
+    for name, (values, deleted) in DELETION_VECTOR_FILES.items():
+        data_file = os.path.join(path, name)
+        pq.write_table(
+            pa.table({"x": pa.array(values, pa.int64())}), data_file, row_group_size=3
+        )
+        add: Dict[str, Any] = {
+            "path": name,
+            "partitionValues": {},
+            "size": os.path.getsize(data_file),
+            "modificationTime": 0,
+            "dataChange": True,
+            # A file with a deletion vector must record its row count.
+            "stats": json.dumps(
+                {
+                    "numRecords": len(values),
+                    "minValues": {"x": min(values)},
+                    "maxValues": {"x": max(values)},
+                    "nullCount": {"x": 0},
+                }
+            ),
+        }
+        if deleted:
+            bitmap = _roaring_bitmap_array(deleted)
+            add["deletionVector"] = {
+                "storageType": "i",
+                "pathOrInlineDv": _z85(bitmap),
+                "sizeInBytes": len(bitmap),
+                "cardinality": len(deleted),
+            }
+        actions.append({"add": add})
     with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
         f.write("\n".join(json.dumps(action) for action in actions) + "\n")
 

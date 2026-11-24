@@ -91,8 +91,11 @@ _SUPPORTED_COLUMN_MAPPING_MODES = frozenset({"none", "name", "id"})
 # actions, so the V2 reader sees every file. The V1 reader's
 # `to_pyarrow_dataset` refuses these tables, and Databricks turns v2
 # checkpoints on for new tables by default.
+#
+# `deletionVectors`: the listing loads each file's deleted row positions from
+# the deletion vectors, and the reader drops those rows.
 _SUPPORTED_READER_FEATURES = frozenset(
-    {"timestampNtz", "columnMapping", "v2Checkpoint"}
+    {"timestampNtz", "columnMapping", "v2Checkpoint", "deletionVectors"}
 )
 
 # PyArrow scan options that only tune how the V1 reader read; the V2 reader
@@ -162,7 +165,7 @@ def column_mapping_error(mode: str) -> NotImplementedError:
 
 
 def deletion_vectors_error(cause: str) -> RuntimeError:
-    """The error for a table that declares deletion vectors.
+    """The V1 reader's error for a table that declares deletion vectors.
 
     Args:
         cause: What found the feature, kept for anyone debugging deeper.
@@ -170,33 +173,17 @@ def deletion_vectors_error(cause: str) -> RuntimeError:
     Returns:
         The error to raise.
     """
-    # The restriction is in reading the data files with pyarrow, which can't
-    # apply the deletion-vector bitmaps, so honouring them is impossible on
-    # that path, and reading would return deleted rows. Tables are rejected on
-    # the *declared* reader feature, so a table with deletion vectors enabled
-    # but none written is rejected too. Don't suggest upgrading: it won't help.
+    # The V1 reader hands the data files to pyarrow through
+    # ``to_pyarrow_dataset``, which can't apply the deletion-vector bitmaps, so
+    # it would return deleted rows. Upgrading deltalake doesn't change that.
+    # The DataSourceV2 reader applies them.
     return RuntimeError(
         "This Delta table declares the `deletionVectors` reader feature, which "
-        "`ray.data.read_delta` cannot honour: it reads the data files with "
-        "pyarrow, which can't apply deletion vectors. Upgrading deltalake will "
-        "not change this, and note the table is rejected for *declaring* the "
-        "feature, whether or not any deletion vectors have actually been "
-        "written.\n"
-        "\n"
-        "Reading it with Ray Data needs the `delta.enableDeletionVectors"
-        "` table property turned off and the feature dropped from the "
-        "table's protocol. That rewrites data files and changes what "
-        "other readers and writers see, so it is worth reading your "
-        "Delta engine's documentation on removing the feature before "
-        "doing it -- some engines, Databricks included, enable deletion "
-        "vectors by default. If the property is already off, the "
-        "declaration can linger until existing deletion vectors are "
-        "purged and the feature is dropped.\n"
-        "\n"
-        "If reading deletion-vector tables directly matters to you, "
-        "please open or comment on a Ray issue -- it would need a read "
-        "path that can apply them, and knowing there is demand helps us "
-        "prioritise it.\n"
+        "the V1 `ray.data.read_delta` reader can't honour: it reads the data "
+        "files with pyarrow, which can't apply deletion vectors. Read it with "
+        "the DataSourceV2 reader, the default "
+        "(`ray.data.DataContext.get_current().use_datasource_v2 = True`), "
+        "which drops the deleted rows.\n"
         "\n"
         f"Underlying error: {cause}"
     )
@@ -205,7 +192,7 @@ def deletion_vectors_error(cause: str) -> RuntimeError:
 def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -> None:
     """Raise if :class:`DeltaDatasourceV2` can't read ``table``.
 
-    Column mapping and deletion vectors get the errors the V1 reader raised.
+    An unknown column mapping mode gets the error the V1 reader raised.
 
     Args:
         table: The table, opened at the version to read.
@@ -216,7 +203,6 @@ def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -
             support yet: an unknown column mapping mode, a reader version or
             feature it doesn't know, or a partition column type it doesn't
             parse.
-        RuntimeError: If the table declares deletion vectors.
         ValueError: If ``include_paths`` would replace the table's own
             ``path`` column.
     """
@@ -230,10 +216,6 @@ def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -
     if mode not in _SUPPORTED_COLUMN_MAPPING_MODES:
         raise column_mapping_error(mode)
     features = set(protocol.reader_features or [])
-    if "deletionVectors" in features:
-        raise deletion_vectors_error(
-            "the table's protocol lists the `deletionVectors` reader feature."
-        )
     if protocol.min_reader_version not in (1, 2, 3):
         raise NotImplementedError(
             f"This Delta table needs reader version {protocol.min_reader_version}, "

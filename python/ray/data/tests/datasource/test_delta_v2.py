@@ -35,7 +35,13 @@ from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.delta_test_utils import MAPPED_TABLE_ROWS, write_mapped_table
+from ray.data.tests.delta_test_utils import (
+    DELETION_VECTOR_FILES,
+    DELETION_VECTOR_TABLE_ROWS,
+    MAPPED_TABLE_ROWS,
+    write_deletion_vector_table,
+    write_mapped_table,
+)
 from ray.tests.conftest import *  # noqa
 
 deltalake = pytest.importorskip("deltalake")
@@ -749,6 +755,67 @@ def test_mapped_table_counts_from_the_log(mapped_table):
     """Which files the log statistics skip is tested in
     ``tests/datasource_v2/test_delta_footer_listing.py``."""
     assert _read(mapped_table).count() == len(MAPPED_TABLE_ROWS)
+
+
+@pytest.fixture
+def deletion_vector_table(tmp_path) -> str:
+    path = str(tmp_path / "deletion_vectors")
+    write_deletion_vector_table(path)
+    # The hand-written deletion vector reads back as written.
+    deleted = pa.table(deltalake.DeltaTable(path).deletion_vectors())
+    assert [
+        [i for i, keep in enumerate(row) if not keep]
+        for row in deleted["selection_vector"].to_pylist()
+    ] == [DELETION_VECTOR_FILES["part-0.parquet"][1]]
+    return path
+
+
+@pytest.mark.parametrize(
+    "transform, expected",
+    [
+        (lambda ds: ds, DELETION_VECTOR_TABLE_ROWS),
+        # The filter runs after the deleted rows are dropped.
+        (
+            lambda ds: ds.filter(expr=col("x") > 2),
+            [x for x in DELETION_VECTOR_TABLE_ROWS if x > 2],
+        ),
+    ],
+    ids=["all", "filter"],
+)
+def test_drops_deleted_rows(deletion_vector_table, monkeypatch, transform, expected):
+    """Each row group its own read task, so positions span read units."""
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
+
+    rows = transform(_read(deletion_vector_table)).take_all()
+
+    assert sorted(row["x"] for row in rows) == expected
+
+
+def test_count_and_limit_leave_out_deleted_rows(deletion_vector_table):
+    """The log's row counts and the footers both count deleted rows."""
+    assert _read(deletion_vector_table).count() == len(DELETION_VECTOR_TABLE_ROWS)
+    rows = _read(deletion_vector_table).limit(5).take_all()
+    assert len(rows) == 5
+    assert {row["x"] for row in rows} <= set(DELETION_VECTOR_TABLE_ROWS)
+
+
+def test_generated_ids_are_physical_row_positions(deletion_vector_table, tmp_path):
+    """A row's ID is its position in its row group, counting deleted rows, so
+    a later deletion vector doesn't shift the IDs of the rows after it."""
+    ctx = DataContext.get_current()
+    ctx.checkpoint_config = _checkpoint_config(tmp_path)
+    out = str(tmp_path / "out")
+
+    _read(deletion_vector_table, version=0).filter(expr=col("x") != 3).write_parquet(
+        out
+    )
+
+    ctx.checkpoint_config = None
+    ids = pq.read_table(out).to_pylist()
+    assert sorted(
+        (row["x"], row["generated_id"]["fragment"], row["generated_id"]["row_id"])
+        for row in ids
+    ) == [(0, 0, 0), (2, 0, 2), (5, 1, 2), (10, 0, 0), (11, 0, 1), (12, 0, 2)]
 
 
 if __name__ == "__main__":

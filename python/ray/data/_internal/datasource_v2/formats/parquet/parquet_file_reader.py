@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import cached_property
 from typing import (
     TYPE_CHECKING,
+    AbstractSet,
     Any,
     Dict,
     Iterator,
@@ -446,6 +447,21 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         fragment: pds.Fragment,
         scanner_kwargs: dict,
     ) -> "Iterator[pa.Table]":
+        yield from self._scan_fragment(fragment, scanner_kwargs, self._predicate)
+
+    def _scan_fragment(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+        predicate: Optional[Expr],
+        extra_columns: AbstractSet[str] = frozenset(),
+    ) -> "Iterator[pa.Table]":
+        """Scan ``fragment``, applying ``predicate`` and the partition values.
+
+        ``predicate`` is the reader's own, or ``None`` for a subclass that
+        filters the rows itself; ``extra_columns`` are read on top of the
+        projection, such as the ones that later filter needs.
+        """
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             get_column_references,
         )
@@ -458,10 +474,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             else fragment.physical_schema
         )
         schema = pa.schema([field for field in schema if field.name not in values])
-        physical_predicate = self._predicate
+        physical_predicate = predicate
         residual_predicate = None
-        if self._predicate is not None:
-            split = _split_predicate_by_columns(self._predicate, set(values))
+        if predicate is not None:
+            split = _split_predicate_by_columns(predicate, set(values))
             physical_predicate = split.data_predicate
             residual_predicate = split.residual_predicate
             if split.partition_predicate is not None and (
@@ -490,7 +506,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                     ),
                 )
         columns = scanner_kwargs.get("columns")
-        residual_columns = (
+        residual_columns = set(extra_columns) | (
             set(get_column_references(residual_predicate))
             if residual_predicate is not None
             else set()
