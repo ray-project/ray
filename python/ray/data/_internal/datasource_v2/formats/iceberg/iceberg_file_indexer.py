@@ -23,6 +23,9 @@ listing stops once those files hold the pushed limit's rows, as Parquet's
 footer indexer does. The listed Parquet files' footers are read once planning
 is done.
 
+Plain Parquet files are listed by Parquet's footer indexer instead, one row per
+row-group run (``iceberg_parquet_route``). They come after the other files.
+
 When the table's REST catalog plans scans on its server, the task rebuilds the
 catalog from the properties the driver resolved (``ServerSidePlanning``) and
 gives it to the ``DataScan``, so PyIceberg asks the server for the file list
@@ -48,6 +51,9 @@ from typing import (
 
 from typing_extensions import override
 
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicate_chain,
+)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_filter_pushdown import (
     split_predicate,
     to_iceberg_filter,
@@ -58,6 +64,9 @@ from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing impo
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     manifest_from_scan_tasks,
 )
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_parquet_route import (
+    IcebergParquetRoute,
+)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_row_match import (
     RowMatchCheck,
 )
@@ -66,6 +75,10 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileInfo,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
+from ray.data.expressions import Operation
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -76,6 +89,9 @@ if TYPE_CHECKING:
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
+    from ray.data._internal.datasource_v2.formats.iceberg.iceberg_filter_pushdown import (  # noqa: E501
+        IcebergFilterParts,
+    )
     from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing import (  # noqa: E501
         DecodedSize,
     )
@@ -165,20 +181,22 @@ class IcebergFileIndexer(FileIndexer):
         self._snapshot_id = snapshot_id
         self._row_filter = row_filter
         self._server_side_planning = server_side_planning
-        # Whether listing may read Parquet footers.
+        # Whether listing may read Parquet footers, to size files or route them.
         self._reads_footers = reads_footers
 
     @override
     def as_whole_file_indexer(self) -> "IcebergFileIndexer":
-        """This indexer without the footer reads, so listing reads metadata only.
+        """This indexer without footer reads, so listing reads metadata only.
 
         The count rule needs one row per file and no per-file IO while listing.
         An Iceberg scan task names a whole file and is never split, so one file
-        is always one row here; only the Parquet footer reads that size a file
-        are per-file IO, and the copy skips them.
+        is one row here unless it is routed (``iceberg_parquet_route``), which
+        lists it one row per row-group run. Footer reads size a file or route
+        it, and the copy does neither.
 
         Returns:
-            A copy that sizes every file from Iceberg's per-column sizes.
+            A copy that sizes every file from Iceberg's per-column sizes and
+            routes none.
         """
         return IcebergFileIndexer(
             table_metadata=self._table_metadata,
@@ -209,12 +227,13 @@ class IcebergFileIndexer(FileIndexer):
         """Plan the table and yield the surviving files, one row each.
 
         ``excluded_read_unit_ids`` are file paths, since a read unit is a whole
-        file. ``predicate`` is the scanner's accepted predicate, planned with
-        ``read_iceberg``'s ``row_filter``. ``projected_columns`` sizes each
-        row, and with ``reads_footers`` its Parquet files' footers are read to
-        do so. ``limit`` stops listing once the ``fully_matched`` files listed
-        so far hold that many rows; ``plan_files()`` still plans the whole
-        table first. The other arguments don't apply and are ignored.
+        file, or Parquet row-group ids for a routed file. ``predicate`` is the
+        scanner's accepted predicate, planned with ``read_iceberg``'s
+        ``row_filter``. ``projected_columns`` sizes each row, and with
+        ``reads_footers`` its Parquet files' footers are read to do so.
+        ``limit`` stops listing once the ``fully_matched`` rows listed so far
+        hold that many rows; ``plan_files()`` still plans the whole table
+        first. The other arguments don't apply and are ignored.
         """
         scan, filters_after_read = self._data_scan(predicate)
         field_ids = _projected_field_ids(
@@ -222,6 +241,8 @@ class IcebergFileIndexer(FileIndexer):
             columns=projected_columns,
             case_sensitive=scan.case_sensitive,
         )
+        route = self._route(scan, predicate, projected_columns)
+        routed_tasks: List["FileScanTask"] = []
         row_match = RowMatchCheck(
             schema=self._table_metadata.schema(),
             row_filter=scan.row_filter,
@@ -234,6 +255,9 @@ class IcebergFileIndexer(FileIndexer):
         for task in scan.plan_files():
             if excluded_read_unit_ids and task.file.file_path in excluded_read_unit_ids:
                 continue
+            if route is not None and route.file_path(task) is not None:
+                routed_tasks.append(task)
+                continue
             tasks.append(task)
             matched.append(row_match.every_row_matches(task))
             if matched[-1]:
@@ -241,6 +265,7 @@ class IcebergFileIndexer(FileIndexer):
             if limit is not None and matched_rows >= limit:
                 # Only exact counts are summed, so the files listed so far
                 # hold at least ``limit`` rows.
+                routed_tasks = []
                 break
         decoded_sizes = self._decoded_sizes(scan, projected_columns, tasks)
         for start in range(0, len(tasks), _FILES_PER_MANIFEST_BLOCK):
@@ -251,6 +276,62 @@ class IcebergFileIndexer(FileIndexer):
                 decoded_sizes=decoded_sizes,
                 fully_matched=matched[start:end],
             )
+        if routed_tasks:
+            assert route is not None
+            parts = self._split(predicate)
+            yield from route.list_files(
+                routed_tasks,
+                predicate=(
+                    None
+                    if parts is None
+                    else combine_predicate_chain(parts.scan, Operation.AND)
+                ),
+                projected_columns=projected_columns,
+                # The footer indexer counts its own exact rows only, and none
+                # are exact while Ray filters after the read.
+                limit=(
+                    None
+                    if limit is None or filters_after_read
+                    else limit - matched_rows
+                ),
+                excluded_read_unit_ids=excluded_read_unit_ids,
+                exact_counts=not filters_after_read,
+            )
+
+    def _route(
+        self,
+        scan: "DataScan",
+        predicate: Optional["Expr"],
+        projected_columns: Optional[List[str]],
+    ) -> Optional["IcebergParquetRoute"]:
+        if not self._reads_footers:
+            return None
+        columns = (
+            [field.name for field in scan.projection().columns]
+            if projected_columns is None
+            else list(projected_columns)
+        )
+        if not columns:
+            # Zero-column reads (``count()``) stay on ``ArrowScan``.
+            return None
+        if predicate is not None:
+            columns += get_column_references(predicate)
+        return IcebergParquetRoute.create(
+            table_metadata=self._table_metadata,
+            io=self._io,
+            row_filter=self._row_filter,
+            case_sensitive=scan.case_sensitive,
+            columns=sorted(set(columns)),
+        )
+
+    def _split(self, predicate: Optional["Expr"]) -> Optional["IcebergFilterParts"]:
+        if predicate is None:
+            return None
+        return split_predicate(
+            predicate,
+            schema=self._table_metadata.schema(),
+            case_sensitive=self._scan_kwargs.get("case_sensitive", True),
+        )
 
     def _decoded_sizes(
         self,
@@ -303,12 +384,10 @@ class IcebergFileIndexer(FileIndexer):
 
         row_filter = self._row_filter
         filters_after_read = False
-        if predicate is not None:
+        parts = self._split(predicate)
+        if parts is not None:
             schema = self._table_metadata.schema()
             case_sensitive = self._scan_kwargs.get("case_sensitive", True)
-            parts = split_predicate(
-                predicate, schema=schema, case_sensitive=case_sensitive
-            )
             assert not parts.residual, f"the scanner never accepts {parts.residual}"
             row_filter = to_iceberg_filter(
                 row_filter, parts.scan, schema=schema, case_sensitive=case_sensitive

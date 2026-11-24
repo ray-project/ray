@@ -16,11 +16,14 @@ One file per call bounds memory; a delete file several of the unit's data
 files share is fetched once and kept for the unit
 (``iceberg_delete_file_cache``). ``IcebergConfig.read_file_tasks_sequentially
 = False`` passes the whole unit in one call instead, as V1 does.
+
+Row-group runs the listing sent through ``iceberg_parquet_route`` carry no scan
+task and are read with Ray's Parquet reader, in the same pipeline.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, List, Optional, Set
+from typing import TYPE_CHECKING, Iterator, List, Optional, Set, Tuple
 
 import pyarrow as pa
 from typing_extensions import override
@@ -31,6 +34,10 @@ from ray.data._internal.arrow_block import (
 )
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     scan_tasks_from_manifest,
+)
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_parquet_route import (
+    is_routed_row,
+    read_routed_rows,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
@@ -79,6 +86,7 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         drop_all_columns: bool = False,
         after_read_filter: Optional["Expr"] = None,
         output_columns: Optional[List[str]] = None,
+        scan_predicate: Optional["Expr"] = None,
     ):
         self._table_metadata = table_metadata
         self._io = io
@@ -92,6 +100,9 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         self._after_read_filter = after_read_filter
         # The columns to keep after that filter, ``None`` for all of them.
         self._output_columns = output_columns
+        # The pushed parts ``row_filter`` holds in Iceberg form, which Ray's
+        # Parquet reader filters routed rows with.
+        self._scan_predicate = scan_predicate
 
     def _scan(self, limit: Optional[int], io: Optional["FileIO"] = None) -> "ArrowScan":
         from pyiceberg.io.pyarrow import ArrowScan
@@ -144,22 +155,51 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         return table
 
     def _record_batches(self, input_split: FileManifest) -> Iterator[pa.RecordBatch]:
+        # Neither reader counts the after-read filter, so neither gets a limit
+        # then; ``read`` stops instead.
+        limit = self._limit if self._after_read_filter is None else None
+        rows_read = 0
+        for rows, routed in _split_by_route(input_split):
+            remaining = None if limit is None else limit - rows_read
+            if remaining is not None and remaining <= 0:
+                return
+            if routed:
+                record_batches = self._read_routed(rows, limit=remaining)
+            else:
+                record_batches = self._arrow_scan(rows, limit=remaining)
+            for record_batch in record_batches:
+                rows_read += record_batch.num_rows
+                yield record_batch
+
+    def _read_routed(
+        self, rows: FileManifest, *, limit: Optional[int]
+    ) -> Iterator[pa.RecordBatch]:
+        # The listing routes only reads of at least one column.
+        assert not self._drop_all_columns
+        return read_routed_rows(
+            rows,
+            io=self._io,
+            table_location=self._table_metadata.location,
+            columns=[field.name for field in self._projected_schema.columns],
+            predicate=self._scan_predicate,
+            limit=limit,
+        )
+
+    def _arrow_scan(
+        self, rows: FileManifest, *, limit: Optional[int]
+    ) -> Iterator[pa.RecordBatch]:
         from ray.data.context import DataContext
 
-        # ``ArrowScan`` counts rows before the after-read filter, so it gets no
-        # limit then; ``read`` stops instead.
-        limit = self._limit if self._after_read_filter is None else None
-        tasks = scan_tasks_from_manifest(manifest=input_split)
+        tasks = list(scan_tasks_from_manifest(manifest=rows))
         if not DataContext.get_current().iceberg_config.read_file_tasks_sequentially:
             # One call reads a delete file shared by several files once, but
             # holds every file's batches. A list, since PyIceberg iterates twice.
-            yield from self._scan(limit=limit).to_record_batches(list(tasks))
+            yield from self._scan(limit=limit).to_record_batches(tasks)
             return
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_delete_file_cache import (  # noqa: E501
             with_shared_delete_files_cached,
         )
 
-        tasks = list(tasks)
         io = with_shared_delete_files_cached(self._io, tasks)
         rows_read = 0
         for task in tasks:
@@ -184,24 +224,39 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         (``iceberg_row_match``). Any other file is counted by decoding it,
         which is what PyIceberg's own ``count()`` does.
 
+        A row-group run the listing routed to Ray's Parquet reader carries its
+        row count in its chunk, exact under the same ``fully_matched`` rule,
+        and is otherwise counted by reading it with that reader.
+
         Args:
             file_manifest: The read unit's manifest, as the listing wrote it.
 
         Yields:
-            BlockMetadata: One per file in ``file_manifest``, in order.
+            BlockMetadata: One per row in ``file_manifest``, in order.
         """
-        tasks = scan_tasks_from_manifest(manifest=file_manifest)
-        for task, chunk in zip(tasks, file_manifest.file_chunk_metadatas):
-            if chunk is not None and FileChunk.from_metadata(chunk).fully_matched:
-                num_rows = task.file.record_count
+        for rows, routed in _split_by_route(file_manifest):
+            chunks = [FileChunk.from_metadata(c) for c in rows.file_chunk_metadatas]
+            if routed:
+                counts = (
+                    chunk.num_rows
+                    if chunk.fully_matched
+                    else self._count_rows(self._read_routed(row, limit=None))
+                    for chunk, row in zip(chunks, _rows(rows))
+                )
             else:
-                num_rows = self._count_by_reading(task)
-            yield BlockMetadata(
-                num_rows=num_rows,
-                size_bytes=None,
-                exec_stats=None,
-                input_files=None,
-            )
+                counts = (
+                    task.file.record_count
+                    if chunk.fully_matched
+                    else self._count_by_reading(task)
+                    for chunk, task in zip(chunks, scan_tasks_from_manifest(rows))
+                )
+            for num_rows in counts:
+                yield BlockMetadata(
+                    num_rows=num_rows,
+                    size_bytes=None,
+                    exec_stats=None,
+                    input_files=None,
+                )
 
     def _count_by_reading(self, task: "FileScanTask") -> int:
         """Rows ``task`` actually yields, by decoding it.
@@ -225,9 +280,12 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         Returns:
             The number of rows the task yields after filters and deletes.
         """
+        return self._count_rows(self._scan(None).to_record_batches([task]))
+
+    def _count_rows(self, record_batches: Iterator[pa.RecordBatch]) -> int:
         return sum(
             self._apply_after_read_filter(pa.Table.from_batches([batch])).num_rows
-            for batch in self._scan(None).to_record_batches([task])
+            for batch in record_batches
         )
 
     @override
@@ -247,3 +305,22 @@ class IcebergFileReader(Reader[FileManifest], SupportsMetadata):
         # footers one task fetches; here the counts are in the manifest, so
         # there is no per-file IO to spread out.
         return None
+
+
+def _split_by_route(manifest: FileManifest) -> Iterator[Tuple[FileManifest, bool]]:
+    """Consecutive rows that share a reader, and whether they were routed."""
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    routed = [is_routed_row(chunk) for chunk in manifest.file_chunk_metadatas]
+    start = 0
+    for end in range(1, len(routed) + 1):
+        if end == len(routed) or routed[end] != routed[start]:
+            yield FileManifest(block.slice(start, end - start)), routed[start]
+            start = end
+
+
+def _rows(manifest: FileManifest) -> Iterator[FileManifest]:
+    block = manifest.as_block()
+    assert isinstance(block, pa.Table)
+    for index in range(block.num_rows):
+        yield FileManifest(block.slice(index, 1))

@@ -121,4 +121,6 @@ def manifest_from_scan_tasks(
 def scan_tasks_from_manifest(manifest: FileManifest) -> Iterator["FileScanTask"]:
     """Unpickle each manifest row's scan task, in row order."""
     for data in manifest.as_block()[SCAN_TASK_COLUMN_NAME].to_pylist():
+        # Rows ``iceberg_parquet_route`` listed carry none.
+        assert data is not None, "a row-group run has no scan task"
         yield cloudpickle.loads(data)
