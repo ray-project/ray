@@ -123,6 +123,8 @@ class DeltaScanner(ParquetScanner):
 
     #: The table URI, for messages.
     table_uri: str = ""
+    #: The table version the read lists, for messages.
+    version: Optional[int] = None
     #: Whether the caller passed the version to read. Otherwise the read is
     #: of the version that was latest when the dataset was created, which a
     #: resumed job reads anew.

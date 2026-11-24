@@ -21,6 +21,7 @@ import urllib.parse
 from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
+    AbstractSet,
     Any,
     Dict,
     Iterable,
@@ -48,6 +49,9 @@ from ray.data._internal.datasource_v2.formats.delta.delta_filesystem import (
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_file_indexer import (
     FooterFileIndexer,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
+    _row_group_unit_file,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -320,7 +324,10 @@ class _DeltaLogListing:
         yield from self._log_file_infos(pruners or [], predicate=None)
 
     def _log_file_infos(
-        self, pruners: List["FilePruner"], predicate: Optional["Expr"]
+        self,
+        pruners: List["FilePruner"],
+        predicate: Optional["Expr"],
+        done_read_unit_ids: AbstractSet[str] = frozenset(),
     ) -> Iterator[FileInfo]:
         """The data files of the pinned version that may hold matching rows.
 
@@ -330,9 +337,12 @@ class _DeltaLogListing:
         (``preserve_order=True`` reads them in that order). Empty files are
         skipped and ``pruners`` applied, as the directory listing does; a
         ``DeltaPartitionPruner`` gets each file's partition values from the
-        log.
+        log. ``done_read_unit_ids`` are the read units a resumed job finished;
+        see ``_check_done_files_are_in_the_log``.
         """
         add_actions = self._snapshot.add_actions()
+        if done_read_unit_ids:
+            self._check_done_files_are_in_the_log(add_actions, done_read_unit_ids)
         num_files = add_actions.num_rows
         if predicate is not None:
             keep = statistics_keep_mask(add_actions, predicate)
@@ -364,6 +374,52 @@ class _DeltaLogListing:
             )
         ]
         yield from self._filter_file_infos(file_infos, pruners)
+
+    def _check_done_files_are_in_the_log(
+        self, add_actions: pa.Table, done_read_unit_ids: AbstractSet[str]
+    ) -> None:
+        """Raise if a resumed job finished data files this version doesn't have.
+
+        A generated ID names a row's data file. When a commit between the runs
+        rewrote files, for example ``OPTIMIZE`` or an overwrite, their rows
+        now live in new files with new IDs, so the resumed job would process
+        them again and write them twice. Raise instead, before any row is read.
+
+        Args:
+            add_actions: The version's ``add`` actions, before any pruning.
+            done_read_unit_ids: The read units the checkpointed run finished:
+                file paths and ``_row_group_unit_id`` ids.
+
+        Raises:
+            InvalidCheckpointingConfig: If a finished read unit names a file
+                that isn't among the version's data files.
+        """
+        # Lazy import: ``ray.data.checkpoint`` imports ``ray.data.context``.
+        from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
+
+        logged_paths = {
+            resolve_data_file_path(path)
+            for path in add_actions[ADD_ACTION_PATH_COLUMN].to_pylist()
+        }
+        missing = sorted(
+            unit_id
+            for unit_id in done_read_unit_ids
+            if unit_id not in logged_paths
+            and _row_group_unit_file(unit_id) not in logged_paths
+        )
+        if missing:
+            raise InvalidCheckpointingConfig(
+                f"The checkpoint this job resumes from has finished rows in "
+                f"{len(missing)} read unit(s) of data files that version "
+                f"{self._snapshot.version} of the Delta table "
+                f"{self._snapshot.table_uri!r} doesn't have, such as "
+                f"{missing[0]!r}. A commit since the checkpointed run rewrote "
+                "them, for example by compaction (OPTIMIZE) or an overwrite, so "
+                "their rows have new generated IDs and would be written again. "
+                "Pass `version=` to `read_delta` with the version the "
+                "checkpointed run read (its `generated_id_column` warning names "
+                "it), or start over with an empty checkpoint path."
+            )
 
     def _filter_file_infos(
         self, file_infos: Iterable[FileInfo], pruners: List["FilePruner"]
@@ -409,7 +465,13 @@ class _DeltaLogListing:
         self._default_shuffle(kwargs)
         # The base class's ``list_files`` would list through
         # ``list_file_infos``, which doesn't see the predicate.
-        file_infos = list(self._log_file_infos(pruners or [], predicate))
+        file_infos = list(
+            self._log_file_infos(
+                pruners or [],
+                predicate,
+                kwargs.get("excluded_read_unit_ids") or frozenset(),
+            )
+        )
         # Before the footer reads start, so they open the files without asking
         # the storage for their sizes.
         add_known_file_sizes(
