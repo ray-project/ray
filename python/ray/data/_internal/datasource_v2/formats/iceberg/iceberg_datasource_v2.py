@@ -49,9 +49,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Bytes of on-disk data per read task. Iceberg records a data file's compressed
-# size and nothing more, so this budget is in compressed bytes -- adopting the
-# shared decoded-size estimator is a follow-up, not parity work.
+# Bytes per read task. A Parquet file's size is its decoded bytes, estimated from
+# its footer as for Parquet; any other file's is its size on disk.
 _BIN_PACKING_BYTES = env_integer("RAY_DATA_ICEBERG_BIN_PACKING_BYTES", 128 * MiB)
 
 
@@ -167,7 +166,9 @@ class IcebergDatasourceV2(DataSourceWithMetadata[FileManifest]):
         # ``ArrowScan`` strips field ids from the batches it yields.
         return schema_to_pyarrow(self._projected_schema(), include_field_ids=False)
 
-    def _get_file_indexer(self) -> IcebergFileIndexer:
+    def _get_file_indexer(
+        self, schema: Optional[pa.Schema] = None
+    ) -> IcebergFileIndexer:
         table = self.table
         return IcebergFileIndexer(
             table_metadata=table.metadata,
@@ -176,21 +177,22 @@ class IcebergDatasourceV2(DataSourceWithMetadata[FileManifest]):
             snapshot_id=self.snapshot_id,
             row_filter=self._row_filter,
             server_side_planning=ServerSidePlanning.for_table(table),
+            selected_fields=self._selected_fields,
         )
 
     @override
     def get_file_partitioner(
         self, *, hints: Optional[PartitionHints] = None
     ) -> OnlineBinPacker:
-        # Every listing row carries the file's own size out of Iceberg's
-        # manifests, so pack against a byte budget rather than estimate sizes
-        # from a sample. ``hints`` are sizing advice for an estimator and have
-        # nothing to add here; ``PartitionHints`` documents that a partitioner
-        # sizing from its own metadata ignores them.
+        # Every listing row carries the file's estimated size (see
+        # ``_BIN_PACKING_BYTES``), so pack against a byte budget rather than
+        # estimate sizes from a sample. ``hints`` are sizing advice for an
+        # estimator and have nothing to add here; ``PartitionHints`` documents
+        # that a partitioner sizing from its own metadata ignores them.
         #
-        # One Iceberg listing row is one whole file and carries no chunk
-        # metadata, so the packer never splits a file: each bin is a set of
-        # whole files whose compressed sizes sum to about the budget.
+        # One Iceberg listing row is one whole file, a single read unit, so the
+        # packer never splits a file: each bin is a set of whole files whose
+        # estimated sizes sum to about the budget.
         return OnlineBinPacker(max_bin_bytes=self._bin_packing_bytes)
 
     def create_scanner(

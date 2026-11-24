@@ -8,9 +8,14 @@ to ``_FILES_PER_MANIFEST_BLOCK`` rows, one row per data file:
     plan_files() -> FileScanTask per data file -> manifest_from_scan_tasks
                  -> FileManifest blocks -> OnlineBinPacker -> read units
 
-Planning reads Iceberg metadata only, never a data file. It prunes on
-``read_iceberg``'s ``row_filter``; the scanner takes no Ray filters, so no
-predicate reaches listing.
+A Parquet file is sized at its decoded bytes for the columns the read decodes
+(``projected_columns``, else the scan's projection), estimated from its footer
+by Parquet's footer indexer, which also gives the memory decoding it takes
+(``iceberg_footer_sizing``). Any other file is sized at its bytes on disk.
+
+Planning reads Iceberg metadata only. It prunes on ``read_iceberg``'s
+``row_filter``; the scanner takes no Ray filters, so no predicate reaches
+listing. The Parquet footers are read once planning is done.
 
 When the table's REST catalog plans scans on its server, the task rebuilds the
 catalog from the properties the driver resolved (``ServerSidePlanning``) and
@@ -28,7 +33,6 @@ from typing import (
     Any,
     Dict,
     Iterable,
-    Iterator,
     List,
     Optional,
     Tuple,
@@ -37,6 +41,9 @@ from typing import (
 
 from typing_extensions import override
 
+from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing import (
+    IcebergFooterSizing,
+)
 from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
     manifest_from_scan_tasks,
 )
@@ -51,9 +58,12 @@ if TYPE_CHECKING:
     from pyiceberg.catalog.rest import RestCatalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
-    from pyiceberg.table import FileScanTask, Table
+    from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
 
+    from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing import (  # noqa: E501
+        DecodedSize,
+    )
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
@@ -129,32 +139,42 @@ class IcebergFileIndexer(FileIndexer):
         scan_kwargs: Dict[str, Any],
         snapshot_id: Optional[int],
         row_filter: "BooleanExpression",
+        selected_fields: Tuple[str, ...] = ("*",),
+        reads_footers: bool = True,
         server_side_planning: Optional[ServerSidePlanning] = None,
     ):
         self._table_metadata = table_metadata
+        self._selected_fields = selected_fields
         self._io = io
         self._scan_kwargs = scan_kwargs
         self._snapshot_id = snapshot_id
         self._row_filter = row_filter
         self._server_side_planning = server_side_planning
+        # Whether listing may read Parquet footers.
+        self._reads_footers = reads_footers
 
     @override
     def as_whole_file_indexer(self) -> "IcebergFileIndexer":
-        """This indexer, unchanged -- it already emits each file exactly once.
+        """This indexer without the footer reads, so listing reads metadata only.
 
-        The base class defaults to ``None`` because an indexer may emit one
-        manifest row per *chunk* of a file, which would over-count it: that is
-        the footer-based Parquet indexer, where one file's row groups become
-        several rows. An Iceberg scan task names a whole file and is never
-        split -- the manifest's chunk-metadata column is all null -- so one
-        file is always one row here. The other half of the default, "does no
-        per-file IO while listing", holds too: planning reads table metadata
-        only.
+        The count rule needs one row per file and no per-file IO while listing.
+        An Iceberg scan task names a whole file and is never split, so one file
+        is always one row here; only the Parquet footer reads that size a file
+        are per-file IO, and the copy skips them.
 
         Returns:
-            ``self``.
+            A copy that sizes every file at its bytes on disk.
         """
-        return self
+        return IcebergFileIndexer(
+            table_metadata=self._table_metadata,
+            io=self._io,
+            scan_kwargs=self._scan_kwargs,
+            snapshot_id=self._snapshot_id,
+            row_filter=self._row_filter,
+            selected_fields=self._selected_fields,
+            reads_footers=False,
+            server_side_planning=self._server_side_planning,
+        )
 
     @override
     def list_files(
@@ -174,20 +194,50 @@ class IcebergFileIndexer(FileIndexer):
         """Plan the table and yield the surviving files, one row each.
 
         ``excluded_read_unit_ids`` are file paths, since a read unit is a whole
-        file. ``limit`` is applied by the reader; stopping listing early from
-        Iceberg's per-file row counts is a follow-up. The other arguments don't
-        apply and are ignored.
+        file. With ``reads_footers``, each Parquet file's footer is read to size
+        it for ``projected_columns``. ``limit`` is applied by the reader;
+        stopping listing early from Iceberg's per-file row counts is a
+        follow-up. The other arguments don't apply and are ignored.
         """
-        pending_tasks: List["FileScanTask"] = []
-        for task in self._plan_files():
+        scan = self._data_scan()
+        tasks: List["FileScanTask"] = []
+        for task in scan.plan_files():
             if excluded_read_unit_ids and task.file.file_path in excluded_read_unit_ids:
                 continue
-            pending_tasks.append(task)
-            if len(pending_tasks) >= _FILES_PER_MANIFEST_BLOCK:
-                yield manifest_from_scan_tasks(tasks=pending_tasks)
-                pending_tasks = []
-        if pending_tasks:
-            yield manifest_from_scan_tasks(tasks=pending_tasks)
+            tasks.append(task)
+        decoded_sizes = self._decoded_sizes(scan, projected_columns, tasks)
+        for start in range(0, len(tasks), _FILES_PER_MANIFEST_BLOCK):
+            yield manifest_from_scan_tasks(
+                tasks=tasks[start : start + _FILES_PER_MANIFEST_BLOCK],
+                decoded_sizes=decoded_sizes,
+            )
+
+    def _decoded_sizes(
+        self,
+        scan: "DataScan",
+        projected_columns: Optional[List[str]],
+        tasks: List["FileScanTask"],
+    ) -> Dict[str, "DecodedSize"]:
+        """The footer-read sizes of ``tasks``' Parquet files, by path."""
+        from pyiceberg.io.pyarrow import schema_to_pyarrow
+
+        if not self._reads_footers:
+            return {}
+        projection = scan.projection()
+        if projected_columns is not None:
+            projection = projection.select(
+                *projected_columns, case_sensitive=scan.case_sensitive
+            )
+        sizing = IcebergFooterSizing.create(
+            table_metadata=self._table_metadata,
+            io=self._io,
+            case_sensitive=scan.case_sensitive,
+            read_schema=schema_to_pyarrow(projection, include_field_ids=False),
+        )
+        if sizing is None:
+            return {}
+        footer_tasks = [task for task in tasks if sizing.file_path(task) is not None]
+        return sizing.size_files(footer_tasks) if footer_tasks else {}
 
     @override
     def list_file_infos(
@@ -203,10 +253,10 @@ class IcebergFileIndexer(FileIndexer):
         Unused: this only feeds schema sampling, and the schema comes from
         table metadata.
         """
-        for task in self._plan_files():
+        for task in self._data_scan().plan_files():
             yield FileInfo(path=task.file.file_path, size=task.file.file_size_in_bytes)
 
-    def _plan_files(self) -> Iterator["FileScanTask"]:
+    def _data_scan(self) -> "DataScan":
         from pyiceberg.table import DataScan
 
         # Not ``Table.scan``: the ``Table`` stays on the driver. A ``DataScan``
@@ -221,6 +271,7 @@ class IcebergFileIndexer(FileIndexer):
             table_metadata=self._table_metadata,
             io=self._io,
             row_filter=self._row_filter,
+            selected_fields=self._selected_fields,
             snapshot_id=self._snapshot_id,
             **planning_kwargs,
             **self._scan_kwargs,
@@ -231,4 +282,4 @@ class IcebergFileIndexer(FileIndexer):
             self._snapshot_id,
             self._row_filter,
         )
-        return iter(scan.plan_files())
+        return scan

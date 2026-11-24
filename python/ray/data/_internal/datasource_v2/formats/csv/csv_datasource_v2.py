@@ -298,7 +298,7 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
         )
 
     @override
-    def _get_file_indexer(self) -> FileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
         if self._can_split_files() and has_header(self._read_options):
             return CsvFileIndexer(
                 chunk_size=self._chunk_size,
@@ -307,7 +307,7 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
                 read_options=self._read_options,
                 parse_options=self._parse_options,
             )
-        return super()._get_file_indexer()
+        return super()._get_file_indexer(schema=schema)
 
     @override
     def _read_file_schema(self, path: str) -> pa.Schema:
