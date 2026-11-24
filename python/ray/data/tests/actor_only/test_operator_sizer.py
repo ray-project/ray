@@ -526,11 +526,11 @@ class _TestSizer(OperatorSizer):
         return snapshot
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
-        """One decide step's per-op requests, after the step's status
+        """One how-many step's per-op requests, after the step's status
         transitions, the holds and the tick's phase update."""
         snapshot = self.held_snapshot(force=force)
         self._advance_phase()
-        _, how_many = self._decide(snapshot)
+        _, how_many = self._how_many(snapshot)
         return how_many
 
     @property
@@ -1097,7 +1097,7 @@ def test_warmup_latches_off_on_critical_op_first_output():
     sizer._advance_phase()
     # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
     assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
-    assert sizer._decide(snapshot)[1].request == {}
+    assert sizer._how_many(snapshot)[1].request == {}
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
@@ -2843,12 +2843,12 @@ def test_record_tick_emits_and_clears_collected_timings(monkeypatch):
     telemetry = SizerTelemetry("test-ds")
     observed = _recorded_phases(monkeypatch, telemetry)
     telemetry.add_timing_phase("build", 0.001)
-    telemetry.add_timing_phase("decide", 0.002)
+    telemetry.add_timing_phase("how_many", 0.002)
     telemetry.add_timing_phase("build", 0.003)  # a later step's build adds up
 
     empty = (PerOpSizingRequest(request={}), PlacedSizingRequest(request={}))
     telemetry.record_tick({}, *empty)
-    assert observed == [("build", pytest.approx(0.004)), ("decide", 0.002)]
+    assert observed == [("build", pytest.approx(0.004)), ("how_many", 0.002)]
 
     observed.clear()
     telemetry.record_tick({}, *empty)

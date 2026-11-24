@@ -118,7 +118,7 @@ class OperatorSizer:
 
     Each tick runs in three steps:
 
-    1. DECIDE    ``SizingPolicy.decide`` picks one action per op (``OpRule``).
+    1. HOW MANY  ``SizingPolicy.decide`` picks one action per op (``OpRule``).
                  It acts on the bottleneck model first: grow a bottleneck or
                  balanced stages into free capacity, fund the recipient from
                  donors, or shed blocked surplus. Those requests already name
@@ -277,9 +277,9 @@ class OperatorSizer:
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[PerOpSizingRequest, PlacedSizingRequest]:
         """Hold room for held ops, run the bottleneck model, advance the
-        phase, then decide, where, apply."""
+        phase, then how many, where, apply."""
         self._prepare_tick(snapshot)
-        decisions, how_many = self._decide(snapshot)
+        decisions, how_many = self._how_many(snapshot)
         where = self._per_op_where(how_many, snapshot)
         self._apply(decisions, where)
         return how_many, where
@@ -299,8 +299,8 @@ class OperatorSizer:
         self._bottleneck_observer.log_tick(self._bottleneck)
         self._advance_phase()
 
-    @timed("decide")
-    def _decide(
+    @timed("how_many")
+    def _how_many(
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PerOpSizingRequest]:
         """Step 1: pick one action per op, then clamp the per-op upscales.
