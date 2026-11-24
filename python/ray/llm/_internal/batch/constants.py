@@ -37,6 +37,9 @@ class SGLangTaskType(TaskType):
     # Score items against a query, optionally with embedding overrides.
     SCORE = "score"
 
+    # Embed text prompts.
+    EMBED = "embed"
+
 
 # Same value as `sglang.srt.constants.MIS_DELIMITER_TOKEN_ID`; copied so the
 # processor and CPU stages don't import SGLang.

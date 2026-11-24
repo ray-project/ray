@@ -49,11 +49,12 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     )
     task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
-        description="The task type to use: 'generate' (default) or 'score'.",
+        description="The task type to use: 'generate' (default), 'score', or 'embed'.",
     )
     task_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
-        description="Options for the task type. The 'generate' task takes none.",
+        description="Options for the task type. The 'generate' and 'embed' tasks "
+        "take none.",
     )
 
     @root_validator(pre=True)
