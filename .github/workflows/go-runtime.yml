@@ -116,8 +116,14 @@ jobs:
           cache: "pip"
       - name: Install upstream ray, overlay this tree's switch layer, run the launch tests
         run: |
-          pip install --pre ray pytest
+          # colorama is a test_logging.py import that ray's Linux wheel does
+          # not pull in.
+          pip install --pre ray pytest colorama
           site=$(python -c 'import ray, os; print(os.path.dirname(ray.__file__))')
           cp python/ray/_private/services.py      "$site/_private/services.py"
           cp python/ray/_private/ray_constants.py "$site/_private/ray_constants.py"
-          pytest python/ray/tests/test_logging.py -k "go or raygo"
+          # The selected tests are monkeypatch-only unit tests; skip conftest
+          # because this tree's conftest.py imports master-only symbols
+          # (e.g. cluster_utils._TestClusterAuthMode) that the stable PyPI
+          # wheel predates.
+          pytest --noconftest python/ray/tests/test_logging.py -k "go or raygo"

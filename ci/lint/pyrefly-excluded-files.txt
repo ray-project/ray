@@ -41,6 +41,8 @@ python/ray/data/_internal/datasource/turbopuffer_datasink.py
 python/ray/data/_internal/datasource/video_datasource.py
 python/ray/data/_internal/datasource/webdataset_datasink.py
 python/ray/data/_internal/datasource/webdataset_datasource.py
+python/ray/data/_internal/datasource_v2/formats/hive/hive_contract.py
+python/ray/data/_internal/datasource_v2/formats/mcap/mcap_reader.py
 python/ray/data/_internal/datasource_v2/listing/file_indexer.py
 python/ray/data/_internal/datasource_v2/listing/file_manifest.py
 python/ray/data/_internal/datasource_v2/listing/indexing_utils.py
@@ -193,6 +195,7 @@ python/ray/data/preprocessors/imputer.py
 python/ray/data/preprocessors/scaler.py
 python/ray/data/preprocessors/serialization_handlers.py
 python/ray/data/preprocessors/torch.py
+python/ray/data/preprocessors/transformer.py
 python/ray/data/preprocessors/utils.py
 python/ray/data/preprocessors/vectorizer.py
 python/ray/data/random_access_dataset.py
@@ -203,6 +206,7 @@ python/ray/data/tests/block_batching/test_util.py
 python/ray/data/tests/conftest.py
 python/ray/data/tests/datasource/test_arrow.py
 python/ray/data/tests/datasource/test_bigquery.py
+python/ray/data/tests/datasource/test_catalog_azure.py
 python/ray/data/tests/datasource/test_clickhouse.py
 python/ray/data/tests/datasource/test_csv.py
 python/ray/data/tests/datasource/test_daft.py
@@ -211,6 +215,8 @@ python/ray/data/tests/datasource/test_databricks_uc_datasource.py
 python/ray/data/tests/datasource/test_delta_sharing.py
 python/ray/data/tests/datasource/test_file_based_datasource.py
 python/ray/data/tests/datasource/test_file_datasink.py
+python/ray/data/tests/datasource/test_gravitino_catalog_integration.py
+python/ray/data/tests/datasource/test_hive_direct_integration.py
 python/ray/data/tests/datasource/test_huggingface.py
 python/ray/data/tests/datasource/test_iceberg.py
 python/ray/data/tests/datasource/test_image.py
@@ -286,6 +292,7 @@ python/ray/data/tests/test_filter.py
 python/ray/data/tests/test_groupby_e2e.py
 python/ray/data/tests/test_hash_shuffle.py
 python/ray/data/tests/test_hash_shuffle_aggregator.py
+python/ray/data/tests/test_hash_shuffle_disk_runtime.py
 python/ray/data/tests/test_idempotency_optimizer_guards.py
 python/ray/data/tests/test_hash_shuffle_v2.py
 python/ray/data/tests/test_issue_detection.py
@@ -344,6 +351,7 @@ python/ray/data/tests/unit/expressions/test_namespace_list.py
 python/ray/data/tests/unit/test_arrow_block.py
 python/ray/data/tests/unit/test_arrow_type_conversion.py
 python/ray/data/tests/unit/test_block.py
+python/ray/data/tests/unit/test_block_metadata_schema_cache.py
 python/ray/data/tests/unit/test_bundler.py
 python/ray/data/tests/unit/test_data_batch_conversion.py
 python/ray/data/tests/unit/test_datatype.py
@@ -352,6 +360,7 @@ python/ray/data/tests/unit/test_expression_evaluator.py
 python/ray/data/tests/unit/test_expression_visitor.py
 python/ray/data/tests/unit/test_fifo_bundle_queue.py
 python/ray/data/tests/unit/test_object_extension.py
+python/ray/data/tests/unit/test_obstore_download.py
 python/ray/data/tests/unit/test_path_util.py
 python/ray/data/tests/unit/test_ranker.py
 python/ray/data/tests/unit/test_reordering_bundle_queue.py
