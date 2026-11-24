@@ -19,8 +19,9 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.interfaces.file_partitioner import FilePartitioner
-from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
 
 ORC_TARGET_BYTES = 128 * 1024 * 1024
 
@@ -48,6 +49,13 @@ def _orc_manifest(paths, sizes, chunk_metadatas):
                 ),
             }
         )
+    )
+
+
+def _has_excluded_stripe(path, excluded):
+    prefix = path + "#stripe"
+    return any(
+        unit.startswith(prefix) and unit[len(prefix) :].isdigit() for unit in excluded
     )
 
 
@@ -96,7 +104,12 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
         yield from self._list_chunks(
-            files, filesystem, predicate, limit, excluded_read_unit_ids
+            files,
+            filesystem,
+            predicate,
+            limit,
+            excluded_read_unit_ids,
+            projected_columns,
         )
 
     def list_files_from_file_infos(
@@ -114,7 +127,7 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
         excluded_read_unit_ids=None,
     ):
         files = super().list_files_from_file_infos(
-            (info for info in file_infos if info.size is not None),
+            file_infos,
             filesystem=filesystem,
             pruners=pruners,
             preserve_order=True,
@@ -123,25 +136,44 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
             excluded_read_unit_ids=excluded_read_unit_ids,
         )
         yield from self._list_chunks(
-            files, filesystem, predicate, limit, excluded_read_unit_ids
+            files,
+            filesystem,
+            predicate,
+            limit,
+            excluded_read_unit_ids,
+            projected_columns,
         )
 
-    def _list_chunks(self, manifests, filesystem, predicate, limit, excluded):
+    def _list_chunks(
+        self, manifests, filesystem, predicate, limit, excluded, projected_columns=None
+    ):
         if limit is not None and limit <= 0:
             return
         excluded = excluded or frozenset()
         matched = 0
         files = (
-            (str(path), int(size))
+            (str(path), size)
             for manifest in manifests
-            for path, size in zip(manifest.paths, manifest.file_sizes)
+            for path, size in zip(manifest.paths, manifest.known_file_sizes)
         )
         for path, size in files:
+            if size is None:
+                if _has_excluded_stripe(path, excluded):
+                    raise RuntimeError(
+                        f"Cannot resume ORC stripes without layout for {path}"
+                    )
+                yield _orc_manifest([path], [None], [None])
+                continue
             # Stripe exclusions and unfiltered limits need footer metadata.
             if size <= self._min_split_size and not excluded and limit is None:
                 yield _orc_manifest([path], [size], [None])
                 continue
-            layout = read_orc_metadata(path, filesystem)
+            columns = projected_columns
+            if columns is not None and predicate is not None:
+                columns = list(
+                    dict.fromkeys([*columns, *get_column_references(predicate)])
+                )
+            layout = read_orc_metadata(path, filesystem, columns)
             chunks = []
             stripes = layout.stripes
             excluded_stripe = stripes is not None and any(
@@ -188,11 +220,7 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                     if predicate is None:
                         matched += stripe.num_rows
             else:
-                if stripes is None and any(
-                    unit.startswith(path + "#stripe")
-                    and unit[len(path + "#stripe") :].isdigit()
-                    for unit in excluded
-                ):
+                if stripes is None and _has_excluded_stripe(path, excluded):
                     raise RuntimeError(
                         f"Cannot resume ORC stripes without layout for {path}"
                     )
@@ -207,42 +235,3 @@ class OrcStripeIndexer(NonSamplingFileIndexer):
                 )
             if predicate is None and limit is not None and matched >= limit:
                 return
-
-
-class OrcStripePartitioner(FilePartitioner):
-    """Pack consecutive file and stripe rows without changing their order."""
-
-    def __init__(self, target):
-        self._partitioner = WeightedRoundRobinPartitioner(
-            min_bucket_size=target,
-            max_bucket_size=target,
-            num_buckets=1,
-            emit_before_overflow=True,
-        )
-
-    @property
-    def requires_global_input(self):
-        return True
-
-    def add_input(self, input_manifest):
-        for path, size, chunk in zip(
-            input_manifest.paths,
-            input_manifest.file_sizes,
-            input_manifest.file_chunk_metadatas,
-        ):
-            weight = (
-                int(size)
-                if chunk is None
-                else FileChunk.from_metadata(chunk).size_bytes
-            )
-            self._partitioner.add_item((str(path), int(size), chunk), weight)
-
-    def has_partition(self):
-        return self._partitioner.has_partition()
-
-    def next_partition(self) -> FileManifest:
-        paths, sizes, chunks = zip(*self._partitioner.next_partition())
-        return _orc_manifest(paths, sizes, chunks)
-
-    def finalize(self):
-        self._partitioner.finalize()

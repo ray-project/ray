@@ -75,7 +75,6 @@ def _chunked_file_to_manifest(chunked_file: ChunkedFile) -> FileManifest:
     listing discovers, the partitioner groups.
     """
     n = len(chunked_file.row_groups)
-    assert chunked_file.file.size is not None
     return FileManifest.construct_manifest(
         paths=[chunked_file.file.path] * n,
         sizes=[chunked_file.file.size] * n,
@@ -239,7 +238,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             file_infos,
             filesystem=filesystem,
             pruners=pruners,
-            preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -280,7 +278,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             file_infos,
             filesystem=filesystem,
             pruners=pruners,
-            preserve_order=preserve_order,
             predicate=predicate,
             limit=limit,
             projected_columns=projected_columns,
@@ -295,7 +292,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         *,
         filesystem: Optional["FileSystem"],
         pruners: Optional[List["FilePruner"]],
-        preserve_order: bool,
         predicate: Optional["Expr"],
         limit: Optional[int],
         projected_columns: Optional[List[str]],
@@ -337,9 +333,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             self._io_concurrency,
         )
         try:
-            manifests = self._read_footers(
-                actors, file_infos, limit, preserve_order=preserve_order
-            )
+            manifests = self._read_footers(actors, file_infos, limit)
             if shuffle_row_groups:
                 assert shuffle_config is not None
                 manifests = _shuffle_row_group_runs(
@@ -359,8 +353,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         actors: List["ActorProxy[FooterReader]"],
         file_infos: "Iterable[FileInfo]",
         limit: Optional[int],
-        *,
-        preserve_order: bool = False,
     ) -> Iterator[FileManifest]:
         # Bound the number of in-flight footer batches so listing stays roughly
         # demand-driven (matters under a limit) and memory stays flat.
@@ -383,7 +375,6 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             gen: ray.ObjectRefGenerator = actor.read_footers.remote(
                 batch,
                 result_batch_size=self._result_batch_size,  # pyrefly: ignore[unexpected-keyword]
-                preserve_order=preserve_order,  # pyrefly: ignore[unexpected-keyword]
             )
             pending.append(gen)
             batch_no += 1
@@ -415,10 +406,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             dispatch_next()
 
     def _batches(self, file_infos: "Iterable[FileInfo]") -> Iterator[List[FileInfo]]:
+        # A file of unknown size stays in: its footer read either works (the
+        # filesystem can still seek in it) or fails the read, as V1 does,
+        # instead of silently dropping the file's rows.
         batch: List[FileInfo] = []
         for file_info in file_infos:
-            if file_info.size is None:
-                continue
             batch.append(file_info)
             if len(batch) >= self._footer_batch_size:
                 yield batch

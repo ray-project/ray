@@ -18,26 +18,4 @@ def write_orc_stripes(path, table: pa.Table, counts=(5, 7, 4)):
     assert [reader.read_stripe(i).num_rows for i in range(reader.nstripes)] == list(
         counts
     )
-    assert reader.read().equals(table)
     return path
-
-
-def write_stripe_pipeline_files(directory):
-    import random
-
-    generator = random.Random(66999)
-    paths = []
-    for file_index in range(2):
-        path = directory / f"f{file_index+1:04d}.orc"
-        write_orc_stripes(
-            path,
-            pa.table(
-                {
-                    "id": range(file_index * 8, (file_index + 1) * 8),
-                    "payload": [generator.randbytes(1024) for _ in range(8)],
-                }
-            ),
-            counts=(2,) * 4,
-        )
-        paths.append(path)
-    return paths

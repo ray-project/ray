@@ -1,6 +1,7 @@
 import math
 from contextlib import ExitStack, closing
 from functools import partial
+from itertools import groupby
 from typing import Any, Dict, Generator, Iterator, List, Optional, Sequence, Tuple, cast
 
 import pyarrow as pa
@@ -154,14 +155,7 @@ class OrcFileReader(FileReader):
             yield table
 
     @override
-    def _get_fragments_to_read(
-        self, dataset: pds.Dataset, manifest: FileManifest
-    ) -> List[ReadUnitFragment]:
-        # Stripe assignments are expanded below with their decoder already open.
-        fragments = {fragment.path: fragment for fragment in dataset.get_fragments()}
-        return [self._whole_file_fragment(fragments[path]) for path in manifest.paths]
-
-    def _whole_file_fragment(self, fragment):
+    def _get_whole_file_fragment(self, fragment):
         path = fragment.path
         rows = None
         if any(c.requires_read_unit_boundaries for c in self._synthesized_columns):
@@ -181,13 +175,19 @@ class OrcFileReader(FileReader):
             return
         fragments = {f.path: f for f in dataset.get_fragments()}
         rows = 0
-        for path, metadata in zip(manifest.paths, manifest.file_chunk_metadatas):
-            if metadata is None:
+        entries = zip(manifest.paths, manifest.file_chunk_metadatas)
+        for (path, whole), group in groupby(
+            entries, key=lambda item: (item[0], item[1] is None)
+        ):
+            if whole:
                 batches = super()._read_fragments_sequential(
-                    iter([self._whole_file_fragment(fragments[path])]), scanner_kwargs
+                    (self._get_whole_file_fragment(fragments[path]) for _ in group),
+                    scanner_kwargs,
                 )
             else:
-                batches = self._read_stripes(path, metadata, scanner_kwargs)
+                batches = self._read_stripes(
+                    path, (metadata for _, metadata in group), scanner_kwargs
+                )
             with closing(
                 cast(Generator[Tuple[pa.Table, ReadUnitPosition], None, None], batches)
             ):
@@ -197,7 +197,7 @@ class OrcFileReader(FileReader):
                     if self._limit is not None and rows >= self._limit:
                         return
 
-    def _read_stripes(self, path, metadata, scanner_kwargs):
+    def _read_stripes(self, path, metadatas, scanner_kwargs):
         import pyarrow.orc as orc
 
         require_stripe_reads(path)
@@ -241,37 +241,38 @@ class OrcFileReader(FileReader):
             layout = cast(OrcFileMetadata, layout)
             stripes = layout.stripes
             assert stripes is not None
-            run = FileChunk.from_metadata(metadata)
-            indices = run.unit_ids
-            if any(not 0 <= i < len(stripes) for i in indices):
-                raise ValueError(f"Invalid ORC stripe assignment for {path}")
-            if sum(stripes[i].num_rows for i in indices) != run.num_rows:
-                raise ValueError(f"ORC layout changed for {path}")
-            if len(set(indices)) != len(indices):
-                raise ValueError(f"Duplicate ORC stripe assignments for {path}")
-            for index in indices:
-                stripe = stripes[index]
-                unit = ReadUnit(
-                    id=orc_read_unit_id(path, index),
-                    source=path,
-                    index=index,
-                    count=len(stripes),
-                    num_rows=stripe.num_rows,
-                )
-                cursor = 0
-                with closing(
-                    iterate_with_retry(
-                        partial(read, stripe),
-                        f"read ORC unit {unit.id}",
-                        match=retry_errors,
+            for metadata in metadatas:
+                run = FileChunk.from_metadata(metadata)
+                indices = run.unit_ids
+                if any(not 0 <= i < len(stripes) for i in indices):
+                    raise ValueError(f"Invalid ORC stripe assignment for {path}")
+                if sum(stripes[i].num_rows for i in indices) != run.num_rows:
+                    raise ValueError(f"ORC layout changed for {path}")
+                if len(set(indices)) != len(indices):
+                    raise ValueError(f"Duplicate ORC stripe assignments for {path}")
+                for index in indices:
+                    stripe = stripes[index]
+                    unit = ReadUnit(
+                        id=orc_read_unit_id(path, index),
+                        source=path,
+                        index=index,
+                        count=len(stripes),
+                        num_rows=stripe.num_rows,
                     )
-                ) as batches:
-                    for table in batches:
-                        if table.num_rows:
-                            yield table, ReadUnitPosition(
-                                unit, cursor, stripe.row_offset
-                            )
-                            cursor += table.num_rows
+                    cursor = 0
+                    with closing(
+                        iterate_with_retry(
+                            partial(read, stripe),
+                            f"read ORC unit {unit.id}",
+                            match=retry_errors,
+                        )
+                    ) as batches:
+                        for table in batches:
+                            if table.num_rows:
+                                yield table, ReadUnitPosition(
+                                    unit, cursor, stripe.row_offset
+                                )
+                                cursor += table.num_rows
 
     def _iter_stripe_tables(
         self, reader, path, stripe: OrcStripeMetadata, scanner_kwargs

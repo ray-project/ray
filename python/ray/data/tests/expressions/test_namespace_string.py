@@ -6,18 +6,12 @@ These tests require Ray and test end-to-end string namespace expression evaluati
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging import version
 
 import ray
 from ray.data._internal.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
-
-pytestmark = pytest.mark.skipif(
-    version.parse(pa.__version__) < version.parse("19.0.0"),
-    reason="Namespace expressions tests require PyArrow >= 19.0",
-)
 
 
 def _create_dataset(items_data, dataset_format, arrow_table=None):

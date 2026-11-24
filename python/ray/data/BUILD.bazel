@@ -34,30 +34,7 @@ py_library(
 
 py_test_module_list(
     size = "small",
-    files = glob(
-        ["tests/unit/**/test_*.py"],
-        exclude = ["tests/unit/datasource_v2/test_orc_stripe_indexer.py"],
-    ),
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        ":datasource_v2_unit_conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "tests/unit/datasource_v2/test_orc_stripe_indexer",
-    size = "small",
-    srcs = ["tests/unit/datasource_v2/test_orc_stripe_indexer.py"],
-    data = [
-        "tests/unit/datasource_v2/data/empty.orc",
-        "tests/unit/datasource_v2/data/no-index.orc",
-    ],
-    main = "tests/unit/datasource_v2/test_orc_stripe_indexer.py",
+    files = glob(["tests/unit/**/test_*.py"]),
     tags = [
         "exclusive",
         "team:data",
@@ -71,7 +48,36 @@ py_test(
 
 py_test_module_list(
     size = "medium",
-    files = glob(["tests/datasource_v2/test_*.py"]),
+    extra_srcs = [
+        "tests/parquet_test_utils.py",
+        "tests/schema_planning_utils.py",
+    ],
+    files = glob(
+        ["tests/datasource_v2/test_*.py"],
+        exclude = ["tests/datasource_v2/test_orc_stripe_indexer.py"],
+    ),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "tests/datasource_v2/test_orc_stripe_indexer",
+    size = "medium",
+    srcs = [
+        "tests/datasource/orc_decode_trace.py",
+        "tests/datasource_v2/test_orc_stripe_indexer.py",
+    ],
+    data = [
+        "tests/datasource_v2/data/empty.orc",
+        "tests/datasource_v2/data/no-index.orc",
+    ],
+    main = "tests/datasource_v2/test_orc_stripe_indexer.py",
     tags = [
         "exclusive",
         "team:data",
@@ -137,7 +143,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
@@ -301,12 +307,45 @@ py_test(
 )
 
 py_test(
+    name = "test_hive_direct_integration",
+    size = "medium",
+    srcs = [
+        "tests/datasource/test_hive_direct_integration.py",
+        "tests/datasource/test_hive_integration.py",
+    ],
+    main = "tests/datasource/test_hive_direct_integration.py",
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/datasource/test_snowflake.py"],
     tags = [
         "exclusive",
         "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_snowflake_unit",
+    size = "small",
+    srcs = ["tests/datasource/test_snowflake_unit.py"],
+    tags = [
+        "exclusive",
         "team:data",
     ],
     deps = [
@@ -972,34 +1011,6 @@ py_test(
 )
 
 py_test(
-    name = "test_hash_shuffle_disk_smoke",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_disk_smoke.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_hash_shuffle_disk_repartition",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_disk_repartition.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
     name = "test_hudi",
     size = "small",
     srcs = ["tests/datasource/test_hudi.py"],
@@ -1227,11 +1238,7 @@ py_test(
 py_test(
     name = "test_orc",
     size = "medium",
-    srcs = [
-        "tests/datasource/orc_decode_trace.py",
-        "tests/datasource/test_orc.py",
-    ],
-    main = "tests/datasource/test_orc.py",
+    srcs = ["tests/datasource/test_orc.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1999,9 +2006,65 @@ py_test(
 )
 
 py_test(
+    name = "test_random_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_random_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_sort_shuffle_v2",
     size = "medium",
     srcs = ["tests/test_sort_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_execution",
+    size = "medium",
+    srcs = ["tests/test_top_n_execution.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_operator",
+    size = "medium",
+    srcs = ["tests/test_top_n_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_rewrite",
+    size = "medium",
+    srcs = ["tests/test_top_n_rewrite.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2792,6 +2855,20 @@ py_test(
     name = "test_preserve_hash_shuffle_blocks",
     size = "medium",
     srcs = ["tests/test_preserve_hash_shuffle_blocks.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_shuffle_elimination",
+    size = "large",
+    srcs = ["tests/test_shuffle_elimination.py"],
     tags = [
         "exclusive",
         "team:data",

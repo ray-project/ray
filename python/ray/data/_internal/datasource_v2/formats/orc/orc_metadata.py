@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Tuple, cast
+from typing import Optional, Sequence, Tuple, cast
 
 import pyarrow as pa
 from pyarrow import _orc, orc
@@ -74,6 +74,7 @@ def read_orc_layout(
     size: int,
     *,
     allow_unsupported: bool = False,
+    columns: Optional[Sequence[str]] = None,
 ) -> OrcFileMetadata:
     """Inspect the open decoder's footer without opening or reading its input."""
     get_tail = getattr(getattr(reader, "reader", None), "serialized_file_tail", None)
@@ -120,10 +121,22 @@ def read_orc_layout(
         estimate = None
         schema = getattr(reader, "schema", None) if allow_unsupported else None
         if row and schema is not None and reader.writer_version != "ORIGINAL":
+            physical_columns = (
+                schema.names
+                if columns is None
+                else [
+                    name
+                    for name in schema.names
+                    if any(
+                        column == name or column.startswith(name + ".")
+                        for column in columns
+                    )
+                ]
+            )
             file_bytes = _estimate_projected_size(
                 footer,
                 schema,
-                schema.names,
+                physical_columns,
                 collection_counts_valid=reader.row_index_stride > 0,
             )
             if file_bytes is not None:
@@ -151,12 +164,14 @@ def read_orc_file(path, filesystem, inspect):
     )
 
 
-def read_orc_metadata(path: str, filesystem: Optional[FileSystem]) -> OrcFileMetadata:
+def read_orc_metadata(
+    path: str, filesystem: Optional[FileSystem], columns: Optional[Sequence[str]] = None
+) -> OrcFileMetadata:
     """Read layout only; decoding and schema inference remain separate."""
     return read_orc_file(
         path,
         filesystem,
         lambda reader, size: read_orc_layout(
-            reader, path, size, allow_unsupported=True
+            reader, path, size, allow_unsupported=True, columns=columns
         ),
     )

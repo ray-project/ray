@@ -30,7 +30,9 @@ class _PartitionValueParser(PathPartitionParser):
     def __call__(self, path: str) -> dict[str, Any]:
         values: dict[str, Any] = super().__call__(path)
         for name, data_type in self._field_types.items():
-            if name in values:
+            # A ``null_fallback`` value parses as None and isn't cast, as in
+            # ``PathPartitionParser``.
+            if values.get(name) is not None:
                 try:
                     values[name] = _cast_value(values[name], data_type)
                 except ValueError as exc:

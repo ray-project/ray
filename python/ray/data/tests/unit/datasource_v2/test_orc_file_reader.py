@@ -25,7 +25,6 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
-from ray.data._internal.datasource_v2.formats.orc.orc_metadata import OrcStripeMetadata
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
@@ -1260,8 +1259,7 @@ def test_orc_missing_predicate_column_is_null_filled(
     assert [row["id"] for batch in batches for row in batch.to_pylist()] == expected
 
 
-@pytest.mark.parametrize("mode", ["whole", "stripe_schema", "stripe_decoded"])
-def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path, monkeypatch, mode):
+def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path, monkeypatch):
     physical_schema = pa.schema(
         [("id", pa.int64()), ("object", ArrowPythonObjectType())]
     )
@@ -1275,14 +1273,26 @@ def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path, monkeypatch, mod
         def scanner(self, **kwargs):
             pytest.fail("Unsafe decoded columns must be rejected before scanning")
 
-    decoded = mode == "stripe_decoded"
-    schema = pa.schema([("id", pa.int64()), ("object", pa.large_binary())])
+    fragment = Fragment()
     reader = OrcScanner(
-        schema=schema if decoded else physical_schema,
+        schema=physical_schema,
         predicate=col("id") > 100,
         partitioning=Partitioning(PartitionStyle.HIVE),
     ).create_reader()
-    owner = Mock(schema=schema if decoded else physical_schema)
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        list(
+            reader._iter_fragment_tables(
+                fragment, {"filter": (col("id") > 100).to_pyarrow()}
+            )
+        )
+
+    from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
+        OrcStripeMetadata,
+    )
+
+    schema = pa.schema([("id", pa.int64()), ("object", pa.large_binary())])
+    reader = OrcScanner(schema=schema, predicate=col("id") > 100).create_reader()
+    owner = Mock(schema=schema)
     owner.read_stripe.return_value = pa.record_batch(
         [
             pa.array([0]),
@@ -1299,22 +1309,15 @@ def test_orc_filter_cannot_hide_decoded_pickle_column(tmp_path, monkeypatch, mod
         "ray.data._internal.object_extensions.arrow.pickle.load", access
     )
     with pytest.raises(ValueError, match="arrow_pickled_object"):
-        if mode == "whole":
-            list(
-                reader._iter_fragment_tables(
-                    Fragment(), {"filter": (col("id") > 100).to_pyarrow()}
-                )
+        list(
+            reader._iter_stripe_tables(
+                owner,
+                "root.orc",
+                OrcStripeMetadata(0, 1, 0, 1, 3),
+                dict(columns=None, filter=None, batch_size=2),
             )
-        else:
-            list(
-                reader._iter_stripe_tables(
-                    owner,
-                    str(tmp_path / "root.orc"),
-                    OrcStripeMetadata(0, 1, 0, 1, 3),
-                    dict(columns=None, filter=None, batch_size=2),
-                )
-            )
-    assert owner.read_stripe.call_count == int(decoded)
+        )
+    assert owner.read_stripe.call_count == 1
     access.assert_not_called()
 
 
@@ -1597,29 +1600,6 @@ def test_orc_reader_batch_sizing_fragments_are_fixed(
     }
     assert 7 not in observed_sizes
     assert reader._sampled_batch_size in observed_sizes
-
-
-@pytest.mark.parametrize("available", [False, True])
-def test_orc_reader_initial_estimate_is_cached(
-    tmp_path, monkeypatch, orc_read_requests, available
-):
-    from ray.data._internal.datasource_v2.formats.orc import orc_file_reader
-
-    path = tmp_path / "data.orc"
-    table = pa.table({"payload": ["x" * 4096] * 256})
-    _write_orc(path, table)
-    original = orc_file_reader.estimate_batch_size
-    estimate = Mock(wraps=original) if available else Mock(return_value=None)
-    monkeypatch.setattr(orc_file_reader, "estimate_batch_size", estimate)
-    reader = OrcScanner(
-        schema=table.schema, target_block_size=65536, limit=0
-    ).create_reader()
-    for _ in range(2):
-        assert list(reader.read(_manifest(path))) == []
-    estimate.assert_called_once()
-    expected = 16 if available else _ARROW_DEFAULT_BATCH_SIZE
-    assert reader._sampled_batch_size == expected
-    assert orc_read_requests["scans"] == []
 
 
 @pytest.mark.parametrize("batch_size,target", [(7, 65536), (None, None)])

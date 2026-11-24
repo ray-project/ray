@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, List, Literal, Optional, Union
+from dataclasses import replace
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
+import numpy as np
 import pyarrow as pa
 from typing_extensions import override
 
+from ray._common.retry import call_with_retry
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
@@ -18,6 +21,7 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
     RoundRobinPartitioner,
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    infer_full_schema_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.size_estimators import (
@@ -25,14 +29,10 @@ from ray.data._internal.datasource_v2.common.size_estimators import (
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
 from ray.data._internal.datasource_v2.formats.orc.orc_file_reader import OrcFileReader
-from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
-    supports_stripe_reads,
-)
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
     ORC_TARGET_BYTES,
     OrcStripeIndexer,
-    OrcStripePartitioner,
 )
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
@@ -43,6 +43,9 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     FilePartitioner,
     PartitionHints,
+)
+from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
+    InMemorySizeEstimator,
 )
 from ray.data._internal.util import _is_local_scheme, _normalize_paths_to_strings
 from ray.data.context import DataContext
@@ -59,6 +62,37 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
 
+class _OrcOnDiskSizeEstimator(InMemorySizeEstimator):
+    """Size stripe rows by their encoded bytes and whole files by file size."""
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        return np.array(
+            [
+                size if chunk is None else chunk["size_bytes"]
+                for size, chunk in zip(
+                    manifest.file_sizes, manifest.file_chunk_metadatas
+                )
+            ],
+            dtype=np.float64,
+        )
+
+
+def _read_orc_schema(path: str, filesystem: "FileSystem", size: Optional[int]):
+    import pyarrow.orc as orc
+
+    def read():
+        if filesystem is None:
+            return orc.ORCFile(path).schema
+        with filesystem.open_input_file(path) as source:
+            return orc.ORCFile(source).schema
+
+    return call_with_retry(
+        read,
+        description=f"read ORC schema for {path}",
+        match=DataContext.get_current().retried_io_errors,
+    )
+
+
 @DeveloperAPI
 class OrcDatasourceV2(FileDataSourceV2):
     """V2 datasource that lists ORC files and reads them with ``OrcScanner``."""
@@ -73,7 +107,6 @@ class OrcDatasourceV2(FileDataSourceV2):
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
-        enable_stripe_reads: bool = False,
     ):
         super().__init__(name="OrcV2", category=DatasourceCategory.FILE_BASED)
         self._supports_distributed_reads = not _is_local_scheme(paths)
@@ -89,7 +122,9 @@ class OrcDatasourceV2(FileDataSourceV2):
         self._file_extensions = file_extensions
         self._ignore_missing_paths = ignore_missing_paths
         self._shuffle = shuffle
-        self._enable_stripe_reads = enable_stripe_reads
+        self._enable_stripe_reads = DataContext.get_current().get_config(
+            "enable_orc_stripe_reads", False
+        )
         self._max_stripe_bytes = (
             DataContext.get_current().target_max_block_size or ORC_TARGET_BYTES
         )
@@ -123,7 +158,7 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def _get_file_indexer(self) -> FileIndexer:
-        if self._enable_stripe_reads and supports_stripe_reads():
+        if self._enable_stripe_reads:
             return OrcStripeIndexer(
                 ignore_missing_paths=self._ignore_missing_paths,
                 max_decoded_stripe_bytes=self._max_stripe_bytes,
@@ -136,8 +171,10 @@ class OrcDatasourceV2(FileDataSourceV2):
     ) -> Optional[FilePartitioner]:
         if hints is None:
             return None
-        if self._enable_stripe_reads and supports_stripe_reads():
-            return OrcStripePartitioner(ORC_TARGET_BYTES)
+        if self._enable_stripe_reads:
+            if DataContext.get_current().execution_options.preserve_order:
+                hints = replace(hints, num_buckets=1)
+            return RoundRobinPartitioner(_OrcOnDiskSizeEstimator(), hints=hints)
         reader = OrcFileReader(format=FileFormat.ORC, filesystem=self._filesystem)
         return RoundRobinPartitioner(SamplingInMemorySizeEstimator(reader), hints=hints)
 
@@ -148,8 +185,6 @@ class OrcDatasourceV2(FileDataSourceV2):
 
     @override
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
-        import pyarrow.orc as orc
-
         assert sample is not None
         if len(sample) == 0:
             return pa.schema([])
@@ -157,13 +192,34 @@ class OrcDatasourceV2(FileDataSourceV2):
         filesystem = self._filesystem
 
         def _read_schema(path: str) -> pa.Schema:
-            if filesystem is None:
-                return orc.ORCFile(path).schema
-            with filesystem.open_input_file(path) as source:
-                return orc.ORCFile(source).schema
+            return _read_orc_schema(path, filesystem, None)
 
         schema = infer_schema_from_files(sample_paths, _read_schema, format_name="ORC")
 
+        return self._augment_schema(schema, sample)
+
+    @override
+    def infer_full_schema(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> pa.Schema:
+        if type(self).infer_schema is not OrcDatasourceV2.infer_schema or not len(
+            sample
+        ):
+            return self.infer_schema(sample)
+        schema = infer_full_schema_from_files(
+            sample,
+            self._filesystem,
+            format_name="ORC",
+            read_schema=_read_orc_schema,
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if schema is None:
+            return self.infer_schema(sample)
+        return self._augment_schema(schema, sample)
+
+    def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
+        sample_paths = sample.paths.tolist()
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
             parser = PathPartitionParser(resolved_partitioning)

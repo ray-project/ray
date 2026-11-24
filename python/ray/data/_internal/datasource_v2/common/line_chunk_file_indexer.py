@@ -83,10 +83,12 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
     def _chunk_metadatas_of_file(
         self, file_info: FileInfo
     ) -> List[Optional[ChunkMetadata]]:
-        assert file_info.size is not None
+        # Byte ranges need the file's size, so a file of unknown size is read
+        # whole, like a compressed one.
         if (
-            file_info.size <= self._chunk_size
-            or infer_compression(file_info.path) is not None
+            file_info.size is None
+            or file_info.size <= self._chunk_size
+            or _is_compressed(file_info.path)
         ):
             return [None]
         return [
@@ -95,3 +97,9 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
                 file_size=file_info.size, chunk_size=self._chunk_size
             )
         ]
+
+
+def _is_compressed(path: str) -> bool:
+    # ``infer_compression`` misses upper-case extensions and ``.br``.
+    lowered = path.lower()
+    return infer_compression(lowered) is not None or lowered.endswith(".br")

@@ -7,16 +7,25 @@ from unittest.mock import Mock
 import pyarrow as pa
 import pytest
 from pyarrow import orc
+from pyarrow.fs import LocalFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
 )
+from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
+    _read_orc_schema,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
-from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    ChunkMetadata,
+    FileChunk,
+    FileManifest,
+)
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
@@ -57,6 +66,21 @@ def _manifest_of(paths):
     )
 
 
+def test_orc_schema_reader_retries_schema_read(monkeypatch):
+    import pyarrow.orc as orc
+
+    expected = pa.schema([("a", pa.int64())])
+    reader = Mock(
+        side_effect=[OSError("retryable footer error"), Mock(schema=expected)]
+    )
+    monkeypatch.setattr(orc, "ORCFile", reader)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+
+    assert _read_orc_schema("test.orc", None, None) == expected
+    assert reader.call_count == 2
+
+
 def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
     second_dir = tmp_path / "year=2024"
     second_dir.mkdir()
@@ -84,10 +108,7 @@ def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
 
 
 @pytest.mark.parametrize("root_first", [False, True])
-@pytest.mark.parametrize("enable_stripe_reads", [False, True])
-def test_resolve_partitioning_and_reuse_generic_file_components(
-    tmp_path, root_first, enable_stripe_reads
-):
+def test_resolve_partitioning_and_reuse_generic_file_components(tmp_path, root_first):
     partition_dir = tmp_path / "year=2024"
     partition_dir.mkdir()
     file_path = partition_dir / "data.orc"
@@ -100,7 +121,6 @@ def test_resolve_partitioning_and_reuse_generic_file_components(
         [str(tmp_path)],
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
         file_extensions=["orc"],
-        enable_stripe_reads=enable_stripe_reads,
     )
 
     resolved = datasource.resolve_partitioning(sample)
@@ -114,26 +134,34 @@ def test_resolve_partitioning_and_reuse_generic_file_components(
     partitioner = datasource.get_file_partitioner(
         hints=PartitionHints(min_bucket_size=0, max_bucket_size=1024, num_buckets=1)
     )
-    from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
-        RoundRobinPartitioner,
-    )
-    from ray.data._internal.datasource_v2.formats.orc.orc_metadata import (
-        supports_stripe_reads,
-    )
-    from ray.data._internal.datasource_v2.formats.orc.orc_stripe_indexer import (
-        OrcStripePartitioner,
-    )
-
-    expected_type = (
-        OrcStripePartitioner
-        if enable_stripe_reads and supports_stripe_reads()
-        else RoundRobinPartitioner
-    )
-    assert isinstance(partitioner, expected_type)
+    assert isinstance(partitioner, RoundRobinPartitioner)
     partitioner.add_input(sample)
     partitioner.finalize()
     assert partitioner.has_partition()
     assert partitioner.next_partition().paths.tolist() == sample.paths.tolist()
+
+
+def test_stripe_partitioner_uses_hints_and_encoded_sizes(restore_data_context):
+    restore_data_context.set_config("enable_orc_stripe_reads", True)
+    restore_data_context.execution_options.preserve_order = True
+    datasource = OrcDatasourceV2(["/virtual.orc"], filesystem=LocalFileSystem())
+    hints = PartitionHints(0, 100, 4)
+    partitioner = datasource.get_file_partitioner(hints=hints)
+    assert isinstance(partitioner, RoundRobinPartitioner)
+    assert partitioner.num_buckets == 1
+    chunks: list[ChunkMetadata | None] = []
+    chunks.extend(FileChunk((i,), 1, 40).to_metadata() for i in range(2))
+    manifest = FileManifest.construct_manifest(
+        paths=["a"] * 2, sizes=[200] * 2, chunk_metadatas=chunks
+    )
+    partitioner.add_input(manifest)
+    partitioner.finalize()
+    result = partitioner.next_partition()
+    assert [tuple(c["unit_ids"]) for c in result.file_chunk_metadatas] == [(0,), (1,)]
+    restore_data_context.execution_options.preserve_order = False
+    partitioner = datasource.get_file_partitioner(hints=hints)
+    assert isinstance(partitioner, RoundRobinPartitioner)
+    assert partitioner.num_buckets == 4 and not partitioner.requires_global_input
 
 
 def test_list_and_read_orc_files_with_partition_columns(tmp_path):
@@ -179,9 +207,8 @@ def test_list_and_read_orc_files_with_partition_columns(tmp_path):
 
 
 @pytest.mark.parametrize("merge_schema", [False, True])
-@pytest.mark.parametrize("enable_stripe_reads", [False, True])
 def test_read_orc_routes_to_v2_and_forwards_read_options(
-    monkeypatch, tmp_path, merge_schema, enable_stripe_reads
+    monkeypatch, tmp_path, merge_schema
 ):
     result = object()
     captured = {}
@@ -203,13 +230,11 @@ def test_read_orc_routes_to_v2_and_forwards_read_options(
         parallelism=2,
         override_num_blocks=3,
         merge_schema=merge_schema,
-        enable_stripe_reads=enable_stripe_reads,
     )
 
     datasource = captured["datasource"]
     assert actual is result
     assert isinstance(datasource, OrcDatasourceV2)
-    assert datasource._enable_stripe_reads is enable_stripe_reads
     assert datasource.paths == [str(tmp_path)]
     assert datasource.file_extensions == ["orc"]
     # Keep the deprecated ``parallelism`` precedence used by ``read_datasource``.
@@ -223,8 +248,6 @@ def test_read_orc_rejects_full_schema_on_v1(monkeypatch, tmp_path):
     monkeypatch.setattr(read_api.DataContext.get_current(), "use_datasource_v2", False)
     with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
         read_api.read_orc(str(tmp_path), merge_schema=True)
-    with pytest.raises(NotImplementedError, match="requires the V2 datasource"):
-        read_api.read_orc(str(tmp_path), enable_stripe_reads=True)
 
 
 def test_infer_schema_empty_sample(tmp_path):

@@ -53,6 +53,7 @@ from ray.data._internal.datasource.mongo_datasink import MongoDatasink
 from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
 from ray.data._internal.datasource.orc_datasink import ORCDatasink
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.datasource.snowflake_datasink import SnowflakeDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
@@ -115,6 +116,7 @@ from ray.data._internal.util import (
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.aggregate import (
     AggregateFn,
     AggregateFnV2,
@@ -449,7 +451,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
-        fn: Callable[[Dict[str, Any]], Dict[str, Any]],
+        fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
         *,
         compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
@@ -623,7 +625,7 @@ class Dataset:
     def _set_name(self, name: Optional[str]):
         self.set_name(name)
 
-    def set_name(self, name: Optional[str]):
+    def set_name(self, name: Optional[str]) -> None:
         """Set the name of the dataset.
 
         Used as a prefix for metrics tags.
@@ -1321,7 +1323,7 @@ class Dataset:
         ],
         *,
         batch_format: Optional[str] = "pandas",
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1478,7 +1480,7 @@ class Dataset:
         self,
         cols: List[str],
         *,
-        compute: Optional[str] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1620,7 +1622,7 @@ class Dataset:
         self,
         cols: Union[str, List[str]],
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         concurrency: Optional[int] = None,
         num_cpus: Optional[float] = None,
         num_gpus: Optional[float] = None,
@@ -1753,7 +1755,7 @@ class Dataset:
         accelerator_type: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         **ray_remote_args,
-    ):
+    ) -> "Dataset":
         """Rename columns in the dataset.
 
         Examples:
@@ -2077,7 +2079,7 @@ class Dataset:
         fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
         expr: Optional[Union[str, Expr]] = None,
         *,
-        compute: Union[str, ComputeStrategy] = None,
+        compute: Optional[ComputeStrategy] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -2559,7 +2561,7 @@ class Dataset:
     def random_shuffle(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
@@ -2640,7 +2642,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
-        seed: Optional[int | RandomSeedConfig] = None,
+        seed: Optional[Union[int, RandomSeedConfig]] = None,
     ) -> "Dataset":
         """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
 
@@ -2689,7 +2691,7 @@ class Dataset:
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
-        self, fraction: float, *, seed: Optional[int | RandomSeedConfig] = None
+        self, fraction: float, *, seed: Optional[Union[int, RandomSeedConfig]] = None
     ) -> "Dataset":
         """Returns a new :class:`Dataset` containing a random fraction of the rows.
         In other words, this method "randomly filters" the rows of the dataset without
@@ -3703,11 +3705,12 @@ class Dataset:
         ds: "Dataset",
         join_type: str,
         num_partitions: int,
-        on: Tuple[str] = ("id",),
-        right_on: Optional[Tuple[str]] = None,
+        on: Tuple[str, ...] = ("id",),
+        right_on: Optional[Tuple[str, ...]] = None,
         left_suffix: Optional[str] = None,
         right_suffix: Optional[str] = None,
         *,
+        condition: Optional[Expr] = None,
         partition_size_hint: Optional[int] = None,
         aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
         validate_schemas: bool = False,
@@ -3745,6 +3748,18 @@ class Dataset:
                 operand.
             right_suffix: (Optional) Suffix to be appended for columns of the right
                 operand.
+            condition: (Optional) Additional join condition, as an expression over
+                the *input* column names of both operands (before any suffix is
+                applied). Every conjunct of the form ``col("a") == col("b")``
+                with ``a`` from one operand and ``b`` from the other is hashed
+                on like the ``on`` keys, so the join only produces the rows
+                that satisfy it. Unlike the ``on`` keys, the two columns
+                aren't merged into one: both stay in the output, as with
+                ``join(...).filter(col("a") == col("b"))`` on an inner join. A
+                column name that exists in both operands is ambiguous and
+                raises. ``condition`` complements ``on``; it can't replace it,
+                and any other kind of conjunct (``<``, a comparison against a
+                literal, ``|``, ...) is not supported yet.
             partition_size_hint: (Optional) **Deprecated** and ignored. The join is
                 now executed on the v2 hash-shuffle path, which sizes reduce-task
                 memory from observed partition sizes rather than a hint. This
@@ -3823,6 +3838,11 @@ class Dataset:
                 f"Expected tuple or list as `right_on` (got {type(right_on).__name__})"
             )
 
+        if condition is not None and not isinstance(condition, Expr):
+            raise ValueError(
+                f"Expected an `Expr` as `condition` (got {type(condition).__name__})"
+            )
+
         # NOTE: If no separate keys provided for the right side, assume just the left
         #       side ones
         right_on = right_on or on
@@ -3836,15 +3856,6 @@ class Dataset:
                 stacklevel=2,
             )
 
-        # NOTE: By default validating schemas are disabled as it could be arbitrarily
-        #       expensive (potentially executing whole pipeline to completion) to fetch
-        #       one currently
-        if validate_schemas:
-            left_op_schema: Optional["Schema"] = self.schema()
-            right_op_schema: Optional["Schema"] = ds.schema()
-
-            Join._validate_schemas(left_op_schema, right_op_schema, on, right_on)
-
         op = Join(
             left_input_op=self._logical_plan.dag,
             right_input_op=ds._logical_plan.dag,
@@ -3856,7 +3867,31 @@ class Dataset:
             right_columns_suffix=right_suffix,
             partition_size_hint=partition_size_hint,
             aggregator_ray_remote_args=aggregator_ray_remote_args,
+            condition=condition,
         )
+
+        # Fails now on an unknown or ambiguous column when the input schemas are
+        # inferable; otherwise the planner reports it.
+        resolved = op.resolve_condition() if condition is not None else None
+
+        # NOTE: By default validating schemas are disabled as it could be arbitrarily
+        #       expensive (potentially executing whole pipeline to completion) to fetch
+        #       one currently
+        if validate_schemas:
+            left_op_schema: Optional["Schema"] = self.schema()
+            right_op_schema: Optional["Schema"] = ds.schema()
+
+            if condition is not None and resolved is None:
+                # The schemas couldn't be inferred; resolve against the
+                # executed ones.
+                resolved = op.resolve_condition(left_op_schema, right_op_schema)
+            left_keys, right_keys = tuple(on), tuple(right_on)
+            if resolved is not None:
+                left_keys += resolved.left_condition_key_columns
+                right_keys += resolved.right_condition_key_columns
+            Join._validate_schemas(
+                left_op_schema, right_op_schema, left_keys, right_keys
+            )
 
         return Dataset._from_parent(self, LogicalPlan(op, self.context))
 
@@ -4384,9 +4419,9 @@ class Dataset:
         self,
         key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
-        boundaries: List[Union[int, float]] = None,
+        boundaries: Optional[List[Union[int, float]]] = None,
     ) -> "Dataset":
-        """Sort the dataset by the specified key column or key function.
+        """Sort the dataset by the specified one or more key columns.
         The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
@@ -4926,8 +4961,7 @@ class Dataset:
             80
 
         Returns:
-            The in-memory size of the dataset in bytes, or None if the
-            in-memory size is not known.
+            The in-memory size of the dataset in bytes.
         """
         # If the size is known from metadata, return it.
         if self._logical_plan.dag.infer_metadata().size_bytes is not None:
@@ -4971,7 +5005,7 @@ class Dataset:
         min_rows_per_file: Optional[int] = None,
         max_rows_per_file: Optional[int] = None,
         min_bytes_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5180,7 +5214,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5306,7 +5340,7 @@ class Dataset:
         overwrite_filter: Optional["Expr"] = None,
         upsert_kwargs: Optional[Dict[str, Any]] = None,
         overwrite_kwargs: Optional[Dict[str, Any]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to an Iceberg table.
@@ -5591,7 +5625,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
     ) -> None:
@@ -5669,7 +5703,7 @@ class Dataset:
         filename_provider: Optional[FilenameProvider] = None,
         arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -5917,7 +5951,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -6027,7 +6061,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         encoder: WebDatasetEncoderConfig = True,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
@@ -6126,7 +6160,7 @@ class Dataset:
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
         min_rows_per_file: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
         num_rows_per_file: Optional[int] = None,
         mode: SaveMode = SaveMode.APPEND,
@@ -6279,12 +6313,17 @@ class Dataset:
     def write_snowflake(
         self,
         table: str,
-        connection_parameters: str,
+        connection_parameters: Dict[str, Any],
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
-    ):
+    ) -> None:
         """Write this ``Dataset`` to a Snowflake table.
+
+        Each write task loads its rows with ``write_pandas``, which stages them as
+        Parquet files and runs ``COPY INTO``. If the table doesn't exist, Snowflake
+        creates it with column types inferred from the data. Otherwise, the rows are
+        appended to it.
 
         Examples:
 
@@ -6300,7 +6339,10 @@ class Dataset:
             >>> ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS", connection_parameters)
 
         Args:
-            table: The name of the table to write to.
+            table: The name of the table to write to, optionally qualified as
+                ``schema.table`` or ``database.schema.table``. Unquoted names aren't
+                case-sensitive, and double-quoted names are, as in Snowflake SQL.
+                Column names are case-sensitive.
             connection_parameters: Keyword arguments to pass to
                 ``snowflake.connector.connect``. To view supported parameters, read
                 https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
@@ -6311,21 +6353,8 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
         """  # noqa: E501
-        import snowflake.connector
-
-        def snowflake_connection_factory():
-            return snowflake.connector.connect(**connection_parameters)
-
-        # Get column names from the dataset schema
-        column_names = self.schema().names
-
-        # Generate the SQL insert statement
-        columns_str = ", ".join(f'"{col}"' for col in column_names)
-        placeholders = ", ".join(["%s"] * len(column_names))
-        sql = f"INSERT INTO {table} ({columns_str}) VALUES ({placeholders})"
-        self.write_sql(
-            sql,
-            connection_factory=snowflake_connection_factory,
+        self.write_datasink(
+            SnowflakeDatasink(table=table, connection_parameters=connection_parameters),
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
@@ -6337,7 +6366,7 @@ class Dataset:
         uri: str,
         database: str,
         collection: str,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to a MongoDB database.
@@ -6408,7 +6437,7 @@ class Dataset:
         dataset: str,
         max_retry_cnt: int = 10,
         overwrite_table: Optional[bool] = True,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a BigQuery dataset table.
@@ -6483,7 +6512,7 @@ class Dataset:
         client_kwargs: Optional[Dict[str, Any]] = None,
         table_settings: Optional[ClickHouseTableSettings] = None,
         max_insert_block_rows: Optional[int] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a ClickHouse dataset table.
@@ -6614,7 +6643,7 @@ class Dataset:
         vector_column: str = "vector",
         batch_size: int = 10000,
         distance_metric: str = "cosine_distance",
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Turbopuffer vector database namespace.
@@ -6731,7 +6760,7 @@ class Dataset:
         table_id: Optional[List[str]] = None,
         namespace_impl: Optional[str] = None,
         namespace_properties: Optional[Dict[str, str]] = None,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Write the dataset to a Lance dataset.
@@ -6847,7 +6876,7 @@ class Dataset:
         self,
         datasink: Datasink,
         *,
-        ray_remote_args: Dict[str, Any] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         """Writes the dataset to a custom :class:`~ray.data.Datasink`.
@@ -7376,15 +7405,21 @@ class Dataset:
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        additional_columns: Union[str, List[str]] = None,
+        additional_columns: Optional[Union[str, List[str]]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        feature_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        label_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
+        additional_type_spec: Optional[
+            Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]]
+        ] = None,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -7639,7 +7674,7 @@ class Dataset:
                         }
                     )
                 else:
-                    meta = schema.empty_table().to_pandas()
+                    meta = _create_empty_table(schema).to_pandas()
 
         dfs = []
         for ref_bundle in self.iter_internal_ref_bundles():
@@ -7679,7 +7714,7 @@ class Dataset:
         if isinstance(schema, PandasBlockSchema):
             dtypes = pd.Series(schema.types, index=schema.names)
         elif isinstance(schema, pa.Schema):
-            dtypes = schema.empty_table().to_pandas().dtypes
+            dtypes = _create_empty_table(schema).to_pandas().dtypes
         else:
             raise NotImplementedError(f"Unsupported format of schema {schema}")
         index_value = parse_index(pd.RangeIndex(-1))
@@ -7743,7 +7778,7 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     @PublicAPI(api_group=IOC_API_GROUP)
-    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+    def to_pandas(self, limit: Optional[int] = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
         This method errors if the number of rows exceeds the provided ``limit``.
@@ -7808,7 +7843,9 @@ class Dataset:
                     # `BlockAccessor.to_pandas()` path used for non-empty blocks
                     # so the two agree on column types (types_mapper, tensor
                     # casting, etc.).
-                    df = BlockAccessor.for_block(base_schema.empty_table()).to_pandas()
+                    df = BlockAccessor.for_block(
+                        _create_empty_table(base_schema)
+                    ).to_pandas()
                 else:
                     import pandas
 
@@ -8086,7 +8123,7 @@ class Dataset:
         return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
-    def explain(self):
+    def explain(self) -> None:
         """Show the logical plan and physical plan of the dataset.
 
         Examples:

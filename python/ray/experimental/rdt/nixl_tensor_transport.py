@@ -17,6 +17,7 @@ from ray._private.ray_constants import (
     RDT_FETCH_FAIL_TIMEOUT_SECONDS,
 )
 from ray.experimental.rdt.nixl_memory_pool import (
+    MemoryBlock,
     MemoryPoolManager,
     TensorLayout,
     group_tensors_by_desc,
@@ -129,7 +130,12 @@ class NixlFetchRequest(FetchRequest):
         remove_tensor_descs: Whether to remove tensor descriptors from the cache during cleanup.
         registered_tensors: Tensors that were registered with NIXL, to deregister
             on cleanup. These are the buffers behind ``tensors``, which for a
-            group transfer are views into fewer, larger buffers.
+            group transfer are views into fewer, larger buffers. Empty when the
+            receive-side pool is used, since the pool is registered as a whole.
+        pool_blocks: Pool blocks backing the receive buffers, or None if the
+            receive-side pool was not used. Cleared once returned to the pool.
+        pool_target_device: Device the pool-backed buffers are copied out to,
+            which may differ from the pool's own device.
     """
 
     xfer_handle: Any = None
@@ -138,16 +144,32 @@ class NixlFetchRequest(FetchRequest):
     remove_tensor_descs: bool = False
     transport: Any = None
     registered_tensors: List["torch.Tensor"] = field(default_factory=list)
+    pool_blocks: Optional[List[MemoryBlock]] = None
+    pool_target_device: Optional[str] = None
+
+    def release(self) -> None:
+        """Releases the transfer's resources, and is safe to call repeatedly.
+
+        Callers that fail before handing the tensors back should call this
+        instead of waiting for ``__del__``: a raised exception keeps this
+        request alive through its traceback, which would hold pool blocks that
+        later transfers need.
+        """
+        transport, self.transport = self.transport, None
+        if transport is None:
+            return
+        pool_blocks, self.pool_blocks = self.pool_blocks, None
+        transport._cleanup_transfer(
+            self.obj_id,
+            self.registered_tensors,
+            self.xfer_handle,
+            self.remote_name,
+            self.remove_tensor_descs,
+            pool_blocks,
+        )
 
     def __del__(self):
-        if self.transport is not None:
-            self.transport._cleanup_transfer(
-                self.obj_id,
-                self.registered_tensors,
-                self.xfer_handle,
-                self.remote_name,
-                self.remove_tensor_descs,
-            )
+        self.release()
 
 
 class NixlTensorTransport(TensorTransportManager):
@@ -180,8 +202,9 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agent_locks: Dict[str, Any] = {}
         # Transfers that may still be in flight on each remote agent.
         self._inflight_xfers: Dict[str, set] = {}
-        # Handles to release once the polling of an agent's transfers ends. An agent
-        # has an entry only while it is being polled.
+        # Handles to release once the polling of an agent's transfers ends, each with
+        # the receive pool blocks to free after it. An agent has an entry only while it
+        # is being polled.
         self._deferred_releases: Dict[str, List[Any]] = {}
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
@@ -440,6 +463,8 @@ class NixlTensorTransport(TensorTransportManager):
         added_tensor_descs = False
         registered_tensors: List["torch.Tensor"] = []
         tensors: List["torch.Tensor"] = []
+        pool_blocks: Optional[List[MemoryBlock]] = None
+        pool_target_device: Optional[str] = None
 
         try:
             nixl_agent = self.get_nixl_agent()
@@ -486,10 +511,28 @@ class NixlTensorTransport(TensorTransportManager):
                 )
             else:
                 # One buffer per remote descriptor; views at recovered offsets.
-                group_buffers = [
-                    torch.empty(nbytes, dtype=torch.uint8, device=device)
-                    for nbytes in packed_group_nbytes
-                ]
+                pool = self._memory_pool
+                # NIXL can't find a zero-length descriptor inside the pool's
+                # registration, so an object with an empty one skips the pool.
+                if pool is not None and all(packed_group_nbytes):
+                    # Carve the group buffers out of the pool, which is already
+                    # registered with NIXL. wait_fetch_complete copies them out
+                    # into independent tensors before returning, so the pool's
+                    # own device doesn't have to be the tensors' device.
+                    pool_target_device = device
+                    with self._defer_cleanup():
+                        group_buffers, pool_blocks = pool.allocate_regions(
+                            packed_group_nbytes
+                        )
+                else:
+                    group_buffers = [
+                        torch.empty(nbytes, dtype=torch.uint8, device=device)
+                        for nbytes in packed_group_nbytes
+                    ]
+                    self._add_tensor_descs(group_buffers)
+                    added_tensor_descs = True
+                    registered_tensors = group_buffers
+
                 tensors = [None] * len(tensor_meta)  # type: ignore[list-item]
                 for desc_idx, desc_group in enumerate(desc_groups):
                     offsets, _ = packed_offsets([tensor_layouts[j] for j in desc_group])
@@ -502,9 +545,6 @@ class NixlTensorTransport(TensorTransportManager):
                             .reshape(shape)
                         )
 
-                self._add_tensor_descs(group_buffers)
-                added_tensor_descs = True
-                registered_tensors = group_buffers
                 local_xfer_descs = nixl_agent.get_xfer_descs(group_buffers)
 
             remote_name = tensor_transport_metadata.nixl_agent_name
@@ -542,6 +582,8 @@ class NixlTensorTransport(TensorTransportManager):
                 remove_tensor_descs=added_tensor_descs,
                 transport=self,
                 registered_tensors=registered_tensors,
+                pool_blocks=pool_blocks,
+                pool_target_device=pool_target_device,
             )
         except Exception:
             self._cleanup_transfer(
@@ -550,6 +592,7 @@ class NixlTensorTransport(TensorTransportManager):
                 xfer_handle,
                 remote_name,
                 added_tensor_descs,
+                pool_blocks,
             )
             # TODO(swang): There is a circular import error because ray.util
             # currently depends on ray.experimental.internal_kv.
@@ -615,11 +658,28 @@ class NixlTensorTransport(TensorTransportManager):
                 elif state == "DONE":
                     break
 
+            if fetch_request.pool_blocks is not None:
+                blocks, fetch_request.pool_blocks = fetch_request.pool_blocks, None
+                # The tensors are views into pool blocks that the next transfer
+                # can overwrite, so copy them out before the caller sees them.
+                with self._defer_cleanup():
+                    fetch_request.tensors = self._memory_pool.copy_out_and_free(
+                        fetch_request.tensors, blocks, fetch_request.pool_target_device
+                    )
             return fetch_request.tensors
         except TimeoutError:
+            # The transfer is still in flight and may keep writing into the
+            # receive buffers, so leave them allocated.
             raise
         except Exception:
             from ray.exceptions import RayDirectTransportError
+
+            try:
+                fetch_request.release()
+            except Exception:
+                logger.exception(
+                    f"Failed to release NIXL transfer resources for object id: {obj_id}."
+                )
 
             raise RayDirectTransportError(
                 f"The NIXL transfer failed for object id: {obj_id}. The source actor may have died during the transfer. "
@@ -633,38 +693,61 @@ class NixlTensorTransport(TensorTransportManager):
         xfer_handle: Any,
         remote_name: Optional[str],
         remove_tensor_descs: bool,
+        pool_blocks: Optional[List[MemoryBlock]] = None,
     ) -> None:
-        """Cleans up resources after a transfer completes or fails."""
+        """Cleans up resources after a transfer completes or fails.
+
+        pool_blocks are the receive buffers of a transfer that did not complete. They
+        go back to the pool only after its handle is released, so that a block is not
+        reused while NIXL may still write into it.
+        """
         deferred = getattr(self._local, "deferred", None)
         if deferred is not None:
             deferred.append(
-                (obj_id, tensors, xfer_handle, remote_name, remove_tensor_descs)
+                (
+                    obj_id,
+                    tensors,
+                    xfer_handle,
+                    remote_name,
+                    remove_tensor_descs,
+                    pool_blocks,
+                )
             )
             return
         # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
         # so doing best effort cleanup.
         nixl_agent = self._nixl_agent
-        if nixl_agent is None:
-            return
-        # We could raise errors or NIXL could raise errors like NIXL_ERR_REMOTE_DISCONNECT,
-        # so doing best effort cleanup.
-        with self._aborted_transfer_obj_ids_lock:
-            self._aborted_transfer_obj_ids.discard(obj_id)
-        if remote_name:
-            with self._remote_agent_lock(remote_name):
-                inflight = self._inflight_xfers.get(remote_name, set())
-                if xfer_handle:
-                    inflight.discard(xfer_handle)
-                    deferred = self._deferred_releases.get(remote_name)
-                    if deferred is None:
-                        nixl_agent.release_xfer_handle(xfer_handle)
-                    else:
-                        deferred.append(xfer_handle)
-                # Without the cache, the last transfer on the agent removes it.
-                if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
-                    nixl_agent.remove_remote_agent(remote_name)
-        if remove_tensor_descs:
-            self._remove_tensor_descs(tensors)
+        try:
+            if nixl_agent is None:
+                return
+            with self._aborted_transfer_obj_ids_lock:
+                self._aborted_transfer_obj_ids.discard(obj_id)
+            if remote_name:
+                with self._remote_agent_lock(remote_name):
+                    inflight = self._inflight_xfers.get(remote_name, set())
+                    if xfer_handle:
+                        inflight.discard(xfer_handle)
+                        deferred = self._deferred_releases.get(remote_name)
+                        if deferred is None:
+                            nixl_agent.release_xfer_handle(xfer_handle)
+                        else:
+                            # The transfer is still being polled, so its blocks wait
+                            # for the handle, which is released when the polling ends.
+                            deferred.append((xfer_handle, pool_blocks))
+                            pool_blocks = None
+                    # Without the cache, the last transfer on the agent removes it.
+                    if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and not inflight:
+                        nixl_agent.remove_remote_agent(remote_name)
+            if remove_tensor_descs:
+                self._remove_tensor_descs(tensors)
+        finally:
+            self._free_pool_blocks(pool_blocks)
+
+    def _free_pool_blocks(self, pool_blocks: Optional[List[MemoryBlock]]) -> None:
+        """Returns receive buffers to the memory pool, if there are any."""
+        if pool_blocks and self._memory_pool is not None:
+            with self._defer_cleanup():
+                self._memory_pool.free_blocks(pool_blocks)
 
     def _remote_agent_lock(self, remote_name: str) -> Any:
         return self._remote_agent_locks.setdefault(remote_name, threading.RLock())
@@ -676,11 +759,27 @@ class NixlTensorTransport(TensorTransportManager):
         Garbage collection can run _cleanup_transfer on this thread meanwhile, and it
         would wait for an agent lock. So _cleanup_transfer defers to the release here.
         """
+        with self._defer_cleanup(), self._remote_agent_cache_lock:
+            yield
+
+    @contextlib.contextmanager
+    def _defer_cleanup(self):
+        """Defers the _cleanup_transfer calls that garbage collection makes on this thread.
+
+        Garbage collection can run a fetch request's __del__, and so _cleanup_transfer,
+        at any allocation. _cleanup_transfer takes an agent lock, the cache lock and the
+        memory pool's lock, and threads holding those wait for the remote agent cache
+        lock or the pool's lock. So code holding either of the latter two runs in this
+        scope, and the deferred cleanups run when the outermost scope exits.
+        """
+        if getattr(self._local, "deferred", None) is not None:
+            # An enclosing scope runs them.
+            yield
+            return
         deferred = []
+        self._local.deferred = deferred
         try:
-            with self._remote_agent_cache_lock:
-                self._local.deferred = deferred
-                yield
+            yield
         finally:
             self._local.deferred = None
             for args in deferred:
@@ -715,11 +814,12 @@ class NixlTensorTransport(TensorTransportManager):
             inflight.clear()
         finally:
             del self._deferred_releases[remote_name]
-            for xfer_handle in deferred:
+            for xfer_handle, pool_blocks in deferred:
                 try:
                     nixl_agent.release_xfer_handle(xfer_handle)
                 except Exception:
                     logger.exception("Failed to release deferred transfer handle")
+                self._free_pool_blocks(pool_blocks)
 
     def _prepare_remote_agent(
         self, remote_name: str, version: int, remote_nixl_agent_meta: bytes
@@ -807,7 +907,10 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            if self._memory_pool is None or not self._memory_pool.free_object(obj_id):
+            pool = self._memory_pool
+            with self._defer_cleanup():
+                freed_from_pool = pool is not None and pool.free_object(obj_id)
+            if not freed_from_pool:
                 self._remove_tensor_descs(tensors)
 
     def abort_transport(
@@ -932,9 +1035,11 @@ class NixlTensorTransport(TensorTransportManager):
     ) -> Any:
         """Allocate pool memory for tensors and return NIXL transfer descriptors."""
         pool = self._memory_pool
-        regions = pool.allocate_group(obj_id, tensors)
+        with self._defer_cleanup():
+            regions = pool.allocate_group(obj_id, tensors)
         try:
             return self._nixl_agent.get_xfer_descs(regions)
         except Exception:
-            pool.free_object(obj_id)
+            with self._defer_cleanup():
+                pool.free_object(obj_id)
             raise
