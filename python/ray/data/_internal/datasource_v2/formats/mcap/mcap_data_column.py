@@ -47,7 +47,10 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_message_rows import (
     decode_payload,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
-from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summaries
+from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import (
+    parse_listed_summary,
+    read_summaries,
+)
 from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
 from ray.data.context import DataContext
 from ray.util.debug import log_once
@@ -90,6 +93,7 @@ def infer_data_type(
     filesystem: "FileSystem",
     sampled_paths: Sequence[str],
     list_paths: Callable[[], Iterable[str]],
+    summary_budget_bytes: int,
 ) -> Optional[pa.DataType]:
     """Type of ``data`` when it holds decoded JSON; ``None`` when it is ``binary``.
 
@@ -102,11 +106,12 @@ def infer_data_type(
         sampled_paths: The files sampled for the schema, in listing order.
         list_paths: Lists the read's files in listing order, with its extension
             filter. Called only when no sampled file types ``data``.
+        summary_budget_bytes: Most bytes of summary sections held at once.
 
     Returns:
         The type of the sampled JSON values, or ``None`` for ``binary``.
     """
-    inspector = _FileInspector(selection, filesystem)
+    inspector = _FileInspector(selection, filesystem, summary_budget_bytes)
     signature = inspector.inspect_sample(sampled_paths)
     if signature.has_non_json or signature.value_type is not None:
         return signature.value_type
@@ -130,9 +135,15 @@ class _FileInspector:
     Scans at most ``_MAX_SCANNED_FILES`` files whole.
     """
 
-    def __init__(self, selection: MCAPSelection, filesystem: "FileSystem"):
+    def __init__(
+        self,
+        selection: MCAPSelection,
+        filesystem: "FileSystem",
+        summary_budget_bytes: int,
+    ):
         self._selection = selection
         self._filesystem = filesystem
+        self._summary_budget_bytes = summary_budget_bytes
         self._scans_left = _MAX_SCANNED_FILES
 
     def inspect_sample(self, paths: Sequence[str]) -> _DataSignature:
@@ -145,7 +156,10 @@ class _FileInspector:
         the read task that owns it reports the error.
         """
         value_type: Optional[pa.DataType] = None
-        for path, summary in _summaries(self._filesystem, paths, skip_unreadable=True):
+        summaries = _summaries(
+            self._filesystem, paths, self._summary_budget_bytes, skip_unreadable=True
+        )
+        for path, summary in summaries:
             signature = self._inspect(
                 path, summary, want_type=value_type is None, may_scan=True
             )
@@ -161,7 +175,10 @@ class _FileInspector:
         Only files whose summary settles the selection are inspected, so no file
         is scanned whole. Files whose summary cannot be read are skipped.
         """
-        for path, summary in _summaries(self._filesystem, paths, skip_unreadable=True):
+        summaries = _summaries(
+            self._filesystem, paths, self._summary_budget_bytes, skip_unreadable=True
+        )
+        for path, summary in summaries:
             signature = self._inspect(path, summary, want_type=True, may_scan=False)
             if signature.has_non_json or signature.value_type is not None:
                 return signature
@@ -333,22 +350,27 @@ def _readable_records(records: Iterable[Any], path: str) -> Iterator[Any]:
 
 
 def _summaries(
-    filesystem: "FileSystem", paths: Iterable[str], *, skip_unreadable: bool
+    filesystem: "FileSystem",
+    paths: Iterable[str],
+    budget_bytes: int,
+    *,
+    skip_unreadable: bool,
 ) -> Iterator[Tuple[str, Optional["Summary"]]]:
     """Read the summaries of ``paths`` several at a time, yielding them in order.
 
     With ``skip_unreadable``, a file whose summary cannot be read is skipped.
     Otherwise its error is raised.
     """
-    for path, summary_read in read_summaries(filesystem, paths, lambda path: path):
+    sections = read_summaries(filesystem, paths, lambda path: path, budget_bytes)
+    for path, section_read in sections:
         try:
-            summary = summary_read.result()
+            listed = parse_listed_summary(section_read.result(), path)
         except Exception as exc:  # noqa: BLE001 - not an MCAP file
             if not skip_unreadable:
                 raise
             logger.debug("Skipping %s for the schema: %s", path, exc)
             continue
-        yield path, summary
+        yield path, None if listed is None else listed.summary
 
 
 def _paths_past_sample(listed: Iterable[str], sampled: Set[str]) -> List[str]:

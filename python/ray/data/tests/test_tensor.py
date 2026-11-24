@@ -8,13 +8,11 @@ import pytest
 
 import ray
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowTensorArray,
     FixedShapeTensorFormat,
     create_arrow_fixed_shape_tensor_type,
 )
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.dataset import Schema
@@ -305,6 +303,40 @@ def test_tensors_sort(ray_start_regular_shared, tensor_format_context):
         sorted_arrs,
         sorted(base, key=lambda arr: -arr.min()),
     )
+
+
+@pytest.mark.parametrize(
+    "op", ["map_groups", "repartition_keys", "repartition_shuffle", "join"]
+)
+def test_tensors_shuffle_and_join(ray_start_regular_shared, tensor_format_context, op):
+    # Shuffle and join tasks create empty blocks from the schema, which failed
+    # for native tensor columns on pyarrow 25+.
+    arr = np.arange(64).reshape((4, 4, 4))
+    ds = ray.data.from_arrow(pa.table({"a": TensorArray(arr), "k": [0, 1, 0, 1]}))
+    if op == "map_groups":
+        out = ds.groupby("k").map_groups(lambda group: group)
+    elif op == "repartition_keys":
+        out = ds.repartition(4, keys=["k"])
+    elif op == "repartition_shuffle":
+        out = ds.repartition(4, shuffle=True)
+    else:
+        other = ray.data.from_items([{"k": 0, "v": "x"}, {"k": 1, "v": "y"}])
+        out = ds.join(other, join_type="inner", num_partitions=4, on=("k",))
+
+    rows = sorted(out.take_all(), key=lambda row: np.asarray(row["a"]).min())
+    np.testing.assert_equal([np.asarray(row["a"]) for row in rows], list(arr))
+
+
+def test_tensors_top_n_empty_result(ray_start_regular_shared, tensor_format_context):
+    # The Top-N merge builds an empty block from the schema when no rows are
+    # left, which failed for native tensor columns on pyarrow 25+.
+    from ray.data.expressions import col
+
+    ray.data.DataContext.get_current().enable_top_n_rewrite = True
+    arr = np.arange(64).reshape((4, 4, 4))
+    ds = ray.data.from_arrow(pa.table({"a": TensorArray(arr), "k": [0, 1, 0, 1]}))
+    out = ds.filter(expr=col("k") < 0).sort("k").limit(2)
+    assert out.take_all() == []
 
 
 def test_tensors_inferred_from_map(ray_start_regular_shared, tensor_format_context):
@@ -972,10 +1004,6 @@ def test_ragged_tensors(ray_start_regular_shared, tensor_format_context):
 @pytest.mark.parametrize(
     "write_format",
     [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2],
-)
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
-    reason="Requires pyarrow>=16 for native FixedShapeTensorType, FixedShapeTensorScalar, FixedShapeTensorArray",
 )
 def test_tensor_format_conversion_v1_v2_to_native(
     ray_start_regular_shared, tmp_path, restore_data_context, write_format

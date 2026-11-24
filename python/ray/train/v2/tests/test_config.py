@@ -36,6 +36,20 @@ def test_scaling_config_validation():
         )
 
 
+def test_scaling_config_zero_workers_raises():
+    with pytest.raises(ValueError, match="Local Mode was removed in Ray 2.61"):
+        ScalingConfig(num_workers=0)
+
+
+def test_scaling_config_elastic_max_workers_zero():
+    with pytest.raises(ValueError, match="max_workers must be at least 1"):
+        ScalingConfig(num_workers=(0, 0))
+
+    assert ScalingConfig(num_workers=(0, 1)).max_workers == 1
+    assert ScalingConfig(num_workers=(0, 4)).max_workers == 4
+    assert ScalingConfig(num_workers=(1, 1)).max_workers == 1
+
+
 def test_label_selector_per_worker():
     # None -> None (no constraint; downstream consumers handle this directly).
     assert ScalingConfig(num_workers=3)._label_selector_per_worker(3) is None

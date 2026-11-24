@@ -1,3 +1,4 @@
+import sys
 import threading
 import time
 
@@ -6,6 +7,7 @@ import pytest
 from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
 from ray.train.v2._internal.util import construct_user_exception_with_traceback
+from ray.util import rpdb
 
 
 class ThreadRunnerWithJoin(ThreadRunner):
@@ -169,7 +171,77 @@ def test_run_twice_exception(thread_runner):
         thread_runner.run(lambda: None)
 
 
-if __name__ == "__main__":
-    import sys
+@pytest.mark.parametrize("post_mortem_enabled", [True, False])
+def test_post_mortem_debugging(thread_runner, monkeypatch, post_mortem_enabled):
+    """With RAY_DEBUG_POST_MORTEM=1, the runner enters the Ray debugger while the
+    failing frames are alive, then still reports the exception."""
+    if post_mortem_enabled:
+        monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", "1")
+    else:
+        monkeypatch.delenv("RAY_DEBUG_POST_MORTEM", raising=False)
 
+    seen_exceptions = []
+    monkeypatch.setattr(
+        rpdb, "_post_mortem", lambda: seen_exceptions.append(sys.exc_info()[1])
+    )
+
+    def train_func():
+        raise ValueError("boom")
+
+    thread_runner.run(train_func)
+    thread_runner.join()
+
+    if post_mortem_enabled:
+        assert len(seen_exceptions) == 1
+        assert isinstance(seen_exceptions[0], ValueError)
+    else:
+        assert seen_exceptions == []
+    error = thread_runner.get_error()
+    assert isinstance(error, UserExceptionWithTraceback)
+    assert "ValueError: boom" in str(error)
+
+
+def test_post_mortem_skips_system_exit(thread_runner, monkeypatch):
+    """Like Ray core, SystemExit from the training function doesn't enter the
+    debugger, but is still reported."""
+    monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", "1")
+
+    seen_exceptions = []
+    monkeypatch.setattr(
+        rpdb, "_post_mortem", lambda: seen_exceptions.append(sys.exc_info()[1])
+    )
+
+    def train_func():
+        sys.exit(1)
+
+    thread_runner.run(train_func)
+    thread_runner.join()
+
+    assert seen_exceptions == []
+    assert isinstance(thread_runner.get_error(), UserExceptionWithTraceback)
+
+
+@pytest.mark.parametrize("debugger_error", [RuntimeError, SystemExit])
+def test_post_mortem_debugger_failure(thread_runner, monkeypatch, debugger_error):
+    """A failure to start the debugger, including a BaseException, doesn't
+    replace the user's exception."""
+    monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", "1")
+
+    def failing_post_mortem():
+        raise debugger_error("debugger failed")
+
+    monkeypatch.setattr(rpdb, "_post_mortem", failing_post_mortem)
+
+    def train_func():
+        raise ValueError("boom")
+
+    thread_runner.run(train_func)
+    thread_runner.join()
+
+    error = thread_runner.get_error()
+    assert isinstance(error, UserExceptionWithTraceback)
+    assert "ValueError: boom" in str(error)
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-x", __file__]))

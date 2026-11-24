@@ -1,6 +1,6 @@
 import sys
-from dataclasses import dataclass, field
-from typing import Dict, List, Mapping, Optional, Sequence, Tuple
+from dataclasses import dataclass
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import pytest
 
@@ -12,193 +12,16 @@ from ray.data._internal.execution.lineage_tracker import (
     ParentBlockOutput,
     ReconstructionPlanId,
 )
-from ray.data.tests.unit.lineage_tracker_util import release_inputs_and_submit
-
-
-@dataclass(frozen=True)
-class PlanRef:
-    """A stand-in for a reconstruction plan ID, which only the tracker can hand out.
-    Used to get a reference to the reconstruction plan ID handed out by the tracker.
-    """
-
-    name: str
-
-
-class Action:
-    """One call against the tracker, and what that call must return.
-
-    Actions are inert data: they are built once as part of a case and only
-    :func:`run_actions` ever touches a tracker with them.
-    """
-
-    def apply(self, runner: "_ActionRunner") -> None:
-        raise NotImplementedError
-
-
-@dataclass(frozen=True)
-class Submit(Action):
-    """``register_task_submission``."""
-
-    lineage_task_id: LineageTaskId
-    dependencies: Mapping[LineageTaskId, Sequence[OutputIndex]] = field(
-        default_factory=dict
-    )
-    plan: Optional[PlanRef] = None
-
-    def apply(self, runner: "_ActionRunner") -> None:
-        release_inputs_and_submit(
-            runner.tracker,
-            self.lineage_task_id,
-            [
-                ParentBlockOutput(
-                    parent_lineage_task_id=parent_task_id, output_index=output_index
-                )
-                for parent_task_id, output_indices in self.dependencies.items()
-                for output_index in output_indices
-            ],
-            runner.resolve_optional(self.plan),
-        )
-
-
-@dataclass(frozen=True)
-class Complete(Action):
-    """``register_task_complete``."""
-
-    lineage_task_id: LineageTaskId
-    #: The plan this completion is for, or ``None`` for a fresh attempt.
-    plan: Optional[PlanRef] = None
-
-    def apply(self, runner: "_ActionRunner") -> None:
-        runner.tracker.register_task_complete(
-            self.lineage_task_id,
-            reconstruction_plan_id=runner.resolve_optional(self.plan),
-        )
-
-
-@dataclass(frozen=True)
-class Fail(Action):
-    """``register_task_failed``, with the seed tasks it must report.
-
-    The returned reconstruction plan ID is bound to the plan ref passed.
-    All subsequent failures of the same reconstruction attempt
-    must pass the same plan ref.
-    """
-
-    lineage_task_id: LineageTaskId
-    expected_seed_task_ids: Sequence[LineageTaskId]
-    plan: PlanRef
-
-    def apply(self, runner: "_ActionRunner") -> None:
-        bound_reconstruction_plan_id = runner.bound_reconstruction_plan_id(self.plan)
-        seed_task_ids, reconstruction_plan_id = runner.tracker.register_task_failed(
-            self.lineage_task_id, reconstruction_plan_id=bound_reconstruction_plan_id
-        )
-        assert seed_task_ids == list(self.expected_seed_task_ids)
-        assert reconstruction_plan_id is not None
-        if bound_reconstruction_plan_id is None:
-            runner.bind(self.plan, reconstruction_plan_id)
-        else:
-            assert reconstruction_plan_id == bound_reconstruction_plan_id
-
-
-@dataclass(frozen=True)
-class ExpectPendingChildren(Action):
-    """``get_pending_children``, with the mapping it must return."""
-
-    lineage_task_id: LineageTaskId
-    plan: PlanRef
-    #: Each pending child task ID mapped to the output indices every one of its
-    #: parents produced for it, listed parent by parent in the child's input order.
-    #: None of these scenarios interleave parents within a child's input, so the
-    #: flattened mapping is the child's exact input order.
-    expected: Mapping[LineageTaskId, Mapping[LineageTaskId, Sequence[OutputIndex]]]
-
-    def apply(self, runner: "_ActionRunner") -> None:
-        pending_children = runner.tracker.get_pending_children(
-            self.lineage_task_id, reconstruction_plan_id=runner.resolve(self.plan)
-        )
-        assert pending_children == {
-            child_task_id: [
-                ParentBlockOutput(
-                    parent_lineage_task_id=parent_task_id, output_index=output_index
-                )
-                for parent_task_id, output_indices in dependencies_by_parent.items()
-                for output_index in output_indices
-            ]
-            for child_task_id, dependencies_by_parent in self.expected.items()
-        }
-
-
-@dataclass(frozen=True)
-class ExpectObjectReuseStatus(Action):
-    """``get_object_reuse_status``, with the status it must return."""
-
-    lineage_task_id: LineageTaskId
-    output_index: OutputIndex
-    plan: PlanRef
-    expected: ObjectReuseStatus
-
-    def apply(self, runner: "_ActionRunner") -> None:
-        assert (
-            runner.tracker.get_object_reuse_status(
-                self.lineage_task_id,
-                output_index=self.output_index,
-                reconstruction_plan_id=runner.resolve(self.plan),
-            )
-            == self.expected
-        )
-
-
-class _ActionRunner:
-    """Runs actions against one tracker, resolving plan refs as it goes."""
-
-    def __init__(self) -> None:
-        self.tracker = LineageTracker()
-        self._reconstruction_plan_ids: Dict[str, ReconstructionPlanId] = {}
-
-    def bound_reconstruction_plan_id(
-        self, plan_ref: PlanRef
-    ) -> Optional[ReconstructionPlanId]:
-        """The reconstruction plan ID bound to ``plan_ref``, or ``None`` if none is yet."""
-        return self._reconstruction_plan_ids.get(plan_ref.name)
-
-    def resolve(self, plan_ref: PlanRef) -> ReconstructionPlanId:
-        """The reconstruction plan ID ``plan_ref`` stands for. The plan must already be open."""
-        assert (
-            plan_ref.name in self._reconstruction_plan_ids
-        ), f"Plan {plan_ref.name!r} is named before a failure opened it."
-        return self._reconstruction_plan_ids[plan_ref.name]
-
-    def resolve_optional(
-        self, plan_ref: Optional[PlanRef]
-    ) -> Optional[ReconstructionPlanId]:
-        """The reconstruction plan ID ``plan_ref`` stands for, or ``None`` for a fresh attempt."""
-        if plan_ref is None:
-            return None
-        return self.resolve(plan_ref)
-
-    def bind(
-        self, plan_ref: PlanRef, reconstruction_plan_id: ReconstructionPlanId
-    ) -> None:
-        """Bind the reconstruction plan ID a failure just opened to ``plan_ref``."""
-        assert reconstruction_plan_id not in self._reconstruction_plan_ids.values(), (
-            f"Plan {reconstruction_plan_id!r} opened for {plan_ref.name!r} is already in flight "
-            f"as {self._reconstruction_plan_ids!r}."
-        )
-        self._reconstruction_plan_ids[plan_ref.name] = reconstruction_plan_id
-
-
-def run_actions(actions: Sequence[Action]) -> None:
-    """Run ``actions`` in order against a fresh tracker."""
-    runner = _ActionRunner()
-    for step, action in enumerate(actions):
-        try:
-            action.apply(runner)
-        except (AssertionError, ValueError) as error:
-            raise AssertionError(
-                f"action {step} failed: {action}\n\n" f"{type(error).__name__}: {error}"
-            ) from error
-
+from ray.data.tests.unit.lineage_tracker_util import (
+    Action,
+    Complete,
+    ExpectObjectReuseStatus,
+    ExpectPendingChildren,
+    Fail,
+    PlanRef,
+    Submit,
+    run_actions,
+)
 
 _SEED_TASK_IDS = ["seed_task_0", "seed_task_1"]
 _CHILD_TASK_ID: LineageTaskId = "child_task"
@@ -214,9 +37,9 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status():
     run_actions(
         [
             Submit(_SEED_TASK_IDS[0]),
-            Complete(_SEED_TASK_IDS[0]),
+            Complete(_SEED_TASK_IDS[0], num_outputs=1),
             Submit(_SEED_TASK_IDS[1]),
-            Complete(_SEED_TASK_IDS[1]),
+            Complete(_SEED_TASK_IDS[1], num_outputs=1),
             Submit(_CHILD_TASK_ID, {_SEED_TASK_IDS[0]: [0], _SEED_TASK_IDS[1]: [0]}),
             # Reconstruction traces up to both of the child's seed parents.
             Fail(
@@ -234,7 +57,7 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status():
             ExpectObjectReuseStatus(
                 _SEED_TASK_IDS[0], 0, _CHILD_PLAN, ObjectReuseStatus.OBJECT_REUSED
             ),
-            Complete(_SEED_TASK_IDS[0], plan=_CHILD_PLAN),
+            Complete(_SEED_TASK_IDS[0], num_outputs=1, plan=_CHILD_PLAN),
             Submit(_SEED_TASK_IDS[1], plan=_CHILD_PLAN),
             ExpectPendingChildren(
                 _SEED_TASK_IDS[1],
@@ -244,7 +67,7 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status():
             ExpectObjectReuseStatus(
                 _SEED_TASK_IDS[1], 0, _CHILD_PLAN, ObjectReuseStatus.OBJECT_REUSED
             ),
-            Complete(_SEED_TASK_IDS[1], plan=_CHILD_PLAN),
+            Complete(_SEED_TASK_IDS[1], num_outputs=1, plan=_CHILD_PLAN),
             # One resubmission of the child discharges both seeds at once.
             Submit(
                 _CHILD_TASK_ID,
@@ -278,9 +101,9 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status_multi_input():
     run_actions(
         [
             Submit(_SEED_TASK_IDS[0]),
-            Complete(_SEED_TASK_IDS[0]),
+            Complete(_SEED_TASK_IDS[0], num_outputs=2),
             Submit(_SEED_TASK_IDS[1]),
-            Complete(_SEED_TASK_IDS[1]),
+            Complete(_SEED_TASK_IDS[1], num_outputs=2),
             Submit(
                 _CHILD_TASK_ID,
                 {_SEED_TASK_IDS[0]: [0, 1], _SEED_TASK_IDS[1]: [0, 1]},
@@ -307,7 +130,7 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status_multi_input():
             ExpectObjectReuseStatus(
                 _SEED_TASK_IDS[0], 1, _CHILD_PLAN, ObjectReuseStatus.OBJECT_REUSED
             ),
-            Complete(_SEED_TASK_IDS[0], plan=_CHILD_PLAN),
+            Complete(_SEED_TASK_IDS[0], num_outputs=2, plan=_CHILD_PLAN),
             Submit(_SEED_TASK_IDS[1], plan=_CHILD_PLAN),
             ExpectPendingChildren(
                 _SEED_TASK_IDS[1],
@@ -325,7 +148,7 @@ def test_fan_in_child_fail_recovers_all_seeds_and_reuse_status_multi_input():
             ExpectObjectReuseStatus(
                 _SEED_TASK_IDS[1], 1, _CHILD_PLAN, ObjectReuseStatus.OBJECT_REUSED
             ),
-            Complete(_SEED_TASK_IDS[1], plan=_CHILD_PLAN),
+            Complete(_SEED_TASK_IDS[1], num_outputs=2, plan=_CHILD_PLAN),
             Submit(
                 _CHILD_TASK_ID,
                 {_SEED_TASK_IDS[0]: [0, 1], _SEED_TASK_IDS[1]: [0, 1]},
@@ -369,10 +192,10 @@ _BUILD_DIAMOND = [
     Submit(_LEFT, {_SEED: [0]}),
     Submit(_RIGHT, {_SEED: [1]}),
     # Every consumer of the seed's outputs has been submitted, so it can complete.
-    Complete(_SEED),
+    Complete(_SEED, num_outputs=2),
     Submit(_COMMON, {_LEFT: [0], _RIGHT: [0]}),
-    Complete(_LEFT),
-    Complete(_RIGHT),
+    Complete(_LEFT, num_outputs=1),
+    Complete(_RIGHT, num_outputs=1),
 ]
 
 _REPLAY_SEED_FOR_BOTH_BRANCHES = [
@@ -382,7 +205,7 @@ _REPLAY_SEED_FOR_BOTH_BRANCHES = [
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
     # Seed task can complete (finish outputting all blocks) before any branch
     # is resubmitted.
-    Complete(_SEED, plan=_PLAN),
+    Complete(_SEED, num_outputs=2, plan=_PLAN),
     # First output of the seed is ready to be scheduled.
     Submit(_LEFT, {_SEED: [0]}, plan=_PLAN),
     ExpectPendingChildren(_SEED, _PLAN, {_RIGHT: {_SEED: [1]}}),
@@ -408,7 +231,7 @@ _REPLAY_SEED_FOR_LEFT_BRANCH = [
     ExpectPendingChildren(_SEED, _PLAN, {_LEFT: {_SEED: [0]}}),
     ExpectObjectReuseStatus(_SEED, 0, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_PRUNED),
-    Complete(_SEED, plan=_PLAN),
+    Complete(_SEED, num_outputs=2, plan=_PLAN),
     # Left branch is submitted.
     Submit(_LEFT, {_SEED: [0]}, plan=_PLAN),
     # Because left child task of the seed task is submitted,
@@ -426,7 +249,7 @@ _REPLAY_SEED_FOR_RIGHT_BRANCH = [
     ExpectPendingChildren(_SEED, _PLAN, {_RIGHT: {_SEED: [1]}}),
     ExpectObjectReuseStatus(_SEED, 0, _PLAN, ObjectReuseStatus.OBJECT_PRUNED),
     ExpectObjectReuseStatus(_SEED, 1, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
-    Complete(_SEED, plan=_PLAN),
+    Complete(_SEED, num_outputs=2, plan=_PLAN),
     # Right branch is submitted.
     Submit(_RIGHT, {_SEED: [1]}, plan=_PLAN),
     # Because right child task of the seed task is submitted,
@@ -439,13 +262,13 @@ _REPLAY_SEED_FOR_RIGHT_BRANCH = [
 ]
 
 _COMPLETE_LEFT_ATTEMPT = [
-    Complete(_LEFT, plan=_PLAN),
+    Complete(_LEFT, num_outputs=1, plan=_PLAN),
     ExpectPendingChildren(_LEFT, _PLAN, _PENDING_COMMON_CHILD),
     ExpectObjectReuseStatus(_LEFT, 0, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
 ]
 
 _COMPLETE_RIGHT_ATTEMPT = [
-    Complete(_RIGHT, plan=_PLAN),
+    Complete(_RIGHT, num_outputs=1, plan=_PLAN),
     ExpectPendingChildren(_RIGHT, _PLAN, _PENDING_COMMON_CHILD),
     ExpectObjectReuseStatus(_RIGHT, 0, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
 ]
@@ -464,7 +287,7 @@ _RESUBMIT_COMMON_CHILD = [
 _COMPLETE_COMMON_CHILD_RECONSTRUCTION = [
     ExpectPendingChildren(_COMMON, _PLAN, {}),
     ExpectObjectReuseStatus(_COMMON, 0, _PLAN, ObjectReuseStatus.OBJECT_NEW),
-    Complete(_COMMON, plan=_PLAN),
+    Complete(_COMMON, num_outputs=1, plan=_PLAN),
 ]
 
 _FAIL_COMMON_CHILD = Fail(_COMMON, expected_seed_task_ids=[_SEED], plan=_PLAN)
@@ -577,6 +400,16 @@ class AllToAllGraph:
     def tasks(self, stage: int) -> List[LineageTaskId]:
         return [self.task(stage, position) for position in self.positions(stage)]
 
+    def num_outputs(self, stage: int) -> int:
+        """How many output blocks every task of ``stage`` produces.
+
+        One per consumer in the stage below, or a single block for the last
+        stage, which has no consumers.
+        """
+        if stage == self.num_stages - 1:
+            return 1
+        return self.layer_widths[stage + 1]
+
     def inputs(
         self, stage: int, position: int
     ) -> Dict[LineageTaskId, List[OutputIndex]]:
@@ -651,7 +484,14 @@ def _complete_stage(
     """
     if positions is None:
         positions = graph.positions(stage)
-    return [Complete(graph.task(stage, position), plan=plan) for position in positions]
+    return [
+        Complete(
+            graph.task(stage, position),
+            num_outputs=graph.num_outputs(stage),
+            plan=plan,
+        )
+        for position in positions
+    ]
 
 
 def _fail(graph: AllToAllGraph, stage: int, position: int, plan: PlanRef) -> Action:
@@ -1041,6 +881,238 @@ def test_retry_does_not_release_a_queued_sibling_again():
 
     # The queued input from the first release is still valid for right.
     tracker.register_task_submission(right, right_input, plan)
+
+
+# The tests below share one graph::
+#
+#     seed --output 0--> split --output 0--> left  --\\
+#                              --output 1--> right --+--> common
+#
+# ``common`` fails, which opens the plan. Then ``left`` and ``right`` lose their
+# input while they are re-executed for that plan.
+
+_SEED_OUTPUT = [ParentBlockOutput(parent_lineage_task_id="seed", output_index=0)]
+_LEFT_INPUT = [ParentBlockOutput(parent_lineage_task_id="split", output_index=0)]
+_RIGHT_INPUT = [ParentBlockOutput(parent_lineage_task_id="split", output_index=1)]
+
+
+def _register_split_graph(tracker: LineageTracker) -> ReconstructionPlanId:
+    """Register the graph above, then fail ``common`` to open its plan."""
+    tracker.register_task_submission("seed", [])
+    tracker.register_task_submission("split", _SEED_OUTPUT)
+    tracker.register_task_submission("left", _LEFT_INPUT)
+    tracker.register_task_submission("right", _RIGHT_INPUT)
+    tracker.register_task_submission(
+        "common",
+        [
+            ParentBlockOutput(parent_lineage_task_id="left", output_index=0),
+            ParentBlockOutput(parent_lineage_task_id="right", output_index=0),
+        ],
+    )
+    seed_task_ids, plan = tracker.register_task_failed("common")
+    assert seed_task_ids == ["seed"]
+    return plan
+
+
+def _produce_output(
+    tracker: LineageTracker,
+    lineage_task_id: LineageTaskId,
+    output_index: OutputIndex,
+    plan: ReconstructionPlanId,
+) -> ObjectReuseStatus:
+    """Produce one output of a re-execution the way the operator does. The output
+    is queued for the plan only when the plan reuses it.
+    """
+    status = tracker.get_object_reuse_status(lineage_task_id, output_index, plan)
+    if status is ObjectReuseStatus.OBJECT_REUSED:
+        tracker.register_block_queued(lineage_task_id, output_index, plan)
+    return status
+
+
+def _re_execute(
+    tracker: LineageTracker,
+    lineage_task_id: LineageTaskId,
+    dependencies: List[ParentBlockOutput],
+    plan: ReconstructionPlanId,
+    num_outputs: int,
+) -> List[ObjectReuseStatus]:
+    """Submit, produce every output of, and complete one re-execution."""
+    tracker.register_task_submission(lineage_task_id, dependencies, plan)
+    statuses = [
+        _produce_output(tracker, lineage_task_id, output_index, plan)
+        for output_index in range(num_outputs)
+    ]
+    tracker.register_task_complete(lineage_task_id, num_outputs, plan)
+    return statuses
+
+
+def _re_execute_up_to_left_and_right(
+    tracker: LineageTracker, plan: ReconstructionPlanId
+) -> None:
+    """Re-execute ``seed`` and ``split`` for the plan, then submit ``left`` and
+    ``right`` on the input ``split`` queued for them.
+    """
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        reused,
+        reused,
+    ]
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+
+
+def _fail_left_after_its_re_execution(tracker: LineageTracker) -> ReconstructionPlanId:
+    """Open the plan, re-execute up to ``left`` and ``right``, then fail ``left``.
+    The seed is resubmitted for the plan.
+    """
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    return plan
+
+
+def _submit_split_for_left(tracker: LineageTracker) -> ReconstructionPlanId:
+    """Fail ``left``, re-execute the seed, and submit the re-execution of
+    ``split`` for ``left``. That re-execution has produced output 0 so far.
+    """
+    plan = _fail_left_after_its_re_execution(tracker)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+    assert _produce_output(tracker, "split", 0, plan) is ObjectReuseStatus.OBJECT_REUSED
+    return plan
+
+
+def test_retry_does_not_resubmit_the_seed_while_a_parent_re_execution_is_queued():
+    """``right`` loses its input while the re-execution of ``split`` for ``left``
+    is still queued. That queued re-execution re-produces ``right``'s input too, so
+    the seed is not resubmitted, and ``split`` is submitted on the input it has.
+    """
+    tracker = LineageTracker()
+    plan = _fail_left_after_its_re_execution(tracker)
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+
+    assert tracker.register_task_failed("right", plan) == ([], plan)
+
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        reused,
+        reused,
+    ]
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+
+
+def test_retry_resubmits_the_seed_while_a_parent_re_execution_is_submitted():
+    """``right`` loses its input after the re-execution of ``split`` for ``left``
+    is submitted, but before it produces output 1. The seed is resubmitted. The
+    submitted re-execution still produces output 1 for ``right``, so the next
+    re-execution of ``split`` is redundant and its outputs are unrelated.
+    """
+    tracker = LineageTracker()
+    plan = _submit_split_for_left(tracker)
+
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _produce_output(tracker, "split", 1, plan) is reused
+    tracker.register_task_complete("split", 2, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    unrelated = ObjectReuseStatus.OBJECT_UNRELATED
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        unrelated,
+        unrelated,
+    ]
+
+
+def test_retry_resubmits_the_seed_after_a_parent_re_execution_produced_the_input():
+    """``right`` loses its input after the re-execution of ``split`` for ``left``
+    already produced output 1. That re-execution does not produce output 1 again,
+    so the seed is resubmitted and the next re-execution of ``split`` produces it.
+    """
+    tracker = LineageTracker()
+    plan = _submit_split_for_left(tracker)
+    # The plan has nothing left to re-produce from split, so output 1 is dropped.
+    assert (
+        _produce_output(tracker, "split", 1, plan) is ObjectReuseStatus.OBJECT_UNRELATED
+    )
+
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+
+    tracker.register_task_complete("split", 2, plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        ObjectReuseStatus.OBJECT_PRUNED,
+        ObjectReuseStatus.OBJECT_REUSED,
+    ]
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+
+
+def test_retry_does_not_resubmit_a_seed_that_is_already_queued():
+    """``left`` and ``right`` lose their input before the resubmitted seed is
+    submitted. The queued seed re-produces the input of both, so it is not
+    returned a second time.
+    """
+    tracker = LineageTracker()
+    plan = _fail_left_after_its_re_execution(tracker)
+
+    assert tracker.register_task_failed("right", plan) == ([], plan)
+
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        reused,
+        reused,
+    ]
+
+
+def test_retry_resubmits_the_seed_while_a_later_parent_re_execution_is_submitted():
+    """Two re-executions of ``split`` for the plan overlap. The first one completes
+    after the second one is submitted. ``left`` then loses its input. The seed is
+    resubmitted. The second re-execution still produces output 0 for ``left``, so
+    the third re-execution of ``split`` is redundant and its outputs are unrelated.
+    """
+    tracker = LineageTracker()
+    # The first re-execution of split produces both outputs and keeps going.
+    plan = _submit_split_for_left(tracker)
+    assert (
+        _produce_output(tracker, "split", 1, plan) is ObjectReuseStatus.OBJECT_UNRELATED
+    )
+    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+    _re_execute(tracker, "seed", [], plan, num_outputs=1)
+    # The second re-execution of split is submitted, then the first one completes.
+    tracker.register_task_submission("split", _SEED_OUTPUT, plan)
+    tracker.register_task_complete("split", 2, plan)
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+
+    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+
+    reused = ObjectReuseStatus.OBJECT_REUSED
+    assert _produce_output(tracker, "split", 0, plan) is reused
+    assert _produce_output(tracker, "split", 1, plan) is reused
+    tracker.register_task_complete("split", 2, plan)
+    tracker.register_task_submission("left", _LEFT_INPUT, plan)
+    tracker.register_task_submission("right", _RIGHT_INPUT, plan)
+    assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
+    unrelated = ObjectReuseStatus.OBJECT_UNRELATED
+    assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
+        unrelated,
+        unrelated,
+    ]
+
+
+def test_re_execution_without_queued_input_for_a_finished_plan_raises():
+    """A re-execution is only submitted for a plan that needs outputs from the task
+    or queued input for it. After the plan is done with ``split``, submitting
+    ``split`` for the plan again raises.
+    """
+    tracker = LineageTracker()
+    plan = _register_split_graph(tracker)
+    _re_execute_up_to_left_and_right(tracker, plan)
+
+    with pytest.raises(ValueError, match="not registered as a known reconstruction"):
+        tracker.register_task_submission("split", _SEED_OUTPUT, plan)
 
 
 if __name__ == "__main__":
