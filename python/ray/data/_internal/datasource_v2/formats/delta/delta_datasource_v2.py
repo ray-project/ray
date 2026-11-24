@@ -233,9 +233,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
         """The table version this datasource reads."""
         return self._snapshot.version
 
-    def _get_file_indexer(
-        self, schema: Optional[pa.Schema] = None
-    ) -> DeltaFileIndexer:
+    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> DeltaFileIndexer:
         return DeltaFileIndexer(
             snapshot=self._snapshot,
             filesystem=self._filesystem,
