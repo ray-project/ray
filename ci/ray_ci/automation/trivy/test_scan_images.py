@@ -1,6 +1,7 @@
 import hashlib
 import io
 import json
+import signal
 import subprocess
 import sys
 import tarfile
@@ -26,7 +27,7 @@ from ci.ray_ci.automation.trivy.scan_images import (
 )
 from ci.ray_ci.automation.trivy.scan_store import BUCKET, ScanStore
 from ci.ray_ci.automation.trivy.trivy_db import DB_SOURCES, TrivyDbError
-from ci.ray_ci.automation.trivy.trivy_report import load_scans
+from ci.ray_ci.automation.trivy.trivy_report import EXIT_INCOMPLETE, load_scans
 
 FIXTURE = Path(__file__).parent / "testdata" / "ray-py3.12-cpu.json"
 WORK_REPO = "123.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp"
@@ -505,7 +506,7 @@ def invoke_main(results: Path, *images: str, s3: Optional[FakeS3] = None):
         return CliRunner().invoke(scan_images.main, args, env=BUILD_ENV)
 
 
-@pytest.mark.parametrize(("errors", "code"), [([], 0), (["boom"], 1)])
+@pytest.mark.parametrize(("errors", "code"), [([], 0), (["boom"], EXIT_INCOMPLETE)])
 def test_main_exits_nonzero_when_any_image_was_not_scanned(
     tmp_path: Path, errors: list, code: int
 ):
@@ -521,6 +522,32 @@ def test_main_exits_nonzero_when_any_image_was_not_scanned(
     assert result.exit_code == code, result.output
     # Only the images need a login; the DBs come from S3.
     assert [c.args[0] for c in login.call_args_list] == [WORK_REPO]
+
+
+def no_scan(group, *args, login, report):
+    pass
+
+
+def test_main_leaves_the_sigterm_handler_to_the_program(tmp_path: Path):
+    """Only scan_images run as a program installs it, not a test or importer."""
+    previous = signal.signal(signal.SIGTERM, signal.SIG_DFL)
+    try:
+        with mock.patch.object(scan_images, "scan_group", no_scan):
+            result = invoke_main(tmp_path / "r", "ray:3.12")
+        assert result.exit_code == 0, result.output
+        assert signal.getsignal(signal.SIGTERM) is signal.SIG_DFL
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def test_a_relative_results_dir_is_under_the_workspace(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("BUILD_WORKSPACE_DIRECTORY", str(tmp_path))
+    with mock.patch.object(scan_images, "scan_group", no_scan):
+        result = invoke_main(Path("out"), "ray:3.12")
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "out").is_dir()
 
 
 RESULTS_PREFIX = "trivy-scans/postmerge/master/20897-80ceee083e49/results"
@@ -560,7 +587,7 @@ def test_main_uploads_each_result_before_its_status(tmp_path: Path):
         scan_images, "scan_group", scan_writing_results("ray-py3.12-cpu")
     ):
         result = invoke_main(tmp_path / "r", "ray:3.11", "ray:3.12", s3=s3)
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
     assert uploaded == [
         "ray-py3.11-cpu.status.json",
         "ray-py3.12-cpu.json.gz",
@@ -581,7 +608,7 @@ def test_a_failed_upload_fails_the_job_and_keeps_the_status_back(
         scan_writing_results("ray-py3.11-cpu", "ray-py3.12-cpu"),
     ):
         result = invoke_main(tmp_path / "r", "ray:3.11", "ray:3.12", s3=s3)
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
     assert "Upload failed: ray-py3.12-cpu: upload to s3://" in caplog.text
     assert "AccessDenied" in caplog.text
     keys = sorted(k for _, k in s3.objects)
@@ -609,12 +636,18 @@ def scan_and_report(
             scan_images._exit_on_sigterm(15, None)
         original(self, target, dest)
 
+    failures = []
+
     def report(target):
         events.append(("report", target.name))
-        assert not scan_images.upload_result(store(s3), tmp_path / "results", target)
+        failures.append(
+            scan_images.upload_result(store(s3), tmp_path / "results", target)
+        )
 
     with mock.patch.object(scan_images.ContainedTrivy, "scan", scan):
         run_group(tmp_path, group, FakeDocker(), manifests or {}, report)
+    # Checked here: scan_group catches whatever the callback raises.
+    assert not any(failures), failures
     return events
 
 
@@ -664,6 +697,67 @@ def test_one_status_that_fails_to_record_does_not_stop_the_others(
     assert reported == ["ray-py3.12-cpu"]
     assert "ray-py3.11-cpu" in caplog.text
     assert "No space left on device" in caplog.text
+
+
+def test_a_status_that_fails_to_record_mid_scan_does_not_stop_the_scans(
+    tmp_path: Path, caplog
+):
+    scanned = []
+    original = scan_images.ContainedTrivy.scan
+
+    def scan(self, target, dest):
+        scanned.append(target.name)
+        original(self, target, dest)
+
+    def report(target):
+        if target.name == "ray-py3.11-cpu":
+            raise OSError("No space left on device")
+
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    with mock.patch.object(scan_images.ContainedTrivy, "scan", scan):
+        results = run_group(tmp_path, group, FakeDocker(), {}, report)
+    assert scanned == ["ray-py3.11-cpu", "ray-py3.12-cpu"]
+    assert statuses(results)["ray-py3.12-cpu"]["status"] == "scanned"
+    assert "No space left on device" in caplog.text
+
+
+def test_a_cancelled_job_hands_over_statuses_before_cleaning_up(tmp_path: Path):
+    """Cleanup can outlast the grace period before the job is killed."""
+    events = []
+
+    class RecordingDocker(FakeDocker):
+        def __call__(self, args, check=True, timeout=None):
+            if list(args[:3]) in (["docker", "rm", "-f"], ["docker", "volume", "rm"]):
+                events.append(" ".join(args[:3]))
+            return super().__call__(args, check, timeout)
+
+    def cancelled(self, target, dest):
+        scan_images._exit_on_sigterm(15, None)
+
+    group = targets(("ray", "3.11"), ("ray", "3.12"))
+    with mock.patch.object(scan_images.ContainedTrivy, "scan", cancelled):
+        with pytest.raises(SystemExit):
+            run_group(
+                tmp_path, group, RecordingDocker(), {}, lambda t: events.append(t.name)
+            )
+    assert events == [
+        "ray-py3.11-cpu",
+        "ray-py3.12-cpu",
+        "docker rm -f",
+        "docker volume rm",
+    ]
+
+
+def test_a_result_that_fails_to_save_leaves_no_partial_file(tmp_path: Path):
+    def full_disk(src, dst):
+        dst.write(b"partial")
+        raise OSError(28, "No space left on device")
+
+    (target,) = group = targets(("ray", "3.12"))
+    with mock.patch.object(scan_images.shutil, "copyfileobj", full_disk):
+        results = run_group(tmp_path, group, FakeDocker(), {})
+    assert not (results / f"{target.name}.json.gz").exists()
+    assert "No space left on device" in statuses(results)[target.name]["error"]
 
 
 def test_a_cancelled_job_keeps_what_it_scanned_and_reports_the_rest(tmp_path: Path):
@@ -725,7 +819,7 @@ def test_a_login_failure_is_recorded_for_every_image(tmp_path: Path):
         scan_images.registry, "login_if_ecr", side_effect=RuntimeError("ExpiredToken")
     ):
         result = invoke_main(results, "ray:3.11", "ray:3.12")
-    assert result.exit_code == 1, result.output
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
     records = statuses(results)
     assert sorted(records) == ["ray-py3.11-cpu", "ray-py3.12-cpu"]
     for record in records.values():

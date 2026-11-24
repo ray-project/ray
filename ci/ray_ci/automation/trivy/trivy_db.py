@@ -4,7 +4,8 @@ Runs once per scanning build, before the scan jobs. Each DB is resolved to a
 digest once, and its layer is downloaded by that digest (crane checks the
 sha256) and uploaded to the build's ``db/`` folder (see ``scan_store``). Every
 scan job in the build then uses the same DB snapshot, and the public mirror
-sees one pull per build instead of one per scan job.
+serves each DB once per build instead of once per scan job; a scan job only
+re-reads the two small DB manifests to check the pins.
 
 ``metadata.json`` records the Trivy pin and the DB pins. It goes up last,
 so a scan job that finds it can count on both DBs being in place; it is also
