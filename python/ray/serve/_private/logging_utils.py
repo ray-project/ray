@@ -265,7 +265,11 @@ def get_component_logger_file_path() -> Optional[str]:
                 break
     if absolute_path is None:
         return None
-    ray_logs_dir = ray._private.worker._global_node.get_logs_dir_path()  # type: ignore[attr-defined]
+    global_node = ray._private.worker._global_node
+    if global_node is None:
+        # Outside a Ray cluster there is no Ray logs dir to be relative to.
+        return None
+    ray_logs_dir = global_node.get_logs_dir_path()  # type: ignore[attr-defined]
     if absolute_path.startswith(ray_logs_dir):
         return absolute_path[len(ray_logs_dir) :]
     return None

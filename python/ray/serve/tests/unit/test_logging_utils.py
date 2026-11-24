@@ -91,5 +91,13 @@ def test_logger_file_path_is_none_for_stream_only(serve_logger_in):
     assert get_component_logger_file_path() is None
 
 
+def test_logger_file_path_is_none_without_ray_node(serve_logger_in, monkeypatch):
+    """Outside a Ray cluster there is no global node; the lookup must not raise."""
+    _configure(serve_logger_in)
+    monkeypatch.setattr(ray._private.worker, "_global_node", None, raising=False)
+
+    assert get_component_logger_file_path() is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
