@@ -238,7 +238,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
     def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
         return self._shuffle
 
-    def _get_file_indexer(self, schema: Optional[pa.Schema] = None) -> FileIndexer:
+    def _get_file_indexer(self) -> FileIndexer:
         # Parquet V2 reads always use the footer-based indexer: it reads each
         # file's footer on a ``FooterReader`` actor pool so listing rows carry
         # per-row-group stats, and predicate / limit / projection push-down
@@ -258,7 +258,6 @@ class ParquetDatasourceV2(FileDataSourceV2):
             partitioning=self._partitioning,
             logical_schema=self._user_schema,
             format_kwargs=self._parquet_format_kwargs,
-            read_schema=schema,
             synthesized_columns=[c.name for c in self._synthesized_columns],
         )
 

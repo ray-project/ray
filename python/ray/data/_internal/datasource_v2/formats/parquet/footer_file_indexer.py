@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 from typing import (
     TYPE_CHECKING,
@@ -14,6 +15,7 @@ from typing import (
 
 import numpy as np
 import pyarrow as pa
+from typing_extensions import override
 
 import ray
 from ray._common.utils import env_integer
@@ -227,6 +229,13 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._max_inflight_batches = (
             _inflight if _inflight is not None else self._num_actors * 2
         )
+
+    @override
+    def with_read_schema(self, schema: pa.Schema) -> "FooterFileIndexer":
+        """A copy whose footer readers size files as cast to ``schema``."""
+        indexer = copy.copy(self)
+        indexer._read_schema = schema
+        return indexer
 
     def list_files(
         self,
