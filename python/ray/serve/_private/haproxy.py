@@ -987,6 +987,7 @@ class HAProxyApi(ProxyApi):
         self._proc: Optional[asyncio.subprocess.Process] = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+        self._stopped: bool = False
         # Per-spawn counter for stdout/stderr file names.
         self._spawn_seq: int = 0
         # Unique per actor incarnation. A restart resets _spawn_seq to 0, so
@@ -1295,7 +1296,16 @@ class HAProxyApi(ProxyApi):
             if self.cfg.enable_hap_optimization:
                 reload_args.extend(["-x", self.cfg.socket_path])
 
-            self._proc = await self._start_and_wait_for_haproxy(*reload_args)
+            new_proc = await self._start_and_wait_for_haproxy(*reload_args)
+            if self._stopped:
+                logger.info(
+                    "HAProxy was stopped during reload; terminating newly spawned process."
+                )
+                if new_proc.returncode is None:
+                    new_proc.kill()
+                    await new_proc.wait()
+                return
+            self._proc = new_proc
 
             # Track for shutdown cleanup; pruned at the next reload.
             if old_proc is not None:
@@ -1731,14 +1741,11 @@ class HAProxyApi(ProxyApi):
         return backend_stats
 
     async def stop(self) -> None:
+        self._stopped = True
         proc = self._proc
-        if proc is None:
-            logger.info("HAProxy process not running, skipping shutdown.")
-            return
-
         try:
             # Kill the current process
-            if proc.returncode is None:
+            if proc is not None and proc.returncode is None:
                 proc.kill()
                 await proc.wait()
                 self._proc = None
@@ -1760,6 +1767,9 @@ class HAProxyApi(ProxyApi):
             logger.error(f"Error during HAProxy shutdown: {e}")
 
     async def reload(self) -> None:
+        if self._stopped:
+            logger.info("HAProxy has been stopped, skipping reload.")
+            return
         try:
             self._generate_config_file_internal()
             await self._graceful_reload()
@@ -1993,6 +2003,7 @@ class HAProxyManager(ProxyActorInterface):
         self._update_pending: bool = False
         self._coalesce_task: Optional[asyncio.Task] = None
         self._coalesce_armed_at: Optional[float] = None
+        self._is_shutdown: bool = False
         self._haproxy_update_latency = metrics.Histogram(
             "serve_haproxy_update_latency_s",
             description=(
@@ -2099,13 +2110,24 @@ class HAProxyManager(ProxyActorInterface):
         This method should be called before the actor is killed to ensure
         the HAProxy subprocess is properly terminated.
         """
+        self._is_shutdown = True
+        self._update_pending = False
+        if self._coalesce_task is not None and not self._coalesce_task.done():
+            self._coalesce_task.cancel()
+            try:
+                await self._coalesce_task
+            except asyncio.CancelledError:
+                logger.debug("Coalesce task canceled during shutdown.")
+            self._coalesce_task = None
+
         try:
             logger.info(
                 f"Shutting down HAProxyManager on node {self._node_id}.",
                 extra={"log_to_stderr": False},
             )
 
-            await self._haproxy.stop()
+            async with self._reload_lock:
+                await self._haproxy.stop()
 
             logger.info(
                 f"Successfully stopped HAProxy process on node {self._node_id}.",
@@ -2457,6 +2479,8 @@ class HAProxyManager(ProxyActorInterface):
         the coalesce delay (each broadcast applies immediately) but still
         runs through the same task, so update latency is always recorded.
         """
+        if self._is_shutdown:
+            return
         self._update_pending = True
         if self._coalesce_armed_at is None:
             self._coalesce_armed_at = time.monotonic()
@@ -2471,9 +2495,11 @@ class HAProxyManager(ProxyActorInterface):
         # instead of queueing behind the reload lock. On failure, re-arm
         # for up to 2 retries; past that, wait for the next broadcast.
         consecutive_failures = 0
-        while self._update_pending:
+        while self._update_pending and not self._is_shutdown:
             if RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S > 0:
                 await asyncio.sleep(RAY_SERVE_HAPROXY_BROADCAST_COALESCE_S)
+            if self._is_shutdown:
+                break
             self._update_pending = False
             armed_at = self._coalesce_armed_at
             self._coalesce_armed_at = None

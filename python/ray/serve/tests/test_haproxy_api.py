@@ -3516,6 +3516,97 @@ async def test_applied_target_groups_advance_only_after_reload():
     assert manager._applied_target_groups_version == version
 
 
+@pytest.mark.asyncio
+async def test_haproxy_manager_shutdown_cancels_coalesce_and_serializes():
+    """Verify shutdown cancels pending coalesce task and holds reload lock during stop."""
+    manager = _bare_haproxy_manager()
+    manager.event_loop = asyncio.get_running_loop()
+    manager._node_id = "test-node"
+    manager._is_shutdown = False
+    manager._reload_lock = asyncio.Lock()
+    manager._update_pending = True
+    manager._coalesce_armed_at = time.monotonic()
+    manager._exporter_server = None
+    manager._metrics_collector = None
+
+    stop_called = asyncio.Event()
+    reload_during_or_after_stop = False
+
+    async def mock_stop():
+        stop_called.set()
+
+    async def mock_update_haproxy_backends():
+        nonlocal reload_during_or_after_stop
+        if stop_called.is_set():
+            reload_during_or_after_stop = True
+
+    manager._haproxy = mock.Mock()
+    manager._haproxy.stop = mock.AsyncMock(side_effect=mock_stop)
+    manager._update_haproxy_backends = mock.AsyncMock(
+        side_effect=mock_update_haproxy_backends
+    )
+
+    manager._coalesce_task = asyncio.create_task(manager._coalesce_and_apply())
+
+    await manager.shutdown()
+
+    assert stop_called.is_set() is True
+    assert manager._is_shutdown is True
+    assert manager._update_pending is False
+    assert manager._coalesce_task is None
+    assert reload_during_or_after_stop is False
+
+
+@pytest.mark.asyncio
+async def test_haproxy_api_stop_prevents_subsequent_reload():
+    """Verify that HAProxyApi.stop sets stopped flag and prevents reload."""
+    api = HAProxyApi.__new__(HAProxyApi)
+    api.cfg = mock.Mock()
+    api._stopped = False
+    api._proc = None
+    api._old_procs = []
+    api._generate_config_file_internal = mock.Mock()
+    api._graceful_reload = mock.AsyncMock()
+
+    await api.stop()
+    assert api._stopped is True
+
+    await api.reload()
+    api._graceful_reload.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_haproxy_api_reload_kills_new_proc_if_stopped_concurrently():
+    """Verify that if stop is called while _start_and_wait_for_haproxy is in-flight,
+    the newly spawned process is immediately killed."""
+    api = HAProxyApi.__new__(HAProxyApi)
+    api.cfg = mock.Mock(enable_hap_optimization=False)
+    api._stopped = False
+    api._old_procs = []
+    old_proc = mock.Mock(pid=100)
+    api._proc = old_proc
+    api._wait_for_hap_availability = mock.AsyncMock()
+    api._prune_old_procs = mock.Mock()
+    api._is_our_haproxy = mock.Mock(return_value=True)
+    api._soft_stop_old_procs = mock.Mock()
+
+    new_proc = mock.Mock(pid=200, returncode=None)
+    new_proc.kill = mock.Mock()
+    new_proc.wait = mock.AsyncMock()
+
+    async def mock_start(*args):
+        api._stopped = True
+        return new_proc
+
+    api._start_and_wait_for_haproxy = mock.AsyncMock(side_effect=mock_start)
+
+    await api._graceful_reload()
+
+    new_proc.kill.assert_called_once()
+    new_proc.wait.assert_awaited_once()
+    assert api._proc is old_proc
+
+
 def test_update_target_groups_preserves_routing_config_version():
     manager = _bare_haproxy_manager()
     manager._schedule_haproxy_update = mock.Mock()
