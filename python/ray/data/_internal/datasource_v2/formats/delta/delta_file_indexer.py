@@ -184,12 +184,16 @@ def _files_selected_by_partition_filters(
     # Every URI is the same prefix followed by a log path. Find the prefix
     # with the first URI and check it against all of them, so a URI form
     # this doesn't expect fails the read instead of dropping files.
-    expected = set(all_uris)
+    logged_paths = set(file_paths)
     for path in file_paths:
-        if all_uris[0].endswith("/" + path):
-            prefix = all_uris[0][: -len(path)]
-            if {prefix + p for p in file_paths} == expected:
-                return {uri[len(prefix) :] for uri in selected_uris}
+        if not all_uris[0].endswith("/" + path):
+            continue
+        prefix = all_uris[0][: -len(path)]
+        if len(all_uris) == len(logged_paths) and all(
+            uri.startswith(prefix) and uri[len(prefix) :] in logged_paths
+            for uri in all_uris
+        ):
+            return {uri[len(prefix) :] for uri in selected_uris}
     raise ValueError(
         "Couldn't match the data files `deltalake` selected with "
         f"`partition_filters` (such as {all_uris[0]!r}) to the Delta log's file "
