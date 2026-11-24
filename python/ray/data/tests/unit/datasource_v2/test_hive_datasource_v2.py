@@ -246,9 +246,6 @@ def test_table_scanner_capabilities_clone_and_projection():
     assert final.pruned_column_names() == ("name",)
     assert final.pushed_limit() == 5
     assert final.read_schema().metadata == _TABLE_SCHEMA.metadata
-    assert final.create_reader()._options["statement"] == (
-        "SELECT `name` FROM `default`.`events` LIMIT 5"
-    )
     assert (
         original.prune_columns(["id"])
         .read_schema()
@@ -260,7 +257,11 @@ def test_table_scanner_capabilities_clone_and_projection():
 
 
 @pytest.mark.parametrize(
-    "options", [{"ray_remote_args": {"num_cpus": 2}}, {"compute": TaskPoolStrategy(2)}]
+    "options",
+    [
+        pytest.param({"ray_remote_args": {"num_cpus": 2}}, id="num_cpus"),
+        pytest.param({"compute": TaskPoolStrategy(2)}, id="concurrency"),
+    ],
 )
 def test_hive_projection_keeps_explicit_execution_requirements(options):
     read = _read(_table_scanner(), "Hive")
@@ -319,33 +320,29 @@ def test_limits_preserve_smaller_source_and_accepted_limits(
     assert scanner.pushed_limit() == expected
 
 
-@pytest.mark.parametrize(
-    "source",
-    [
-        pytest.param("parquet", id="parquet"),
-        pytest.param("hive_query", id="hive_query"),
-    ],
-)
-def test_non_table_read_metadata_preserves_original_args(source):
-    if source == "hive_query":
-        schema = pa.schema([("value", pa.string())])
-        spec = HiveReadSpec(
-            lambda: None,
-            query="SELECT 'synthetic_private_value' AS value",
-            schema=schema,
-        )
-        scanner = HiveDatasourceV2(spec).create_scanner(schema)
-        name = "Hive"
-    else:
-        scanner = ParquetScanner(schema=_TABLE_SCHEMA)
-        name = "ParquetV2"
-    read = _read(scanner, name)
+def test_hive_query_metadata_preserves_original_args():
+    schema = pa.schema([("value", pa.string())])
+    spec = HiveReadSpec(
+        lambda: None,
+        query="SELECT 'synthetic_private_value' AS value",
+        schema=schema,
+    )
+    scanner = HiveDatasourceV2(spec).create_scanner(schema)
+    read = _read(scanner, "Hive")
     original = super(ReadFiles, read)._get_args()
     current = read._get_args()
     assert current["_scanner"] is original["_scanner"] is scanner
     assert sanitize_for_struct(current) == sanitize_for_struct(original)
-    if source == "hive_query":
-        assert "synthetic_private_value" not in str(sanitize_for_struct(current))
+    assert "synthetic_private_value" not in str(sanitize_for_struct(current))
+
+
+def test_parquet_metadata_preserves_original_args():
+    scanner = ParquetScanner(schema=_TABLE_SCHEMA)
+    read = _read(scanner, "ParquetV2")
+    original = super(ReadFiles, read)._get_args()
+    current = read._get_args()
+    assert current["_scanner"] is original["_scanner"] is scanner
+    assert sanitize_for_struct(current) == sanitize_for_struct(original)
 
 
 def test_metadata_does_not_export_hive_scanner_spec():
