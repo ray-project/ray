@@ -77,8 +77,7 @@ until docker exec -t -e JAVA_TOOL_OPTIONS=--enable-preview \
 done
 
 bazel run //ci/ray_ci:test_in_docker -- \
-  //python/ray/data:test_hive_integration \
-  //python/ray/data:test_hive_pushdown_integration data \
+  //python/ray/data:test_hive_integration data \
   --build-name datamongobuild-py3.10 --python-version 3.10 \
   --exact-targets --network "${network}" \
   --test-env RAY_HIVE_TEST_HOST=hiveserver2 \

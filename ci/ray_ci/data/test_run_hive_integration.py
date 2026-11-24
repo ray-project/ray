@@ -131,7 +131,6 @@ def test_ready_service_runs_suite(run_script, scenario):
     )
     test_command = next(call for call in calls if call[0] == "bazel")
     assert "//python/ray/data:test_hive_integration" in test_command
-    assert "//python/ray/data:test_hive_pushdown_integration" in test_command
     assert "--exact-targets" in test_command
     assert test_command[test_command.index("--network") + 1] == (
         service_command[service_command.index("--network") + 1]

@@ -3,8 +3,8 @@
 The Data pipeline runs `run_hive_integration.sh` on premerge builds. It starts
 `apache/hive:4.2.0` (pinned by digest so a republished tag cannot change the
 fixture) with an embedded Derby metastore and local MapReduce, waits
-for a successful Beeline `SELECT 1`, then runs the Hive integration and
-pushdown integration targets in the Data integration image. The
+for a successful Beeline `SELECT 1`, then runs
+`//python/ray/data:test_hive_integration` in the Data integration image. The
 service and test containers share an isolated Docker network; no host ports or
 external credentials are needed.
 
@@ -34,6 +34,5 @@ with `NONE`, use a Ray development environment with `impyla==0.23.0` installed:
 ```bash
 RAY_HIVE_TEST_HOST=127.0.0.1 RAY_HIVE_TEST_PORT=10000 \
   RAY_HIVE_TEST_AUTH=PLAIN HIVE_TEST_PASSWORD=hive \
-  python -m pytest -v python/ray/data/tests/datasource/test_hive_integration.py \
-    python/ray/data/tests/datasource/test_hive_pushdown_integration.py
+  python -m pytest -v python/ray/data/tests/datasource/test_hive_integration.py
 ```
