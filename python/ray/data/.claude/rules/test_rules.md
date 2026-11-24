@@ -15,5 +15,4 @@ Fewer tests is the default; review tests as hard as code.
 - **A test diff larger than the code diff is a sign to cut.**
 - **Test names say what they assert.**
 
-When useful and possible, use `hypothesis` for property-based tests (it's in
-`python/requirements/ml/data-test-requirements.txt`).
+When useful and possible, use `hypothesis` for property-based tests.
