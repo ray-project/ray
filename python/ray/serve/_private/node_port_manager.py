@@ -288,6 +288,12 @@ class NodePortManager:
                     replica_id,
                     grpc_port,
                 )
+            if (
+                (http_port is not None or grpc_port is not None)
+                and node_port_manager._last_pruned_alive is not None
+                and replica_id not in node_port_manager._last_pruned_alive
+            ):
+                node_port_manager._last_pruned_alive = None
 
     def __init__(self, node_id: str):
         self._node_id = node_id
@@ -314,11 +320,17 @@ class NodePortManager:
 
     def allocate_port(self, replica_id: str, protocol: RequestProtocol) -> int:
         if protocol == RequestProtocol.HTTP:
-            return self._http_allocator.allocate(replica_id)
+            port = self._http_allocator.allocate(replica_id)
         elif protocol == RequestProtocol.GRPC:
-            return self._grpc_allocator.allocate(replica_id)
+            port = self._grpc_allocator.allocate(replica_id)
         else:
             raise ValueError(f"Unsupported protocol: {protocol}")
+        if (
+            self._last_pruned_alive is not None
+            and replica_id not in self._last_pruned_alive
+        ):
+            self._last_pruned_alive = None
+        return port
 
     def release_port(
         self,
