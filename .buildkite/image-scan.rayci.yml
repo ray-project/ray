@@ -7,7 +7,7 @@
 # release-automation waits on that postmerge build, so every step is
 # soft_fail: a scan must never block a release. Each step's timeout cuts
 # rayci's 300-minute default to a few times its usual run time (postmerge
-# #20999: 3 min for the DBs, up to 15 per scan), and
+# #20999: 3 min for the DBs, up to 15 per scan, 4 for the report), and
 # stays above the tools' own limit on any one call, so a slow call fails
 # through the tool rather than through Buildkite's kill. A scan step runs
 # even if a push job it waits on failed: the images come from the build's
