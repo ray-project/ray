@@ -63,15 +63,29 @@ PUSH_TARGET = "//ci/ray_ci/automation:push_ray_image"
 PUSH_FILES = ("build.rayci.yml", "linux_aarch64.rayci.yml")
 
 
+def buildkite_dir() -> Path:
+    """Where //.buildkite:pipelines puts every pipeline file."""
+    return Path(runfiles.Create().Rlocation("io_ray/.buildkite/build.rayci.yml")).parent
+
+
 def published_images(pipeline: dict) -> set:
     """(type, python, platform, arch) of every image the push steps publish,
     read with push_ray_image's own option parser."""
     images = set()
     for step in pipeline.get("steps") or []:
+        if not isinstance(step, dict):
+            continue
         commands = step.get("commands") or step.get("command") or []
         commands = [commands] if isinstance(commands, str) else commands
+        pushes = [c for c in commands if PUSH_TARGET in c]
+        if not pushes:
+            continue
         array = step.get("array") or {}
-        for command in (c for c in commands if PUSH_TARGET in c):
+        # Combinations this doesn't expand, such as rayci's `adjustments`,
+        # would publish images that neither side of the comparison sees.
+        assert set(array) <= {"python", "platform"}, (step.get("key"), sorted(array))
+        assert "matrix" not in step and "parallelism" not in step, step.get("key")
+        for command in pushes:
             for python in array.get("python") or [""]:
                 for platform in array.get("platform") or [""]:
                     expanded = command.replace("{{array.python}}", python)
@@ -99,14 +113,25 @@ def test_the_scan_steps_cover_exactly_what_the_push_steps_publish():
     the report's coverage check reads only the scan steps."""
     published = set()
     for name in PUSH_FILES:
-        path = runfiles.Create().Rlocation(f"io_ray/.buildkite/{name}")
-        published |= published_images(yaml.safe_load(Path(path).read_text()))
+        pipeline = yaml.safe_load((buildkite_dir() / name).read_text())
+        published |= published_images(pipeline)
     scanned = {
         (i.image_type, i.python_version, i.platform, i.architecture)
         for i in expected_images(real_pipeline())
     }
     assert len(published) == 184
     assert scanned == published
+
+
+def test_only_the_known_pipeline_files_publish_images():
+    """A push step in any other file would go unchecked by the test above."""
+    root = buildkite_dir()
+    publishing = sorted(
+        str(path.relative_to(root))
+        for path in root.rglob("*.yml")
+        if PUSH_TARGET in path.read_text()
+    )
+    assert publishing == sorted(PUSH_FILES)
 
 
 def test_the_pipeline_asks_for_every_published_image_once():
@@ -145,6 +170,11 @@ def test_every_way_buildkite_takes_a_command_is_read(step: dict):
     """Buildkite takes `command` or `commands`, each a string or a list, and
     rayci passes them through; a form left unread would drop its images."""
     pipeline = {"steps": [{"key": "s", **step}]}
+    assert [i.name for i in expected_images(pipeline)] == ["ray-py3.12-tpu"]
+
+
+def test_a_step_that_is_not_a_mapping_scans_nothing():
+    pipeline = {"steps": ["wait", {"key": "s", "command": TPU_SCAN}]}
     assert [i.name for i in expected_images(pipeline)] == ["ray-py3.12-tpu"]
 
 
@@ -195,7 +225,7 @@ def test_a_scan_command_with_anything_unexpected_is_an_error(command: str, error
                 ],
                 "array": {"python": ["3.12"]},
             },
-            "leaves {{array.python}}",
+            "array keys this can't expand: ['python']",
             id="other-array-dimension",
         ),
         pytest.param(
@@ -220,8 +250,77 @@ def test_a_scan_command_with_anything_unexpected_is_an_error(command: str, error
         ),
         pytest.param(
             {"commands": [f"{SCAN} --architecture x86_64 --platform tpu"] * 2},
-            "runs scan_images 2 times",
+            "mentions scan_images 2 times",
             id="two-scans",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    "bazel build //ci/ray_ci/automation/trivy:scan_images",
+                    TPU_SCAN,
+                ]
+            },
+            "mentions scan_images 2 times; expected one run",
+            id="build-then-run",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    f"{SCAN} --architecture x86_64 --platform {{{{array.platform}}}}"
+                    " --image ray:3.12"
+                ],
+                "array": {
+                    "platform": ["cpu"],
+                    "adjustments": [{"with": {"platform": "tpu"}}],
+                },
+            },
+            "array keys this can't expand: ['adjustments']",
+            id="adjustments",
+        ),
+        pytest.param(
+            {"commands": [TPU_SCAN], "matrix": ["a", "b"]},
+            "uses matrix",
+            id="matrix",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    "bazel run ci/ray_ci/automation/trivy:scan_images -- "
+                    "--architecture x86_64 --platform tpu --image ray:3.12"
+                ]
+            },
+            "names scan_images in a form this can't read",
+            id="other-spelling",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    f"{SCAN} --architecture riscv64 --platform tpu --image ray:3.12"
+                ]
+            },
+            "'riscv64' is not one of",
+            id="architecture-scan_images-rejects",
+        ),
+        pytest.param(
+            {"commands": [f"{TPU_SCAN} --help"]},
+            "passes --help",
+            id="help",
+        ),
+        pytest.param(
+            {
+                "commands": [
+                    f"{SCAN} --architecture x86_64 --platform {{{{array.platform}}}}"
+                    " --image ray:3.12"
+                ],
+                "array": {"platform": [12.1]},
+            },
+            "array.platform that isn't text",
+            id="platform-not-text",
+        ),
+        pytest.param(
+            {"commands": [f"{TPU_SCAN} --image 'ray:3.11"]},
+            "can't be split",
+            id="unbalanced-quote",
         ),
         pytest.param(
             {
@@ -241,10 +340,24 @@ def test_a_scan_step_it_cannot_read_is_an_error(step: dict, error: str):
     assert "images_scan_x" in str(info.value)
 
 
-def test_two_steps_scanning_the_same_image_are_rejected():
-    pipeline = {"steps": [PIPELINE["steps"][2], PIPELINE["steps"][2]]}
-    with pytest.raises(ValueError, match="ray-py3.11-tpu"):
-        expected_images(pipeline)
+@pytest.mark.parametrize(
+    ("steps", "where"),
+    [
+        pytest.param(
+            [{"key": "a", "command": TPU_SCAN}, {"key": "b", "command": TPU_SCAN}],
+            "by steps a and b",
+            id="two-steps",
+        ),
+        pytest.param(
+            [{"key": "s", "command": f"{TPU_SCAN} --image ray:3.12"}],
+            "by step s",
+            id="one-step",
+        ),
+    ],
+)
+def test_an_image_scanned_twice_is_rejected(steps: list, where: str):
+    with pytest.raises(ValueError, match=f"ray-py3.12-tpu is scanned twice, {where}"):
+        expected_images({"steps": steps})
 
 
 if __name__ == "__main__":

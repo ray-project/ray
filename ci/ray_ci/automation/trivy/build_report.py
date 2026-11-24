@@ -33,7 +33,10 @@ def _commands(step: Mapping[str, Any]) -> list[str]:
 
 def _scan_args(command: str, key: str) -> list[str]:
     """The arguments after the `--` that follows the scan_images target."""
-    args = shlex.split(command)
+    try:
+        args = shlex.split(command)
+    except ValueError as e:
+        raise ValueError(f"step {key}'s command can't be split: {e}") from None
     if SCAN_TARGET not in args:
         raise ValueError(f"step {key} names scan_images in a form this can't read")
     try:
@@ -48,29 +51,64 @@ def _scan_args(command: str, key: str) -> list[str]:
 def _parse_scan_args(args: list[str], key: str) -> dict[str, Any]:
     """Parse with scan_images' own options, strictly: an unknown option or a
     stray argument (e.g. `&& echo`) is an error, not something to skip."""
-    parser = scan_images.main.make_parser(click.Context(scan_images.main))
+    command = scan_images.main
+    ctx = click.Context(command)
     try:
-        params, extra, _ = parser.parse_args(args=list(args))
+        params, extra, _ = command.make_parser(ctx).parse_args(args=list(args))
     except click.UsageError as e:
         raise ValueError(f"step {key}: {e.format_message()}") from e
     if extra:
         raise ValueError(f"step {key} passes scan_images unexpected arguments {extra}")
-    return params
+    if "help" in params:
+        raise ValueError(f"step {key} passes --help, so scan_images would scan nothing")
+    # The raw parser skips type checks, e.g. --architecture's choices.
+    options = {param.name: param for param in command.params}
+    try:
+        return {
+            name: options[name].type_cast_value(ctx, value)
+            for name, value in params.items()
+        }
+    except click.BadParameter as e:
+        raise ValueError(f"step {key}: {e.format_message()}") from e
+
+
+def _step_key(step: Mapping[str, Any]) -> str:
+    return str(step.get("key") or step.get("label") or "?")
 
 
 def _step_images(step: Mapping[str, Any]) -> list[Image]:
     """The images one step scans, or none if it doesn't run scan_images.
     A scan step this can't read exactly is an error: guessing would make
     the coverage check quietly wrong."""
-    key = step.get("key") or step.get("label") or "?"
-    scans = [c for c in _commands(step) if SCAN_TARGET in c]
-    runs = sum(c.count(SCAN_TARGET) for c in scans)
-    if not runs:
+    key = _step_key(step)
+    # Any mention, so that an unfamiliar spelling of the target is an error
+    # in _scan_args rather than a step quietly left out.
+    scans = [c for c in _commands(step) if "scan_images" in c]
+    mentions = sum(c.count("scan_images") for c in scans)
+    if not mentions:
         return []
-    if runs > 1:
-        raise ValueError(f"step {key} runs scan_images {runs} times")
+    if mentions > 1:
+        raise ValueError(
+            f"step {key} mentions scan_images {mentions} times; expected one run"
+        )
+    for field in ("matrix", "parallelism"):
+        if field in step:
+            raise ValueError(f"step {key} uses {field}, which this can't expand")
+    array = step.get("array") or {}
+    if not isinstance(array, Mapping):
+        raise ValueError(f"step {key} has an array that isn't a mapping")
+    # rayci also takes other dimensions and `adjustments`, which add
+    # combinations: images this would miss, or jobs that repeat a scan.
+    unknown = sorted(set(array) - {"platform"})
+    if unknown:
+        raise ValueError(f"step {key} uses array keys this can't expand: {unknown}")
+    platforms = array.get("platform") or [""]
+    if not isinstance(platforms, list) or not all(
+        isinstance(p, str) for p in platforms
+    ):
+        raise ValueError(f"step {key} has an array.platform that isn't text")
     images = []
-    for platform in (step.get("array") or {}).get("platform") or [""]:
+    for platform in platforms:
         expanded = scans[0].replace("{{array.platform}}", platform)
         leftover = re.search(r"\{\{[^}]*\}\}", expanded)
         if leftover:
@@ -108,11 +146,18 @@ def _step_images(step: Mapping[str, Any]) -> list[Image]:
 def expected_images(pipeline: Mapping[str, Any]) -> list[Image]:
     """Every image the pipeline's scan steps are asked to scan, read with
     scan_images' own option parser."""
-    images = [
-        image for step in pipeline.get("steps") or [] for image in _step_images(step)
-    ]
-    names = [image.name for image in images]
-    duplicates = sorted({name for name in names if names.count(name) > 1})
-    if duplicates:
-        raise ValueError(f"more than one scan step scans {duplicates}")
+    images = []
+    scanned_by: dict[str, str] = {}
+    for step in pipeline.get("steps") or []:
+        # A step that isn't a mapping, such as "wait", runs no command.
+        if not isinstance(step, Mapping):
+            continue
+        key = _step_key(step)
+        for image in _step_images(step):
+            if image.name in scanned_by:
+                first = scanned_by[image.name]
+                where = f"step {key}" if first == key else f"steps {first} and {key}"
+                raise ValueError(f"{image.name} is scanned twice, by {where}")
+            scanned_by[image.name] = key
+            images.append(image)
     return images
