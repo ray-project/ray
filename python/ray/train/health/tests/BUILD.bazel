@@ -1,0 +1,34 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+
+py_library(
+    name = "conftest",
+    srcs = ["conftest.py"],
+)
+
+py_test(
+    name = "test_nccl_ras_evaluators",
+    size = "small",
+    srcs = ["test_nccl_ras_evaluators.py"],
+    tags = [
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_nccl_ras_probes",
+    size = "small",
+    srcs = ["test_nccl_ras_probes.py"],
+    tags = [
+        "team:ml",
+        "train_v2",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)

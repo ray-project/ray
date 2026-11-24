@@ -1136,7 +1136,13 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(num_rows=?, schema=Unknown schema))
+            DataIterator(shape: (?, 5)
+            ╭───────────────────┬──────────────────┬───────────────────┬──────────────────┬────────╮
+            │ sepal length (cm) ┆ sepal width (cm) ┆ petal length (cm) ┆ petal width (cm) ┆ target │
+            │ ---               ┆ ---              ┆ ---               ┆ ---              ┆ ---    │
+            │ double            ┆ double           ┆ double            ┆ double           ┆ int64  │
+            ╰───────────────────┴──────────────────┴───────────────────┴──────────────────┴────────╯
+            (Dataset isn't materialized))
 
             If your model accepts a single tensor as input, specify a single feature column.
 

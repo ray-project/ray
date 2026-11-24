@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Generic
+from typing import Generic, Optional
 
 import pyarrow as pa
 
@@ -30,14 +30,15 @@ class Scanner(ABC, Generic[InputSplit]):
     """
 
     @abstractmethod
-    def read_schema(self) -> pa.Schema:
+    def read_schema(self) -> Optional[pa.Schema]:
         """Return the schema that will be produced by this scanner.
 
         This reflects the schema after all column pruning has been applied
         and includes any column the reader synthesizes rather than decodes.
 
         Returns:
-            PyArrow Schema describing the output data.
+            PyArrow Schema describing the output data, or ``None`` when the
+            blocks the reader produces define it, as for pandas blocks.
         """
         ...
 

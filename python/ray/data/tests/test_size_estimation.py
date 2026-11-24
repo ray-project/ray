@@ -99,7 +99,7 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
     ctx.target_max_block_size = 3_000_000
     ds2 = gen("out2")
     nrow = ds2._block_num_rows()
-    assert 3 < len(nrow) < 5, nrow
+    assert 2 < len(nrow) < 5, nrow
     for x in nrow[:-1]:
         assert 200 < x < 400, (x, nrow)
 

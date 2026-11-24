@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import logging
 from typing import TYPE_CHECKING, Iterable, List, Literal, Optional, Union
 
 import numpy as np
@@ -57,8 +56,6 @@ from ray.data.datasource.partitioning import (
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 from ray.util.annotations import DeveloperAPI
 
-logger = logging.getLogger(__name__)
-
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
@@ -69,7 +66,7 @@ class _TextFileIndexer(NonSamplingFileIndexer):
     """``NonSamplingFileIndexer`` that keeps empty files.
 
     The base indexer skips zero-size files; an empty text file is a valid file
-    with no lines, as V1 reads it. Files of unknown size are still skipped.
+    with no lines, as V1 reads it.
     """
 
     @override
@@ -100,9 +97,6 @@ class _TextFileIndexer(NonSamplingFileIndexer):
         for file_info in self._get_file_info_iterator(
             paths, filesystem, preserve_order
         ):
-            if file_info.size is None:
-                logger.warning(f"Skipping file of unknown size: {file_info.path!r}")
-                continue
             if not all(pruner.should_include(file_info.path) for pruner in pruners):
                 continue
             yield file_info

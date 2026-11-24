@@ -341,6 +341,10 @@ class CheckpointManager(abc.ABC):
         # TODO: Clean way to do this would be to introduce per Op config
         # [https://github.com/ray-project/ray/issues/54520]
         checkpoint_ds.context.checkpoint_config = None
+        # The loader's plan uses AllToAll operators (the repartition below;
+        # groupby/sort in subclass preprocess pipelines), which the actor-only
+        # executor rejects. Run this dataset on the classic backend.
+        checkpoint_ds.context._actor_only_backend_override = False
 
         # Pre-process data pipeline
         checkpoint_ds: ray.data.Dataset = self._preprocess_data_pipeline(checkpoint_ds)

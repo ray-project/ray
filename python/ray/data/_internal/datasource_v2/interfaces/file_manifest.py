@@ -1,6 +1,6 @@
 from dataclasses import asdict, dataclass
 from functools import cached_property
-from typing import Any, Dict, List, Mapping, Optional, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -253,7 +253,7 @@ class FileManifest:
         cls,
         *,
         paths: List[str],
-        sizes: List[int],
+        sizes: Sequence[Optional[int]],
         chunk_metadatas: List[Optional[ChunkMetadata]],
         extra_columns: Optional[pa.Table] = None,
     ) -> "FileManifest":
@@ -262,6 +262,8 @@ class FileManifest:
         Args:
             paths: One file path per row.
             sizes: On-disk size of each row's file, aligned with ``paths``.
+                ``None`` or ``NaN`` where the filesystem didn't report a size;
+                the manifest stores it as null.
             chunk_metadatas: Per-row chunk metadata, ``None`` for a whole file.
             extra_columns: The source's own columns (see
                 :attr:`extra_columns`), one row each, in the same row order.
@@ -275,7 +277,14 @@ class FileManifest:
         block = pa.table(
             {
                 PATH_COLUMN_NAME: paths,
-                FILE_SIZE_COLUMN_NAME: sizes,
+                # Typed explicitly so a manifest whose sizes are all unknown
+                # still has an ``int64`` column, not Arrow's ``null`` type.
+                # ``size != size`` is true only for ``NaN``, which a missing
+                # size reads back as from ``file_sizes``.
+                FILE_SIZE_COLUMN_NAME: pa.array(
+                    [None if size is None or size != size else size for size in sizes],
+                    type=pa.int64(),
+                ),
                 FILE_CHUNK_METADATA_COLUMN_NAME: chunk_metadatas,
             }
         )

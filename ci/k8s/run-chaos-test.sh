@@ -17,7 +17,11 @@ if [[ "${CHAOS_FAULT}" != "no_fault" ]]; then
 fi
 
 echo "--- Prepare the test container."
-docker run -d --network host --name chaos-test ray-ci:kuberay-test sleep infinity
+RAY_AUTH_TOKEN="$(kubectl get secret raycluster-kuberay \
+    -o jsonpath='{.data.auth_token}' | base64 -d)"
+export RAY_AUTH_TOKEN
+docker run -d --network host --name chaos-test -e RAY_AUTH_TOKEN \
+    ray-ci:kuberay-test sleep infinity
 docker exec -ti chaos-test mkdir -p /tmp/rayci/python/ray/tests/chaos
 tar -cf - -C python/ray/tests/chaos . | docker cp - chaos-test:/tmp/rayci/python/ray/tests/chaos
 

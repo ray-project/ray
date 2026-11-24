@@ -1,4 +1,3 @@
-import functools
 import logging
 import secrets
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
@@ -10,11 +9,12 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.hash_aggregate_v2 import (
+    PartialAggMode,
+    PartialAggPolicy,
     _make_aggregating_reduce_fn,
     _make_aggregating_transformer,
 )
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-    _SHUFFLE_MAP_RUNTIME_ENV,
     _concat_reduce,
     _make_hash_partition_fn,
     _make_slice_partition_fn,
@@ -59,11 +59,11 @@ from ray.data._internal.execution.operators.shuffle_operators.sort_shuffle_map_o
     SortShuffleMapOp,
 )
 from ray.data._internal.execution.operators.sort_shuffle import make_sort_reduce_fn
-from ray.data._internal.execution.util import merge_runtime_envs
 from ray.data._internal.logical.interfaces import HashPartitioning
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
+    DiskShuffleMap,
     RandomizeBlocks,
     RandomShuffle,
     Repartition,
@@ -106,6 +106,13 @@ def plan_disk_hash_shuffle_map(
     transform partitions each input bundle into one local file and yields a
     one-row handle block for ``DiskHashShuffleRegroupOp``.
 
+    Being a plain task-pool map tagged with its own ``DiskShuffleMap`` logical
+    op, the upstream read or map fuses into it through the generic map-fusion
+    rule, so one task reads, maps and writes its shuffle file. The writer
+    therefore adds no runtime env of its own; the polars thread cap is set
+    inside the task (``cap_polars_threads``), since a runtime env would make
+    its remote args differ from the upstream op's and refuse fusion.
+
     Args:
         input_op: Upstream physical operator.
         data_context: Runtime configuration.
@@ -137,23 +144,27 @@ def plan_disk_hash_shuffle_map(
         block_transformer=block_transformer,
     )
     user_args = {k: v for k, v in (ray_remote_args or {}).items() if v is not None}
-    user_runtime_env = user_args.pop("runtime_env", None)
-    remote_args: Dict[str, Any] = {
-        "num_cpus": map_cpus,
-        "runtime_env": merge_runtime_envs(
-            _SHUFFLE_MAP_RUNTIME_ENV, user_runtime_env or {}
-        ),
-        **user_args,
-    }
-    return MapOperator.create(
+    remote_args: Dict[str, Any] = {"num_cpus": map_cpus, **user_args}
+    map_op = MapOperator.create(
         MapTransformer([BlockMapTransformFn(write_fn, disable_block_shaping=True)]),
         input_op,
         data_context,
         name=name,
         ray_remote_args=remote_args,
-        supports_fusion=False,
         on_start=on_start,
     )
+    # Tag the writer as a map of its own (the planner would tag it with the
+    # shuffle's logical op) so map fusion treats it like any other map. The
+    # input is already planned, hence tagged, when this runs.
+    input_logical_ops = input_op._logical_operators
+    map_op.set_logical_operators(
+        DiskShuffleMap(
+            name,
+            input_logical_ops[-1] if input_logical_ops else None,
+            ray_remote_args=remote_args,
+        )
+    )
+    return map_op
 
 
 def plan_disk_hash_shuffle_reduce(
@@ -199,11 +210,7 @@ def _select_shuffle_v2_op_classes(
     """
     if data_context.use_disk_based_hash_shuffle:
         return plan_disk_hash_shuffle_map, plan_disk_hash_shuffle_reduce, "Disk"
-    return (
-        functools.partial(ShuffleMapOp, map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV),
-        ShuffleReduceOp,
-        "",
-    )
+    return ShuffleMapOp, ShuffleReduceOp, ""
 
 
 def _plan_gpu_shuffle_repartition(
@@ -385,7 +392,6 @@ def _plan_sort_v2(
             data_context,
             num_partitions=num_partitions,
             sort_key=sort_key,
-            map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
             name=f"{prefix}SortShuffleMap(partitions={num_partitions})",
         )
     return build_reduce(
@@ -428,11 +434,54 @@ def _plan_random_shuffle_v2(
         data_context,
         num_partitions=num_partitions,
         reduce_fn=make_random_shuffle_reduce_fn(seed),
-        # Partition order is the only block order a seed can reproduce.
-        preserve_partition_order=data_context.execution_options.preserve_order,
+        # A user seed promises the same output across runs, so partitions must
+        # come out in order. ``seed`` is never None: unseeded uses a timestamp.
+        preserve_partition_order=(
+            logical_op.seed_config.seed is not None
+            or data_context.execution_options.preserve_order
+        ),
         peak_memory_multiplier=_RANDOM_SHUFFLE_REDUCE_PEAK_MEMORY_MULTIPLIER,
         reduce_ray_remote_args=logical_op.ray_remote_args,
         name=f"DiskRandomShuffleReduce(partitions={num_partitions})",
+    )
+
+
+def _choose_partial_agg_policy(data_context: DataContext) -> PartialAggPolicy:
+    """Picks how the map side of a SHUFFLE_V2 aggregation pre-aggregates."""
+    try:
+        mode = PartialAggMode(data_context.partial_aggregation_mode)
+    except ValueError:
+        raise ValueError(
+            "DataContext.partial_aggregation_mode must be one of "
+            f"{[m.value for m in PartialAggMode]}, got "
+            f"{data_context.partial_aggregation_mode!r}"
+        ) from None
+    if mode != PartialAggMode.ESTIMATE:
+        return PartialAggPolicy(mode=mode)
+    sample_rows = data_context.adaptive_partial_aggregation_sample_rows
+    if (
+        isinstance(sample_rows, bool)
+        or not isinstance(sample_rows, int)
+        or (sample_rows <= 0)
+    ):
+        raise ValueError(
+            "DataContext.adaptive_partial_aggregation_sample_rows must be a "
+            f"positive integer, got {sample_rows!r}"
+        )
+    threshold = data_context.adaptive_partial_aggregation_unique_ratio_threshold
+    if (
+        isinstance(threshold, bool)
+        or not isinstance(threshold, (int, float))
+        or not 0 <= threshold <= 1
+    ):
+        raise ValueError(
+            "DataContext.adaptive_partial_aggregation_unique_ratio_threshold "
+            f"must be a number between 0 and 1, got {threshold!r}"
+        )
+    return PartialAggPolicy(
+        mode=PartialAggMode.ESTIMATE,
+        sample_rows=sample_rows,
+        unique_ratio_threshold=float(threshold),
     )
 
 
@@ -457,7 +506,9 @@ def _plan_hash_shuffle_aggregate_v2(
         num_partitions = 1
 
     partition_fn = _make_hash_partition_fn(key_list, num_partitions)
-    block_transformer = _make_aggregating_transformer(key_columns, aggs)
+    block_transformer = _make_aggregating_transformer(
+        key_columns, aggs, policy=_choose_partial_agg_policy(data_context)
+    )
     reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
 
     map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
