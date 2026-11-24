@@ -52,6 +52,10 @@ _ARROW_SCANNER_BATCH_READAHEAD = env_integer(
     "RAY_DATA_ARROW_SCANNER_BATCH_READAHEAD", 8
 )
 
+# Maximum number of concurrent Python fragment scans per read task.
+# A value of 1 or less makes the task scan fragments sequentially.
+_MAX_FRAGMENT_WORKERS = env_integer("RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS", 64)
+
 
 class FileFormat(str, Enum):
     PARQUET = "parquet"
@@ -512,12 +516,12 @@ class FileReader(Reader[FileManifest]):
         (e.g. variable-shape tensors). V1 ``ParquetDatasource`` follows
         the same per-fragment pattern via ``fragment.to_batches``.
 
-        When there is more than one fragment and
-        ``execution_options.preserve_order`` is False, fragments are
-        read concurrently via :func:`make_async_gen`. We still pass
-        ``preserve_ordering=True`` so concurrent reads emit blocks in
-        fragment order; otherwise Ray Data task retries (block
-        reconstruction) could produce a different block sequence.
+        When multiple workers are available and
+        ``execution_options.preserve_order`` is False, fragments are read
+        concurrently via :func:`make_async_gen`. We pass
+        ``preserve_ordering=True`` so a retried task yields its batches in
+        the same order. That order depends on the worker count, so the
+        fragment worker limit must be the same on every node.
 
         ``make_async_gen`` consumes the whole input iterator up front
         when preserving order. That is acceptable here because the input
@@ -538,15 +542,13 @@ class FileReader(Reader[FileManifest]):
         if not fragments_with_offsets:
             return
 
-        num_workers = len(fragments_with_offsets)
+        num_workers = min(len(fragments_with_offsets), _MAX_FRAGMENT_WORKERS)
         if num_workers <= 1 or ctx.execution_options.preserve_order:
             yield from self._read_fragments_sequential(
                 iter(fragments_with_offsets), scanner_kwargs
             )
             return
 
-        # Set `preserve_ordering=True` to ensure deterministic output ordering.
-        # This is required so that Ray Data task retries (block reconstruction)
         yield from make_async_gen(
             base_iterator=iter(fragments_with_offsets),
             fn=partial(self._read_fragments_sequential, scanner_kwargs=scanner_kwargs),
