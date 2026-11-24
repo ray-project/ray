@@ -85,7 +85,10 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
 )
 from ray.data._internal.experimental.execution.sizer.operator_sizer import OperatorSizer
-from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
+from ray.data._internal.experimental.execution.sizer.policy.growth import (
+    backlog_actor_target,
+    growth_ceiling,
+)
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     OpDecision,
     OpRule,
@@ -1626,6 +1629,34 @@ def test_upscale_is_capped_at_remaining_work_once_upstream_completes(
     assert _tick(sizer, topo)[op].delta == expected_delta
 
 
+@pytest.mark.parametrize(
+    "upstream_completed,max_size,expected",
+    [
+        (False, 500, 500),  # more input can come: the pool bounds it
+        (True, 500, 23),  # ceil(40 / 1.75) actors cover the backlog
+        (True, 10, 10),  # the pool's max is lower still
+    ],
+)
+def test_growth_ceiling_is_the_lower_of_pool_max_and_remaining_work(
+    upstream_completed, max_size, expected
+):
+    """One ceiling bounds every upscale, bottleneck or per-op."""
+    upstream = _FakeOp(
+        "ListFiles",
+        _FakePool(min_size=1, max_size=200, cpu=1, running=1),
+        completed=upstream_completed,
+        execution_finished=upstream_completed,
+    )
+    op = _FakeOp(
+        "Map",
+        _FakePool(min_size=1, max_size=max_size, cpu=1, running=20),
+        inputs=(upstream,),
+    )
+    topo = _topology(upstream, op, enqueued=40)
+    assert growth_ceiling(op, topo[op]) == expected
+    assert growth_ceiling(op, None) == max_size  # no op state: the pool alone
+
+
 def test_warmup_share_survives_float_division():
     # (4.1 - 0.1) * 0.8 / 0.1 is 31.999... in floating point; truncating it
     # would leave the pool one actor short of its 32-actor share.
@@ -1925,7 +1956,7 @@ def test_backlog_actor_target_formula():
     )
     op._fake_metrics.average_num_inputs_per_task = 2
     topo = _topology(op, enqueued=40)  # 20 tasks; total 40
-    assert PerOpRules(OpProfiles(topo)).backlog_actor_target(op, topo[op]) == 23
+    assert backlog_actor_target(op, topo[op]) == 23
 
 
 # An output-backpressured pool must HOLD (never shed) when draining it would

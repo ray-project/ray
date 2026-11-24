@@ -8,6 +8,7 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional, Set
 
+from ray.data._internal.execution.execution_flags import SIZER_UTIL_THRESHOLD
 from ray.data._internal.execution.interfaces.common import ActorId
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     ScaleUpRequest,
@@ -22,6 +23,7 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
 )
 
 if TYPE_CHECKING:
+    from ray.data._internal.execution.streaming_executor_state import OpState
     from ray.data._internal.experimental.execution.operators.actor_pool import (
         _ExperimentalActorPool,
     )
@@ -80,9 +82,50 @@ def pending_actor_ids(pool: "_ExperimentalActorPool") -> Set[ActorId]:
 # --- how far an op may grow ---------------------------------------------------
 
 
-def growth_ceiling(op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext) -> int:
-    """Most actors ``op`` may grow to (see ``DecisionContext.growth_ceiling``)."""
-    return ctx.growth_ceiling.get(op, op.actor_pool.bounded_max_size())
+def growth_ceiling(
+    op: "ExperimentalActorPoolMapOperator", op_state: Optional["OpState"]
+) -> int:
+    """Most actors ``op`` may grow to: its pool's bounded max size, or fewer
+    once every upstream op has completed and its remaining work needs fewer.
+    Every upscale, bottleneck or per-op, stays within it. Without an
+    ``op_state`` only the pool bounds it."""
+    ceiling = op.actor_pool.bounded_max_size()
+    remaining = None if op_state is None else remaining_work_cap(op, op_state)
+    return ceiling if remaining is None else min(ceiling, remaining)
+
+
+def remaining_work_cap(
+    op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
+) -> Optional[int]:
+    """Most actors ``op`` can still use, or None while more input can come.
+
+    Once every upstream op has completed, the op's backlog (queued plus
+    in-flight inputs) is all the work it has left.
+    """
+    upstream = op.input_dependencies
+    if not upstream or not all(dep.has_completed() for dep in upstream):
+        return None
+    return max(op.actor_pool.min_size(), backlog_actor_target(op, op_state))
+
+
+def backlog_actor_target(
+    op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
+) -> int:
+    """Actors needed to work through what this op currently has.
+
+    Counts in-flight tasks as well as the queue: a well-sized steady-state
+    pool has a shallow queue but deep in-flight work, and demand that
+    collapsed the moment the queue drained would sawtooth. Divided by what
+    one actor can run concurrently at the target utilization.
+    """
+    pool = op.actor_pool
+    avg = op.metrics.average_num_inputs_per_task or 1
+    enqueued = op_state.total_enqueued_input_blocks()
+    expected = math.ceil(enqueued / avg)
+    total_tasks = pool.num_tasks_in_flight() + expected
+    return math.ceil(
+        total_tasks / (pool.max_actor_concurrency() * SIZER_UTIL_THRESHOLD)
+    )
 
 
 def free_growth_share(
@@ -156,7 +199,7 @@ def plan_free_growth(
     ``ctx`` only; ``apply_free_growth`` claims the capacity."""
     pool = op.actor_pool
     size = pool.serving_size()
-    ceiling = growth_ceiling(op, ctx)
+    ceiling = growth_ceiling(op, ctx.topology.get(op))
     if size >= ceiling:
         logger.debug(
             "SizingPolicy: %s not grown: at its growth ceiling (%d)",

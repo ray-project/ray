@@ -559,19 +559,9 @@ class OperatorSizer:
             non_pg_ops=self._profiles.non_pg_ops,
             now=self._clock(),
             bottleneck=self._bottleneck,
-            growth_ceiling={
-                op: self._growth_ceiling(op) for op in self._profiles.actor_pool_ops
-            },
             next_ops=self._profiles.next_ops,
             modeled_ops=frozenset(self._modeled_ops),
         )
-
-    def _growth_ceiling(self, op: ExperimentalActorPoolMapOperator) -> int:
-        """The pool's bounded max size, or less once every upstream op has
-        completed and the remaining work needs fewer actors."""
-        ceiling = op.actor_pool.bounded_max_size()
-        remaining = self._policy.per_op.remaining_work_cap(op, self._topology[op])
-        return ceiling if remaining is None else min(ceiling, remaining)
 
     # --- construction-time validation -----------------------------------------
 

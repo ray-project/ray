@@ -3,13 +3,12 @@
 The bottleneck policy grows ops from feedback. Each tick, ``PerOpRules.decide``
 picks one per-op action for every op (``OpRule``): release a completed pool,
 grow to held room, grow toward the warmup share, shed idle actors, or refill
-to min size. Every upscale is capped at the actors the op's remaining work can
-use."""
+to min size. Every upscale stays within the op's growth ceiling
+(``growth.growth_ceiling``)."""
 
 from __future__ import annotations
 
 import logging
-import math
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
@@ -35,6 +34,9 @@ from ray.data._internal.experimental.execution.sizer.op_status import (
     Completed,
     OpStatus,
     Released,
+)
+from ray.data._internal.experimental.execution.sizer.policy.growth import (
+    growth_ceiling,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     OpDecision,
@@ -69,12 +71,11 @@ class PerOpRules:
         self.reservation_ratio = SIZER_RESERVATION_RATIO
         self.downscale_factor = SIZER_DOWNSCALE_FACTOR
         self.downscale_hysteresis = SIZER_DOWNSCALE_HYSTERESIS
-        self.util_upscaling_threshold = SIZER_UTIL_THRESHOLD
         # Divisor in the backlog target; mirrors the actor autoscaler's guard.
-        if self.util_upscaling_threshold <= 0:
+        if SIZER_UTIL_THRESHOLD <= 0:
             raise ValueError(
                 "RAY_DATA_SIZER_UTIL_THRESHOLD must be positive, got "
-                f"{self.util_upscaling_threshold}"
+                f"{SIZER_UTIL_THRESHOLD}"
             )
         # Consecutive idle ticks per op, for the hysteretic drain arm.
         self._idle_streaks: Dict["PhysicalOperator", BoolStreak] = {}
@@ -146,7 +147,7 @@ class PerOpRules:
                     delta=to_held, reason="held share (hold released)"
                 )
 
-        want = self._cap_at_remaining_work(op, want, op_state)
+        want = self._cap_at_growth_ceiling(op, want, op_state)
 
         below_min = pool.min_size() - pool.serving_size()
         if below_min > 0 and (want is None or want.delta < below_min):
@@ -158,19 +159,16 @@ class PerOpRules:
             return OpDecision(OpRule.NONE)
         return OpDecision(rule, want)
 
-    def _cap_at_remaining_work(
+    def _cap_at_growth_ceiling(
         self,
         op: "ExperimentalActorPoolMapOperator",
         want: Optional[ActorPoolScalingRequest],
         op_state: "OpState",
     ) -> Optional[ActorPoolScalingRequest]:
-        """Trim an upscale to the actors ``op``'s remaining work can use."""
+        """Trim an upscale to ``op``'s growth ceiling."""
         if want is None or want.delta <= 0:
             return want
-        cap = self.remaining_work_cap(op, op_state)
-        if cap is None:
-            return want
-        allowed = cap - op.actor_pool.serving_size()
+        allowed = growth_ceiling(op, op_state) - op.actor_pool.serving_size()
         if allowed <= 0:
             return None
         return ActorPoolScalingRequest.upscale(
@@ -438,38 +436,6 @@ class PerOpRules:
             )
         return None, (
             f"hold (idle, streak {streak.run_length}/{self.downscale_hysteresis})"
-        )
-
-    def remaining_work_cap(
-        self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
-    ) -> Optional[int]:
-        """Most actors ``op`` can still use, or None while more input can come.
-
-        Once every upstream op has completed, the op's backlog (queued plus
-        in-flight inputs) is all the work it has left.
-        """
-        upstream = op.input_dependencies
-        if not upstream or not all(dep.has_completed() for dep in upstream):
-            return None
-        return max(op.actor_pool.min_size(), self.backlog_actor_target(op, op_state))
-
-    def backlog_actor_target(
-        self, op: "ExperimentalActorPoolMapOperator", op_state: "OpState"
-    ) -> int:
-        """Actors needed to work through what this op currently has.
-
-        Counts in-flight tasks as well as the queue: a well-sized steady-state
-        pool has a shallow queue but deep in-flight work, and demand that
-        collapsed the moment the queue drained would sawtooth. Divided by what
-        one actor can run concurrently at the target utilization.
-        """
-        pool = op.actor_pool
-        avg = op.metrics.average_num_inputs_per_task or 1
-        enqueued = op_state.total_enqueued_input_blocks()
-        expected = math.ceil(enqueued / avg)
-        total_tasks = pool.num_tasks_in_flight() + expected
-        return math.ceil(
-            total_tasks / (pool.max_actor_concurrency() * self.util_upscaling_threshold)
         )
 
     def _idle_streak(self, op: "ExperimentalActorPoolMapOperator") -> BoolStreak:

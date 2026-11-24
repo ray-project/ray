@@ -155,7 +155,7 @@ def _balanced_targets(
         if (
             shares.busy < 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
             or op.has_completed()
-            or pool.serving_size() >= growth_ceiling(op, ctx)
+            or pool.serving_size() >= growth_ceiling(op, ctx.topology.get(op))
             or why_cannot_grow(op, statuses) is not None
         ):
             continue

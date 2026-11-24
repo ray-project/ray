@@ -401,9 +401,7 @@ def _idle_victims_op(name, node, ids, *, current, cpu=1):
     )
 
 
-def _apply_bottleneck(
-    policy, tick, ops, *, free_cpu=0.0, settle=999.0, growth_ceiling=None
-):
+def _apply_bottleneck(policy, tick, ops, *, free_cpu=0.0, settle=999.0):
     """One tick of ``policy`` over ``ops``; returns (ctx, transfer state,
     requests)."""
     ctx = _ctx(
@@ -411,7 +409,6 @@ def _apply_bottleneck(
         non_pg_ops=list(ops),
         bottleneck=tick,
         seconds_since_allocation_change=settle,
-        growth_ceiling=dict(growth_ceiling or {}),
     )
     requests = _decide(policy, ctx)
     return ctx, policy.transfers.state, requests
@@ -1182,9 +1179,10 @@ def test_b_prime_is_the_largest_feasible_step(victims, expected_b_prime):
 
 @pytest.mark.parametrize("ceiling, owed", [(5, 1), (4, None)])
 def test_transfer_stays_within_the_recipients_growth_ceiling(ceiling, owed):
-    # Upstream is done and B's remaining work needs ``ceiling`` actors: a
-    # transfer funds it no further, and not at all once it is there.
+    # B may grow to ``ceiling`` actors: a transfer funds it no further, and
+    # not at all once it is there.
     recipient = _op("B", pool=_Pool(current=4))
+    recipient.actor_pool._max_size = ceiling
     donor = _idle_victims_op("A", "node", [f"a{i}" for i in range(4)], current=10)
     tick = _tick(
         recipient=recipient,
@@ -1194,9 +1192,7 @@ def test_transfer_stays_within_the_recipients_growth_ceiling(ceiling, owed):
         shares={recipient: None, donor: None},
         slack={donor: 8},
     )
-    _, state, _ = _apply_bottleneck(
-        _policy(), tick, [recipient, donor], growth_ceiling={recipient: ceiling}
-    )
+    _, state, _ = _apply_bottleneck(_policy(), tick, [recipient, donor])
     assert _owed(state) == ({recipient: owed} if owed else {})
 
 
@@ -1433,18 +1429,17 @@ def test_decide_gives_every_op_one_action_and_the_model_wins(monkeypatch):
 
 @pytest.mark.parametrize("ceiling, grown", [(3, 1), (2, 0)])
 def test_free_growth_stays_within_the_growth_ceiling(ceiling, grown):
-    # Upstream is done and Write's remaining work needs ``ceiling`` actors:
-    # it grows no further, even with its growth target (4) and room for it.
+    # Write may grow to ``ceiling`` actors: it grows no further, even with
+    # its growth target (4) and room for it.
     write = _op("Write", pool=_Pool(current=2))
+    write.actor_pool._max_size = ceiling
     tick = _tick(
         named=[(write, 0.6)],
         eligibility={write: "yes: free"},
         shares={write: None},
         target={write: 4},
     )
-    _, _, requests = _apply_bottleneck(
-        _policy(), tick, [write], free_cpu=3.0, growth_ceiling={write: ceiling}
-    )
+    _, _, requests = _apply_bottleneck(_policy(), tick, [write], free_cpu=3.0)
     assert sum(p.request[write].delta for p in requests) == grown
 
 

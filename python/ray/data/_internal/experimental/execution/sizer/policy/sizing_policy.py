@@ -375,7 +375,7 @@ class SizingPolicy:
             return []
         pool = recipient.actor_pool
         b = pool.serving_size()
-        ceiling = growth_ceiling(recipient, ctx)
+        ceiling = growth_ceiling(recipient, ctx.topology.get(recipient))
         if b >= ceiling:
             logger.debug(
                 "SizingPolicy: bottleneck %s (b=%d) not funded: at its "

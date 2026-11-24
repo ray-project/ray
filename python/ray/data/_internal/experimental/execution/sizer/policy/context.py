@@ -55,12 +55,6 @@ class DecisionContext:
     schedulable_bundles: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
     ] = field(default_factory=dict)
-    # Most actors each op may grow to: its pool's bounded max size, or, once
-    # every upstream op has completed, the actors its remaining work can use.
-    # An op missing here is bounded by its pool alone.
-    growth_ceiling: Dict["ExperimentalActorPoolMapOperator", int] = field(
-        default_factory=dict
-    )
     # Nearest downstream actor-pool ops of each op.
     next_ops: Dict[
         "ExperimentalActorPoolMapOperator",
@@ -83,7 +77,6 @@ class DecisionContext:
         non_pg_ops: Sequence["ExperimentalActorPoolMapOperator"],
         now: float,
         bottleneck: Optional["BottleneckTick"],
-        growth_ceiling: Dict["ExperimentalActorPoolMapOperator", int],
         next_ops: Dict[
             "ExperimentalActorPoolMapOperator",
             Tuple["ExperimentalActorPoolMapOperator", ...],
@@ -103,7 +96,6 @@ class DecisionContext:
             bottleneck=bottleneck,
             schedulable_nodes=snapshot.schedulable_nodes_by_op,
             schedulable_bundles=snapshot.schedulable_bundles_by_op,
-            growth_ceiling=growth_ceiling,
             next_ops=next_ops,
             snapshot=snapshot,
             modeled_ops=modeled_ops,
