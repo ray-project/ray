@@ -612,7 +612,9 @@ class _DeltaLogListing:
         )
         if self._column_mapping is not None:
             # The footers name columns by their physical names. The log
-            # statistics above were renamed to logical names when loaded.
+            # statistics above were renamed to logical names when loaded. In
+            # the ``id`` mode a file may use other names; a footer without the
+            # filter's columns then keeps all its row groups, which is safe.
             predicate = self._column_mapping.physical_predicate(predicate)
             if kwargs.get("projected_columns") is not None:
                 kwargs["projected_columns"] = self._column_mapping.physical_names(

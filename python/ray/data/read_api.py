@@ -6657,9 +6657,9 @@ def read_delta(
     .. note::
 
         Tables with column mapping (``delta.columnMapping.mode`` set to
-        ``name``) are read by the DataSourceV2 reader, which reads the data
-        files by their physical column names. The mode ``id``, and any column
-        mapping with the V1 reader, raise ``NotImplementedError``.
+        ``name`` or ``id``) are read by the DataSourceV2 reader, which reads
+        the data files by their physical column names or Parquet field ids.
+        The V1 reader raises ``NotImplementedError`` for them.
 
     .. note::
 

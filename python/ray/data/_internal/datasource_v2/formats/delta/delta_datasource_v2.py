@@ -81,7 +81,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # ``delta.columnMapping.mode`` values this reader handles.
-_SUPPORTED_COLUMN_MAPPING_MODES = frozenset({"none", "name"})
+_SUPPORTED_COLUMN_MAPPING_MODES = frozenset({"none", "name", "id"})
 
 # Reader features this reader handles. ``columnMapping`` only with the mapping
 # modes above, which ``check_delta_table_is_readable`` checks.
@@ -213,9 +213,9 @@ def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -
 
     Raises:
         NotImplementedError: If the table needs a feature this reader doesn't
-            support yet: a column mapping mode other than ``name``, a reader
-            version or feature it doesn't know, or a partition column type it
-            doesn't parse.
+            support yet: an unknown column mapping mode, a reader version or
+            feature it doesn't know, or a partition column type it doesn't
+            parse.
         RuntimeError: If the table declares deletion vectors.
         ValueError: If ``include_paths`` would replace the table's own
             ``path`` column.
@@ -225,7 +225,8 @@ def check_delta_table_is_readable(table: "DeltaTable", *, include_paths: bool) -
     mode = column_mapping_mode(metadata.configuration)
     # Reader version 2 and the ``columnMapping`` feature only allow column
     # mapping. With the mode ``none``, the data files use the column names;
-    # with ``name``, the reader reads them by their physical names.
+    # with ``name`` and ``id``, the reader reads them by the names the files
+    # use (``DeltaColumnMapping``).
     if mode not in _SUPPORTED_COLUMN_MAPPING_MODES:
         raise column_mapping_error(mode)
     features = set(protocol.reader_features or [])

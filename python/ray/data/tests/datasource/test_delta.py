@@ -307,11 +307,11 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path, datasource_
 # mapped column.
 @pytest.mark.parametrize("mode", ["name", "id"])
 def test_delta_read_column_mapping(tmp_path, datasource_v2, mode):
-    """V1 rejects column mapping; V2 reads the name mode."""
+    """V1 rejects column mapping; V2 reads both modes."""
     path = os.path.join(tmp_path, "column_mapped")
     write_column_mapped_table(path, mode)
 
-    if datasource_v2 and mode == "name":
+    if datasource_v2:
         assert sorted(row["id"] for row in ray.data.read_delta(path).take_all()) == [
             1,
             2,
