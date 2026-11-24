@@ -595,8 +595,10 @@ def test_status_completed_is_derived_and_a_reopened_op_resumes_active():
         # A held op has no input: no transfer may touch it.
         pytest.param("held", "start_receiving", id="held-to-receiving"),
         pytest.param("held", "start_cooling", id="held-to-cooling"),
-        # Cooling starts only when a donor's last transfer closes.
+        # Cooling starts only when a donor's transfer closes.
         pytest.param("active", "start_cooling", id="active-to-cooling"),
+        # One transfer at a time: a donor cannot join a second one.
+        pytest.param("donating", "start_donating", id="donating-to-donating"),
         # A recipient cannot donate before its transfer closes.
         pytest.param("receiving", "start_donating", id="receiving-to-donating"),
     ],
@@ -607,6 +609,8 @@ def test_status_illegal_transitions_raise(setup, move):
     statuses = _statuses(op, other)
     if setup == "receiving":
         statuses.start_receiving(op)
+    if setup == "donating":
+        statuses.start_donating(op, _op("first_recipient"))
     args = (op, other) if move == "start_donating" else (op,)
     with pytest.raises(IllegalStatusTransition):
         getattr(statuses, move)(*args)
@@ -832,42 +836,6 @@ def test_donor_cools_down_after_a_transfer_closes():
 
     statuses.on_step()
     assert not statuses.is_active(donor)
-    statuses.on_step()
-    assert statuses.is_active(donor)
-
-
-def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
-    # A donor can fund several recipients. The first transfer closing must
-    # NOT start its cooldown: that is far shorter than the transfer timeout,
-    # so the donor could be regrown while the other transfer still drains it.
-    donor = _donor_op()
-    landed = _op("landed")
-    still_draining = _op(
-        "still_draining", pool=_Pool(pending_ids={"node": ["draining-actor"]})
-    )
-    statuses = _statuses(donor, landed, still_draining, cooldown_steps=1)
-    book = _book(statuses=statuses)
-    for recipient, claimed in (
-        (landed, "landed-actor"),
-        (still_draining, "draining-actor"),
-    ):
-        book.state.in_flight[recipient] = TransferInFlight(
-            recipient=recipient,
-            donors=frozenset({donor}),
-            started_t=1000.0,
-            claimed_ids=(claimed,),
-        )
-    statuses.start_donating(donor, landed)
-
-    book.advance(now=1000.0)
-    statuses.on_step()
-    assert set(book.state.in_flight) == {still_draining}  # only one closed
-    assert statuses.kind(donor) is OpStatusKind.DONATING
-
-    # Once the last transfer lands, the cooldown starts, then ends.
-    still_draining._pool.pending_ids = {}
-    book.advance(now=1000.0)
-    assert statuses.kind(donor) is OpStatusKind.COOLING
     statuses.on_step()
     assert statuses.is_active(donor)
 

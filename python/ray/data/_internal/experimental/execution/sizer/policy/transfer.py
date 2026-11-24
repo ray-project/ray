@@ -687,27 +687,13 @@ class TransferBook:
                 self._metrics.record_outcome(self._name, recipient.name, "timeout")
 
     def _close_transfer(self, transfer: TransferInFlight, now: float) -> None:
-        """Free the recipient; start each donor's cooldown and record the
-        close time to block thrashing.
-
-        A donor can fund several recipients, so a donation closing does not
-        mean the donor is done: it stays ``DONATING`` until its LAST donation
-        closes, and only then cools down. Otherwise the cooldown could end
-        while another transfer is still draining it.
-        """
+        """Free the recipient, start each donor's cooldown, and record the
+        close time to block thrashing."""
         del self.state.in_flight[transfer.recipient]
         self._status_machine.activate(transfer.recipient)
         if transfer.record is not None:
             transfer.record.closed_t = now
-        still_donating_to = {
-            donor: transfer.recipient
-            for transfer in self.state.in_flight.values()
-            for donor in transfer.donors
-        }
         for donor in transfer.donors:
-            if donor in still_donating_to:
-                self._status_machine.start_donating(donor, still_donating_to[donor])
-                continue
             # Wait until the donor's signals describe its smaller size
             # (SIZER_DONOR_COOLDOWN_STEPS scheduling-loop steps).
             self._status_machine.start_cooling(donor)

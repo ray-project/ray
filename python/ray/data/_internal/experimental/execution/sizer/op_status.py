@@ -19,8 +19,8 @@ Statuses (``OpStatus``; each carries an ``OpStatusKind`` tag)
                           whose guard passes may resize it.
     Receiving             The recipient of an open capacity transfer.
     Donating(recipient)   A donor to an open transfer.
-    Cooling(steps_left)   A donor whose last transfer closed; its windows
-                          still describe the larger pool.
+    Cooling(steps_left)   A donor whose transfer closed; its windows still
+                          describe the larger pool.
     Completed             Done. Derived from ``op.has_completed()``.
 
 Initial status: ``Held(0)`` for an op awaiting its first input when the sizer
@@ -44,10 +44,8 @@ Transitions (anything else raises)
     Released    TICK             -                                    Active
     Active      TRANSFER_FIRED   it is the recipient                  Receiving
     Active      TRANSFER_FIRED   it is a donor                        Donating
-    Donating    TRANSFER_FIRED   it donates to another transfer too   Donating
     Receiving   TRANSFER_CLOSED  -                                    Active
-    Donating    TRANSFER_CLOSED  it donates to another open transfer  Donating
-    Donating    TRANSFER_CLOSED  that was its last transfer           Cooling(N)
+    Donating    TRANSFER_CLOSED  -                                    Cooling(N)
     Cooling(n)  STEP             n > 1                                Cooling(n - 1)
     Cooling(1)  STEP             -                                    Active
     any         COMPLETED        -                                    Completed
@@ -139,7 +137,7 @@ class Receiving:
 
 @dataclass(frozen=True)
 class Donating:
-    """Donating to ``recipient`` (the latest, if it funds several)."""
+    """Donating to ``recipient``."""
 
     recipient: "ExperimentalActorPoolMapOperator"
     kind: ClassVar[OpStatusKind] = OpStatusKind.DONATING
@@ -170,7 +168,7 @@ _ALLOWED: Dict[OpStatusKind, Set[OpStatusKind]] = {
     OpStatusKind.RELEASED: {OpStatusKind.ACTIVE},
     OpStatusKind.ACTIVE: {OpStatusKind.RECEIVING, OpStatusKind.DONATING},
     OpStatusKind.RECEIVING: {OpStatusKind.ACTIVE},
-    OpStatusKind.DONATING: {OpStatusKind.DONATING, OpStatusKind.COOLING},
+    OpStatusKind.DONATING: {OpStatusKind.COOLING},
     OpStatusKind.COOLING: {OpStatusKind.COOLING, OpStatusKind.ACTIVE},
 }
 
@@ -284,13 +282,12 @@ class OpStatusMachine:
         op: "ExperimentalActorPoolMapOperator",
         recipient: "ExperimentalActorPoolMapOperator",
     ) -> None:
-        """TRANSFER_FIRED for a donor, or TRANSFER_CLOSED for a donor still
-        funding another open transfer."""
+        """TRANSFER_FIRED, for a donor."""
         self._transition(op, Donating(recipient))
 
     def start_cooling(self, op: "ExperimentalActorPoolMapOperator") -> None:
-        """TRANSFER_CLOSED for a donor's last transfer: sit out
-        ``cooldown_steps`` scheduling-loop steps."""
+        """TRANSFER_CLOSED, for a donor: sit out ``cooldown_steps``
+        scheduling-loop steps."""
         self._transition(op, Cooling(self._cooldown_steps))
 
     def activate(self, op: "ExperimentalActorPoolMapOperator") -> None:
