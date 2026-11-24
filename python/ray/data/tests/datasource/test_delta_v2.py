@@ -8,6 +8,7 @@ where the two could disagree.
 import datetime
 import os
 import sys
+from decimal import Decimal
 from typing import Any, Dict, List
 
 import pyarrow as pa
@@ -279,6 +280,9 @@ def test_seeded_shuffle_permutes_the_files(tmp_path):
     assert read_order(shuffle=FileShuffleConfig(seed=11)) == shuffled
 
 
+_BIG_DECIMAL = 10**19
+
+
 @pytest.fixture
 def clustered_table(tmp_path) -> str:
     """Four commits whose files hold disjoint ranges, like a Z-ordered table:
@@ -294,6 +298,11 @@ def clustered_table(tmp_path) -> str:
                     "name": [f"{chr(ord('a') + i)}{v:03d}" for v in values],
                     "day": [datetime.date(2024, 1 + i, 1 + v % 10) for v in values],
                     "score": [v / 3 if v % 7 else None for v in values],
+                    # Beyond int64: ``deltalake`` clamps its statistics.
+                    "big": pa.array(
+                        [Decimal(_BIG_DECIMAL + v) for v in values],
+                        pa.decimal128(38, 0),
+                    ),
                 }
             ),
             mode="append",
@@ -317,11 +326,16 @@ def clustered_table(tmp_path) -> str:
         col("name") == "d305",
         col("day") >= datetime.date(2024, 3, 1),
         col("score") > 90.0,
+        col("big") == Decimal(_BIG_DECIMAL + 305),
     ],
     ids=str,
 )
-def test_log_statistics_pruning_matches_v1(clustered_table, predicate):
-    _assert_matches_v1(clustered_table, lambda ds: ds.filter(expr=predicate))
+def test_log_statistics_pruning_keeps_every_matching_row(clustered_table, predicate):
+    """The V1 reader skips files with the same statistics, so compare with the
+    rows a filter on the materialized table keeps, with nothing pushed down."""
+    expected = _rows(_read(clustered_table).materialize().filter(expr=predicate))
+
+    assert _rows(_read(clustered_table).filter(expr=predicate)) == expected
 
 
 @pytest.fixture
