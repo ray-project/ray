@@ -3509,6 +3509,40 @@ class TestIcebergDatasourceV2:
             f.content == DataFileContent.POSITION_DELETES for f in rebuilt.delete_files
         )
 
+    def test_manifest_drops_column_stats(self):
+        """Pickled tasks carry no per-column stats, and the planned ones keep them."""
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+        delete_file = DataFile.from_args(
+            content=DataFileContent.POSITION_DELETES,
+            file_path="s3://bucket/deletes/a.parquet",
+            file_format=FileFormat.PARQUET,
+            partition=task.file.partition,
+            record_count=1,
+            file_size_in_bytes=1,
+            lower_bounds={2147483546: b"a"},
+            upper_bounds={2147483546: b"z"},
+        )
+        with_deletes = FileScanTask(task.file, delete_files={delete_file})
+
+        (rebuilt,) = scan_tasks_from_manifest(manifest_from_scan_tasks([with_deletes]))
+
+        (rebuilt_delete,) = rebuilt.delete_files
+        for data_file in (rebuilt.file, rebuilt_delete):
+            assert data_file.column_sizes is None
+            assert data_file.lower_bounds is None
+            assert data_file.upper_bounds is None
+        assert rebuilt.file.spec_id == task.file.spec_id
+        assert rebuilt_delete.file_path == delete_file.file_path
+        assert task.file.lower_bounds and delete_file.lower_bounds
+
     def test_rebuilt_scan_tasks_decode_identically(self):
         """The rebuilt tasks must read byte-for-byte what the originals do."""
         from pyiceberg.io.pyarrow import ArrowScan
@@ -4013,8 +4047,6 @@ class TestIcebergDatasourceV2:
         Only the file whose every ``col_a`` passes is counted from metadata;
         one that straddles the filter, or holds a null, is decoded.
         """
-        from pyiceberg.conversions import from_bytes
-
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
             scan_tasks_from_manifest,
         )
@@ -4029,17 +4061,15 @@ class TestIcebergDatasourceV2:
         restore_data_context.use_datasource_v2 = True
         predicate = col("col_a") >= 2
 
-        matched_lower_bounds = []
-        field = self._load_table().schema().find_field("col_a")
+        matched_partitions = []
         for manifest in self._indexer().list_files(
             None, filesystem=None, predicate=predicate
         ):
             tasks = scan_tasks_from_manifest(manifest)
             for task, chunk in zip(tasks, manifest.file_chunk_metadatas):
                 if FileChunk.from_metadata(chunk).fully_matched:
-                    lower = task.file.lower_bounds[field.field_id]
-                    matched_lower_bounds.append(from_bytes(field.field_type, lower))
-        assert matched_lower_bounds == [5]
+                    matched_partitions.append(task.file.partition[0])
+        assert matched_partitions == [2]
 
         def read():
             return read_iceberg(

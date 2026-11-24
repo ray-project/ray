@@ -21,6 +21,12 @@ rather than rebuilding it from typed columns keeps this module off PyIceberg's
 internal constructors (``DataFile``, ``Record``), which change between
 releases. Listing and reading run in one cluster, so both sides use the same
 PyIceberg version.
+
+The task is pickled without its data and delete files' per-column statistics
+(sizes, counts and bounds), which listing has already used and the reader
+never reads. They are most of a task's bytes: a one-row file of a 1,000-column
+table pickles to 85,746 B with them and 516 B without, and each attached
+position delete file to 370 B with them and 144 B without.
 """
 
 from __future__ import annotations
@@ -49,6 +55,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
 )
 
 if TYPE_CHECKING:
+    from pyiceberg.manifest import DataFile
     from pyiceberg.table import FileScanTask
 
     from ray.data._internal.datasource_v2.formats.iceberg.iceberg_footer_sizing import (  # noqa: E501
@@ -110,7 +117,7 @@ def manifest_from_scan_tasks(
                 # 64-bit offsets, since a packed bin's tasks can pass binary's
                 # 2 GiB limit.
                 SCAN_TASK_COLUMN_NAME: pa.array(
-                    [cloudpickle.dumps(task) for task in tasks],
+                    [cloudpickle.dumps(_without_column_stats(task)) for task in tasks],
                     type=pa.large_binary(),
                 ),
             }
@@ -124,3 +131,47 @@ def scan_tasks_from_manifest(manifest: FileManifest) -> Iterator["FileScanTask"]
         # Rows ``iceberg_parquet_route`` listed carry none.
         assert data is not None, "a row-group run has no scan task"
         yield cloudpickle.loads(data)
+
+
+# The ``DataFile`` fields listing reads and the reader never does.
+_COLUMN_STATS = (
+    "column_sizes",
+    "value_counts",
+    "null_value_counts",
+    "nan_value_counts",
+    "lower_bounds",
+    "upper_bounds",
+)
+
+
+def _without_column_stats(task: "FileScanTask") -> "FileScanTask":
+    """A copy of ``task`` whose data and delete files carry no column stats."""
+    from pyiceberg.table import FileScanTask
+
+    return FileScanTask(
+        _data_file_without_column_stats(task.file),
+        delete_files={_data_file_without_column_stats(f) for f in task.delete_files},
+        residual=task.residual,
+    )
+
+
+def _data_file_without_column_stats(data_file: "DataFile") -> "DataFile":
+    from pyiceberg.manifest import DATA_FILE_TYPE, DEFAULT_READ_VERSION
+
+    # ``DataFile`` stores its fields by position, in this struct's order.
+    names = [field.name for field in DATA_FILE_TYPE[DEFAULT_READ_VERSION].fields]
+    if not set(_COLUMN_STATS) <= set(names):
+        return data_file
+    copy = type(data_file)(*(data_file[i] for i in range(len(data_file))))
+    for name in _COLUMN_STATS:
+        copy[names.index(name)] = None
+    spec_id = getattr(data_file, "spec_id", None)
+    if spec_id is not None:
+        copy.spec_id = spec_id
+    kept = ("file_path", "file_format", "record_count", "file_size_in_bytes")
+    if any(getattr(copy, name) is not None for name in _COLUMN_STATS) or any(
+        getattr(copy, name) != getattr(data_file, name) for name in kept
+    ):
+        # Another PyIceberg layout; pickle the file as it is.
+        return data_file
+    return copy
