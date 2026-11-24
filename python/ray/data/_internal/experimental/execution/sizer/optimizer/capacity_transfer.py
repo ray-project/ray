@@ -575,19 +575,15 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 )
                 continue
             if ctx.now - transfer.started_t > SIZER_TRANSFER_TIMEOUT_S:
-                # Cancel the claim node by node. The pool cancels pendings
-                # first, and every pending on a guarded recipient is ours
-                # (see ``TransferInFlight.claimed_ids``), so a per-node count
-                # is exact.
-                claimed = set(still_pending)
+                # Cancel the claimed pendings by id. The guard blocks every
+                # other scaling decision on the recipient while a transfer is
+                # in flight (see ``TransferInFlight.claimed_ids``), so every
+                # pending on this pool is ours -- naming them by id avoids
+                # relying on that invariant and is simpler.
                 pool.scale(
                     ScaleDownRequest.on_nodes(
-                        [
-                            node
-                            for node, ids in pool.pending_ids_by_target_node().items()
-                            for actor_id in ids
-                            if actor_id in claimed
-                        ],
+                        (),
+                        pending_ids=still_pending,
                         force=True,
                         reason="optimizer: transfer timed out",
                     )
