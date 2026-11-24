@@ -149,7 +149,7 @@ def both_iceberg_readers(request, restore_data_context):
     must hold for each, which is the parity bar.
     """
     reader_v2, one_file_per_call = request.param
-    restore_data_context._use_iceberg_datasource_v2 = reader_v2
+    restore_data_context.use_datasource_v2 = reader_v2
     restore_data_context.iceberg_config.read_file_tasks_sequentially = one_file_per_call
     return reader_v2
 
@@ -494,9 +494,13 @@ def test_default_size_estimate_uses_full_parquet_file_size():
     )
 
 
-def test_projection_pushdown_updates_planner_size_estimate(monkeypatch):
+def test_projection_pushdown_updates_planner_size_estimate(
+    monkeypatch, restore_data_context
+):
+    """The legacy reader's size estimate follows the projected columns."""
     from ray._private import auto_init_hook
 
+    restore_data_context.use_datasource_v2 = False
     monkeypatch.setattr(auto_init_hook, "enable_auto_connect", False)
     monkeypatch.setattr(ray.util, "get_current_placement_group", lambda: None)
     projected_ds = read_iceberg(
@@ -3740,7 +3744,7 @@ class TestIcebergDatasourceV2:
 
         V1 reports this order in the schema but returns rows in table order.
         """
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
 
         ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -3765,7 +3769,7 @@ class TestIcebergDatasourceV2:
         """
         from ray.data._internal.datasource_v2.common import listing_utils
 
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
 
         def explode(*args, **kwargs):
             raise AssertionError("plan time sampled a file")
@@ -3821,7 +3825,7 @@ class TestIcebergDatasourceV2:
             ReadFiles,
         )
 
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         expected = len(self._load_table().scan().to_arrow())
 
         ds = read_iceberg(
@@ -3875,7 +3879,7 @@ class TestIcebergDatasourceV2:
             ReadFiles,
         )
 
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
@@ -3911,7 +3915,7 @@ class TestIcebergDatasourceV2:
         """A limit is applied while reading; no metadata says where it stops."""
         from ray.data._internal.logical.operators.read_operator import ReadFiles
 
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
@@ -3947,7 +3951,7 @@ class TestIcebergDatasourceV2:
                 {"col_a": 3, "col_b": "c", "col_c": 4},
             ],
         )
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
 
         def read():
             return read_iceberg(
@@ -4075,7 +4079,7 @@ class TestIcebergDatasourceV2:
         PyIceberg's one-value ``NotIn`` would each drop it.
         """
         identifier, full_table = nan_null_iceberg_table
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         restore_data_context.iceberg_config.read_file_tasks_sequentially = (
             one_file_per_call
         )
@@ -4094,7 +4098,7 @@ class TestIcebergDatasourceV2:
     ):
         """A column read only for the after-read filter isn't returned."""
         identifier, full_table = nan_null_iceberg_table
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         predicate = ~(col("f") < 1.0)
         ds = (
             read_iceberg(
@@ -4113,7 +4117,7 @@ class TestIcebergDatasourceV2:
     ):
         """The limit counts rows after the after-read filter, not before."""
         identifier, _ = nan_null_iceberg_table
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         ds = (
             read_iceberg(
                 table_identifier=identifier, catalog_kwargs=_CATALOG_KWARGS.copy()
@@ -4128,7 +4132,7 @@ class TestIcebergDatasourceV2:
 
     def test_filter_that_does_not_bind_stays_above_the_read(self, restore_data_context):
         """``col_a >= 1.5`` on an ``int`` column fails Iceberg's bind, so Ray keeps it."""
-        restore_data_context._use_iceberg_datasource_v2 = True
+        restore_data_context.use_datasource_v2 = True
         predicate = (col("col_c") >= 3) & (col("col_a") >= 1.5)
         ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",

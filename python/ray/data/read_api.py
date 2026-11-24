@@ -6261,9 +6261,19 @@ def read_iceberg(
     Using PyIceberg, any intended row filters, selection of specific fields and
     picking of a particular snapshot ID are applied, and the files that satisfy
     the query are distributed across Ray read tasks.
-    The number of output blocks is determined by ``override_num_blocks``
-    which can be requested from this interface or automatically chosen if
-    unspecified.
+
+    By default, ``read_iceberg`` reads through the V2 datasource
+    (``DataContext.use_datasource_v2``), which differs from the legacy reader
+    in two ways:
+
+    - ``parallelism`` and ``override_num_blocks`` have no effect. The number of
+      read tasks follows the estimated in-memory size of the columns read.
+    - A filter Iceberg can't evaluate, like ``col("x") * 2 > 10``, runs in Ray
+      after the read instead of raising an error.
+
+    To use the legacy reader, set ``DataContext.get_current().use_datasource_v2``
+    to ``False`` or set ``RAY_DATA_USE_DATASOURCE_V2=0``. This also moves
+    ``read_parquet`` back to its legacy reader.
 
     .. tip::
 
@@ -6313,7 +6323,7 @@ def read_iceberg(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
             physical files to be read. You shouldn't manually set this value in most
-            cases.
+            cases. Only the legacy reader uses it.
 
         label_selector: Labels required on the node where each read task runs.
         fallback_strategy: Alternative label requirements that Ray tries in order if
@@ -6365,7 +6375,7 @@ def read_iceberg(
             if resolved.table_identifier is not None:
                 table_identifier = resolved.table_identifier
 
-    if DataContext.get_current()._use_iceberg_datasource_v2:
+    if DataContext.get_current().use_datasource_v2:
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2 import (  # noqa: E501
             IcebergDatasourceV2,
         )

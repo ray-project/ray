@@ -177,9 +177,12 @@ def test_invalid_reader_or_mode(catalog, kwargs):
 def test_read_api_wiring(catalog):
     with (
         mock.patch(
-            "ray.data._internal.datasource.iceberg_datasource.IcebergDatasource"
+            "ray.data._internal.datasource_v2.formats.iceberg.iceberg_datasource_v2."
+            "IcebergDatasourceV2"
         ) as datasource,
-        mock.patch("ray.data.read_api.read_datasource", return_value=object()) as read,
+        mock.patch(
+            "ray.data.read_api._read_datasource_v2", return_value=object()
+        ) as read,
     ):
         result = ray.data.read_iceberg(table_identifier="cat.db.tbl", catalog=catalog)
     assert result is read.return_value

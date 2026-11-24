@@ -4,7 +4,7 @@ Wires the V2 listing (:class:`IcebergFileIndexer`, driven by the upstream
 ``ListFiles`` op), scanning (:class:`IcebergScanner`) and reading
 (:class:`IcebergFileReader`) components against a table in a PyIceberg catalog.
 Constructed from ``read_api.read_iceberg`` when
-the private ``DataContext._use_iceberg_datasource_v2`` is set.
+``DataContext.use_datasource_v2`` is set, which is the default.
 
 The catalog is loaded here, on the driver: the listing and read tasks get the
 loaded table's metadata and ``FileIO``, as V1's read tasks do, because the
