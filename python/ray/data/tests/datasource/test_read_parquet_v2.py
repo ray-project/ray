@@ -1090,6 +1090,34 @@ def test_count_pushdown_declines_row_reducing_reads(
     assert ds.count() == 2
 
 
+def test_count_plan_of_a_partially_pushable_filter_keeps_the_residual_columns(
+    tmp_path, restore_ctx
+):
+    """A conjunct the scanner declines stays in a Filter above the read.
+
+    Master's pushdown guard refuses float comparisons PyArrow's row-group
+    statistics cannot answer exactly (NaN hides from min/max), so ``f != 0``
+    stays unpushed. The Filter needs its columns, which forces the read to
+    keep a non-empty projection -- so the exact-count stub cannot fire while
+    a residual filter still has rows to drop.
+    """
+    from ray.data._internal.logical.operators.map_operator import Filter
+    from ray.data.expressions import col
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [10, 10], "f": [1.0, 0.0]}))
+
+    restore_ctx.use_datasource_v2 = True
+    ds = ray.data.read_parquet(str(tmp_path))
+    ds = ds.filter(expr=(col("a") > 5) & (col("f") != 0))
+
+    dag = _optimized_count_plan(ds).dag
+    (residual,) = [op for op in _walk(dag) if isinstance(op, Filter)]
+    (read_files_op,) = [op for op in _walk(dag) if isinstance(op, ReadFiles)]
+    assert isinstance(read_files_op.scanner, ParquetScanner)
+    assert read_files_op.scanner.columns is not None
+    assert "f" in read_files_op.scanner.columns
+
+
 @pytest.mark.parametrize(
     "num_files,rows_per_file,row_group_size",
     [(1, 10, None), (3, 100, 10), (4, 1000, 250)],
