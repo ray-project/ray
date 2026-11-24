@@ -39,8 +39,10 @@ from ray.data.tests.delta_test_utils import (
     DELETION_VECTOR_FILES,
     DELETION_VECTOR_TABLE_ROWS,
     MAPPED_TABLE_ROWS,
+    TYPE_WIDENINGS,
     write_deletion_vector_table,
     write_mapped_table,
+    write_type_widened_table,
 )
 from ray.tests.conftest import *  # noqa
 
@@ -816,6 +818,59 @@ def test_generated_ids_are_physical_row_positions(deletion_vector_table, tmp_pat
         (row["x"], row["generated_id"]["fragment"], row["generated_id"]["row_id"])
         for row in ids
     ) == [(0, 0, 0), (2, 0, 2), (5, 1, 2), (10, 0, 0), (11, 0, 1), (12, 0, 2)]
+
+
+_WIDENED_COLUMNS = {
+    "i": [1, 2, 2**40, 4],
+    "f": [1.5, 2.5, 3.25, 4.75],
+    "d": [Decimal("1.25"), Decimal("2.50"), Decimal("123456.7891"), Decimal("4")],
+    # The first file stores dates, the second timestamps.
+    "day": [
+        datetime.date(2024, 1, 1),
+        datetime.date(2024, 1, 2),
+        datetime.datetime(2024, 1, 3, 12, 30),
+        datetime.datetime(2024, 1, 4),
+    ],
+}
+
+
+def _widened_row(i: int) -> Dict[str, Any]:
+    day = _WIDENED_COLUMNS["day"][i]
+    if not isinstance(day, datetime.datetime):
+        day = datetime.datetime.combine(day, datetime.time())
+    return {
+        "i": _WIDENED_COLUMNS["i"][i],
+        "f": _WIDENED_COLUMNS["f"][i],
+        "d": _WIDENED_COLUMNS["d"][i],
+        "day": day,
+    }
+
+
+@pytest.mark.parametrize(
+    "predicate, matching",
+    [
+        (None, [0, 1, 2, 3]),
+        (col("i") > 1, [1, 2, 3]),
+        (col("f") > 2.0, [1, 2, 3]),
+        (col("d") >= Decimal("2.5"), [1, 2, 3]),
+        (col("day") >= datetime.datetime(2024, 1, 2), [1, 2, 3]),
+    ],
+    ids=["all", "long", "double", "decimal", "timestamp_ntz"],
+)
+def test_reads_type_widened_columns(tmp_path, predicate, matching):
+    """Files written before a column was widened keep the narrow type; they're
+    read as the table's wider type, and a filter sees the widened values."""
+    path = str(tmp_path / "widened")
+    write_type_widened_table(path, _WIDENED_COLUMNS)
+
+    ds = _read(path)
+    if predicate is not None:
+        ds = ds.filter(expr=predicate)
+
+    assert [str(t) for t in ds.schema().types] == [
+        str(TYPE_WIDENINGS[column][3]) for column in _WIDENED_COLUMNS
+    ]
+    assert _rows(ds) == _rows(ray.data.from_items([_widened_row(i) for i in matching]))
 
 
 if __name__ == "__main__":

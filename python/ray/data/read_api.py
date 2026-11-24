@@ -6669,8 +6669,9 @@ def read_delta(
         the statistics in the Delta log, splits files into row-group read
         units, and drops the rows deletion vectors delete. It raises
         ``NotImplementedError`` for tables that need a reader feature other
-        than ``timestampNtz``, ``columnMapping``, ``deletionVectors`` and
-        ``v2Checkpoint``, or that have binary partition columns, and
+        than ``timestampNtz``, ``columnMapping``, ``deletionVectors``,
+        ``typeWidening`` and ``v2Checkpoint``, or that have binary partition
+        columns, and
         ``ValueError`` if ``include_paths`` would replace the
         table's own ``path`` column or the log names data files outside the
         table directory, as a shallow clone's does. Because the table is opened and its

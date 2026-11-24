@@ -330,3 +330,96 @@ def write_mapped_table(path: str, mode: str) -> None:
     ]
     with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
         f.write("\n".join(json.dumps(action) for action in actions) + "\n")
+
+
+# The columns ``write_type_widened_table`` widens: the type the first file
+# stores, and the table type in Delta's and Arrow's names.
+TYPE_WIDENINGS = {
+    "i": (pa.int32(), "integer", "long", pa.int64()),
+    "f": (pa.float32(), "float", "double", pa.float64()),
+    "d": (pa.decimal128(5, 2), "decimal(5,2)", "decimal(10,4)", pa.decimal128(10, 4)),
+    "day": (pa.date32(), "date", "timestamp_ntz", pa.timestamp("us")),
+}
+
+
+def write_type_widened_table(path: str, rows: Dict[str, List[Any]]) -> None:
+    """Write a Delta table whose columns were widened after its first file.
+
+    deltalake can't widen types, so the log is written by hand, as Databricks
+    writes it: the ``typeWidening`` reader feature, and each column's
+    ``delta.typeChanges``. The first file stores the narrow types of
+    ``TYPE_WIDENINGS``, the second the wide ones.
+
+    Args:
+        path: Directory to create the table in. Must not exist yet.
+        rows: Each column's values, half in each file.
+    """
+    os.makedirs(os.path.join(path, "_delta_log"))
+    half = len(next(iter(rows.values()))) // 2
+    add_actions = []
+    for index, (start, end, wide) in enumerate(((0, half, False), (half, None, True))):
+        name = f"part-{index}.parquet"
+        data_file = os.path.join(path, name)
+        pq.write_table(
+            pa.table(
+                {
+                    column: pa.array(
+                        values[start:end],
+                        TYPE_WIDENINGS[column][3 if wide else 0],
+                    )
+                    for column, values in rows.items()
+                }
+            ),
+            data_file,
+        )
+        add_actions.append(
+            {
+                "add": {
+                    "path": name,
+                    "partitionValues": {},
+                    "size": os.path.getsize(data_file),
+                    "modificationTime": 0,
+                    "dataChange": True,
+                }
+            }
+        )
+    fields = [
+        {
+            "name": column,
+            "type": TYPE_WIDENINGS[column][2],
+            "nullable": True,
+            "metadata": {
+                "delta.typeChanges": [
+                    {
+                        "fromType": TYPE_WIDENINGS[column][1],
+                        "toType": TYPE_WIDENINGS[column][2],
+                    }
+                ]
+            },
+        }
+        for column in rows
+    ]
+    features = ["typeWidening", "timestampNtz"]
+    actions = [
+        {
+            "protocol": {
+                "minReaderVersion": 3,
+                "minWriterVersion": 7,
+                "readerFeatures": features,
+                "writerFeatures": features,
+            }
+        },
+        {
+            "metaData": {
+                "id": "3c3a3d8e-0000-4000-8000-000000000004",
+                "format": {"provider": "parquet", "options": {}},
+                "schemaString": json.dumps({"type": "struct", "fields": fields}),
+                "partitionColumns": [],
+                "configuration": {"delta.enableTypeWidening": "true"},
+                "createdTime": 0,
+            }
+        },
+        *add_actions,
+    ]
+    with open(os.path.join(path, "_delta_log", f"{0:020d}.json"), "w") as f:
+        f.write("\n".join(json.dumps(action) for action in actions) + "\n")
