@@ -1792,8 +1792,16 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertNotIn("unknown_trial", searcher.running)
             self.assertEqual(len(recorded), 0)
 
-            # Missing metric and NaN/inf metric must be skipped in on_trial_result.
+            # Missing/None hyperband_info, missing/non-numeric metric, and NaN/inf metric
+            # must be skipped in on_trial_result without raising TypeError.
+            searcher.on_trial_result("trial_1", {"loss": 0.5, "hyperband_info": None})
             searcher.on_trial_result("trial_1", {"hyperband_info": {"budget": 1}})
+            searcher.on_trial_result(
+                "trial_1", {"loss": None, "hyperband_info": {"budget": 1}}
+            )
+            searcher.on_trial_result(
+                "trial_1", {"loss": "invalid", "hyperband_info": {"budget": 1}}
+            )
             searcher.on_trial_result(
                 "trial_1", {"loss": float("nan"), "hyperband_info": {"budget": 1}}
             )

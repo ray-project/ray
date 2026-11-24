@@ -252,8 +252,9 @@ class TuneBOHB(Searcher):
                 "HyperBandForBOHB as a scheduler?"
             )
         elif (
-            "budget" in result.get("hyperband_info", {})
+            "budget" in (result.get("hyperband_info") or {})
             and self.metric in result
+            and isinstance(result[self.metric], (int, float))
             and not is_nan_or_inf(result[self.metric])
         ):
             hbs_wrapper = self.to_wrapper(trial_id, result)
