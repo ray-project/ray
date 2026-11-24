@@ -4238,10 +4238,10 @@ def read_webdataset(
     Note:
         With ``DataContext.use_datasource_v2`` enabled:
 
-        - A field whose dtype differs between shards fails the read.
+        - A field whose dtype differs between samples can fail the read.
         - The default decoder returns grayscale images as ``(H, W, 1)``.
         - Arrays in one field whose number of dimensions differs between
-          shards, such as ``.npy`` members, can get a leading axis of size 1.
+          samples, such as ``.npy`` members, can get a leading axis of size 1.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
