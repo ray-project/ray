@@ -13,6 +13,7 @@ import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
+from ray.data._internal.datasource_v2.common import file_reader
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
@@ -478,6 +479,31 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
 
     assert isinstance(scanner, ParquetScanner)
     assert scanner.schema == schema
+
+
+@pytest.mark.parametrize("cap,expected_workers", [(2, 2), (4, 3), (0, None)])
+def test_parquet_fragment_workers(tmp_path, monkeypatch, cap, expected_workers):
+    monkeypatch.setattr(file_reader, "_MAX_FRAGMENT_WORKERS", cap)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", False
+    )
+    paths = [str(tmp_path / f"{i}.parquet") for i in range(3)]
+    schema = pa.schema([("id", pa.int64())])
+    for i, path in enumerate(paths):
+        pq.write_table(pa.table({"id": [i]}, schema=schema), path)
+    pool = Mock(wraps=file_reader.make_async_gen)
+    monkeypatch.setattr(file_reader, "make_async_gen", pool)
+
+    scanner = ParquetDatasourceV2(paths).create_scanner(schema)
+    batches = scanner.create_reader().read(_manifest_of(paths))
+    ids = [value for batch in batches for value in batch["id"].to_pylist()]
+    assert sorted(ids) == [0, 1, 2]
+    if expected_workers is None:
+        pool.assert_not_called()
+    else:
+        pool.assert_called_once()
+        assert pool.call_args.kwargs["num_workers"] == expected_workers
+        assert pool.call_args.kwargs["preserve_ordering"]
 
 
 @pytest.mark.parametrize(
