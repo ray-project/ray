@@ -100,6 +100,10 @@ ray-cluster-autoscaler-v2-terminate-idle-cluster                                
 
 Don't submit any workload. Once no driver has connected for `timeoutSeconds`, the autoscaler sets `spec.idleSuspend` to `true` and the KubeRay operator deletes the RayCluster's Pods. Wait for the RayCluster to finish suspending, then check `spec.idleSuspend`:
 
+```bash
+kubectl wait --for=jsonpath='{.status.state}'=suspended raycluster/ray-cluster-autoscaler-v2-terminate-idle-cluster --timeout=180s
+kubectl get raycluster ray-cluster-autoscaler-v2-terminate-idle-cluster -o jsonpath='{.spec.idleSuspend}{"\n"}'
+```
 
 ```text
 true
@@ -145,6 +149,24 @@ Submit a Ray job that connects to the Ray cluster and runs for 10 minutes. The e
 ```bash
 HEAD_POD=$(kubectl get pods -l ray.io/cluster=ray-cluster-autoscaler-v2-terminate-idle-cluster,ray.io/node-type=head -o jsonpath='{.items[0].metadata.name}')
 kubectl exec $HEAD_POD -c ray-head -- ray job submit --address http://localhost:8265 --submission-id keep-alive --no-wait -- python -c "import ray, time; ray.init(); time.sleep(600)"
+```
+
+Wait longer than `timeoutSeconds`, then verify that the RayCluster isn't suspended while the driver is running:
+
+```bash
+kubectl get raycluster ray-cluster-autoscaler-v2-terminate-idle-cluster -o jsonpath='{.spec.idleSuspend}{"\n"}'
+```
+
+```text
+false
+```
+
+Stop the job (or wait for it to finish) so the autoscaler idle-suspends the RayCluster again before Step 5:
+
+```bash
+kubectl exec $HEAD_POD -c ray-head -- ray job stop --address http://localhost:8265 keep-alive
+kubectl wait --for=jsonpath='{.status.state}'=suspended raycluster/ray-cluster-autoscaler-v2-terminate-idle-cluster --timeout=180s
+```
 
 ### Step 5: Switch to the `Delete` policy
 
