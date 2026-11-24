@@ -1,3 +1,4 @@
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -241,7 +242,7 @@ class FakeDocker:
         self.calls: list[list[str]] = []
         self.fail_scan_of = fail_scan_of
 
-    def __call__(self, args, check=True):
+    def __call__(self, args, check=True, timeout=None):
         args = list(args)
         self.calls.append(args)
         if args[:2] == ["docker", "run"] and self.fail_scan_of:
@@ -275,6 +276,7 @@ def test_stage_needs_an_ignore_file_for_every_image_type(tmp_path: Path):
         staging = scan_images.stage(tmp_path / "b", layout, dbs, {"ray"})
     assert (staging / "data" / "ignore" / "ray.trivyignore.yaml").is_file()
     assert (staging / "work" / "cache" / "db").readlink() == Path("/data/db")
+    assert (staging / "work" / "cache" / "java-db").readlink() == Path("/data/java-db")
     assert oct((staging / "work" / "out").stat().st_mode & 0o7777) == "0o1777"
 
 
@@ -283,8 +285,8 @@ def mode(path: Path) -> str:
 
 
 def test_stage_makes_the_data_tree_readable_by_the_scan_user(tmp_path: Path):
-    """crane writes blobs 0600 and docker cp makes root the owner, so the
-    non-root scan user can only read what is world-readable."""
+    """crane writes blobs 0600, and docker cp keeps the job's owner, which
+    isn't the scan user, so the scan user can only read what is world-readable."""
     files = tmp_path / "runfiles"
     files.mkdir()
     (files / "trivy").write_bytes(b"\x7fELF")
@@ -312,32 +314,104 @@ def test_stage_makes_the_data_tree_readable_by_the_scan_user(tmp_path: Path):
     assert mode(data / "layout" / "blobs" / "sha256") == "0o755"
     assert mode(data / "db" / "trivy.db") == "0o644"
     assert mode(data / "ignore" / "ray.trivyignore.yaml") == "0o644"
+    # Only the DBs given get a cache link, so none is left dangling.
+    assert sorted(p.name for p in (staging / "work" / "cache").iterdir()) == ["db"]
 
 
 def test_a_failed_setup_removes_what_it_created():
     docker = FakeDocker()
     original = docker.__call__
 
-    def failing(args, check=True):
+    def failing(args, check=True, timeout=None):
         if args[:2] == ["docker", "create"]:
             docker.calls.append(list(args))
             raise ScanError("docker create failed")
         return original(args, check)
 
+    trivy = ContainedTrivy("base")
     with mock.patch.object(scan_images, "_run", failing):
         with pytest.raises(ScanError):
-            with ContainedTrivy("base"):
+            with trivy:
                 pass
-    removed = [c for c in docker.calls if c[:3] == ["docker", "volume", "rm"]]
-    assert removed and "-f" in removed[0]
+    assert docker.calls[-2:] == [
+        ["docker", "rm", "-f", trivy.loader],
+        ["docker", "volume", "rm", "-f", trivy.data, trivy.work],
+    ]
 
 
-def test_stale_leftovers_from_earlier_jobs_are_removed():
+def test_cleanup_removes_the_volumes_even_if_removing_containers_fails():
+    """A cancelled job's SIGTERM handler can interrupt the first call."""
+    calls = []
+
+    def run(args, check=True, timeout=None):
+        calls.append(list(args))
+        if args[:3] == ["docker", "rm", "-f"]:
+            raise SystemExit(143)
+        return ""
+
+    trivy = ContainedTrivy("base")
+    with mock.patch.object(scan_images, "_run", run):
+        with pytest.raises(SystemExit):
+            trivy.__exit__(None, None, None)
+    assert calls[-1] == ["docker", "volume", "rm", "-f", trivy.data, trivy.work]
+
+
+def test_load_and_scan_copy_into_the_volumes_and_out_again(tmp_path: Path):
+    docker = FakeDocker()
+    (target,) = targets(("ray", "3.12"))
+    target.digest = "sha256:d1"
+    staging = tmp_path / "staging"
+    result = tmp_path / "result.json"
+    with mock.patch.object(scan_images, "_run", docker):
+        with ContainedTrivy("base") as trivy:
+            trivy.load(staging)
+            trivy.scan(target, result)
+    for volume in ("data", "work"):
+        copy = ["docker", "cp", f"{staging / volume}/.", f"{trivy.loader}:/{volume}"]
+        assert copy in docker.calls
+    assert result.read_bytes() == FIXTURE.read_bytes()
+    assert docker.calls[-2:] == [
+        ["docker", "rm", "-f", trivy.loader, f"{trivy.prefix}-scan-0"],
+        ["docker", "volume", "rm", "-f", trivy.data, trivy.work],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("raised", "message"),
+    [
+        (subprocess.TimeoutExpired(["docker"], 120), "timed out after 120s"),
+        (FileNotFoundError(2, "No such file or directory"), "could not run"),
+    ],
+    ids=["hangs", "missing"],
+)
+def test_docker_problems_are_scan_errors(
+    monkeypatch: pytest.MonkeyPatch, raised: Exception, message: str
+):
+    monkeypatch.setattr(scan_images.subprocess, "run", mock.Mock(side_effect=raised))
+    with pytest.raises(ScanError, match=message):
+        scan_images._run(["docker", "ps"], check=False)
+
+
+def test_docker_output_is_decoded_leniently_within_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    done = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+    run = mock.Mock(return_value=done)
+    monkeypatch.setattr(scan_images.subprocess, "run", run)
+    assert scan_images._run(["docker", "ps"], timeout=5) == "ok"
+    assert (run.call_args.kwargs["errors"], run.call_args.kwargs["timeout"]) == (
+        "replace",
+        5,
+    )
+
+
+def test_stale_leftovers_from_earlier_jobs_are_removed(caplog):
     now = datetime(2026, 11, 12, 12, 0, 0)
     listings = {
         ("docker", "ps"): "trivy-scan-old-loader\ntrivy-scan-new-loader\n",
         ("docker", "volume", "ls"): (
             "trivy-scan-old-data\ntrivy-scan-new-data\ntrivy-scan-new-local-data\n"
+            "trivy-scan-odd-data\n"
         ),
     }
     created = {
@@ -347,10 +421,11 @@ def test_stale_leftovers_from_earlier_jobs_are_removed():
         "trivy-scan-new-data": "2026-11-12T11:30:00Z",
         # Volumes report local time with an offset: 03:30-08:00 is 11:30 UTC.
         "trivy-scan-new-local-data": "2026-11-12T03:30:00-08:00",
+        "trivy-scan-odd-data": "not a time",
     }
     calls = []
 
-    def run(args, check=True):
+    def run(args, check=True, timeout=None):
         args = list(args)
         calls.append(args)
         if args[:2] == ["docker", "ps"]:
@@ -365,6 +440,7 @@ def test_stale_leftovers_from_earlier_jobs_are_removed():
         scan_images._prune_stale(now)
     removed = [c[-1] for c in calls if "rm" in c]
     assert removed == ["trivy-scan-old-loader", "trivy-scan-old-data"]
+    assert "Can't tell when volume trivy-scan-odd-data was created" in caplog.text
     assert all(
         "label=ray-trivy-scan=1" in " ".join(c) for c in calls if "ls" in c or "ps" in c
     )
