@@ -47,8 +47,9 @@ def manifest_from_scan_tasks(tasks: Sequence["FileScanTask"]) -> FileManifest:
                 [task.file.file_size_in_bytes for task in tasks], type=pa.int64()
             ),
             FILE_CHUNK_METADATA_COLUMN_NAME: pa.nulls(len(tasks)),
+            # 64-bit offsets, since a packed bin's tasks can pass binary's 2 GiB limit.
             SCAN_TASK_COLUMN_NAME: pa.array(
-                [cloudpickle.dumps(task) for task in tasks], type=pa.binary()
+                [cloudpickle.dumps(task) for task in tasks], type=pa.large_binary()
             ),
         }
     )

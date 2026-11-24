@@ -3277,21 +3277,9 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("nested_parquet")
 
     num_rows = 2500
+    rows_per_chunk = 250
     items_per_row = 10
-    payload_size = 50_000  # os.urandom bytes -> 100KB hex string per item
-
-    ids = list(range(num_rows))
-    nested_data = [
-        [
-            {
-                "key": f"item_{i}_{j}",
-                "payload": os.urandom(payload_size).hex(),
-                "value": j,
-            }
-            for j in range(items_per_row)
-        ]
-        for i in ids
-    ]
+    payload_size = 100_000  # bytes per item string
 
     schema = pa.schema(
         [
@@ -3311,7 +3299,23 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
         ]
     )
 
-    table = pa.table({"id": ids, "nested_col": nested_data}, schema=schema)
+    # Only the decoded size must exceed 2 GiB, so a compressible payload repeated by
+    # reference keeps the file and the memory to build and read it small.
+    payload = "x" * payload_size
+    nested_chunk = pa.array(
+        [
+            [
+                {"key": f"item_{i}_{j}", "payload": payload, "value": j}
+                for j in range(items_per_row)
+            ]
+            for i in range(rows_per_chunk)
+        ],
+        type=schema.field("nested_col").type,
+    )
+    nested_col = pa.chunked_array([nested_chunk] * (num_rows // rows_per_chunk))
+    table = pa.table(
+        {"id": list(range(num_rows)), "nested_col": nested_col}, schema=schema
+    )
     file_path = os.path.join(str(tmp_path), "data.parquet")
     pq.write_table(table, file_path, row_group_size=num_rows, use_dictionary=False)
     return str(tmp_path), file_path, num_rows, schema
