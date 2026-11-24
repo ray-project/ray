@@ -1775,6 +1775,80 @@ class TestPackScheduling:
         assert state[node_id_1] == 4
         assert state[node_id_2] == 1
 
+    @pytest.mark.parametrize("unknown_replica", ["unpinned", "recovering"])
+    def test_max_replicas_per_node_reserves_slots_for_unknown_nodes(
+        self, unknown_replica
+    ):
+        """A replica on an unknown node may hold a slot on any node, so pack
+        scheduling must not pin into that slot. Ray doesn't report a pinned
+        replica as autoscaler demand, so one pinned past the cap stays pending.
+        """
+        d_id = DeploymentID(name="deployment1")
+        node_id_1 = NodeID.from_random().hex()
+        node_id_2 = NodeID.from_random().hex()
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        cluster_node_info_cache.add_node(node_id_1, {"CPU": 8})
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id,
+            ReplicaConfig.create(
+                dummy, max_replicas_per_node=2, ray_actor_options={"num_cpus": 0.2}
+            ),
+        )
+        strategies = {}
+
+        def on_scheduled(actor_handle, placement_group):
+            options = actor_handle._options
+            strategies[options["name"]] = options["scheduling_strategy"]
+
+        def schedule(*unique_ids):
+            scheduler.schedule(
+                upscales={
+                    d_id: [
+                        ReplicaSchedulingRequest(
+                            replica_id=ReplicaID(unique_id=u, deployment_id=d_id),
+                            actor_def=MockActorClass(),
+                            actor_resources={"CPU": 0.2},
+                            max_replicas_per_node=2,
+                            actor_options={"name": u},
+                            actor_init_args=(),
+                            on_scheduled=on_scheduled,
+                        )
+                        for u in unique_ids
+                    ]
+                },
+                downscales={},
+            )
+
+        if unknown_replica == "unpinned":
+            # Fill node 1, then launch r2 without a target node.
+            schedule("r0", "r1")
+            scheduler.on_replica_running(ReplicaID("r0", d_id), node_id_1)
+            scheduler.on_replica_running(ReplicaID("r1", d_id), node_id_1)
+            schedule("r2")
+            assert strategies["r2"] == "DEFAULT"
+        else:
+            # After a controller restart, r1 is still on node 1 but not recovered.
+            scheduler.on_replica_recovering(ReplicaID("r0", d_id))
+            scheduler.on_replica_recovering(ReplicaID("r1", d_id))
+            scheduler.on_replica_running(ReplicaID("r0", d_id), node_id_1)
+        # Node 2 joins. The unknown replica may take one of its 2 slots.
+        cluster_node_info_cache.add_node(node_id_2, {"CPU": 8})
+        schedule("r3", "r4")
+        new_strategies = [strategies["r3"], strategies["r4"]]
+        pinned = [
+            s.node_id
+            for s in new_strategies
+            if isinstance(s, NodeAffinitySchedulingStrategy)
+        ]
+        assert pinned == [node_id_2]
+        assert new_strategies.count("DEFAULT") == 1
+
     def test_heterogeneous_resources_with_max_replicas_per_node(self):
         d_id1 = DeploymentID(name="deployment1")
         d_id2 = DeploymentID(name="deployment2")

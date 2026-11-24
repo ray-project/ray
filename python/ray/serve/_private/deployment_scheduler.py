@@ -600,7 +600,8 @@ class DeploymentScheduler:
         2. The remaining resources left over on each node after
            subtracting the resources taken up by running (already
            scheduled by core) and launching (to-be-scheduled and soft
-           targeting that node) replicas.
+           targeting that node) replicas, and reserving each node's
+           `max_replicas_per_node` slots for replicas on unknown nodes.
 
         Note that (1) may not be accurate because it uses cached info
         and there is a delay from fetching data from GCS, and (2) may
@@ -626,14 +627,35 @@ class DeploymentScheduler:
             node_id: AvailableNodeResources(resources)
             for node_id, resources in total_resources.items()
         }
+        num_replicas_on_unknown_nodes: DefaultDict[DeploymentID, int] = defaultdict(int)
         for deployment_id, replicas in self._launching_replicas.items():
             deployment = self._deployments[deployment_id]
             for info in replicas.values():
                 target_node_id = info.target_node_id
                 if not target_node_id or target_node_id not in total_minus_replicas:
+                    num_replicas_on_unknown_nodes[deployment_id] += 1
                     continue
 
                 total_minus_replicas[target_node_id] -= deployment.required_resources
+        for deployment_id, recovering in self._recovering_replicas.items():
+            num_replicas_on_unknown_nodes[deployment_id] += len(recovering)
+        # GCS omits the implicit resource behind `max_replicas_per_node`, so reserve
+        # every node's slot for replicas on unknown nodes. Pinning into a slot they
+        # hold strands the replica: Ray doesn't report pinned replicas as demand.
+        for deployment_id, num_replicas in num_replicas_on_unknown_nodes.items():
+            reserved = RequestedResources(
+                {
+                    key: value * num_replicas
+                    for key, value in self._deployments[
+                        deployment_id
+                    ].required_resources.items()
+                    if key.startswith(IMPLICIT_RESOURCE_PREFIX)
+                }
+            )
+            if not reserved:
+                continue
+            for node_id in total_minus_replicas:
+                total_minus_replicas[node_id] -= reserved
 
         for deployment_id, replica_nodes in self._running_replicas.items():
             deployment = self._deployments[deployment_id]
