@@ -1891,22 +1891,16 @@ def test_below_min_constrained_op_granted_full_min():
         assert req.request[peer].delta >= 1
 
 
-def test_completed_op_released_with_force_and_logged_once_per_size(
-    caplog, propagate_logs
-):
+def test_completed_op_released_with_force():
     pool = _FakePool(min_size=1, max_size=500, cpu=1, running=10)
     done = _FakeOp("ReadFiles", pool, completed=True, execution_finished=True)
     sizer, topo = _bootstrapped(done)
-    with caplog.at_level(logging.DEBUG):
-        for _ in range(3):
-            # The request keeps firing so attrition continues.
-            req = _tick(sizer, topo).request[done]
-            assert (req.delta, req.force) == (-10, True)
-        pool.running = 4  # attrition removed 6 idle actors
-        assert _tick(sizer, topo).request[done].delta == -4
-    releases = [r for r in caplog.records if "releasing" in r.getMessage()]
-    # One line at size 10 and one at size 4 -- not one per tick.
-    assert len(releases) == 2
+    for _ in range(3):
+        # The request keeps firing so attrition continues.
+        req = _tick(sizer, topo).request[done]
+        assert (req.delta, req.force) == (-10, True)
+    pool.running = 4  # attrition removed 6 idle actors
+    assert _tick(sizer, topo).request[done].delta == -4
 
 
 def test_source_op_not_released_at_startup():
@@ -2281,9 +2275,9 @@ def test_ledger_unknown_pg_ops_revive_draining_actors_on_top_of_headroom():
     )
     assert ledger.max_upscale_delta(op) == 3
     ledger.grant(op, 2)  # both revived: the headroom is untouched
-    assert ledger._unknown_pg_headroom[op] == 1
+    assert ledger.unknown_pg_headroom[op] == 1
     ledger.grant(op, 3)  # 2 revived + 1 new: spends it
-    assert ledger._unknown_pg_headroom[op] == 0
+    assert ledger.unknown_pg_headroom[op] == 0
 
 
 def test_ledger_ops_sharing_a_pg_spend_the_same_bundles():
@@ -2309,19 +2303,26 @@ def test_ledger_ops_sharing_a_pg_spend_the_same_bundles():
     assert ledger.max_upscale_delta(cpu_op) == 0
 
 
-def test_decision_claims_reach_the_how_many_pass():
-    """The bottleneck policy debits the tick snapshot's own free maps, so the
-    ledger the how-many pass builds afterwards sees what the decision
-    claimed."""
+def test_ledger_claims_reach_where_and_grants_do_not():
+    """A claim names its nodes, so WHERE must not place into it: it leaves
+    the snapshot's free map too. A grant is a count WHERE places later, so
+    only the ledger's own map loses it. Both shrink what later decisions
+    see."""
     op = _FakeOp("op", _FakePool(min_size=1, max_size=10, cpu=1, running=1))
     sizer, _ = _bootstrapped(op, warm=True, cpu=4.0, gpu=0.0)
     snapshot = sizer.next_tick()
     assert snapshot is not None
-    before = ConstraintAwareCapacityLedger(snapshot).max_upscale_delta(op)
-    decision_ctx = sizer._decision_context(snapshot)
-    decision_ctx.claim_free("node0", ExecutionResources(cpu=1), 2)
-    after = ConstraintAwareCapacityLedger(snapshot).max_upscale_delta(op)
-    assert after == before - 2
+    ledger = ConstraintAwareCapacityLedger(snapshot)
+    before = ledger.max_upscale_delta(op)
+    snapshot_cpu = snapshot.free_by_node["node0"].cpu
+
+    ledger.claim("node0", ExecutionResources(cpu=1), 2)
+    assert ledger.max_upscale_delta(op) == before - 2
+    assert snapshot.free_by_node["node0"].cpu == snapshot_cpu - 2
+
+    ledger.grant(op, 1)
+    assert ledger.max_upscale_delta(op) == before - 3
+    assert snapshot.free_by_node["node0"].cpu == snapshot_cpu - 2
 
 
 def test_next_and_prev_actor_pool_ops_look_through_non_pool_ops():

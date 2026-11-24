@@ -58,7 +58,6 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
 from ray.data._internal.experimental.execution.sizer.policy.growth import (
-    free_schedulable_nodes,
     pending_actor_ids,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
@@ -602,7 +601,7 @@ class TransferBook:
             transfer.claimed_ids += tuple(sorted(new_ids))
 
     def _hold_owed_capacity(self, ctx: DecisionContext) -> None:
-        """Debit what each open transfer is still owed off ``ctx.free``.
+        """Hold, in the tick's ledger, what each open transfer is still owed.
 
         The book advances before the policy decides, and the policy runs
         before the how-many pass, so this hold comes before anything else this
@@ -611,7 +610,7 @@ class TransferBook:
         the hold keeps the node's partial free capacity for the recipient
         while donors drain.
 
-        ``ctx.free`` is rebuilt every tick, so a hold lasts one tick and is
+        The ledger is rebuilt every tick, so a hold lasts one tick and is
         re-taken here while the transfer is open: closing a transfer (landed,
         lost or timed out) releases it.
         """
@@ -621,17 +620,17 @@ class TransferBook:
             for node, owed in transfer.owed_by_node.items():
                 if owed <= 0:
                     continue  # every actor owed here is already placed
-                if node not in ctx.free:
+                if node not in ctx.capacity.free:
                     # A node we are losing: nothing to place there; the
                     # timeout cancels whatever stays owed.
                     continue
                 num_to_bring_up = min(
-                    owed, int(max_placeable_actors(ctx.free[node], per_actor))
+                    owed, int(max_placeable_actors(ctx.capacity.free[node], per_actor))
                 )
                 # Claims the whole owed amount, not just what fits now: the
                 # part that doesn't fit yet is a reservation for actors this
                 # transfer places on a later tick, as donors free their slots.
-                ctx.claim_free(node, per_actor, owed)
+                ctx.capacity.claim(node, per_actor, owed)
                 if num_to_bring_up > 0:
                     transfer.to_bring_up_by_node[node] = num_to_bring_up
                     transfer.owed_by_node[node] = owed - num_to_bring_up
@@ -771,9 +770,7 @@ class TransferBook:
             for node, owed in transfer.owed_by_node.items()
             if owed > 0
         }
-        return [
-            n for n in free_schedulable_nodes(ctx, recipient) if n not in busy_nodes
-        ]
+        return [n for n in ctx.capacity.free_nodes(recipient) if n not in busy_nodes]
 
     def plan(
         self,
@@ -794,7 +791,7 @@ class TransferBook:
             recipient.actor_pool.per_actor_resource_usage(),
             want,
             nodes,
-            ctx.free,
+            ctx.capacity.free,
             [d for d in donors if d.op is not recipient],
             node_rank,
             victim_key,
@@ -835,7 +832,7 @@ class TransferBook:
             # The recipient's actors are owed, not created: they are placed on
             # a later tick, once the victims' capacity is actually free. Hold
             # the node's existing free capacity for them meanwhile.
-            ctx.claim_free(
+            ctx.capacity.claim(
                 node_plan.node, recipient_per_actor, node_plan.num_recipient_actors
             )
             owed_by_node[node_plan.node] = node_plan.num_recipient_actors

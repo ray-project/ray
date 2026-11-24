@@ -48,6 +48,7 @@ from typing import (
     Tuple,
 )
 
+from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_MAX_STEP_RATIO,
     SIZER_BOTTLENECK_MAX_TIMEOUT_S,
@@ -170,6 +171,29 @@ _RULE_BY_KIND: Dict[DecisionKind, OpRule] = {
 }
 
 
+def _within_capacity(
+    op: "ExperimentalActorPoolMapOperator", decision: OpDecision, ctx: DecisionContext
+) -> OpDecision:
+    """``decision`` with its upscale cut to what still fits, granted in the
+    ledger. Downscales pass through. Warmup shares are already bounded, but
+    cutting them too keeps a constrained op from getting an all-cluster share
+    it cannot place. An upscale with no room left keeps its rule but drops
+    its request."""
+    want = decision.request
+    if want is None or want.delta <= 0:
+        return decision
+    delta = min(want.delta, ctx.capacity.max_upscale_delta(op))
+    if delta <= 0:
+        return OpDecision(decision.rule)
+    ctx.capacity.grant(op, delta)
+    if delta == want.delta:
+        return decision
+    return OpDecision(
+        decision.rule,
+        request=ActorPoolScalingRequest.upscale(delta=delta, reason=want.reason),
+    )
+
+
 class SizingPolicy:
     """Decides one action per op each tick. Owns what persists across ticks:
     open transfers (``TransferBook``), the surplus streaks, and the per-op
@@ -231,7 +255,11 @@ class SizingPolicy:
            GROW_BALANCED, FUND / DONATE, SHRINK_SURPLUS). These requests
            already name their nodes.
         3. Run the per-op rules for every op that steps 1 and 2 did not
-           touch. A completed op always gets its per-op action.
+           touch, in the tick's op order, and grant each upscale only what
+           is still free. A completed op always gets its per-op action.
+
+        Every step checks and spends capacity in ``ctx.capacity``, so a
+        later step never hands out capacity an earlier one took.
         """
         placed: Dict[
             "ExperimentalActorPoolMapOperator",
@@ -280,7 +308,7 @@ class SizingPolicy:
             for op in ctx.snapshot.ordered_ops:
                 if op in decisions and not op.has_completed():
                     continue
-                decisions[op] = self.per_op.decide(
+                wanted = self.per_op.decide(
                     op,
                     status=self._statuses.status(op),
                     phase=ctx.phase,
@@ -288,6 +316,7 @@ class SizingPolicy:
                     snapshot=ctx.snapshot,
                     op_state=ctx.topology[op],
                 )
+                decisions[op] = _within_capacity(op, wanted, ctx)
         return decisions
 
     # --- decision handlers ----------------------------------------------------
@@ -688,7 +717,7 @@ class SizingPolicy:
             if recipient_per_actor is not None:
                 if recipient_nodes is None or node not in recipient_nodes:
                     continue
-                room = ctx.free.get(node, ExecutionResources.zero()).add(
+                room = ctx.capacity.free.get(node, ExecutionResources.zero()).add(
                     donor.per_actor
                 )
                 if max_placeable_actors(room, recipient_per_actor) < 1:

@@ -5,10 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, AbstractSet, Dict, Optional, Sequence, Tuple
 
-from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
     BundleKey,
+)
+from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
+    ConstraintAwareCapacityLedger,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import SizerPhase
 
@@ -27,18 +29,16 @@ if TYPE_CHECKING:
 
 @dataclass
 class DecisionContext:
-    """One tick's inputs for the bottleneck policy: data only, no callbacks.
+    """One tick's inputs for the sizing policy.
 
-    The policy writes back debits to ``free`` / ``pg_free`` /
-    ``unknown_pg_headroom`` for the capacity it claims. Those maps are the
-    tick snapshot's own, so the how-many pass later in the tick sees the
-    debits. Holding an operator goes through ``OpStatusMachine``, not this
-    context.
+    Every decision checks and spends free capacity through ``capacity``, the
+    tick's one ledger. Holding an operator goes through ``OpStatusMachine``,
+    not this context.
     """
 
     topology: "Topology"
     phase: SizerPhase
-    free: Dict[NodeIdStr, ExecutionResources]
+    capacity: ConstraintAwareCapacityLedger
     # Every actor-pool op, and the subset the sizer places itself (not
     # PG-managed). Moving actors between ops only works for the latter.
     actor_pool_ops: Sequence["ExperimentalActorPoolMapOperator"]
@@ -51,15 +51,10 @@ class DecisionContext:
     schedulable_nodes: Dict[
         "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
     ] = field(default_factory=dict)
-    # Static-PG ops spend their PG's bundles (each like a node); ops whose PG
-    # capacity is unknown, a plain count (see ``ClusterStateSnapshot``).
-    pg_free: Dict[BundleKey, ExecutionResources] = field(default_factory=dict)
+    # The bundles each static-PG op may use (see ``ClusterStateSnapshot``).
     schedulable_bundles: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
     ] = field(default_factory=dict)
-    unknown_pg_headroom: Dict["ExperimentalActorPoolMapOperator", int] = field(
-        default_factory=dict
-    )
     # Most actors each op may grow to: its pool's bounded max size, or, once
     # every upstream op has completed, the actors its remaining work can use.
     # An op missing here is bounded by its pool alone.
@@ -95,25 +90,19 @@ class DecisionContext:
         ],
         modeled_ops: AbstractSet["ExperimentalActorPoolMapOperator"] = frozenset(),
     ) -> "DecisionContext":
-        """This tick's context over ``snapshot`` plus the sizer's own state.
-
-        The free maps are shared with ``snapshot``, not copied: the policy
-        debits what it claims, so the how-many pass later this tick (which
-        reads the same snapshot) doesn't hand it out again.
-        """
+        """This tick's context over ``snapshot`` plus the sizer's own state,
+        with a fresh ledger over the snapshot's free capacity."""
         return cls(
             topology=topology,
             phase=phase,
-            free=snapshot.free_by_node,
+            capacity=ConstraintAwareCapacityLedger(snapshot),
             actor_pool_ops=actor_pool_ops,
             non_pg_ops=non_pg_ops,
             seconds_since_allocation_change=snapshot.seconds_since_allocation_change,
             now=now,
             bottleneck=bottleneck,
             schedulable_nodes=snapshot.schedulable_nodes_by_op,
-            pg_free=snapshot.pg_free_by_bundle,
             schedulable_bundles=snapshot.schedulable_bundles_by_op,
-            unknown_pg_headroom=snapshot.unknown_pg_headroom_by_op,
             growth_ceiling=growth_ceiling,
             next_ops=next_ops,
             snapshot=snapshot,
@@ -126,15 +115,3 @@ class DecisionContext:
 
     def is_pg_managed(self, op: "ExperimentalActorPoolMapOperator") -> bool:
         return op not in self.non_pg_ops
-
-    def claim_free(
-        self, node: NodeIdStr, per_actor: ExecutionResources, count: int
-    ) -> None:
-        """Debit ``count`` actors of ``per_actor`` off ``node``, so later
-        decisions and the how-many pass this tick don't hand the same capacity
-        out."""
-        self.free[node] = (
-            self.free[node]
-            .subtract(per_actor.scale(count))
-            .max(ExecutionResources.zero())
-        )

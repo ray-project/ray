@@ -70,8 +70,6 @@ class SizerTelemetry:
     def __init__(self, dataset_id: str):
         self._dataset_id = dataset_id
         self._metrics = SizerMetrics(dataset_id)
-        # Last pool size logged by the terminal-release branch, per op.
-        self._release_logged_size: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Last summaries logged, to suppress repeats.
         self._last_request_summary: Optional[str] = None
         self._last_placement_summary: Optional[str] = None
@@ -89,17 +87,6 @@ class SizerTelemetry:
 
     # --- how-many pass -------------------------------------------------------
 
-    def log_completed_release(
-        self, op: ExperimentalActorPoolMapOperator, num_actors_to_release: int
-    ) -> None:
-        if self._release_logged_size.get(op) != num_actors_to_release:
-            logger.debug(
-                "OperatorSizer: releasing %d actors of %s (completed)",
-                num_actors_to_release,
-                op.name,
-            )
-            self._release_logged_size[op] = num_actors_to_release
-
     def log_decisions(
         self,
         phase: "SizerPhase",
@@ -109,7 +96,7 @@ class SizerTelemetry:
     ) -> None:
         """Log, once per tick, why each op is sized the way it is: the
         phase, the bottleneck decision, and each op's status, rule, delta and
-        reason. The delta is before the ledger clamps it."""
+        reason. The delta is what fits after the ledger."""
         parts = []
         for op, op_decision in decisions.items():
             status = statuses[op].kind.name.lower()

@@ -35,7 +35,13 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     PG_ELIGIBLE,
 )
-from ray.data._internal.experimental.execution.sizer.models import PlacedSizingRequest
+from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
+    ConstraintAwareCapacityLedger,
+)
+from ray.data._internal.experimental.execution.sizer.models import (
+    ClusterStateSnapshot,
+    PlacedSizingRequest,
+)
 from ray.data._internal.experimental.execution.sizer.op_status import (
     Cooling,
     Donating,
@@ -260,6 +266,16 @@ def _ctx(**overrides) -> DecisionContext:
     ops = set(base["actor_pool_ops"]) | set(base["non_pg_ops"])
     base.setdefault("schedulable_nodes", {op: frozenset(base["free"]) for op in ops})
     base.setdefault("next_ops", {op: tuple(op.output_dependencies) for op in ops})
+    base["capacity"] = ConstraintAwareCapacityLedger(
+        ClusterStateSnapshot(
+            schedulable_nodes_by_op=base["schedulable_nodes"],
+            reserved_by_node={},
+            free_by_node=base.pop("free"),
+            pg_free_by_bundle=base.pop("pg_free", {}),
+            unknown_pg_headroom_by_op=base.pop("unknown_pg_headroom", {}),
+            schedulable_bundles_by_op=base.get("schedulable_bundles", {}),
+        )
+    )
     return DecisionContext(**base)
 
 
@@ -627,13 +643,13 @@ def test_transfer_places_the_recipient_once_donor_capacity_frees():
     requests = _fire(book, recipient, donor, ctx)
     assert _donors(requests) == {donor} and not _granted(requests)
     assert _owed(book.state) == {recipient: 1}
-    assert ctx.free["node"].cpu == 0  # the partial 0.5 CPU is held
+    assert ctx.capacity.free["node"].cpu == 0  # the partial 0.5 CPU is held
     assert book.phase is TransferPhase.IN_FLIGHT
 
     # The donor is still draining: still nothing to place, and the 0.5 CPU
     # stays held rather than handed to another decision or how_many.
     ctx, requests = _transfer_tick(book, free_cpu=0.5)
-    assert requests == [] and ctx.free["node"].cpu == 0
+    assert requests == [] and ctx.capacity.free["node"].cpu == 0
 
     # The donor died: its slot is free, so the recipient is placed there.
     ctx, requests = _transfer_tick(book, free_cpu=1.5)
@@ -641,7 +657,7 @@ def test_transfer_places_the_recipient_once_donor_capacity_frees():
     (placed,) = requests
     assert placed.request[recipient].nodes == ("node",)
     assert _owed(book.state) == {recipient: 0}
-    assert ctx.free["node"].cpu == 0.5  # only what it took is held
+    assert ctx.capacity.free["node"].cpu == 0.5  # only what it took is held
 
     # Its pending is recorded as the transfer's; once it is running, landed.
     recipient._pool.pending_ids = {"node": ["new-actor"]}
@@ -685,7 +701,7 @@ def test_transfer_times_out_while_still_owed():
 
     assert not book.state.in_flight
     assert metrics.actions[-1] == ("bottleneck_transfer", "recipient", "timeout")
-    assert late.free["node"].cpu == 0.5  # no longer held
+    assert late.capacity.free["node"].cpu == 0.5  # no longer held
 
 
 def test_transfer_timeout_restarts_when_actors_are_placed():
@@ -1460,7 +1476,7 @@ def test_balanced_stages_each_grow_into_free_capacity():
     for placed in requests:
         (op,) = placed.request
         assert len(placed.request[op].nodes) == 1
-    assert ctx.free["node"].cpu == pytest.approx(3.0)
+    assert ctx.capacity.free["node"].cpu == pytest.approx(3.0)
     assert not state.in_flight
 
 
@@ -1565,7 +1581,7 @@ def test_named_pg_bottleneck_grows_into_its_placement_group(
     assert req.delta == expected_delta
     assert req.num_to_reclaim == reclaimable
     assert req.nodes == ()
-    assert ctx.pg_free[bundle].cpu == 0
+    assert ctx.capacity.pg_free[bundle].cpu == 0
 
 
 def test_balanced_pg_op_grows_into_its_placement_group():
@@ -1579,7 +1595,7 @@ def test_balanced_pg_op_grows_into_its_placement_group():
     (placed,) = requests
     assert placed.request[infer].delta == 1
     assert placed.request[infer].nodes == ()
-    assert ctx.pg_free[bundle].cpu == 1
+    assert ctx.capacity.pg_free[bundle].cpu == 1
 
 
 @pytest.mark.parametrize(
@@ -1599,7 +1615,7 @@ def test_bottleneck_free_growth_is_capped_by_competing_share(free_cpu, expected)
     )
     added = sum(p.request[download].delta for p in requests)
     assert added == expected
-    assert ctx.free["node"].cpu == free_cpu - expected
+    assert ctx.capacity.free["node"].cpu == free_cpu - expected
 
 
 @pytest.mark.parametrize("excluded", ["completed", "at-cap", "gpu", "other-node", "pg"])
@@ -1649,7 +1665,7 @@ def test_bottleneck_free_share_does_not_charge_reclaimed_actors():
     assert request.num_to_reclaim == 4
     assert len(request.nodes) == 3
     assert request.delta == 7
-    assert ctx.free["node"].cpu == 3
+    assert ctx.capacity.free["node"].cpu == 3
 
 
 def test_bottleneck_pg_free_share_counts_only_shared_bundles():
@@ -1678,8 +1694,8 @@ def test_bottleneck_pg_free_share_counts_only_shared_bundles():
     )
     assert grown is not None
     assert grown.request[recipient].delta == 6
-    assert ctx.pg_free[bundle].cpu == 6
-    assert ctx.pg_free[other].cpu == 100
+    assert ctx.capacity.pg_free[bundle].cpu == 6
+    assert ctx.capacity.pg_free[other].cpu == 100
 
 
 if __name__ == "__main__":

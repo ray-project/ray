@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
@@ -41,9 +41,6 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     BottleneckObserver,
     BottleneckTick,
-)
-from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
-    ConstraintAwareCapacityLedger,
 )
 from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
     LocalityBasedActorPlacement,
@@ -80,7 +77,6 @@ from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     Decision,
     OpDecision,
-    OpRule,
     SizerPhase,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
@@ -125,9 +121,10 @@ class OperatorSizer:
                  their nodes and take their room from the snapshot. Every
                  other op gets a per-op action: release a completed pool,
                  grow to held room, grow toward the warmup share, shed idle
-                 actors, or refill to min size. The ledger
-                 (``ConstraintAwareCapacityLedger``) then clamps each per-op
-                 upscale to what the cluster can still place.
+                 actors, or refill to min size. Every action checks and
+                 spends capacity in one ledger
+                 (``ConstraintAwareCapacityLedger``), so each per-op upscale
+                 is already cut to what the cluster can still place.
     2. WHERE     The ``ActorPlacementStrategy`` picks nodes for each per-op
                  delta; the pool picks the actors.
     3. APPLY     We hand every placed request to the pools.
@@ -303,14 +300,12 @@ class OperatorSizer:
     def _per_op_how_many(
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PerOpSizingRequest]:
-        """Step 1: pick one action per op, then clamp the per-op upscales.
+        """Step 1: pick one action per op (``SizingPolicy.decide``).
 
-        ``SizingPolicy.decide`` picks the actions. The bottleneck model's
-        requests already name their nodes, and they debit what they claim
-        from the snapshot's free maps. Then the ledger clamps each per-op
-        upscale to what is still free, and debits it, in the tick's op order.
-        Grant order is placement order, so step 2 can place everything
-        granted here.
+        Every action checks and spends capacity in the tick's ledger, in the
+        tick's op order. The bottleneck model's requests name their nodes; the
+        per-op requests are counts that already fit, and the op order is also
+        WHERE's placement order, so step 2 can place them all.
 
         Capacity this tick's downscales will free is not credited: a running
         victim holds its resources until it is dead, so the ledger sees it on
@@ -324,9 +319,11 @@ class OperatorSizer:
             decisions,
             {op: self._statuses.status(op) for op in decisions},
         )
-        ledger = ConstraintAwareCapacityLedger(snapshot)
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        self._grant_within_capacity(snapshot.ordered_ops, decisions, ledger, request)
+        for op in snapshot.ordered_ops:
+            want = decisions[op].request if op in decisions else None
+            if want is not None:
+                request[op] = want
         self._telemetry.log_request_summary(request)
         return decisions, PerOpSizingRequest(request=request)
 
@@ -569,35 +566,6 @@ class OperatorSizer:
         ceiling = op.actor_pool.bounded_max_size()
         remaining = self._policy.per_op.remaining_work_cap(op, self._topology[op])
         return ceiling if remaining is None else min(ceiling, remaining)
-
-    def _grant_within_capacity(
-        self,
-        ordered_ops: Sequence[ExperimentalActorPoolMapOperator],
-        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
-        ledger: ConstraintAwareCapacityLedger,
-        request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
-    ) -> None:
-        """GRANT pass: clamp each upscale to what fits, in placement order.
-        Downscales pass through."""
-        for op in ordered_ops:
-            decision = decisions.get(op)
-            if decision is None or decision.request is None:
-                continue
-            want = decision.request
-            if decision.rule is OpRule.RELEASE_POOL:
-                self._telemetry.log_completed_release(op, op.actor_pool.serving_size())
-            if want.delta < 0:
-                request[op] = want
-                continue
-            # Upscale: clamp to schedulable capacity. Warmup shares are already
-            # bounded, but clamping them too keeps a constrained op from
-            # getting an all-cluster share it cannot place.
-            delta = min(want.delta, ledger.max_upscale_delta(op))
-            if delta > 0:
-                request[op] = ActorPoolScalingRequest.upscale(
-                    delta=delta, reason=want.reason
-                )
-                ledger.grant(op, delta)
 
     # --- construction-time validation -----------------------------------------
 

@@ -6,16 +6,15 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, Optional, Set
 
-from ray.data._internal.execution.interfaces.common import ActorId, NodeIdStr
+from ray.data._internal.execution.interfaces.common import ActorId
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     ScaleUpRequest,
 )
 from ray.data._internal.experimental.execution.sizer import placement_view
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     max_placeable_actors,
-    pack_actors,
 )
 from ray.data._internal.experimental.execution.sizer.models import PlacedSizingRequest
 from ray.data._internal.experimental.execution.sizer.policy.context import (
@@ -40,50 +39,6 @@ logger = logging.getLogger(__name__)
 BALANCED_FREE_FRACTION = 0.5
 
 
-def free_schedulable_nodes(
-    ctx: DecisionContext, op: "ExperimentalActorPoolMapOperator"
-) -> List[NodeIdStr]:
-    """Nodes in the free map that ``op`` may run on."""
-    schedulable = ctx.schedulable_nodes.get(op, frozenset())
-    return [node for node in ctx.free if node in schedulable]
-
-
-def fill_free_nodes(
-    ctx: DecisionContext,
-    op: "ExperimentalActorPoolMapOperator",
-    want: int,
-    nodes: Optional[List[NodeIdStr]] = None,
-) -> List[NodeIdStr]:
-    """Up to ``want`` target nodes for new ``op`` actors, one entry per actor,
-    taken from free capacity and debited off ``ctx.free``. ``nodes`` sets the
-    order to fill in (default: every free node ``op`` may run on)."""
-    return pack_actors(
-        ctx.free,
-        free_schedulable_nodes(ctx, op) if nodes is None else nodes,
-        op.actor_pool.per_actor_resource_usage(),
-        want,
-    )
-
-
-def fill_pg_bundles(
-    ctx: DecisionContext, op: "ExperimentalActorPoolMapOperator", want: int
-) -> int:
-    """How many of ``want`` new actors of a PG-managed op fit, debited off its
-    bundles (static PG) or its headroom (PG capacity unknown). Ray core picks
-    the bundle, so only the count matters."""
-    bundles = ctx.schedulable_bundles.get(op)
-    if bundles is None:
-        fit = max(0, min(want, ctx.unknown_pg_headroom.get(op, 0)))
-        if fit:
-            ctx.unknown_pg_headroom[op] -= fit
-        return fit
-    return len(
-        pack_actors(
-            ctx.pg_free, bundles, op.actor_pool.per_actor_resource_usage(), want
-        )
-    )
-
-
 def grow_pg_op(
     op: "ExperimentalActorPoolMapOperator",
     delta: int,
@@ -95,7 +50,7 @@ def grow_pg_op(
     untargeted. Draining actors are reclaimed first: they still hold their
     bundles, so only new ones need room in the PG."""
     num_to_reclaim = min(delta, op.actor_pool.num_reclaimable_draining_actors())
-    num_new = fill_pg_bundles(ctx, op, delta - num_to_reclaim)
+    num_new = ctx.capacity.claim_in_pg(op, delta - num_to_reclaim)
     if num_to_reclaim + num_new <= 0:
         return None
     return upscale_request(
@@ -130,33 +85,6 @@ def growth_ceiling(op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext)
     return ctx.growth_ceiling.get(op, op.actor_pool.bounded_max_size())
 
 
-def placeable_slots(
-    op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext
-) -> int:
-    """New ``op`` actors that fit in free capacity on its nodes, or in its
-    placement group (bundles, or headroom when its PG capacity is unknown).
-    Counted per node/bundle, so fragmented CPU/GPU/memory is not mistaken
-    for placeable actors."""
-    per_actor = op.actor_pool.per_actor_resource_usage()
-    if ctx.is_pg_managed(op):
-        if op not in ctx.schedulable_bundles:
-            return max(0, ctx.unknown_pg_headroom.get(op, 0))
-        return int(
-            sum(
-                max_placeable_actors(ctx.pg_free[bundle], per_actor)
-                for bundle in ctx.schedulable_bundles[op]
-                if bundle in ctx.pg_free
-            )
-        )
-    return int(
-        sum(
-            max_placeable_actors(ctx.free[node], per_actor)
-            for node in ctx.schedulable_nodes.get(op, ())
-            if node in ctx.free
-        )
-    )
-
-
 def free_growth_share(
     op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext
 ) -> int:
@@ -170,7 +98,7 @@ def free_growth_share(
     the last few slots.
     """
     pg = ctx.is_pg_managed(op)
-    slots = placeable_slots(op, ctx)
+    slots = ctx.capacity.placeable_new(op)
     if pg and op not in ctx.schedulable_bundles:
         return slots
     domains = ctx.schedulable_bundles if pg else ctx.schedulable_nodes
@@ -203,7 +131,7 @@ def balanced_step(op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext) 
     least one. Repeated every tick while the stages stay balanced, so the
     pipeline converges on the free capacity instead of crawling one actor
     per tick."""
-    slots = placeable_slots(op, ctx)
+    slots = ctx.capacity.placeable_new(op)
     unfinished = sum(1 for peer in ctx.actor_pool_ops if not peer.has_completed())
     return max(1, math.floor(BALANCED_FREE_FRACTION * slots / max(1, unfinished)))
 
@@ -240,8 +168,8 @@ def plan_free_growth(
     if not ctx.is_pg_managed(op):
         per_actor = pool.per_actor_resource_usage()
         if not any(
-            max_placeable_actors(ctx.free[n], per_actor) >= 1
-            for n in free_schedulable_nodes(ctx, op)
+            max_placeable_actors(ctx.capacity.free[n], per_actor) >= 1
+            for n in ctx.capacity.free_nodes(op)
         ):
             logger.debug(
                 "SizingPolicy: %s not grown into free capacity: no allowed "
@@ -284,10 +212,10 @@ def apply_free_growth(
         return grown
     view = placement_view.build_op_placement_view(op, rank_victims=False)
     ranked = sorted(
-        free_schedulable_nodes(ctx, op),
+        ctx.capacity.free_nodes(op),
         key=lambda node: placement.rank_node(view, node),
     )
-    targets = fill_free_nodes(ctx, op, growth.num_new, ranked)
+    targets = ctx.capacity.claim_on_nodes(op, growth.num_new, ranked)
     if not targets and not growth.num_to_reclaim:
         return None
     logger.debug(
