@@ -30,13 +30,11 @@ UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
 UPSCALING_VALUE_CONSERVATIVE = "Conservative"
-# While the RayCluster has this annotation set to "true" (case-insensitive), pending
-# worker Pods aren't terminated for not being needed. For example, KubeRay's RayJob
-# controller sets it until the RayCluster is ready for the first time, before the
-# job is submitted.
-PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION = (
-    "ray.io/pending-node-idle-termination-gate"
-)
+# KubeRay labels a RayCluster with the kind of the custom resource that created it.
+ORIGINATED_FROM_CRD_LABEL = "ray.io/originated-from-crd"
+ORIGINATED_FROM_CRD_VALUE_RAYJOB = "RayJob"
+# KubeRay sets a RayCluster's `status.state` to this once all of its Pods are running.
+RAYCLUSTER_STATE_READY = "ready"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
@@ -99,9 +97,14 @@ class AutoscalingConfigProducer:
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
     provider_config = _generate_provider_config(ray_cr["metadata"]["namespace"])
-    annotations = ray_cr["metadata"].get("annotations") or {}
-    gate = annotations.get(PENDING_NODE_IDLE_TERMINATION_GATE_ANNOTATION, "")
-    if gate.lower() == "true":
+    # KubeRay's RayJob controller submits the job only after the RayCluster is
+    # ready, so no resource demands need the pending worker Pods until then.
+    labels = ray_cr["metadata"].get("labels") or {}
+    state = (ray_cr.get("status") or {}).get("state")
+    if (
+        labels.get(ORIGINATED_FROM_CRD_LABEL) == ORIGINATED_FROM_CRD_VALUE_RAYJOB
+        and state != RAYCLUSTER_STATE_READY
+    ):
         provider_config[PENDING_NODE_IDLE_TERMINATION_GATED_KEY] = True
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(

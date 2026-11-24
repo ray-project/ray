@@ -1234,10 +1234,6 @@ class ResourceDemandScheduler(IResourceScheduler):
         # Pending nodes not needed by the resource demands are considered idle.
         if ctx.get_pending_idle_timeout_s() is not None:
             self._update_pending_nodes_idle_duration(ctx)
-        else:
-            # The timeout may be disabled only for a while (e.g. gated until the
-            # cluster is first ready), so don't carry the durations over it.
-            self._pending_unneeded_since_s = {}
 
         # Shutdown any idle nodes that's not needed (e.g. no resource constraints.
         # not needed by min_worker count, etc.)
