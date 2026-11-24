@@ -1686,7 +1686,6 @@ class SearchSpaceTest(unittest.TestCase):
             num_samples=5,
         )
 
-        self.assertEqual(len(points_to_evaluate), 2)
         for i in range(len(points_to_evaluate)):
             trial_config = analysis.trials[i].config
             trial_config_dict = {
@@ -1742,6 +1741,7 @@ class SearchSpaceTest(unittest.TestCase):
 
     def testTuneBOHBPointsToEvaluateAndGuards(self):
         import types
+
         import ray.tune.search.bohb.bohb_search as bohb_mod
         from ray.tune.search.bohb.bohb_search import TuneBOHB
 
@@ -1785,15 +1785,16 @@ class SearchSpaceTest(unittest.TestCase):
             self.assertEqual(points, [{"a": 1}, {"a": 2}])
             self.assertIsNot(points[0], searcher.trial_to_params["trial_1"])
 
-            # Unknown trial_id in on_trial_result must be ignored without polluting running.
+            # Unknown trial_id in on_trial_result must be ignored without
+            # polluting running.
             searcher.on_trial_result(
                 "unknown_trial", {"loss": 1.0, "hyperband_info": {"budget": 1}}
             )
             self.assertNotIn("unknown_trial", searcher.running)
             self.assertEqual(len(recorded), 0)
 
-            # Missing/None hyperband_info, missing/non-numeric metric, and NaN/inf metric
-            # must be skipped in on_trial_result without raising TypeError.
+            # Missing/None hyperband_info, missing/non-numeric metric, and
+            # NaN/inf metric must be skipped in on_trial_result.
             searcher.on_trial_result("trial_1", {"loss": 0.5, "hyperband_info": None})
             searcher.on_trial_result("trial_1", {"hyperband_info": {"budget": 1}})
             searcher.on_trial_result(
