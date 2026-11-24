@@ -68,6 +68,7 @@ ci/raydepsets/raydepsets.py: tools python_dependencies
 .buildkite/ml.rayci.yml: ml train train_gpu tune
 .buildkite/core.rayci.yml: core_python core_cpp
 .buildkite/others.rayci.yml: java
+.buildkite/linux_aarch64.rayci.yml: java tools
 # The dependency pipeline routes to its own lock-consistency check via
 # `deplock_check`, not the `.buildkite/*.rayci.yml` -> java catch-all.
 .buildkite/dependencies.rayci.yml: deplock_check
