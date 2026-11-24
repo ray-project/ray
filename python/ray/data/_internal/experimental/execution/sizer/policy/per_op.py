@@ -208,7 +208,7 @@ class PerOpRules:
     ) -> Optional[int]:
         """This op's warmup share in actors, clamped to [min_size, max_size]
         (see ``warmup_delta``). Also what an op held at zero or min reserves
-        (``OperatorSizer._exclude_held_ops_from_free_capacity``).
+        (``OperatorSizer._reserve_for_held_ops``).
 
         A CPU op's share is also capped by memory: GPU ops take their GPU share (and its memory) first, and the
         CPU ops whose actors request memory split what is left equally. A

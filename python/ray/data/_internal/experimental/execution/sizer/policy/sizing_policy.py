@@ -251,14 +251,12 @@ class SizingPolicy:
     def transfer_phase(self) -> TransferPhase:
         return self._transfer_book.phase
 
-    def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
-        return self._transfer_book.held_capacity_by_node()
-
     def decide(self, ctx: DecisionContext) -> OpDecisions:
         """One tick: one ``OpDecision`` per op.
 
-        1. Advance open transfers, and bring up the actors they owe their
-           recipients (FUND).
+        1. Bring up the recipient actors that the open transfers found room
+           for this tick (FUND). The sizer advanced the transfers and
+           reserved their room before the tick's bottleneck model ran.
         2. Choose one bottleneck move and make it (``_make_move``), over
            the Active ops only, read once from the op statuses. The move
            names the rule for each op it resizes (GROW_FREE, GROW_BALANCED,
@@ -272,9 +270,8 @@ class SizingPolicy:
         Every step checks and spends capacity in ``ctx.capacity``, so a
         later step never hands out capacity an earlier one took.
         """
-        # 1. Move the open transfers along, and bring up the actors each one
-        # owes its recipient (FUND).
-        self._transfer_book.advance(ctx)
+        # 1. Bring up the recipient actors that the open transfers found room
+        # for (FUND).
         op_decisions = _build_op_decisions(
             rule=OpRule.FUND,
             requests=self._transfer_book.bring_up_held_actors(),

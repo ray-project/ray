@@ -269,8 +269,8 @@ class OperatorSizer:
     def _run_tick(
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PlacedRequests]:
-        """Hold room for held ops, run the bottleneck model, advance the
-        phase, then how many, where, apply."""
+        """Reserve room, run the bottleneck model, advance the phase, then
+        how many, where, apply."""
         bottleneck_tick = self._prepare_tick(snapshot)
         decisions = self._per_op_how_many(
             snapshot=snapshot, bottleneck_tick=bottleneck_tick
@@ -281,15 +281,15 @@ class OperatorSizer:
 
     @timed("prepare")
     def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> BottleneckTick | None:
-        """Advance the op statuses, take held ops' room out of the snapshot,
-        run the bottleneck model on what is left, and move the phase
-        forward."""
+        """Advance the op statuses and the open transfers, reserve room for
+        actors that don't exist yet, run the bottleneck model on the room
+        that is left, and move the phase forward."""
         self._statuses.on_tick()
-        self._exclude_held_ops_from_free_capacity(snapshot)
-        bottleneck_tick = self._bottleneck_observer.tick(
-            capacity=snapshot,
-            held_by_node=self._policy.held_capacity_by_node(),
-        )
+        # Record each transfer's new pending actors, and close the transfers
+        # that finished or timed out.
+        self._policy.transfers.advance(now=self._clock())
+        self._reserve_capacity(snapshot)
+        bottleneck_tick = self._bottleneck_observer.tick(capacity=snapshot)
         self._bottleneck_observer.log_tick(bottleneck_tick)
         self._advance_phase(bottleneck_tick=bottleneck_tick)
         return bottleneck_tick
@@ -494,9 +494,18 @@ class OperatorSizer:
         )
         return True
 
-    def _exclude_held_ops_from_free_capacity(
-        self, snapshot: ClusterStateSnapshot
-    ) -> None:
+    def _reserve_capacity(self, snapshot: ClusterStateSnapshot) -> None:
+        """Take room out of ``snapshot.free_by_node`` for actors that don't
+        exist yet, so the bottleneck model, the ledger and WHERE all see the
+        same free room. Open transfers reserve first, because their donors
+        already gave up actors; held ops reserve from what is left."""
+        # On the nodes each transfer planned. Each transfer also notes how
+        # many of its owed actors fit now; decide brings those up (FUND).
+        self._policy.transfers.reserve_owed(snapshot.free_by_node, self._clock())
+        # On the least contended nodes.
+        self._reserve_for_held_ops(snapshot)
+
+    def _reserve_for_held_ops(self, snapshot: ClusterStateSnapshot) -> None:
         """Take each held op's room out of ``snapshot.free_by_node``, and
         record it on its ``Held`` state.
 

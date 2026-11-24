@@ -94,6 +94,9 @@ from ray.data._internal.experimental.execution.sizer.policy.states import (
     OpRule,
     SizerPhase,
 )
+from ray.data._internal.experimental.execution.sizer.policy.transfer import (
+    TransferInFlight,
+)
 from ray.data._internal.experimental.execution.sizer.scale_where import (
     place_downscales,
     resolve_evictions,
@@ -521,12 +524,14 @@ class _TestSizer(OperatorSizer):
         )
 
     def held_snapshot(self, *, force: bool = True) -> ClusterStateSnapshot:
-        """The next tick's snapshot with held ops' room already taken out,
-        as every later step of a tick sees it."""
+        """The next tick's snapshot with the open transfers advanced and the
+        room for held ops and transfers already reserved, as every later step
+        of a tick sees it."""
         snapshot = self.next_tick(force=force)
         assert snapshot is not None
         self._statuses.on_tick()
-        self._exclude_held_ops_from_free_capacity(snapshot)
+        self._policy.transfers.advance(now=self._clock())
+        self._reserve_capacity(snapshot)
         return snapshot
 
     def how_many(self, *, force: bool = True) -> Dict[Any, ActorPoolScalingRequest]:
@@ -743,6 +748,51 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
     request = _tick(sizer)
     assert request[write].delta == target
     assert request[write].reason == "held share (hold released)"
+
+
+def test_open_transfer_reserves_its_room_before_held_ops():
+    # A held op and an open transfer both want room on node0. The transfer's
+    # donors already gave up actors for that room, so the transfer reserves
+    # first and the held op reserves only what is left.
+    read = _FakeOp(
+        "read", _FakePool(min_size=1, max_size=20, cpu=1, memory=1, running=12)
+    )
+    write = _write_op(
+        "write",
+        _FakePool(min_size=1, max_size=20, cpu=1, memory=1),
+        inputs=[read],
+        awaiting_first_input=True,
+    )
+    view = DatasetReservationView(
+        reserved_by_node={"node0": ExecutionResources(cpu=16, memory=20)},
+        labels_by_node={"node0": {}},
+    )
+    sizer, _ = _bootstrapped(read, write, view=view)
+    target = sizer._policy.per_op.warmup_target(
+        write, view.reserved_by_node["node0"], PlacementGroupSlots()
+    )
+    # Write's share is more than the 4 free CPUs, so on its own it would
+    # reserve all of them.
+    assert target is not None and target >= 4
+    transfer = TransferInFlight(
+        recipient=read,
+        donors=frozenset(),
+        started_t=sizer._clock(),
+        owed_by_node={"node0": 2},
+    )
+    sizer._policy.transfers.state.in_flight[read] = transfer
+    sizer.statuses.start_receiving(read)
+
+    snapshot = sizer.next_tick()
+    assert snapshot is not None
+    sizer.statuses.on_tick()
+    sizer._reserve_capacity(snapshot)
+
+    # 16 CPU minus read's 12 running actors leaves 4: the transfer takes 2
+    # and brings both up this tick; the held op gets the 2 that are left.
+    assert transfer.to_bring_up_by_node == {"node0": 2}
+    assert sizer.statuses.status(write) == Held(reserved=2)
+    assert snapshot.free_by_node["node0"].cpu == 0
 
 
 def _video_pipeline(write_awaiting_first_input=False):

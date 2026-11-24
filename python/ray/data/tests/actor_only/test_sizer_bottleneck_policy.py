@@ -630,10 +630,14 @@ def _fire(book, recipient, donor, ctx, removable=1):
     return book.fire(recipient, plan, {donor: donor_capacity}, ctx)
 
 
-def _transfer_tick(book, *, free_cpu, **ctx_kwargs):
-    """One tick of the book: advance, then bring up held actors."""
-    ctx = _ctx(free={"node": ExecutionResources(cpu=free_cpu)}, **ctx_kwargs)
-    book.advance(ctx)
+def _transfer_tick(book, *, free_cpu, now=1000.0, **ctx_kwargs):
+    """One tick of the book, as the sizer runs it: advance, reserve the owed
+    room out of the free map, build the tick's context from what is left,
+    then bring up the actors that fit."""
+    free = {"node": ExecutionResources(cpu=free_cpu)}
+    book.advance(now=now)
+    book.reserve_owed(free, now)
+    ctx = _ctx(free=free, now=now, **ctx_kwargs)
     return ctx, book.bring_up_held_actors()
 
 
@@ -769,7 +773,7 @@ def test_transfer_lands_only_if_its_claimed_actors_are_running(lost, expected):
         ),
     )
 
-    book.advance(_ctx(now=1000.0))
+    book.advance(now=1000.0)
 
     assert not book.state.in_flight
     assert metrics.actions[-1] == ("bottleneck_transfer", "recipient", expected)
@@ -792,7 +796,7 @@ def test_transfer_whose_recipient_never_grew_closes_as_lost():
         ),
     )
 
-    book.advance(_ctx(now=1000.0))
+    book.advance(now=1000.0)
 
     assert not book.state.in_flight
     assert metrics.actions[-1] == ("bottleneck_transfer", "recipient", "lost")
@@ -817,7 +821,7 @@ def test_donor_cools_down_after_a_transfer_closes():
     statuses.start_donating(donor, recipient)
 
     # Recipient has no pendings -> lands; the donor starts cooling down.
-    book.advance(_ctx(now=1000.0))
+    book.advance(now=1000.0)
     assert not book.state.in_flight
     assert statuses.is_active(recipient)
     assert statuses.kind(donor) is OpStatusKind.COOLING
@@ -851,14 +855,14 @@ def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
         )
     statuses.start_donating(donor, landed)
 
-    book.advance(_ctx(now=1000.0))
+    book.advance(now=1000.0)
     statuses.on_step()
     assert set(book.state.in_flight) == {still_draining}  # only one closed
     assert statuses.kind(donor) is OpStatusKind.DONATING
 
     # Once the last transfer lands, the cooldown starts, then ends.
     still_draining._pool.pending_ids = {}
-    book.advance(_ctx(now=1000.0))
+    book.advance(now=1000.0)
     assert statuses.kind(donor) is OpStatusKind.COOLING
     statuses.on_step()
     assert statuses.is_active(donor)
@@ -910,7 +914,7 @@ def test_closing_a_transfer_starts_its_thrash_window():
     # Nothing owed or pending any more: the transfer closes (as lost, since
     # no actor was claimed) and stamps the close time.
     book.state.in_flight[recipient].owed_by_node = {}
-    book.advance(_ctx(now=1500.0))
+    book.advance(now=1500.0)
 
     assert not book.state.in_flight
     assert record.closed_t == 1500.0

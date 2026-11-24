@@ -111,9 +111,9 @@ class TransferInFlight:
 
     The donors are downscaled when it fires; the recipient's actors are only
     created as the donors' capacity actually frees up, so the dataset never
-    asks for more than its slice of a node. Until then the transfer holds that
-    node's free capacity (see ``TransferBook._hold_owed_capacity``) so
-    nothing else in the sizer takes it.
+    asks for more than its slice of a node. Until then the transfer reserves
+    that node's free capacity each tick (see ``TransferBook.reserve_owed``),
+    so nothing else in the sizer takes it.
     """
 
     recipient: "ExperimentalActorPoolMapOperator"
@@ -561,34 +561,19 @@ class TransferBook:
     def phase(self) -> TransferPhase:
         return TransferPhase.IN_FLIGHT if self.state.in_flight else TransferPhase.IDLE
 
-    def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
-        """Because Transfers are non-atomic, we have to hold headroom for
-        recipient actors so there resources aren't taken in future ticks. This method
-        returns the amount of held/reserved capacity for all transfers in-flight."""
-        held: Dict[NodeIdStr, ExecutionResources] = {}
-        for transfer in self.state.in_flight.values():
-            per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
-            for node, owed in transfer.owed_by_node.items():
-                if owed > 0:
-                    held[node] = held.get(node, ExecutionResources.zero()).add(
-                        per_actor.scale(owed)
-                    )
-        return held
-
     # --- transfers already fired ----------------------------------------------
 
-    def advance(self, ctx: DecisionContext) -> None:
-        """Move earlier transfers along: note which new pendings belong to each
-        one, close it once every owed actor is placed and running (or cancel it
-        after the timeout), and hold the capacity the open ones are still owed.
+    def advance(self, now: float) -> None:
+        """Move the open transfers along: note which new pending actors belong
+        to each one, and close each one whose owed actors are all placed and
+        running (or cancel it after the timeout).
 
         Recording the pendings here rather than right after the requests were
         applied is safe: the recipient is ``RECEIVING`` for the whole life of
         the transfer, so no other decision can add pendings to it in between.
         """
         self._record_transfer_pendings()
-        self._close_finished_transfers(ctx)
-        self._hold_owed_capacity(ctx)
+        self._close_finished_transfers(now)
 
     def _record_transfer_pendings(self) -> None:
         """The recipient's actors created since the transfer fired are the
@@ -602,18 +587,20 @@ class TransferBook:
             )
             transfer.claimed_ids += tuple(sorted(new_ids))
 
-    def _hold_owed_capacity(self, ctx: DecisionContext) -> None:
-        """Hold, in the tick's ledger, what each open transfer is still owed.
+    def reserve_owed(
+        self, free_by_node: Dict[NodeIdStr, ExecutionResources], now: float
+    ) -> None:
+        """Take each open transfer's owed room out of ``free_by_node``, in
+        the order the transfers fired, and note how many owed actors fit now.
 
-        The book advances before anything else this tick decides, so this
-        hold comes before anything else can spend the capacity. As many owed actors as the node's free
-        capacity fits are brought up by ``bring_up_held_actors``; the rest of
-        the hold keeps the node's partial free capacity for the recipient
-        while donors drain.
+        Each transfer reserves the room for every actor it still owes on a
+        node, not only the ones that fit now. The rest of the reservation
+        keeps the node's partial free room for the recipient while its donors'
+        actors go. ``bring_up_held_actors`` brings up the actors that fit.
 
-        The ledger is rebuilt every tick, so a hold lasts one tick and is
-        re-taken here while the transfer is open: closing a transfer (landed,
-        lost or timed out) releases it.
+        The sizer calls this every tick before anything else reads free
+        capacity, so a reservation lasts one tick. Closing a transfer (landed,
+        lost or timed out) ends its reservation.
         """
         for transfer in self.state.in_flight.values():
             per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
@@ -621,23 +608,24 @@ class TransferBook:
             for node, owed in transfer.owed_by_node.items():
                 if owed <= 0:
                     continue  # every actor owed here is already placed
-                if node not in ctx.capacity.free:
+                if node not in free_by_node:
                     # A node we are losing: nothing to place there; the
                     # timeout cancels whatever stays owed.
                     continue
                 num_to_bring_up = min(
-                    owed, int(max_placeable_actors(ctx.capacity.free[node], per_actor))
+                    owed, int(max_placeable_actors(free_by_node[node], per_actor))
                 )
-                # Claims the whole owed amount, not just what fits now: the
-                # part that doesn't fit yet is a reservation for actors this
-                # transfer places on a later tick, as donors free their slots.
-                ctx.capacity.claim(node, per_actor, owed)
+                free_by_node[node] = (
+                    free_by_node[node]
+                    .subtract(per_actor.scale(owed))
+                    .max(ExecutionResources.zero())
+                )
                 if num_to_bring_up > 0:
                     transfer.to_bring_up_by_node[node] = num_to_bring_up
                     transfer.owed_by_node[node] = owed - num_to_bring_up
-                    transfer.last_progress_t = ctx.now
+                    transfer.last_progress_t = now
 
-    def _close_finished_transfers(self, ctx: DecisionContext) -> None:
+    def _close_finished_transfers(self, now: float) -> None:
         """Close transfers with no claimed actor still pending (landed if all
         of them are running, lost otherwise); cancel the ones that timed
         out."""
@@ -658,14 +646,14 @@ class TransferBook:
                     "SizingPolicy: transfer to %s closed %s (%.0fs after claim)",
                     recipient.name,
                     "landed" if landed else "lost",
-                    ctx.now - transfer.started_t,
+                    now - transfer.started_t,
                 )
-                self._close_transfer(transfer, ctx.now)
+                self._close_transfer(transfer, now)
                 self._metrics.record_outcome(
                     self._name, recipient.name, "landed" if landed else "lost"
                 )
                 continue
-            if transfer.seconds_without_progress(ctx.now) > transfer.timeout_s:
+            if transfer.seconds_without_progress(now) > transfer.timeout_s:
                 # Cancel the claim node by node. The pool cancels pendings
                 # first, and every pending on a receiving recipient is ours
                 # (see ``TransferInFlight.claimed_ids``), so a per-node count
@@ -695,7 +683,7 @@ class TransferBook:
                 )
                 # Closing also drops its capacity hold: holds are re-taken
                 # each tick only for open transfers.
-                self._close_transfer(transfer, ctx.now)
+                self._close_transfer(transfer, now)
                 self._metrics.record_outcome(self._name, recipient.name, "timeout")
 
     def _close_transfer(self, transfer: TransferInFlight, now: float) -> None:
@@ -727,8 +715,8 @@ class TransferBook:
     # --- new transfers --------------------------------------------------------
 
     def bring_up_held_actors(self) -> List[PlacedSizingRequest]:
-        """Targeted upscales for the recipient actors whose capacity
-        ``_hold_owed_capacity`` found free this tick."""
+        """Targeted upscales for the recipient actors that ``reserve_owed``
+        found room for this tick."""
         requests: List[PlacedSizingRequest] = []
         for transfer in self.state.in_flight.values():
             nodes = [

@@ -905,14 +905,10 @@ class BottleneckObserver:
         snapshot: Snapshot["EAPMO"],
         capacity: "ClusterStateSnapshot",
         stable: AbstractSet["EAPMO"],
-        held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
     ) -> Assessment["EAPMO"]:
         """Eligibility of each bottleneck and stable bottleneck, and the
         victims a transfer to the most severe stable one that can grow would
         draw from.
-
-        ``held_by_node`` is capacity already promised to an open transfer's
-        recipient: it is not free for anyone else.
 
         An op can use more actors only if it is named this tick, no more
         severe named op feeds it, and no producer feeding it is self-limited
@@ -941,10 +937,9 @@ class BottleneckObserver:
         bottlenecks = [op for op, _ in snapshot.bottlenecks]
         bottlenecks += [op for op, _ in ranked_stable if op not in bottlenecks]
         freeable = self._freeable_by_node(capacity, exclude=set(bottlenecks))
-        free_by_node = _minus_held(capacity.free_by_node, held_by_node or {})
         eligibility = {
             op: self._growth_blocker(op, snapshot)
-            or self._eligibility(op, capacity, free_by_node, freeable)
+            or self._eligibility(op, capacity, freeable)
             for op in bottlenecks
         }
         # Stability keeps one noisy window from making or unmaking a
@@ -1035,7 +1030,6 @@ class BottleneckObserver:
         self,
         op: "EAPMO",
         capacity: "ClusterStateSnapshot",
-        free_by_node: Mapping[NodeIdStr, ExecutionResources],
         freeable: Mapping[NodeIdStr, ExecutionResources],
     ) -> str:
         pool = op.actor_pool
@@ -1044,6 +1038,7 @@ class BottleneckObserver:
         if self._profiles.is_pg_managed(op):
             return self._pg_eligibility(op, capacity)
         per_actor = pool.per_actor_resource_usage()
+        free_by_node = capacity.free_by_node
         nodes = [n for n in free_by_node if n in capacity.schedulable_nodes_by_op[op]]
         if not nodes:
             return "no: no allowed node"
@@ -1165,11 +1160,10 @@ class BottleneckObserver:
         self,
         *,
         capacity: "ClusterStateSnapshot",
-        held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
     ) -> BottleneckTick["EAPMO"]:
         """This tick's model: snapshot, stable bottlenecks (advancing their
-        persistence) and assessment. Call once per sizer tick;
-        ``held_by_node`` is capacity open transfers hold for their recipients."""
+        persistence) and assessment. Call once per sizer tick, after the
+        sizer reserves room in ``capacity`` for actors that don't exist yet."""
         snapshot = self.snapshot()
         stable = self._stability.update(
             {op for op, _ in snapshot.bottlenecks},
@@ -1179,7 +1173,7 @@ class BottleneckObserver:
         return BottleneckTick(
             snapshot=snapshot,
             stable=stable,
-            assessment=self.assess(snapshot, capacity, stable, held_by_node),
+            assessment=self.assess(snapshot, capacity, stable),
             victim_ttf=self.victim_ttf,
             slack_for=lambda recipient, b_prime: slack_toward(
                 snapshot.shares,
@@ -1205,21 +1199,6 @@ class BottleneckObserver:
             "BottleneckObserver: %s",
             format_snapshot(tick.snapshot, self._names, tick.assessment),
         )
-
-
-def _minus_held(
-    free_by_node: Mapping[NodeIdStr, ExecutionResources],
-    held_by_node: Mapping[NodeIdStr, ExecutionResources],
-) -> Dict[NodeIdStr, ExecutionResources]:
-    """Free capacity per node with what is held for transfers taken out."""
-    return {
-        node: (
-            free.subtract(held_by_node[node]).max(ExecutionResources.zero())
-            if node in held_by_node
-            else free
-        )
-        for node, free in free_by_node.items()
-    }
 
 
 def _shortfall(needs: ExecutionResources, has: ExecutionResources) -> Dict[str, float]:

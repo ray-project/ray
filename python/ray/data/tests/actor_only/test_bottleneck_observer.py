@@ -653,7 +653,8 @@ _NEEDS = ExecutionResources(cpu=1, memory=2.4 * GiB)
     "free_mem_gib, write_nodes, held, expected",
     [
         (3, {"n1"}, None, "yes: free"),
-        # The same room, held for an open transfer's recipient, is not free.
+        # The same room, reserved for an open transfer's recipient, is gone
+        # from free capacity before the model runs.
         (
             3,
             {"n1"},
@@ -704,7 +705,9 @@ def test_assessment_eligibility_and_victims(
         Any,
         SimpleNamespace(
             free_by_node={
-                "n1": ExecutionResources(cpu=1, memory=free_mem_gib * GiB),
+                "n1": ExecutionResources(cpu=1, memory=free_mem_gib * GiB)
+                .subtract(held if held is not None else zero)
+                .max(zero),
                 "n2": zero,
                 "n3": zero,
             },
@@ -724,7 +727,6 @@ def test_assessment_eligibility_and_victims(
         snapshot,
         capacity,
         stable=cast(Any, {write}),
-        held_by_node={"n1": held} if held is not None else None,
     )
 
     assert [op for op, _ in snapshot.bottlenecks] == [write]
