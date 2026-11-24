@@ -46,14 +46,25 @@ class LogicalPlan(Plan):
                 return True
             # The disk shuffle v2 map seeds each block by its map task index, which
             # follows input arrival order, so a seeded shuffle needs that order fixed.
+            # Read the resolved transport: under ``auto`` the bool stays False.
             if (
                 isinstance(op, RandomShuffle)
                 and op.seed_config is not None
                 and op.seed_config.seed is not None
                 and self.context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
-                and self.context.use_disk_based_hash_shuffle
             ):
-                return True
+                from ray.data._internal.planner.shuffle_decision import (
+                    estimate_shuffle_input_bytes,
+                    resolve_shuffle_transport,
+                )
+
+                if (
+                    resolve_shuffle_transport(
+                        self.context, estimate_shuffle_input_bytes(op)
+                    )
+                    == "disk"
+                ):
+                    return True
         return False
 
     def input_files(self) -> Optional[List[str]]:

@@ -12,7 +12,9 @@ from typing import (
     Generator,
     Iterable,
     List,
+    NamedTuple,
     Optional,
+    Sequence,
     Tuple,
     Union,
 )
@@ -44,6 +46,9 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_SHUFFLE_SLICE_PREFIX = "__shuffle_slice__"
+_SHUFFLE_BUNDLE_BYTES_PREFIX = "__shuffle_bundle_bytes__"
+
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
 BlockTransformer = Callable[["pa.Table"], "pa.Table"]
@@ -60,6 +65,35 @@ class TaskScopedPartitioner(abc.ABC):
     @abc.abstractmethod
     def bind(self, task_index: int) -> PartitionFn:
         ...
+
+
+def format_shuffle_slice(offset: int, length: int) -> str:
+    return f"{_SHUFFLE_SLICE_PREFIX}{int(offset)}:{int(length)}"
+
+
+def parse_shuffle_slice(input_files: Optional[Sequence[str]]) -> Tuple[int, int]:
+    """Byte range beside the partition sentinel. Missing means the whole object."""
+    if not input_files:
+        return 0, -1
+    for item in input_files:
+        if item.startswith(_SHUFFLE_SLICE_PREFIX):
+            offset_s, length_s = item[len(_SHUFFLE_SLICE_PREFIX) :].split(":")
+            return int(offset_s), int(length_s)
+    return 0, -1
+
+
+def format_bundle_nbytes(nbytes: int) -> str:
+    return f"{_SHUFFLE_BUNDLE_BYTES_PREFIX}{int(nbytes)}"
+
+
+def parse_bundle_nbytes(input_files: Optional[Sequence[str]]) -> Optional[int]:
+    """Full size of the shared bundle, or None when this block is not packed."""
+    if not input_files:
+        return None
+    for item in input_files:
+        if item.startswith(_SHUFFLE_BUNDLE_BYTES_PREFIX):
+            return int(item[len(_SHUFFLE_BUNDLE_BYTES_PREFIX) :])
+    return None
 
 
 def resolve_partition_fn(
@@ -128,6 +162,102 @@ def _encode_partition_ipc(
     return sink.getvalue()
 
 
+# ``(bundle_index, offset, length)``. None means the partition is empty and is
+# not stored in any packed bundle yet.
+ShardPlacement = Tuple[int, int, int]
+
+
+class ShuffleMapTaskResult(NamedTuple):
+    """Single return value of a shuffle map task.
+
+    The task ``ray.put``s every bundle before returning, so ``num_returns`` is 1.
+    A streaming yield would let a retry re-run from the start and orphan objects
+    the driver had already registered, and it would drop inputs too early.
+    """
+
+    input_meta: BlockMetadata
+    output_schema: pa.Schema
+    bundle_refs: Tuple["ObjectRef", ...]
+    # Byte size of each bundle. A reducer downloads the whole bundle, not its slice.
+    bundle_nbytes: Tuple[int, ...]
+    # One entry per partition: bundle index, byte offset, byte length, rows, bytes.
+    placements: Tuple[Tuple[int, int, int, int, int], ...]
+
+
+def pack_partition_ipc(
+    shards: Sequence[Optional[Union[bytes, pa.Buffer]]],
+    *,
+    min_bytes: int,
+    max_partitions: int,
+) -> Tuple[List[Union[bytes, pa.Buffer]], List[Optional[ShardPlacement]]]:
+    """Pack IPC shards into bundles.
+
+    A shard of at least ``min_bytes`` is its own bundle. At a 1 GiB map batch
+    and 1024 partitions each shard is exactly 1 MiB, so with the default floor
+    nothing is packed and the ref count stays mapper times partitions.
+
+    Smaller shards share a bundle, at most ``max_partitions`` of them. The last
+    bundle may be under ``min_bytes``. It is still its own object store value;
+    only the small metadata return can be inlined onto the driver.
+    Empty shards (``None``) are omitted; the caller points those partitions at
+    one shared empty IPC buffer so the reducer still sees a schema.
+    """
+    floor = max(1, int(min_bytes))
+    cap = max(1, int(max_partitions))
+    bundles: List[Union[bytes, pa.Buffer]] = []
+    placements: List[Optional[ShardPlacement]] = [None] * len(shards)
+    pending = bytearray()
+    pending_parts: List[Tuple[int, int, int]] = []
+
+    def seal() -> None:
+        if not pending_parts:
+            return
+        bundle_index = len(bundles)
+        bundles.append(bytes(pending))
+        for partition_id, offset, length in pending_parts:
+            placements[partition_id] = (bundle_index, offset, length)
+        pending.clear()
+        pending_parts.clear()
+
+    for partition_id, shard in enumerate(shards):
+        if shard is None or len(shard) == 0:
+            continue
+        if len(shard) >= floor:
+            seal()
+            bundle_index = len(bundles)
+            bundles.append(shard)
+            placements[partition_id] = (bundle_index, 0, len(shard))
+            continue
+        if pending_parts and (len(pending) >= floor or len(pending_parts) >= cap):
+            seal()
+        offset = len(pending)
+        pending.extend(shard)
+        pending_parts.append((partition_id, offset, len(shard)))
+        if len(pending) >= floor or len(pending_parts) >= cap:
+            seal()
+    seal()
+    return bundles, placements
+
+
+def assign_empty_placements(
+    bundles: List[Union[bytes, pa.Buffer]],
+    placements: List[Optional[ShardPlacement]],
+    empty_ipc: Union[bytes, pa.Buffer],
+) -> Tuple[List[Union[bytes, pa.Buffer]], List[ShardPlacement]]:
+    """Point every empty partition at one shared schema-bearing IPC buffer."""
+    if not any(placement is None for placement in placements):
+        return bundles, [placement for placement in placements if placement is not None]
+    empty_index = len(bundles)
+    bundles = list(bundles)
+    bundles.append(empty_ipc)
+    empty_len = len(empty_ipc)
+    filled = [
+        (empty_index, 0, empty_len) if placement is None else placement
+        for placement in placements
+    ]
+    return bundles, filled
+
+
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _shuffle_map_task(
     *blocks: Block,
@@ -135,11 +265,10 @@ def _shuffle_map_task(
     num_partitions: int,
     compression: Optional[str],
     block_transformer: Optional[BlockTransformer] = None,
-) -> Tuple[
-    Union[Tuple[BlockMetadata, Dict[int, Tuple[int, int]], "pa.Schema"], pa.Buffer],
-    ...,
-]:
-    """Map stage: partition the input blocks and return one shard per partition."""
+    min_shard_bytes: int = 1024 * 1024,
+    max_partitions_per_bundle: int = 8,
+) -> ShuffleMapTaskResult:
+    """Map stage: partition the input and return one object of bundle refs."""
     stats = BlockExecStats.builder()
 
     # Use BlockAccessor so we also work for non-Arrow blocks (pandas, numpy)
@@ -178,12 +307,13 @@ def _shuffle_map_task(
         _create_empty_table(output_schema), ipc_write_options
     )
 
-    shard_sizes: Dict[int, Tuple[int, int]] = {}
-    partition_bufs: List[pa.Buffer] = []
+    encoded: List[Optional[pa.Buffer]] = []
+    rows_and_bytes: List[Tuple[int, int]] = []
     for partition_id in range(num_partitions):
         tables = partition_accumulators.pop(partition_id, None)
         if not tables:
-            partition_bufs.append(empty_shard)
+            encoded.append(None)
+            rows_and_bytes.append((0, 0))
             continue
         merged = (
             transform_pyarrow.concat(
@@ -194,18 +324,73 @@ def _shuffle_map_task(
             if len(tables) > 1
             else tables[0]
         )
-        shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
-        partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
+        rows_and_bytes.append((merged.num_rows, merged.nbytes))
+        encoded.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
+
+    bundles, placements = pack_partition_ipc(
+        encoded,
+        min_bytes=min_shard_bytes,
+        max_partitions=max_partitions_per_bundle,
+    )
+    # Every partition, including an empty one, must reach the reducer with a
+    # schema. One shared empty IPC per map task is enough; its ref is not
+    # owned by each partition (see ShuffleMapOp).
+    bundles, placements = assign_empty_placements(bundles, placements, empty_shard)
+
+    # Put every bundle before returning. A failure before this return leaves
+    # the driver with nothing registered and the inputs still alive.
+    #
+    # These objects are owned by the map worker. After the task returns they
+    # fate-share with that worker: if it exits, reducers see OwnerDiedError
+    # and Ray will not rebuild the bundles. Returning the bytes instead would
+    # make the driver the owner, and would also pull every bundle through the
+    # driver. A streaming generator would let a retry orphan objects the
+    # driver had already seen. Node loss of a finished map worker fails this
+    # shuffle, the same way losing a disk shuffle file server does.
+    bundle_refs = tuple(ray.put(bundle) for bundle in bundles)
+    bundle_nbytes = tuple(len(bundle) for bundle in bundles)
+    placed = tuple(
+        (
+            placement[0],
+            placement[1],
+            placement[2],
+            rows_and_bytes[partition_id][0],
+            rows_and_bytes[partition_id][1],
+        )
+        for partition_id, placement in enumerate(placements)
+    )
 
     input_meta = BlockAccessor.for_block(blocks[0]).get_metadata(
         block_exec_stats=stats.build(block_ser_time_s=0),
     )
     input_meta = replace(input_meta, num_rows=total_rows, size_bytes=total_bytes)
-    return (input_meta, shard_sizes, output_schema), *partition_bufs
+    return ShuffleMapTaskResult(
+        input_meta=input_meta,
+        output_schema=output_schema,
+        bundle_refs=bundle_refs,
+        bundle_nbytes=bundle_nbytes,
+        placements=placed,
+    )
 
 
-def _read_partition_ipc(buf: pa.Buffer) -> Optional[pa.Table]:
+def _as_ipc_buffer(buf: Union[bytes, bytearray, pa.Buffer]) -> pa.Buffer:
+    if isinstance(buf, pa.Buffer):
+        return buf
+    return pa.py_buffer(buf)
+
+
+def _slice_ipc(
+    buf: Union[bytes, bytearray, pa.Buffer], offset: int, length: int
+) -> pa.Buffer:
+    """Return one partition's IPC bytes. ``length < 0`` means the whole buffer."""
+    raw = _as_ipc_buffer(buf)
+    if length < 0:
+        return raw
+    return raw.slice(offset, length)
+
+
+def _read_partition_ipc(buf: Union[bytes, bytearray, pa.Buffer]) -> Optional[pa.Table]:
     """Decompress one partition shard."""
     if len(buf) == 0:
         return None
@@ -274,32 +459,58 @@ def _get_shard_batch(
         raise
 
 
+# One shard inside a packed bundle: the object, then the IPC byte range.
+# ``length < 0`` means the object is entirely this partition.
+ShardSlice = Tuple[ObjectRef, int, int]
+
+
 def _gather_input_shards(
-    shard_refs: List[ObjectRef],
+    shards: List[ShardSlice],
     partition_id: int,
     batch_size: int,
     get_timeout_s: float,
 ) -> List[pa.Table]:
-    """Fetch + decompress every shard of one input for one partition."""
-    tables: List[pa.Table] = []
-    num_batches = math.ceil(len(shard_refs) / batch_size) if batch_size else 0
-    for batch_index, batch_start in enumerate(range(0, len(shard_refs), batch_size)):
-        batch = shard_refs[batch_start : batch_start + batch_size]
-        for buf in _get_shard_batch(
+    """Fetch each distinct bundle once, then decode this partition's slices."""
+    if not shards:
+        return []
+
+    unique_refs: List[ObjectRef] = []
+    ref_index: Dict[ObjectRef, int] = {}
+    order: List[Tuple[int, int, int]] = []
+    for ref, offset, length in shards:
+        index = ref_index.get(ref)
+        if index is None:
+            index = len(unique_refs)
+            ref_index[ref] = index
+            unique_refs.append(ref)
+        order.append((index, offset, length))
+
+    slices_at: Dict[int, List[Tuple[int, int, int]]] = {}
+    for position, (index, offset, length) in enumerate(order):
+        slices_at.setdefault(index, []).append((position, offset, length))
+
+    decoded: List[Optional[pa.Table]] = [None] * len(order)
+    step = batch_size if batch_size and batch_size > 0 else len(unique_refs)
+    num_batches = math.ceil(len(unique_refs) / step) if step else 0
+    for batch_index, batch_start in enumerate(range(0, len(unique_refs), step)):
+        batch = unique_refs[batch_start : batch_start + step]
+        fetched = _get_shard_batch(
             batch, partition_id, batch_index, num_batches, get_timeout_s
-        ):
+        )
+        for local_index, buf in enumerate(fetched):
             if buf is None:
                 continue
-            table = _read_partition_ipc(buf)
-            if table is None:
-                continue
-            tables.append(table)
-    return tables
+            for position, offset, length in slices_at[batch_start + local_index]:
+                decoded[position] = _read_partition_ipc(_slice_ipc(buf, offset, length))
+        # Drop the compressed bundles before fetching the next batch.
+        del fetched
+
+    return [table for table in decoded if table is not None]
 
 
 @ray.remote
 def _shuffle_reduce_task(
-    shard_refs_by_input: List[List[ObjectRef]],
+    shard_refs_by_input: List[List[ShardSlice]],
     partition_id: int,
     reduce_fn: ReduceFn,
     target_max_block_size: Optional[int],
@@ -317,8 +528,8 @@ def _shuffle_reduce_task(
     called once with ``tables_by_input`` aligned with ``shard_refs_by_input``.
 
     Args:
-        shard_refs_by_input: Per-input lists of ObjectRefs to this partition's
-            IPC shards from every mapper.  May contain None for empty shards.
+        shard_refs_by_input: Per-input lists of ``(ref, offset, length)`` slices.
+            Several partitions may share one ref; each reducer reads only its range.
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
         target_max_block_size: Output block size.  None emits blocks as-is.

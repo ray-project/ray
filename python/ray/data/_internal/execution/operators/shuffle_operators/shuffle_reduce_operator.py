@@ -33,6 +33,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     SHUFFLE_PEAK_MEMORY_MULTIPLIER,
     ReduceFn,
     _shuffle_reduce_task,
+    parse_bundle_nbytes,
+    parse_shuffle_slice,
 )
 from ray.data._internal.execution.operators.shuffle_phase_metrics import (
     PhaseSpec,
@@ -302,9 +304,24 @@ class ShuffleReduceOp(PhysicalOperator):
         metrics_blocks = []
         estimated_bytes = 0
         for bundle in bundles:
-            shard_refs_by_input.append(list(bundle.block_refs))
+            slices = []
+            seen_refs = set()
+            for entry in bundle.blocks:
+                offset, length = parse_shuffle_slice(entry.metadata.input_files)
+                slices.append((entry.ref, offset, length))
+                if entry.ref in seen_refs:
+                    continue
+                seen_refs.add(entry.ref)
+                # Progress stats stay on the shard. The task fetches the whole
+                # bundle, including other partitions packed into it.
+                bundle_nbytes = parse_bundle_nbytes(entry.metadata.input_files)
+                if bundle_nbytes is None:
+                    bundle_nbytes = (
+                        length if length > 0 else (entry.metadata.size_bytes or 0)
+                    )
+                estimated_bytes += bundle_nbytes
+            shard_refs_by_input.append(slices)
             metrics_blocks.extend(bundle.blocks)
-            estimated_bytes += sum((m.size_bytes or 0) for m in bundle.metadata)
 
         reduce_options = self._reduce_task_remote_args(
             int(estimated_bytes * self._peak_memory_multiplier)

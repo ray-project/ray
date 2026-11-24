@@ -589,14 +589,11 @@ def test_shuffle_map_task_uses_operator_name():
         "ray.data._internal.execution.operators.shuffle_operators."
         "shuffle_map_operator._shuffle_map_task"
     ) as shuffle_map_task:
-        shuffle_map_task.options.return_value.remote.return_value = [
-            MagicMock(),
-            MagicMock(),
-            MagicMock(),
-        ]
+        shuffle_map_task.options.return_value.remote.return_value = MagicMock()
         op._submit_shuffle_map_task([], [])
 
     assert shuffle_map_task.options.call_args.kwargs["name"] == name
+    assert shuffle_map_task.options.call_args.kwargs["num_returns"] == 1
 
 
 def test_shuffle_reduce_task_uses_operator_name():
@@ -635,7 +632,7 @@ def test_shuffle_reduce_task_uses_operator_name():
             ShuffleMapOp,
             "ray.data._internal.execution.operators.shuffle_operators."
             "shuffle_map_operator._shuffle_map_task",
-            True,
+            False,
             id="object_store",
         ),
         # The disk writer is a plain map op; see

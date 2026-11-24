@@ -172,6 +172,39 @@ def _deduce_default_enable_disk_shuffle() -> bool:
 
 DEFAULT_ENABLE_DISK_SHUFFLE = _deduce_default_enable_disk_shuffle()
 
+# ``auto`` picks disk only when a trusted input-byte estimate is at least this
+# fraction of the cluster object store. Unknown estimates stay on the object store.
+DEFAULT_SHUFFLE_OBJECT_STORE_BUDGET_FRACTION = 0.5
+# Pack object-store shards until a bundle reaches this size. 1 MiB is above the
+# default inline threshold (~100 KiB), so a full bundle is a real object.
+DEFAULT_SHUFFLE_MIN_SHARD_OBJECT_BYTES = 1024 * 1024
+# A reducer downloads a whole bundle to read one shard. Cap how many partitions
+# share that download.
+DEFAULT_SHUFFLE_MAX_PARTITIONS_PER_BUNDLE = 8
+DEFAULT_SHUFFLE_TARGET_PARTITION_BYTES = 1024**3
+DEFAULT_SHUFFLE_MAX_PARTITIONS = 1024
+
+_SHUFFLE_TRANSPORTS = frozenset(("auto", "object_store", "disk"))
+
+
+def _explicit_disk_shuffle_from_env() -> Optional[bool]:
+    """Return the env override, or None when the user did not set either variable.
+
+    The dataclass default is computed once at import. Reading the environment
+    again at ``DataContext`` init distinguishes "the field is still the default"
+    from "this process asked for a transport".
+    """
+    if "RAY_DATA_ENABLE_DISK_SHUFFLE" in os.environ:
+        return env_bool("RAY_DATA_ENABLE_DISK_SHUFFLE", False)
+    if "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE" in os.environ:
+        logger.warning(
+            "RAY_DATA_ENABLE_EXTERNAL_SHUFFLE is deprecated, please use "
+            "RAY_DATA_ENABLE_DISK_SHUFFLE instead"
+        )
+        return env_bool("RAY_DATA_ENABLE_EXTERNAL_SHUFFLE", False)
+    return None
+
+
 DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
     "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
 )
@@ -946,13 +979,36 @@ class DataContext:
             for CPU-intensive shuffles) at the cost of more, smaller intermediate
             shard objects. Set to ``0`` to disable batching, processing each
             input bundle individually. Defaults to 1GiB.
-        use_disk_based_hash_shuffle: Whether ``random_shuffle()``, ``sort()``,
-            ``repartition()`` with keys or shuffle, aggregations, and joins under
-            the ``SHUFFLE_V2`` strategy use the disk-based (file-transport)
-            shuffle instead of the object store. Defaults to the ``RAY_DATA_ENABLE_DISK_SHUFFLE``
-            environment variable (``False`` when unset). Deprecated
-            aliases: ``use_external_hash_shuffle`` and the
-            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE`` environment variable.
+        use_disk_based_hash_shuffle: Compatibility switch for the shuffle
+            transport. Assigning it after init, or passing a constructor value
+            different from the import-time default, selects ``disk`` or
+            ``object_store`` and overrides ``auto``. The dataclass default
+            itself does not: a new context stays on ``auto`` until this is
+            assigned, a non-default constructor value is passed, or an
+            environment variable is set. An explicit ``shuffle_transport``
+            other than ``auto`` wins over this field and over the environment.
+            Deprecated aliases: ``use_external_hash_shuffle`` and
+            ``RAY_DATA_ENABLE_EXTERNAL_SHUFFLE``.
+        shuffle_transport: ``auto``, ``object_store``, or ``disk``. ``auto``
+            uses disk when a trusted estimate of the shuffle input is at least
+            ``shuffle_object_store_budget_fraction`` of the cluster object
+            store, and the object store otherwise (including when the estimate
+            or the budget is unknown). A size copied through a row UDF,
+            ``map_batches``, ``flat_map``, ``filter``, ``download``, or
+            ``with_column`` is not trusted. ``sort()`` does not honor ``auto``.
+            A constructor value other than ``auto`` overrides
+            ``RAY_DATA_ENABLE_DISK_SHUFFLE``. ``auto`` still follows that
+            variable when it is set.
+        shuffle_object_store_budget_fraction: Fraction of cluster object-store
+            memory that ``auto`` may fill with shuffle intermediates.
+        shuffle_min_shard_object_bytes: Object-store shuffle packs smaller
+            partition shards into one object until the bundle reaches this size.
+            A shard at least this large is its own object.
+        shuffle_max_partitions_per_bundle: Most partitions that share one
+            packed object. Limits how much extra data one reducer downloads.
+        shuffle_target_partition_bytes: Target input bytes per partition when
+            the caller did not set a partition count.
+        shuffle_max_partitions: Upper bound for that computed partition count.
         enable_aggregate_shuffle_elimination: Whether a group-by skips its shuffle
             when its input is already hash-partitioned on its keys under the
             ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
@@ -1138,11 +1194,19 @@ class DataContext:
     hash_shuffle_operator_actor_num_cpus_override: float = None
     hash_aggregate_operator_actor_num_cpus_override: float = None
 
-    # Whether to use the on-disk (file-transport) path for SHUFFLE_V2
-    # shuffle operations (random shuffle, sort, keyed repartition, aggregations,
-    # joins).
-    # When False, use the object-store path.
+    # Compatibility switch. See ``shuffle_transport``. The default False is the
+    # dataclass default, not an explicit object-store choice.
     use_disk_based_hash_shuffle: bool = DEFAULT_ENABLE_DISK_SHUFFLE
+
+    # ``auto`` | ``object_store`` | ``disk``. Planning reads this, not the bool.
+    shuffle_transport: str = "auto"
+    shuffle_object_store_budget_fraction: float = (
+        DEFAULT_SHUFFLE_OBJECT_STORE_BUDGET_FRACTION
+    )
+    shuffle_min_shard_object_bytes: int = DEFAULT_SHUFFLE_MIN_SHARD_OBJECT_BYTES
+    shuffle_max_partitions_per_bundle: int = DEFAULT_SHUFFLE_MAX_PARTITIONS_PER_BUNDLE
+    shuffle_target_partition_bytes: int = DEFAULT_SHUFFLE_TARGET_PARTITION_BYTES
+    shuffle_max_partitions: int = DEFAULT_SHUFFLE_MAX_PARTITIONS
 
     # Whether EliminateAggregateShuffle may skip a group-by's shuffle when its
     # input is already hash-partitioned on its keys (SHUFFLE_V2 only).
@@ -1352,7 +1416,55 @@ class DataContext:
         # This value increments only upon re-execution of the exact same pipeline.
         self._execution_idx = 0
 
+        # The bool field is assigned during dataclass init, before this runs.
+        # An explicit transport wins, then a bool that differs from the
+        # import-time default, then the environment. ``auto`` leaves the bool
+        # False unless one of those pins disk.
+        self._apply_shuffle_transport_overrides()
+        self._shuffle_transport_accepts_bool = True
+
+    def _apply_shuffle_transport_overrides(self) -> None:
+        # ``"auto"`` is also the dataclass default, so it cannot be told apart
+        # from "the caller did not pass shuffle_transport".
+        if self.shuffle_transport != "auto":
+            transport = self.shuffle_transport
+        elif self.use_disk_based_hash_shuffle != DEFAULT_ENABLE_DISK_SHUFFLE:
+            transport = "disk" if self.use_disk_based_hash_shuffle else "object_store"
+        else:
+            explicit = _explicit_disk_shuffle_from_env()
+            if explicit is None:
+                transport = "auto"
+            else:
+                transport = "disk" if explicit else "object_store"
+        if transport not in _SHUFFLE_TRANSPORTS:
+            raise ValueError(
+                "DataContext.shuffle_transport must be 'auto', 'object_store', "
+                f"or 'disk', got {transport!r}"
+            )
+        super().__setattr__("shuffle_transport", transport)
+        super().__setattr__("use_disk_based_hash_shuffle", transport == "disk")
+
     def __setattr__(self, name: str, value: Any) -> None:
+        if name == "shuffle_transport":
+            if value not in _SHUFFLE_TRANSPORTS:
+                raise ValueError(
+                    "DataContext.shuffle_transport must be 'auto', "
+                    f"'object_store', or 'disk', got {value!r}"
+                )
+            super().__setattr__(name, value)
+            if getattr(self, "_shuffle_transport_accepts_bool", False):
+                super().__setattr__("use_disk_based_hash_shuffle", value == "disk")
+            return
+
+        if name == "use_disk_based_hash_shuffle" and getattr(
+            self, "_shuffle_transport_accepts_bool", False
+        ):
+            super().__setattr__(
+                "shuffle_transport", "disk" if value else "object_store"
+            )
+            super().__setattr__(name, value)
+            return
+
         if name == "scheduling_strategy" and (
             name in self.__dict__ or value != DEFAULT_SCHEDULING_STRATEGY
         ):

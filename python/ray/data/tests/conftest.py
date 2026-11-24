@@ -355,9 +355,12 @@ def configure_shuffle_method(request):
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
     original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
     original_use_disk_based_hash_shuffle = ctx.use_disk_based_hash_shuffle
+    original_shuffle_transport = ctx.shuffle_transport
     original_shuffle_input_batch_bytes = ctx.shuffle_input_batch_bytes
 
     ctx.shuffle_strategy = shuffle_strategy
+    # Assigning the bool pins shuffle_transport. Restore the transport last so
+    # a later test is not stuck on object_store after this fixture's False.
     ctx.use_disk_based_hash_shuffle = use_disk_based_hash_shuffle
     if shuffle_strategy == ShuffleStrategy.SHUFFLE_V2:
         # One map task per input bundle, so reducers see multiple shards per
@@ -383,6 +386,7 @@ def configure_shuffle_method(request):
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
     ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
     ctx.use_disk_based_hash_shuffle = original_use_disk_based_hash_shuffle
+    ctx.shuffle_transport = original_shuffle_transport
     ctx.shuffle_input_batch_bytes = original_shuffle_input_batch_bytes
 
 

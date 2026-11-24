@@ -80,6 +80,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     plan_udf_map_op,
 )
 from ray.data._internal.planner.plan_write_op import plan_write_op
+from ray.data._internal.planner.shuffle_decision import estimate_shuffle_input_bytes
 from ray.data._internal.usage import create_usage_callback
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext, ShuffleStrategy
@@ -191,7 +192,9 @@ def _plan_join_shuffle_v2(
     num_partitions = logical_op.num_partitions
     join_type = JoinType(logical_op.join_type)
 
-    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(
+        data_context, estimate_shuffle_input_bytes(logical_op)
+    )
 
     left_map = map_cls(
         physical_children[0],
@@ -226,7 +229,7 @@ def _plan_join_shuffle_v2(
         right_schema=logical_op.input_dependencies[1].infer_schema(),
     )
     reduce_kwargs = {}
-    if data_context.use_disk_based_hash_shuffle:
+    if prefix == "Disk":
         reduce_kwargs[
             "peak_memory_multiplier"
         ] = _DISK_JOIN_REDUCE_PEAK_MEMORY_MULTIPLIER

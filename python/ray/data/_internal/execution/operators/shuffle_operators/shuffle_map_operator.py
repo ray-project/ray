@@ -1,7 +1,7 @@
 import dataclasses
 import functools
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import ray
@@ -27,6 +27,8 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     BlockTransformer,
     PartitionFn,
     _shuffle_map_task,
+    format_bundle_nbytes,
+    format_shuffle_slice,
 )
 from ray.data._internal.execution.operators.shuffle_phase_metrics import (
     PhaseSpec,
@@ -234,7 +236,10 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         ray_options: Dict[str, Any] = {
             **resources,
             "name": self.name,
-            "num_returns": self._num_partitions + 1,
+            # Bundle count is known only after partitioning, inside the task.
+            # One return, after every ray.put, so a retry cannot orphan a
+            # prefix of bundles or destroy inputs early.
+            "num_returns": 1,
         }
         if target_node_id is not None:
             ray_options["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
@@ -247,21 +252,23 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
             ray_options, self.data_context.execution_options.label_selector
         )
 
-        map_refs = _shuffle_map_task.options(**ray_options).remote(
+        result_ref = _shuffle_map_task.options(**ray_options).remote(
             *block_refs,
             partition_fn=self._partition_fn,
             num_partitions=self._num_partitions,
             compression=self.data_context.shuffle_compression,
             block_transformer=self._block_transformer,
+            min_shard_bytes=self.data_context.shuffle_min_shard_object_bytes,
+            max_partitions_per_bundle=(
+                self.data_context.shuffle_max_partitions_per_bundle
+            ),
         )
-        metadata_ref = map_refs[0]
-        partition_refs = list(map_refs[1:])
 
         task = MetadataOpTask(
             task_index=cur_task_idx,
-            object_ref=metadata_ref,
+            object_ref=result_ref,
             task_done_callback=functools.partial(
-                self._handle_map_done, cur_task_idx, partition_refs, input_bundles
+                self._handle_map_done, cur_task_idx, input_bundles
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(resources),
         )
@@ -284,7 +291,6 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
     def _handle_map_done(
         self,
         task_idx: int,
-        partition_refs: List[ObjectRef[Block]],
         input_bundles: List[RefBundle],
     ) -> None:
         task = self._shuffle_map_tasks.pop(task_idx)
@@ -292,22 +298,29 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         assert requested is not None
         self._map_resource_usage = self._map_resource_usage.subtract(requested)
 
-        # `task_done_callback` fires only after the metadata ref is ready,
-        # so this is just local deserialization.
-        input_meta, shard_sizes, output_schema = ray.get(task.get_waitable())
-
-        for partition_id, ref in enumerate(partition_refs):
-            rows, nbytes = shard_sizes.get(partition_id, (0, 0))
+        # The callback runs only after the single return is ready. Inputs stay
+        # alive until every partition from this task has been staged.
+        result = ray.get(task.get_waitable())
+        bundle_owners = Counter(placement[0] for placement in result.placements)
+        for partition_id, placement in enumerate(result.placements):
+            bundle_index, offset, length, rows, nbytes = placement
+            ref = result.bundle_refs[bundle_index]
             shard_meta = BlockMetadata(
                 num_rows=rows,
                 size_bytes=nbytes,
                 exec_stats=None,
-                input_files=None,
+                input_files=(
+                    format_shuffle_slice(offset, length),
+                    format_bundle_nbytes(result.bundle_nbytes[bundle_index]),
+                ),
             )
+            # A shared bundle must not be owned by every partition: the first
+            # consumer to drop its ref would release the object the others
+            # still read. Unique bundles keep the old ownership bit.
             shard_bundle = RefBundle(
                 (BlockEntry(ref=ref, metadata=shard_meta),),
-                schema=output_schema,
-                owns_blocks=True,
+                schema=result.output_schema,
+                owns_blocks=bundle_owners[bundle_index] == 1,
             )
             self._partition_staging[partition_id].add(shard_bundle)
             self._partition_bytes[partition_id] += nbytes
@@ -315,6 +328,7 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
         for bundle in input_bundles:
             bundle.destroy_if_owned()
 
+        input_meta = result.input_meta
         self._total_input_bytes += input_meta.size_bytes or 0
         if input_meta.exec_stats is not None:
             input_meta = dataclasses.replace(
@@ -355,16 +369,19 @@ class ShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 shards.append(staging.get_next())
 
             merged = RefBundle.merge_ref_bundles(shards)
-            # Stamp the partition_id sentinel onto the merged bundle's
-            # first block so the downstream reducer can recover the
-            # partition this bundle represents.
+            # Keep each block's slice tag and add the partition sentinel.
+            # Overwriting input_files would drop the byte range the reducer
+            # uses to read one shard out of a shared bundle.
             stamped_blocks = []
-            for i, entry in enumerate(merged.blocks):
-                meta = entry.metadata
-                if i == 0:
-                    meta = dataclasses.replace(
-                        meta, input_files=make_partition_sentinel(partition_id)
-                    )
+            sentinel = f"{_PARTITION_ID_SENTINEL}{partition_id}"
+            for entry in merged.blocks:
+                files = [
+                    item
+                    for item in (entry.metadata.input_files or ())
+                    if not str(item).startswith(_PARTITION_ID_SENTINEL)
+                ]
+                files.append(sentinel)
+                meta = dataclasses.replace(entry.metadata, input_files=tuple(files))
                 stamped_blocks.append(BlockEntry(ref=entry.ref, metadata=meta))
             stamped = RefBundle(
                 tuple(stamped_blocks),

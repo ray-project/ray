@@ -134,17 +134,19 @@ Because intermediate data goes straight to disk instead of filling the object st
 - The shuffled data is much larger than the cluster's aggregate object-store memory, for example large joins and aggregations over out-of-core datasets.
 - Object-store pressure from shuffle intermediates causes spilling that interferes with other operators in the pipeline.
 
-For shuffles that fit comfortably in object-store memory, the default in-memory path avoids the disk round trip and is typically faster.
+For shuffles that fit comfortably in object-store memory, the in-memory path avoids the disk round trip and is typically faster.
 
-To enable disk-based shuffle for random shuffles, sorts, key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set `DataContext.use_disk_based_hash_shuffle` before creating a `Dataset`:
+`DataContext.shuffle_transport` selects the transport. The default is `auto`. Under `auto`, Ray Data uses disk when a trusted estimate of the shuffle input is at least `shuffle_object_store_budget_fraction` (default one half) of the cluster object-store memory. It uses the object store when the estimate is smaller, or when the estimate or the object-store budget is unknown. `Dataset.sort()` stays on the object store under `auto`. An estimate copied through a row UDF, `map_batches`, `flat_map`, `filter`, `download`, or `with_column` is not trusted, so those pipelines stay on the object store until you select a transport.
+
+To force disk for random shuffles, sorts, key-based repartitioning, aggregations, and joins under the `SHUFFLE_V2` strategy, set one of these before creating a `Dataset`:
 
 ```python
 import ray
 
-ray.data.DataContext.get_current().use_disk_based_hash_shuffle = True
+ray.data.DataContext.get_current().shuffle_transport = "disk"
 ```
 
-Alternatively, set the environment variable `RAY_DATA_ENABLE_DISK_SHUFFLE=1`.
+Assigning `use_disk_based_hash_shuffle` selects `disk` or `object_store` and overrides `auto`. Passing `shuffle_transport="disk"` or `"object_store"` to the `DataContext` constructor does the same, and that explicit value overrides `RAY_DATA_ENABLE_DISK_SHUFFLE`. When the constructor leaves the transport on `auto`, setting `RAY_DATA_ENABLE_DISK_SHUFFLE=1` before the context is created selects disk.
 
 (tuning-shuffle-v2)=
 
@@ -162,9 +164,9 @@ Shuffle v2 buffers input blocks from the same node until their combined size rea
 
 **Inline object threshold**: `max_direct_call_object_size`, environment variable `RAY_max_direct_call_object_size`, default 100 KiB. This is a Ray Core setting, not a Ray Data setting.
 
-When shuffle v2 partitions a block across many partitions, an individual partition's shard can be smaller than this threshold. Ray transfers objects below the threshold *inline*, storing them in the memory of the process that submitted the work instead of in the object store. That process is typically the driver on the head node. For a shuffle that produces many small shards, these inline objects accumulate on the head node and can cause an out-of-memory failure there.
+Ray stores a task return value or a `ray.put` result below this threshold in the owner process instead of the object store. Object-store shuffle v2 packs partition shards smaller than `DataContext.shuffle_min_shard_object_bytes` into shared bundles, at most `shuffle_max_partitions_per_bundle` partitions each, and each map task returns one metadata object. A wide shuffle therefore does not place one small object per partition on the driver. A bundle smaller than the threshold stays in the map worker that created it.
 
-To reduce the risk of head-node out-of-memory failures, lower this threshold, for example `RAY_max_direct_call_object_size=8192` for 8 KiB. With a lower threshold, only small metadata stays inline, and shard data travels through the object store, which is spillable and distributed across the cluster.
+Lower the threshold when small objects accumulate in the process that owns them. For example, `RAY_max_direct_call_object_size=8192` keeps only objects under 8 KiB inline.
 
 (hash-shuffle)=
 

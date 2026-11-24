@@ -119,13 +119,15 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
 
     dag = get_execution_plan(ds._logical_plan)[0].dag
     assert isinstance(dag, DiskHashShuffleReduceOp)
-    assert dag.name == "DiskRandomShuffleReduce(partitions=2)"
+    # Partition count follows the byte formula, not override_num_blocks.
+    # range(10) is ~80 bytes, so it collapses to one partition.
+    assert dag.name == "DiskRandomShuffleReduce(partitions=1)"
     assert dag._reduce_ray_remote_args == {"resources": {"bar": 1}}
     regroup_op = dag.input_dependencies[0]
     assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
     map_op = regroup_op.input_dependencies[0]
     assert isinstance(map_op, MapOperator)
-    assert map_op.name == "DiskRandomShuffleMap(partitions=2)"
+    assert map_op.name == "DiskRandomShuffleMap(partitions=1)"
     assert map_op._get_dynamic_ray_remote_args()["resources"] == {"bar": 1}
     assert dag._preserve_partition_order
     ds_unseeded = ray.data.range(10, override_num_blocks=2).random_shuffle()

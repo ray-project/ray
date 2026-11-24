@@ -76,6 +76,11 @@ from ray.data._internal.planner.aggregate import generate_aggregate_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
 from ray.data._internal.planner.randomize_blocks import generate_randomize_blocks_fn
 from ray.data._internal.planner.repartition import generate_repartition_fn
+from ray.data._internal.planner.shuffle_decision import (
+    estimate_shuffle_input_bytes,
+    resolve_num_partitions,
+    resolve_shuffle_transport,
+)
 from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data._internal.planner.top_n import plan_top_n_op
 from ray.data._internal.random_config import get_single_integer_random_seed
@@ -189,9 +194,14 @@ def plan_disk_hash_shuffle_reduce(
 
 def _select_shuffle_v2_op_classes(
     data_context: DataContext,
+    estimated_bytes: Optional[int],
+    *,
+    allow_auto: bool = True,
 ) -> Tuple[Callable[..., PhysicalOperator], Callable[..., PhysicalOperator], str]:
-    """Pick the SHUFFLE_V2 map/reduce op family: disk-based (file-transport) or
-    object-store, per ``data_context.use_disk_based_hash_shuffle``.
+    """Pick the SHUFFLE_V2 map/reduce op family from ``shuffle_transport``.
+
+    ``estimated_bytes`` is the trusted input size, or None. ``allow_auto=False``
+    keeps ``sort()`` on the object store unless the user asked for disk.
 
     Returns ``(build_map, reduce_cls, name_prefix)``. ``build_map`` takes
     ``(input_op, data_context, *, num_partitions, partition_fn,
@@ -199,7 +209,10 @@ def _select_shuffle_v2_op_classes(
     ``name_prefix`` is ``"Disk"`` or ``""``, to be prepended to the op display
     names.
     """
-    if data_context.use_disk_based_hash_shuffle:
+    transport = resolve_shuffle_transport(
+        data_context, estimated_bytes, allow_auto=allow_auto
+    )
+    if transport == "disk":
         return plan_disk_hash_shuffle_map, plan_disk_hash_shuffle_reduce, "Disk"
     return (
         functools.partial(ShuffleMapOp, map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV),
@@ -238,17 +251,20 @@ def _plan_hash_shuffle_repartition_v2(
 ) -> PhysicalOperator:
     """Build the two-op Map → Reduce DAG for SHUFFLE_V2 hash-shuffle repartition.
 
-    Picks the disk-based (file-transport) or object-store op pair based on
-    ``data_context.use_disk_based_hash_shuffle``. Returns the reduce op; the
-    executor crawls upstream via its input_dependencies to find the map op.
+    Transport comes from ``shuffle_transport``. A caller-supplied ``num_outputs``
+    is kept; otherwise the count comes from the trusted input size. The computed
+    count is not written back onto ``logical_op``.
     """
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
     key_list = list(normalized_key_columns)
+    estimated_bytes = estimate_shuffle_input_bytes(logical_op)
 
-    target_num_partitions = (
-        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
+    target_num_partitions = resolve_num_partitions(
+        data_context,
+        estimated_bytes,
+        requested=logical_op.num_outputs,
     )
 
     partition_fn = _make_hash_partition_fn(key_list, target_num_partitions)
@@ -259,7 +275,9 @@ def _plan_hash_shuffle_repartition_v2(
         else SHUFFLE_PEAK_MEMORY_MULTIPLIER
     )
 
-    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(
+        data_context, estimated_bytes
+    )
 
     map_op = map_cls(
         input_physical_op,
@@ -292,10 +310,15 @@ def _plan_shuffle_repartition_v2(
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
     """Build the Map → Reduce DAG for SHUFFLE_V2 slice-based repartition."""
-    num_partitions = (
-        logical_op.num_outputs or data_context.default_hash_shuffle_parallelism
+    estimated_bytes = estimate_shuffle_input_bytes(logical_op)
+    num_partitions = resolve_num_partitions(
+        data_context,
+        estimated_bytes,
+        requested=logical_op.num_outputs,
     )
-    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(
+        data_context, estimated_bytes
+    )
 
     map_op = map_cls(
         input_physical_op,
@@ -364,7 +387,13 @@ def _plan_sort_v2(
             name=f"SortSample(partitions={num_partitions})",
         )
 
-    _, build_reduce, prefix = _select_shuffle_v2_op_classes(data_context)
+    # ``sort()`` does not use auto. Explicit disk still takes the disk plan,
+    # including SortSamplingOp. Auto stays on the object-store sort.
+    _, build_reduce, prefix = _select_shuffle_v2_op_classes(
+        data_context,
+        estimate_shuffle_input_bytes(logical_op),
+        allow_auto=False,
+    )
     if prefix == "Disk":
         # The partitioner is the writer's partition fn. The sampling op (if
         # any) forwards nothing until the boundaries exist, and on_start
@@ -412,9 +441,13 @@ def _plan_random_shuffle_v2(
     """Build the disk Map -> Reduce DAG for a SHUFFLE_V2 random shuffle."""
     # Pinned at plan time so retried tasks reproduce their output.
     seed = get_single_integer_random_seed(logical_op.seed_config, data_context)
-    num_partitions = (
-        logical_op.input_dependencies[0].estimated_num_outputs()
-        or data_context.default_hash_shuffle_parallelism
+    estimated_bytes = estimate_shuffle_input_bytes(logical_op)
+    # ``random_shuffle`` no longer accepts a caller partition count.
+    # A known file count is not a partition size: a few large files would
+    # become a few huge reduce tasks. Use the byte formula, and the context
+    # default when the estimate is missing.
+    num_partitions = resolve_num_partitions(
+        data_context, estimated_bytes, requested=None
     )
 
     map_op = plan_disk_hash_shuffle_map(
@@ -493,13 +526,20 @@ def _plan_hash_shuffle_aggregate_v2(
     key_list = list(key_columns)
     aggs = tuple(logical_op.aggs)
 
+    estimated_bytes = estimate_shuffle_input_bytes(logical_op)
     if key_list:
-        num_partitions = (
-            logical_op.num_partitions or data_context.default_hash_shuffle_parallelism
+        # Leave logical_op.num_partitions unset when the user did not set it.
+        # EliminateAggregateShuffle treats a stored count as "compare me".
+        num_partitions = resolve_num_partitions(
+            data_context,
+            estimated_bytes,
+            requested=logical_op.num_partitions,
         )
     else:
         # Global aggregation reduces the whole dataset to a single row.
-        num_partitions = 1
+        num_partitions = resolve_num_partitions(
+            data_context, estimated_bytes, requested=None, keyless=True
+        )
 
     partition_fn = _make_hash_partition_fn(key_list, num_partitions)
     block_transformer = _make_aggregating_transformer(
@@ -507,7 +547,9 @@ def _plan_hash_shuffle_aggregate_v2(
     )
     reduce_fn = _make_aggregating_reduce_fn(key_columns, aggs)
 
-    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(data_context)
+    map_cls, reduce_cls, prefix = _select_shuffle_v2_op_classes(
+        data_context, estimated_bytes
+    )
 
     # Partitioned by the group-by keys; a global aggregation has none. An
     # aggregation named after a key overwrites that column (see
@@ -641,11 +683,14 @@ def plan_all_to_all_op(
         # want to inherit the upstream op's target max block size.
 
     elif isinstance(op, RandomShuffle):
-        # Only the disk transport gets a v2 random shuffle; the object-store
-        # transport is being retired, so it keeps the legacy all-to-all op.
+        # Only a resolved disk transport gets a v2 random shuffle. Auto with
+        # an unknown or small estimate stays on the legacy all-to-all op.
         if (
             data_context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
-            and data_context.use_disk_based_hash_shuffle
+            and resolve_shuffle_transport(
+                data_context, estimate_shuffle_input_bytes(op)
+            )
+            == "disk"
         ):
             return _plan_random_shuffle_v2(data_context, op, input_physical_dag)
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
