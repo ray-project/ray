@@ -1086,6 +1086,211 @@ def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_c
     assert allocator._get_eligible_ops() == [reduce_op, tail]
 
 
+def test_disk_shuffle_teardown_cleans_nodes_without_mapper_handles():
+    """Cleanup must not depend on successfully returned mapper handles."""
+    ctx = DataContext.get_current()
+    input_op = InputDataBuffer(ctx, [])
+
+    writer = plan_disk_hash_shuffle_map(
+        input_op,
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {0: table},
+    )
+    reduce_op = plan_disk_hash_shuffle_reduce(
+        writer,
+        ctx,
+        num_partitions=2,
+        reduce_fn=lambda *args: [],
+    )
+    regroup_op = reduce_op.input_dependencies[0]
+
+    shuffle_id = writer._disk_shuffle_id
+
+    # Simulate cancellation before any mapper returns a handle.
+    assert regroup_op._file_servers == {}
+    assert regroup_op._planned_shuffle_ids == {shuffle_id}
+
+    nodes = [
+        {"NodeID": "node-a", "Alive": True},
+        {"NodeID": "node-b", "Alive": True},
+        {"NodeID": "node-c", "Alive": False},
+    ]
+
+    module = (
+        "ray.data._internal.execution.operators."
+        "shuffle_operators.disk_shuffle_reduce_operator"
+    )
+
+    with (
+        patch(f"{module}.ray.nodes", return_value=nodes),
+        patch(f"{module}.teardown_disk_shuffle") as cleanup,
+    ):
+        regroup_op.teardown()
+
+    cleanup.assert_called_once()
+    cleanup_targets = set(cleanup.call_args.args[0])
+
+    assert cleanup_targets == {
+        (shuffle_id, "node-a"),
+        (shuffle_id, "node-b"),
+    }
+
+
+def test_disk_shuffle_mid_map_cancel_cleans_directories():
+    """A cancelled mapper must not strand its already-created disk shuffle dir."""
+    import os
+    import subprocess
+    import sys
+    import textwrap
+
+    # A separate process isolates SIGINT from the pytest runner and starts a
+    # private Ray cluster. This test deliberately uses a single local node.
+    script = textwrap.dedent(
+        r"""
+        import glob
+        import os
+        import shutil
+        import signal
+        import tempfile
+        import threading
+        import time
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import ray
+        import ray.data._internal.planner.plan_all_to_all_op as planner
+        from ray.data.context import DataContext, ShuffleStrategy
+
+        class GatedPartition:
+            def __init__(self, marker, release):
+                self.marker = str(marker)
+                self.release = str(release)
+
+            def __call__(self, table):
+                # DiskShuffleWriteFn creates the map directory before invoking
+                # partition_fn. Cancel only after the marker is written.
+                Path(self.marker).touch()
+                deadline = time.monotonic() + 40
+                while not Path(self.release).exists():
+                    if time.monotonic() > deadline:
+                        raise TimeoutError("partition gate was not released")
+                    time.sleep(0.05)
+                return {0: table}
+
+        def dirs():
+            return set(glob.glob(os.path.join(
+                tempfile.gettempdir(), "ray_shuffle_disk_*"
+            )))
+
+        ray.init(num_cpus=2, include_dashboard=False)
+        baseline = dirs()
+        gate_reached = threading.Event()
+        stop_monitor = threading.Event()
+        interrupted = False
+        leftover = set()
+        error = None
+
+        try:
+            ctx = DataContext.get_current()
+            ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+            ctx.use_disk_based_hash_shuffle = True
+            ctx.shuffle_input_batch_bytes = 0
+
+            with tempfile.TemporaryDirectory(prefix="disk_shuffle_gate_") as d:
+                marker = Path(d) / "entered"
+                release = Path(d) / "release"
+
+                def watch_gate():
+                    deadline = time.monotonic() + 30
+                    while not stop_monitor.is_set() and time.monotonic() < deadline:
+                        if marker.exists():
+                            gate_reached.set()
+                            os.kill(os.getpid(), signal.SIGINT)
+                            return
+                        time.sleep(0.05)
+
+                monitor = threading.Thread(target=watch_gate, daemon=True)
+                monitor.start()
+                try:
+                    ds = ray.data.range(1000, override_num_blocks=1).repartition(
+                        4, keys=["id"]
+                    )
+                    with patch.object(
+                        planner,
+                        "_make_hash_partition_fn",
+                        return_value=GatedPartition(marker, release),
+                    ):
+                        try:
+                            ds.materialize()
+                        except KeyboardInterrupt:
+                            interrupted = True
+                finally:
+                    stop_monitor.set()
+                    monitor.join(timeout=2)
+                    release.touch()
+
+            # Let async cancellation/cleanup tasks settle.
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if not (dirs() - baseline):
+                    break
+                time.sleep(0.1)
+            leftover = dirs() - baseline
+            print(
+                "CANCEL_RESULT",
+                f"gate={gate_reached.is_set()}",
+                f"interrupted={interrupted}",
+                f"leftover={sorted(leftover)}",
+                flush=True,
+            )
+        except BaseException as exc:
+            error = exc
+        finally:
+            # Limit cleanup strictly to new paths in the local temp root.
+            tmp_root = Path(tempfile.gettempdir()).resolve()
+            for path in dirs() - baseline:
+                p = Path(path)
+                if (
+                    p.parent.resolve() == tmp_root
+                    and p.name.startswith("ray_shuffle_disk_")
+                    and not p.is_symlink()
+                ):
+                    shutil.rmtree(p, ignore_errors=True)
+            ray.shutdown()
+
+        if error is not None:
+            raise error
+        assert gate_reached.is_set(), "map task never entered partition gate"
+        assert interrupted, "driver did not catch cancellation SIGINT"
+        assert not leftover, f"shuffle directories leaked: {sorted(leftover)}"
+    """
+    )
+
+    with tempfile.TemporaryDirectory(prefix="rds_", dir="/tmp") as tmp_dir:
+        env = os.environ.copy()
+        env.pop("RAY_ADDRESS", None)
+        env["TMPDIR"] = tmp_dir
+        env["TMP"] = tmp_dir
+        env["TEMP"] = tmp_dir
+
+        completed = subprocess.run(
+            [sys.executable, "-u", "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+
+        assert completed.returncode == 0, (
+            f"child exited {completed.returncode}\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+        assert (
+            "CANCEL_RESULT gate=True interrupted=True leftover=[]" in completed.stdout
+        )
+
+
 def _ipc_shard_bundle(partition_id, table):
     """One partition's shard as a ShuffleMapOp emits it: an IPC-encoded buffer
     stamped with the partition id."""

@@ -164,6 +164,11 @@ def plan_disk_hash_shuffle_map(
             ray_remote_args=remote_args,
         )
     )
+
+    # Keep the shuffle identity on the driver independently of mapper results.
+    # A cancelled mapper might create its directory without returning a handle.
+    map_op._disk_shuffle_id = shuffle_id
+
     return map_op
 
 

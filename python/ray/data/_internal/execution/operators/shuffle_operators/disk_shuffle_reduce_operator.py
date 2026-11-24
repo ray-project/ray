@@ -122,6 +122,12 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         # (shuffle_id, node_id) -> owned ShuffleFileServer handle, created on
         # the first handle from that node and killed in teardown.
         self._file_servers: Dict[Tuple[str, str], "ray.actor.ActorHandle"] = {}
+        # Shuffle IDs are known at planning time, even if no mapper completes.
+        self._planned_shuffle_ids = {
+            shuffle_id
+            for op in input_ops
+            if (shuffle_id := getattr(op, "_disk_shuffle_id", None))
+        }
         self._output_queue: deque = deque()
         self._estimated_num_output_bundles = num_partitions
 
@@ -263,7 +269,23 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         # ``max_restarts=-1``.
         for server in self._file_servers.values():
             ray.kill(server, no_restart=True)
-        teardown_disk_shuffle(self._file_servers.keys())
+
+        # A mapper can create its shuffle directory before returning a handle.
+        # If it is cancelled at that point, _file_servers has no record of the
+        # node on which the directory was created.
+        shuffle_nodes = set(self._file_servers)
+
+        # Clean up planned shuffles on all currently alive nodes so that
+        # cancelled mappers without returned handles are also covered.
+        if self._planned_shuffle_ids:
+            for node in ray.nodes():
+                if node.get("Alive"):
+                    node_id = node["NodeID"]
+                    for shuffle_id in self._planned_shuffle_ids:
+                        shuffle_nodes.add((shuffle_id, node_id))
+
+        teardown_disk_shuffle(shuffle_nodes)
+
         self._file_servers.clear()
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
