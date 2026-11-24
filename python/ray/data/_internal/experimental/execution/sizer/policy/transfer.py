@@ -554,7 +554,7 @@ class TransferBook:
         self._name = name
         self._metrics = metrics
         self._placement = placement
-        self._statuses = statuses
+        self._status_machine = statuses
         self.state = TransferState()
 
     @property
@@ -708,7 +708,7 @@ class TransferBook:
         while another transfer is still draining it.
         """
         del self.state.in_flight[transfer.recipient]
-        self._statuses.activate(transfer.recipient)
+        self._status_machine.activate(transfer.recipient)
         if transfer.record is not None:
             transfer.record.closed_t = now
         still_donating_to = {
@@ -718,11 +718,11 @@ class TransferBook:
         }
         for donor in transfer.donors:
             if donor in still_donating_to:
-                self._statuses.start_donating(donor, still_donating_to[donor])
+                self._status_machine.start_donating(donor, still_donating_to[donor])
                 continue
             # Wait until the donor's signals describe its smaller size
             # (SIZER_DONOR_COOLDOWN_STEPS scheduling-loop steps).
-            self._statuses.start_cooling(donor)
+            self._status_machine.start_cooling(donor)
 
     # --- new transfers --------------------------------------------------------
 
@@ -860,9 +860,9 @@ class TransferBook:
         )
         # The recipient and its donors are the transfer's until it closes, so
         # nothing else resizes them mid-move.
-        self._statuses.start_receiving(recipient)
+        self._status_machine.start_receiving(recipient)
         for donor in donor_ops:
-            self._statuses.start_donating(donor, recipient)
+            self._status_machine.start_donating(donor, recipient)
         state.recent_transfers.append(record)
         state.logged_thrashing.discard(recipient)
         self._metrics.record_outcome(self._name, recipient.name, "fired")

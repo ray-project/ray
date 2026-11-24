@@ -285,16 +285,14 @@ class SizingPolicy:
             requests=self._transfer_book.bring_up_held_actors(),
         )
 
-        # The ops the bottleneck move may resize, read once after the
-        # transfers advance (closing one makes its recipient Active).
-        active = self._statuses.active_ops(ctx.apmo_profiles.actor_pool_ops)
-        # Open transfers only fund their recipients, which are Receiving (or
-        # Completed), never Active.
-        funded_active = op_decisions.keys() & active
-        assert not funded_active, f"transfers funded Active ops: {funded_active}"
+        active_ops = self._statuses.active_ops(ctx.apmo_profiles.actor_pool_ops)
+        funded_active = op_decisions.keys() & active_ops
+        assert (
+            not funded_active
+        ), f"transfers cannot fund Active ops, but got: {funded_active}"
 
         # 2. The one bottleneck move of this tick, over the Active ops.
-        move = choose_bottleneck_move(ctx, active)
+        move = choose_bottleneck_move(ctx, active_ops)
         self.last_move = move
         logger.debug(
             "SizingPolicy: phase=%s transfer=%s move=%s%s (%s)",
@@ -306,8 +304,8 @@ class SizingPolicy:
         )
         # The move only resizes Active ops, so it never shares an op with the
         # transfers above.
-        moved = self._make_move(move, ctx, active)
-        not_active = moved.keys() - active
+        moved = self._make_move(move, ctx, active_ops)
+        not_active = moved.keys() - active_ops
         assert not not_active, f"{move.name} resized ops not Active: {not_active}"
         op_decisions.update(moved)
 
