@@ -24,8 +24,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from hypothesis import example, given, settings
-from hypothesis import strategies as st
+from hypothesis import example, given, settings, strategies as st
 from pyarrow.fs import LocalFileSystem
 
 import ray
