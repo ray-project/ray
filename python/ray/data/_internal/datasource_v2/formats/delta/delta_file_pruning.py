@@ -14,8 +14,10 @@ anyway. Keeping a file costs a read; dropping a matching one would lose rows.
 Not every statistic is a true bound. Writers truncate long strings, which can
 leave ``max`` below the real maximum (a truncated ``min`` is still a lower
 bound), and Delta stores timestamps in milliseconds, so either bound can be
-off. Floating-point bounds may be NaN when the file holds NaN. Only the bounds
-that are exact for their type are used.
+off. Floating-point bounds may be NaN when the file holds NaN. ``deltalake``
+writes decimal statistics through float64, so a decimal with more than 15
+digits is rounded, and one beyond the int64 range is clamped to it. Only the
+bounds that are exact for their type are used.
 """
 
 import logging
@@ -36,6 +38,10 @@ logger = logging.getLogger(__name__)
 
 MIN_STAT_PREFIX = "min."
 MAX_STAT_PREFIX = "max."
+
+# The most decimal digits whose statistics survive ``deltalake``'s float64
+# round trip exactly.
+_MAX_EXACT_DECIMAL_DIGITS = 15
 
 # ``lit <op> col`` asks the same question of a file as ``col <flipped> lit``.
 _FLIPPED_OPERATION = {
@@ -182,11 +188,13 @@ def _bound(add_actions: pa.Table, prefix: str, column: str) -> Mask:
     value_type = values.type
     if (
         pa.types.is_integer(value_type)
-        or pa.types.is_decimal(value_type)
         or pa.types.is_date(value_type)
         or pa.types.is_boolean(value_type)
     ):
         return values
+    if pa.types.is_decimal(value_type):
+        # float64 holds every decimal of up to 15 digits exactly.
+        return values if value_type.precision <= _MAX_EXACT_DECIMAL_DIGITS else None
     if pa.types.is_floating(value_type):
         return pc.if_else(pc.is_nan(values), pa.scalar(None, value_type), values)
     if prefix == MIN_STAT_PREFIX and (
