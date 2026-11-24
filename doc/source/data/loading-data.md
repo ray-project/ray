@@ -978,7 +978,7 @@ def create_tls_connection():
     )
 ```
 
-For binary HS2, an untrusted CA may appear as a generic connection error; the underlying error may be logged at INFO by `thrift.transport.TSocket`. Check the CA file's path and permissions wherever the factory runs. For binary HS2, Impyla has no socket timeout by default. Set `timeout` to bound unresponsive socket operations. With Thrift 0.16 on Python 3.12+, hostname validation uses the certificate's common name rather than its subject alternative names.
+For binary HS2, an untrusted CA may appear as a generic connection error; the underlying error may be logged at INFO by `thrift.transport.TSocket`. A missing CA file error may omit the path. Check the CA file's path and permissions wherever the factory runs. For binary HS2, Impyla has no socket timeout by default. Set `timeout` to bound unresponsive socket operations. With Thrift 0.16 on Python 3.12+, hostname validation uses the certificate's common name rather than its subject alternative names.
 
 The HS2 TLS integration suite exercises verified TLS with Hive 4.2.0 and `impyla==0.23.0`, using `PLAIN` with HiveServer2 in server mode `NONE`. GSSAPI and NOSASL aren't covered by this TLS suite. Client retries configured in the factory are separate from Ray's HS2 no-replay behavior.
 
