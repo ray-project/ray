@@ -23,11 +23,8 @@ from ray.data import DataContext
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     resolve_data_file_path,
 )
-from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
-    DeltaScanner,
-)
-from ray.data._internal.logical.operators import ReadFiles
 from ray.data.checkpoint import CheckpointConfig
+from ray.data.checkpoint.interfaces import InvalidCheckpointingConfig
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.expressions import col
@@ -420,16 +417,16 @@ def _checkpoint_config(tmp_path, **kwargs) -> CheckpointConfig:
     )
 
 
-@pytest.mark.parametrize("version, pinned", [(None, False), (2, True), (0, True)])
-def test_scanner_knows_whether_the_version_was_pinned(
-    checkpointed_table, version, pinned
+@pytest.mark.parametrize("version", [None, 0])
+def test_generated_id_warns_unless_the_version_is_pinned(
+    checkpointed_table, tmp_path, caplog, propagate_logs, version
 ):
-    """``generated_id_column`` warns about resuming unless ``version=`` is set."""
-    read_files = _read(checkpointed_table, version=version)._logical_plan.dag
+    """The warning names the version read, which a resumed job may need."""
+    DataContext.get_current().checkpoint_config = _checkpoint_config(tmp_path)
 
-    assert isinstance(read_files, ReadFiles), read_files
-    assert isinstance(read_files.scanner, DeltaScanner), read_files.scanner
-    assert read_files.scanner.version_pinned_by_caller is pinned
+    _read(checkpointed_table, version=version).write_parquet(str(tmp_path / "out"))
+
+    assert ("pass `version=2` to `read_delta`" in caplog.text) is (version is None)
 
 
 def test_generated_ids_name_each_rows_place_in_its_data_file(
@@ -459,73 +456,35 @@ def test_generated_ids_name_each_rows_place_in_its_data_file(
     )
 
 
-def test_generated_id_rerun_after_success_writes_nothing(checkpointed_table, tmp_path):
-    """Resuming against the same version finds every ID again."""
+def test_generated_id_resume_of_the_latest_version(checkpointed_table, tmp_path):
+    """Without ``version=``, a resumed job reads the latest version. Appended
+    files are new work; files a compaction rewrote would be written again, so
+    the resumed job fails until it pins the version it read before."""
     ctx = DataContext.get_current()
     ctx.checkpoint_config = _checkpoint_config(
         tmp_path, delete_checkpoint_on_success=False
     )
     out = str(tmp_path / "out")
 
-    _read(checkpointed_table, version=2).write_parquet(out)
-    _read(checkpointed_table, version=2).write_parquet(out)
+    def written_rows() -> int:
+        config, ctx.checkpoint_config = ctx.checkpoint_config, None
+        try:
+            return pq.read_table(out).num_rows
+        finally:
+            ctx.checkpoint_config = config
 
-    ctx.checkpoint_config = None
-    assert pq.read_table(out).num_rows == 18
+    _read(checkpointed_table).write_parquet(out)
+    deltalake.write_deltalake(
+        checkpointed_table, pa.table({"x": [300, 301]}), mode="append"
+    )
+    _read(checkpointed_table).write_parquet(out)
+    assert written_rows() == 20
 
-
-def test_generated_id_recovery_writes_every_row(checkpointed_table, tmp_path):
-    """Fail a job partway and rerun it: every row is written and the checkpoint
-    is deleted after the successful rerun."""
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-    ctx.raise_original_map_exception = True
-    ctx.checkpoint_config = _checkpoint_config(tmp_path)
-    out = str(tmp_path / "out")
-
-    @ray.remote(num_cpus=0)
-    class Switch:
-        def __init__(self):
-            self._fail = True
-
-        def turn_off(self):
-            self._fail = False
-
-        def fail(self):
-            return self._fail
-
-    switch = Switch.remote()  # pyrefly: ignore[missing-attribute]
-
-    class InjectedFailure(Exception):
-        pass
-
-    class FailOnce:
-        def __init__(self, switch):
-            self._fail = ray.get(switch.fail.remote())
-
-        def __call__(self, batch):
-            if self._fail and 103 in batch["x"]:
-                raise InjectedFailure("failing on x=103")
-            return batch
-
-    def run():
-        _read(checkpointed_table, version=2).map_batches(
-            FailOnce,
-            fn_constructor_args=[switch],
-            concurrency=1,
-            batch_size=None,
-            num_cpus=1.1,  # Keep the map out of the read's fused stage.
-        ).write_parquet(out, concurrency=1)
-
-    with pytest.raises(InjectedFailure):
-        run()
-    ray.get(switch.turn_off.remote())
-    run()
-
-    ctx.checkpoint_config = None
-    assert not os.path.exists(tmp_path / "ckpt") or not os.listdir(tmp_path / "ckpt")
-    written = set(pq.read_table(out)["x"].to_pylist())
-    assert written == {f * 100 + i for f in range(3) for i in range(6)}
+    deltalake.DeltaTable(checkpointed_table).optimize.compact()
+    with pytest.raises(InvalidCheckpointingConfig, match="rewrote them"):
+        _read(checkpointed_table).write_parquet(out)
+    _read(checkpointed_table, version=3).write_parquet(out)
+    assert written_rows() == 20
 
 
 @pytest.mark.parametrize("deltalake_version", ["1.5.0", "1.6.6"])

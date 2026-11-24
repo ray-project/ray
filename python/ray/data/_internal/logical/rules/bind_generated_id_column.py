@@ -117,20 +117,22 @@ def _warn_if_delta_version_not_pinned(scanner: "DeltaScanner") -> None:
 
     A generated ID names a row's place in a data file. Delta data files never
     change, so a job resumed at the same table version finds every ID again.
-    But ``read_delta`` without ``version=`` reads the latest version, and
-    rows a later commit rewrote into new files (``OPTIMIZE``, an overwrite)
-    get new IDs and are processed again.
+    But ``read_delta`` without ``version=`` reads the latest version. If a
+    commit in between rewrote files (``OPTIMIZE``, an overwrite), the resumed
+    job's listing raises rather than process their rows again, so the warning
+    names the version to pass then.
     """
     if scanner.version_pinned_by_caller or not log_once(
         f"delta_generated_id_unpinned_version:{scanner.table_uri}"
     ):
         return
     logger.warning(
-        "`generated_id_column` is set for a `read_delta` of the latest version of "
-        f"{scanner.table_uri!r}. A resumed job reads the version that is latest "
-        "then, and processes again any rows that a commit in between rewrote "
-        "into new files, for example by compaction or an overwrite. Pass "
-        "`version=` to `read_delta` to resume against the same version."
+        "`generated_id_column` is set for a `read_delta` of the latest version "
+        f"of {scanner.table_uri!r}, version {scanner.version}. A resumed job "
+        "reads the version that is latest then. If a commit in between rewrites "
+        "files this job finishes, for example by compaction or an overwrite, the "
+        "resumed job fails instead of writing their rows again. To resume "
+        f"against this version, pass `version={scanner.version}` to `read_delta`."
     )
 
 

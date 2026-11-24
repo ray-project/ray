@@ -282,5 +282,6 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
             shuffle=self._shuffle_config,
             target_block_size=DataContext.get_current().target_max_block_size,
             table_uri=self._snapshot.table_uri,
+            version=self._snapshot.version,
             version_pinned_by_caller=self._version_pinned_by_caller,
         )
