@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections import deque
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Deque, List, Optional, Tuple
 
 from typing_extensions import override
@@ -14,11 +15,27 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
 
+@dataclass(frozen=True)
+class PendingBundleState:
+    """Aggregate state for bundles waiting to be rebundled."""
+
+    num_rows: int
+    size_bytes: int
+
+
 class RebundlingStrategy(abc.ABC):
     """Base class for strategies describing how to rebundle queues."""
 
+    @property
     @abc.abstractmethod
-    def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
+    def min_rows_per_bundle(self) -> int:
+        """The row target a batch of pending bundles must reach before a ready
+        bundle can be built (0 means no target / build as soon as any row is
+        pending)."""
+        ...
+
+    @abc.abstractmethod
+    def can_build_ready_bundle(self, state: PendingBundleState) -> bool:
         """Signifies whether we can build a ready bundle. A ready bundle is a bundle
         that will be returned from `get_next()` calls. Pending bundles merge into Ready bundles."""
         ...
@@ -33,7 +50,7 @@ class RebundlingStrategy(abc.ABC):
             total_pending_rows: The number of rows in a batch of pending bundles that will be merged to form
                 a ready bundle, including the last_pending_bundle.
             last_pending_bundle: The last pending bundles in that batch ^. The term *last* means the bundle that caused
-                `can_build_ready_bundle(num_pending_rows)` to be `True` for the first time.
+                `can_build_ready_bundle(state)` to be `True` for the first time.
 
         Returns:
             The # of rows needed from the last pending bundle. This should be > 0, unless bundle.num_rows() is None.
@@ -56,14 +73,18 @@ class EstimateSize(RebundlingStrategy):
         assert (
             min_rows_per_bundle is None or min_rows_per_bundle >= 0
         ), "Min rows per bundle has to be non-negative"
-
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
+    @property
     @override
-    def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
-        return num_pending_rows > 0 and (
+    def min_rows_per_bundle(self) -> int:
+        return self._min_rows_per_bundle or 0
+
+    @override
+    def can_build_ready_bundle(self, state: PendingBundleState) -> bool:
+        return state.num_rows > 0 and (
             self._min_rows_per_bundle is None
-            or num_pending_rows >= self._min_rows_per_bundle
+            or state.num_rows >= self._min_rows_per_bundle
         )
 
     @override
@@ -74,6 +95,31 @@ class EstimateSize(RebundlingStrategy):
         return last_pending_bundle.num_rows() or 0
 
 
+class EstimateBytes(RebundlingStrategy):
+    """Rebundle inputs near a target byte size."""
+
+    def __init__(self, min_bytes_per_bundle: int):
+        assert min_bytes_per_bundle >= 0, "Min bytes per bundle has to be non-negative"
+        self._min_bytes_per_bundle = min_bytes_per_bundle
+
+    @property
+    @override
+    def min_rows_per_bundle(self) -> int:
+        # The target is in bytes, so there is no row threshold.
+        return 0
+
+    @override
+    def can_build_ready_bundle(self, state: PendingBundleState) -> bool:
+        return state.num_rows > 0 and state.size_bytes >= self._min_bytes_per_bundle
+
+    @override
+    def rows_needed_from_last_pending_bundle(
+        self, total_pending_rows: int, last_pending_bundle: RefBundle
+    ) -> int:
+        """Return all rows because byte-based rebundling is approximate."""
+        return last_pending_bundle.num_rows() or 0
+
+
 class ExactMultipleSize(RebundlingStrategy):
     def __init__(self, target_num_rows_per_block: int):
         assert (
@@ -81,9 +127,14 @@ class ExactMultipleSize(RebundlingStrategy):
         ), "target_num_rows_per_block must be positive for streaming repartition."
         self._target_num_rows = target_num_rows_per_block
 
+    @property
     @override
-    def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
-        return num_pending_rows >= self._target_num_rows
+    def min_rows_per_bundle(self) -> int:
+        return self._target_num_rows
+
+    @override
+    def can_build_ready_bundle(self, state: PendingBundleState) -> bool:
+        return state.num_rows >= self._target_num_rows
 
     @override
     def rows_needed_from_last_pending_bundle(
@@ -140,6 +191,11 @@ class RebundleQueue(BaseBundleQueue):
         # The original bundles that formed a ready bundle
         self._consumed_bundles_list: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
+        self._total_pending_bytes: int = 0
+
+    @property
+    def min_rows_per_bundle(self) -> int:
+        return self._strategy.min_rows_per_bundle
 
     def _merge_bundles(self):
         """Combine *ALL* pending_bundles into a single, ready bundle."""
@@ -155,6 +211,7 @@ class RebundleQueue(BaseBundleQueue):
             self._on_dequeue_bundle(bundle)
         self._pending_bundles.clear()
         self._total_pending_rows = 0
+        self._total_pending_bytes = 0
 
     def _try_build_ready_bundle(self, flush_remaining: bool) -> int:
         """Attempts to build a ready bundle from a list of pending bundles by:
@@ -166,8 +223,12 @@ class RebundleQueue(BaseBundleQueue):
         """
 
         ready_bundles_built: int = 0
+        pending_state = PendingBundleState(
+            num_rows=self._total_pending_rows,
+            size_bytes=self._total_pending_bytes,
+        )
         if self._pending_bundles and self._strategy.can_build_ready_bundle(
-            self._total_pending_rows
+            pending_state
         ):
             last_pending_bundle = self._pending_bundles.pop()
 
@@ -203,6 +264,7 @@ class RebundleQueue(BaseBundleQueue):
                 # a ready bundle.
                 self._pending_bundles.appendleft(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
+                self._total_pending_bytes += remaining_bundle.size_bytes()
                 self._on_enqueue_bundle(remaining_bundle)
 
         # If we're flushing and have leftover bundles, convert them to a ready bundle.
@@ -219,7 +281,21 @@ class RebundleQueue(BaseBundleQueue):
     def add(self, bundle: RefBundle, **kwargs: Any):
         from ray.data._internal.execution.interfaces import RefBundle
 
+        # A stamped bundle is the exact input set of blocks for a lineage reconstruction task.
+        # After all blocks for a reconstruction task downstream are produced, the parent operator already assembles the
+        # input blocks and stores it in a ready bundle.
+        # For a seed task, linage tracker stores the bundled input built for the original attempt.
+        #
+        # Merging, slicing or holding the refbundle back would run the child reconstruction task against the wrong blocks.
+        # So we enqueue it as a ready bundle immediately.
+        if bundle.reconstruction_stamp is not None:
+            self._on_enqueue_bundle(bundle)
+            self._ready_bundles.append(bundle)
+            self._consumed_bundles_list.append([bundle])
+            return
+
         num_rows = bundle.num_rows() or 0
+        self._total_pending_bytes += bundle.size_bytes()
         if num_rows == 0:
             if self._pending_bundles:
                 last = self._pending_bundles.pop()
@@ -284,3 +360,4 @@ class RebundleQueue(BaseBundleQueue):
         self._curr_consumed_bundles.clear()
         self._consumed_bundles_list.clear()
         self._total_pending_rows = 0
+        self._total_pending_bytes = 0

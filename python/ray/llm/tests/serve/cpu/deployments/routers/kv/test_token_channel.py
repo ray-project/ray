@@ -1,8 +1,9 @@
 import asyncio
+import errno
 import gc
 import sys
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 import zmq
@@ -11,7 +12,7 @@ from starlette.datastructures import Headers
 from ray._common.network_utils import find_free_port
 from ray.llm._internal.serve.core.ingress.router import LLMRouter
 from ray.llm._internal.serve.core.server.llm_server import LLMServer
-from ray.llm._internal.serve.routing_policies.kv_aware import token_channel
+from ray.llm._internal.serve.routing_policies.kv_aware import metrics, token_channel
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
     KV_TOKEN_KEY_HEADER,
 )
@@ -27,6 +28,7 @@ from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forward
 )
 from ray.serve._private.constants import (
     RAY_SERVE_INGRESS_REQUEST_ROUTER_OPT_HEADERS_FIELD,
+    SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
 )
 
 
@@ -70,6 +72,26 @@ async def _wait_until_staged(store, keys):
     pytest.fail(f"Timed out waiting for staged prompt tokens: {sorted(remaining)}")
 
 
+@pytest.mark.parametrize(
+    "ids, match",
+    [([-1], "uint32"), ([2**32], "uint32"), ([[1, 2]], "one-dimensional")],
+)
+def test_encode_rejects_invalid_ids(ids, match):
+    with pytest.raises(ValueError, match=match):
+        encode_prompt_token_ids(ids)
+
+
+def test_sender_exceeds_default_socket_cap():
+    """Opens more sockets than the default context's 1023 cap."""
+    sender = TokenSender(max_sockets=1100)
+    try:
+        for i in range(1100):
+            assert sender._get_socket(f"tcp://127.0.0.1:{20000 + i}") is not None
+        assert len(sender._sockets) == 1100
+    finally:
+        sender.close()
+
+
 def test_bad_endpoint_falls_back():
     """A malformed endpoint must degrade to engine tokenization, not raise."""
     sender = TokenSender()
@@ -83,6 +105,19 @@ def test_bad_endpoint_falls_back():
         assert not sender._sockets
         # Every genuine failure is reported, not just the first.
         assert mock_logger.warning.call_count == 5
+    finally:
+        sender.close()
+
+
+def test_socket_creation_failure_falls_back():
+    """A socket that fails to open (e.g. too many open sockets) must degrade to
+    engine tokenization, not raise."""
+    sender = TokenSender()
+    try:
+        with patch.object(
+            token_channel, "_new_socket", side_effect=zmq.ZMQError(errno.EMFILE)
+        ):
+            assert sender.push("tcp://127.0.0.1:5555", "k", _payload([1, 2])) is False
     finally:
         sender.close()
 
@@ -214,6 +249,121 @@ def test_malformed_payload_falls_back():
     assert request.kv_transfer_params is None
 
 
+def test_empty_payload_falls_back():
+    store = TokenStore()
+    store.put("empty", payload=_payload([]))
+    request = SimpleNamespace(kv_transfer_params=None)
+
+    inject_prompt_token_ids(request, _raw_request("empty"), store)
+
+    assert request.kv_transfer_params is None
+
+
+@pytest.mark.parametrize(
+    "payload, outcome",
+    [
+        (None, "miss"),
+        (b"not-uint32", "invalid"),
+        (_payload([]), "invalid"),
+        (_payload([1, 2, 3]), "success"),
+    ],
+)
+def test_records_tokenization_bypass_outcome(payload, outcome):
+    store = TokenStore()
+    if payload is not None:
+        store.put("key", payload=payload)
+    request = SimpleNamespace(kv_transfer_params=None)
+
+    with patch.object(metrics, "_tokenization_bypass_counter") as counter:
+        inject_prompt_token_ids(request, _raw_request("key"), store)
+
+    counter().inc.assert_called_once_with(tags={"outcome": outcome})
+
+
+def test_tokenization_bypass_counter_exports_zeros():
+    metrics._tokenization_bypass_counter.cache_clear()
+    try:
+        with patch.object(metrics.metrics, "Counter") as counter_cls:
+            metrics.init_tokenization_bypass_counter()
+            metrics.init_tokenization_bypass_counter()
+    finally:
+        metrics._tokenization_bypass_counter.cache_clear()
+
+    counter_cls.assert_called_once()
+    assert counter_cls.return_value._record.call_args_list == [
+        call(0, tags={"outcome": outcome.value})
+        for outcome in metrics.TokenizationBypassOutcome
+    ]
+
+
+def test_token_store_skips_chat_tokenization():
+    """The token-store handoff reaches vLLM's native reuse interface."""
+    store = TokenStore()
+    store.put("token-key", payload=_payload([1, 2, 3]))
+    request = SimpleNamespace(kv_transfer_params={"remote_engine_id": "replica-1"})
+
+    inject_prompt_token_ids(request, _raw_request("token-key"), store)
+
+    online_renderer = pytest.importorskip("vllm.renderers.online_renderer")
+
+    class Renderer:
+        tokenizer = object()
+
+        async def render_chat_async(self, *args, **kwargs):
+            raise AssertionError("vLLM should skip chat rendering and tokenization")
+
+        def validate_token_ids(self, token_ids, *, parameter=None):
+            pass
+
+    class ChatParams:
+        def with_defaults(self, *args, **kwargs):
+            return self
+
+    request.cache_salt = None
+    request.tool_choice = "none"
+    request.build_tok_params = lambda model_config: object()
+    request.build_chat_params = lambda *args: ChatParams()
+    renderer = online_renderer.OnlineRenderer.__new__(online_renderer.OnlineRenderer)
+    renderer.renderer = Renderer()
+    renderer.trust_request_mm_kwargs = False
+    renderer.model_config = SimpleNamespace(
+        multimodal_config=None, enable_prompt_embeds=False
+    )
+    renderer.parser = None
+
+    conversation, engine_inputs = asyncio.run(
+        renderer.preprocess_chat(
+            request,
+            messages=[{"role": "user", "content": "not rendered"}],
+            default_template=None,
+            default_template_content_format="auto",
+            default_template_kwargs=None,
+        )
+    )
+
+    assert conversation == []
+    assert engine_inputs[0]["prompt_token_ids"] == [1, 2, 3]
+    assert request.kv_transfer_params == {"remote_engine_id": "replica-1"}
+
+
+@pytest.mark.asyncio
+async def test_connect_ahead_lets_first_push_land():
+    """The first push after connect() is delivered."""
+    endpoint = f"tcp://127.0.0.1:{find_free_port()}"
+    store = TokenStore()
+    receiver = TokenReceiver(bind_endpoint=endpoint, store=store)
+    assert await receiver.start()
+    sender = TokenSender()
+    try:
+        sender.connect([endpoint])
+        await asyncio.sleep(0.5)
+        assert sender.push(endpoint, "k-first", _payload([1, 2, 3]))
+        await _wait_until_staged(store, {"k-first": [1, 2, 3]})
+    finally:
+        sender.close()
+        await receiver.close()
+
+
 @pytest.mark.asyncio
 async def test_keeps_tokens_separate():
     token_ids_by_key = {
@@ -309,7 +459,9 @@ async def test_routes_tokens_to_replica():
 
     request = MagicMock()
     request.body = AsyncMock(return_value=b'{"model": "m", "prompt": "hello"}')
-    request.headers = Headers({})
+    request.headers = Headers(
+        {SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER: "/v1/completions"}
+    )
 
     try:
         await _push_until(sender, selected_endpoint, "warmup", [0])

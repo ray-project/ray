@@ -64,8 +64,7 @@ class DeltaSharingDatasource(Datasource):
             yield _add_missing_columns(pdf, file, converters)
 
     def setup_delta_sharing_connections(self, url: str):
-        """
-        Set up delta sharing connections based on the url.
+        """Set up delta sharing connections based on the url.
 
         Args:
             url: A URL under the format "<profile>#<share>.<schema>.<table>"
@@ -184,8 +183,7 @@ def _add_missing_columns(
 
 
 def _parse_delta_sharing_url(url: str) -> Tuple[str, str, str, str]:
-    """
-    Developed from delta_sharing's _parse_url function.
+    """Developed from delta_sharing's _parse_url function.
     https://github.com/delta-io/delta-sharing/blob/main/python/delta_sharing/delta_sharing.py#L36
 
     Args:

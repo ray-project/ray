@@ -16,6 +16,8 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
+#include <future>
 #include <memory>
 #include <string>
 #include <utility>
@@ -94,6 +96,62 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
   ASSERT_EQ(unhandled_count, 0);
 }
 
+TEST(TestMemoryStore, GetAsyncInvokesWhenObjectArrives) {
+  InstrumentedIOContextWithThread io_context("GetAsyncInvokesWhenObjectArrives");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+  RayObject obj(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+
+  std::promise<std::shared_ptr<RayObject>> done;
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = memory_store.GetAsync(
+      object_id,
+      [&done](std::shared_ptr<RayObject> object) { done.set_value(std::move(object)); });
+  ASSERT_NE(callback_id, 0u);
+
+  memory_store.Put(obj, object_id, /*has_reference=*/true);
+  ASSERT_EQ(done.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+}
+
+TEST(TestMemoryStore, GetAsyncInvokesWhenAlreadyPresent) {
+  InstrumentedIOContextWithThread io_context("GetAsyncInvokesWhenAlreadyPresent");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+  RayObject obj(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
+  memory_store.Put(obj, object_id, /*has_reference=*/true);
+
+  std::promise<std::shared_ptr<RayObject>> done;
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id = memory_store.GetAsync(
+      object_id,
+      [&done](std::shared_ptr<RayObject> object) { done.set_value(std::move(object)); });
+  ASSERT_EQ(callback_id, 0u);
+  ASSERT_EQ(done.get_future().wait_for(std::chrono::seconds(5)),
+            std::future_status::ready);
+}
+
+TEST(TestMemoryStore, CancelAsyncGetRemovesCallback) {
+  InstrumentedIOContextWithThread io_context("CancelAsyncGetRemovesCallback");
+  Clock clock;
+  CoreWorkerMemoryStore memory_store(io_context.GetIoService(), clock);
+  const ObjectID object_id = ObjectID::FromRandom();
+
+  const CoreWorkerMemoryStore::AsyncGetCallbackId callback_id =
+      memory_store.GetAsync(object_id, [](std::shared_ptr<RayObject>) {});
+  ASSERT_NE(callback_id, 0u);
+  {
+    absl::MutexLock lock(&memory_store.mu_);
+    ASSERT_EQ(memory_store.object_async_get_requests_.at(object_id).size(), 1u);
+  }
+
+  memory_store.CancelGetAsync(object_id, callback_id);
+  {
+    absl::MutexLock lock(&memory_store.mu_);
+    ASSERT_FALSE(memory_store.object_async_get_requests_.contains(object_id));
+  }
+}
+
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   InstrumentedIOContextWithThread io_context("TestMemoryStoreStats");
@@ -159,7 +217,7 @@ TEST(TestMemoryStore, TestMemoryStoreStats) {
 
 /// A mock manager that manages all test buffers. This mocks
 /// that memory pressure is able to be awared.
-class MockBufferManager {
+class FakeBufferManager {
  public:
   int64_t GetBuferPressureInBytes() const { return buffer_pressure_in_bytes_; }
 
@@ -173,7 +231,7 @@ class MockBufferManager {
 
 class TestBuffer : public Buffer {
  public:
-  explicit TestBuffer(MockBufferManager &manager, std::string data)
+  explicit TestBuffer(FakeBufferManager &manager, std::string data)
       : manager_(manager), data_(std::move(data)) {}
 
   uint8_t *Data() const override {
@@ -186,23 +244,23 @@ class TestBuffer : public Buffer {
 
   bool IsPlasmaBuffer() const override { return false; }
 
-  const MockBufferManager &GetBufferManager() const { return manager_; }
+  const FakeBufferManager &GetBufferManager() const { return manager_; }
 
  private:
-  MockBufferManager &manager_;
+  FakeBufferManager &manager_;
   std::string data_;
 };
 
 TEST(TestMemoryStore, TestObjectAllocator) {
-  MockBufferManager mock_buffer_manager;
-  auto my_object_allocator = [&mock_buffer_manager](const ray::RayObject &object,
+  FakeBufferManager fake_buffer_manager;
+  auto my_object_allocator = [&fake_buffer_manager](const ray::RayObject &object,
                                                     const ObjectID &object_id) {
     auto buf = object.GetData();
-    mock_buffer_manager.AcquireMemory(buf->Size());
-    auto data_factory = [&mock_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
+    fake_buffer_manager.AcquireMemory(buf->Size());
+    auto data_factory = [&fake_buffer_manager, object]() -> std::shared_ptr<ray::Buffer> {
       auto inner_buf = object.GetData();
       std::string data(reinterpret_cast<char *>(inner_buf->Data()), inner_buf->Size());
-      return std::make_shared<TestBuffer>(mock_buffer_manager, data);
+      return std::make_shared<TestBuffer>(fake_buffer_manager, data);
     };
 
     return std::make_shared<ray::RayObject>(object.GetMetadata(),
@@ -230,7 +288,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
         std::make_shared<ray::RayObject>(hello_buffer, nullptr, nested_refs, true);
     memory_store->Put(*hello_object, ObjectID::FromRandom(), /*has_reference=*/true);
   }
-  ASSERT_EQ(max_rounds * hello.size(), mock_buffer_manager.GetBuferPressureInBytes());
+  ASSERT_EQ(max_rounds * hello.size(), fake_buffer_manager.GetBuferPressureInBytes());
 }
 
 class TestMemoryStoreWait : public ::testing::Test {

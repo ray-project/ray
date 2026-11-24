@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <chrono>
+#include <csignal>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
@@ -94,6 +95,13 @@ int main(int argc, char *argv[]) {
                                          /*log_rotation_file_num=*/1);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
+#ifndef _WIN32
+  // A write to a Redis connection that the peer already closed must fail with
+  // EPIPE rather than kill the process: an in-place reconnect can land on a
+  // proxy that accepts and then closes while Redis is down, and the TLS
+  // handshake writes to that socket a second time.
+  signal(SIGPIPE, SIG_IGN);
+#endif
 
   RAY_LOG(INFO)
           .WithField("ray_version", kRayVersion)
@@ -177,6 +185,17 @@ int main(int argc, char *argv[]) {
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
+  gcs_server_config.enable_gcs_leader_election =
+      RayConfig::instance().ENABLE_GCS_LEADER_ELECTION();
+  if (gcs_server_config.enable_gcs_leader_election) {
+    // Nothing drives promotion yet, so this GCS stays passive until a future release
+    // wires up the leader election client. Warn loudly: on a cluster with no other
+    // active GCS it will block in startup waiting for a cluster ID.
+    RAY_LOG(WARNING)
+        << "RAY_ENABLE_GCS_LEADER_ELECTION is set. Active-passive GCS leader election "
+           "is experimental and incomplete: this GCS starts passive and cannot yet be "
+           "promoted. Unset it unless you are developing this feature.";
+  }
 
   // Create individual metrics
   auto actor_by_state_gauge = ray::GetActorByStateGaugeMetric();

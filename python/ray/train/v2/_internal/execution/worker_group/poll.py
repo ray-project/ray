@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
 from ray.exceptions import RayActorError
+from ray.train.health.probe import ProbeResult
 from ray.train.v2._internal.exceptions import (
     UserExceptionWithTraceback,
     WorkerHealthCheckFailedError,
@@ -35,8 +36,7 @@ def _normalize_error_string(error_str: str) -> str:
 
 
 def _truncate_error_string(error_str: str) -> str:
-    """
-    Truncates error strings to include the first ERR_CHAR_LIMIT // 2
+    """Truncates error strings to include the first ERR_CHAR_LIMIT // 2
     characters and the last ERR_CHAR_LIMIT // 2 characters.
     """
     if len(error_str) >= ERR_CHAR_LIMIT:
@@ -55,6 +55,8 @@ class WorkerStatus:
     training_report: Optional[_TrainingReport] = None
     return_value: Any = field(default=None)
     preemption_info: Optional[PreemptionInfo] = None
+    probe_results: Dict[str, ProbeResult] = field(default_factory=dict)
+    health_report: Optional[ProbeResult] = None
 
 
 @dataclass(frozen=True)
@@ -119,8 +121,7 @@ class WorkerGroupPollStatus:
         )
 
     def get_error_string(self) -> str:
-        """
-        Returns a string representation of worker group errors.
+        """Returns a string representation of worker group errors.
         Groups similar errors (ignoring numbers) and shows original error examples.
         """
         # Group errors by normalized strings (ignoring numbers)

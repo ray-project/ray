@@ -66,7 +66,7 @@ class RayObject {
     }
   }
 
-  /// Create an Ray error object. It uses msgpack for the serialization format now.
+  /// Create a Ray error object. It uses msgpack for the serialization format now.
   /// Ray error objects consist of metadata that indicates the error code (see
   /// rpc::ErrorType) and the serialized message pack that contains serialized
   /// rpc::RayErrorInfo as a body.

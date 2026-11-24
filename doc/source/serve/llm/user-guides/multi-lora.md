@@ -29,6 +29,16 @@ When a request for a given LoRA adapter arrives, Ray Serve:
 
 Ray Serve LLM then caches the adapter for subsequent requests. Ray Serve LLM controls the cache of LoRA adapters on each replica through a Least Recently Used (LRU) mechanism with a max size, which you control with the `max_num_adapters_per_replica` variable.
 
+### Use direct streaming
+
+To use multi-LoRA with direct streaming, enable HAProxy, direct streaming, and request-body forwarding before starting Serve:
+
+```bash
+export RAY_SERVE_ENABLE_HA_PROXY=1
+export RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
+export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
+```
+
 
 ## Configure Ray Serve LLM with multi-LoRA
 
@@ -157,4 +167,3 @@ response = client.chat.completions.create(
 
 - {doc}`Quickstart <../quick-start>`
 - [vLLM LoRA documentation](https://docs.vllm.ai/en/stable/features/lora/)
-

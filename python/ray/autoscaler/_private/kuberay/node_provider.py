@@ -183,9 +183,38 @@ def replace_patch(path: str, value: Any) -> Dict[str, Any]:
     return {"op": "replace", "path": path, "value": value}
 
 
+def idle_suspend_patch(should_idle_suspend: bool) -> Dict[str, Any]:
+    return {"spec": {"idleSuspend": should_idle_suspend}}
+
+
+def finalizer_patch(
+    finalizer: str, finalizers: Optional[List[str]], resource_version: str
+) -> List[Dict[str, Any]]:
+    if finalizers:
+        path = "/metadata/finalizers/-"
+        value = finalizer
+    else:
+        path = "/metadata/finalizers"
+        value = [finalizer]
+
+    # Guard the add operation with a resourceVersion test operation.
+    # If the CR changed since it was read, the apiserver rejects the whole patch
+    # instead of letting "add /metadata/finalizers" replace finalizers added concurrently.
+    return [resource_version_test_patch(resource_version), add_patch(path, value)]
+
+
+def resource_version_test_patch(resource_version: str) -> Dict[str, Any]:
+    path = "/metadata/resourceVersion"
+    value = resource_version
+    return {"op": "test", "path": path, "value": value}
+
+
+def add_patch(path: str, value: Any) -> Dict[str, Any]:
+    return {"op": "add", "path": path, "value": value}
+
+
 def load_k8s_secrets() -> Tuple[Dict[str, str], str, Optional[Tuple[str, str]]]:
-    """
-    Loads secrets needed to access K8s resources.
+    """Loads secrets needed to access K8s resources.
 
     By default the in-cluster ServiceAccount credentials are used. Setting
     $RAY_KUBERAY_CLIENT_CERT_PATH and $RAY_KUBERAY_CLIENT_KEY_PATH instead
@@ -281,6 +310,11 @@ def _worker_group_max_replicas(
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("maxReplicas")
 
 
+def _worker_group_min_replicas(raycluster: Dict[str, Any], group_index: int):
+    # 0 is the default minReplicas value used by the KubeRay operator
+    return raycluster["spec"]["workerGroupSpecs"][group_index].get("minReplicas", 0)
+
+
 def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     # 1 is the default replicas value used by the KubeRay operator
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
@@ -292,8 +326,7 @@ def _worker_group_num_of_hosts(raycluster: Dict[str, Any], group_index: int):
 
 
 class IKubernetesHttpApiClient(ABC):
-    """
-    An interface for a Kubernetes HTTP API client.
+    """An interface for a Kubernetes HTTP API client.
 
     This interface could be used to mock the Kubernetes API client in tests.
     """
@@ -311,6 +344,11 @@ class IKubernetesHttpApiClient(ABC):
         content_type: str = "application/json-patch+json",
     ) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
+        pass
+
+    @abstractmethod
+    def delete(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST DELETE of resource with proper headers."""
         pass
 
 
@@ -395,6 +433,35 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             cert=cert,
         )
         if not result.status_code == 200:
+            result.raise_for_status()
+        return result.json()
+
+    def delete(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST DELETE of resource with proper headers.
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+
+        Returns:
+            The JSON response of the DELETE request.
+
+        Raises:
+            HTTPError: If the DELETE request fails.
+        """
+        url = url_from_resource(
+            namespace=self._namespace,
+            path=path,
+            kuberay_crd_version=self._kuberay_crd_version,
+        )
+        headers, verify, cert = self._get_refreshed_credentials()
+        result = requests.delete(
+            url,
+            headers=headers,
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            verify=verify,
+            cert=cert,
+        )
+        if result.status_code not in (200, 202):
             result.raise_for_status()
         return result.json()
 
@@ -535,8 +602,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         return True
 
     def _get_pods_resource_version(self) -> str:
-        """
-        Extract a recent pods resource version by reading the head pod's
+        """Extract a recent pods resource version by reading the head pod's
         metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
@@ -553,6 +619,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         for node_type, target_replicas in scale_request.desired_num_workers.items():
             group_index = _worker_group_index(raycluster, node_type)
             group_max_replicas = _worker_group_max_replicas(raycluster, group_index)
+            group_min_replicas = _worker_group_min_replicas(raycluster, group_index)
             # Cap the replica count to maxReplicas.
             if group_max_replicas is not None and group_max_replicas < target_replicas:
                 logger.warning(
@@ -560,6 +627,13 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
                     + "more than maxReplicas pods of type {}.".format(node_type)
                 )
                 target_replicas = group_max_replicas
+            # Raise the replica count to minReplicas, matching KubeRay's clamp.
+            if group_min_replicas > target_replicas:
+                logger.info(
+                    "Autoscaler attempted to request "
+                    + "fewer than minReplicas pods of type {}.".format(node_type)
+                )
+                target_replicas = group_min_replicas
             # Check if we need to change the target count.
             if target_replicas == _worker_group_replicas(raycluster, group_index):
                 # No patch required.

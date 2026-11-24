@@ -26,7 +26,7 @@ The best policy depends on your workload. You can configure different routers th
 | `RoundRobinRouter` | Request order | Prompts share little beyond the system prompt, and you want the simplest even spread. | No KV cache awareness. |
 | `ConsistentHashRouter` | Hash of the `x-session-id` header | Clients can provide a session ID and each session’s history forms the reusable prefix. | A session with more turns or longer input or output sequences can saturate its replica. |
 | `PrefixCacheAffinityRouter` | Prompt text matched against a router-maintained prefix tree | Requests frequently share a long textual prefixes. | Approximates engine KV cache state from prompt text and falls back to power of two choices when queue lengths become imbalanced. |
-| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
+| `KVAwareRouter` | Token load: the request's remaining prefill work after accounting for KV cache overlap, plus the replica's active prefill and decode work, with session pinning through `x-session-id` | Replicas carry uneven token load, GPU memory is under pressure, or requests share prefixes beyond the system prompt. | Requires direct streaming, and its extra overhead may not pay off on simple, uniform workloads. |
 
 ## Installation
 
@@ -47,7 +47,7 @@ export RAY_SERVE_INGRESS_REQUEST_ROUTER_FORWARD_BODY=1
 ```
 
 :::{note}
-With body forwarding enabled, `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` sets HAProxy's request-buffer cap (256 KiB by default). HAProxy sends only a prefix of larger bodies to the router. Raise it when `serve_haproxy_ingress_router_truncations_total` shows that this truncation is affecting body-aware routing; a larger buffer increases HAProxy memory use and can delay routing and TTFT.
+With body forwarding enabled, `RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE` sets HAProxy's request-buffer cap (8 MiB by default). HAProxy sends only a prefix of larger bodies to the router. Raise it when `serve_haproxy_ingress_router_truncations_total` shows that this truncation is affecting body-aware routing; a larger buffer increases HAProxy memory use and can delay routing and TTFT.
 :::
 
 Then select the router through `request_router_config`:
@@ -101,6 +101,32 @@ Run `serve run config.yaml`.
 :::
 ::::
 
+### Use session pinning
+
+Send the same `x-session-id` header on each turn of a conversation to improve KV cache reuse:
+
+```bash
+curl http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "x-session-id: chat-123" \
+  -d '{"model": "qwen3-0.6b", "messages": [{"role": "user", "content": "Hello!"}]}'
+```
+
+Session affinity works at two levels. At the ingress, HAProxy uses consistent hashing to send requests with the same session ID to the same ingress request router (`LLMRouter`). That router tokenizes requests and can reuse tokenized conversation prefixes across turns. The router might run on another node, which adds a network round trip. For long multi-turn conversations, prefix token reuse saves more than this hop costs. For short prompts, the hop can cost more than it saves.
+
+Then, the router (`LLMRouter`) selects a model replica (`LLMServer`) for the first request by estimated token load and KV cache overlap. Later turns stay on that model replica even when another has lower load or more cached tokens. After the session's idle timeout, or if the model replica becomes unavailable or ineligible, the router selects again.
+
+Session pinning to the model replica is enabled by default with a 30-minute idle timeout. Set `session_affinity_ttl_s` in seconds to change it:
+
+```python
+request_router_config = RequestRouterConfig(
+    request_router_class=KVAwareRouter,
+    request_router_kwargs={"session_affinity_ttl_s": 600},
+)
+```
+
+Set it to `0` to disable model replica pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
+
 ### Tuning
 
 Set these in the cluster environment:
@@ -108,7 +134,7 @@ Set these in the cluster environment:
 | Environment variable | Default | Effect |
 | --- | --- | --- |
 | `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` | 1 | Ingress replicas per proxy node. Raise it when ingress tokenization and request scoring bound throughput. |
-| `RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS` | 0 | Report decode progress as the engine generates tokens, for more accurate load tracking. Because each engine replica sends updates to every ingress replica, this can add network overhead at high concurrency. |
+| `RAY_SERVE_HAPROXY_RETRIES` | HAProxy default (3) | Retries for failed backend connections, including ingress replicas. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_TTL_S` | 60 | How long a replica holds a staged prompt-token payload before eviction. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_ENTRIES` | 8192 | Staged payloads retained per engine replica. |
 | `RAY_SERVE_LLM_KV_TOKEN_STAGING_MAX_BYTES` | 1 GiB | Memory allocated for staged payloads per engine replica. |
@@ -129,7 +155,7 @@ Replica selection determines which `LLMServer` engine replica processes each req
 
 - **Replica discovery.** Ray Serve tracks which `LLMServer` replicas are running and which are eligible to receive traffic. The router only scores the available replicas.
 - **Request orchestration.** The ingress receives and tokenizes each request, selects a replica, and dispatches the request to it.
-- **Request lifecycle.** Engine replicas report prefill completion, decode progress, and request completion back to the ingress, which uses these updates to maintain its view of replica token load.
+- **Request lifecycle.** Engine replicas report prefill completion and request completion back to the ingress, which uses these updates to maintain its view of replica token load.
 - **Event transport and synchronization.** KV cache events are broadcast to all ingress replicas, while the ingress replicas synchronize token load updates with one another. This gives each ingress replica a consistent view of KV cache state and token load, enabling them to make consistent routing decisions.
 
 ```{figure} ../images/kv_aware_routing_flow.png
@@ -151,7 +177,7 @@ How a request flows through a KV-aware deployment.
 Token load estimates how much work remains on each engine replica. It captures the two main phases of LLM inference: compute-bound prefill and memory-bound decode. For each candidate replica, the selection service estimates token load in KV blocks, and the router sends the request to the replica with the lowest estimated load.
 
 - **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded blocks receive less because they must first be loaded back to the GPU.
-- **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache accumulated by active requests. This term captures the KV blocks associated with ongoing decode work, weighted by the estimated remaining output based on `max_tokens`.
+- **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache of the replica's active requests. This term counts the KV blocks of those requests' prompts.
 
 ### Tune the scoring weights
 
@@ -181,12 +207,27 @@ The router scores requests using token IDs, so each request is tokenized at the 
 
 - **Tokenization is not repeated at the engine.** The ingress sends the tokenized prompt to the selected engine replica, avoiding duplicate tokenization. The tokens are sent over a separate channel and may arrive before the corresponding HTTP request, so the engine replica temporarily **stages** them until the request arrives. Delivery is best effort: if the token payload is missing or has expired, the engine simply tokenizes the prompt again. The `RAY_SERVE_LLM_KV_TOKEN_STAGING_*` variables control how long and how much token data each engine replica can stage.
 
+When vLLM uses fastokens, its native segment cache reuses tokenized conversation segments across turns and branches. Ray Serve LLM defaults `FASTOKENS_SEGMENT_CACHE` to `1024` MiB for `KVAwareRouter` Override the budget in the `LLMConfig.runtime_env`:
+
+```yaml
+runtime_env:
+  env_vars:
+    VLLM_USE_FASTOKENS: "1"
+    FASTOKENS_SEGMENT_CACHE: "1024"
+```
+
+You can use `KVAwareRouter` with Anthropic Messages (`/v1/messages`) clients such as Claude Code. Use the same routing configuration as for OpenAI requests.
+
 
 ### Scaling the ingress tier
 
 Serve runs one ingress replica per proxy node by default. Raise `RAY_SERVE_INGRESS_ROUTER_REPLICAS_PER_NODE` when tokenizing and scoring at the ingress bound throughput. Two per node is usually enough, though the right number depends on your traffic.
 
 Ray Serve LLM keeps the KV cache and token load views synchronized across ingress replicas. These views are **eventually consistent**: token load and engine updates are propagated in the background, so an ingress replica may briefly make routing decisions based on a slightly stale KV cache or token load view.
+
+## Router availability
+
+If the ingress router fails to route a request, Ray Serve LLM can send it to an available model replica. These requests may not follow KV-aware routing, reducing cache reuse until the router recovers. Fallback is automatic. Set `RAY_SERVE_INGRESS_REQUEST_ROUTER_METRICS_ENABLED=1` to monitor router failures and fallback requests.
 
 ## Limitations
 

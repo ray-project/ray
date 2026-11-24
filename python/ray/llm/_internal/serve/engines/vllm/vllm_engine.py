@@ -20,16 +20,13 @@ from pydantic import BaseModel, TypeAdapter, ValidationError, field_validator
 from starlette.datastructures import State
 from starlette.requests import Request
 from vllm.engine.arg_utils import AsyncEngineArgs
-from vllm.entrypoints.launchers.cli_args import FrontendArgs
+from vllm.entrypoints.common.cli_args import FrontendArgs
 from vllm.entrypoints.serve.engine.protocol import ErrorResponse as VLLMErrorResponse
 from vllm.exceptions import VLLMClientError
 
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
-from ray.llm._internal.serve.constants import (
-    RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
-)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -54,6 +51,11 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
 )
 from ray.llm._internal.serve.core.engine.protocol import LLMEngine
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
+from ray.llm._internal.serve.engines.vllm.model_express import (
+    is_model_express,
+    mark_engine_ready,
+    setup_model_express,
+)
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware import (
@@ -62,12 +64,16 @@ from ray.llm._internal.serve.routing_policies.kv_aware import (
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.metrics import (
+    init_tokenization_bypass_counter,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.kv_events import (
     assign_replica_kv_events_endpoint,
     enable_native_kv_offload_events,
     get_kv_event_routing_stats,
     get_prompt_token_routing_stats,
     get_token_channel_endpoints,
+    resolve_kv_event_block_size,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.vllm.prompt_token_forwarding import (
     install_prompt_token_forwarding,
@@ -341,6 +347,7 @@ class VLLMEngine(LLMEngine):
                 store=self._prompt_token_store,
             )
             self._prompt_token_zmq_advertised_endpoint = advertised_endpoint
+            init_tokenization_bypass_counter()
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -353,7 +360,7 @@ class VLLMEngine(LLMEngine):
         self._oai_serving_tokenization: Optional["ServingTokenization"] = None
 
     async def build_asgi_app(self):
-        from vllm.entrypoints.openai.api_server import build_app, init_app_state
+        from vllm.entrypoints.openai.api_server import build_app
 
         supported_tasks = ("generate",)
         if hasattr(self._engine_client, "get_supported_tasks"):
@@ -367,12 +374,11 @@ class VLLMEngine(LLMEngine):
             supported_tasks=supported_tasks,
             model_config=self._engine_client.model_config,
         )
-        await init_app_state(
-            self._engine_client,
-            app.state,
-            self._vllm_args,
-            supported_tasks=supported_tasks,
-        )
+        # HTTP handlers and resolve_lora() must share the same model registry.
+        app.state._state.update(self._app_state._state)
+        # build_app() attaches plugins after start() initializes the serving state.
+        for plugin in getattr(app.state, "endpoint_plugins", []):
+            await plugin.init_state(self._engine_client, app.state, self._vllm_args)
         # On an engine error, vLLM's handler reads state.server -- the uvicorn.Server
         # its own launcher sets -- and flips should_exit on it, which is what makes
         # uvicorn stop serving and the process exit. Ray runs no uvicorn loop to
@@ -399,6 +405,9 @@ class VLLMEngine(LLMEngine):
             return
 
         from vllm.entrypoints.openai.api_server import init_app_state
+
+        if is_model_express(self.llm_config):
+            await setup_model_express(self.llm_config)
 
         callback = self.llm_config.get_or_create_callback()
         await callback.run_callback("on_before_node_init")
@@ -449,6 +458,7 @@ class VLLMEngine(LLMEngine):
             init_kwargs["vllm_config"] = vllm_engine_config
 
         await init_app_state(self._engine_client, **init_kwargs)
+        self._app_state = state
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
@@ -472,14 +482,18 @@ class VLLMEngine(LLMEngine):
                     self._prompt_token_zmq_advertised_endpoint
                 )
 
+        # Read the engine client's config: the engine core syncs its resolved
+        # KV block sizes back to it after initialization.
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
-            vllm_engine_config.cache_config.block_size,
+            resolve_kv_event_block_size(self._engine_client.vllm_config),
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
         self._routing_stats.update(prompt_token_stats)
 
         self._running = True
+        if is_model_express(self.llm_config):
+            mark_engine_ready()
 
         logger.info("Started vLLM engine.")
 
@@ -634,10 +648,7 @@ class VLLMEngine(LLMEngine):
         # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
         if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(
-                AsyncLLM,
-                report_decode_progress=RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS,
-            )
+            engine_cls = enable_token_tracking(AsyncLLM)
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,

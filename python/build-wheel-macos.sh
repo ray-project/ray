@@ -10,7 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-PY_MMS=("3.10" "3.11" "3.12" "3.13" "3.14")
+PY_MMS=("3.11" "3.12" "3.13" "3.14")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -56,7 +56,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   conda create -y -n "$CONDA_ENV_NAME"
   conda activate "$CONDA_ENV_NAME"
   conda remove -y python || true
-  conda install -y python="$PY_MM" pip=25.2
+  # pip 26.2.2 is the eMudhra CA fix.
+  conda install -y python="$PY_MM" pip=26.2.2
 
   # NOTE: We expect conda to set the PATH properly.
   PIP_CMD=pip

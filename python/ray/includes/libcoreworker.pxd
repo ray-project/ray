@@ -66,10 +66,19 @@ ctypedef void (*ray_callback_function) \
 ctypedef void (*plasma_callback_function) \
     (CObjectID object_id, int64_t data_size, int64_t metadata_size)
 
+ctypedef void (*wait_async_callback) \
+    (CRayStatus status, void *callback_arg)
+
 # NOTE: This ctypedef is needed, because Cython doesn't compile
 # "pair[shared_ptr[const CActorHandle], CRayStatus]".
 # This is a bug of cython: https://github.com/cython/cython/issues/3967.
 ctypedef shared_ptr[const CActorHandle] ActorHandleSharedPtr
+
+cdef extern from "ray/core_worker/reference_counter_interface.h" nogil:
+    cdef enum class CMoveState "ray::core::MoveState":
+        NOT_MOVABLE
+        MOVABLE
+        MOVED
 
 cdef extern from "ray/core_worker/profile_event.h" nogil:
     cdef cppclass CProfileEvent "ray::core::worker::ProfileEvent":
@@ -148,6 +157,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string serialized_retry_exception_allowlist,
             c_string call_site,
             const CTaskID current_task_id)
+        c_bool HasConsumeOnceObjects() const
+        optional[CMoveState] GetMoveState(const CObjectID &object_id)
+        c_vector[optional[CMoveState]] GetMoveStates(
+            const c_vector[CObjectID] &object_ids)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
@@ -330,6 +343,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
+        uint64_t WaitAsync(const CObjectID &object_id,
+                           wait_async_callback callback, void *callback_arg)
+        void CancelWaitAsync(uint64_t handle)
         CRayStatus GetLocalObjectLocations(
                 const c_vector[CObjectID] &object_ids,
                 c_vector[optional[CObjectLocation]] *results)

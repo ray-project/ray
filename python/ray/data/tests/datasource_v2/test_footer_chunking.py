@@ -1,7 +1,8 @@
 """End-to-end reads through the footer-based Parquet chunking path.
 
 Drives ``FooterFileIndexer`` via ``ray.data.read_parquet``, covering
-predicate / limit / projection push-down. The pure-logic pieces
+predicate / limit / projection push-down, and the fault tolerance of the
+``FooterReaderActor`` pool. The pure-logic pieces
 (coalescing, bin packing) are unit-tested in
 ``python/ray/data/tests/unit/datasource_v2/test_online_bin_packer.py``.
 """
@@ -136,6 +137,99 @@ def test_e2e_filter_then_limit_with_nulls(nullable_parquet, limit):
 
     assert len(rows) == min(limit, _NULL_TOTAL_SURVIVORS)
     assert all(r["id"] is not None and r["id"] > 2 for r in rows)
+
+
+# ---------------------------------------------------------------------------
+# Row-group shuffle (FileShuffleConfig.small_chunks_shuffle)
+# ---------------------------------------------------------------------------
+
+_ROWS_PER_RG = 100
+
+
+def _row_group_shuffle_ids(path):
+    # Calls the OSS ``read_parquet``: in RayTurbo ``ray.data.read_parquet`` is
+    # the Anyscale implementation, which doesn't go through ``FooterFileIndexer``.
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+    from ray.data.read_api import read_parquet
+
+    shuffle = FileShuffleConfig(
+        seed=7, reseed_after_execution=False, small_chunks_shuffle=True
+    )
+    return [r["id"] for r in read_parquet(path, shuffle=shuffle).take_all()]
+
+
+def test_e2e_row_group_shuffle_mixes_files(footer_parquet, monkeypatch):
+    from ray.data.context import DataContext
+
+    # One run per row group, and every run oversized for a bin so each becomes
+    # its own read task. With ``preserve_order`` the output then follows the
+    # shuffled run order exactly.
+    monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "small_shuffle_chunk_size", 1)
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+
+    ids = _row_group_shuffle_ids(footer_parquet)
+
+    assert sorted(ids) == list(range(_N_PER_FILE * _N_FILES))
+    assert ids == _row_group_shuffle_ids(footer_parquet)
+    runs = [ids[i : i + _ROWS_PER_RG] for i in range(0, len(ids), _ROWS_PER_RG)]
+    # Row groups move as intact units...
+    assert all(
+        run[0] % _ROWS_PER_RG == 0 and run == list(range(run[0], run[0] + len(run)))
+        for run in runs
+    )
+    # ...but runs of one file no longer arrive back to back.
+    files = [run[0] // _N_PER_FILE for run in runs]
+    assert sum(a != b for a, b in zip(files, files[1:])) > _N_FILES - 1
+
+
+# ---------------------------------------------------------------------------
+# Fault tolerance of FooterReader actors
+# ---------------------------------------------------------------------------
+
+
+def test_read_footers_actor_returns_all_file_chunks_after_actor_death(footer_parquet):
+    import os
+    import signal
+
+    from pyarrow.fs import LocalFileSystem
+
+    import ray
+    from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
+        FooterReaderActor,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
+
+    paths = [
+        os.path.join(footer_parquet, name)
+        for name in sorted(os.listdir(footer_parquet))
+    ]
+    file_infos = [FileInfo(path=p, size=os.path.getsize(p)) for p in paths]
+
+    actor = FooterReaderActor.remote(LocalFileSystem())
+    # ``ActorProxy`` stubs don't model the built-in ``__ray_call__``.
+    # pyrefly: ignore[missing-attribute]
+    pid: int = ray.get(actor.__ray_call__.remote(lambda self: os.getpid()))
+
+    # Backpressure keeps the generator at most one batch ahead of the caller, so
+    # it can't finish before the kill. The actor dies after the caller consumed
+    # the first batch, and the retry must not repeat it.
+    # pyrefly: ignore[missing-attribute]
+    gen = actor.read_footers.options(_generator_backpressure_num_objects=1).remote(
+        file_infos
+    )
+    chunked_files = list(ray.get(next(gen)))
+    os.kill(pid, signal.SIGKILL)
+    for ref in gen:
+        chunked_files.extend(ray.get(ref))
+
+    assert [chunked.file.path for chunked in chunked_files] == paths
+    assert sum(
+        row_group.num_rows
+        for chunked in chunked_files
+        for row_group in chunked.row_groups
+    ) == (_N_PER_FILE * _N_FILES)
 
 
 if __name__ == "__main__":

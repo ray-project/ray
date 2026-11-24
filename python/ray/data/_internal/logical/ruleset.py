@@ -40,6 +40,16 @@ class Ruleset:
 
         self._rules.remove(rule)
 
+    def replace(self, old: Type[Rule], new: Type[Rule]):
+        """Replace ``old`` with ``new`` in place, preserving its position.
+
+        Preserving the position matters because the relative order of rules
+        with no declared dependencies is otherwise their insertion order.
+        """
+        if old not in self._rules:
+            raise ValueError(f"Rule {old} not found in ruleset")
+        self._rules[self._rules.index(old)] = new
+
     def __iter__(self) -> Iterator[Type[Rule]]:
         """Iterate over the rules in this ruleset.
 

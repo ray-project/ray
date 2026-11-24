@@ -290,8 +290,7 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
 
     @contextmanager
     def with_working_dir_env(self, uri):
-        """
-        If uri is not None, add the local working directory to the environment variable
+        """If uri is not None, add the local working directory to the environment variable
         as "RAY_RUNTIME_ENV_CREATE_WORKING_DIR". This is useful for other plugins to
         create their environment with reference to the working directory. For example
         `pip -r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt`

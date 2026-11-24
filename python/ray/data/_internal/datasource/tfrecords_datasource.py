@@ -186,8 +186,7 @@ def _read_records(
     file: "pyarrow.NativeFile",
     path: str,
 ) -> Iterable[memoryview]:
-    """
-    Read records from TFRecord file.
+    """Read records from TFRecord file.
 
     A TFRecord file contains a sequence of records. The file can only be read
     sequentially. Each record is stored in the following formats:
@@ -212,7 +211,7 @@ def _read_records(
             elif num_length_bytes_read != 8:
                 raise ValueError(
                     "Failed to read the length of record data. Expected 8 bytes but "
-                    "got {num_length_bytes_read} bytes."
+                    f"got {num_length_bytes_read} bytes."
                 )
 
             # Read "masked_crc32_of_length" field.
@@ -220,7 +219,7 @@ def _read_records(
             if num_length_crc_bytes_read != 4:
                 raise ValueError(
                     "Failed to read the length of CRC-32C hashes. Expected 4 bytes "
-                    "but got {num_length_crc_bytes_read} bytes."
+                    f"but got {num_length_crc_bytes_read} bytes."
                 )
 
             # Read "data[length]" field.

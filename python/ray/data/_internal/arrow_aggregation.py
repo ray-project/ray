@@ -1,7 +1,15 @@
-from typing import Callable, List, NamedTuple, Optional, Tuple
+from typing import Callable, List, NamedTuple, Optional, Tuple, Union
 
+import numpy as np
 import pyarrow as pa
 import pyarrow.compute as pc
+
+
+def is_boolean_arrow_type(t: "pa.DataType") -> bool:
+    """Whether ``t`` is boolean, including dictionary/run-end encoded booleans."""
+    if pa.types.is_dictionary(t) or pa.types.is_run_end_encoded(t):
+        t = t.value_type
+    return pa.types.is_boolean(t)
 
 
 class ArrowAggOptions(NamedTuple):
@@ -54,6 +62,15 @@ class ArrowAggSpec(NamedTuple):
     # (agg_index, source_col, block) -> block with a derived indicator column
     # appended (e.g. percentages).
     prep: Optional[Callable] = None
+    # Reduction only: (prepped_block, agg_index, source_col, options) -> one
+    # array per ``components`` entry, holding each row's state as if it were a
+    # group of one.  Lets a reducer turn raw rows (shipped when a map task
+    # skipped partial aggregation) into partial state without a group_by, so
+    # one ``merge_specs`` pass covers raw and partial shards alike.  If any
+    # agg in a query lacks it, map tasks always pre-aggregate.
+    raw_to_partial: Optional[
+        Callable[..., List[Union["pa.Array", "pa.ChunkedArray"]]]
+    ] = None
 
 
 # --- reusable finalizers (multi-line; referenced from AggregateFn specs) ------
@@ -80,6 +97,19 @@ def _finalize_pct(merged: "pa.Table", component_cols: Tuple[str, ...]):
     return pc.if_else(pc.equal(denominator, 0.0), _NULL_FLOAT, pct)  # den 0 -> null
 
 
+def _ones(block: "pa.Table") -> "pa.Array":
+    return pa.array(np.ones(block.num_rows, dtype=np.int64))
+
+
+def _count_state(
+    block: "pa.Table", source_col: Optional[str], options: ArrowAggOptions
+) -> Union["pa.Array", "pa.ChunkedArray"]:
+    """Per-row ``count`` state: 1 per row, or 0 for nulls when they're ignored."""
+    if source_col is None or not options.ignore_nulls:
+        return _ones(block)
+    return pc.cast(pc.is_valid(block[source_col]), pa.int64())
+
+
 # --- spec builders (an AggregateFn picks one in its _arrow_agg_spec) ----------
 def sum_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
@@ -91,6 +121,9 @@ def sum_spec() -> ArrowAggSpec:
             (input_cols[0], "sum", options.value_opts)
         ],
         finalize=lambda merged, component_cols: merged[component_cols[0]],
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[source_col]
+        ],
     )
 
 
@@ -109,6 +142,9 @@ def count_spec() -> ArrowAggSpec:
         finalize=lambda merged, component_cols: pc.cast(
             merged[component_cols[0]], pa.int64()
         ),
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            _count_state(block, source_col, options)
+        ],
     )
 
 
@@ -122,6 +158,9 @@ def minmax_spec(kind: str) -> ArrowAggSpec:
             (input_cols[0], kind, options.value_opts)
         ],
         finalize=lambda merged, component_cols: merged[component_cols[0]],
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[source_col]
+        ],
     )
 
 
@@ -137,6 +176,10 @@ def mean_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_mean,
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[source_col],
+            _count_state(block, source_col, options),
+        ],
     )
 
 
@@ -157,7 +200,18 @@ def missing_pct_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_pct,
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[f"__d{agg_index}_miss"],
+            _ones(block),
+        ],
     )
+
+
+def _zero_indicator(column: "pa.ChunkedArray") -> "pa.ChunkedArray":
+    # `equal(bool, int)` has no kernel; treat booleans as 0/1.
+    if is_boolean_arrow_type(column.type):
+        column = pc.cast(column, pa.int8())
+    return pc.cast(pc.equal(column, 0), pa.int64())
 
 
 def zero_pct_spec() -> ArrowAggSpec:
@@ -165,7 +219,7 @@ def zero_pct_spec() -> ArrowAggSpec:
     return ArrowAggSpec(
         components=("numerator", "denominator"),
         prep=lambda agg_index, source_col, block: block.append_column(
-            f"__d{agg_index}_zero", pc.cast(pc.equal(block[source_col], 0), pa.int64())
+            f"__d{agg_index}_zero", _zero_indicator(block[source_col])
         ),
         raw_agg_specs=lambda agg_index, source_col, options: [
             (f"__d{agg_index}_zero", "sum", options.zero_sum_opts),
@@ -178,6 +232,10 @@ def zero_pct_spec() -> ArrowAggSpec:
             (input_cols[1], "sum", options.zero_sum_opts),
         ],
         finalize=_finalize_pct,
+        raw_to_partial=lambda block, agg_index, source_col, options: [
+            block[f"__d{agg_index}_zero"],
+            _count_state(block, source_col, options),
+        ],
     )
 
 

@@ -43,7 +43,7 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-torch==2.9.0
+torch==2.10.0
 torchaudio
 torchmetrics
 # torchtext has no py3.13 wheels (last release 0.18.0 supports up to py3.12)

@@ -24,7 +24,6 @@
 #include <unordered_set>
 #include <vector>
 
-#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
@@ -34,23 +33,21 @@
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/util/clock.h"
-#include "mock/ray/gcs_client/gcs_client.h"
 // clang-format on
 
 namespace ray {
 
 namespace raylet {
 
-using ::testing::_;
-
-class MockWorkerPool : public WorkerPoolInterface {
+class FakeWorkerPool : public WorkerPoolInterface {
  public:
-  MockWorkerPool() : num_pops(0) {}
+  FakeWorkerPool() : num_pops(0) {}
 
   void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override {
@@ -276,7 +273,7 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       local_node_resources,
       /*is_node_available_fn*/
       [&gcs_client](scheduling::NodeID node_id) {
-        return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
+        return !gcs_client.Nodes().IsNodeDead(NodeID::FromBinary(node_id.Binary()));
       },
       resource_usage_gauge,
       clock,
@@ -348,9 +345,9 @@ RayLease CreateLease(
   return RayLease(std::move(lease_spec));
 }
 
-class MockLeaseDependencyManager : public LeaseDependencyManagerInterface {
+class FakeLeaseDependencyManager : public LeaseDependencyManagerInterface {
  public:
-  explicit MockLeaseDependencyManager(std::unordered_set<ObjectID> &missing_objects)
+  explicit FakeLeaseDependencyManager(std::unordered_set<ObjectID> &missing_objects)
       : missing_objects_(missing_objects) {}
 
   bool RequestLeaseDependencies(const LeaseID &lease_id,
@@ -400,7 +397,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
  public:
   explicit ClusterLeaseManagerTest(double num_cpus_at_head = 8.0,
                                    double num_gpus_at_head = 0.0)
-      : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
+      : gcs_client_(std::make_unique<gcs::FakeGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(id_.Binary(),
                                              num_cpus_at_head,
@@ -458,11 +455,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
     RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
   }
 
-  void SetUp() {
-    static rpc::GcsNodeAddressAndLiveness node_info;
-    ON_CALL(*gcs_client_->mock_node_accessor, IsNodeAlive(::testing::_))
-        .WillByDefault(::testing::Return(true));
-  }
+  void SetUp() {}
 
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
@@ -532,7 +525,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
     return count;
   }
 
-  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  std::unique_ptr<gcs::FakeGcsClient> gcs_client_;
   NodeID id_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
   ray::Clock clock_;
@@ -540,7 +533,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   // backoff timing in tests. Declared before local_lease_manager_ so it outlives it.
   ray::FakeClock fake_clock_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
-  MockWorkerPool pool_;
+  FakeWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
@@ -561,7 +554,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
       fake_internal_num_spilled_tasks_gauge_,
       fake_internal_num_infeasible_scheduling_classes_gauge_,
   };
-  MockLeaseDependencyManager lease_dependency_manager_;
+  FakeLeaseDependencyManager lease_dependency_manager_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   ClusterLeaseManager lease_manager_;
 };

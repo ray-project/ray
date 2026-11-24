@@ -26,7 +26,7 @@ namespace gcs {
 // 1. JobInfo Service Gating Tests
 // =========================================================================
 
-class MockJobInfoGcsServiceHandler : public rpc::JobInfoGcsServiceHandler {
+class FakeJobInfoGcsServiceHandler : public rpc::JobInfoGcsServiceHandler {
  public:
   void HandleAddJob(rpc::AddJobRequest request,
                     rpc::AddJobReply *reply,
@@ -62,7 +62,7 @@ class MockJobInfoGcsServiceHandler : public rpc::JobInfoGcsServiceHandler {
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestJobGating) {
-  MockJobInfoGcsServiceHandler underlying;
+  FakeJobInfoGcsServiceHandler underlying;
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
@@ -144,7 +144,7 @@ TEST(GcsLeaderGatedHandlersTest, TestJobGating) {
 // 2. InternalKV Service Gating Tests
 // =========================================================================
 
-class MockInternalKVGcsServiceHandler : public rpc::InternalKVGcsServiceHandler {
+class FakeInternalKVGcsServiceHandler : public rpc::InternalKVGcsServiceHandler {
  public:
   void HandleInternalKVKeys(rpc::InternalKVKeysRequest request,
                             rpc::InternalKVKeysReply *reply,
@@ -199,7 +199,7 @@ class MockInternalKVGcsServiceHandler : public rpc::InternalKVGcsServiceHandler 
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestKVGating) {
-  MockInternalKVGcsServiceHandler underlying;
+  FakeInternalKVGcsServiceHandler underlying;
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
@@ -278,7 +278,7 @@ TEST(GcsLeaderGatedHandlersTest, TestKVGating) {
 // 3. NodeInfo Service Gating Tests
 // =========================================================================
 
-class MockNodeInfoGcsServiceHandler : public rpc::NodeInfoGcsServiceHandler {
+class FakeNodeInfoGcsServiceHandler : public rpc::NodeInfoGcsServiceHandler {
  public:
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
                           rpc::GetClusterIdReply *reply,
@@ -335,17 +335,24 @@ class MockNodeInfoGcsServiceHandler : public rpc::NodeInfoGcsServiceHandler {
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
-  MockNodeInfoGcsServiceHandler underlying;
+  FakeNodeInfoGcsServiceHandler underlying;
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
-  // Mock storage for passive node caching.
+  // Mock storage for passive node caching. Returns whether the node was taken
+  // ownership of, mirroring GcsNodeManager::TryHandlePassiveHeadRegistration().
   std::shared_ptr<rpc::GcsNodeInfo> cached_passive_node;
-  auto cache_local_node_fn = [&cached_passive_node](const rpc::GcsNodeInfo &node_info) {
+  bool cache_accepts = true;
+  auto try_handle_passive_head_fn = [&cached_passive_node,
+                                     &cache_accepts](const rpc::GcsNodeInfo &node_info) {
+    if (!cache_accepts) {
+      return false;
+    }
     cached_passive_node = std::make_shared<rpc::GcsNodeInfo>(node_info);
+    return true;
   };
 
-  LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn, cache_local_node_fn);
+  LeaderGatedNodeInfoHandler proxy(underlying, is_leader_fn, try_handle_passive_head_fn);
 
   // 1. Passive mode: unallowed worker node registration & unregister must be BLOCKED.
   {
@@ -426,7 +433,31 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
     underlying.called_ = false;
   }
 
-  // 3. Leader mode: all RPCs work.
+  // 3. Promotion landed between the gate check above and the cache write, and the
+  // promotion path is not registering this head. Acknowledging it would drop it -- the
+  // raylet reads OK as registered and never retries -- so it must reach the real
+  // handler instead.
+  {
+    cache_accepts = false;
+    rpc::RegisterNodeRequest request;
+    request.mutable_node_info()->set_is_head_node(true);
+    rpc::RegisterNodeReply reply;
+    bool callback_called = false;
+    auto send_reply_callback = [&callback_called](Status status,
+                                                  std::function<void()> f1,
+                                                  std::function<void()> f2) {
+      EXPECT_TRUE(status.ok());
+      callback_called = true;
+    };
+    proxy.HandleRegisterNode(request, &reply, send_reply_callback);
+    EXPECT_TRUE(callback_called);
+    EXPECT_TRUE(underlying.called_);
+    EXPECT_EQ(cached_passive_node, nullptr);
+    underlying.called_ = false;
+    cache_accepts = true;
+  }
+
+  // 4. Leader mode: all RPCs work.
   {
     is_leader = true;
     rpc::RegisterNodeRequest request;
@@ -464,7 +495,7 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeRegistrationAndGating) {
 // 4. ActorInfo Service Gating Tests
 // =========================================================================
 
-class MockActorInfoGcsServiceHandler : public rpc::ActorInfoGcsServiceHandler {
+class FakeActorInfoGcsServiceHandler : public rpc::ActorInfoGcsServiceHandler {
  public:
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
@@ -526,7 +557,7 @@ class MockActorInfoGcsServiceHandler : public rpc::ActorInfoGcsServiceHandler {
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestActorGating) {
-  MockActorInfoGcsServiceHandler underlying;
+  FakeActorInfoGcsServiceHandler underlying;
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
@@ -608,7 +639,7 @@ TEST(GcsLeaderGatedHandlersTest, TestActorGating) {
 // 5. PlacementGroupInfo Service Gating Tests
 // =========================================================================
 
-class MockPlacementGroupInfoGcsServiceHandler
+class FakePlacementGroupInfoGcsServiceHandler
     : public rpc::PlacementGroupInfoGcsServiceHandler {
  public:
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
@@ -653,7 +684,7 @@ class MockPlacementGroupInfoGcsServiceHandler
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestPlacementGroupGating) {
-  MockPlacementGroupInfoGcsServiceHandler underlying;
+  FakePlacementGroupInfoGcsServiceHandler underlying;
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
@@ -735,7 +766,7 @@ TEST(GcsLeaderGatedHandlersTest, TestPlacementGroupGating) {
 // 6. AutoscalerState Service Gating Tests
 // =========================================================================
 
-class MockAutoscalerStateServiceHandler
+class FakeAutoscalerStateServiceHandler
     : public rpc::autoscaler::AutoscalerStateServiceHandler {
  public:
   void HandleGetClusterResourceState(
@@ -790,7 +821,7 @@ class MockAutoscalerStateServiceHandler
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestAutoscalerGating) {
-  MockAutoscalerStateServiceHandler underlying;
+  FakeAutoscalerStateServiceHandler underlying;
   bool is_leader = false;
   auto is_leader_fn = [&is_leader]() { return is_leader; };
 
@@ -884,7 +915,7 @@ void ExpectGatedInBody(const Reply &reply, bool underlying_called) {
 // NodeResourceInfo Service Gating Tests (all RPCs gated).
 // =========================================================================
 
-class MockNodeResourceInfoGcsServiceHandler
+class FakeNodeResourceInfoGcsServiceHandler
     : public rpc::NodeResourceInfoGcsServiceHandler {
  public:
   void HandleGetAllAvailableResources(
@@ -920,7 +951,7 @@ class MockNodeResourceInfoGcsServiceHandler
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestNodeResourceInfoGating) {
-  MockNodeResourceInfoGcsServiceHandler underlying;
+  FakeNodeResourceInfoGcsServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedNodeResourceInfoHandler proxy(underlying,
                                            [&is_leader]() { return is_leader; });
@@ -952,7 +983,7 @@ TEST(GcsLeaderGatedHandlersTest, TestNodeResourceInfoGating) {
 // WorkerInfo Service Gating Tests (all RPCs gated, incl. reads).
 // =========================================================================
 
-class MockWorkerInfoGcsServiceHandler : public rpc::WorkerInfoGcsServiceHandler {
+class FakeWorkerInfoGcsServiceHandler : public rpc::WorkerInfoGcsServiceHandler {
  public:
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -997,7 +1028,7 @@ class MockWorkerInfoGcsServiceHandler : public rpc::WorkerInfoGcsServiceHandler 
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestWorkerInfoGating) {
-  MockWorkerInfoGcsServiceHandler underlying;
+  FakeWorkerInfoGcsServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedWorkerInfoHandler proxy(underlying, [&is_leader]() { return is_leader; });
 
@@ -1029,7 +1060,7 @@ TEST(GcsLeaderGatedHandlersTest, TestWorkerInfoGating) {
 // TaskInfo Service Gating Tests (all RPCs gated, incl. reads).
 // =========================================================================
 
-class MockTaskInfoGcsServiceHandler : public rpc::TaskInfoGcsServiceHandler {
+class FakeTaskInfoGcsServiceHandler : public rpc::TaskInfoGcsServiceHandler {
  public:
   void HandleAddTaskEventData(rpc::AddTaskEventDataRequest request,
                               rpc::AddTaskEventDataReply *reply,
@@ -1048,7 +1079,7 @@ class MockTaskInfoGcsServiceHandler : public rpc::TaskInfoGcsServiceHandler {
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestTaskInfoGating) {
-  MockTaskInfoGcsServiceHandler underlying;
+  FakeTaskInfoGcsServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedTaskInfoHandler proxy(underlying, [&is_leader]() { return is_leader; });
 
@@ -1080,7 +1111,7 @@ TEST(GcsLeaderGatedHandlersTest, TestTaskInfoGating) {
 // RuntimeEnv Service Gating Tests (single write RPC gated).
 // =========================================================================
 
-class MockRuntimeEnvGcsServiceHandler : public rpc::RuntimeEnvGcsServiceHandler {
+class FakeRuntimeEnvGcsServiceHandler : public rpc::RuntimeEnvGcsServiceHandler {
  public:
   void HandlePinRuntimeEnvURI(rpc::PinRuntimeEnvURIRequest request,
                               rpc::PinRuntimeEnvURIReply *reply,
@@ -1093,7 +1124,7 @@ class MockRuntimeEnvGcsServiceHandler : public rpc::RuntimeEnvGcsServiceHandler 
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestRuntimeEnvGating) {
-  MockRuntimeEnvGcsServiceHandler underlying;
+  FakeRuntimeEnvGcsServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedRuntimeEnvHandler proxy(underlying, [&is_leader]() { return is_leader; });
 
@@ -1119,7 +1150,7 @@ TEST(GcsLeaderGatedHandlersTest, TestRuntimeEnvGating) {
 // ControlPlanePubSub Service Gating Tests (publish gated, subscribe allowed).
 // =========================================================================
 
-class MockControlPlanePubSubGcsServiceHandler
+class FakeControlPlanePubSubGcsServiceHandler
     : public rpc::ControlPlanePubSubGcsServiceHandler {
  public:
   void HandleGcsPublish(rpc::GcsPublishRequest request,
@@ -1148,7 +1179,7 @@ class MockControlPlanePubSubGcsServiceHandler
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestControlPlanePubSubGating) {
-  MockControlPlanePubSubGcsServiceHandler underlying;
+  FakeControlPlanePubSubGcsServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedControlPlanePubSubHandler proxy(underlying,
                                              [&is_leader]() { return is_leader; });
@@ -1190,7 +1221,7 @@ TEST(GcsLeaderGatedHandlersTest, TestControlPlanePubSubGating) {
 // (publish + report-job-error gated, subscribe allowed).
 // =========================================================================
 
-class MockObservabilityPubSubServiceHandler
+class FakeObservabilityPubSubServiceHandler
     : public rpc::ObservabilityPubSubServiceHandler {
  public:
   void HandleGcsPublish(rpc::GcsPublishRequest request,
@@ -1226,7 +1257,7 @@ class MockObservabilityPubSubServiceHandler
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestObservabilityPubSubGating) {
-  MockObservabilityPubSubServiceHandler underlying;
+  FakeObservabilityPubSubServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedObservabilityPubSubHandler proxy(underlying,
                                               [&is_leader]() { return is_leader; });
@@ -1276,7 +1307,7 @@ TEST(GcsLeaderGatedHandlersTest, TestObservabilityPubSubGating) {
 // RayEventExport Service Gating Tests (single ingest RPC gated).
 // =========================================================================
 
-class MockRayEventExportGcsServiceHandler
+class FakeRayEventExportGcsServiceHandler
     : public rpc::events::RayEventExportGcsServiceHandler {
  public:
   void HandleAddEvents(rpc::events::AddEventsRequest request,
@@ -1290,7 +1321,7 @@ class MockRayEventExportGcsServiceHandler
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestRayEventExportGating) {
-  MockRayEventExportGcsServiceHandler underlying;
+  FakeRayEventExportGcsServiceHandler underlying;
   bool is_leader = false;
   LeaderGatedRayEventExportHandler proxy(underlying,
                                          [&is_leader]() { return is_leader; });
@@ -1320,7 +1351,7 @@ TEST(GcsLeaderGatedHandlersTest, TestRayEventExportGating) {
 // wrongly gates it.
 // =========================================================================
 
-class MockRaySyncerStreamHandler : public syncer::RaySyncerStreamHandler {
+class FakeRaySyncerStreamHandler : public syncer::RaySyncerStreamHandler {
  public:
   syncer::SyncStreamReactor *StartSync(grpc::CallbackServerContext *context) override {
     called_ = true;
@@ -1331,7 +1362,7 @@ class MockRaySyncerStreamHandler : public syncer::RaySyncerStreamHandler {
 };
 
 TEST(GcsLeaderGatedHandlersTest, TestRaySyncerAllowedRegardlessOfLeadership) {
-  MockRaySyncerStreamHandler underlying;
+  FakeRaySyncerStreamHandler underlying;
   bool is_leader = false;
   LeaderGatedRaySyncerHandler proxy(underlying, [&is_leader]() { return is_leader; });
 

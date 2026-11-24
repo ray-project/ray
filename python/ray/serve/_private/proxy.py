@@ -19,9 +19,6 @@ from typing import (
 )
 
 import grpc
-import starlette
-import starlette.routing
-from packaging import version
 from starlette.types import Receive
 
 import ray
@@ -96,6 +93,7 @@ from ray.serve._private.proxy_request_response import (
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.request_ingress_metrics import RequestIngressMetrics
+from ray.serve._private.routing_config import RoutingConfigVersion
 from ray.serve._private.tracing_utils import (
     is_span_recording,
     set_http_span_attributes,
@@ -405,16 +403,10 @@ class GenericProxy(ABC):
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            route_path = proxy_request.route_path
             if route_prefix != "/" and self.protocol == RequestProtocol.HTTP:
                 proxy_request = cast(ASGIProxyRequest, proxy_request)
                 assert not route_prefix.endswith("/")
                 proxy_request.set_root_path(proxy_request.root_path + route_prefix)
-                # NOTE(edoakes): starlette<0.33.0 expected the ASGI 'root_prefix'
-                # to be stripped from the 'path', which wasn't technically following
-                # the standard. See https://github.com/encode/starlette/pull/2352.
-                if version.parse(starlette.__version__) < version.parse("0.33.0"):
-                    proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
             # NOTE(abrar): we try to match to a specific route pattern (e.g., /api/{user_id})
             # for logs & metrics when available. If no pattern matches, we fall back to the
@@ -1479,7 +1471,7 @@ class ProxyActorInterface(ABC):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
-        tracing_config: Optional[TracingConfig] = None,
+        tracing_config: TracingConfig,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     ):
         """Initialize the proxy actor.
@@ -1494,10 +1486,18 @@ class ProxyActorInterface(ABC):
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
-        self._tracing_config = tracing_config
         self._log_buffer_size = log_buffer_size
 
         self._update_logging_config(logging_config)
+
+        # OpenTelemetry allows one tracer provider per process, so set tracing
+        # up once, here. Let a failure raise so it surfaces at startup.
+        if setup_tracing(
+            component_name="proxy",
+            component_id=self._node_ip_address,
+            tracing_config=tracing_config,
+        ):
+            logger.info("Successfully set up tracing for proxy")
 
     @abstractmethod
     async def ready(self) -> str:
@@ -1509,11 +1509,17 @@ class ProxyActorInterface(ABC):
         pass
 
     @abstractmethod
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the proxy to be ready to serve requests.
 
         Args:
             wait_for_applications_running: Whether to wait for the applications to be running
+            expected_routing_config_version: Routing configuration that must have
+                been applied before the proxy is considered ready.
 
         Returns:
             None
@@ -1628,12 +1634,14 @@ class ProxyActor(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
+        tracing_config: TracingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
         is_head = self._node_id == get_head_node_id()
@@ -1652,14 +1660,6 @@ class ProxyActor(ProxyActorInterface):
             call_in_event_loop=event_loop,
             client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
-
-        is_tracing_setup_successful = setup_tracing(
-            component_name="proxy",
-            component_id=node_ip_address,
-            tracing_config=self._tracing_config,
-        )
-        if is_tracing_setup_successful:
-            logger.info("Successfully set up tracing for proxy")
 
         startup_msg = f"Proxy starting on node {self._node_id} (HTTP port: {self._http_options.port}"
         if grpc_enabled:
@@ -1835,7 +1835,11 @@ class ProxyActor(ProxyActorInterface):
             ]
         )
 
-    async def serving(self, wait_for_applications_running: bool = True) -> None:
+    async def serving(
+        self,
+        wait_for_applications_running: bool = True,
+        expected_routing_config_version: Optional[RoutingConfigVersion] = None,
+    ) -> None:
         """Wait for the proxy to be ready to serve requests."""
         return
 

@@ -24,6 +24,40 @@ Lightweight config updates modify running deployment replicas without tearing th
 - `health_check_period_s`
 - `health_check_timeout_s`
 
+(serve-inplace-updates-programmatic)=
+
+## Updating in place from Python
+
+Lightweight updates only apply to applications deployed declaratively, from a config. `serve.run` deploys an application object imperatively, and because Serve can't tell which version of the code that object holds, every `serve.run` call redeploys the whole application and restarts all of its replicas.
+
+To update an application in place from code instead of a config file, send the config to the same REST API that `serve deploy` uses. The config you send replaces the cluster's declarative config: it must list every application that was deployed from a config, because Serve deletes the ones it leaves out. Applications deployed with `serve.run` are not affected. The simplest way to keep the other applications is to start from the configs Serve reports for them:
+
+```python
+import requests
+
+DASHBOARD = "http://localhost:8265"
+
+details = requests.get(f"{DASHBOARD}/api/serve/applications/").json()
+applications = [
+    app["deployed_app_config"]
+    for app in details["applications"].values()
+    if app["deployed_app_config"]  # only applications deployed from a config
+]
+
+# Change one deployment's replica count, a lightweight update.
+for app in applications:
+    if app["name"] == "default":
+        for deployment in app.get("deployments", []):
+            if deployment["name"] == "Translator":
+                deployment["num_replicas"] = 3
+
+requests.put(
+    f"{DASHBOARD}/api/serve/applications/", json={"applications": applications}
+).raise_for_status()
+```
+
+See the [Serve REST API](serve-rest-api) for the full request and response schemas.
+
 (serve-updating-user-config)=
 
 ## Updating the user config
@@ -106,6 +140,12 @@ The language has updated. Now the returned text is in German instead of French.
 ## Code Updates
 
 Changing the following values in a deployment's config will trigger redeployment and restart all the deployment's replicas.
+
+:::{note}
+Code updates use a rolling restart rather than stopping all replicas at once. Ray replaces up to `max(int(rolling_update_percentage * num_replicas), 1)` replicas per rollout wave. The default `rolling_update_percentage` is `0.2`.
+
+With multiple replicas, replicas that aren't currently being restarted can continue serving traffic during the rollout. A deployment with a single replica must restart its only replica during a code update, which will result in a brief service interruption.
+:::
 - `ray_actor_options`
 - `placement_group_bundles`
 - `placement_group_strategy`

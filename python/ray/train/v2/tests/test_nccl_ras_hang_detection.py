@@ -1,13 +1,16 @@
 """End-to-end tests for the NCCL RAS hang detector on real GPUs.
 
 Each test deliberately induces one class of NCCL desync inside a real
-``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the
-:class:`NCCLRASCallback` registered, and asserts the callback's whole-job
-behavior: query RAS on a worker -> parse -> classify per communicator -> capture
-stacks + raise :class:`NCCLHangError`.
+``TorchTrainer`` (``backend="nccl"``, ``use_gpu=True``) with the hang
+detector turned on (``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1``), and asserts
+the detector's whole-job behavior: query RAS on each node -> parse -> classify
+per communicator -> capture diagnostics (per-rank stack traces and PyTorch
+Flight Recorder dumps plus per-node `nvidia-smi` snapshots) -> reattempt the
+run, which fails it with a ``HealthCheckError``.
 """
 import os
 import shutil
+from pathlib import Path
 from typing import Any, Dict, Iterator
 
 import pytest
@@ -16,9 +19,9 @@ import torch.distributed as dist
 
 import ray
 import ray.train
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig, TorchTrainer, get_device
-from ray.train.v2.api.exceptions import NCCLHangError, WorkerGroupError
+from ray.train.v2.api.exceptions import HealthCheckError, WorkerGroupError
 
 if not torch.cuda.is_available() or torch.cuda.device_count() < 2:
     pytest.skip(
@@ -39,6 +42,7 @@ RAS_ENV = {
     "RAY_TRAIN_NCCL_RAS_ACTION": "fail",
     "RAY_TRAIN_NCCL_RAS_MIN_POLL_INTERVAL_S": "2",
     "RAY_TRAIN_NCCL_RAS_CONFIRM_DURATION_S": "4",
+    "TORCH_FR_BUFFER_SIZE": "2000",
 }
 
 
@@ -53,14 +57,15 @@ SYSTEM_LIBNCCL_PATH = "/usr/lib/x86_64-linux-gnu/libnccl.so.2"
 HANG_STEP = 3
 STEPS = 16
 STEP_SLEEP_S = 1.0
+EXPERIMENT_NAME = "nccl_ras_hang_detector_e2e"
 
 
 @pytest.fixture(scope="module", autouse=True)
 def nccl_ras_env() -> Iterator[Dict[str, Any]]:
     """Speed up hang detection for this module only, then restore.
 
-    These knobs are read by ``NCCLRASCallback`` on the driver (the callback is
-    registered by default), so they only need to be present in this process.
+    These knobs are read by the controller, which gets them from the driver,
+    so they only need to be present in this process.
     Only keys not already set by the caller are added (and only those removed),
     preserving any explicit override.
 
@@ -155,7 +160,7 @@ def shape_mismatch_train_fn(config):
     """Same collective, different tensor size per rank -> shape mismatch.
 
     Undetectable by RAS (op type/count are identical), so this only checks the
-    callback does not spuriously fail a run.
+    detector does not spuriously fail a run.
     """
     import time
 
@@ -172,7 +177,7 @@ def shape_mismatch_train_fn(config):
 def healthy_train_fn(config):
     """Negative control: all ranks issue matched collectives and finish cleanly.
 
-    A correct run must complete with no error, proving the callback raises no
+    A correct run must complete with no error, proving the detector raises no
     spurious hang (false positive) on a healthy job. Op-counts advance in
     lock-step every step, so no rank ever looks frozen.
     """
@@ -242,13 +247,25 @@ def multicomm_subset_train_fn(config):
         time.sleep(STEP_SLEEP_S)
 
 
-def run_train_fn(train_func, num_workers, tensor_shape=64 * 1024 * 1024):
-    """Run ``train_func`` with the RAS callback; return the raised error or None."""
+def run_train_fn(
+    train_func, num_workers, tensor_shape=64 * 1024 * 1024, storage_path=None
+):
+    """Run ``train_func`` with the hang detector; return the raised error or None.
+
+    Passing ``storage_path`` pins the run's experiment directory, so a test can
+    read the hang diagnostics the detector uploaded under it.
+    """
+    run_config = (
+        RunConfig(storage_path=str(storage_path), name=EXPERIMENT_NAME)
+        if storage_path is not None
+        else None
+    )
     trainer = TorchTrainer(
         train_func,
         train_loop_config={"tensor_shape": tensor_shape},
         torch_config=TorchConfig(backend="nccl"),
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=True),
+        run_config=run_config,
     )
     try:
         trainer.fit()
@@ -271,20 +288,22 @@ def ray_start_4_cpus_4_gpus(nccl_ras_env):
     ray.shutdown()
 
 
-def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus):
-    err = run_train_fn(healthy_train_fn, num_workers=2)
+def test_healthy_run_does_not_fail(ray_start_4_cpus_2_gpus, tmp_path):
+    err = run_train_fn(healthy_train_fn, num_workers=2, storage_path=tmp_path)
     assert err is None, f"healthy run must not fail, got {err!r}"
+    # Nothing was ever suspected, so no diagnostics were captured either.
+    assert not (Path(tmp_path) / EXPERIMENT_NAME / "hang_detector").exists()
 
 
 HANG, FAIL, MAYBE = "hang", "fail", "maybe"
 # "hang"  -> a communicator deadlocks with a frozen straggler rank; the
-#            callback must raise NCCLHangError.
+#            detector must fail the run with a HealthCheckError.
 # "fail"  -> a dead rank; that Ray's own worker health check fails the run
 #            with a WorkerGroupError. RAS can detect these missing ranks but
 #            we don't act on it quickly enough by default.
 # "maybe" -> size-dependent or RAS-undetectable. On small tensors these often
 #            keep advancing; on large tensors they may truly deadlock and
-#            raise NCCLHangError.
+#            fail the run with a HealthCheckError.
 
 TWO_WORKER_SCENARIOS = [
     pytest.param(straggler_train_fn, HANG, id="straggler"),
@@ -297,26 +316,58 @@ TWO_WORKER_SCENARIOS = [
 
 def _assert_outcome(err, expectation):
     if expectation == HANG:
-        assert isinstance(err, NCCLHangError), f"expected NCCLHangError, got {err!r}"
+        assert isinstance(err, HealthCheckError), f"expected a hang, got {err!r}"
     elif expectation == FAIL:
         assert isinstance(err, WorkerGroupError), f"expected a failure, got {err!r}"
     else:  # MAYBE
-        assert err is None or isinstance(err, NCCLHangError), f"unexpected: {err!r}"
+        assert err is None or isinstance(err, HealthCheckError), f"unexpected: {err!r}"
+
+
+def diagnostics_dir(storage_path, tool) -> Path:
+    """Where the detector uploads one tool's files for a run."""
+    return Path(storage_path) / EXPERIMENT_NAME / "hang_detector" / tool
+
+
+def assert_hang_diagnostics(err, storage_path, num_workers):
+    """Every rank has a stack trace and this single-node cluster a GPU snapshot."""
+    assert "hang_detector/stack_traces" in str(err)
+    assert "hang_detector/nvidia_smi" in str(err)
+    assert "hang_detector/flight_recorder" in str(err)
+
+    stack_traces = os.listdir(diagnostics_dir(storage_path, "stack_traces"))
+    assert set(stack_traces) == {f"rank_{i}.log" for i in range(num_workers)}
+
+    # One file per node, not per rank, and these workers share a node.
+    node_ip = ray.util.get_node_ip_address()
+    assert os.listdir(diagnostics_dir(storage_path, "nvidia_smi")) == [
+        f"node_{node_ip}.log"
+    ]
+
+    flight_recorder_dir = diagnostics_dir(storage_path, "flight_recorder")
+    assert set(os.listdir(flight_recorder_dir)) == {
+        f"rank_{i}.json" for i in range(num_workers)
+    }
 
 
 @pytest.mark.parametrize("train_func, expectation", TWO_WORKER_SCENARIOS)
-def test_hang_scenarios(train_func, expectation, ray_start_4_cpus_2_gpus):
-    err = run_train_fn(train_func, num_workers=2)
+def test_hang_scenarios(train_func, expectation, ray_start_4_cpus_2_gpus, tmp_path):
+    err = run_train_fn(train_func, num_workers=2, storage_path=tmp_path)
     _assert_outcome(err, expectation)
+
+    if isinstance(err, HealthCheckError):
+        assert_hang_diagnostics(err, tmp_path, num_workers=2)
 
 
 @pytest.mark.skipif(
     torch.cuda.device_count() < 4, reason="multi-communicator case needs >= 4 GPUs"
 )
-def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus):
+def test_multicomm_subset_detected(ray_start_4_cpus_4_gpus, tmp_path):
     # Two communicators, in which only one hangs
-    err = run_train_fn(multicomm_subset_train_fn, num_workers=4)
+    err = run_train_fn(multicomm_subset_train_fn, num_workers=4, storage_path=tmp_path)
     _assert_outcome(err, HANG)
+
+    if isinstance(err, HealthCheckError):
+        assert_hang_diagnostics(err, tmp_path, num_workers=4)
 
 
 if __name__ == "__main__":

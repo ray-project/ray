@@ -3,6 +3,40 @@ Kept separately so that it can easily be included in any templates
 that need to be overridden for individual pages; e.g. included
 both in the usual template (layout.html) as well as (index.html). -->
 
+<!-- Pre-paint banner dismissal. The announcement banners render server-side and
+are visible in the initial HTML, so a banner the visitor already dismissed
+flashes on every page load before the deferred js/dismissable-banner.js runs on
+DOMContentLoaded. This synchronous head script closes that gap: it reads the
+same localStorage dismissal flags and injects a stylesheet hiding the dismissed
+banners before the body paints. dismissable-banner.js still wires the close
+buttons and collapses the region after a click. Keep the dismissal contract in
+sync with that file: a banner is dismissed when its `data-banner-key` is stored
+with the value "true". -->
+<script>
+  (function () {
+    try {
+      var selectors = [];
+      for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (localStorage.getItem(key) === 'true') {
+          selectors.push(
+            '[data-banner-key="' + key.replace(/[\\"]/g, '\\$&') + '"]'
+          );
+        }
+      }
+      if (!selectors.length) {
+        return;
+      }
+      var style = document.createElement('style');
+      style.textContent = selectors.join(',') + '{display:none !important;}';
+      document.head.appendChild(style);
+    } catch (e) {
+      /* localStorage can throw when storage is disabled; fall back to the
+         deferred script, which reproduces the same hiding on DOMContentLoaded. */
+    }
+  })();
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link

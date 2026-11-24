@@ -19,7 +19,9 @@
 #include <memory>
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/runtime_env_common.h"
+#include "ray/common/runtime_env_redaction.h"
 
 namespace ray {
 namespace core {
@@ -192,19 +194,31 @@ ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();
 }
 
-void WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
+bool WorkerContext::MaybeInitializeJobInfo(const JobID &job_id,
                                            const rpc::JobConfig &job_config) {
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    if (!current_job_id_.IsNil() && job_config_.has_value()) {
-      RAY_CHECK(current_job_id_ == job_id);
-      return;
-    }
-  }
   absl::WriterMutexLock lock(&mutex_);
+  if (!current_job_id_.IsNil() && job_config_.has_value()) {
+    RAY_CHECK(current_job_id_ == job_id);
+    return false;
+  }
+
   current_job_id_ = job_id;
   job_config_ = job_config;
   RAY_CHECK(current_job_id_ == job_id);
+  return true;
+}
+
+bool WorkerContext::GetDisableJobLevelLineageReconstruction() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return job_config_.has_value() &&
+         job_config_->disable_job_level_lineage_reconstruction();
+}
+
+bool WorkerContext::ShouldPinObjectLineage() const {
+  if (GetDisableJobLevelLineageReconstruction()) {
+    return false;
+  }
+  return RayConfig::instance().lineage_pinning_enabled();
 }
 
 int64_t WorkerContext::GetTaskDepth() const {
@@ -339,7 +353,11 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 
     // Ray currently doesn't reuse worker to run tasks or actors with different runtime
     // envs.
-    RAY_CHECK_EQ(serialized_runtime_env_, serialized_runtime_env);
+    RAY_CHECK(serialized_runtime_env_ == serialized_runtime_env) << absl::StrFormat(
+        "Serialized_runtime_env mismatch: %s vs %s. "
+        "Ray does not reuse workers to run tasks or actors with different runtime envs.",
+        RedactSerializedRuntimeEnv(serialized_runtime_env_),
+        RedactSerializedRuntimeEnv(serialized_runtime_env));
     if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
       RAY_CHECK(runtime_env_ != nullptr);
     }

@@ -122,6 +122,9 @@ def load_table(
 
 
 def run_tpch_benchmark(name: str, benchmark_fn):
-    benchmark = Benchmark()
+    # This limit is ~2x the worst p90 observed in Ray 2.59.
+    #
+    # TODO: Ratchet it down as shuffle scalability improves.
+    benchmark = Benchmark(max_sched_loop_duration_s=2)
     benchmark.run_fn(name, benchmark_fn)
     benchmark.write_result()

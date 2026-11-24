@@ -72,6 +72,10 @@ enum { ERROR = 0 };
 #endif
 #endif
 
+#ifndef _WIN32
+#include <signal.h>  // for struct sigaction, used by saved_signal_actions_ below
+#endif
+
 #if defined(DEBUG) && DEBUG == 1
 // Bazel defines the DEBUG macro for historical reasons:
 // https://github.com/bazelbuild/bazel/issues/3513#issuecomment-323829248
@@ -262,7 +266,7 @@ class RayLog {
 
   /// The init function of ray log for a program which should be called only once.
   ///
-  /// \parem appName The app name which starts the log.
+  /// \param app_name The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
   /// but to stdout.
@@ -315,7 +319,7 @@ class RayLog {
   /// to locate the object file containing debug symbols for ELF format executables. If
   /// this is left as nullptr, symbolization can fail in some cases. More details in:
   /// https://github.com/abseil/abseil-cpp/blob/master/absl/debugging/symbolize_elf.inc
-  /// \parem call_previous_handler Whether to call the previous signal handler. See
+  /// \param call_previous_handler Whether to call the previous signal handler. See
   /// important caveats:
   /// https://github.com/abseil/abseil-cpp/blob/7e446075d4aff4601c1e7627c7c0be2c4833a53a/absl/debugging/failure_signal_handler.h#L76-L88
   /// This is currently used to enable signal handler from both Python and C++ in Python
@@ -412,6 +416,18 @@ class RayLog {
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
+  /// What each failure signal's disposition was before InstallFailureSignalHandler
+  /// replaced it, and what absl then installed. UninstallSignalAction uses the
+  /// latter to tell "still ours" from "someone installed over us afterwards", and
+  /// restores the former only in the first case. See the comment there.
+#ifndef _WIN32
+  struct SavedSignalAction {
+    int signal_num;
+    struct sigaction previous;
+    struct sigaction installed;
+  };
+  static std::vector<SavedSignalAction> saved_signal_actions_;
+#endif
   /// Whether emit json logs.
   static bool log_format_json_;
   // Log format pattern.

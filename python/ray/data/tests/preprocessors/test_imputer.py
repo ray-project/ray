@@ -192,7 +192,15 @@ def test_imputer_all_nan_raise_error():
         imputer.transform_batch(df)
 
 
-def test_imputer_constant_categorical():
+@pytest.mark.parametrize(
+    "output_columns, fill_value",
+    [
+        (None, "three"),
+        (["A_cat_imputed"], "three"),
+        (None, "two"),
+    ],
+)
+def test_imputer_constant_categorical(output_columns, fill_value):
     data = {
         "A_cat": ["one", "two", None, "four"],
     }
@@ -200,28 +208,34 @@ def test_imputer_constant_categorical():
     df["A_cat"] = df["A_cat"].astype("category")
     dataset = ray.data.from_pandas(df)
 
-    imputer = SimpleImputer(columns=["A_cat"], strategy="constant", fill_value="three")
+    imputer = SimpleImputer(
+        columns=["A_cat"],
+        output_columns=output_columns,
+        strategy="constant",
+        fill_value=fill_value,
+    )
     imputer.fit(dataset)
 
-    transformed_df = imputer.transform_batch(df)
+    out_col = output_columns[0] if output_columns else "A_cat"
+    transformed_df = imputer.transform_batch(df.copy())
 
-    expected = {
-        "A_cat": ["one", "two", "three", "four"],
-    }
-
-    for column in data.keys():
-        np.testing.assert_array_equal(transformed_df[column].values, expected[column])
+    np.testing.assert_array_equal(
+        transformed_df[out_col].values, ["one", "two", fill_value, "four"]
+    )
+    if output_columns is not None:
+        assert pd.isna(transformed_df["A_cat"].iloc[2])
+        assert fill_value not in transformed_df["A_cat"].cat.categories
 
     df = pd.DataFrame({"A": [1, 2, 3, 4]})
     transformed_df = imputer.transform_batch(df)
 
     expected = {
         "A": [1, 2, 3, 4],
-        "A_cat": ["three", "three", "three", "three"],
+        out_col: [fill_value, fill_value, fill_value, fill_value],
     }
 
-    for column in df:
-        np.testing.assert_array_equal(transformed_df[column].values, expected[column])
+    for column, expected_values in expected.items():
+        np.testing.assert_array_equal(transformed_df[column].values, expected_values)
 
 
 class TestSimpleImputerSerialization:
@@ -621,6 +635,70 @@ class TestSimpleImputerSerialization:
         serialized = imputer3.serialize()
         deserialized = SerializablePreprocessorBase.deserialize(serialized)
         assert np.isnan(deserialized.stats_["mean(col)"])
+
+
+def test_most_frequent_fits_via_aggregation():
+    """most_frequent registers a plan aggregator, not a callable stat."""
+    ds = ray.data.from_items([{"A": "a"}, {"A": "a"}, {"A": "b"}])
+    imputer = SimpleImputer(["A"], strategy="most_frequent")
+    imputer.fit(ds)
+    assert not imputer._stat_computation_plan.has_custom_stat_fn()
+    assert imputer.stats_ == {"most_frequent(A)": "a"}
+
+
+def test_most_frequent_deterministic_tiebreak():
+    """Among equally frequent values, the smallest wins."""
+    ds = ray.data.from_items(
+        [{"A": "zebra"}, {"A": "apple"}, {"A": "zebra"}, {"A": "apple"}]
+    )
+    imputer = SimpleImputer(["A"], strategy="most_frequent")
+    imputer.fit(ds)
+    assert imputer.stats_ == {"most_frequent(A)": "apple"}
+
+
+@pytest.mark.parametrize(
+    "column, expected",
+    [
+        pytest.param(
+            pd.array([None] * 6 + [1, 1, 2], dtype="Int64"), 1, id="int64_pd_na"
+        ),
+        pytest.param(
+            pd.array([None] * 6 + ["a", "a", "b"], dtype="string"),
+            "a",
+            id="string_pd_na",
+        ),
+        pytest.param(
+            np.array([np.nan] * 6 + [1, 1, 2], dtype=np.float32), 1.0, id="float32_nan"
+        ),
+        pytest.param(
+            np.array([np.nan] * 6 + [1, 1, 2], dtype=np.float64), 1.0, id="float64_nan"
+        ),
+        pytest.param(
+            pd.Series([None] * 3 + ["a", "a", "b"], dtype=object), "a", id="object_none"
+        ),
+    ],
+)
+def test_most_frequent_ignores_null_sentinels(column, expected):
+    """Missing values (None, NaN, pd.NA) are never the most frequent value, even
+    when they outnumber every real value."""
+    ds = ray.data.from_pandas(pd.DataFrame({"x": column}))
+
+    imputer = SimpleImputer(["x"], strategy="most_frequent").fit(ds)
+
+    assert imputer.stats_["most_frequent(x)"] == expected
+
+
+def test_most_frequent_across_multiple_partial_aggregates(restore_data_context):
+    """The most frequent value is chosen from counts summed across blocks."""
+    # One partial aggregate per block (Ray otherwise batches small inputs together).
+    restore_data_context.shuffle_input_batch_bytes = 0
+    # "c" is never the top value of a single block but is the top overall.
+    values = ["a"] * 4 + ["c"] * 3 + ["b"] * 4 + ["c"] * 3 + ["a"] * 4 + ["c"] * 3
+    ds = ray.data.from_items([{"x": v} for v in values], override_num_blocks=3)
+
+    imputer = SimpleImputer(["x"], strategy="most_frequent").fit(ds)
+
+    assert imputer.stats_ == {"most_frequent(x)": "c"}
 
 
 if __name__ == "__main__":

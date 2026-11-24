@@ -90,7 +90,7 @@ def test_random_block_order(
     ctx = DataContext.get_current()
     ctx.execution_options.preserve_order = True
 
-    # Test BlockList.randomize_block_order.
+    # Test randomize_block_order after repartitioning.
     ds = ray.data.range(12).repartition(4)
     ds = ds.randomize_block_order(seed=0)
 
@@ -98,12 +98,12 @@ def test_random_block_order(
     expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
     assert results == expected
 
-    # Test LazyBlockList.randomize_block_order.
-    lazy_blocklist_ds = ray.data.range(12, override_num_blocks=4)
-    lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
-    lazy_blocklist_results = lazy_blocklist_ds.take()
-    lazy_blocklist_expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
-    assert lazy_blocklist_results == lazy_blocklist_expected
+    # Test randomize_block_order with override_num_blocks.
+    ds = ray.data.range(12, override_num_blocks=4)
+    ds = ds.randomize_block_order(seed=0)
+    results = ds.take()
+    expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
+    assert results == expected
 
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
@@ -166,6 +166,22 @@ def test_random_shuffle(
     r1 = ds.random_shuffle()
     assert r1.count() == 0
     assert r1.take() == ds.take()
+
+
+def test_seeded_random_shuffle_ignores_arrival_order(
+    shutdown_only, configure_shuffle_method, disable_fallback_to_object_extension
+):
+    """A seed gives the same order even when read tasks finish out of order."""
+
+    def finish_last_block_first(batch):
+        time.sleep(0.2 * (4 - batch["id"][0] // 20))
+        return batch
+
+    def shuffled(fn):
+        ds = ray.data.range(100, override_num_blocks=5).map_batches(fn)
+        return ds.random_shuffle(seed=0).take_all()
+
+    assert shuffled(lambda batch: batch) == shuffled(finish_last_block_first)
 
 
 def test_random_shuffle_check_random(

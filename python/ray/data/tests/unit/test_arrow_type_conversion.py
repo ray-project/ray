@@ -4,7 +4,6 @@ from dataclasses import dataclass, field
 import numpy as np
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data import DataContext
 from ray.data._internal.execution.util import memory_string
@@ -17,7 +16,6 @@ from ray.data._internal.tensor_extensions.arrow import (
 )
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import MiB
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.tests.conftest import *  # noqa
 
 import psutil
@@ -26,6 +24,56 @@ import psutil
 @dataclass
 class UserObj:
     i: int = field()
+
+
+@pytest.mark.parametrize("shape", [(0, 5), (0, 2, 2), (0, 0)])
+@pytest.mark.parametrize("dtype", [np.int32, np.float32])
+def test_convert_empty_numpy_tensor(
+    shape, dtype, tensor_format_context, disable_fallback_to_object_extension
+):
+    values = np.empty(shape, dtype=dtype)
+
+    converted = convert_to_pyarrow_array(values, "tensor")
+
+    expected = ArrowTensorArray.from_numpy(values)
+    assert converted.type == expected.type
+    restored = converted.to_numpy_ndarray()
+    assert restored.shape == values.shape
+    assert restored.dtype == values.dtype
+
+
+@pytest.mark.parametrize("shape", [(0, 2, 2), (1, 2, 2)])
+def test_convert_array_like_tensor(
+    shape, tensor_format_context, disable_fallback_to_object_extension
+):
+    values = np.arange(np.prod(shape), dtype=np.int32).reshape(shape)
+
+    class ArrayLike:
+        @property
+        def ndim(self):
+            return values.ndim
+
+        def __len__(self):
+            return len(values)
+
+        def __array__(self, dtype=None, copy=None):
+            array = np.asarray(values, dtype=dtype)
+            return array.copy() if copy else array
+
+    converted = convert_to_pyarrow_array(ArrayLike(), "tensor")
+
+    expected = ArrowTensorArray.from_numpy(values)
+    assert converted.type == expected.type
+    restored = converted.to_numpy_ndarray()
+    assert restored.dtype == values.dtype
+    np.testing.assert_array_equal(restored, values)
+
+
+@pytest.mark.parametrize("values", [[], np.array([], dtype=np.int32)])
+def test_convert_empty_scalar_column(values, disable_fallback_to_object_extension):
+    converted = convert_to_pyarrow_array(values, "scalar")
+
+    assert converted.equals(pa.array(values))
 
 
 @pytest.mark.parametrize(
@@ -52,13 +100,6 @@ def test_arrow_native_list_conversion(input, disable_fallback_to_object_extensio
     """Test asserts that nested lists are represented as native Arrow lists
     upon serialization into Arrow format (and are NOT converted to numpy
     tensor using extension)"""
-
-    if isinstance(input[0], pa.Scalar) and get_pyarrow_version() <= parse_version(
-        "13.0.0"
-    ):
-        pytest.skip(
-            "Pyarrow < 13.0 not able to properly infer native types from its own Scalars"
-        )
 
     pa_arr = convert_to_pyarrow_array(input, "a")
 

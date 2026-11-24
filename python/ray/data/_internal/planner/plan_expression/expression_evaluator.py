@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 def _pa_is_in(left: Any, right: Any) -> Any:
     if not isinstance(right, (pa.Array, pa.ChunkedArray)):
         right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
+    if isinstance(left, (pa.Array, pa.ChunkedArray)) and pa.types.is_null(left.type):
+        # An all-None pandas column converts to a null-typed Arrow array, and
+        # `pc.is_in` rejects a null-typed array against a non-null value set.
+        # Casting nulls to the value set's type doesn't change the result.
+        left = left.cast(right.type)
     return pc.is_in(left, right)
 
 
@@ -822,8 +827,7 @@ def eval_expr(expr: Expr, block: Block) -> Union[BlockColumn, ScalarType]:
 
 
 def _eval_projection_without_cse(projection_exprs: List[Expr], block: Block) -> Block:
-    """
-    Evaluate a projection (list of expressions) against a block.
+    """Evaluate a projection (list of expressions) against a block.
 
     Handles projection semantics including:
     - Empty projections
@@ -917,13 +921,21 @@ def eval_projection(
     *,
     common_sub_exprs: Optional[List[Expr]] = None,
 ) -> Block:
-    """
-    Evaluate a projection (list of expressions) against a block.
+    """Evaluate a projection (list of expressions) against a block.
 
     If CSE common expressions are provided, they are evaluated first into
     temporary columns on a working block. Visible projection expressions are
     then evaluated against that working block.
     """
+    block_accessor = BlockAccessor.for_block(block)
+
+    # Skip projection only for schema-less empty blocks. Evaluating the CSE
+    # common expressions against such a block would raise a KeyError (there
+    # are no columns to resolve against), so short-circuit before the CSE
+    # branch, mirroring the guard in ``_eval_projection_without_cse``.
+    if block_accessor.num_rows() == 0 and len(block_accessor.column_names()) == 0:
+        return block
+
     if not common_sub_exprs:
         return _eval_projection_without_cse(projection_exprs, block)
 

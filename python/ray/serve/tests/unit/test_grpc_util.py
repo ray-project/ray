@@ -1,4 +1,7 @@
+import asyncio
 import pickle
+import socket
+import subprocess
 import sys
 from typing import Callable
 from unittest.mock import Mock
@@ -6,6 +9,7 @@ from unittest.mock import Mock
 import grpc
 import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
+from grpc.aio._server import Server
 from grpc_reflection.v1alpha import reflection
 
 from ray import cloudpickle
@@ -17,9 +21,11 @@ from ray.serve._private.grpc_util import (
     get_grpc_response_status,
     get_service_names,
     gRPCGenericServer,
+    start_grpc_server,
 )
 from ray.serve._private.proxy_request_response import gRPCStreamingType
 from ray.serve._private.test_utils import FakeGrpcContext
+from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import BackPressureError, gRPCStatusError
 from ray.serve.generated.serve_pb2_grpc import add_RayServeAPIServiceServicer_to_server
 from ray.serve.grpc_util import RayServegRPCContext
@@ -106,6 +112,85 @@ def test_grpc_server():
     )
 
 
+def test_grpc_server_tolerates_missing_registered_method_api(monkeypatch):
+    monkeypatch.setattr(Server, "add_registered_method_handlers", None, raising=False)
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    grpc_server.add_registered_method_handlers("test.UserService", {})
+
+
+@pytest.mark.skipif(
+    not hasattr(Server, "add_registered_method_handlers"),
+    reason="grpcio version does not support registered method handlers",
+)
+def test_grpc_server_overrides_registered_method_handlers(monkeypatch):
+    registered = {}
+
+    def capture_registered_handlers(server, service_name, method_handlers):
+        registered["service_name"] = service_name
+        registered["method_handlers"] = method_handlers
+
+    monkeypatch.setattr(
+        Server, "add_registered_method_handlers", capture_registered_handlers
+    )
+    service_name = "test.UserService"
+    method_name = "Predict"
+    service_method = f"/{service_name}/{method_name}"
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    dummy_servicer = Mock()
+    original_handlers = {
+        method_name: grpc.unary_unary_rpc_method_handler(
+            dummy_servicer.Predict,
+            request_deserializer=AnyProto.FromString,
+            response_serializer=AnyProto.SerializeToString,
+        )
+    }
+
+    grpc_server.add_registered_method_handlers(service_name, original_handlers)
+
+    assert registered["service_name"] == service_name
+    handler = registered["method_handlers"][method_name]
+    assert handler.response_serializer is None
+    assert handler.unary_unary() == f"unary_unary call from {service_method}".encode()
+    assert handler.unary_stream() == f"unary_stream call from {service_method}".encode()
+    assert handler.stream_unary() == f"stream_unary call from {service_method}".encode()
+    assert (
+        handler.stream_stream() == f"stream_stream call from {service_method}".encode()
+    )
+
+
+@pytest.mark.skipif(
+    not hasattr(Server, "add_registered_method_handlers"),
+    reason="grpcio version does not support registered method handlers",
+)
+def test_grpc_server_registered_passthrough_handlers_are_unchanged(monkeypatch):
+    registered = {}
+
+    def capture_registered_handlers(server, service_name, method_handlers):
+        registered["service_name"] = service_name
+        registered["method_handlers"] = method_handlers
+
+    monkeypatch.setattr(
+        Server, "add_registered_method_handlers", capture_registered_handlers
+    )
+    service_name = "test.PassthroughService"
+    method_name = "Echo"
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+    grpc_server.add_passthrough_service(service_name)
+    dummy_servicer = Mock()
+    original_handlers = {
+        method_name: grpc.unary_unary_rpc_method_handler(
+            dummy_servicer.Echo,
+            request_deserializer=AnyProto.FromString,
+            response_serializer=AnyProto.SerializeToString,
+        )
+    }
+
+    grpc_server.add_registered_method_handlers(service_name, original_handlers)
+
+    assert registered["service_name"] == service_name
+    assert registered["method_handlers"] is original_handlers
+
+
 def test_grpc_server_passthrough_service():
     """Handlers for a passthrough service are registered unmodified, while
     handlers for other services are still overridden."""
@@ -186,6 +271,30 @@ def test_enable_server_reflection():
     assert user_method.unary_unary != dummy_servicer.Predict
 
 
+def test_serve_imports_without_grpc_reflection():
+    """Reflection is opt-in, so importing Serve doesn't need grpcio-reflection."""
+    script = (
+        "import sys\n"
+        # A None entry makes every import of the package fail.
+        "sys.modules['grpc_reflection'] = None\n"
+        "import ray.serve\n"
+        "import ray.serve._private.grpc_util\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", script], capture_output=True, text=True
+    )
+    assert proc.returncode == 0, proc.stderr
+
+
+def test_enable_server_reflection_without_grpc_reflection(monkeypatch):
+    """Turning reflection on without grpcio-reflection says how to install it."""
+    monkeypatch.setitem(sys.modules, "grpc_reflection.v1alpha", None)
+    grpc_server = gRPCGenericServer(fake_service_handler_factory)
+
+    with pytest.raises(ModuleNotFoundError, match="grpcio-reflection"):
+        enable_server_reflection(grpc_server)
+
+
 def test_ray_serve_grpc_context_serializable():
     """RayServegRPCContext should be serializable."""
     context = RayServegRPCContext(FakeGrpcContext())
@@ -205,6 +314,48 @@ def test_add_grpc_address():
     assert fake_grpc_server.address is None
     add_grpc_address(fake_grpc_server, grpc_address)
     assert fake_grpc_server.address == grpc_address
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("", 0))
+        return sock.getsockname()[1]
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="SO_REUSEPORT port sharing is Linux behavior."
+)
+@pytest.mark.parametrize("enable_so_reuseport", [False, True])
+async def test_start_grpc_server_so_reuseport(enable_so_reuseport: bool):
+    """Only with SO_REUSEPORT can a second server bind a port in use.
+
+    Direct ingress replicas start their servers with enable_so_reuseport=False
+    so that a port another process listens on fails to bind instead of being
+    shared, which would split the port's connections between the processes.
+    """
+    loop = asyncio.get_running_loop()
+    grpc_options = gRPCOptions(port=_free_port())
+
+    def start():
+        return start_grpc_server(
+            Mock(),
+            grpc_options,
+            event_loop=loop,
+            enable_so_reuseport=enable_so_reuseport,
+        )
+
+    _, first = await start()
+    try:
+        if enable_so_reuseport:
+            _, second = await start()
+            await second.stop(0)
+        else:
+            with pytest.raises(RuntimeError, match="Failed to bind"):
+                _, second = await start()
+                # Reached only if the port was shared after all.
+                await second.stop(0)
+    finally:
+        await first.stop(0)
 
 
 def test_get_grpc_response_status_backpressure_error():

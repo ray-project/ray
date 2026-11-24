@@ -1,6 +1,7 @@
 import asyncio
 import datetime
 import glob
+import json
 import os
 import random
 import socket
@@ -8,6 +9,7 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from copy import copy, deepcopy
+from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
 from unittest.mock import Mock
 
@@ -40,6 +42,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
@@ -51,6 +54,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaState,
     ReplicaStateContainer,
+    format_scheduling_constraints,
 )
 from ray.serve._private.haproxy import HAProxyApi
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -68,7 +72,19 @@ from ray.util.state import list_actors
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
+# Created by serve_instance_with_signal in ray/serve/tests/conftest.py.
+SERVE_INSTANCE_SIGNAL_ACTOR_NAME = "signal123"
 PROMETHEUS_METRICS_TIMEOUT_S = 5
+
+
+def passthrough_decorator(func):
+    """A user decorator that wraps an async function with ``functools.wraps``."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
 
 
 def skip_if_haproxy(reason: str):
@@ -517,12 +533,16 @@ class MockReplicaActorWrapper:
         self.status = ReplicaStartupStatus.PENDING_ALLOCATION
         # Will be set when `graceful_stop()` is called.
         self.stopped = False
+        # Will be set when `reconfigure()` starts an update.
+        self._reconfigure_start_time: Optional[float] = None
         # Expected to be set in the test.
         self.done_stopping = False
+        self.killed = False
         # Will be set when `force_stop()` is called.
         self.force_stopped_counter = 0
         # Will be set when `check_health()` is called.
         self.health_check_called = False
+        self._push_stands_in_for_probe = False
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
@@ -536,6 +556,7 @@ class MockReplicaActorWrapper:
         self._internal_grpc_port = None
         self._http_port = None
         self._pg_bundles = None
+        self._scheduling_constraints = ""
         self._initialization_latency_s = -1
         self._docs_path: Optional[str] = None
         self._rank = replica_rank_context.get(replica_id.unique_id, None)
@@ -633,7 +654,7 @@ class MockReplicaActorWrapper:
 
     @property
     def reconfigure_start_time(self) -> Optional[float]:
-        return None
+        return self._reconfigure_start_time
 
     @property
     def last_health_check_latency_ms(self) -> Optional[float]:
@@ -692,6 +713,9 @@ class MockReplicaActorWrapper:
         target_node_id=None,
     ):
         self.started = True
+        self._scheduling_constraints = format_scheduling_constraints(
+            deployment_info.replica_config
+        )
         self._gang_context = gang_context
         self._gang_pg_index = gang_pg_index
         self._assign_rank_callback = assign_rank_callback
@@ -726,17 +750,29 @@ class MockReplicaActorWrapper:
         rank: Optional[ReplicaRank] = None,
     ):
         self.started = True
-        updating = self.version.requires_actor_reconfigure(version)
+        # Mirror ActorReplicaWrapper.reconfigure: a rank change also updates.
+        updating = self.version.requires_actor_reconfigure(version) or (
+            self._rank != rank
+        )
+        if updating:
+            self._reconfigure_start_time = time.time()
         self.version = version
         self._rank = rank
         replica_rank_context[self._replica_id.unique_id] = rank
         return updating
 
-    def recover(self, ingress: bool = False):
+    def check_reconfigure_done(self) -> Tuple[bool, Optional[str]]:
+        # Driven by the same set_ready()/set_failed_to_start() as check_ready().
+        if self.status == ReplicaStartupStatus.FAILED:
+            return True, "reconfigure failed"
+        return self.status == ReplicaStartupStatus.SUCCEEDED, None
+
+    def recover(self, ingress: bool = False, scheduling_constraints: str = ""):
         if self.replica_id in dead_replicas_context:
             return False
 
         self._ingress = ingress
+        self._scheduling_constraints = scheduling_constraints
         self.recovering = True
         self.started = False
         self._rank = replica_rank_context.get(self._replica_id.unique_id, None)
@@ -773,6 +809,11 @@ class MockReplicaActorWrapper:
     def actor_resources(self) -> Dict[str, float]:
         return {"CPU": 0.1}
 
+    def scheduling_constraints(self) -> str:
+        # Only used to print a warning. Derived from the deployment's own
+        # label selectors in start(), so tests configure it through the config.
+        return self._scheduling_constraints
+
     @property
     def available_resources(self) -> Dict[str, float]:
         # Only used to print a warning.
@@ -786,7 +827,9 @@ class MockReplicaActorWrapper:
         self.stopped = True
         return self.graceful_shutdown_timeout_s
 
-    def check_stopped(self) -> bool:
+    def check_stopped(self, *, kill_actor: bool = True) -> bool:
+        if self.done_stopping and kill_actor:
+            self.killed = True
         return self.done_stopping
 
     @staticmethod
@@ -794,11 +837,35 @@ class MockReplicaActorWrapper:
         REMOVED_GANG_PG_NAMES.append(pg_name)
 
     def force_stop(self, log_shutdown_message: bool = False):
+        self.killed = True
         self.force_stopped_counter += 1
 
     def check_health(self):
+        if self._push_stands_in_for_probe:
+            # A fresh push means the real wrapper would not arm a probe.
+            self._push_stands_in_for_probe = False
+            return self.healthy
         self.health_check_called = True
         return self.healthy
+
+    def record_pushed_health(
+        self,
+        checked_at: float,
+        healthy: bool,
+        consecutive_failures: int,
+    ) -> None:
+        """Match ActorReplicaWrapper, stubbing only the verdict.
+
+        The real arbitration lives in PushedHealthTracker and is tested there; here
+        the push sets the verdict directly so end-to-end tests can exercise the
+        manager's routing and the state machine.
+        """
+        self.pushed_health = (checked_at, healthy, consecutive_failures)
+        self._push_stands_in_for_probe = True
+        self.healthy = (
+            healthy
+            or (consecutive_failures or 0) < REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
 
     def get_routing_stats(self) -> Dict[str, Any]:
         return {}
@@ -1675,6 +1742,13 @@ def request_with_retries(timeout=30, app_name=SERVE_DEFAULT_APP_NAME):
 # Metrics test utilities
 TEST_METRICS_EXPORT_PORT = 9999
 
+# A slow scrape burns PROMETHEUS_METRICS_TIMEOUT_S and then yields nothing, so a wait
+# needs room for several full-length attempts. A newly registered series is the slow
+# thing to surface, so its debut gets the larger budget and value checks the smaller.
+METRICS_FIRST_EXPORT_TIMEOUT_S = 90
+METRICS_WAIT_TIMEOUT_S = 45
+METRICS_RETRY_INTERVAL_MS = 1000
+
 
 def get_metric_float(
     metric: str,
@@ -1768,3 +1842,112 @@ def get_metric_dictionaries(
             metric_dicts.append(sample.labels)  # pyrefly: ignore[missing-attribute]
 
     return metric_dicts
+
+
+def extract_tags(line: str) -> Dict[str, str]:
+    """Extracts any tags from the metrics line."""
+
+    try:
+        tags_string = line.replace("{", "}").split("}")[1]
+    except IndexError:
+        # No tags were found in this line.
+        return {}
+
+    detected_tags = {}
+    for tag_pair in tags_string.split(","):
+        sanitized_pair = tag_pair.replace('"', "")
+        tag, value = sanitized_pair.split("=")
+        detected_tags[tag] = value
+
+    return detected_tags
+
+
+def check_sum_metric_eq(
+    metric_name: str,
+    expected: float,
+    tags: Optional[Dict[str, str]] = None,
+    timeseries: Optional[PrometheusTimeseries] = None,
+) -> bool:
+    if tags is None:
+        tags = {}
+    if timeseries is None:
+        timeseries = PrometheusTimeseries()
+
+    metrics = fetch_prometheus_metric_timeseries(
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+    )
+    metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
+    metric_samples = metrics.get(metric_name, None)
+    if metric_samples is None:
+        metric_sum = 0
+    else:
+        metric_samples = [
+            sample for sample in metric_samples if tags.items() <= sample.labels.items()
+        ]
+        metric_sum = sum(sample.value for sample in metric_samples)
+
+    # Check the metrics sum to the expected number
+    assert float(metric_sum) == float(expected), (
+        f"The following metrics don't sum to {expected}: "
+        f"{json.dumps(metric_samples, indent=4)}\n."
+        f"All metrics: {json.dumps(metrics, indent=4)}"
+    )
+
+    # # For debugging
+    if metric_samples:
+        print(f"The following sum to {expected} for '{metric_name}' and tags {tags}:")
+        for sample in metric_samples:
+            print(sample)
+
+    return True
+
+
+def wait_for_metric(predicate, budget_s=METRICS_WAIT_TIMEOUT_S, **kwargs):
+    """Waits on a predicate that scrapes, pacing retries so a loaded dashboard
+    agent is not hammered while it catches up."""
+    wait_for_condition(
+        predicate,
+        timeout=budget_s,
+        retry_interval_ms=METRICS_RETRY_INTERVAL_MS,
+        **kwargs,
+    )
+
+
+def wait_for_metric_export(metric_name, timeseries, count=None):
+    """Waits for a series to surface, which is the slow step; count=None accepts
+    any number of samples."""
+
+    def check():
+        metrics = get_metric_samples(metric_name, timeseries=timeseries)
+        if count is None:
+            assert metrics, f"Metric {metric_name} not exported yet"
+        else:
+            assert (
+                len(metrics) == count
+            ), f"Expected {count} {metric_name}, got {len(metrics)}"
+        return True
+
+    wait_for_metric(check, budget_s=METRICS_FIRST_EXPORT_TIMEOUT_S)
+
+
+def check_metric_float(**kwargs):
+    """Bounds each scrape to one PROMETHEUS_METRICS_TIMEOUT_S; the shared helper's
+    own 20s default is larger than most callers' retry budgets."""
+    return check_metric_float_eq(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
+
+
+def get_metric_value(**kwargs):
+    """Value-reading sibling of check_metric_float, bounded the same way."""
+    return get_metric_float(timeout=PROMETHEUS_METRICS_TIMEOUT_S, **kwargs)
+
+
+def get_metric_samples(metric_name, timeseries=None):
+    """One bounded scrape with no internal wait, so the caller paces its own retries."""
+    return get_metric_dictionaries(
+        metric_name,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        timeseries=timeseries,
+        wait=False,
+    )

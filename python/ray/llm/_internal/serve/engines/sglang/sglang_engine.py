@@ -205,8 +205,7 @@ class SGLangServer:
 
     @staticmethod
     def _build_chat_template_kwargs(request: Any) -> dict[str, Any]:
-        """
-        Build optional chat-template kwargs using request fields when present.
+        """Build optional chat-template kwargs using request fields when present.
         This mirrors SGLang's chat-serving pipeline semantics without directly
         coupling to its internal server classes.
 
@@ -374,8 +373,7 @@ class SGLangServer:
         request: Any,
         prompt: Union[str, List[str]],
     ) -> Union[dict[str, Any], List[dict[str, Any]]]:
-        """
-        Handles parameter extraction, calls the SGLang engine, and processes the
+        """Handles parameter extraction, calls the SGLang engine, and processes the
         raw response to extract common metadata and generated text.
 
         Accepts either a single prompt string or a list of prompts. When a list

@@ -2,11 +2,14 @@ import dataclasses
 import logging
 from typing import TYPE_CHECKING, Optional
 
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    derive_list_files_pushdown,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data._internal.datasource_v2.readers.supports_metadata import (
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
     MetadataType,
     SupportsMetadata,
 )
@@ -26,7 +29,7 @@ class PushdownCountFiles(Rule):
 
     When a ``Count`` sits directly on top of a bare DataSourceV2 ``ReadFiles``
     (optionally through a row-preserving ``Project``) whose reader implements
-    :class:`~ray.data._internal.datasource_v2.readers.supports_metadata.SupportsMetadata`,
+    :class:`~ray.data._internal.datasource_v2.interfaces.supports_metadata.SupportsMetadata`,
     this rule rewrites the plan to::
 
         Count(ReadFiles(ListFiles))  ->  MapBatches(count_rows, ListFiles)
@@ -108,11 +111,25 @@ class PushdownCountFiles(Rule):
             )
             return plan
 
+        # Keep the scanner's predicate on the listing: ``count_rows`` applies
+        # that same filter through the same reader the deleted ``ReadFiles``
+        # would have used, so the listing prunes by exactly what the consumer
+        # applies. The rest stay unset -- ``metadata_row_count_is_exact`` is
+        # false under a limit or a partition pruner, and ``projected_columns``
+        # only fed the indexer this rule just replaced.
+        pushdown = derive_list_files_pushdown(scanner)
+        assert pushdown.limit is None, "metadata_row_count_is_exact must refuse a limit"
+
         # ``ListFiles`` is frozen, so ``replace`` it with a fresh indexer.
         list_files = dataclasses.replace(
             list_files,
             file_partitioner=None,
             file_indexer=whole_file_indexer,
+            predicate=pushdown.predicate,
+            projected_columns=None,
+            limit=None,
+            partition_pruner=None,
+            pushdown_is_final=True,
         )
 
         # ``reader`` is narrowed to ``SupportsMetadata`` by the guard above, but

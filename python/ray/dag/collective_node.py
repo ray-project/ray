@@ -21,8 +21,7 @@ from ray.util.annotations import DeveloperAPI
 
 
 class _CollectiveOperation:
-    """
-    Represent metadata for a collective communicator collective operation.
+    """Represent metadata for a collective communicator collective operation.
 
     Args:
         inputs: A list of lists of DAGNode. Each nested list inside
@@ -176,8 +175,7 @@ class _CollectiveOperation:
     def execute(
         self, *send_buf: "torch.Tensor"
     ) -> Union["torch.Tensor", Tuple["torch.Tensor", ...]]:
-        """
-        Call the collective operation on the input tensor(s). Output tensor(s) are
+        """Call the collective operation on the input tensor(s). Output tensor(s) are
         allocated and returned.
 
         Args:

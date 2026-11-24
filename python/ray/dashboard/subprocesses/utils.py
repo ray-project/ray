@@ -63,9 +63,7 @@ def get_named_pipe_path(module_name: str, session_name: str) -> str:
 def get_http_session_to_module(
     module_name: str, socket_dir: str, session_name: str
 ) -> aiohttp.ClientSession:
-    """
-    Get the aiohttp http client session to the subprocess module.
-    """
+    """Get the aiohttp http client session to the subprocess module."""
     if sys.platform == "win32":
         named_pipe_path = get_named_pipe_path(module_name, session_name)
         connector = aiohttp.NamedPipeConnector(named_pipe_path)

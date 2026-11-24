@@ -6,12 +6,11 @@ from types import ModuleType
 import pytest
 
 from ci.ray_ci.doc import cmd_check_api_discrepancy as cmd
-from ci.ray_ci.doc.mock.mock_module import MockClass, mock_function, mock_w00t
+from ci.ray_ci.doc.mock.mock_module import MockClass, mock_w00t
 
 _MOCK = "ci.ray_ci.doc.mock.mock_module"
 _CANONICAL_W00T = f"{mock_w00t.__module__}.{mock_w00t.__qualname__}"
 _CANONICAL_MOCKCLASS = f"{MockClass.__module__}.{MockClass.__qualname__}"
-_CANONICAL_DEPRECATED = f"{mock_function.__module__}.{mock_function.__qualname__}"
 
 
 def _run_check_team(
@@ -90,22 +89,13 @@ def test_unresolved_doc_entry_fails(monkeypatch):
     )
 
 
-def test_deprecated_doc_entry_fails(monkeypatch):
-    # Documenting a @Deprecated object is a non-public doc entry.
-    assert not _run_check_team(
-        monkeypatch,
-        autosummary_entries=["mock_w00t", "mock_function"],
-        autoclass_entries=["MockClass"],
-    )
-
-
-def test_deprecated_doc_entry_passes_when_whitelisted(monkeypatch):
-    # The same deprecated entry is allowed when explicitly white-listed.
+def test_deprecated_doc_entry_passes(monkeypatch):
+    # The API policy requires @Deprecated APIs to be documented, so documenting
+    # one passes without a whitelist entry.
     assert _run_check_team(
         monkeypatch,
         autosummary_entries=["mock_w00t", "mock_function"],
         autoclass_entries=["MockClass"],
-        doc_only_whitelist={_CANONICAL_DEPRECATED},
     )
 
 

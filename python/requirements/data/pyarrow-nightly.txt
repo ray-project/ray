@@ -1,5 +1,8 @@
 # not including pyarrow as nightly versions will break depset compilation too frequently
-hudi
+hudi>=0.5.0
 pylance
 modin
 pandas
+# daft is relaxed in the base depset and nothing depends on it, so each
+# variant must re-list it.
+daft

@@ -20,6 +20,9 @@ torch = try_import("torch")
 logger = get_logger(__name__)
 
 STREAMING_LOAD_FORMATS = ["runai_streamer", "runai_streamer_sharded", "tensorizer"]
+# ModelExpress pulls weights from a serving peer or streams them itself, so nodes
+# only need the non-weight files locally.
+MODEL_EXPRESS_LOAD_FORMATS = ["modelexpress", "mx"]
 
 
 class NodeModelDownloadable(enum.Enum):
@@ -250,8 +253,7 @@ def download_model_files(
     download_extra_files: bool = True,
     callback: Optional[CallbackBase] = None,
 ) -> Optional[str]:
-    """
-    Download the model files from the cloud storage. We support two ways to specify
+    """Download the model files from the cloud storage. We support two ways to specify
     the remote model path in the cloud storage:
     Approach 1:
     - model_id: The vanilla model id such as "meta-llama/Llama-3.1-8B-Instruct".

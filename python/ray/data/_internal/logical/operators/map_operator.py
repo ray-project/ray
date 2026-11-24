@@ -11,6 +11,9 @@ from typing import (
     List,
     Literal,
     Optional,
+    Sequence,
+    Set,
+    Tuple,
     Union,
 )
 
@@ -19,16 +22,21 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import (
+    AliasExpr,
+    ColumnExpr,
     Expr,
     StarExpr,
     expand_projection_exprs,
     expand_star_exprs,
     exprlist_to_fields,
+    is_rename_expr,
 )
 from ray.data.preprocessor import Preprocessor
 
@@ -44,6 +52,7 @@ __all__ = [
     "MapRows",
     "Project",
     "StreamingRepartition",
+    "ShuffleBatches",
     "CSE_TEMP_COLUMN_PREFIX",
 ]
 
@@ -110,6 +119,32 @@ class AbstractMap(AbstractOneToOne):
 
     def set_per_block_limit(self, per_block_limit: int):
         object.__setattr__(self, "per_block_limit", per_block_limit)
+
+
+@dataclass(frozen=True, repr=False, eq=False, init=False)
+class DiskShuffleMap(AbstractMap):
+    """Logical identity of a disk-shuffle writer (``plan_disk_hash_shuffle_map``).
+
+    The writer is a plain task-pool map, but the planner would tag it with the
+    shuffle's logical op (Repartition, Sort, Aggregate, Join), which map fusion
+    can't reason about. The plan function tags the writer with this op instead
+    so the upstream read or map fuses into it like into any other map. Not
+    user-facing: it never appears in a logical plan.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        input_op: Optional[LogicalOperator],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            name,
+            [input_op] if input_op is not None else [],
+            # The writer emits one handle row per task, unrelated to its input.
+            can_modify_num_rows=True,
+            ray_remote_args=ray_remote_args,
+        )
 
     def _get_args(self) -> Dict[str, Any]:
         args = super()._get_args()
@@ -296,6 +331,47 @@ class MapBatches(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
+class ShuffleBatches(
+    AbstractMap,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorPreservesSchema,
+):
+    """Shuffle rows within target-sized batches or whole input blocks.
+
+    Limit pushdown can truncate shuffle batches. Fusion must not rebundle them
+    because task grouping determines the batch-indexed random seeds.
+    """
+
+    batch_size: Optional[int]
+    seed_config: RandomSeedConfig
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
+    compute: Optional[ComputeStrategy] = None
+    per_block_limit: Optional[int] = None
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if self.batch_size is not None and self.batch_size <= 0:
+            raise ValueError(f"batch_size must be positive, got {self.batch_size}")
+        if self.compute is None:
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        object.__setattr__(
+            self,
+            "min_rows_per_bundled_input",
+            self.batch_size,
+        )
+        object.__setattr__(self, "_name", "ShuffleBatches")
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
+
+
+@dataclass(frozen=True, repr=False, eq=False)
 class MapRows(AbstractUDFMap):
     """Logical operator for map."""
 
@@ -320,7 +396,11 @@ class MapRows(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
+class Filter(
+    AbstractUDFMap,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for filter."""
 
     predicate_expr: Optional[Expr] = None
@@ -336,6 +416,7 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
+    processed_join_conjuncts: Tuple[Expr, ...] = ()
 
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -356,6 +437,18 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     def is_expression_based(self) -> bool:
         return self.predicate_expr is not None
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if self.predicate_expr is None or required_output_columns is None:
+            return None
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        predicate_columns = set(get_column_references(self.predicate_expr))
+        return [required_output_columns | predicate_columns]
+
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         if self.is_expression_based():
             # Get a concise inline string representation of the expression
@@ -375,7 +468,11 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
+class Project(
+    AbstractMap,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
+):
     """Logical operator for all Projection Operations."""
 
     exprs: list["Expr"]
@@ -486,6 +583,27 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         """Both projection expressions and common expressions"""
         return [*self._common_sub_exprs, *self.exprs]
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if self.has_star_expr():
+            return None
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        exprs = [
+            expr
+            for expr in self.exprs
+            if required_output_columns is None or expr.name in required_output_columns
+        ]
+        common_sub_exprs = self.get_common_sub_exprs()
+        temp_names = {expr.name for expr in common_sub_exprs}
+        required: Set[str] = set()
+        for expr in [*common_sub_exprs, *exprs]:
+            required.update(get_column_references(expr))
+        return [required - temp_names]
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
@@ -502,6 +620,32 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
 
         rename_map = _extract_input_columns_renaming_mapping(self.exprs)
         return rename_map if rename_map else None
+
+    def preserves_columns(self, columns: Sequence[str]) -> bool:
+        """Whether each of ``columns`` passes through unchanged, same name."""
+
+        has_star = any(isinstance(e, StarExpr) for e in self.exprs)
+        # The last expression for a name wins, as in eval_projection.
+        final_exprs: Dict[str, "Expr"] = {}
+        for e in self.exprs:
+            if not isinstance(e, StarExpr):
+                final_exprs[e.name] = e
+        # star() doesn't pass along a column that another expression renames.
+        rename_sources = {e.expr.name for e in self.exprs if is_rename_expr(e)}
+
+        for column in columns:
+            expr = final_exprs.get(column)
+            if expr is None:
+                # Only star() can pass it along.
+                if not has_star or column in rename_sources:
+                    return False
+                continue
+            # Must be the same column, maybe aliased to its own name.
+            while isinstance(expr, AliasExpr):
+                expr = expr.expr
+            if not (isinstance(expr, ColumnExpr) and expr.name == column):
+                return False
+        return True
 
     def infer_schema(self) -> Optional["Schema"]:
         import pyarrow as pa
@@ -559,6 +703,7 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(
     AbstractMap,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for streaming repartition operation.
@@ -598,6 +743,11 @@ class StreamingRepartition(
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # StreamingRepartition only re-bundles rows into different block sizes.

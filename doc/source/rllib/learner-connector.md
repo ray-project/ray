@@ -88,9 +88,7 @@ RLlib prepends these {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` 
 
 For example, to prepend a custom {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the {py:class}`~ray.rllib.core.learner.learner.Learner` connector pipeline, do this in your config:
 
-```{testcode}
-:skipif: True
-
+```python
 config.learners(
     learner_connector=lambda obs_space, act_space: MyLearnerConnector(..),
 )
@@ -98,9 +96,7 @@ config.learners(
 
 If you want to add multiple custom pieces to the pipeline, return them as a list:
 
-```{testcode}
-:skipif: True
-
+```python
 # Return a list of connector pieces to make RLlib add all of them to your
 # Learner pipeline.
 config.learners(
@@ -131,7 +127,7 @@ A good example of when to write a custom Learner ConnectorV2 piece is reward sha
 
 Here are the most important code snippets for setting up a simple, count-based intrinsic reward signal. The custom connector computes the intrinsic reward as the inverse number of times an agent has already seen a specific observation. Thus, the more the agent visits a certain state, the lower the computed intrinsic reward for that state, motivating the agent to visit new states and show better exploratory behavior.
 
-See the [full count-based intrinsic reward example script](https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py).
+See the [full count-based intrinsic reward example script](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/curiosity/count_based_curiosity.py).
 
 Write the custom Learner connector by subclassing {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` and overriding the {py:meth}`~ray.rllib.connectors.connector_v2.ConnectorV2.__call__` method:
 
@@ -213,7 +209,7 @@ Batches that a connector pipeline produces are ephemeral, and RLlib discards the
 
 The following example implements such a frame-stacking mechanism using the {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` APIs, with an RL environment in which observations are plain 1D tensors.
 
-See a [more complex end-to-end Atari example for PPO](https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/ppo/atari_ppo.py).
+See a [more complex end-to-end Atari example for PPO](https://github.com/ray-project/ray/blob/master/python/ray/rllib/examples/algorithms/ppo/atari_ppo.py).
 
 You can write a single {py:class}`~ray.rllib.connectors.connector_v2.ConnectorV2` class to cover both the env-to-module and the Learner custom connector part:
 

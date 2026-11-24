@@ -27,6 +27,7 @@
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
@@ -137,22 +138,27 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void TearDown() override {
-    client_io_service_->poll();
-    client_io_service_->stop();
-    client_io_service_thread_->join();
+    DrainAndStop(*client_io_service_, *client_io_service_thread_);
     gcs_client_->Disconnect();
     gcs_client_.reset();
 
-    server_io_service_->poll();
-    server_io_service_->stop();
+    DrainAndStop(*server_io_service_, *server_io_service_thread_);
     rpc::DrainServerCallExecutor();
-    server_io_service_thread_->join();
     gcs_server_->Stop();
     gcs_server_.reset();
     if (!no_redis_) {
       TestSetupUtil::FlushAllRedisServers();
     }
     rpc::ResetServerCallExecutor();
+  }
+
+  // Run the handlers already queued on `io_context`, then stop it, all on `thread`,
+  // which is inside run(). Calling poll() from the test thread instead would run
+  // those handlers there while `thread` keeps running others, so GCS handlers that
+  // check they are on the io thread would fail at random.
+  static void DrainAndStop(instrumented_io_context &io_context, std::thread &thread) {
+    io_context.post([&io_context]() { io_context.stop(); }, "GcsClientTest.DrainAndStop");
+    thread.join();
   }
 
   // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
@@ -170,13 +176,12 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   void StampContext(grpc::ClientContext &context) {
     context.AddMetadata(kClusterIdKey, gcs_client_->GetClusterId().Hex());
+    rpc::AuthenticationTokenLoader::instance().GetToken()->SetMetadata(context);
   }
 
   void RestartGcsServer() {
     RAY_LOG(INFO) << "Stopping GCS service, port = " << gcs_server_->GetPort();
-    server_io_service_->poll();
-    server_io_service_->stop();
-    server_io_service_thread_->join();
+    DrainAndStop(*server_io_service_, *server_io_service_thread_);
     gcs_server_->Stop();
     gcs_server_.reset();
     RAY_LOG(INFO) << "Finished stopping GCS service.";
@@ -396,8 +401,15 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  void RegisterSelf(rpc::GcsNodeInfo local_node_info) {
-    gcs_client_->Nodes().RegisterSelf(std::move(local_node_info), nullptr);
+  // Waits for the reply: a caller that only sleeps can have its next request
+  // overtake the registration, e.g. when a gRPC connection left over from the
+  // previous test's server makes the registration retry about 1 s later.
+  bool RegisterSelf(rpc::GcsNodeInfo local_node_info) {
+    std::promise<bool> promise;
+    gcs_client_->Nodes().RegisterSelf(
+        std::move(local_node_info),
+        [&promise](Status status) { promise.set_value(status.ok()); });
+    return WaitReady(promise.get_future(), timeout_ms_);
   }
 
   bool RegisterNode(const rpc::GcsNodeInfo &node_info) {
@@ -547,6 +559,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   request.add_node_ids(node_info2->node_id());
   {
     grpc::ClientContext context;
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -558,6 +571,7 @@ TEST_P(GcsClientTest, TestCheckAlive) {
   ASSERT_TRUE(RegisterNode(*node_info1));
   {
     grpc::ClientContext context;
+    StampContext(context);
     context.set_deadline(std::chrono::system_clock::now() + 1s);
     rpc::CheckAliveReply reply;
     ASSERT_TRUE(stub->CheckAlive(&context, request, &reply).ok());
@@ -663,7 +677,7 @@ TEST_P(GcsClientTest, TestNodeInfo) {
   ASSERT_TRUE(SubscribeToNodeAddressAndLivenessChange(on_subscribe));
 
   // Register local node to GCS.
-  RegisterSelf(*gcs_node1_info);
+  ASSERT_TRUE(RegisterSelf(*gcs_node1_info));
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   // Register a node to GCS.
@@ -686,7 +700,7 @@ TEST_P(GcsClientTest, TestUnregisterNode) {
   NodeID node_id = NodeID::FromBinary(gcs_node_info->node_id());
 
   // Register local node to GCS.
-  RegisterSelf(*gcs_node_info);
+  ASSERT_TRUE(RegisterSelf(*gcs_node_info));
   std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
   // Unregister local node from GCS.
@@ -1119,6 +1133,21 @@ TEST_P(GcsClientTest, TestRegisterHeadNode) {
       ASSERT_TRUE(node.state() == rpc::GcsNodeInfo::DEAD);
     }
   }
+}
+
+TEST_P(GcsClientTest, TestReregisterSameHeadNode) {
+  auto head_node_info = GenNodeInfo(1);
+  head_node_info->set_is_head_node(true);
+  ASSERT_TRUE(RegisterNode(*head_node_info));
+
+  // A retry after losing the registration reply must not treat this head as
+  // a different head replacing the existing one.
+  ASSERT_TRUE(RegisterNode(*head_node_info));
+
+  const auto nodes = GetNodeInfoList();
+  ASSERT_EQ(nodes.size(), 1);
+  EXPECT_EQ(nodes[0].node_id(), head_node_info->node_id());
+  EXPECT_EQ(nodes[0].state(), rpc::GcsNodeInfo::ALIVE);
 }
 
 TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {

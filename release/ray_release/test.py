@@ -15,7 +15,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 if TYPE_CHECKING:
-    from ray_release.github_client import GitHubRepo
+    from ray_release.github_client import GitHubIssue, GitHubRepo
 
 from ray_release.anyscale_util import Anyscale
 from ray_release.aws import s3_put_rayci_test_data
@@ -40,7 +40,6 @@ DEFAULT_PYTHON_VERSION = tuple(
     int(v) for v in os.environ.get("RELEASE_PY", "3.10").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
-DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
 DATAPLANE_ECR_LLM_REPO = "anyscale/ray-llm"
 DATAPLANE_ECR_TORCH_REPO = "anyscale/ray-torch"
 
@@ -348,29 +347,57 @@ class Test(dict):
         except subprocess.CalledProcessError:
             return set()
 
+    def get_open_github_issue(
+        self, ray_github: "GitHubRepo"
+    ) -> Optional["GitHubIssue"]:
+        """
+        Returns this test's tracked github issue if it is open, else None.
+
+        Returns the issue rather than a bool so that a caller which goes on to
+        act on it -- commenting, say -- does not have to fetch the same issue a
+        second time, and cannot act on a different version of it than the one
+        this check passed.
+
+        Checking that the issue is open is required rather than defensive:
+        ReleaseTestStateMachine._close_github_issue closes the issue but leaves
+        KEY_GITHUB_ISSUE_NUMBER on the test, so a recovered test keeps a number
+        pointing at a closed issue indefinitely.
+
+        A failure to reach GitHub answers None. The caller can only read that as
+        "no open issue is known here", never as "this test has no open issue".
+        """
+        import requests
+
+        from ray_release.github_client import GitHubException
+
+        issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
+        if not issue_number:
+            return None
+        try:
+            issue = ray_github.get_issue(issue_number)
+        # RequestException too: GitHubClient's timeout raises requests.Timeout,
+        # not GitHubException, and is_jailed_with_open_issue is called from
+        # filter.py with no guard around it.
+        except (GitHubException, requests.RequestException) as e:
+            logger.warning(
+                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
+            )
+            return None
+        return issue if issue.state == "open" else None
+
+    def has_open_github_issue(self, ray_github: "GitHubRepo") -> bool:
+        """
+        Returns whether this test has a tracked github issue that is open.
+        """
+        return self.get_open_github_issue(ray_github) is not None
+
     def is_jailed_with_open_issue(self, ray_github: "GitHubRepo") -> bool:
         """
         Returns whether this test is jailed with open issue.
         """
-        from ray_release.github_client import GitHubException
-
-        # is jailed
-        state = self.get_state()
-        if state != TestState.JAILED:
-            return False
-
-        # has open issue
-        issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
-        if issue_number is None:
-            return False
-        try:
-            issue = ray_github.get_issue(issue_number)
-            return issue.state == "open"
-        except GitHubException as e:
-            logger.warning(
-                f"Failed to get issue {issue_number} for test {self.get_name()} from GitHub: {e}"
-            )
-            return False
+        return self.get_state() == TestState.JAILED and self.has_open_github_issue(
+            ray_github
+        )
 
     def is_stable(self) -> bool:
         """
@@ -559,10 +586,6 @@ class Test(dict):
             tag = f"{tag}-{ray_version}"
         return tag
 
-    def use_byod_ml_image(self) -> bool:
-        """Returns whether to use the ML image for this test."""
-        return self.get_byod_type() == "gpu"
-
     def use_byod_llm_image(self) -> bool:
         return self.get_byod_type().startswith("llm-")
 
@@ -571,8 +594,6 @@ class Test(dict):
 
     def get_byod_repo(self) -> str:
         """Returns the byod repo to use for this test."""
-        if self.use_byod_ml_image():
-            return DATAPLANE_ECR_ML_REPO
         if self.use_byod_llm_image():
             return DATAPLANE_ECR_LLM_REPO
         if self.use_byod_torch_image():
@@ -597,8 +618,6 @@ class Test(dict):
         if ray_version:
             python_version = "py" + self.get_python_version().replace(".", "")
             tag_suffix = self.get_tag_suffix()
-            if tag_suffix == "gpu":
-                tag_suffix = "cu121"
             return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{ray_version}-{python_version}-{tag_suffix}"
         global_config = get_global_config()
         base_ecr = global_config["byod_ecr"]
@@ -631,9 +650,7 @@ class Test(dict):
             )
 
         python_version = "py" + self.get_python_version().replace(".", "")
-        tag_suffix = (
-            "cu121" if self.get_tag_suffix() == "gpu" else self.get_tag_suffix()
-        )
+        tag_suffix = self.get_tag_suffix()
         tag = f"{ray_version}-{python_version}-{tag_suffix}"
         return f"{ANYSCALE_RAY_IMAGE_PREFIX}:{tag}"
 

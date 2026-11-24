@@ -44,14 +44,14 @@ def train_step():
 
 ## Deploy a KubeRay RayJob
 
-Deploy a TPU training `RayJob` using the sample configuration from the `ray-project/kuberay` repository:
+Deploy a TPU training `RayJob` using the sample configuration from the `kuberay-project/kuberay` repository:
 
 ```bash
 # Clean up any previously deployed job with the same name:
-kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.tpu-jax.yaml --ignore-not-found
+kubectl delete -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-job.tpu-jax.yaml --ignore-not-found
 
 # Apply the RayJob specification:
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-job.tpu-jax.yaml
+kubectl apply -f https://raw.githubusercontent.com/kuberay-project/kuberay/master/ray-operator/config/samples/ray-job.tpu-jax.yaml
 ```
 
 If you use your own `RayJob` manifest, set `RAY_DASHBOARD_ENABLE_PROFILING` to `"1"` on the head pod container so the Ray dashboard profiling endpoints are reachable:
@@ -189,5 +189,4 @@ Open your web browser and go to `http://localhost:6006/#profile` to analyze TPU 
 
 Sample output:
 
-![TensorBoard TPU Profiler Overview](../images/jax-tpu-profiler-1.png)
-![TensorBoard TPU Trace View](../images/jax-tpu-profiler-2.png)
+![TensorBoard TPU Profiler Overview](../images/jax-tpu-profiler-1.png) ![TensorBoard TPU Trace View](../images/jax-tpu-profiler-2.png)

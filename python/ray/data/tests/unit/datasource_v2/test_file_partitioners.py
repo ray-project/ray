@@ -4,16 +4,22 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.datasource_v2.listing.file_manifest import (
+from ray.data._internal.datasource_v2.common.listing_utils import partition_files
+from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.common.size_estimators import (
+    SamplingInMemorySizeEstimator,
+)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
 )
-from ray.data._internal.datasource_v2.listing.listing_utils import partition_files
-from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
-    RoundRobinPartitioner,
+from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+    PartitionHints,
 )
-from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
     InMemorySizeEstimator,
 )
 from ray.data._internal.weighted_round_robin import WeightedRoundRobinPartitioner
@@ -72,9 +78,7 @@ def test_round_robin_partitioner_produces_correct_partitions(
         MagicMock(),
         partitioner=RoundRobinPartitioner(
             in_memory_size_estimator=StubInMemorySizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=1,
-            max_bucket_size=3,
+            hints=PartitionHints(min_bucket_size=1, max_bucket_size=3, num_buckets=2),
         ),
     )
 
@@ -82,32 +86,35 @@ def test_round_robin_partitioner_produces_correct_partitions(
     assert partitions == expected_partitions
 
 
-def test_round_robin_partitioner_with_no_size_estimates():
+class _FileSizeEstimator(InMemorySizeEstimator):
+    def estimate_in_memory_sizes(self, manifest) -> np.ndarray:
+        return manifest.file_sizes
+
+
+@pytest.mark.parametrize(
+    "estimator",
+    # The sampling estimator can't sample a file of unknown size, so it gives
+    # each one a ``NaN`` estimate without opening any file.
+    [_FileSizeEstimator(), SamplingInMemorySizeEstimator(reader=MagicMock())],
+    ids=["file_size", "sampling"],
+)
+def test_round_robin_partitioner_with_no_size_estimates(estimator):
     # This tests the case where we don't have size estimates. This can happen if you use
     # HTTPFileSystem.
     input_table = pa.Table.from_pydict(
         {
             PATH_COLUMN_NAME: ["path0", "path1", "path2"],
-            FILE_SIZE_COLUMN_NAME: [None, None, None],
+            FILE_SIZE_COLUMN_NAME: pa.array([None, None, None], type=pa.int64()),
             FILE_CHUNK_METADATA_COLUMN_NAME: [None, None, None],
         }
     )
-
-    class StubInMemorySizeEstimator(InMemorySizeEstimator):
-        def estimate_in_memory_sizes(
-            self,
-            manifest,
-        ) -> np.ndarray:
-            return manifest.file_sizes
 
     outputs = partition_files(
         iter([input_table]),
         MagicMock(),
         partitioner=RoundRobinPartitioner(
-            in_memory_size_estimator=StubInMemorySizeEstimator(),
-            num_buckets=2,
-            min_bucket_size=1,
-            max_bucket_size=1,
+            in_memory_size_estimator=estimator,
+            hints=PartitionHints(min_bucket_size=1, max_bucket_size=1, num_buckets=2),
         ),
     )
     partitions = [output[PATH_COLUMN_NAME].to_pylist() for output in outputs]

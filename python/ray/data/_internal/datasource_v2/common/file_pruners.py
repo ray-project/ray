@@ -1,0 +1,95 @@
+from typing import TYPE_CHECKING, List, Optional
+
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    _evaluate_path_predicate,
+    _PartitionValueParser,
+)
+from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+from ray.data.datasource import PathPartitionFilter, PathPartitionParser
+from ray.data.datasource.path_util import _has_file_extension
+
+if TYPE_CHECKING:
+    import pyarrow
+
+    from ray.data.datasource.partitioning import Partitioning
+    from ray.data.expressions import Expr
+
+
+class FileExtensionPruner(FilePruner):
+    """Skip files that don't match the expected extensions."""
+
+    def __init__(self, file_extensions: List[str]):
+        self._file_extensions = file_extensions
+
+    def should_include(self, path: str) -> bool:
+        return _has_file_extension(path, self._file_extensions)
+
+
+class PartitionPruner(FilePruner):
+    """Skip files based on partition column predicates (e.g., hive partitioning).
+
+    Backs the ``partition_filter=`` argument of ``read_parquet`` and friends: a
+    user-supplied callback over the partition values parsed from a path.
+    Listing is the only place it is applied -- the reader has no counterpart --
+    so there is nothing downstream for it to agree with. Contrast
+    :class:`PartitionPredicatePruner`, which mirrors a filter the reader
+    applies too.
+    """
+
+    def __init__(self, partition_filter: PathPartitionFilter):
+        self._filter = partition_filter
+
+    def should_include(self, path: str) -> bool:
+        return self._filter.apply(path)
+
+
+class PartitionPredicatePruner(FilePruner):
+    """Skip files whose partition values fail a pushed-down predicate.
+
+    Backs ``ds.filter(expr=...)`` on a partition column, once the optimizer has
+    pushed that expression onto the scanner -- not something a caller
+    constructs. Unlike :class:`PartitionPruner`, it duplicates pruning the
+    reader also performs (``FileScanner.prune_input_split``), so the two
+    must drop exactly the same files: a pushed-down limit stops listing early,
+    and every row listing counted towards it has to belong to a file the reader
+    keeps. Both listing and ``prune_input_split`` use ``should_include``.
+    The default policy delegates to ``PathPartitionParser``. Mixed-root
+    scanners set ``keep_unknown`` to retain missing path fields for the reader
+    and evaluate known values using the same logical types as row filtering.
+
+    The two are therefore not interchangeable. A ``PathPartitionFilter`` is an
+    opaque callable carrying no such obligation, and expressing a pushed-down
+    ``Expr`` as one would parse every path twice and hide the shared evaluator
+    behind a lambda.
+    """
+
+    def __init__(
+        self,
+        partitioning: "Partitioning",
+        predicate: "Expr",
+        *,
+        schema: Optional["pyarrow.Schema"] = None,
+        keep_unknown: bool = False,
+    ):
+        self._parser = (
+            _PartitionValueParser(partitioning)
+            if keep_unknown
+            else PathPartitionParser(partitioning)
+        )
+        self.partitioning = partitioning
+        self.predicate = predicate
+        self.schema = schema
+        # Mixed-root readers can evaluate missing path fields from physical
+        # columns or logical nulls. Other callers retain the parser's policy.
+        self._keep_unknown = keep_unknown
+
+    def should_include(self, path: str) -> bool:
+        if self._keep_unknown:
+            values = self._parser(path)
+            return (
+                _evaluate_path_predicate(self.predicate, values, self.schema, path=path)
+                is not False
+            )
+        return self._parser.evaluate_predicate_on_partition(
+            path, self.predicate, schema=self.schema
+        )

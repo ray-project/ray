@@ -3,7 +3,6 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
 
 from ray.data._internal.logical.operators import CSE_TEMP_COLUMN_PREFIX
 from ray.data._internal.planner.plan_expression.expression_evaluator import (
@@ -11,7 +10,6 @@ from ray.data._internal.planner.plan_expression.expression_evaluator import (
     eval_projection,
 )
 from ray.data.expressions import col, star
-from ray.data.tests.conftest import get_pyarrow_version
 
 
 @pytest.fixture(scope="module")
@@ -297,10 +295,6 @@ expressions_and_expected_data = [
 ]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="test_filter requires PyArrow >= 20.0.0",
-)
 @pytest.mark.parametrize("expression, expected_data", expressions_and_expected_data)
 def test_filter(sample_data, expression, expected_data):
     """Test the filter functionality of the ExpressionEvaluator."""
@@ -338,10 +332,6 @@ def test_filter_equal_negative_number():
     assert result_df == expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("20.0.0"),
-    reason="test_filter requires PyArrow >= 20.0.0",
-)
 def test_filter_bad_expression(sample_data):
     with pytest.raises(ValueError, match="Invalid syntax in the expression"):
         ExpressionEvaluator.get_filters(expression="bad filter")
@@ -421,6 +411,24 @@ def test_eval_projection_with_common_sub_exprs_pandas():
 
     assert out.columns.tolist() == ["y"]
     assert out["y"].tolist() == [4, 6, 8]
+
+
+def test_eval_projection_with_common_sub_exprs_schema_less_empty_block():
+    """CSE projection must pass a schema-less empty block through unchanged
+    instead of raising a KeyError while evaluating the common subexpressions."""
+    block = pa.table({})
+    common = (col("a") + 1).alias(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+    projection = [
+        (
+            col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+            + col(f"{CSE_TEMP_COLUMN_PREFIX}test_0")
+        ).alias("y")
+    ]
+
+    out = eval_projection(projection, block, common_sub_exprs=[common])
+
+    assert out.num_rows == 0
+    assert out.num_columns == 0
 
 
 if __name__ == "__main__":

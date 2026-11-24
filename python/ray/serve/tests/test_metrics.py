@@ -1,11 +1,9 @@
 import http
-import json
 import os
 import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import Dict, Optional
 
 import grpc
 import httpx
@@ -22,8 +20,10 @@ from ray._common.network_utils import parse_address
 from ray._common.test_utils import (
     PrometheusTimeseries,
     SignalActor,
-    fetch_prometheus_metric_timeseries,
     wait_for_condition,
+)
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
 )
 from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_METRICS_INCLUDE_HIGH_CARDINALITY_TAGS,
@@ -32,7 +32,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.test_utils import (
     PROMETHEUS_METRICS_TIMEOUT_S,
-    TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
     get_metric_dictionaries,
@@ -44,66 +43,6 @@ from ray.serve._private.test_utils import (
 from ray.serve._private.utils import block_until_http_ready
 from ray.serve.config import RequestRouterConfig
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-
-
-def extract_tags(line: str) -> Dict[str, str]:
-    """Extracts any tags from the metrics line."""
-
-    try:
-        tags_string = line.replace("{", "}").split("}")[1]
-    except IndexError:
-        # No tags were found in this line.
-        return {}
-
-    detected_tags = {}
-    for tag_pair in tags_string.split(","):
-        sanitized_pair = tag_pair.replace('"', "")
-        tag, value = sanitized_pair.split("=")
-        detected_tags[tag] = value
-
-    return detected_tags
-
-
-def check_sum_metric_eq(
-    metric_name: str,
-    expected: float,
-    tags: Optional[Dict[str, str]] = None,
-    timeseries: Optional[PrometheusTimeseries] = None,
-) -> bool:
-    if tags is None:
-        tags = {}
-    if timeseries is None:
-        timeseries = PrometheusTimeseries()
-
-    metrics = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
-        timeseries,
-        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
-    )
-    metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
-    metric_samples = metrics.get(metric_name, None)
-    if metric_samples is None:
-        metric_sum = 0
-    else:
-        metric_samples = [
-            sample for sample in metric_samples if tags.items() <= sample.labels.items()
-        ]
-        metric_sum = sum(sample.value for sample in metric_samples)
-
-    # Check the metrics sum to the expected number
-    assert float(metric_sum) == float(expected), (
-        f"The following metrics don't sum to {expected}: "
-        f"{json.dumps(metric_samples, indent=4)}\n."
-        f"All metrics: {json.dumps(metrics, indent=4)}"
-    )
-
-    # # For debugging
-    if metric_samples:
-        print(f"The following sum to {expected} for '{metric_name}' and tags {tags}:")
-        for sample in metric_samples:
-            print(sample)
-
-    return True
 
 
 def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
@@ -128,7 +67,9 @@ def test_serve_metrics_for_successful_connection(metrics_start_shutdown):
 
     def verify_metrics(do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -193,7 +134,9 @@ def test_http_replica_gauge_metrics(metrics_start_shutdown):
     print("serve_replica_processing_queries exists.")
 
     def ensure_request_processing():
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -226,7 +169,9 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -268,7 +213,9 @@ def test_proxy_metrics_not_found(metrics_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -331,7 +278,11 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
 
     def verify_metrics(_expected_metrics, do_assert=False):
         try:
-            resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+            resp = httpx.get(
+                "http://127.0.0.1:9999",
+                headers=get_auth_headers_if_auth_enabled({}),
+                timeout=None,
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -374,7 +325,11 @@ def test_proxy_metrics_internal_error(metrics_start_shutdown):
         verify_metrics(expected_metrics, True)
 
     def verify_error_count(do_assert=False):
-        resp = httpx.get("http://127.0.0.1:9999", timeout=None).text
+        resp = httpx.get(
+            "http://127.0.0.1:9999",
+            headers=get_auth_headers_if_auth_enabled({}),
+            timeout=None,
+        ).text
         resp = resp.split("\n")
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
@@ -684,7 +639,9 @@ def test_proxy_metrics_http_status_code_is_error(metrics_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -763,7 +720,9 @@ def test_proxy_metrics_websocket_status_code_is_error(metrics_start_shutdown):
         expected_error_count: int,
         expected_success_count: int,
     ):
-        resp = httpx.get("http://127.0.0.1:9999").text
+        resp = httpx.get(
+            "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+        ).text
         error_count = 0
         success_count = 0
         for line in resp.split("\n"):
@@ -1165,7 +1124,9 @@ def test_multiplexed_metrics(metrics_start_shutdown):
 
     def verify_metrics():
         try:
-            resp = httpx.get("http://127.0.0.1:9999").text
+            resp = httpx.get(
+                "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+            ).text
         # Requests will fail if we are crashing the controller
         except httpx.HTTPError:
             return False
@@ -1311,7 +1272,9 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
     ), "Multiple metrics entries for same route pattern - should be grouped!"
 
     # Optionally verify the counter value if we can parse it from the metrics endpoint
-    metrics_text = httpx.get("http://127.0.0.1:9999").text
+    metrics_text = httpx.get(
+        "http://127.0.0.1:9999", headers=get_auth_headers_if_auth_enabled({})
+    ).text
     for line in metrics_text.split("\n"):
         if "serve_num_http_requests" in line and "/api/users/{user_id}" in line:
             # Extract the value from the prometheus format line

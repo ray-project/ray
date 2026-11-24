@@ -12,6 +12,7 @@ from ray.data._internal.logical.operators import (
     Project,
     Read,
     ReadFiles,
+    ShuffleBatches,
     Union,
 )
 
@@ -184,7 +185,10 @@ class LimitPushdownRule(Rule):
                 # position / cardinality, which a reordered limit would change.
                 break
 
-            if isinstance(current_op, AbstractMap):
+            # ShuffleBatches accepts smaller inputs without changing its schema.
+            if isinstance(current_op, AbstractMap) and not isinstance(
+                current_op, ShuffleBatches
+            ):
                 min_rows = current_op.min_rows_per_bundled_input
                 if min_rows is not None and min_rows > limit_op.limit:
                     # Avoid pushing the limit past batch-based maps that require more
@@ -240,7 +244,7 @@ class LimitPushdownRule(Rule):
                         num_outputs=op.num_outputs,
                     )
                 if isinstance(op, ReadFiles):
-                    from ray.data._internal.datasource_v2.logical_optimizers import (
+                    from ray.data._internal.datasource_v2.interfaces.pushdown import (
                         SupportsLimitPushdown,
                     )
 

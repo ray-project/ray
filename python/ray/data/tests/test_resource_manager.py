@@ -10,7 +10,10 @@ from freezegun import freeze_time
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
-from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.execution.interfaces import (
+    PhysicalOperator,
+    ReportsExtraResourceUsage,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -22,6 +25,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.top_n_operator import TopNMergeOperator
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
@@ -34,6 +38,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     Topology,
     build_streaming_topology,
 )
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import noop_counter
@@ -73,11 +78,10 @@ def mock_map_op(
 
 
 def mock_union_op(input_ops):
-    op = UnionOperator(
+    return UnionOperator(
         DataContext.get_current(),
         *input_ops,
     )
-    return op
 
 
 def mock_join_op(left_input_op, right_input_op):
@@ -100,7 +104,7 @@ def mock_join_op(left_input_op, right_input_op):
             partition_size_hint=1,
         )
 
-    op.start = MagicMock(side_effect=lambda *_: None)
+    op.start = MagicMock(side_effect=lambda *_, **__: None)
     return op
 
 
@@ -404,6 +408,46 @@ class TestResourceManager:
             global_cpu, 0, global_mem
         )
 
+    def test_update_usage_includes_extra_resource_usage(self):
+        """Operators that report extra resource usage have it added to op_usage."""
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1)
+        counter = StubBlockRefCounter()
+        topo = build_streaming_topology(o2, ExecutionOptions(), counter)
+
+        for op in [o1, o2]:
+            op.current_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=1, gpu=0, memory=0)
+            )
+            op.running_logical_usage = MagicMock(
+                return_value=ExecutionResources(cpu=1, gpu=0, memory=0)
+            )
+            op.pending_logical_usage = MagicMock(return_value=ExecutionResources.zero())
+            op._metrics = MagicMock(obj_store_mem_pending_task_outputs=0)
+
+        assert isinstance(o2, ReportsExtraResourceUsage)
+        o2.extra_resource_usage = MagicMock(
+            return_value=ExecutionResources(cpu=2, gpu=1, memory=100)
+        )
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+            counter,
+        )
+        resource_manager._op_resource_allocator = None
+        resource_manager.update_usages()
+
+        op_usage = resource_manager.get_op_usage(o2)
+        assert op_usage.cpu == 1 + 2
+        assert op_usage.gpu == 1
+        assert op_usage.memory == 100
+
+        # The extra usage rolls up into the global total as well.
+        assert resource_manager.get_global_usage().cpu == 1 + 1 + 2
+
     def test_object_store_usage(self, restore_data_context):
         """ResourceManager reads per-operator memory from BlockRefCounter."""
 
@@ -502,6 +546,56 @@ class TestResourceManager:
 
         total_obj_store = resource_manager.get_global_usage().object_store_memory
         assert total_obj_store == 300
+
+    @pytest.mark.parametrize(
+        "output_bp, active_tasks, submission_bp, cpu_budget, expected",
+        [
+            # Its task outputs can't be read.
+            (True, 0, False, 1, True),
+            # It's running tasks.
+            (False, 1, False, 1, False),
+            # Idle and can't submit even though its budget fits another task.
+            (False, 0, True, 1, True),
+            # Idle and can't submit because it's short on CPU. More nodes help.
+            (False, 0, True, 0, False),
+            # Idle and not backpressured, e.g., waiting for inputs.
+            (False, 0, False, 1, False),
+        ],
+    )
+    def test_is_blocked_on_consumer(
+        self, output_bp, active_tasks, submission_bp, cpu_budget, expected
+    ):
+        resource_manager, _, (first, last) = _build_reservation_allocator(
+            2, ray_remote_args={"num_cpus": 1}
+        )
+        budgets = resource_manager.op_resource_allocator._op_budgets
+        # The first map can't fit its next task either, but only the last one matters.
+        budgets[first] = ExecutionResources.zero()
+        first.notify_in_task_submission_backpressure(True)
+        budgets[last] = ExecutionResources(cpu=cpu_budget)
+        last.notify_in_task_output_backpressure(output_bp)
+        last.num_active_tasks = MagicMock(return_value=active_tasks)
+        last.notify_in_task_submission_backpressure(submission_bp)
+
+        assert resource_manager.is_blocked_on_consumer() == expected
+
+    @pytest.mark.parametrize("active_tasks, expected", [(0, True), (1, False)])
+    def test_is_blocked_on_consumer_skips_finished_ops(self, active_tasks, expected):
+        # The finished last map is skipped, unless it's still running tasks.
+        resource_manager, _, (first, last) = _build_reservation_allocator(2)
+        first.notify_in_task_output_backpressure(True)
+        last.mark_execution_finished()
+        last.num_active_tasks = MagicMock(return_value=active_tasks)
+
+        assert resource_manager.is_blocked_on_consumer() == expected
+
+    def test_is_blocked_on_consumer_after_all_ops_finish(self):
+        # Only outputs are left.
+        resource_manager, _, map_ops = _build_reservation_allocator(2)
+        for op in map_ops:
+            op.mark_execution_finished()
+
+        assert resource_manager.is_blocked_on_consumer()
 
     def test_get_completed_ops_usage(self, restore_data_context):
         """Test that _get_completed_ops_usage returns total usage of completed ops."""
@@ -767,6 +861,37 @@ class TestResourceManager:
         # o5's downstream (o6, o7) has no blocking materializing ops
         assert resource_manager2._is_blocking_materializing_op(o5) is False
         assert resource_manager2._is_blocking_materializing_op(o7) is False
+
+    def test_top_n_merge_preserves_upstream_memory_budget(self, restore_data_context):
+        """TopNMerge consumes inputs incrementally and needs no barrier exemption."""
+        ctx = DataContext.get_current()
+        upstream = mock_map_op(InputDataBuffer(ctx, []))
+        merge = TopNMergeOperator(
+            upstream,
+            ctx,
+            sort_key=SortKey("id"),
+            limit=1,
+            ray_remote_args={},
+            output_schema=None,
+            name="TopNMerge",
+        )
+
+        options = ExecutionOptions()
+        counter = noop_counter()
+        topology = build_streaming_topology(merge, options, counter)
+        resource_manager = ResourceManager(
+            topology,
+            options,
+            lambda: ExecutionResources(cpu=2, object_store_memory=1000),
+            ctx,
+            counter,
+        )
+        resource_manager.update_usages()
+        assert resource_manager.is_op_eligible(merge)
+
+        upstream_budget = resource_manager.get_budget(upstream)
+        assert upstream_budget is not None
+        assert upstream_budget.object_store_memory < math.inf
 
     def test_memory_limit_blocks_task_submission(self, restore_data_context):
         """Test that tasks are blocked when memory limit is exceeded."""

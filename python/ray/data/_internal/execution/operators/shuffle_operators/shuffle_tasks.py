@@ -1,11 +1,22 @@
 """Shared remote tasks + helpers for ShuffleMapOp / ShuffleReduceOp."""
 
+import abc
 import logging
 import math
+import os
 import time
 import typing
 from dataclasses import replace
-from typing import Callable, Dict, Generator, Iterable, List, Optional, Tuple, Union
+from typing import (
+    Callable,
+    Dict,
+    Generator,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import pyarrow as pa
 
@@ -16,6 +27,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.util import yield_block_with_stats
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -36,6 +48,28 @@ logger = logging.getLogger(__name__)
 PartitionFn = Callable[[pa.Table], Dict[int, pa.Table]]
 ReduceFn = Callable[[int, List[List[pa.Table]]], Iterable[Block]]
 BlockTransformer = Callable[["pa.Table"], "pa.Table"]
+
+
+class TaskScopedPartitioner(abc.ABC):
+    """A partitioner whose partition function depends on the map task index.
+
+    Map tasks call ``bind(task_index)`` once and partition every block with the
+    returned function. Used where mappers must not share state, e.g. random
+    shuffle seeds.
+    """
+
+    @abc.abstractmethod
+    def bind(self, task_index: int) -> PartitionFn:
+        ...
+
+
+def resolve_partition_fn(
+    partition_fn: Union[PartitionFn, TaskScopedPartitioner], task_index: int
+) -> PartitionFn:
+    if isinstance(partition_fn, TaskScopedPartitioner):
+        return partition_fn.bind(task_index)
+    return partition_fn
+
 
 # Peak working-set of a shuffle map/reduce task is ~2x the input bytes
 SHUFFLE_PEAK_MEMORY_MULTIPLIER = 2
@@ -95,6 +129,15 @@ def _encode_partition_ipc(
     return sink.getvalue()
 
 
+def cap_polars_threads() -> None:
+    """Cap polars at one thread so a one-CPU task doesn't oversubscribe.
+
+    Set here instead of through a runtime env so the map keeps the same remote
+    args as the upstream op and the two stay fusable.
+    """
+    os.environ.setdefault("POLARS_MAX_THREADS", "1")
+
+
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _shuffle_map_task(
     *blocks: Block,
@@ -107,6 +150,7 @@ def _shuffle_map_task(
     ...,
 ]:
     """Map stage: partition the input blocks and return one shard per partition."""
+    cap_polars_threads()
     stats = BlockExecStats.builder()
 
     # Use BlockAccessor so we also work for non-Arrow blocks (pandas, numpy)
@@ -141,7 +185,9 @@ def _shuffle_map_task(
     output_schema = TableBlockAccessor.try_convert_block_type(
         shard_source_blocks[0], block_type=BlockType.ARROW
     ).schema
-    empty_shard = _encode_partition_ipc(output_schema.empty_table(), ipc_write_options)
+    empty_shard = _encode_partition_ipc(
+        _create_empty_table(output_schema), ipc_write_options
+    )
 
     shard_sizes: Dict[int, Tuple[int, int]] = {}
     partition_bufs: List[pa.Buffer] = []
@@ -150,7 +196,15 @@ def _shuffle_map_task(
         if not tables:
             partition_bufs.append(empty_shard)
             continue
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        merged = (
+            transform_pyarrow.concat(
+                tables,
+                promote_types=True,
+                preserve_order=True,
+            )
+            if len(tables) > 1
+            else tables[0]
+        )
         shard_sizes[partition_id] = (merged.num_rows, merged.nbytes)
         partition_bufs.append(_encode_partition_ipc(merged, ipc_write_options))
         del merged
@@ -291,35 +345,45 @@ def _shuffle_reduce_task(
 
     output_buffer: Optional[BlockOutputBuffer] = None
 
+    exec_stats_builder = BlockExecStats.builder()
+
     def _yield_with_stats(block: Block):
         """Yield a block then its pickled metadata (streaming-gen protocol)."""
+        exec_stats_builder.finish()
 
         def build_metadata(block_ser_time_s):
-            exec_stats = BlockExecStats.builder()
-            exec_stats.finish()
-            return BlockMetadataWithSchema.from_block(
+            nonlocal exec_stats_builder
+            meta = BlockMetadataWithSchema.from_block(
                 block,
-                block_exec_stats=exec_stats.build(block_ser_time_s=block_ser_time_s),
+                block_exec_stats=exec_stats_builder.build(
+                    block_ser_time_s=block_ser_time_s,
+                    task_idx=partition_id,
+                ),
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+            exec_stats_builder = BlockExecStats.builder()
+            return meta
 
         yield from yield_block_with_stats(block, build_metadata)
 
     def _flush(tables_by_input: List[List[pa.Table]]):
         nonlocal output_buffer
-        if output_buffer is None:
+        if output_buffer is None and target_max_block_size is not None:
             output_buffer = BlockOutputBuffer(
                 OutputBlockSizeOption.of(
                     target_max_block_size=target_max_block_size,
                 )
             )
         for block in reduce_fn(partition_id, tables_by_input):
-            output_buffer.add_block(block)
             # Yield raw blocks: a fused map (and `_yield_with_stats`) is applied
             # downstream of ``_reduce_output_blocks``.
-            yield from output_buffer.iter_ready_blocks()
+            if output_buffer is None:
+                yield block
+            else:
+                output_buffer.add_block(block)
+                yield from output_buffer.iter_ready_blocks()
 
     def _reduce_output_blocks():
         # Gather every input's full shard list, then call reduce_fn exactly once
@@ -355,4 +419,9 @@ def _shuffle_reduce_task(
                 map_task_context,
                 clock=TransformClock(),
             ):
+                if BlockAccessor.for_block(block).num_rows() == 0:
+                    # An unfused MapOperator bundles empty inputs with non-empty
+                    # ones, so it never emits an empty block for them; a fused
+                    # map sees one partition per task and would. Drop them.
+                    continue
                 yield from _yield_with_stats(block)

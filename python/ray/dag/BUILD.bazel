@@ -6,7 +6,10 @@ doctest(
         ["**/*.py"],
         exclude = ["**/experimental/**/*.py"],
     ),
-    tags = ["team:core"],
+    tags = [
+        "manual",
+        "team:core",
+    ],
     deps = [":dag_lib"],
 )
 
@@ -33,6 +36,7 @@ py_test(
     srcs = dag_tests_srcs,
     tags = [
         "exclusive",
+        "manual",
         "ray_dag_tests",
         "team:core",
     ],
@@ -45,6 +49,7 @@ py_test(
     srcs = dag_tests_srcs,
     tags = [
         "exclusive",
+        "manual",
         "ray_dag_tests",
         "team:core",
     ],
@@ -57,6 +62,7 @@ py_test(
     srcs = dag_tests_srcs,
     tags = [
         "exclusive",
+        "manual",
         "ray_dag_tests",
         "team:core",
     ],
@@ -69,6 +75,7 @@ py_test(
     srcs = dag_tests_srcs,
     tags = [
         "exclusive",
+        "manual",
         "ray_dag_tests",
         "team:core",
     ],
@@ -81,6 +88,7 @@ py_test(
     srcs = dag_tests_srcs,
     tags = [
         "exclusive",
+        "manual",
         "ray_dag_tests",
         "team:core",
     ],
@@ -93,6 +101,7 @@ py_test(
     srcs = dag_tests_srcs,
     tags = [
         "exclusive",
+        "manual",
         "ray_dag_tests",
         "team:core",
     ],
@@ -112,6 +121,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -142,6 +152,7 @@ py_test_module_list(
     tags = [
         "compiled_graphs",
         "exclusive",
+        "manual",
         "no_windows",
         "team:core",
     ],
@@ -181,6 +192,7 @@ py_test(
         "compiled_graphs",
         "custom_setup",
         "exclusive",
+        "manual",
         "multi_gpu",
         "no_windows",
         "team:core",
@@ -213,8 +225,9 @@ py_test(
     size = "medium",
     srcs = dag_tests_srcs,
     tags = [
+        "compiled_graphs",
         "exclusive",
-        "ray_dag_tests",
+        "manual",
         "team:core",
     ],
     deps = [":dag_lib"],

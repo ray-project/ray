@@ -1,5 +1,6 @@
 import os
 import random
+import sys
 from types import SimpleNamespace
 from typing import Any, Dict, Generator, List, Tuple, Type
 
@@ -7,7 +8,6 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from pkg_resources import parse_version
 from pyiceberg import (
     catalog as pyi_catalog,
     expressions as pyi_expr,
@@ -16,9 +16,9 @@ from pyiceberg import (
 )
 from pyiceberg.catalog import Catalog
 from pyiceberg.catalog.sql import SqlCatalog
-from pyiceberg.manifest import FileFormat
+from pyiceberg.manifest import DataFile, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
-from pyiceberg.table import Table
+from pyiceberg.table import FileScanTask, Table
 from pyiceberg.transforms import IdentityTransform
 
 import ray
@@ -36,7 +36,6 @@ from ray.data._internal.logical.operators import Filter, Project, Read
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.object_extensions.arrow import ArrowPythonObjectArray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.expressions import col
 from ray.data.tests.test_util import (
     get_operator_types as _get_operator_types,
@@ -152,10 +151,6 @@ def fast_retry_config():
     ctx.retried_io_errors = original_errors
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_get_catalog():
 
     iceberg_ds = IcebergDatasource(
@@ -166,10 +161,6 @@ def test_get_catalog():
     assert catalog.name == _CATALOG_NAME
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_plan_files():
 
     iceberg_ds = IcebergDatasource(
@@ -180,10 +171,6 @@ def test_plan_files():
     assert len(plan_files) == 10
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_chunk_plan_files():
 
     iceberg_ds = IcebergDatasource(
@@ -201,10 +188,6 @@ def test_chunk_plan_files():
     ), chunks
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_get_read_tasks():
 
     iceberg_ds = IcebergDatasource(
@@ -449,10 +432,6 @@ def test_estimate_inmemory_file_size(
     assert _estimate_inmemory_file_size(data_file, projected_field_ids) == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_size_estimate_matches_read_task_metadata():
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -470,10 +449,6 @@ def test_size_estimate_matches_read_task_metadata():
     assert sum(task.metadata.size_bytes for task in read_tasks) == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_default_size_estimate_uses_full_parquet_file_size():
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -486,10 +461,6 @@ def test_default_size_estimate_uses_full_parquet_file_size():
     )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_projection_pushdown_updates_planner_size_estimate(monkeypatch):
     from ray._private import auto_init_hook
 
@@ -512,10 +483,6 @@ def test_projection_pushdown_updates_planner_size_estimate(monkeypatch):
     assert read_op.infer_metadata().size_bytes == expected_size
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_has_zero_size_estimate():
     iceberg_ds = IcebergDatasource(
         table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
@@ -527,10 +494,6 @@ def test_empty_projection_has_zero_size_estimate():
     assert all(task.metadata.size_bytes == 0 for task in iceberg_ds.get_read_tasks(3))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_read_task_remains_compact_with_large_table_metadata():
     shared_metadata = "x" * (1024 * 1024)
     catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
@@ -553,10 +516,6 @@ def test_read_task_remains_compact_with_large_table_metadata():
     assert sum(block.num_rows for block in read_task()) == 101
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_filtered_read():
 
     iceberg_ds = IcebergDatasource(
@@ -626,10 +585,6 @@ _COUNT_CASES = {
 }
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize("case", list(_COUNT_CASES), ids=list(_COUNT_CASES))
 def test_count_matches_rows_actually_produced(case):
     """``count()`` must agree with the number of rows the query yields.
@@ -642,10 +597,6 @@ def test_count_matches_rows_actually_produced(case):
     assert make_ds().count() == expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_preserves_row_count():
     """Selecting zero columns must yield N rows of no columns, not zero rows.
 
@@ -668,10 +619,6 @@ def test_empty_projection_preserves_row_count():
     assert rows_read == expected
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_reads_only_the_stub_column():
     """An empty projection must read no real column, only the stub.
 
@@ -696,10 +643,6 @@ def test_empty_projection_reads_only_the_stub_column():
         assert block.schema.equals(expected_schema), block.schema
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     ("row_filter", "count_must_be_exact"),
     [
@@ -742,10 +685,6 @@ def test_reported_num_rows_matches_rows_read(row_filter, count_must_be_exact):
         assert sum(claimed) == actual
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_reported_num_rows_is_unknown_when_scan_stops_early():
     """A ``limit`` makes the read stop early, so no manifest count describes it.
 
@@ -771,10 +710,6 @@ def test_reported_num_rows_is_unknown_when_scan_stops_early():
     ), f"row counts cannot be exact under a limit, got {claimed}"
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_empty_projection_survives_schema_evolution_on_pinned_snapshot():
     """An empty projection must not depend on the table's current schema.
 
@@ -804,10 +739,6 @@ def test_empty_projection_survives_schema_evolution_on_pinned_snapshot():
     assert actual == expected_rows
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     "push_down",
     [
@@ -856,10 +787,6 @@ def test_pushdown_does_not_inherit_stale_plan_files(push_down):
         ), "reported row count came from plan files that predate the predicate"
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_read_iceberg_does_not_mutate_caller_kwargs():
     """The caller's dicts belong to the caller.
 
@@ -897,10 +824,6 @@ def test_read_iceberg_does_not_mutate_caller_kwargs():
     assert second.count() == first.count()
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_read_basic():
 
     row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
@@ -934,10 +857,6 @@ def test_read_basic():
     pd.testing.assert_frame_equal(orig_table_p, table_p)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_write_basic():
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
@@ -965,10 +884,6 @@ def test_write_basic():
     assert rows_same(table_p, orig_table_p)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_write_concurrency():
 
     sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
@@ -997,10 +912,6 @@ def test_write_concurrency():
     assert df["col_a"].tolist() == [1, 2, 3, 4]
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_predicate_pushdown():
     """Test that predicate pushdown works correctly with Iceberg datasource."""
     # Read the table and apply filters using Ray Data expressions
@@ -1039,10 +950,6 @@ def test_predicate_pushdown():
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_predicate_pushdown_with_initial_filter():
     """Test that predicate pushdown works when combined with initial row_filter."""
     # Read with an initial PyIceberg filter
@@ -1088,10 +995,6 @@ def test_predicate_pushdown_with_initial_filter():
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_projection_pushdown():
     """Test that projection pushdown works correctly with Iceberg datasource."""
     # Read the table and apply projection using select
@@ -1132,10 +1035,6 @@ def test_projection_pushdown():
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     "selected_cols,filter_expr,pyi_filter,expected_cols",
     [
@@ -1218,10 +1117,6 @@ def test_projection_and_predicate_pushdown(
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 @pytest.mark.parametrize(
     "rename_map,select_cols,filter_expr,pyi_filter,expected_cols",
     [
@@ -1394,10 +1289,6 @@ def test_rename_select_filter_combinations(
     assert rows_same(result, expected_table)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_predicate_pushdown_complex_expression():
     """Test predicate pushdown with complex expressions."""
     # Apply a complex filter expression
@@ -1529,10 +1420,6 @@ def _verify_schema(expected_fields: Dict[str, Type[pyi_types.IcebergType]]) -> N
         )
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestSchemaEvolution:
     """Test schema evolution during writes."""
 
@@ -1697,10 +1584,37 @@ class TestSchemaEvolution:
         assert rows_same(result_df, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
+def _count_driver_file_reads(monkeypatch) -> Dict[str, int]:
+    """Count data files read by ``ArrowScan`` in this process.
+
+    Ray write tasks run in separate worker processes and never see this patch,
+    so anything counted here was read by the driver itself.
+    """
+    from pyiceberg.io import pyarrow as pyi_pa
+
+    counter = {"files": 0}
+    original_to_table = pyi_pa.ArrowScan.to_table
+
+    def _counting_to_table(self, tasks):
+        tasks = list(tasks)
+        counter["files"] += len(tasks)
+        return original_to_table(self, tasks)
+
+    monkeypatch.setattr(pyi_pa.ArrowScan, "to_table", _counting_to_table)
+    return counter
+
+
+def _append_files(table: Table, rows: List[Dict[str, Any]]) -> None:
+    """Append rows straight through PyIceberg, one call per data file.
+
+    The test table is partitioned by ``col_c``, so each distinct ``col_c`` in a
+    call produces its own data file. Building the files here instead of through
+    ``write_iceberg`` keeps the file layout independent of how Ray splits blocks.
+    """
+    arrow_schema = table.schema().as_arrow()
+    table.append(pa.Table.from_pylist([dict(row) for row in rows], schema=arrow_schema))
+
+
 class TestOverwriteMode:
     """Test overwrite mode functionality."""
 
@@ -1832,11 +1746,274 @@ class TestOverwriteMode:
         )
         assert rows_same(result, expected)
 
+    def test_write_overwrite_with_filter_rewrites_off_the_driver(
+        self, clean_table, monkeypatch
+    ):
+        """A filtered overwrite rewrites candidate files in tasks, not on the driver."""
+        from ray.data import SaveMode
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
+        _, table = clean_table
+        # Three data files (one per ``col_c`` partition), each holding one row that
+        # matches ``col_a == 2`` and one that does not, so every candidate file needs a
+        # row-level rewrite rather than a whole-file delete.
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "keep_5", "col_c": 5},
+                {"col_a": 2, "col_b": "drop_5", "col_c": 5},
+                {"col_a": 1, "col_b": "keep_6", "col_c": 6},
+                {"col_a": 2, "col_b": "drop_6", "col_c": 6},
+                {"col_a": 1, "col_b": "keep_7", "col_c": 7},
+                {"col_a": 2, "col_b": "drop_7", "col_c": 7},
+            ],
+        )
+
+        driver_reads = _count_driver_file_reads(monkeypatch)
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+        )
+        files_read_on_driver = driver_reads["files"]
+
+        result = _read_from_iceberg(sort_by=["col_a", "col_c"])
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 1, 1, 30],
+                "col_b": ["keep_5", "keep_6", "keep_7", "new"],
+                "col_c": [5, 6, 7, 5],
+            }
+        )
+        assert rows_same(result, expected)
+        assert files_read_on_driver == 0, (
+            f"the driver read {files_read_on_driver} data file(s) while committing the "
+            "overwrite; the row-level rewrite belongs in Ray tasks"
+        )
+
+    def test_write_overwrite_with_filter_keeps_whole_file_deletes_metadata_only(
+        self, clean_table, monkeypatch
+    ):
+        """A filter that covers whole files is served from metadata, reading nothing."""
+        from ray.data import SaveMode
+
+        _, table = clean_table
+        # The table is partitioned by ``col_c``, so a filter on ``col_c`` covers whole
+        # files and PyIceberg can drop them without opening any of them.
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 1},
+                {"col_a": 2, "col_b": "b", "col_c": 2},
+                {"col_a": 3, "col_b": "c", "col_c": 3},
+            ],
+        )
+
+        driver_reads = _count_driver_file_reads(monkeypatch)
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [2]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_c") == 2
+        )
+        files_read_on_driver = driver_reads["files"]
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 3, 30],
+                "col_b": ["a", "c", "new"],
+                "col_c": [1, 3, 2],
+            }
+        )
+        assert rows_same(result, expected)
+        assert files_read_on_driver == 0, (
+            "a filter that covers whole files must stay on the metadata-only path, "
+            f"but {files_read_on_driver} data file(s) were read"
+        )
+
+    def test_write_overwrite_with_filter_skips_files_already_dropped(
+        self, clean_table, monkeypatch
+    ):
+        """Only the files the filter covers partially are rewritten.
+
+        A filter can cover some files entirely and others only in part. The files it
+        covers entirely are dropped from metadata, so they must not be rewritten too.
+        """
+        from ray.data import SaveMode
+        from ray.data._internal.datasource import iceberg_datasink as datasink_module
+
+        _, table = clean_table
+        # ``col_c == 2`` covers the whole col_c=2 partition file, while ``col_a == 5``
+        # matches only one of the two rows in the col_c=3 partition file.
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "p2_a", "col_c": 2},
+                {"col_a": 2, "col_b": "p2_b", "col_c": 2},
+                {"col_a": 5, "col_b": "p3_replaced", "col_c": 3},
+                {"col_a": 6, "col_b": "p3_kept", "col_c": 3},
+            ],
+        )
+
+        real_task = datasink_module._rewrite_iceberg_file_by_filter
+        dispatched = {"tasks": 0}
+
+        class _CountingRemoteFunction:
+            def options(self, **options):
+                dispatched["tasks"] += 1
+                return real_task.options(**options)
+
+        monkeypatch.setattr(
+            datasink_module,
+            "_rewrite_iceberg_file_by_filter",
+            _CountingRemoteFunction(),
+        )
+        driver_reads = _count_driver_file_reads(monkeypatch)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [2]}
+        )
+        _write_to_iceberg(
+            new_data,
+            mode=SaveMode.OVERWRITE,
+            overwrite_filter=(col("col_c") == 2) | (col("col_a") == 5),
+        )
+        rewrite_tasks = dispatched["tasks"]
+        files_read_on_driver = driver_reads["files"]
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [6, 30], "col_b": ["p3_kept", "new"], "col_c": [3, 2]}
+        )
+        assert rows_same(result, expected)
+        assert rewrite_tasks == 1, (
+            f"{rewrite_tasks} file(s) were rewritten; only the partially covered file "
+            "needs a rewrite, the fully covered one is dropped from metadata"
+        )
+        assert files_read_on_driver == 0
+
+    def test_write_overwrite_with_filter_preserves_null_rows(self, clean_table):
+        """Rows whose filter column is NULL do not match the filter and must survive."""
+        from ray.data import SaveMode
+
+        _, table = clean_table
+        # One data file holding a matching row, a non-matching row and two NULLs.
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 5},
+                {"col_a": 2, "col_b": "b", "col_c": 5},
+                {"col_a": None, "col_b": "c", "col_c": 5},
+                {"col_a": None, "col_b": "d", "col_c": 5},
+            ],
+        )
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+        )
+
+        # ``col_a == 2`` is unknown for the NULL rows, so only col_a 2 is replaced.
+        result = _read_from_iceberg(sort_by="col_b")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, None, None, 30],
+                "col_b": ["a", "c", "d", "new"],
+                "col_c": [5, 5, 5, 5],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_write_overwrite_with_filter_skips_empty_snapshot_on_metrics_miss(
+        self, clean_table
+    ):
+        """A file the metrics flag but no row matches adds no OVERWRITE snapshot.
+
+        The file holds ``col_a`` 1 and 3, so its min/max bounds admit ``col_a == 2``
+        and the file is planned for a rewrite, yet no row matches. Nothing is deleted
+        or appended, so only the append of the new rows should be committed.
+        """
+        from ray.data import SaveMode
+
+        catalog, table = clean_table
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 5},
+                {"col_a": 3, "col_b": "c", "col_c": 5},
+            ],
+        )
+        table_name = f"{_DB_NAME}.{_TABLE_NAME}"
+        snapshots_before = len(catalog.load_table(table_name).snapshots())
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        _write_to_iceberg(
+            new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [1, 3, 30], "col_b": ["a", "c", "new"], "col_c": [5, 5, 5]}
+        )
+        assert rows_same(result, expected)
+        new_snapshots = catalog.load_table(table_name).snapshots()[snapshots_before:]
+        operations = [snapshot.summary.operation.value for snapshot in new_snapshots]
+        assert operations == ["append"], (
+            f"the overwrite committed {operations}; with no row to delete, only the "
+            "append of the new rows should be committed"
+        )
+
+    def test_write_overwrite_with_filter_fails_on_stalled_rewrite(
+        self, clean_table, monkeypatch
+    ):
+        """A rewrite task that never finishes fails the write instead of hanging."""
+        import time
+
+        from ray.data import SaveMode
+        from ray.data._internal.datasource import iceberg_datasink as datasink_module
+
+        _, table = clean_table
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 5},
+                {"col_a": 2, "col_b": "b", "col_c": 5},
+            ],
+        )
+
+        @ray.remote
+        def _stalled_rewrite(*args):
+            time.sleep(60)
+            return None, []
+
+        monkeypatch.setattr(
+            datasink_module, "_rewrite_iceberg_file_by_filter", _stalled_rewrite
+        )
+        monkeypatch.setattr(datasink_module, "_REWRITE_STALL_TIMEOUT_S", 1)
+
+        new_data = _create_typed_dataframe(
+            {"col_a": [30], "col_b": ["new"], "col_c": [5]}
+        )
+        t0 = time.perf_counter()
+        with pytest.raises(Exception, match="No Iceberg overwrite rewrite task"):
+            _write_to_iceberg(
+                new_data, mode=SaveMode.OVERWRITE, overwrite_filter=col("col_a") == 2
+            )
+        assert time.perf_counter() - t0 < 30
+
+        # The failed write commits nothing, so the original rows are untouched.
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {"col_a": [1, 2], "col_b": ["a", "b"], "col_c": [5, 5]}
+        )
+        assert rows_same(result, expected)
+
+
 class TestUpsertMode:
     """Test upsert mode functionality."""
 
@@ -1986,10 +2163,6 @@ class TestUpsertMode:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertScanMerge:
     """Test the scan-merge upsert algorithm for correctness.
 
@@ -2160,6 +2333,169 @@ class TestUpsertScanMerge:
                 "col_a": [1, 2, 3, 100, 101],
                 "col_b": ["seed_1", "seed_2", "seed_3", "new_100", "new_101"],
                 "col_c": [1] * 5,
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_write_tasks_do_not_ship_keys_to_the_driver(
+        self, clean_table, monkeypatch
+    ):
+        """Write tasks must hand the driver key bounds, not the keys themselves.
+
+        Returning the key columns of every written row makes driver memory grow with
+        the size of the upsert; the driver only needs the per-column min/max to build
+        the coarse range filter.
+        """
+        from ray.data import SaveMode
+        from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [1, 2, 3], "col_b": ["s1", "s2", "s3"], "col_c": [1, 1, 1]}
+            )
+        )
+
+        captured = []
+        original_on_write_complete = IcebergDatasink.on_write_complete
+
+        def _capturing_on_write_complete(self, write_result):
+            captured.extend(r for r in write_result.write_returns if r)
+            return original_on_write_complete(self, write_result)
+
+        monkeypatch.setattr(
+            IcebergDatasink, "on_write_complete", _capturing_on_write_complete
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [2, 4], "col_b": ["u2", "u4"], "col_c": [1, 1]}
+            ),
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        assert captured, "no write results reached the driver"
+        with_keys = [r for r in captured if getattr(r, "upsert_keys", None) is not None]
+        assert not with_keys, (
+            "write tasks returned upsert key tables to the driver "
+            f"({[len(r.upsert_keys) for r in with_keys]} rows); the driver only needs "
+            "the per-column bounds"
+        )
+
+        # Ray is free to split the write across tasks, so check the merged bounds rather
+        # than any single task's: they must cover exactly the keys that were written.
+        merged = {}
+        for write_return in captured:
+            for name, (col_min, col_max) in (
+                write_return.upsert_key_bounds or {}
+            ).items():
+                previous = merged.get(name)
+                merged[name] = (
+                    (min(previous[0], col_min), max(previous[1], col_max))
+                    if previous
+                    else (col_min, col_max)
+                )
+        assert merged == {"col_a": (2, 4)}, merged
+        assert sum(r.upsert_key_rows for r in captured) == 2
+        assert sum(r.upsert_null_key_rows for r in captured) == 0
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["s1", "u2", "s3", "u4"],
+                "col_c": [1, 1, 1, 1],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_key_collection_reserves_memory_for_the_join_columns(
+        self, clean_table, monkeypatch
+    ):
+        """The key task reserves memory sized by the join columns, not whole files."""
+        from ray.data import SaveMode
+        from ray.data._internal.datasource import iceberg_datasink as datasink_module
+        from ray.data._internal.datasource.parquet_datasource import (
+            PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [1, 2, 3], "col_b": ["s1", "s2", "s3"], "col_c": [1, 1, 1]}
+            )
+        )
+
+        real_task = datasink_module._collect_upsert_keys
+        calls = []
+
+        class _RecordingRemoteFunction:
+            def __init__(self, options=None):
+                self._options = options or {}
+
+            def options(self, **options):
+                return _RecordingRemoteFunction(options)
+
+            def remote(self, *args):
+                calls.append((self._options, args))
+                return real_task.options(**self._options).remote(*args)
+
+        monkeypatch.setattr(
+            datasink_module, "_collect_upsert_keys", _RecordingRemoteFunction()
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [2, 4], "col_b": ["u2", "u4"], "col_c": [1, 1]}
+            ),
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        assert len(calls) == 1, f"the key task ran {len(calls)} time(s)"
+        options, (data_files, *_) = calls[0]
+        assert "memory" in options, "the key task was dispatched without a memory bound"
+        field_id = clean_table[1].schema().find_field("col_a").field_id
+        key_bytes = sum(data_file.column_sizes[field_id] for data_file in data_files)
+        file_bytes = sum(data_file.file_size_in_bytes for data_file in data_files)
+        assert options["memory"] == int(
+            key_bytes * PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * 2
+        )
+        assert key_bytes < file_bytes
+
+        result = _read_from_iceberg(sort_by="col_a")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, 3, 4],
+                "col_b": ["s1", "u2", "s3", "u4"],
+                "col_c": [1, 1, 1, 1],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_upsert_row_with_null_join_key_is_inserted(self, clean_table):
+        """A NULL join key matches nothing (NULL != NULL), so the row is inserted."""
+        from ray.data import SaveMode
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [1, 2], "col_b": ["s1", "s2"], "col_c": [1, 1]}
+            )
+        )
+
+        _write_to_iceberg(
+            _create_typed_dataframe(
+                {"col_a": [2, None], "col_b": ["u2", "u_null"], "col_c": [1, 1]}
+            ),
+            mode=SaveMode.UPSERT,
+            upsert_kwargs={"join_cols": ["col_a"]},
+        )
+
+        result = _read_from_iceberg(sort_by="col_b")
+        expected = _create_typed_dataframe(
+            {
+                "col_a": [1, 2, None],
+                "col_b": ["s1", "u2", "u_null"],
+                "col_c": [1, 1, 1],
             }
         )
         assert rows_same(result, expected)
@@ -2390,10 +2726,6 @@ def table_with_identifier_fields() -> Generator[Tuple[Catalog, Table], None, Non
         sql_catalog.drop_table(f"{_DB_NAME}.{identifier_table_name}")
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertWithIdentifierFields:
     """Test upsert using table's identifier fields."""
 
@@ -2489,10 +2821,6 @@ class TestUpsertWithIdentifierFields:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestUpsertAndOverwriteMissingJoinCols:
     """Test error handling for upsert without join columns."""
 
@@ -2515,10 +2843,6 @@ class TestUpsertAndOverwriteMissingJoinCols:
             _write_to_iceberg(upsert_data, mode=SaveMode.UPSERT)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 class TestSchemaEvolutionWithModes:
     """Test schema evolution with different write modes."""
 
@@ -2643,10 +2967,6 @@ class TestSchemaEvolutionWithModes:
         assert rows_same(result, expected)
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("14.0.0"),
-    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
-)
 def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     """Test that transient errors during file writes trigger retries."""
     from unittest.mock import patch
@@ -2701,7 +3021,190 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.data_files) > 0, "Expected data files in result"
 
 
-if __name__ == "__main__":
-    import sys
+class TestIcebergDatasourceV2:
+    """Tests for the V2-only machinery, which has no V1 counterpart."""
 
+    @staticmethod
+    def _load_table() -> Table:
+        return pyi_catalog.load_catalog(**_CATALOG_KWARGS).load_table(
+            f"{_DB_NAME}.{_TABLE_NAME}"
+        )
+
+    @classmethod
+    def _indexer(cls):
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            IcebergFileIndexer,
+        )
+
+        table = cls._load_table()
+        return IcebergFileIndexer(
+            table_metadata=table.metadata,
+            io=table.io,
+            scan_kwargs={},
+            snapshot_id=None,
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+
+    def test_manifest_preserves_every_field_the_reader_uses(self):
+        """A manifest round trip must return each scan task field-for-field."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        tasks = list(table.scan(row_filter="col_a >= 5").plan_files())
+        assert tasks, "fixture table should plan at least one file"
+
+        manifest = manifest_from_scan_tasks(tasks)
+        assert len(manifest) == len(tasks)
+
+        rebuilt = list(scan_tasks_from_manifest(manifest))
+        assert len(rebuilt) == len(tasks)
+        for original, copied in zip(tasks, rebuilt):
+            assert copied.file.file_path == original.file.file_path
+            assert copied.file.file_format == original.file.file_format
+            assert copied.file.spec_id == original.file.spec_id
+            assert copied.file.record_count == original.file.record_count
+            assert copied.file.file_size_in_bytes == original.file.file_size_in_bytes
+            assert copied.file.partition == original.file.partition
+            assert copied.residual == original.residual
+            assert copied.delete_files == original.delete_files
+
+    def test_manifest_carries_delete_files(self):
+        """Delete files attached to a task must survive the round trip.
+
+        Built by hand rather than from the fixture: PyIceberg 0.11.1 deletes
+        copy-on-write (it rewrites the data files), so no scan task it plans
+        ever carries one -- yet a table written by an engine that deletes
+        merge-on-read will, and dropping them would silently resurrect deleted
+        rows.
+        """
+        from pyiceberg.manifest import DataFileContent, FileFormat
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+        delete_paths = [
+            "s3://bucket/deletes/b.parquet",
+            "s3://bucket/deletes/a.parquet",
+        ]
+        deletes = {
+            DataFile.from_args(
+                content=DataFileContent.POSITION_DELETES,
+                file_path=path,
+                file_format=FileFormat.PARQUET,
+                partition=task.file.partition,
+                record_count=1,
+                file_size_in_bytes=1,
+            )
+            for path in delete_paths
+        }
+        with_deletes = FileScanTask(task.file, delete_files=deletes)
+
+        (rebuilt,) = scan_tasks_from_manifest(manifest_from_scan_tasks([with_deletes]))
+        assert {f.file_path for f in rebuilt.delete_files} == set(delete_paths)
+        assert all(
+            f.content == DataFileContent.POSITION_DELETES for f in rebuilt.delete_files
+        )
+
+    def test_rebuilt_scan_tasks_decode_identically(self):
+        """The rebuilt tasks must read byte-for-byte what the originals do."""
+        from pyiceberg.io.pyarrow import ArrowScan
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        scan = table.scan()
+        tasks = list(scan.plan_files())
+        rebuilt = list(scan_tasks_from_manifest(manifest_from_scan_tasks(tasks)))
+
+        def read(scan_tasks):
+            return ArrowScan(
+                table_metadata=table.metadata,
+                io=table.io,
+                projected_schema=scan.projection(),
+                row_filter=pyi_expr.AlwaysTrue(),
+                case_sensitive=True,
+            ).to_table(scan_tasks)
+
+        assert read(rebuilt).equals(read(tasks))
+
+    def test_reader_rejects_pickle_object_columns(self, monkeypatch, tmp_path):
+        """A decoded batch with a pickled-object column is rejected unread.
+
+        The V2 counterpart of ``test_get_read_task_rejects_pickle_object_columns``.
+        The marker file shows nothing was unpickled.
+        """
+        from pyiceberg.io import pyarrow as pyi_pa_io
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (  # noqa: E501
+            IcebergFileReader,
+        )
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+        )
+
+        marker = tmp_path / "exploit_marker"
+
+        class Exploit:
+            def __reduce__(self):
+                return (os.system, (f"touch {marker}",))
+
+        poisoned = pa.table(
+            {
+                "value": [1, 2],
+                "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2),
+            }
+        )
+
+        class FakeArrowScan:
+            def __init__(self, **kwargs):
+                pass
+
+            def to_record_batches(self, tasks):
+                yield from poisoned.to_batches()
+
+        monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+        table = self._load_table()
+        manifest = manifest_from_scan_tasks(list(table.scan().plan_files())[:1])
+        reader = IcebergFileReader(
+            table_metadata=table.metadata,
+            io=table.io,
+            projected_schema=table.scan().projection(),
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+        with pytest.raises(ValueError, match="arrow_pickled_object"):
+            list(reader.read(manifest))
+        assert not marker.exists()
+
+    def test_listing_skips_excluded_read_units(self):
+        """A file whose path is an excluded read unit id is not listed again."""
+        indexer = self._indexer()
+        listed = [
+            path
+            for manifest in indexer.list_files(None, filesystem=None)
+            for path in manifest.paths.tolist()
+        ]
+        assert len(listed) > 1, "need more than one file to exclude one of them"
+
+        remaining = [
+            path
+            for manifest in indexer.list_files(
+                None, filesystem=None, excluded_read_unit_ids={listed[0]}
+            )
+            for path in manifest.paths.tolist()
+        ]
+        assert sorted(remaining) == sorted(listed[1:])
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

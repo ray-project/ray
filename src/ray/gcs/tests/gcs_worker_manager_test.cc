@@ -19,7 +19,6 @@
 #include <memory>
 #include <vector>
 
-#include "mock/ray/pubsub/publisher.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
@@ -27,20 +26,21 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/util/compat.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-using namespace ::testing;    // NOLINT
 using namespace ray::gcs;     // NOLINT
 using namespace ray::pubsub;  // NOLINT
 using namespace ray;          // NOLINT
 
-class GcsWorkerManagerTest : public Test {
+class GcsWorkerManagerTest : public ::testing::Test {
  public:
   GcsWorkerManagerTest() {
-    gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
+    gcs_publisher_ =
+        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
   }
@@ -341,6 +341,21 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerDebuggerPort) {
     ASSERT_EQ(reply.total(), 1);
     ASSERT_EQ(reply.worker_table_data(0).debugger_port(), debugger_port);
   }
+
+  {
+    // An unknown worker, e.g. one whose row was evicted after it died.
+    rpc::UpdateWorkerDebuggerPortRequest request;
+    request.set_worker_id(WorkerID::FromRandom().Binary());
+    request.set_debugger_port(debugger_port);
+    rpc::UpdateWorkerDebuggerPortReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerDebuggerPort(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
+  }
 }
 
 TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
@@ -388,6 +403,21 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
     ASSERT_EQ(reply.worker_table_data().size(), 1);
     ASSERT_EQ(reply.total(), 1);
     ASSERT_EQ(reply.worker_table_data(0).num_paused_threads(), num_paused_threads_delta);
+  }
+
+  {
+    // An unknown worker, e.g. one whose row was evicted after it died.
+    rpc::UpdateWorkerNumPausedThreadsRequest request;
+    request.set_worker_id(WorkerID::FromRandom().Binary());
+    request.set_num_paused_threads_delta(num_paused_threads_delta);
+    rpc::UpdateWorkerNumPausedThreadsReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleUpdateWorkerNumPausedThreads(request, &reply, callback);
+    promise.get_future().get();
+    ASSERT_EQ(StatusCode(reply.status().code()), StatusCode::NotFound);
   }
 }
 

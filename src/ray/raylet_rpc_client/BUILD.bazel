@@ -31,7 +31,11 @@ ray_cc_library(
     name = "raylet_client_lib",
     srcs = ["raylet_client.cc"],
     hdrs = ["raylet_client.h"],
-    visibility = ["//visibility:public"],
+    visibility = [
+        "//src/ray/core_worker:__pkg__",
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/raylet:__pkg__",
+    ],
     deps = [
         ":raylet_client_interface",
         "//src/ray/common:bundle_spec",
@@ -47,7 +51,7 @@ ray_cc_library(
     name = "raylet_client_with_io_context_lib",
     srcs = ["raylet_client_with_io_context.cc"],
     hdrs = ["raylet_client_with_io_context.h"],
-    visibility = ["//visibility:public"],
+    visibility = ["//:__pkg__"],
     deps = [
         ":raylet_client_interface",
         ":raylet_client_lib",

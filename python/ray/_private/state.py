@@ -136,8 +136,7 @@ class GlobalState:
         self._task_events_head_client = None
 
     def _connect_and_get_accessor(self) -> GlobalStateAccessor:
-        """
-        This lazily initializes clients needed for state accessors and returns a connected global state accessor.
+        """This lazily initializes clients needed for state accessors and returns a connected global state accessor.
 
         Returns:
             GlobalStateAccessor: A connected global state accessor.
@@ -211,7 +210,9 @@ class GlobalState:
                 which can be one of the following: "DEPENDENCIES_UNREADY",
                 "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
         Returns:
-            Information from the actor table.
+            Information from the actor table. With no actor_id, a dict keyed
+            by actor ID as a hex string. "ActorID" and "JobID" values are hex
+            strings, as are the "NodeID" values inside "Address" and "OwnerAddress".
         """
         accessor = self._connect_and_get_accessor()
 
@@ -276,7 +277,8 @@ class GlobalState:
         """Fetch and parse the Gcs node info table.
 
         Returns:
-            Information about the node in the cluster.
+            Information about the node in the cluster, as a list of dicts
+            whose "NodeID" is a hex string.
         """
         accessor = self._connect_and_get_accessor()
 
@@ -288,7 +290,7 @@ class GlobalState:
         Returns:
             Information about the Ray jobs in the cluster,
             namely a list of dicts with keys:
-            - "JobID" (identifier for the job),
+            - "JobID" (identifier for the job, as a hex string),
             - "DriverIPAddress" (IP address of the driver for this job),
             - "DriverPid" (process ID of the driver for this job),
             - "StartTime" (UNIX timestamp of the start time of this job),
@@ -875,7 +877,7 @@ class GlobalState:
             worker_id, num_paused_threads_delta
         )
 
-    def cluster_resources(self):
+    def cluster_resources(self) -> Dict[str, float]:
         """Get the current total cluster resources.
 
         Note that this information can grow stale as nodes are added to or
@@ -900,7 +902,7 @@ class GlobalState:
         return set(self.total_resources_per_node().keys())
 
     def available_resources_per_node(self):
-        """Returns a dictionary mapping node id to available resources."""
+        """Returns a dictionary mapping node hex id to available resources."""
         accessor = self._connect_and_get_accessor()
         available_resources_by_id = {}
 
@@ -935,7 +937,7 @@ class GlobalState:
 
         return total_resources_by_node
 
-    def available_resources(self):
+    def available_resources(self) -> Dict[str, float]:
         """Get the current available cluster resources.
 
         This is different from `cluster_resources` in that this will return
@@ -967,7 +969,7 @@ class GlobalState:
         return json.loads(accessor.get_system_config())
 
     def get_node(self, node_id: str):
-        """Get the node information for a node id."""
+        """Get the node information for a node id given as a hex string."""
         accessor = self._connect_and_get_accessor()
         return accessor.get_node(node_id)
 
@@ -1044,7 +1046,7 @@ class GlobalState:
         return result
 
     def get_actor_info(self, actor_id: ray.ActorID) -> Optional[str]:
-        """Get the actor info for a actor id."""
+        """Get the serialized ActorTableData for an actor id."""
         accessor = self._connect_and_get_accessor()
         return accessor.get_actor_info(actor_id)
 
@@ -1058,7 +1060,7 @@ def jobs():
 
     Returns:
         Information from the job table, namely a list of dicts with keys:
-        - "JobID" (identifier for the job),
+        - "JobID" (identifier for the job, as a hex string),
         - "DriverIPAddress" (IP address of the driver for this job),
         - "DriverPid" (process ID of the driver for this job),
         - "StartTime" (UNIX timestamp of the start time of this job),
@@ -1082,7 +1084,8 @@ def nodes():
     """Get a list of the nodes in the cluster (for debugging only).
 
     Returns:
-        Information about the Ray clients in the cluster.
+        Information about the Ray clients in the cluster, as a list of dicts
+        whose "NodeID" is a hex string.
     """
     return state.node_table()
 
@@ -1216,7 +1219,7 @@ def object_transfer_timeline(filename: Optional[str] = None):
 
 @DeveloperAPI
 @client_mode_hook
-def cluster_resources():
+def cluster_resources() -> Dict[str, float]:
     """Get the current total cluster resources.
 
     Note that this information can grow stale as nodes are added to or removed
@@ -1231,7 +1234,7 @@ def cluster_resources():
 
 @DeveloperAPI
 @client_mode_hook
-def available_resources():
+def available_resources() -> Dict[str, float]:
     """Get the current available cluster resources.
 
     This is different from `cluster_resources` in that this will return idle

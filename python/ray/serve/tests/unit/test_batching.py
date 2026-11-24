@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import time
-from typing import List
+from functools import wraps
+from typing import AsyncIterator, Dict, List
+from unittest.mock import call, patch
 
 import pytest
 
@@ -11,6 +13,8 @@ from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.test_utils import passthrough_decorator
+from ray.serve._private.utils import extract_self_if_method_call
 from ray.serve.batching import _BatchQueue
 from ray.serve.exceptions import RayServeException
 
@@ -155,9 +159,11 @@ async def test_batch_size_one_long_timeout(use_class):
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_zero_timeout(use_class):
     block_execution_event = asyncio.Event()
+    batch_started_event = asyncio.Event()
 
     @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
     async def zero_timeout(requests):
+        batch_started_event.set()
         await block_execution_event.wait()
         if "raise" in requests:
             _ = 1 / 0
@@ -166,6 +172,7 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     class ZeroTimeout:
         @serve.batch(max_batch_size=2, batch_wait_timeout_s=0)
         async def zero_timeout(self, requests):
+            batch_started_event.set()
             await block_execution_event.wait()
             if "raise" in requests:
                 _ = 1 / 0
@@ -184,14 +191,16 @@ async def test_batch_size_multiple_zero_timeout(use_class):
     with pytest.raises(ZeroDivisionError):
         await call("raise")
     block_execution_event.clear()
+    batch_started_event.clear()
 
     # Check that 2 requests will be executed together if available.
     # The first should cause a size-one batch to be executed, then
     # the next two should be executed together (signaled by both
     # having the exception).
     t1 = get_or_create_event_loop().create_task(call("hi1"))
-    with pytest.raises(asyncio.TimeoutError):
-        await asyncio.wait_for(asyncio.shield(t1), timeout=0.001)
+    # Wait for t1's batch to start, so t2 and t3 can't join it. A short
+    # timeout can't stand in for this: on Windows it fires on the next loop tick.
+    await batch_started_event.wait()
 
     t2 = get_or_create_event_loop().create_task(call("hi2"))
     t3 = get_or_create_event_loop().create_task(call("raise"))
@@ -305,6 +314,89 @@ async def test_batch_size_multiple_long_timeout(use_class):
         t2.result()
     with pytest.raises(ZeroDivisionError):
         t3.result()
+
+
+@pytest.mark.asyncio
+async def test_requests_arriving_while_batches_run_form_one_batch():
+    # While every max_concurrent_batches permit is in use, requests that arrive
+    # must wait in the queue and then go out as one batch, not as one batch
+    # each that waits for a permit.
+    batch_sizes = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.01, max_concurrent_batches=1)
+    async def func(requests):
+        batch_sizes.append(len(requests))
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_sizes:
+        await asyncio.sleep(0.01)
+    rest = []
+    for i in range(1, 6):
+        rest.append(get_or_create_event_loop().create_task(func(i)))
+        # Longer than batch_wait_timeout_s, so each request could close a batch.
+        await asyncio.sleep(0.05)
+
+    release.set()
+    assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4, 5]
+    assert batch_sizes == [1, 5]
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_counts_time_waiting_for_a_permit():
+    # A request that already waited longer than batch_wait_timeout_s for a
+    # permit goes out as soon as the permit is free, without a second wait.
+    batch_start_times = []
+    release = asyncio.Event()
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0, max_concurrent_batches=1)
+    async def func(requests):
+        batch_start_times.append(time.time())
+        await release.wait()
+        return requests
+
+    first = get_or_create_event_loop().create_task(func(0))
+    while not batch_start_times:
+        await asyncio.sleep(0.01)
+    second = get_or_create_event_loop().create_task(func(1))
+    await asyncio.sleep(1.2)
+
+    release_time = time.time()
+    release.set()
+    assert await asyncio.gather(first, second) == [0, 1]
+    assert batch_start_times[1] - release_time < 0.5
+
+
+@pytest.mark.asyncio
+async def test_queue_length_gauge_reads_empty_queue_after_backlog_batch():
+    # Requests that wait for the only permit form the next batch in one pass.
+    # Once that batch is taken, the gauge must read the empty queue, not the
+    # backlog it saw before draining it.
+    batch_sizes = []
+    release = asyncio.Event()
+    with patch("ray.serve.batching.Gauge") as gauge_cls:
+
+        @serve.batch(
+            max_batch_size=4, batch_wait_timeout_s=0.01, max_concurrent_batches=1
+        )
+        async def func(requests):
+            batch_sizes.append(len(requests))
+            await release.wait()
+            return requests
+
+        first = get_or_create_event_loop().create_task(func(0))
+        while not batch_sizes:
+            await asyncio.sleep(0.01)
+        rest = [get_or_create_event_loop().create_task(func(i)) for i in range(1, 5)]
+        await asyncio.sleep(0.05)
+        release.set()
+        assert await asyncio.gather(first, *rest) == [0, 1, 2, 3, 4]
+    assert batch_sizes == [1, 4]
+    assert gauge_cls.return_value.set.call_args_list[-1] == call(
+        0, tags={"function_name": "func"}
+    )
 
 
 @pytest.mark.asyncio
@@ -804,6 +896,311 @@ async def test_batch_generator_setters():
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+@pytest.mark.parametrize("use_gen", [False, True])
+@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "mixed-keyword-first"])
+async def test_batch_size_fn_args_kwargs(
+    use_class: bool, use_gen: bool, mode: str
+) -> None:
+    batches_seen = []
+    batch_decorator = serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=lambda items: sum(len(item) for item in items),
+    )
+
+    async def unary_func(items: List[str]) -> List[str]:
+        batches_seen.append(items)
+        return items
+
+    async def streaming_func(items: List[str]) -> AsyncIterator[List[str]]:
+        batches_seen.append(items)
+        yield items
+
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def unary_method(self, items: List[str]) -> List[str]:
+                return await unary_func(items)
+
+            @batch_decorator
+            async def streaming_method(
+                self, items: List[str]
+            ) -> AsyncIterator[List[str]]:
+                async for result in streaming_func(items):
+                    yield result
+
+        instance = Handler()
+        func = instance.streaming_method if use_gen else instance.unary_method
+    else:
+        func = batch_decorator(streaming_func if use_gen else unary_func)
+
+    if mode == "args":
+        calls = [func("ab"), func("cde")]
+    elif mode == "kwargs":
+        calls = [func(items="ab"), func(items="cde")]
+    elif mode == "mixed":
+        calls = [func("ab"), func(items="cde")]
+    else:
+        calls = [func(items="ab"), func("cde")]
+
+    awaitables = [call.__anext__() for call in calls] if use_gen else calls
+    results = await asyncio.wait_for(asyncio.gather(*awaitables), timeout=1)
+    assert results == ["ab", "cde"]
+    assert batches_seen == [["ab", "cde"]]
+    assert await func._is_batching_task_alive()
+
+    if use_gen:
+        for call in calls:
+            with pytest.raises(StopAsyncIteration):
+                await asyncio.wait_for(call.__anext__(), timeout=1)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+async def test_batch_size_fn_keyword_only_payload(use_class: bool) -> None:
+    batch_decorator = serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=lambda items: sum(len(item) for item in items),
+    )
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def method(self, *, items: List[str]) -> List[str]:
+                return items
+
+        func = Handler().method
+    else:
+
+        @batch_decorator
+        async def func(*, items: List[str]) -> List[str]:
+            return items
+
+    results = await asyncio.wait_for(
+        asyncio.gather(func(items="ab"), func(items="cde")), timeout=1
+    )
+    assert results == ["ab", "cde"]
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_oversized_keyword_payload() -> None:
+    @serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=lambda items: sum(len(item) for item in items),
+    )
+    async def func(*, items: List[str]) -> List[str]:
+        return items
+
+    with pytest.raises(
+        RuntimeError, match="Size of item is greater than max_batch_size"
+    ):
+        await asyncio.wait_for(func(items="too long"), timeout=1)
+
+    assert await asyncio.wait_for(func(items="valid"), timeout=1) == "valid"
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_gen", [False, True])
+async def test_batch_size_fn_rejects_omitted_default_without_killing_worker(
+    use_gen: bool,
+) -> None:
+    batch_size_fn_calls = []
+
+    def batch_size_fn(items: List[str]) -> int:
+        batch_size_fn_calls.append(items)
+        return sum(len(item) for item in items)
+
+    async def unary_func(items: List[str] = "default") -> List[str]:
+        return items
+
+    async def streaming_func(
+        items: List[str] = "default",
+    ) -> AsyncIterator[List[str]]:
+        yield items
+
+    func = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=batch_size_fn,
+    )(streaming_func if use_gen else unary_func)
+
+    async def invoke(*args, **kwargs):
+        call = func(*args, **kwargs)
+        if not use_gen:
+            return await call
+
+        result = await call.__anext__()
+        with pytest.raises(StopAsyncIteration):
+            await call.__anext__()
+        return result
+
+    assert await asyncio.wait_for(invoke("valid"), timeout=1) == "valid"
+    with pytest.raises(
+        TypeError,
+        match="pass the handler's first input parameter as the first argument",
+    ):
+        await asyncio.wait_for(invoke(), timeout=1)
+
+    assert await asyncio.wait_for(invoke(items="again"), timeout=1) == "again"
+    assert await func._is_batching_task_alive()
+    assert all(items for items in batch_size_fn_calls)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_var_keyword", [False, True])
+async def test_batch_size_fn_sizes_first_input_with_other_keywords(
+    use_var_keyword: bool,
+) -> None:
+    batch_size_fn_calls = []
+
+    def batch_size_fn(items: List[str]) -> int:
+        batch_size_fn_calls.append(items)
+        return sum(len(item) for item in items)
+
+    batch_decorator = serve.batch(
+        max_batch_size=5,
+        batch_wait_timeout_s=1000,
+        batch_size_fn=batch_size_fn,
+    )
+
+    if use_var_keyword:
+
+        @batch_decorator
+        async def func(items: List[str], **extra: List[str]) -> List[str]:
+            return [f"{item}:{tag}" for item, tag in zip(items, extra["tag"])]
+
+    else:
+
+        @batch_decorator
+        async def func(items: List[str], *, tag: List[str]) -> List[str]:
+            return [f"{item}:{item_tag}" for item, item_tag in zip(items, tag)]
+
+    # The batch only fills if `batch_size_fn` sizes `items` rather than `tag`.
+    results = await asyncio.wait_for(
+        asyncio.gather(func("ab", tag="t1"), func(items="cde", tag="t2")),
+        timeout=1,
+    )
+    assert results == ["ab:t1", "cde:t2"]
+    assert batch_size_fn_calls[-1] == ["ab", "cde"]
+
+    calls_before_invalid_request = len(batch_size_fn_calls)
+    with pytest.raises(
+        TypeError,
+        match="pass the handler's first input parameter as the first argument",
+    ):
+        await asyncio.wait_for(func(tag="t", items="x" * 20), timeout=1)
+
+    assert len(batch_size_fn_calls) == calls_before_invalid_request
+    assert await asyncio.wait_for(func("abcde", tag="t"), timeout=1) == "abcde:t"
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+async def test_batch_size_fn_rejects_var_positional_with_many_values() -> None:
+    batch_size_fn_calls = []
+
+    def batch_size_fn(items: List[str]) -> int:
+        batch_size_fn_calls.append(items)
+        return sum(len(item) for item in items)
+
+    @serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=batch_size_fn,
+    )
+    async def func(*values: List[str]) -> List[str]:
+        return values[0]
+
+    assert await asyncio.wait_for(func("ab"), timeout=1) == "ab"
+
+    calls_before_invalid_request = len(batch_size_fn_calls)
+    with pytest.raises(TypeError, match=r"cannot size `\*\*kwargs` or `\*args`"):
+        await asyncio.wait_for(func("ab", "cdefgh"), timeout=1)
+
+    assert len(batch_size_fn_calls) == calls_before_invalid_request
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("positional_only", [False, True])
+async def test_batch_size_fn_rejects_keyword_that_lands_in_var_keyword(
+    positional_only: bool,
+) -> None:
+    batch_size_fn_calls = []
+    batch_decorator = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=lambda items: batch_size_fn_calls.append(items) or len(items),
+    )
+
+    if positional_only:
+
+        @batch_decorator
+        async def func(items: List[str] = "d", /, **extra: List[str]) -> List[str]:
+            return extra["items"]
+
+    else:
+
+        @batch_decorator
+        async def func(*items: List[str], **extra: List[str]) -> List[str]:
+            return extra["items"]
+
+    # `items="x"` binds to `**extra`, not the first parameter. Python 3.11 and
+    # earlier reject the positional only call before it reaches the gate.
+    with pytest.raises(TypeError):
+        await asyncio.wait_for(func(items="x"), timeout=1)
+
+    assert batch_size_fn_calls == []
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [False, True])
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"value": "one"},
+        {"tag": "t", "items": "x" * 20},
+    ],
+)
+async def test_batch_size_fn_rejects_variadic_keyword_handler(
+    use_class: bool, kwargs: Dict[str, str]
+) -> None:
+    batch_size_fn_calls = []
+    batch_decorator = serve.batch(
+        max_batch_size=10,
+        batch_wait_timeout_s=0,
+        batch_size_fn=lambda items: batch_size_fn_calls.append(items) or len(items),
+    )
+
+    async def unary_func(**values: List[str]) -> List[str]:
+        return next(iter(values.values()))
+
+    if use_class:
+
+        class Handler:
+            @batch_decorator
+            async def method(self, **values: List[str]) -> List[str]:
+                return await unary_func(**values)
+
+        func = Handler().method
+    else:
+        func = batch_decorator(unary_func)
+
+    assert await func._is_batching_task_alive()
+    with pytest.raises(TypeError, match=r"cannot size `\*\*kwargs` or `\*args`"):
+        await asyncio.wait_for(func(**kwargs), timeout=1)
+
+    assert batch_size_fn_calls == []
+    assert await func._is_batching_task_alive()
+
+
+@pytest.mark.asyncio
 async def test_batch_size_fn_deferred_item_early_break():
     batches_processed = []
 
@@ -951,6 +1348,103 @@ def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
         else:
             assert over_bound_warning_message not in stream.messages
         stream.reset_message()
+
+
+def test_extract_self_if_method_call_follows_wrapped_chain():
+    """`extract_self_if_method_call` must follow the full `__wrapped__` chain,
+    so `@serve.batch` keeps working when wrapped in another decorator that
+    uses `functools.wraps`. See #47449."""
+
+    class ClassA:
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
+        async def single_wrapped(self, x):
+            return [2 * v for v in x]
+
+        @passthrough_decorator
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=0.01)
+        async def double_wrapped(self, x):
+            return [2 * v for v in x]
+
+    instance = ClassA()
+    original_single = ClassA.single_wrapped.__wrapped__
+    original_double = ClassA.double_wrapped.__wrapped__.__wrapped__
+
+    assert extract_self_if_method_call((instance, 1), original_single) is instance
+    assert extract_self_if_method_call((instance, 1), original_double) is instance
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("num_outer_decorators", [1, 2])
+@pytest.mark.parametrize("use_gen", [False, True])
+async def test_batch_method_wrapped_by_other_decorators(num_outer_decorators, use_gen):
+    """`self` must still be detected when another decorator wraps `@serve.batch`."""
+
+    if use_gen:
+
+        class Handler:
+            def __init__(self, tag: str):
+                self.tag = tag
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, requests):
+                yield [f"{self.tag}:{request}" for request in requests]
+
+        decorator = _passthrough_gen_decorator
+    else:
+
+        class Handler:
+            def __init__(self, tag: str):
+                self.tag = tag
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, requests):
+                return [f"{self.tag}:{request}" for request in requests]
+
+        decorator = passthrough_decorator
+
+    for _ in range(num_outer_decorators):
+        Handler.method = decorator(Handler.method)
+
+    handler = Handler("a")
+    if use_gen:
+
+        async def collect(request):
+            return [item async for item in handler.method(request)]
+
+        results = await asyncio.gather(collect("x"), collect("y"))
+        assert results == [["a:x"], ["a:y"]]
+    else:
+        results = await asyncio.gather(handler.method("x"), handler.method("y"))
+        assert results == ["a:x", "a:y"]
+
+
+def _passthrough_gen_decorator(func):
+    """A user decorator that wraps an async generator with ``functools.wraps``."""
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        async for item in func(*args, **kwargs):
+            yield item
+
+    return wrapper
+
+
+@pytest.mark.asyncio
+async def test_batch_method_with_inner_decorator():
+    """A decorator below `@serve.batch` must keep working."""
+
+    class Handler:
+        def __init__(self, tag: str):
+            self.tag = tag
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        @passthrough_decorator
+        async def method(self, requests):
+            return [f"{self.tag}:{request}" for request in requests]
+
+    handler = Handler("a")
+    results = await asyncio.gather(handler.method("x"), handler.method("y"))
+    assert results == ["a:x", "a:y"]
 
 
 if __name__ == "__main__":

@@ -14,7 +14,6 @@
 
 #include "ray/raylet/scheduling/local_lease_manager.h"
 
-#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
 #include <list>
@@ -25,13 +24,13 @@
 #include <utility>
 #include <vector>
 
-#include "mock/ray/gcs_client/gcs_client.h"
-#include "mock/ray/object_manager/object_manager.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
+#include "ray/gcs_rpc_client/fake_gcs_client.h"
+#include "ray/object_manager/fake_object_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
@@ -39,11 +38,9 @@
 
 namespace ray::raylet {
 
-using ::testing::_;
-
-class MockWorkerPool : public WorkerPoolInterface {
+class FakeWorkerPool : public WorkerPoolInterface {
  public:
-  MockWorkerPool() : num_pops(0) {}
+  FakeWorkerPool() : num_pops(0) {}
 
   void PopWorker(const LeaseSpecification &lease_spec,
                  const PopWorkerCallback &callback) override {
@@ -321,7 +318,7 @@ RayLease CreateLease(const std::unordered_map<std::string, double> &required_res
 class LocalLeaseManagerTest : public ::testing::Test {
  public:
   explicit LocalLeaseManagerTest(double num_cpus = 3.0)
-      : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
+      : gcs_client_(std::make_unique<gcs::FakeGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(
             id_.Binary(), num_cpus, *gcs_client_, fake_resource_usage_gauge_, clock_)),
@@ -363,12 +360,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
             /*scheduler_metrics=*/scheduler_metrics_,
             /*clock=*/clock_)) {}
 
-  void SetUp() override {
-    static rpc::GcsNodeAddressAndLiveness node_info;
-    ON_CALL(*gcs_client_->mock_node_accessor,
-            GetNodeAddressAndLiveness(::testing::_, ::testing::_))
-        .WillByDefault(::testing::Return(node_info));
-  }
+  void SetUp() override {}
 
   RayObject *MakeDummyArg() {
     std::vector<uint8_t> data;
@@ -379,12 +371,12 @@ class LocalLeaseManagerTest : public ::testing::Test {
 
   void Shutdown() {}
 
-  std::unique_ptr<gcs::MockGcsClient> gcs_client_;
+  std::unique_ptr<gcs::FakeGcsClient> gcs_client_;
   NodeID id_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
   ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
-  MockWorkerPool pool_;
+  FakeWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
@@ -392,7 +384,7 @@ class LocalLeaseManagerTest : public ::testing::Test {
 
   absl::flat_hash_map<NodeID, rpc::GcsNodeAddressAndLiveness> node_info_;
 
-  MockObjectManager object_manager_;
+  FakeObjectManager object_manager_;
   ray::observability::FakeGauge fake_task_by_state_counter_;
   ray::observability::FakeGauge fake_scheduler_tasks_gauge_;
   ray::observability::FakeGauge fake_scheduler_unscheduleable_tasks_gauge_;
@@ -427,7 +419,6 @@ TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
   args.push_back(
       std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
   auto lease2 = CreateLease({{kCPU_ResourceLabel, 1}}, "f", args);
-  EXPECT_CALL(object_manager_, Pull(_, _, _)).WillOnce(::testing::Return(1));
   rpc::RequestWorkerLeaseReply reply2;
   // lease2 is waiting for args
   local_lease_manager_->QueueAndScheduleLease(std::make_shared<internal::Work>(
@@ -436,6 +427,8 @@ TEST_F(LocalLeaseManagerTest, TestCancelLeasesWithoutReply) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)},
       internal::WorkStatus::WAITING));
+  // lease2 triggered a pull for its argument.
+  ASSERT_EQ(object_manager_.pull_calls.size(), 1);
 
   auto cancelled_works = local_lease_manager_->CancelLeasesWithoutReply(
       [](const std::shared_ptr<internal::Work> &work) { return true; });
@@ -542,9 +535,6 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
 
   // The node is idle initially.
   ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), true);
-  EXPECT_CALL(object_manager_, Pull(_, _, _))
-      .WillOnce(::testing::Return(1))
-      .WillOnce(::testing::Return(2));
 
   // Submit the leases to the local lease manager.
   int num_callbacks_called = 0;
@@ -567,6 +557,8 @@ TEST_F(LocalLeaseManagerTest, TestNoLeakOnImpossibleInfeasibleLease) {
       false,
       std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply2)},
       internal::WorkStatus::WAITING));
+  // Both leases triggered pulls for their arguments.
+  ASSERT_EQ(object_manager_.pull_calls.size(), 2);
   // The node is no longer idle as it is pulling objects.
   ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), false);
 
@@ -609,7 +601,6 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
   args.push_back(
       std::make_unique<TaskArgByReference>(arg_id, rpc::Address{}, "call_site"));
   auto lease = CreateLease({{kCPU_ResourceLabel, 3}}, "f", args);
-  EXPECT_CALL(object_manager_, Pull(_, _, _)).WillOnce(::testing::Return(1));
   rpc::RequestWorkerLeaseReply reply;
   auto empty_callback =
       [](Status status, std::function<void()> success, std::function<void()> failure) {};
@@ -620,6 +611,8 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
       std::vector<internal::ReplyCallback>{
           internal::ReplyCallback(empty_callback, &reply)},
       internal::WorkStatus::WAITING));
+  // The lease triggered a pull for its argument.
+  ASSERT_EQ(object_manager_.pull_calls.size(), 1);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().WasLastRecordedNodeStateIdle(), false);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 3);
 

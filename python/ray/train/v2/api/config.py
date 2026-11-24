@@ -23,6 +23,7 @@ from ray.util.tpu import get_tpu_worker_resources
 
 if TYPE_CHECKING:
     from ray.train import UserCallback
+    from ray.train.health import HealthConfig
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +36,8 @@ class ScalingConfig(ScalingConfigV1):
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
-            ``resources_per_worker`` argument. If the number of workers is 0,
-            the training function will run in local mode, meaning the training
-            function runs in the same process. To enable elasticity, provide a
+            ``resources_per_worker`` argument. Must be at least 1.
+            To enable elasticity, provide a
             ``(min_workers, max_workers)`` tuple of ints.
         elastic_resize_monitor_interval_s: While the worker group is healthy,
             consider resizing the worker group every
@@ -129,6 +129,11 @@ class ScalingConfig(ScalingConfigV1):
                 f"Invalid ScalingConfig(num_workers={self.num_workers}): "
                 f"min_workers={self.min_workers} must be <= max_workers={self.max_workers}."
             )
+        if self.elasticity_enabled and self.max_workers == 0:
+            raise ValueError(
+                f"Invalid ScalingConfig(num_workers={self.num_workers}): "
+                "max_workers must be at least 1."
+            )
 
         self._validate_tpu_config()
 
@@ -142,10 +147,9 @@ class ScalingConfig(ScalingConfigV1):
             )
 
         if self.num_workers == 0:
-            logger.info(
-                "Running in local mode. The training function will run in the same process. "
-                "If you are using it and running into issues please file a report at "
-                "https://github.com/ray-project/ray/issues."
+            raise ValueError(
+                "Invalid ScalingConfig(num_workers=0): Local Mode was removed in "
+                "Ray 2.61. Set `num_workers` to 1 or more."
             )
 
         super().__post_init__()
@@ -311,6 +315,10 @@ class CheckpointConfig:
             (or lowest-scoring, if ``checkpoint_score_attribute`` is set)
             checkpoint will be deleted.
             If this is ``None`` then all checkpoints will be kept. Must be >= 1.
+            The latest checkpoint is never deleted, because training resumes
+            from it after a failure, so up to ``num_to_keep + 1`` checkpoints
+            can be on disk. A checkpoint whose validation hasn't finished is
+            also kept until the validation completes.
         checkpoint_score_attribute: The attribute that will be used to
             score checkpoints to determine which checkpoints should be kept.
             This attribute must be a key from the metrics dictionary
@@ -373,11 +381,34 @@ class FailureConfig(FailureConfigV1):
             reserved for real failures). Will recover from the latest checkpoint
             if present. Setting to -1 leads to infinite preemption retries;
             setting to 0 disables them. Defaults to -1.
+        relax_collectives_on_preemption: Whether Ray Train's own preemption and
+            checkpoint collectives may complete without the workers on a
+            preempted node, so healthy workers can commit a just-in-time
+            checkpoint instead of being stranded. This covers
+            ``ray.train.report()`` and ``ray.train.get_preemption_info()``,
+            which normally require every rank to finish, so if a worker is
+            killed before it finishes then the rest would be stranded. Enable it when
+            a checkpoint upload may take longer than the preemption drain
+            window; it is unnecessary when a training step plus a checkpoint
+            fits comfortably inside that window, since the preempted workers are
+            then still alive to take part in the collectives themselves. Has no
+            effect when rank 0 is among the preempted ranks, since rank 0 is the
+            sole writer of the broadcast payload. Defaults to False.
+        preemption_grace_s: How long the surviving workers may keep running past
+            the preemption deadline, in seconds. Ray Train otherwise tears them
+            down the moment the deadline passes, which cuts off whatever they
+            were doing. This is most usefully when the upload of a just-in-time
+            checkpoint takes longer than the drain window itself. Pair it with
+            ``relax_collectives_on_preemption`` so the survivors can also commit
+            without the workers that have already gone. Defaults to 0.0, which
+            restarts as soon as the preemption deadline passes.
     """
 
     fail_fast: Union[bool, str] = _DEPRECATED
     controller_failure_limit: int = -1
     max_preemption_failures: int = -1
+    relax_collectives_on_preemption: bool = False
+    preemption_grace_s: float = 0.0
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
@@ -437,6 +468,8 @@ class RunConfig:
             for all Ray Train worker actors.
         logging_config: Configuration for Ray Train's logging behavior.
             See :class:`LoggingConfig` for details.
+        health_config: [Alpha] The health checks to run during training. See
+            ``ray.train.health.HealthConfig``.
     """
 
     name: Optional[str] = None
@@ -447,6 +480,7 @@ class RunConfig:
     callbacks: Optional[List["UserCallback"]] = None
     worker_runtime_env: Optional[Union[dict, RuntimeEnv]] = None
     logging_config: Optional[LoggingConfig] = None
+    health_config: Optional["HealthConfig"] = None
 
     sync_config: str = _DEPRECATED
     verbose: str = _DEPRECATED
@@ -527,6 +561,10 @@ class RunConfig:
 
     @cached_property
     def storage_context(self) -> StorageContext:
+        """The storage context for this run's storage path and filesystem.
+
+        Built from ``storage_path``, ``name``, and ``storage_filesystem``.
+        """
         return StorageContext(
             storage_path=self.storage_path,
             experiment_dir_name=self.name,
