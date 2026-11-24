@@ -432,6 +432,27 @@ def test_db_extraction_only_takes_the_expected_files(
         assert sorted(p.name for p in dest.iterdir()) == ["metadata.json", "trivy.db"]
 
 
+@pytest.mark.parametrize(
+    ("listed", "error"),
+    [
+        (["sha256:a", "sha256:b"], None),
+        # A layout may list one image twice; it is still the image to scan.
+        (["sha256:a", "sha256:a", "sha256:b"], None),
+        (["sha256:a"], r"lacks \['sha256:b'\]"),
+        ([], r"lacks \['sha256:a', 'sha256:b'\]"),
+    ],
+    ids=["complete", "listed-twice", "one-missing", "empty"],
+)
+def test_check_layout(tmp_path: Path, listed: list, error: Optional[str]):
+    manifests = [{"digest": d} for d in listed]
+    (tmp_path / "index.json").write_text(json.dumps({"manifests": manifests}))
+    if error:
+        with pytest.raises(ScanError, match=error):
+            scan_images.check_layout(tmp_path, {"sha256:a", "sha256:b"})
+    else:
+        scan_images.check_layout(tmp_path, {"sha256:a", "sha256:b"})
+
+
 def test_stage_needs_an_ignore_file_for_every_image_type(tmp_path: Path):
     files = tmp_path / "runfiles"
     files.mkdir()

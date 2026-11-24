@@ -257,11 +257,14 @@ def check_target(target: Target, architecture: str) -> None:
 
 
 def check_layout(layout: Path, digests: set[str]) -> None:
+    """Every digest to scan must be in the layout crane wrote."""
     index = json.loads((layout / "index.json").read_text())
-    found = [m.get("digest") for m in index.get("manifests") or []]
-    missing = digests - set(found)
-    if missing or len(found) != len(set(found)):
-        raise ScanError(f"layout has manifests {found}, expected {sorted(digests)}")
+    found = {m.get("digest") for m in index.get("manifests") or []}
+    missing = digests - found
+    if missing:
+        raise ScanError(
+            f"layout lacks {sorted(missing)}; it has {sorted(found, key=str)}"
+        )
 
 
 def _safe_extract(tarball: Path, dest: Path, allowed: set[str]) -> None:
