@@ -33,8 +33,6 @@ UPSCALING_VALUE_CONSERVATIVE = "Conservative"
 # KubeRay labels a RayCluster with the kind of the custom resource that created it.
 ORIGINATED_FROM_CRD_LABEL = "ray.io/originated-from-crd"
 ORIGINATED_FROM_CRD_VALUE_RAYJOB = "RayJob"
-# KubeRay sets a RayCluster's `status.state` to this once all of its Pods are running.
-RAYCLUSTER_STATE_READY = "ready"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
@@ -103,7 +101,7 @@ def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, 
     state = (ray_cr.get("status") or {}).get("state")
     if (
         labels.get(ORIGINATED_FROM_CRD_LABEL) == ORIGINATED_FROM_CRD_VALUE_RAYJOB
-        and state != RAYCLUSTER_STATE_READY
+        and state != "ready"
     ):
         provider_config[PENDING_NODE_IDLE_TERMINATION_GATED_KEY] = True
 
