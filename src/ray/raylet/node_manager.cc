@@ -2752,10 +2752,10 @@ bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
   // the store cannot have evicted it: the Get only misses if the store itself is
   // unreachable.
   // Regarding the last check, the copy can be pending deletion when the owner died,
-  // or freed the object by hand, while the move was in flight; the raylet is about
-  // to delete it, so it must not be pinned.
-  if (!GetObjectsFromPlasma(object_ids, &results) || results.size() != 1 ||
-      results[0] == nullptr || local_object_manager_.ObjectPendingDeletion(object_id)) {
+  // or freed the object, while the move was in flight; the raylet is about to delete
+  // it, so it must not be pinned.
+  if (!GetObjectsFromPlasma(object_ids, &results) || results[0] == nullptr ||
+      local_object_manager_.ObjectPendingDeletion(object_id)) {
     RAY_LOG(DEBUG).WithField(object_id)
         << "Moved object is not in the object store or is being freed";
     return false;
