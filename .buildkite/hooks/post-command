@@ -52,6 +52,15 @@ if [ -d "/tmp/artifacts/annotations" ]; then
   done
 fi
 
+# A report job that ended before writing its annotation (e.g. bazel failed,
+# or it timed out) still leaves one: its soft failure would go unnoticed.
+if [ "${BUILDKITE_STEP_KEY:-}" = "trivy_report" ] && \
+    ! compgen -G "/tmp/artifacts/annotations/trivy-scan.*.md" > /dev/null; then
+  printf '## Trivy image scan: report failed\n\nThe report job ended (exit status %s) before writing its annotation; its log has the cause.\n' \
+    "${BUILDKITE_COMMAND_EXIT_STATUS:-unknown}" |
+    buildkite-agent annotate --context trivy-scan --style warning || true
+fi
+
 # clean up bazel logs if any, this only has effect when the bazel test runs in the same
 # environment as the buildkite job commands, and has no effect when the tests run
 # inside another test container

@@ -838,15 +838,19 @@ def test_write_report_for_a_clean_build(tmp_path: Path):
 
 
 @pytest.mark.parametrize(
-    "content", [None, "{not json", "[1]"], ids=["missing", "invalid", "not-object"]
+    "content",
+    [None, "{not json", "[1]", "[" * 100_000],
+    ids=["missing", "invalid", "not-object", "too-deep"],
 )
 def test_unreadable_metadata_is_an_issue(tmp_path: Path, content: Optional[str]):
     metadata = tmp_path / "metadata.json"
     if content is not None:
         metadata.write_text(content)
-    scanner, issue = trivy_report.load_metadata(metadata)
+    scanner, issue = trivy_report.load_metadata(metadata, "s3://b/p/db/metadata.json")
     assert scanner == {}
     assert issue.startswith("scanner metadata")
+    # Named by where it was downloaded from.
+    assert "s3://b/p/db/metadata.json" in issue
 
     # The scan itself is clean, but its results can't be tied to a DB.
     results = report_folder(
