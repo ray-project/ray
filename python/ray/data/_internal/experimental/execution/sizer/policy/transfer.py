@@ -155,6 +155,7 @@ class TransferInFlight:
 class TransferState:
     """What the transfer book carries between ticks."""
 
+    # # NOTE: Keyed by recipients, not donors here
     in_flight: Dict["ExperimentalActorPoolMapOperator", TransferInFlight] = field(
         default_factory=dict
     )
@@ -561,8 +562,9 @@ class TransferBook:
         return TransferPhase.IN_FLIGHT if self.state.in_flight else TransferPhase.IDLE
 
     def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
-        """Capacity open transfers hold for their recipients' still-owed
-        actors, per node."""
+        """Because Transfers are non-atomic, we have to hold headroom for
+        recipient actors so there resources aren't taken in future ticks. This method
+        returns the amount of held/reserved capacity for all transfers in-flight."""
         held: Dict[NodeIdStr, ExecutionResources] = {}
         for transfer in self.state.in_flight.values():
             per_actor = transfer.recipient.actor_pool.per_actor_resource_usage()
@@ -668,12 +670,11 @@ class TransferBook:
                 # first, and every pending on a receiving recipient is ours
                 # (see ``TransferInFlight.claimed_ids``), so a per-node count
                 # is exact.
-                claimed = set(still_pending)
                 cancel_on = [
                     node
                     for node, ids in pool.pending_ids_by_target_node().items()
                     for actor_id in ids
-                    if actor_id in claimed
+                    if actor_id in set(still_pending)
                 ]
                 # A transfer still waiting on its donors has nothing pending
                 # to cancel; dropping it releases the held capacity.
@@ -711,9 +712,9 @@ class TransferBook:
         if transfer.record is not None:
             transfer.record.closed_t = now
         still_donating_to = {
-            donor: other.recipient
-            for other in self.state.in_flight.values()
-            for donor in other.donors
+            donor: transfer.recipient
+            for transfer in self.state.in_flight.values()
+            for donor in transfer.donors
         }
         for donor in transfer.donors:
             if donor in still_donating_to:

@@ -8,7 +8,7 @@ it does it (``sizing_policy``).
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, AbstractSet, Dict, Optional
+from typing import TYPE_CHECKING, Dict, Optional
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
@@ -29,7 +29,6 @@ from ray.data._internal.experimental.execution.sizer.policy.growth import (
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     Decision,
     DecisionKind,
-    SizerPhase,
 )
 
 if TYPE_CHECKING:
@@ -49,32 +48,18 @@ HOLD_NO_MODEL = "no_model"
 HOLD_CLUSTER_SETTLING = "cluster_settling"
 
 
-def classify_phase(
-    warmup: bool, unmodeled: AbstractSet["ExperimentalActorPoolMapOperator"]
-) -> SizerPhase:
-    """The sizer's phase: ``warmup`` is whether WARMUP still holds (until
-    every critical op has produced output, see
-    ``OperatorSizer._warmup_complete``), ``unmodeled`` the unfinished ops the
-    bottleneck model has never had a full window for."""
-    if warmup:
-        return SizerPhase.WARMUP
-    if unmodeled:
-        return SizerPhase.MODEL_WARMING
-    return SizerPhase.STEADY
-
-
 def why_cannot_grow(
     op: "ExperimentalActorPoolMapOperator", statuses: OpStatusMachine
 ) -> Optional[str]:
     """Why ``op`` may not grow this tick, or None."""
-    if not statuses.can_scale(op):
+    if not statuses.is_active(op):
         return f"status ({statuses.reason(op)})"
     if op.actor_pool.num_pending_actors() > 0:
         return "actors pending"
     return None
 
 
-def classify(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
+def classify_decision(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
     """This tick's primary action, first match wins:
 
     | phase / model                       | condition                     | decision       |
@@ -112,14 +97,18 @@ def classify(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
         target = tick.growth_target(op)
         if plan_free_growth(op, target, ctx) is not None:
             return Decision(
-                DecisionKind.GROW_FREE, targets={op: target}, reason="bottleneck"
+                kind=DecisionKind.GROW_FREE,
+                targets={op: target},
+                reason="bottleneck",
             )
 
     if not tick.snapshot.bottlenecks:
         targets = _balanced_targets(ctx, statuses)
         if targets:
             return Decision(
-                DecisionKind.GROW_BALANCED, targets=targets, reason="balanced"
+                kind=DecisionKind.GROW_BALANCED,
+                targets=targets,
+                reason="balanced",
             )
 
     # Moving capacity corrects a settled allocation; while the cluster is
@@ -131,9 +120,12 @@ def classify(ctx: DecisionContext, statuses: OpStatusMachine) -> Decision:
     if recipient is None:
         # Surplus is shrunk toward a recipient that wants the capacity; with
         # none, only blocked surplus is, for the memory it pins.
-        return Decision(DecisionKind.SHRINK_SURPLUS, reason="no recipient")
+        return Decision(
+            kind=DecisionKind.SHRINK_SURPLUS,
+            reason="no recipient",
+        )
     return Decision(
-        DecisionKind.FUND_RECIPIENT,
+        kind=DecisionKind.FUND_RECIPIENT,
         targets={recipient: tick.growth_target(recipient)},
         reason="stable recipient",
     )

@@ -526,15 +526,15 @@ class _TestSizer(OperatorSizer):
         snapshot = self.next_tick(force=force)
         assert snapshot is not None
         self._statuses.on_tick()
-        self._hold_for_held_ops(snapshot)
+        self._exclude_held_ops_from_free_capacity(snapshot)
         return snapshot
 
     def how_many(self, *, force: bool = True) -> Dict[Any, ActorPoolScalingRequest]:
         """One how-many step's counts (the decisions WHERE places), after the
         step's status transitions, the holds and the tick's phase update."""
         snapshot = self.held_snapshot(force=force)
-        self._advance_phase()
-        return _counts(self._per_op_how_many(snapshot))
+        self._advance_phase(bottleneck_tick=None)
+        return _counts(self._per_op_how_many(snapshot=snapshot, bottleneck_tick=None))
 
     @property
     def statuses(self):
@@ -1094,7 +1094,7 @@ def test_warmup_latches_off_on_critical_op_first_output():
     sizer = _make_sizer(topo)
     # Ticks without the hold step: this checks the phase, not held grants.
     assert sizer.next_tick() is not None
-    sizer._advance_phase()
+    sizer._advance_phase(bottleneck_tick=None)
     assert sizer.phase is SizerPhase.WARMUP
     ops["infer"].metrics.num_task_outputs_generated = 1
     # Once the model has every op, the first tick past warmup holds sizes:
@@ -1102,10 +1102,12 @@ def test_warmup_latches_off_on_critical_op_first_output():
     _mark_modeled(sizer, *topo)
     snapshot = sizer.next_tick()
     assert snapshot is not None
-    sizer._advance_phase()
+    sizer._advance_phase(bottleneck_tick=None)
     # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
     assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
-    assert _counts(sizer._per_op_how_many(snapshot)) == {}
+    assert (
+        _counts(sizer._per_op_how_many(snapshot=snapshot, bottleneck_tick=None)) == {}
+    )
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):

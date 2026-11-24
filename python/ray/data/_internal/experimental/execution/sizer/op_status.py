@@ -207,9 +207,11 @@ class OpStatusMachine:
     def kind(self, op: "ExperimentalActorPoolMapOperator") -> OpStatusKind:
         return self.status(op).kind
 
-    def can_scale(self, op: "ExperimentalActorPoolMapOperator") -> bool:
-        """Whether the policy may resize ``op`` now (grow it, transfer to or
-        from it, shed its surplus): only an ``Active`` op."""
+    def is_active(self, op: "ExperimentalActorPoolMapOperator") -> bool:
+        """Whether ``op`` is ``Active``: no transfer or cooldown holds it, so
+        the policy may resize it (grow it, transfer to or from it, shed its
+        surplus). Reads only the stored status; growth also waits for pending
+        actors (see ``why_cannot_grow``)."""
         return self.kind(op) is OpStatusKind.ACTIVE
 
     def can_size_per_op(self, op: "ExperimentalActorPoolMapOperator") -> bool:

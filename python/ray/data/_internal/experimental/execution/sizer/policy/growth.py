@@ -149,7 +149,7 @@ def free_growth_share(
     per_actor = op.actor_pool.per_actor_resource_usage()
     competitors = sum(
         1
-        for peer in ctx.actor_pool_ops
+        for peer in ctx.apmo_profiles.actor_pool_ops
         if ctx.is_pg_managed(peer) == pg
         and not peer.has_completed()
         and peer.actor_pool.serving_size() < peer.actor_pool.bounded_max_size()
@@ -175,7 +175,9 @@ def balanced_step(op: "ExperimentalActorPoolMapOperator", ctx: DecisionContext) 
     pipeline converges on the free capacity instead of crawling one actor
     per tick."""
     slots = ctx.capacity.placeable_new(op)
-    unfinished = sum(1 for peer in ctx.actor_pool_ops if not peer.has_completed())
+    unfinished = sum(
+        1 for peer in ctx.apmo_profiles.actor_pool_ops if not peer.has_completed()
+    )
     return max(1, math.floor(BALANCED_FREE_FRACTION * slots / max(1, unfinished)))
 
 

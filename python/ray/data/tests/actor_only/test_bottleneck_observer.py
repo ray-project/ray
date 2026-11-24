@@ -22,7 +22,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     BottleneckObserver,
     DonorVictims,
     EdgeShares,
-    OpShares,
+    OpShareBreakdown,
     ShareWindow,
     StableBottlenecks,
     analyze,
@@ -87,9 +87,9 @@ def test_label_contention_names_the_labeled_stage():
     Write is starved, so every arrow points at LabeledStage and GenStage's
     output-backpressured actors are slack."""
     shares = {
-        "Gen": OpShares(busy=0.02, obp=0.98, starved=0.0, actors=15),
-        "Labeled": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
-        "Write": OpShares(busy=0.1, obp=0.0, starved=0.9, actors=1),
+        "Gen": OpShareBreakdown(busy=0.02, obp=0.98, starved=0.0, actors=15),
+        "Labeled": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2),
+        "Write": OpShareBreakdown(busy=0.1, obp=0.0, starved=0.9, actors=1),
     }
     snapshot = _analyze(shares, "Gen", "Labeled", "Write")
 
@@ -102,10 +102,10 @@ def test_image_classification_never_names_the_upstream_reader():
     """image_classification: Preprocess is output-backpressured on the GPU
     Predictor; ReadFiles is not a bottleneck, so nothing would flow to it."""
     shares = {
-        "ReadFiles": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=8),
-        "Preprocess": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=31),
-        "Predictor": OpShares(busy=0.95, obp=0.05, starved=0.0, actors=8),
-        "Write": OpShares(busy=0.2, obp=0.0, starved=0.8, actors=4),
+        "ReadFiles": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=8),
+        "Preprocess": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=31),
+        "Predictor": OpShareBreakdown(busy=0.95, obp=0.05, starved=0.0, actors=8),
+        "Write": OpShareBreakdown(busy=0.2, obp=0.0, starved=0.8, actors=4),
     }
     snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor", "Write")
 
@@ -118,10 +118,10 @@ def test_near_tie_reports_both_sides_most_severe_first():
     both have neighbours waiting on them (A on B, D on C), so both are
     reported, B first."""
     shares = {
-        "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=10),
-        "B": OpShares(busy=0.8, obp=0.2, starved=0.0, actors=8),
-        "C": OpShares(busy=0.85, obp=0.0, starved=0.15, actors=6),
-        "D": OpShares(busy=0.7, obp=0.0, starved=0.3, actors=4),
+        "A": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=10),
+        "B": OpShareBreakdown(busy=0.8, obp=0.2, starved=0.0, actors=8),
+        "C": OpShareBreakdown(busy=0.85, obp=0.0, starved=0.15, actors=6),
+        "D": OpShareBreakdown(busy=0.7, obp=0.0, starved=0.3, actors=4),
     }
     snapshot = _analyze(shares, "A", "B", "C", "D")
 
@@ -137,9 +137,9 @@ def test_ramp_up_tie_is_below_the_severity_floor():
     vs 0.03), so ReadFiles had no outgoing arrow, but at severity 0.03 it is
     noise, not a bottleneck: only Predictor is named."""
     shares = {
-        "ReadFiles": OpShares(busy=0.99, obp=0.0, starved=0.0, actors=33),
-        "Preprocess": OpShares(busy=0.58, obp=0.38, starved=0.03, actors=31),
-        "Predictor": OpShares(busy=0.73, obp=0.0, starved=0.16, actors=7),
+        "ReadFiles": OpShareBreakdown(busy=0.99, obp=0.0, starved=0.0, actors=33),
+        "Preprocess": OpShareBreakdown(busy=0.58, obp=0.38, starved=0.03, actors=31),
+        "Predictor": OpShareBreakdown(busy=0.73, obp=0.0, starved=0.16, actors=7),
     }
     snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor")
 
@@ -151,9 +151,9 @@ def test_tie_side_that_waits_more_than_it_is_waited_on_is_dropped():
     """Within the arrow margin, but Write is starved (0.25) more than B is
     blocked on it (0.2): Write's severity is negative, so only B is named."""
     shares = {
-        "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=10),
-        "B": OpShares(busy=0.8, obp=0.2, starved=0.0, actors=8),
-        "Write": OpShares(busy=0.75, obp=0.0, starved=0.25, actors=27),
+        "A": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=10),
+        "B": OpShareBreakdown(busy=0.8, obp=0.2, starved=0.0, actors=8),
+        "Write": OpShareBreakdown(busy=0.75, obp=0.0, starved=0.25, actors=27),
     }
     snapshot = _analyze(shares, "A", "B", "Write")
 
@@ -165,7 +165,7 @@ def test_last_op_working_through_its_tail_is_not_a_bottleneck():
     """image_classification tail: every upstream op has completed and left
     the model, so nothing waits on Predictor (severity -0.05)."""
     shares = {
-        "Predictor": OpShares(busy=0.93, obp=0.0, starved=0.05, actors=10),
+        "Predictor": OpShareBreakdown(busy=0.93, obp=0.0, starved=0.05, actors=10),
     }
     snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor")
 
@@ -176,8 +176,8 @@ def test_sink_bottleneck_uses_only_its_upstream_edge():
     """A sink that limits the pipeline is found from its producer's output
     backpressure alone."""
     shares = {
-        "B": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=6),
-        "Write": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=3),
+        "B": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=6),
+        "Write": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=3),
     }
     snapshot = _analyze(shares, "B", "Write")
 
@@ -187,7 +187,7 @@ def test_sink_bottleneck_uses_only_its_upstream_edge():
 def test_ops_without_a_full_window_are_left_out():
     # Gen and Write have no shares yet: no edges, and with no measured
     # neighbour waiting on it, Labeled is not named either.
-    shares = {"Labeled": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2)}
+    shares = {"Labeled": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2)}
     snapshot = _analyze(shares, "Gen", "Labeled", "Write")
 
     assert snapshot.edges == ()
@@ -199,9 +199,11 @@ def test_sink_with_no_actors_is_named_not_its_blocked_producer():
     queued input is unstaffed time (one fully busy actor), and B, fully
     output-backpressured on it, points its arrow at it."""
     shares = {
-        "A": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=6),
-        "B": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=5),
-        "Write": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=0, unstaffed=1.0),
+        "A": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=6),
+        "B": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=5),
+        "Write": OpShareBreakdown(
+            busy=1.0, obp=0.0, starved=0.0, actors=0, unstaffed=1.0
+        ),
     }
     snapshot = _analyze(shares, "A", "B", "Write")
 
@@ -214,8 +216,8 @@ def test_op_blocked_on_an_unmodeled_consumer_is_not_a_bottleneck():
     """An op output-backpressured nearly all the time is waiting on something
     downstream, even when that consumer has no shares to draw an arrow to."""
     shares = {
-        "A": OpShares(busy=0.1, obp=0.9, starved=0.0, actors=4),
-        "B": OpShares(busy=0.05, obp=0.95, starved=0.0, actors=5),
+        "A": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=4),
+        "B": OpShareBreakdown(busy=0.05, obp=0.95, starved=0.0, actors=5),
     }
     snapshot = _analyze(shares, "A", "B", "Write")
 
@@ -236,9 +238,9 @@ def test_output_backpressure_is_attributed_by_what_the_consumer_was_doing(
     actors means more blocks in flight. Raw obp alone cannot tell these apart
     (video_object_detection: 1 GPU actor, Write starved 57%)."""
     shares = {
-        "A": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=7),
-        "B": OpShares(busy=0.2, obp=0.8, starved=0.0, actors=1),
-        "W": OpShares(
+        "A": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=7),
+        "B": OpShareBreakdown(busy=0.2, obp=0.8, starved=0.0, actors=1),
+        "W": OpShareBreakdown(
             busy=1.0 if consumer_saturated else 0.4,
             obp=0.0,
             starved=0.0 if consumer_saturated else 0.57,
@@ -328,15 +330,15 @@ def test_time_to_free(work, rate, expected):
 
 def test_circular_only_when_every_op_between_is_output_backpressured():
     shares = {
-        "R": OpShares(busy=0.0, obp=1.0, starved=0.0, actors=7),
-        "B": OpShares(busy=0.05, obp=0.95, starved=0.0, actors=2),
-        "W": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
+        "R": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=7),
+        "B": OpShareBreakdown(busy=0.05, obp=0.95, starved=0.0, actors=2),
+        "W": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2),
     }
     _, next_ops = _chain("R", "B", "W")
     assert is_circular("R", "W", shares, next_ops, ARROW_MARGIN)
     assert is_circular("B", "W", shares, next_ops, ARROW_MARGIN)  # adjacent
     assert not is_circular("W", "R", shares, next_ops, ARROW_MARGIN)  # upstream
-    flowing = dict(shares, B=OpShares(busy=0.7, obp=0.3, starved=0.0, actors=2))
+    flowing = dict(shares, B=OpShareBreakdown(busy=0.7, obp=0.3, starved=0.0, actors=2))
     assert not is_circular("R", "W", flowing, next_ops, ARROW_MARGIN)
 
 
@@ -365,9 +367,9 @@ def test_slack_scales_only_ops_on_the_recipients_path():
     (b'/b = 1.5) pushes 1.5x the flow through A; D carries the same flow as
     before, so it keeps factor 1."""
     shares = {
-        "A": OpShares(busy=0.5, obp=0.5, starved=0.0, actors=10),
-        "B": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
-        "D": OpShares(busy=0.5, obp=0.5, starved=0.0, actors=10),
+        "A": OpShareBreakdown(busy=0.5, obp=0.5, starved=0.0, actors=10),
+        "B": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2),
+        "D": OpShareBreakdown(busy=0.5, obp=0.5, starved=0.0, actors=10),
     }
     next_ops = {"A": ("B",), "B": (), "D": ()}
     by_op = slack_toward(shares, "B", 3, next_ops, SLACK_MARGIN)
@@ -397,9 +399,9 @@ def test_growth_target_follows_how_long_neighbours_wait(
     producer_blocked, consumer_starved, actors, expected
 ):
     shares = {
-        "A": OpShares(busy=0.0, obp=producer_blocked, starved=0.0, actors=10),
-        "B": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=actors),
-        "C": OpShares(busy=0.5, obp=0.0, starved=consumer_starved, actors=4),
+        "A": OpShareBreakdown(busy=0.0, obp=producer_blocked, starved=0.0, actors=10),
+        "B": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=actors),
+        "C": OpShareBreakdown(busy=0.5, obp=0.0, starved=consumer_starved, actors=4),
     }
     prev_ops, next_ops = _chain("A", "B", "C")
     edge_shares = {("A", "B"): EdgeShares(blocked=producer_blocked, self_limited=0.0)}
@@ -426,9 +428,11 @@ def test_growth_target_ignores_waits_passing_through_a_blocked_op(op_obp, expect
     """video_object_detection 2:22:16: resize_frame (4 actors, busy 0.04)
     between ReadVideo (blocked 0.95 on it) and the GPU op (starved 0.13)."""
     shares = {
-        "Read": OpShares(busy=0.05, obp=0.95, starved=0.0, actors=2),
-        "Resize": OpShares(busy=1.0 - op_obp, obp=op_obp, starved=0.0, actors=4),
-        "Gpu": OpShares(busy=0.48, obp=0.39, starved=0.13, actors=8),
+        "Read": OpShareBreakdown(busy=0.05, obp=0.95, starved=0.0, actors=2),
+        "Resize": OpShareBreakdown(
+            busy=1.0 - op_obp, obp=op_obp, starved=0.0, actors=4
+        ),
+        "Gpu": OpShareBreakdown(busy=0.48, obp=0.39, starved=0.13, actors=8),
     }
     prev_ops, next_ops = _chain("Read", "Resize", "Gpu")
     edge_shares = {("Read", "Resize"): EdgeShares(blocked=0.95, self_limited=0.0)}
@@ -548,7 +552,7 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
 
     step(5)
     snapshot = observer.snapshot()
-    shares = cast(Dict[Any, OpShares], snapshot.shares)
+    shares = cast(Dict[Any, OpShareBreakdown], snapshot.shares)
 
     # Consumer's idle actor has queued work: a dispatch gap, not starvation.
     assert shares[consumer].starved == 0.0
@@ -563,7 +567,8 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
     topology[consumer].queued = 0
     step(5)
     assert (
-        cast(Dict[Any, OpShares], observer.snapshot().shares)[consumer].starved == 0.5
+        cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)[consumer].starved
+        == 0.5
     )
 
     # The consumer loses every actor with input queued: it stays in the
@@ -572,7 +577,7 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
     consumer.serving, consumer.busy_slots = 0, 0.0
     step(5)
     snapshot = observer.snapshot()
-    shares = cast(Dict[Any, OpShares], snapshot.shares)
+    shares = cast(Dict[Any, OpShareBreakdown], snapshot.shares)
     assert shares[consumer].unstaffed == 1.0
     assert [op for op, _ in snapshot.bottlenecks] == [consumer]
     assert "unstaffed=1.00" in format_snapshot(snapshot, {producer: "P", consumer: "C"})
@@ -636,7 +641,7 @@ def test_short_tasks_between_samples_count_as_busy():
     upstream = _Op("P", serving=2, obp_actors=2)
     observer, _, step = _observer(upstream, op, queued=(0, 5))
     step(5)
-    shares = cast(Dict[Any, OpShares], observer.snapshot().shares)
+    shares = cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)
     assert shares[op].busy == pytest.approx(0.4)
 
 
@@ -839,10 +844,10 @@ def test_starved_time_is_reserve_except_toward_its_limiter():
     its own budget. Its starved time is not spare toward Write (W), only
     toward Read; ExtractImageFeatures (E), blocked by Write, keeps its slack."""
     shares = {
-        "R": OpShares(busy=0.04, obp=0.96, starved=0.0, actors=1),
-        "Z": OpShares(busy=0.16, obp=0.38, starved=0.45, actors=6),
-        "E": OpShares(busy=0.40, obp=0.60, starved=0.0, actors=4),
-        "W": OpShares(busy=0.97, obp=0.0, starved=0.02, actors=9),
+        "R": OpShareBreakdown(busy=0.04, obp=0.96, starved=0.0, actors=1),
+        "Z": OpShareBreakdown(busy=0.16, obp=0.38, starved=0.45, actors=6),
+        "E": OpShareBreakdown(busy=0.40, obp=0.60, starved=0.0, actors=4),
+        "W": OpShareBreakdown(busy=0.97, obp=0.0, starved=0.02, actors=9),
     }
     edges = [
         _edge("R", "Z", Arrow.UPSTREAM),
@@ -867,10 +872,10 @@ def test_self_limited_time_is_needed_not_spare():
     room). Toward Write (9 -> 12) it has no slack: halving its actors halves
     its budget, its actual limit. Read, only blocked, still donates."""
     shares = {
-        "R": OpShares(busy=0.03, obp=0.97, starved=0.0, actors=3),
-        "Z": OpShares(busy=0.18, obp=0.82, starved=0.0, actors=2),
-        "E": OpShares(busy=0.48, obp=0.43, starved=0.03, actors=5),
-        "W": OpShares(busy=0.97, obp=0.0, starved=0.03, actors=9),
+        "R": OpShareBreakdown(busy=0.03, obp=0.97, starved=0.0, actors=3),
+        "Z": OpShareBreakdown(busy=0.18, obp=0.82, starved=0.0, actors=2),
+        "E": OpShareBreakdown(busy=0.48, obp=0.43, starved=0.03, actors=5),
+        "W": OpShareBreakdown(busy=0.97, obp=0.0, starved=0.03, actors=9),
     }
     z_out = dataclasses.replace(
         _edge("Z", "E", Arrow.DOWNSTREAM), producer_self_limited=0.34
@@ -894,9 +899,9 @@ def test_starved_time_is_spare_when_the_producer_keeps_up():
     the downstream op is. X's idle time is spare toward the downstream
     recipient."""
     shares = {
-        "P": OpShares(busy=0.5, obp=0.3, starved=0.0, actors=4),
-        "X": OpShares(busy=0.2, obp=0.0, starved=0.4, actors=10),
-        "D": OpShares(busy=1.0, obp=0.0, starved=0.0, actors=2),
+        "P": OpShareBreakdown(busy=0.5, obp=0.3, starved=0.0, actors=4),
+        "X": OpShareBreakdown(busy=0.2, obp=0.0, starved=0.4, actors=10),
+        "D": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2),
     }
     next_ops = {"P": ("X",), "X": ("D",), "D": ()}
     edges = [_edge("P", "X", Arrow.TIE), _edge("X", "D", Arrow.DOWNSTREAM)]

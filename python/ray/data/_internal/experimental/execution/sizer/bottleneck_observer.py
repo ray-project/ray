@@ -90,7 +90,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501  # noqa: E501
-        ExperimentalActorPoolMapOperator,
+        ExperimentalActorPoolMapOperator as EAPMO,
         SlotUsage,
     )
     from ray.data._internal.experimental.execution.sizer.models import (
@@ -109,7 +109,7 @@ K = TypeVar("K", bound=Hashable)
 
 
 @dataclass(frozen=True)
-class OpShares:
+class OpShareBreakdown:
     """One operator's slot-time shares over the window, plus its current
     size (in actors)."""
 
@@ -154,7 +154,7 @@ class Edge(Generic[K]):
 
 @dataclass(frozen=True)
 class Snapshot(Generic[K]):
-    shares: Mapping[K, OpShares]
+    shares: Mapping[K, OpShareBreakdown]
     edges: Tuple[Edge[K], ...]
     # Bottlenecks, most severe first, with their severity.
     bottlenecks: Tuple[Tuple[K, float], ...]
@@ -250,7 +250,7 @@ def classify_edge(
 def edge_shares_of(
     producer: K,
     consumer: K,
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
 ) -> EdgeShares:
     """The edge's joint shares, or, without them, all of the producer's
@@ -263,7 +263,7 @@ def edge_shares_of(
 
 def blocked_share(
     op: K,
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     next_ops: Mapping[K, Sequence[K]],
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
 ) -> float:
@@ -277,7 +277,7 @@ def blocked_share(
 
 
 def build_edges(
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     next_ops: Mapping[K, Sequence[K]],
     margin: float,
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
@@ -306,7 +306,7 @@ def build_edges(
 
 
 def find_bottlenecks(
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     edges: Sequence[Edge[K]],
     margin: float,
     next_ops: Mapping[K, Sequence[K]],
@@ -335,7 +335,7 @@ def find_bottlenecks(
 
 def growth_target(
     op: K,
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     prev_ops: Mapping[K, Sequence[K]],
     next_ops: Mapping[K, Sequence[K]],
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
@@ -373,7 +373,7 @@ def growth_target(
 
 def severity(
     op: K,
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     prev_ops: Mapping[K, Sequence[K]],
     next_ops: Mapping[K, Sequence[K]],
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
@@ -443,7 +443,7 @@ def self_limited_by_op(edges: Sequence[Edge[K]]) -> Dict[K, float]:
 
 def needed_busy(
     op: K,
-    op_shares: OpShares,
+    op_shares: OpShareBreakdown,
     recipient: Optional[K],
     limiters: Mapping[K, FrozenSet[K]],
     self_limited: Mapping[K, float],
@@ -462,7 +462,7 @@ def needed_busy(
 
 
 def slack_toward(
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     recipient: Optional[K],
     b_prime: int,
     next_ops: Mapping[K, Sequence[K]],
@@ -521,7 +521,7 @@ def path_between(
 def is_circular(
     donor: K,
     recipient: K,
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     next_ops: Mapping[K, Sequence[K]],
     margin: float,
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
@@ -547,7 +547,7 @@ def time_to_free(work_blocks: float, consume_rate: float) -> float:
 
 
 def analyze(
-    shares: Mapping[K, OpShares],
+    shares: Mapping[K, OpShareBreakdown],
     prev_ops: Mapping[K, Sequence[K]],
     next_ops: Mapping[K, Sequence[K]],
     *,
@@ -645,7 +645,7 @@ class ShareWindow:
         while self._samples and self._span_s - self._samples[0][0] >= self._window_s:
             self._span_s -= self._samples.popleft()[0]
 
-    def shares(self) -> Optional[OpShares]:
+    def shares(self) -> Optional[OpShareBreakdown]:
         """None until a full window has been seen, or if the op had neither a
         serving actor nor queued input in it."""
         if self._span_s < self._window_s:
@@ -654,7 +654,7 @@ class ShareWindow:
         slot_s, busy_s, obp_s, starved_s, unstaffed_s = totals
         if slot_s <= 0:
             return None
-        return OpShares(
+        return OpShareBreakdown(
             busy=busy_s / slot_s,
             obp=obp_s / slot_s,
             starved=starved_s / slot_s,
@@ -774,22 +774,18 @@ class BottleneckObserver:
         self._arrow_margin = arrow_margin
         self._slack_margin = slack_margin
         self._min_severity = min_severity
-        self._stability: StableBottlenecks[
-            "ExperimentalActorPoolMapOperator"
-        ] = StableBottlenecks(window_s)
-        self._windows: Dict["ExperimentalActorPoolMapOperator", ShareWindow] = {}
+        self._stability: StableBottlenecks["EAPMO"] = StableBottlenecks(window_s)
+        self._windows: Dict["EAPMO", ShareWindow] = {}
         self._edge_windows: Dict[
-            Tuple[
-                "ExperimentalActorPoolMapOperator", "ExperimentalActorPoolMapOperator"
-            ],
+            Tuple["EAPMO", "EAPMO"],
             EdgeWindow,
         ] = {}
         # Last read of each op's cumulative busy-slot seconds.
-        self._last_busy_s: Dict["ExperimentalActorPoolMapOperator", float] = {}
+        self._last_busy_s: Dict["EAPMO", float] = {}
         # Input blocks each op's tasks finished, and output blocks taken from
         # each op: what clears a producer's outputs, for time-to-free.
-        self._processed: Dict["ExperimentalActorPoolMapOperator", _CounterRate] = {}
-        self._taken: Dict["ExperimentalActorPoolMapOperator", _CounterRate] = {}
+        self._processed: Dict["EAPMO", _CounterRate] = {}
+        self._taken: Dict["EAPMO", _CounterRate] = {}
         self._last_t: Optional[float] = None
         self._names = _display_names(profiles.actor_pool_ops)
 
@@ -797,8 +793,8 @@ class BottleneckObserver:
         now = self._clock()
         dt = 0.0 if self._last_t is None else now - self._last_t
         self._last_t = now
-        usages: Dict["ExperimentalActorPoolMapOperator", "SlotUsage"] = {}
-        queued: Dict["ExperimentalActorPoolMapOperator", int] = {}
+        usages: Dict["EAPMO", "SlotUsage"] = {}
+        queued: Dict["EAPMO", int] = {}
         for op in self._profiles.actor_pool_ops:
             if op.has_completed():
                 for per_op in (self._windows, self._last_busy_s):
@@ -842,7 +838,7 @@ class BottleneckObserver:
 
     def _record_op(
         self,
-        op: "ExperimentalActorPoolMapOperator",
+        op: "EAPMO",
         usage: "SlotUsage",
         queued: int,
         dt: float,
@@ -883,18 +879,13 @@ class BottleneckObserver:
         ):
             rates.setdefault(op, _CounterRate(self._window_s)).record(now, value)
 
-    def snapshot(self) -> Snapshot["ExperimentalActorPoolMapOperator"]:
-        shares: Dict["ExperimentalActorPoolMapOperator", OpShares] = {}
+    def snapshot(self) -> Snapshot["EAPMO"]:
+        shares: Dict["EAPMO", OpShareBreakdown] = {}
         for op, window in self._windows.items():
             op_shares = window.shares()
             if op_shares is not None:
                 shares[op] = op_shares
-        edge_shares: Dict[
-            Tuple[
-                "ExperimentalActorPoolMapOperator", "ExperimentalActorPoolMapOperator"
-            ],
-            EdgeShares,
-        ] = {}
+        edge_shares: Dict[Tuple["EAPMO", "EAPMO"], EdgeShares] = {}
         for edge, window in self._edge_windows.items():
             joint = window.shares()
             if joint is not None:
@@ -911,11 +902,11 @@ class BottleneckObserver:
 
     def assess(
         self,
-        snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
+        snapshot: Snapshot["EAPMO"],
         capacity: "ClusterStateSnapshot",
-        stable: AbstractSet["ExperimentalActorPoolMapOperator"],
+        stable: AbstractSet["EAPMO"],
         held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
-    ) -> Assessment["ExperimentalActorPoolMapOperator"]:
+    ) -> Assessment["EAPMO"]:
         """Eligibility of each bottleneck and stable bottleneck, and the
         victims a transfer to the most severe stable one that can grow would
         draw from.
@@ -969,7 +960,7 @@ class BottleneckObserver:
             ),
             None,
         )
-        victims: Dict["ExperimentalActorPoolMapOperator", DonorVictims] = {}
+        victims: Dict["EAPMO", DonorVictims] = {}
         if recipient is not None and recipient in capacity.schedulable_nodes_by_op:
             nodes = capacity.schedulable_nodes_by_op[recipient]
             for donor in self._profiles.non_pg_ops:
@@ -992,7 +983,7 @@ class BottleneckObserver:
         self,
         capacity: "ClusterStateSnapshot",
         *,
-        exclude: AbstractSet["ExperimentalActorPoolMapOperator"],
+        exclude: AbstractSet["EAPMO"],
     ) -> Dict[NodeIdStr, ExecutionResources]:
         """Per node, what every serving actor of a non-PG op outside
         ``exclude`` holds: the most victims there could free."""
@@ -1015,8 +1006,8 @@ class BottleneckObserver:
 
     def _growth_blocker(
         self,
-        op: "ExperimentalActorPoolMapOperator",
-        snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
+        op: "EAPMO",
+        snapshot: Snapshot["EAPMO"],
     ) -> Optional[str]:
         """Why ``op`` could not use more actors this tick, or None."""
         named = dict(snapshot.bottlenecks)
@@ -1037,12 +1028,12 @@ class BottleneckObserver:
                 )
         return None
 
-    def _name(self, op: "ExperimentalActorPoolMapOperator") -> str:
+    def _name(self, op: "EAPMO") -> str:
         return self._names.get(op, getattr(op, "name", str(op)))
 
     def _eligibility(
         self,
-        op: "ExperimentalActorPoolMapOperator",
+        op: "EAPMO",
         capacity: "ClusterStateSnapshot",
         free_by_node: Mapping[NodeIdStr, ExecutionResources],
         freeable: Mapping[NodeIdStr, ExecutionResources],
@@ -1082,9 +1073,7 @@ class BottleneckObserver:
         return f"no: short {_format_resources(best or {})} after all victims"
 
     @staticmethod
-    def _pg_eligibility(
-        op: "ExperimentalActorPoolMapOperator", capacity: "ClusterStateSnapshot"
-    ) -> str:
+    def _pg_eligibility(op: "EAPMO", capacity: "ClusterStateSnapshot") -> str:
         """A PG-managed op grows only into its own placement group: other
         ops' actors hold none of its bundles, so it never takes victims."""
         bundles = capacity.schedulable_bundles_by_op.get(op)
@@ -1099,7 +1088,7 @@ class BottleneckObserver:
             )
         return PG_ELIGIBLE if room else "no: placement group full"
 
-    def _consume_rate(self, donor: "ExperimentalActorPoolMapOperator") -> float:
+    def _consume_rate(self, donor: "EAPMO") -> float:
         """Blocks/s that clear ``donor``'s outputs: its actor-pool consumers'
         finished input blocks, or, with none, the blocks taken from it."""
         consumers = self._profiles.next_ops.get(donor, ())
@@ -1112,10 +1101,10 @@ class BottleneckObserver:
 
     def _donor_victims(
         self,
-        donor: "ExperimentalActorPoolMapOperator",
-        recipient: "ExperimentalActorPoolMapOperator",
+        donor: "EAPMO",
+        recipient: "EAPMO",
         nodes: AbstractSet[NodeIdStr],
-        snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
+        snapshot: Snapshot["EAPMO"],
     ) -> Optional[DonorVictims]:
         """Time-to-free of ``donor``'s non-draining actors on ``nodes``.
 
@@ -1147,7 +1136,7 @@ class BottleneckObserver:
 
     def victim_ttf(
         self,
-        donor: "ExperimentalActorPoolMapOperator",
+        donor: "EAPMO",
         tasks_in_flight: int,
         unconsumed_outputs: int,
     ) -> float:
@@ -1174,9 +1163,10 @@ class BottleneckObserver:
 
     def tick(
         self,
+        *,
         capacity: "ClusterStateSnapshot",
         held_by_node: Optional[Mapping[NodeIdStr, ExecutionResources]] = None,
-    ) -> BottleneckTick["ExperimentalActorPoolMapOperator"]:
+    ) -> BottleneckTick["EAPMO"]:
         """This tick's model: snapshot, stable bottlenecks (advancing their
         persistence) and assessment. Call once per sizer tick;
         ``held_by_node`` is capacity open transfers hold for their recipients."""
@@ -1210,9 +1200,7 @@ class BottleneckObserver:
             ),
         )
 
-    def log_tick(
-        self, tick: BottleneckTick["ExperimentalActorPoolMapOperator"]
-    ) -> None:
+    def log_tick(self, tick: BottleneckTick["EAPMO"]) -> None:
         logger.debug(
             "BottleneckObserver: %s",
             format_snapshot(tick.snapshot, self._names, tick.assessment),
@@ -1257,7 +1245,7 @@ def _format_seconds(seconds: float) -> str:
 
 
 def _display_names(
-    ops: Sequence["ExperimentalActorPoolMapOperator"],
+    ops: Sequence["EAPMO"],
 ) -> Dict[Hashable, str]:
     """Op name, or name plus id when two ops share a name (e.g. two Projects)."""
     counts: Dict[str, int] = {}

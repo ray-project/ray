@@ -59,8 +59,7 @@ from ray.data._internal.experimental.execution.sizer.policy.decision import (
     HOLD_CLUSTER_SETTLING,
     HOLD_NO_MODEL,
     HOLD_WARMUP,
-    classify,
-    classify_phase,
+    classify_decision,
 )
 from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (  # noqa: E501
     SizingPolicy,
@@ -265,7 +264,15 @@ def _ctx(**overrides) -> DecisionContext:
     base.setdefault("actor_pool_ops", list(base["non_pg_ops"]))
     ops = set(base["actor_pool_ops"]) | set(base["non_pg_ops"])
     base.setdefault("schedulable_nodes", {op: frozenset(base["free"]) for op in ops})
-    base.setdefault("next_ops", {op: tuple(op.output_dependencies) for op in ops})
+    next_ops = base.pop("next_ops", {op: tuple(op.output_dependencies) for op in ops})
+    base["apmo_profiles"] = cast(
+        Any,
+        SimpleNamespace(
+            actor_pool_ops=base.pop("actor_pool_ops"),
+            non_pg_ops=base.pop("non_pg_ops"),
+            next_ops=next_ops,
+        ),
+    )
     base["capacity"] = ConstraintAwareCapacityLedger(
         ClusterStateSnapshot(
             schedulable_nodes_by_op=base["schedulable_nodes"],
@@ -417,19 +424,6 @@ def _apply_bottleneck(policy, tick, ops, *, free_cpu=0.0, settle=999.0):
 # --- phase and decision classification -----------------------------------------
 
 
-@pytest.mark.parametrize(
-    "warmup, unmodeled, expected",
-    [
-        (True, {"op"}, SizerPhase.WARMUP),
-        (True, set(), SizerPhase.WARMUP),
-        (False, {"op"}, SizerPhase.MODEL_WARMING),
-        (False, set(), SizerPhase.STEADY),
-    ],
-)
-def test_classify_phase(warmup, unmodeled, expected):
-    assert classify_phase(warmup, unmodeled) is expected
-
-
 def _classify(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY):
     ctx = _ctx(
         free={"node": ExecutionResources(cpu=free_cpu)},
@@ -438,7 +432,7 @@ def _classify(tick, ops, *, free_cpu=0.0, settle=999.0, phase=SizerPhase.STEADY)
         seconds_since_allocation_change=settle,
         phase=phase,
     )
-    return classify(ctx, _statuses())
+    return classify_decision(ctx, _statuses())
 
 
 def test_classify_holds_in_warmup_and_without_a_model():
@@ -499,7 +493,7 @@ def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
     ctx = _ctx(
         free={"node": ExecutionResources(cpu=3)}, non_pg_ops=[write], bottleneck=tick
     )
-    assert classify(ctx, statuses).kind is not DecisionKind.GROW_FREE
+    assert classify_decision(ctx, statuses).kind is not DecisionKind.GROW_FREE
 
 
 # --- OpStatusMachine ------------------------------------------------------------
@@ -510,7 +504,7 @@ def test_status_holds_an_op_until_its_first_input_then_releases_it_for_a_tick():
     write.pending_first_input = True
     statuses = _statuses(write)
     assert statuses.status(write) == Held(reserved=0)  # initial status
-    assert not statuses.can_scale(write)
+    assert not statuses.is_active(write)
     assert not statuses.can_size_per_op(write)  # stays at zero actors
 
     statuses.set_reserved(write, 4)
@@ -524,11 +518,11 @@ def test_status_holds_an_op_until_its_first_input_then_releases_it_for_a_tick():
     statuses.on_tick()
     assert statuses.status(write) == Released(grow_to=4)
     assert statuses.can_size_per_op(write)
-    assert not statuses.can_scale(write)
+    assert not statuses.is_active(write)
 
     statuses.on_tick()
     assert statuses.kind(write) is OpStatusKind.ACTIVE
-    assert statuses.can_scale(write)
+    assert statuses.is_active(write)
 
 
 def test_status_transfer_statuses_block_scaling_until_activated():
@@ -540,10 +534,10 @@ def test_status_transfer_statuses_block_scaling_until_activated():
     assert statuses.status(donor) == Donating(recipient)
     assert statuses.reason(donor) == "donating (to recipient)"
     assert statuses.ops_in(OpStatusKind.DONATING) == {donor}
-    assert not statuses.can_scale(recipient) and not statuses.can_scale(donor)
+    assert not statuses.is_active(recipient) and not statuses.is_active(donor)
 
     statuses.activate(recipient)
-    assert statuses.can_scale(recipient)
+    assert statuses.is_active(recipient)
     assert statuses.reason(recipient) is None
 
 
@@ -556,7 +550,7 @@ def test_status_cooldown_counts_scheduling_steps():
         statuses.on_step()
         assert statuses.status(donor) == Cooling(left)
     statuses.on_step()
-    assert statuses.can_scale(donor)
+    assert statuses.is_active(donor)
 
 
 def test_status_completed_is_derived_and_a_reopened_op_resumes_active():
@@ -805,13 +799,13 @@ def test_donor_cools_down_after_a_transfer_closes():
     # Recipient has no pendings -> lands; the donor starts cooling down.
     book.advance(_ctx(now=1000.0))
     assert not book.state.in_flight
-    assert statuses.can_scale(recipient)
+    assert statuses.is_active(recipient)
     assert statuses.kind(donor) is OpStatusKind.COOLING
 
     statuses.on_step()
-    assert not statuses.can_scale(donor)
+    assert not statuses.is_active(donor)
     statuses.on_step()
-    assert statuses.can_scale(donor)
+    assert statuses.is_active(donor)
 
 
 def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
@@ -847,7 +841,7 @@ def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
     book.advance(_ctx(now=1000.0))
     assert statuses.kind(donor) is OpStatusKind.COOLING
     statuses.on_step()
-    assert statuses.can_scale(donor)
+    assert statuses.is_active(donor)
 
 
 @pytest.mark.parametrize(
@@ -1627,7 +1621,7 @@ def test_bottleneck_free_share_excludes_noncompeting_ops(excluded):
     elif excluded == "other-node":
         ctx.schedulable_nodes[peer] = frozenset({"other"})
     else:
-        ctx.non_pg_ops = [recipient]
+        ctx.apmo_profiles.non_pg_ops = (recipient,)
     assert growth.free_growth_share(recipient, ctx) == 12
 
 

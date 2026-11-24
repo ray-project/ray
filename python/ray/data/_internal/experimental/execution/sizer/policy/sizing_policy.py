@@ -77,7 +77,7 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
 )
 from ray.data._internal.experimental.execution.sizer.policy.decision import (
     HOLD_CLUSTER_SETTLING,
-    classify,
+    classify_decision,
     why_cannot_grow,
 )
 from ray.data._internal.experimental.execution.sizer.policy.growth import (
@@ -161,32 +161,24 @@ def max_step_size(b: int, max_size: int) -> int:
 OpDecisions = Dict["ExperimentalActorPoolMapOperator", OpDecision]
 
 
-def _add(
-    decisions: OpDecisions, rule: OpRule, requests: List[PlacedSizingRequest]
+def _update_decision_with_requests(
+    *, curr_decision: OpDecisions, rule: OpRule, requests: List[PlacedSizingRequest]
 ) -> OpDecisions:
-    """Add each placed request to its op's decision under ``rule``. An op
-    already decided this tick keeps its rule and gets the request appended,
-    in order. Returns ``decisions``."""
+    """Add each placed request to its op's decision under ``rule``, in
+    order. An op can get several requests (a donor that sheds on several
+    nodes gets one per node); they all share ``rule``. Returns
+    ``curr_decision``."""
     for request in requests:
         for op, req in request.request.items():
-            prev = decisions.get(op)
+            prev = curr_decision.get(op)
             if prev is None:
-                decisions[op] = OpDecision(rule, placed=(req,))
-            else:
-                decisions[op] = OpDecision(prev.rule, placed=(*prev.placed, req))
-    return decisions
-
-
-def _merge(decisions: OpDecisions, more: OpDecisions) -> None:
-    """Add ``more`` into ``decisions``. An op in both keeps its first rule and
-    gets the later requests appended, in order."""
-    for op, decision in more.items():
-        prev = decisions.get(op)
-        decisions[op] = (
-            decision
-            if prev is None
-            else OpDecision(prev.rule, placed=(*prev.placed, *decision.placed))
-        )
+                curr_decision[op] = OpDecision(rule, placed=(req,))
+                continue
+            assert (
+                prev.rule is rule
+            ), f"{op.name} already has rule {prev.rule}, not {rule}"
+            curr_decision[op] = OpDecision(rule, placed=(*prev.placed, req))
+    return curr_decision
 
 
 def _within_capacity(
@@ -233,7 +225,7 @@ class SizingPolicy:
         self.last_decision: Optional[Decision] = None
         self._placement = placement
         self._statuses = statuses
-        self._book = TransferBook(self.name, metrics, placement, statuses)
+        self._transfer_book = TransferBook(self.name, metrics, placement, statuses)
         # Per donor: consecutive ticks it has had surplus toward the recipient.
         self._surplus_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
         # Per op: consecutive ticks it has been blocked with surplus while
@@ -253,15 +245,14 @@ class SizingPolicy:
 
     @property
     def transfers(self) -> TransferBook:
-        return self._book
+        return self._transfer_book
 
     @property
     def transfer_phase(self) -> TransferPhase:
-        return self._book.phase
+        return self._transfer_book.phase
 
     def held_capacity_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
-        """Capacity open transfers hold for their recipients' owed actors."""
-        return self._book.held_capacity_by_node()
+        return self._transfer_book.held_capacity_by_node()
 
     def decide(self, ctx: DecisionContext) -> OpDecisions:
         """One tick: one ``OpDecision`` per op.
@@ -279,25 +270,39 @@ class SizingPolicy:
         Every step checks and spends capacity in ``ctx.capacity``, so a
         later step never hands out capacity an earlier one took.
         """
-        self._book.advance(ctx)
-        # Open transfers place first, into the capacity ``advance`` held.
-        decisions = _add({}, OpRule.FUND, self._book.bring_up_held_actors())
+        # 1. Make progress on open transfer (downscaling donors, upscaling recipients)
+        self._transfer_book.advance(ctx)
+        op_decisions = _update_decision_with_requests(
+            curr_decision={},
+            rule=OpRule.FUND,
+            requests=self._transfer_book.bring_up_held_actors(),
+        )
 
-        decision = classify(ctx, self._statuses)
+        # 2. Given the current state of the pipeline, classify the best
+        # decision to make.
+        decision = classify_decision(ctx, self._statuses)
         self.last_decision = decision
         logger.debug(
             "SizingPolicy: phase=%s transfer=%s decision=%s%s (%s)",
             ctx.phase.value,
-            self._book.phase.value,
+            self._transfer_book.phase.value,
             decision.kind.value,
             "".join(f" {op.name}->{target}" for op, target in decision.targets.items()),
             decision.reason,
         )
-        _merge(decisions, self._handlers[decision.kind](decision, ctx))
+
+        # The open transfers only fund ``Receiving`` ops and every handler
+        # only resizes ``Active`` ones, so the two never share an op.
+        for op, op_decision in self._handlers[decision.kind](decision, ctx).items():
+            assert op not in op_decisions, (
+                f"{op.name} decided twice: {op_decisions[op].rule} and "
+                f"{op_decision.rule}"
+            )
+            op_decisions[op] = op_decision
 
         if ctx.snapshot is not None:
             for op in ctx.snapshot.ordered_ops:
-                if op in decisions and not op.has_completed():
+                if op in op_decisions and not op.has_completed():
                     continue
                 wanted = self.per_op.decide(
                     op,
@@ -307,8 +312,8 @@ class SizingPolicy:
                     snapshot=ctx.snapshot,
                     op_state=ctx.topology[op],
                 )
-                decisions[op] = _within_capacity(op, wanted, ctx)
-        return decisions
+                op_decisions[op] = _within_capacity(op, wanted, ctx)
+        return op_decisions
 
     # --- decision handlers ----------------------------------------------------
 
@@ -318,10 +323,18 @@ class SizingPolicy:
         return {}
 
     def _grow_free(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
-        return _add({}, OpRule.GROW_FREE, self._grow_each(decision, ctx))
+        return _update_decision_with_requests(
+            curr_decision={},
+            rule=OpRule.GROW_FREE,
+            requests=self._grow_each(decision, ctx),
+        )
 
     def _grow_balanced(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
-        return _add({}, OpRule.GROW_BALANCED, self._grow_each(decision, ctx))
+        return _update_decision_with_requests(
+            curr_decision={},
+            rule=OpRule.GROW_BALANCED,
+            requests=self._grow_each(decision, ctx),
+        )
 
     def _grow_each(
         self, decision: Decision, ctx: DecisionContext
@@ -350,19 +363,25 @@ class SizingPolicy:
         self._blocked_streak.clear()
         requests: List[PlacedSizingRequest] = []
         if (
-            self._book.phase is TransferPhase.IDLE
+            self._transfer_book.phase is TransferPhase.IDLE
             and why_cannot_grow(recipient, self._statuses) is None
         ):
             # One transfer at a time: let the window refill before the next.
             requests.extend(self._transfer_to(recipient, tick, ctx))
         requests.extend(self._shrink_toward_keep(recipient, tick, ctx))
-        return _add({}, OpRule.DONATE, requests)
+        return _update_decision_with_requests(
+            curr_decision={}, rule=OpRule.DONATE, requests=requests
+        )
 
     def _shrink_surplus(self, decision: Decision, ctx: DecisionContext) -> OpDecisions:
         tick = ctx.bottleneck
         assert tick is not None
         self._surplus_streak.clear()
-        return _add({}, OpRule.SHRINK_SURPLUS, self._shrink_blocked_surplus(tick, ctx))
+        return _update_decision_with_requests(
+            curr_decision={},
+            rule=OpRule.SHRINK_SURPLUS,
+            requests=self._shrink_blocked_surplus(tick, ctx),
+        )
 
     def _transfer_to(
         self,
@@ -370,7 +389,7 @@ class SizingPolicy:
         tick: "BottleneckTick",
         ctx: DecisionContext,
     ) -> List[PlacedSizingRequest]:
-        nodes = self._book.transfer_nodes(recipient, ctx)
+        nodes = self._transfer_book.transfer_nodes(recipient, ctx)
         if not nodes:
             return []
         pool = recipient.actor_pool
@@ -424,7 +443,7 @@ class SizingPolicy:
                     donors.append(dataclasses.replace(donor, removable=removable))
             if not donors:
                 break
-            plan, _ = self._book.plan(
+            plan, _ = self._transfer_book.plan(
                 recipient, b_prime - b, nodes, donors, ctx, victim_key=victim_key
             )
             placed = sum(p.num_recipient_actors for p in plan or ())
@@ -454,7 +473,9 @@ class SizingPolicy:
             f"{op.name} x{count} (slack {donors_by_op[op].removable})"
             for op, count in _victims_by_donor(plan).items()
         )
-        fired = self._book.fire(recipient, plan, donors_by_op, ctx, timeout_s=timeout_s)
+        fired = self._transfer_book.fire(
+            recipient, plan, donors_by_op, ctx, timeout_s=timeout_s
+        )
         if not fired:
             logger.debug(
                 "SizingPolicy: bottleneck %s %d -> %d not fired: it would "
@@ -584,13 +605,13 @@ class SizingPolicy:
         named = {op for op, _ in tick.snapshot.bottlenecks} | set(tick.stable)
         requests: List[PlacedSizingRequest] = []
         seen = set()
-        for op in ctx.non_pg_ops:
+        for op in ctx.apmo_profiles.non_pg_ops:
             shares = tick.snapshot.shares.get(op)
             if (
                 shares is None
                 or op in named
                 or op.has_completed()
-                or not self._statuses.can_scale(op)
+                or not self._statuses.is_active(op)
                 or blocked_by_op.get(op, 0.0) < _BLOCKED_SHARE_MIN
             ):
                 continue
@@ -657,7 +678,7 @@ class SizingPolicy:
     ) -> Optional[Tuple["ExperimentalActorPoolMapOperator", float]]:
         """An op ``op`` feeds that starves at least ``_CONSUMER_STARVED_MAX``
         of the time, with its starved share, or None."""
-        for consumer in ctx.next_ops.get(op, ()):
+        for consumer in ctx.apmo_profiles.next_ops.get(op, ()):
             shares = tick.snapshot.shares.get(consumer)
             if shares is not None and shares.starved >= _CONSUMER_STARVED_MAX:
                 return consumer, shares.starved
@@ -725,13 +746,13 @@ class SizingPolicy:
         was a bottleneck within the last window), and ACTIVE. Their
         removable count is set per b' from slack."""
         donors: List[DonorCapacity] = []
-        for op in ctx.non_pg_ops:
+        for op in ctx.apmo_profiles.non_pg_ops:
             if (
                 op is recipient
                 or op in tick.stable
                 or op not in tick.snapshot.shares
                 or op.has_completed()
-                or not self._statuses.can_scale(op)
+                or not self._statuses.is_active(op)
             ):
                 continue
             donors.append(

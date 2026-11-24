@@ -67,9 +67,6 @@ from ray.data._internal.experimental.execution.sizer.operator_ordering import (
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
-from ray.data._internal.experimental.execution.sizer.policy.decision import (
-    classify_phase,
-)
 from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (
     SizingPolicy,
 )
@@ -104,7 +101,7 @@ class OperatorSizer:
 
     A state machine, evaluated once per sizing tick:
 
-    - ``SizerPhase`` (``classify_phase``): WARMUP until every op has received
+    - ``SizerPhase`` (``_advance_phase``): WARMUP until every op has received
       input and every critical op has produced output, MODEL_WARMING until
       the bottleneck model has seen a full window of every unfinished op,
       then STEADY.
@@ -160,8 +157,10 @@ class OperatorSizer:
         self._consecutive_empty_reservations = 0
         self._placement: ActorPlacementStrategy = LocalityBasedActorPlacement()
 
+        # these are the ops that are currently modeled by the bottleneck observer
+        # eventually all ops are, but in the beginning the observer needs
+        # to gather data before classifying as bottleneck or not
         self._modeled_ops: Set[ExperimentalActorPoolMapOperator] = set()
-        self._bottleneck: Optional[BottleneckTick] = None
         self._decision: Optional[Decision] = None
         self._telemetry = SizerTelemetry(dataset_id)
 
@@ -274,32 +273,37 @@ class OperatorSizer:
     ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PlacedRequests]:
         """Hold room for held ops, run the bottleneck model, advance the
         phase, then how many, where, apply."""
-        self._prepare_tick(snapshot)
-        decisions = self._per_op_how_many(snapshot)
+        bottleneck_tick = self._prepare_tick(snapshot)
+        decisions = self._per_op_how_many(
+            snapshot=snapshot, bottleneck_tick=bottleneck_tick
+        )
         where = self._per_op_where(decisions, snapshot)
         self._apply(where)
         return decisions, where
 
     @timed("prepare")
-    def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> None:
+    def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> BottleneckTick | None:
         """Advance the op statuses, take held ops' room out of the snapshot,
         run the bottleneck model on what is left, and move the phase
         forward."""
         self._statuses.on_tick()
-        self._hold_for_held_ops(snapshot)
-        # The bottleneck model, once per tick, before any decision debits
-        # free capacity: the policy acts on it and the log line shows it.
-        self._bottleneck = self._bottleneck_observer.tick(
-            snapshot, self._policy.held_capacity_by_node()
+        self._exclude_held_ops_from_free_capacity(snapshot)
+        bottleneck_tick = self._bottleneck_observer.tick(
+            capacity=snapshot,
+            held_by_node=self._policy.held_capacity_by_node(),
         )
-        self._bottleneck_observer.log_tick(self._bottleneck)
-        self._advance_phase()
+        self._bottleneck_observer.log_tick(bottleneck_tick)
+        self._advance_phase(bottleneck_tick=bottleneck_tick)
+        return bottleneck_tick
 
     @timed("how_many")
     def _per_op_how_many(
-        self, snapshot: ClusterStateSnapshot
+        self,
+        *,
+        snapshot: ClusterStateSnapshot,
+        bottleneck_tick: Optional[BottleneckTick],
     ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
-        """Step 1: pick one action per op (``SizingPolicy.decide``).
+        """Step 1: pick one action/decision per op.
 
         Each decision is either a count (``request``) or requests that
         already name their nodes (``placed``): a decision whose outcome
@@ -307,12 +311,17 @@ class OperatorSizer:
         action checks and spends capacity in the tick's ledger, in the tick's
         op order. That is also WHERE's placement order, so step 2 can place
         every count.
-
-        Capacity this tick's downscales will free is not credited: a running
-        victim holds its resources until it is dead, so the ledger sees it on
-        a later tick.
         """
-        decisions = self._policy.decide(self._decision_context(snapshot))
+        decision_ctx = DecisionContext.from_snapshot(
+            snapshot,
+            topology=self._topology,
+            phase=self.phase,
+            apmo_profiles=self._profiles,
+            now=self._clock(),
+            bottleneck=bottleneck_tick,
+            modeled_ops=frozenset(self._modeled_ops),
+        )
+        decisions = self._policy.decide(decision_ctx)
         self._decision = self._policy.last_decision
         self._telemetry.log_decisions(
             self.phase,
@@ -428,41 +437,39 @@ class OperatorSizer:
 
     # --- phase ------------------------------------------------------------------
 
-    def _advance_phase(self) -> None:
+    def _advance_phase(self, bottleneck_tick: BottleneckTick | None):
         """Fold this tick's model into the ops it has seen, and move the
         phase forward. WARMUP is left for good once ``_warmup_complete``."""
-        if self._bottleneck is not None:
-            self._modeled_ops.update(self._bottleneck.snapshot.shares)
+        if bottleneck_tick is not None:
+            self._modeled_ops.update(bottleneck_tick.snapshot.shares)
         unmodeled = {
             op
             for op in self._profiles.actor_pool_ops
             if op not in self._modeled_ops and not op.has_completed()
         }
-        in_warmup = self.phase is SizerPhase.WARMUP and not self._warmup_complete(
-            self._clock()
-        )
-        phase = classify_phase(in_warmup, unmodeled)
+        in_warmup = self.phase is SizerPhase.WARMUP and not self._warmup_complete()
+        if in_warmup:
+            phase = SizerPhase.WARMUP
+        elif unmodeled:
+            phase = SizerPhase.MODEL_WARMING
+        else:
+            phase = SizerPhase.STEADY
+
         if phase is not self.phase:
             logger.info("OperatorSizer: phase %s -> %s", self.phase.value, phase.value)
             self.phase = phase
 
-    def _warmup_complete(self, now: float) -> bool:
+    def _warmup_complete(self) -> bool:
         """Whether WARMUP ends this tick: every actor-pool op has received its
         first input and every critical op has produced its first output, so
         the pipeline is flowing end to end and feedback beats feedforward
         from here on.
 
-        Every op starts no actors until its first input (see
-        ``OpStatusKind.AWAITING_FIRST_INPUT``), so waiting for all of them keeps
-        an op that has not started yet under the warmup equal share: the
-        bottleneck policy never sizes its neighbors while it still has no
-        actors.
-
         An op that finished without input or output (an empty branch of a
-        union) does not hold warmup open. Nor does one that gets neither
-        within the warmup timeout: leaving warmup early only hands sizing to
-        the bottleneck policy, which can still move capacity to it.
+        union) does get stuck in warmup, because we enforce a timeout. After
+        leaving warmup, more flexible op scaling decisions can be made.
         """
+        now = self._clock()
         if self._warmup_started_t is None:
             self._warmup_started_t = now
         waiting_on = [op for op in self._critical_ops if not has_produced_output(op)]
@@ -490,7 +497,9 @@ class OperatorSizer:
         )
         return True
 
-    def _hold_for_held_ops(self, snapshot: ClusterStateSnapshot) -> None:
+    def _exclude_held_ops_from_free_capacity(
+        self, snapshot: ClusterStateSnapshot
+    ) -> None:
         """Take each held op's room out of ``snapshot.free_by_node``, and
         record it on its ``Held`` state.
 
@@ -498,11 +507,7 @@ class OperatorSizer:
         nothing else would hold room for it: upstream ops can take every
         node's space first, and getting it back then means draining actors
         whose outputs only clear through the held op. Holding its room here
-        keeps it out of every step's free map without starting an actor. It is
-        held for its warmup share (``PerOpRules.warmup_target``), and once
-        released the sizer grows it straight to the held count (GRANT_HELD). Held whole per
-        actor, every resource the actor needs, on the least contended nodes,
-        as the ledger would place it; what does not fit is not held.
+        keeps it out of every step's free map without starting an actor.
         PG-managed ops hold nothing here: their placement group is their room.
         """
         free = snapshot.free_by_node
@@ -549,19 +554,6 @@ class OperatorSizer:
         indicates no work for the sizer.
         """
         self._bottleneck_observer.observe(self._topology)
-
-    def _decision_context(self, snapshot: ClusterStateSnapshot) -> DecisionContext:
-        return DecisionContext.from_snapshot(
-            snapshot,
-            topology=self._topology,
-            phase=self.phase,
-            actor_pool_ops=self._profiles.actor_pool_ops,
-            non_pg_ops=self._profiles.non_pg_ops,
-            now=self._clock(),
-            bottleneck=self._bottleneck,
-            next_ops=self._profiles.next_ops,
-            modeled_ops=frozenset(self._modeled_ops),
-        )
 
     # --- construction-time validation -----------------------------------------
 

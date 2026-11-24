@@ -16,7 +16,6 @@ from ray.data._internal.execution.execution_flags import (
     SIZER_DOWNSCALE_FACTOR,
     SIZER_DOWNSCALE_HYSTERESIS,
     SIZER_RESERVATION_RATIO,
-    SIZER_UTIL_THRESHOLD,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
@@ -63,20 +62,11 @@ class PerOpRules:
     """Sizes each op from its own state. ``decide`` picks the action; the
     policy then cuts any upscale to what the ledger still has free."""
 
-    def __init__(
-        self,
-        profiles: OpProfiles,
-    ):
+    def __init__(self, profiles: OpProfiles):
         self._profiles = profiles
         self.reservation_ratio = SIZER_RESERVATION_RATIO
         self.downscale_factor = SIZER_DOWNSCALE_FACTOR
         self.downscale_hysteresis = SIZER_DOWNSCALE_HYSTERESIS
-        # Divisor in the backlog target; mirrors the actor autoscaler's guard.
-        if SIZER_UTIL_THRESHOLD <= 0:
-            raise ValueError(
-                "RAY_DATA_SIZER_UTIL_THRESHOLD must be positive, got "
-                f"{SIZER_UTIL_THRESHOLD}"
-            )
         # Consecutive idle ticks per op, for the hysteretic drain arm.
         self._idle_streaks: Dict["PhysicalOperator", BoolStreak] = {}
 
@@ -218,7 +208,7 @@ class PerOpRules:
     ) -> Optional[int]:
         """This op's warmup share in actors, clamped to [min_size, max_size]
         (see ``warmup_delta``). Also what an op held at zero or min reserves
-        (``OperatorSizer._hold_for_held_ops``).
+        (``OperatorSizer._exclude_held_ops_from_free_capacity``).
 
         A CPU op's share is also capped by memory: GPU ops take their GPU share (and its memory) first, and the
         CPU ops whose actors request memory split what is left equally. A
