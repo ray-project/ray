@@ -30,6 +30,7 @@
 #include "ray/common/monitors/memory_monitor_interface.h"
 #include "ray/common/monitors/memory_monitor_test_fixture.h"
 #include "ray/common/monitors/memory_monitor_utils.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/common/status_or.h"
 
@@ -82,6 +83,13 @@ class ThresholdMemoryMonitorTest : public MemoryMonitorTestFixture {
   void TearDown() override {
     instance.reset();
     owned_cgroup_managers_.clear();
+    // RayConfig is process-global; restore the default for later tests.
+    SetCountSwapFlag(false);
+  }
+
+  static void SetCountSwapFlag(bool enabled) {
+    RayConfig::instance().initialize(std::string(R"({"count_swap_in_memory_monitor": )") +
+                                     (enabled ? "true" : "false") + "}");
   }
 
   ThresholdMemoryMonitor &MakeThresholdMemoryMonitor(
@@ -407,6 +415,61 @@ TEST_F(ThresholdMemoryMonitorTest, TestResourceIsolationInvalidThresholdSkipsPol
   ASSERT_FALSE(instance->IsResourceIsolationThresholdExceeded().has_value())
       << "An invalid memory.high value should skip the poll instead of applying "
          "the host-based threshold to resource-isolated usage.";
+}
+
+TEST_F(ThresholdMemoryMonitorTest,
+       TestResourceIsolationThresholdIncludesRootSwapWhenCountingSwap) {
+  // With count_swap_in_memory_monitor on, user-slice usage includes the slice's
+  // swap.current, so the threshold must be memory.high + root swap.max. A
+  // memory.high-only threshold would kill workers while they are still within
+  // their RAM + swap budget.
+  SetCountSwapFlag(true);
+  const int64_t total_memory_bytes = 16LL * 1024 * 1024 * 1024;
+  const int64_t memory_high_bytes = 900LL * 1024 * 1024;
+  const int64_t root_swap_max_bytes = 512LL * 1024 * 1024;
+  const int64_t user_anon_bytes = 800LL * 1024 * 1024;
+  const int64_t user_swap_current_bytes = 200LL * 1024 * 1024;
+  // User-slice usage = 800 MB anon + 200 MB swap = 1000 MB:
+  //   above memory.high (900 MB)            -> would trigger without the swap term
+  //   below memory.high + swap.max (1412 MB) -> must not trigger
+
+  std::string root_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                        0,
+                                                        0 /*anon*/,
+                                                        0 /*shmem*/,
+                                                        0 /*inactive_file*/,
+                                                        0 /*active_file*/);
+  MockCgroupv2Swap(root_cgroup_dir, root_swap_max_bytes, /*swap_current_bytes=*/0);
+  std::string user_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                        user_anon_bytes,
+                                                        user_anon_bytes /*anon*/,
+                                                        0 /*shmem*/,
+                                                        0 /*inactive_file*/,
+                                                        0 /*active_file*/);
+  // Numeric leaf swap.max keeps swap.current readable regardless of whether the
+  // test host has swap ("max" would resolve to host swap, which may be 0).
+  MockCgroupv2Swap(user_cgroup_dir, root_swap_max_bytes, user_swap_current_bytes);
+  std::string system_cgroup_dir = MockCgroupv2MemoryUsage(total_memory_bytes,
+                                                          0,
+                                                          0 /*anon*/,
+                                                          0 /*shmem*/,
+                                                          0 /*inactive_file*/,
+                                                          0 /*active_file*/);
+
+  MakeResourceIsolatedThresholdMemoryMonitor(
+      0.7f /*usage_threshold*/,
+      100000 /*refresh_interval_ms*/,
+      [](std::string) { FAIL() << "Callback should not run in this test."; },
+      root_cgroup_dir,
+      user_cgroup_dir,
+      system_cgroup_dir,
+      std::make_unique<FakeBoundedCgroupManager>(memory_high_bytes));
+
+  ASSERT_EQ(instance->ComputeMemoryThresholdBytes(total_memory_bytes),
+            memory_high_bytes + root_swap_max_bytes);
+  ASSERT_FALSE(instance->IsResourceIsolationThresholdExceeded().has_value())
+      << "User-slice RAM + swap usage is within memory.high + root swap.max, so "
+         "the monitor must not fire.";
 }
 
 TEST_F(ThresholdMemoryMonitorTest,

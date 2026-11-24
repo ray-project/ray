@@ -117,7 +117,8 @@ int64_t ThresholdMemoryMonitor::ComputeMemoryThresholdBytes(
                                                       usage_threshold_,
                                                       min_memory_free_bytes_,
                                                       resource_isolation_enabled_,
-                                                      cgroup_manager_);
+                                                      cgroup_manager_,
+                                                      root_cgroup_path_);
 }
 
 ThresholdMemoryMonitor::~ThresholdMemoryMonitor() {
@@ -139,8 +140,7 @@ bool ThresholdMemoryMonitor::IsEnabled() const {
 std::optional<MemoryUsageSnapshot>
 ThresholdMemoryMonitor::IsHostMemoryThresholdExceeded() {
   MemoryUsageSnapshot cur_memory_snapshot =
-      MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(root_cgroup_path_,
-                                                        /*include_swap=*/true);
+      MemoryMonitorUtils::TakeMonitoredSystemMemoryUsageSnapshot(root_cgroup_path_);
   int64_t used_memory_bytes = cur_memory_snapshot.used_bytes;
   int64_t total_memory_bytes = cur_memory_snapshot.total_bytes;
   if (total_memory_bytes == MemoryMonitorInterface::kNull ||

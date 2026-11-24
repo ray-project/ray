@@ -101,6 +101,8 @@ class ThresholdMemoryMonitor : public MemoryMonitorInterface {
   FRIEND_TEST(ThresholdMemoryMonitorTest,
               TestResourceIsolationThresholdReadFailureSkipsPoll);
   FRIEND_TEST(ThresholdMemoryMonitorTest, TestResourceIsolationInvalidThresholdSkipsPoll);
+  FRIEND_TEST(ThresholdMemoryMonitorTest,
+              TestResourceIsolationThresholdIncludesRootSwapWhenCountingSwap);
 
   /**
    * @brief Checks if the memory usage on the host exceeds the threshold.

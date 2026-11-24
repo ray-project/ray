@@ -185,6 +185,11 @@ const MemoryUsageSnapshot MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
   return MemoryUsageSnapshot{used_bytes, total_bytes};
 }
 
+const MemoryUsageSnapshot MemoryMonitorUtils::TakeMonitoredSystemMemoryUsageSnapshot(
+    const std::string &root_cgroup_path, const std::string &proc_dir) {
+  return TakeSystemMemoryUsageSnapshot(root_cgroup_path, /*include_swap=*/true, proc_dir);
+}
+
 const StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>, StatusT::NotFound>
 MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
     const std::string &user_cgroup_path,
@@ -720,7 +725,8 @@ int64_t MemoryMonitorUtils::GetMemoryThresholdOrNull(
     float usage_threshold,
     int64_t min_memory_free_bytes,
     bool resource_isolation_enabled,
-    const CgroupManagerInterface &cgroup_manager) {
+    const CgroupManagerInterface &cgroup_manager,
+    const std::string &root_cgroup_path) {
   ValidateMemoryThresholdConfig(usage_threshold, min_memory_free_bytes);
 
   if (total_memory_bytes == MemoryMonitorInterface::kNull) {
@@ -791,7 +797,24 @@ int64_t MemoryMonitorUtils::GetMemoryThresholdOrNull(
         << resolved_memory_threshold_bytes << ".";
     return MemoryMonitorInterface::kNull;
   }
-  return static_cast<int64_t>(user_slice_upper_bound);
+
+  int64_t user_slice_threshold_bytes = static_cast<int64_t>(user_slice_upper_bound);
+  // `memory.high` is a RAM-only kernel constraint, but the per-tick user-slice
+  // usage from TakeUserAndSystemSliceMemoryUsageSnapshot includes the slice's
+  // swap.current when count_swap_in_memory_monitor is on. Add the swap budget
+  // so the comparison stays apples-to-apples.
+  //
+  // Read swap.max from the ROOT cgroup (the same path the scheduler's
+  // get_cgroup_aware_swap_memory reads), not the user leaf: Ray does not write
+  // swap.max on the user slice, so the leaf reports "max" and would over-state
+  // the budget as host swap. "max"/overflow at the root means genuinely
+  // unlimited, so fall back to host swap; an absent file means no swap support,
+  // so add nothing.
+  if (RayConfig::instance().count_swap_in_memory_monitor()) {
+    user_slice_threshold_bytes +=
+        ResolveRootSwapMaxBytes(root_cgroup_path, kProcDirectory);
+  }
+  return user_slice_threshold_bytes;
 }
 
 int64_t MemoryMonitorUtils::NullableMin(int64_t left, int64_t right) {
@@ -814,60 +837,36 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     bool resource_isolation_enabled,
     const CgroupManagerInterface &cgroup_manager,
     const std::string &root_cgroup_path) {
+  // Fail-fast wrapper around GetMemoryThresholdOrNull. The checks below turn
+  // every condition that the runtime variant tolerates into a hard failure, so
+  // both entry points share one formula (including the swap term).
   RAY_CHECK_GE(total_memory_bytes, MemoryMonitorInterface::kNull);
   ValidateMemoryThresholdConfig(usage_threshold, min_memory_free_bytes);
-  int64_t resolved_memory_threshold_bytes;
-  int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
-
-  if (min_memory_free_bytes > MemoryMonitorInterface::kNull) {
-    int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;
-    RAY_CHECK_GE(threshold_absolute, 0);
-    resolved_memory_threshold_bytes = std::max(threshold_fraction, threshold_absolute);
-  } else {
-    resolved_memory_threshold_bytes = threshold_fraction;
+  if (min_memory_free_bytes > MemoryMonitorInterface::kNull &&
+      total_memory_bytes != MemoryMonitorInterface::kNull) {
+    RAY_CHECK_GE(total_memory_bytes - min_memory_free_bytes, 0) << absl::StrFormat(
+        "Invalid configuration: min_memory_free_bytes %d is larger than total memory "
+        "%d.",
+        min_memory_free_bytes,
+        total_memory_bytes);
   }
 
-  if (resource_isolation_enabled) {
-    StatusOr<std::string> user_slice_upper_bound_bytes_or =
-        cgroup_manager.GetUserCgroupConstraintValue(kCgroupsV2MemoryHighPath);
-    RAY_CHECK(user_slice_upper_bound_bytes_or.ok()) << absl::StrFormat(
-        "Failed to get user cgroup memory limit from user cgroup %s "
-        "when setting up memory monitor: %s. "
-        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
-        cgroup_manager.GetUserCgroupPath(),
-        user_slice_upper_bound_bytes_or.ToString());
-    std::string user_slice_upper_bound_bytes_str =
-        user_slice_upper_bound_bytes_or.value();
-    RAY_CHECK(!user_slice_upper_bound_bytes_str.empty()) << absl::StrFormat(
-        "Failed to get upper bound memory constraints from user cgroup %s. "
-        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
-        cgroup_manager.GetUserCgroupPath());
-
-    if (!user_slice_upper_bound_bytes_str.empty() &&
-        std::all_of(user_slice_upper_bound_bytes_str.begin(),
-                    user_slice_upper_bound_bytes_str.end(),
-                    ::isdigit)) {
-      resolved_memory_threshold_bytes = std::stoll(user_slice_upper_bound_bytes_str);
-    }
-
-    // Under the isolation override above, the threshold is `memory.high` —
-    // a RAM-only kernel constraint. Per-tick `used_bytes` from
-    // TakeUserSliceMemoryUsageSnapshot includes user-slice swap.current when the
-    // flag is on, so add the swap budget to keep the comparison
-    // apples-to-apples.
-    //
-    // Read swap.max from the ROOT cgroup (the same path the scheduler's
-    // get_cgroup_aware_swap_memory reads), not the user leaf: Ray does not write
-    // swap.max on the user slice, so the leaf reports "max" and would over-state
-    // the budget as host swap. The root cap is the slice's real effective swap.
-    // "max"/overflow at the root means genuinely unlimited, so fall back to host
-    // swap; an absent file means no swap support, so add nothing.
-    if (RayConfig::instance().count_swap_in_memory_monitor()) {
-      resolved_memory_threshold_bytes +=
-          ResolveRootSwapMaxBytes(root_cgroup_path, kProcDirectory);
-    }
-  }
-
+  int64_t resolved_memory_threshold_bytes =
+      GetMemoryThresholdOrNull(total_memory_bytes,
+                               usage_threshold,
+                               min_memory_free_bytes,
+                               resource_isolation_enabled,
+                               cgroup_manager,
+                               root_cgroup_path);
+  RAY_CHECK_NE(resolved_memory_threshold_bytes, MemoryMonitorInterface::kNull)
+      << absl::StrFormat(
+             "Failed to resolve the memory threshold (total memory %d bytes, "
+             "resource isolation %s, user cgroup %s). If resource isolation is "
+             "enabled, does the user cgroup exist with a numeric %s?",
+             total_memory_bytes,
+             resource_isolation_enabled ? "enabled" : "disabled",
+             cgroup_manager.GetUserCgroupPath(),
+             kCgroupsV2MemoryHighPath);
   return resolved_memory_threshold_bytes;
 }
 

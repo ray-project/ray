@@ -65,6 +65,7 @@ ray_cc_test(
         "@platforms//os:linux",
     ],
     deps = [
+        "//src/ray/common:ray_config",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common/cgroup2:cgroup_manager_interface",

@@ -3196,8 +3196,12 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             memory_usage_snapshot =
                 user_and_system_slice_memory_snapshot_or.value().first;
           } else {
-            memory_usage_snapshot = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                MemoryMonitorInterface::kDefaultCgroupPath);
+            // Same snapshot ThresholdMemoryMonitor fires on (RAM + swap when
+            // count_swap_in_memory_monitor is on); the policy recomputes its
+            // threshold from it.
+            memory_usage_snapshot =
+                MemoryMonitorUtils::TakeMonitoredSystemMemoryUsageSnapshot(
+                    MemoryMonitorInterface::kDefaultCgroupPath);
           }
 
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
