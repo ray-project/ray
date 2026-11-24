@@ -192,7 +192,6 @@ py_binary(
         ":trivy_db",
         ":trivy_report",
         "//ci/ray_ci:ray_ci_lib",
-        ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
     ],
