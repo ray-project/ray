@@ -5,10 +5,13 @@
 # trigger-postmerge and trigger-postmerge-nightly steps in
 # .buildkite/release-automation/pre_release.rayci.yml (not the macOS one).
 # release-automation waits on that postmerge build, so every step is
-# soft_fail: a scan must never block a release. soft_fail can't end a job
-# that hangs, so every step also has a timeout, several times its usual
-# run time (postmerge #20999: 3 min for the DBs, up to 15 per scan, 4 for
-# the report).
+# soft_fail: a scan must never block a release. Each step's timeout cuts
+# rayci's 300-minute default to a few times its usual run time (postmerge
+# #20999: 3 min for the DBs, up to 15 per scan), and
+# stays above the tools' own limit on any one call, so a slow call fails
+# through the tool rather than through Buildkite's kill. A scan step runs
+# even if a push job it waits on failed: the images come from the build's
+# wanda cache.
 # Tooling: ci/ray_ci/automation/trivy/.
 #
 # trivy_db stages the vulnerability DBs in the build's S3 folder once
@@ -24,7 +27,7 @@ steps:
     if: build.env("RAYCI_IMAGE_SCAN") == "1"
     instance_type: small
     soft_fail: true
-    timeout_in_minutes: 20
+    timeout_in_minutes: 45
     tags:
       - docker
       - oss
@@ -44,6 +47,7 @@ steps:
     instance_type: medium
     soft_fail: true
     timeout_in_minutes: 60
+    allow_dependency_failure: true
     tags:
       - docker
       - oss
@@ -80,6 +84,7 @@ steps:
     instance_type: medium
     soft_fail: true
     timeout_in_minutes: 60
+    allow_dependency_failure: true
     tags:
       - docker
       - oss
@@ -101,6 +106,7 @@ steps:
     instance_type: medium
     soft_fail: true
     timeout_in_minutes: 60
+    allow_dependency_failure: true
     tags:
       - docker
       - oss
@@ -138,6 +144,7 @@ steps:
     instance_type: medium
     soft_fail: true
     timeout_in_minutes: 60
+    allow_dependency_failure: true
     tags:
       - docker
       - oss
@@ -159,6 +166,7 @@ steps:
     instance_type: medium
     soft_fail: true
     timeout_in_minutes: 60
+    allow_dependency_failure: true
     tags:
       - docker
       - oss
