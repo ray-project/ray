@@ -4,7 +4,7 @@ import re
 import shlex
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from unittest import mock
 
 import pytest
@@ -548,6 +548,25 @@ def test_a_failed_report_still_leaves_a_warning_annotation(tmp_path: Path):
     assert (
         "ValueError: ray-py3.11-tpu is scanned twice, by step images_scan_tpu" in body
     )
+
+
+@pytest.mark.parametrize(
+    "pipeline",
+    [None, ["steps"], {"steps": [PIPELINE["steps"][0]]}],
+    ids=["empty", "not-a-mapping", "no-scan-steps"],
+)
+def test_a_pipeline_file_without_scan_steps_fails_the_report(
+    tmp_path: Path, pipeline: Any
+):
+    """Expecting no images would skip the coverage check."""
+    s3 = FakeS3()
+    put_metadata(s3)
+    put_scan(s3, "ray-py3.11-tpu", CLEAN_RESULT)
+    result = run(tmp_path, s3, pipeline)
+    assert result.exit_code == 1, result.output
+    (annotation,) = (tmp_path / "annotations").iterdir()
+    assert annotation.name == "trivy-scan.warning.md"
+    assert "image-scan.rayci.yml has no scan steps" in annotation.read_text()
 
 
 def test_the_failure_annotation_cannot_break_its_markdown():

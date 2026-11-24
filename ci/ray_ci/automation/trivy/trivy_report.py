@@ -1034,7 +1034,7 @@ def load_metadata(path: Path, source: str) -> tuple[dict[str, Any], str]:
     missing file is an issue, not something to skip silently.
     """
     try:
-        data = json.loads(path.read_text())
+        data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError, RecursionError) as e:
         return {}, f"scanner metadata unreadable ({source}): {e}"
     if not isinstance(data, dict):
