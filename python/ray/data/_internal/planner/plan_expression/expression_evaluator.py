@@ -146,6 +146,12 @@ def _to_arrow(x: Any) -> Any:
     return pa.scalar(x)
 
 
+def _as_float64(x: Any) -> Any:
+    if isinstance(x, pc.Expression):
+        return x.cast(pa.float64())
+    return pc.cast(_to_arrow(x), pa.float64())
+
+
 def _pa_floor_divide(left: Any, right: Any) -> Any:
     """Floor division (``//``) with Python semantics.
 
@@ -153,14 +159,22 @@ def _pa_floor_divide(left: Any, right: Any) -> Any:
     result rounds ``-7 // 2`` to ``-3`` instead of ``-4``. For two integer
     operands, subtract one whenever the division was inexact and the operands
     have opposite signs. Division by zero still raises, as ``pc.divide`` does.
+
+    ``pc.Expression`` operands (predicate pushdown) have no type until they are
+    bound to a schema, so the integer check can't be made. They are divided in
+    float64 instead, which floors correctly for integers below 2**53 and is a
+    no-op for floats. Unlike the integer path, this doesn't raise on a zero
+    divisor.
     """
+    if isinstance(left, pc.Expression) or isinstance(right, pc.Expression):
+        return pc.floor(pc.divide(_as_float64(left), _as_float64(right)))
     quotient = pc.divide(left, right)
     if _is_integer_operand(left) and _is_integer_operand(right):
         left_arrow, right_arrow = _to_arrow(left), _to_arrow(right)
         remainder = pc.subtract(left_arrow, pc.multiply(quotient, right_arrow))
         needs_adjust = pc.and_(
             pc.not_equal(remainder, 0),
-            pc.not_equal(pc.less(remainder, 0), pc.less(right_arrow, 0)),
+            pc.not_equal(pc.less(left_arrow, 0), pc.less(right_arrow, 0)),
         )
         quotient = pc.subtract(quotient, pc.cast(needs_adjust, quotient.type))
     return pc.floor(quotient)

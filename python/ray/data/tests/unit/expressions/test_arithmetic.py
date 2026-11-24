@@ -268,6 +268,39 @@ class TestBasicArithmetic:
         with pytest.raises(pa.ArrowInvalid):
             eval_expr(col("n") // col("m"), block)
 
+    @pytest.mark.parametrize("int_type", [pa.int8(), pa.int32(), pa.int64()])
+    def test_arrow_floordiv_mod_match_python_over_small_int_grid(self, int_type):
+        """Every sign combination of small integers agrees with Python."""
+        pairs = [(n, m) for n in range(-9, 10) for m in range(-9, 10) if m != 0]
+        block = pa.table(
+            {
+                "n": pa.array([n for n, _ in pairs], type=int_type),
+                "m": pa.array([m for _, m in pairs], type=int_type),
+            }
+        )
+        floordiv = eval_expr(col("n") // col("m"), block).to_pylist()
+        mod = eval_expr(col("n") % col("m"), block).to_pylist()
+        assert floordiv == [n // m for n, m in pairs]
+        assert mod == [n % m for n, m in pairs]
+
+    def test_to_pyarrow_floordiv_mod_match_python_for_negative_ints(self):
+        """Pushed-down (``to_pyarrow``) expressions agree with Python too."""
+        import pyarrow.dataset as pa_ds
+
+        n = [7, -7, 7, -7, 6, -6, 0]
+        m = [2, 2, -2, -2, 3, 3, 5]
+        dataset = pa_ds.dataset(pa.table({"n": n, "m": m}))
+        result = dataset.to_table(
+            columns={
+                "floordiv": (col("n") // col("m")).to_pyarrow(),
+                "mod": (col("n") % col("m")).to_pyarrow(),
+                "floordiv_lit": (col("n") // -2).to_pyarrow(),
+            }
+        )
+        assert result["floordiv"].to_pylist() == [a // b for a, b in zip(n, m)]
+        assert result["mod"].to_pylist() == [a % b for a, b in zip(n, m)]
+        assert result["floordiv_lit"].to_pylist() == [a // -2 for a in n]
+
 
 # ──────────────────────────────────────
 # Complex Arithmetic Expressions
