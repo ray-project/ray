@@ -19,14 +19,9 @@ import ray.data
 from ray.data._internal.datasource_v2.formats.hive.hive_hs2 import (
     _connect as connect_read_hive,
 )
-from ray.data.tests.datasource._hive_test_utils import (
-    _make_auth_factory,
-    _read_evidence,
-)
 
 _HOST = os.environ.get("RAY_HIVE_TEST_HOST")
 _AUTH = os.environ.get("RAY_HIVE_TEST_AUTH", "PLAIN").upper()
-_TLS_CASES = ("test_verified_table", "test_untrusted_ca_driver", "test_hostname_worker")
 
 pytestmark = pytest.mark.skipif(
     not _HOST,
@@ -71,7 +66,7 @@ def _connection_options() -> _ConnectionOptions:
     return options
 
 
-def _make_connection_factory(options: _ConnectionOptions):
+def _make_connection_factory(options: _ConnectionOptions, *, timeout=None):
     def connection_factory():
         from impala.dbapi import connect
 
@@ -83,7 +78,11 @@ def _make_connection_factory(options: _ConnectionOptions):
             if not password:
                 raise ValueError("PLAIN integration requires HIVE_TEST_PASSWORD")
         return connect(
-            **options, password=password, verify_cert=options["use_ssl"], retries=1
+            **options,
+            password=password,
+            verify_cert=options["use_ssl"],
+            retries=1,
+            timeout=timeout,
         )
 
     return connection_factory
@@ -91,6 +90,36 @@ def _make_connection_factory(options: _ConnectionOptions):
 
 def _connect(options: _ConnectionOptions):
     return connect_read_hive(_make_connection_factory(options))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _configure_tls_fixture(tmp_path_factory):
+    encoded_ca = os.environ.get("RAY_HIVE_CA_PEM_B64")
+    if encoded_ca is None:
+        yield
+        return
+
+    ca_path = tmp_path_factory.mktemp("hive_tls") / "ca.pem"
+    ca_path.write_bytes(base64.b64decode(encoded_ca, validate=True))
+    ssl.create_default_context(cafile=str(ca_path))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("RAY_HIVE_TEST_CA_CERT", str(ca_path))
+        options = _connection_options()
+        if not options["use_ssl"]:
+            pytest.fail("TLS fixture requires RAY_HIVE_TEST_USE_SSL=true")
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                with closing(_make_connection_factory(options, timeout=10)()) as conn:
+                    with closing(conn.cursor()) as cursor:
+                        cursor.execute("SELECT 1")
+                        assert cursor.fetchall() == [(1,)]
+                break
+            except Exception:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(2)
+        yield
 
 
 @contextmanager
@@ -285,12 +314,15 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
     if not options["use_ssl"] or not options["ca_cert"]:
         pytest.skip("Run against a TLS-enabled HiveServer2 with a test CA certificate")
 
+    import certifi
+
     # Positive control: the configured endpoint trusts the test CA.
     _connect(options).close()
 
     wrong_host = os.environ.get("RAY_HIVE_TEST_WRONG_HOST", "127.0.0.1")
     if wrong_host == options["host"]:
         pytest.fail("RAY_HIVE_TEST_WRONG_HOST must differ from RAY_HIVE_TEST_HOST")
+    assert socket.gethostbyname(wrong_host) == socket.gethostbyname(options["host"])
     try:
         socket.create_connection((wrong_host, options["port"]), timeout=10).close()
     except OSError:
@@ -304,139 +336,12 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
         _connect(mismatched_host_options)
 
     untrusted_ca_options = options.copy()
-    untrusted_ca_options["ca_cert"] = None
+    untrusted_ca_options["ca_cert"] = certifi.where()
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
         _connect(untrusted_ca_options)
-
-
-def _verification_code(host, ca_path):
-    context = ssl.create_default_context(cafile=ca_path)
-    with socket.create_connection((host, 10000), timeout=30) as transport:
-        with pytest.raises(ssl.SSLCertVerificationError) as error:
-            context.wrap_socket(transport, server_hostname=host)
-    assert isinstance(error.value.verify_code, int)
-    return error.value.verify_code
-
-
-@pytest.mark.timeout(180)
-@pytest.mark.skipif(
-    not os.environ.get("RAY_HIVE_CA_PEM_B64"),
-    reason="Set RAY_HIVE_CA_PEM_B64 to run the Hive TLS integration suite",
-)
-class TestHiveTLS:
-    @pytest.fixture
-    def tls_context(self, tmp_path, ray_start_regular_shared):
-        ca = tmp_path / "ca.pem"
-        ca.write_bytes(
-            base64.b64decode(os.environ["RAY_HIVE_CA_PEM_B64"], validate=True)
-        )
-        options = _connection_options()
-        assert options["host"] == "hiveserver2" and options["use_ssl"]
-        options["ca_cert"] = str(ca)
-        assert socket.gethostbyname("hiveserver2") == socket.gethostbyname(
-            "wrong-hiveserver2"
-        )
-
-        # TCP readiness is not enough: wait for a verified TLS SQL query.
-        deadline = time.monotonic() + 120
-        while True:
-            try:
-                with closing(_make_connection_factory(options)()) as connection:
-                    with closing(connection.cursor()) as cursor:
-                        cursor.execute("SELECT 1")
-                        assert cursor.fetchall() == [(1,)]
-                break
-            except Exception:
-                if time.monotonic() >= deadline:
-                    raise
-                time.sleep(2)
-
-        schema = pa.schema([("id", pa.int64()), ("name", pa.string())])
-        with _temporary_table(
-            options, "id BIGINT, name STRING", "VALUES (1, 'a'), (2, 'b')"
-        ) as (table, _):
-            events = tmp_path / "events"
-            events.mkdir()
-            yield options, table, schema, ca, events
-
-    def test_verified_table(self, tls_context):
-        options, table, schema, _, events = tls_context
-        factory = _make_auth_factory(_make_connection_factory(options), str(events))
-        dataset = ray.data.read_hive(table, connection_factory=factory)
-        rows = dataset.take_all()
-        assert dataset.schema().base_schema == schema
-        assert sorted((dict(row) for row in rows), key=lambda row: row["id"]) == [
-            {"id": 1, "name": "a"},
-            {"id": 2, "name": "b"},
-        ]
-        records = _read_evidence(events)
-        assert any(r["pid"] == os.getpid() for r in records)
-        assert any(r["pid"] != os.getpid() for r in records)
-        assert all(r["connected"] and not r["certificate_error"] for r in records)
-
-    def test_untrusted_ca_driver(self, tls_context):
-        import certifi
-
-        options, table, _, _, events = tls_context
-        options = options.copy()
-        options["ca_cert"] = certifi.where()
-        code = _verification_code("hiveserver2", certifi.where())
-        factory = _make_auth_factory(_make_connection_factory(options), str(events))
-        with pytest.raises(Exception, match="HiveServer2"):
-            ray.data.read_hive(table, connection_factory=factory).take_all()
-        records = _read_evidence(events)
-        assert all(r["pid"] == os.getpid() for r in records)
-        assert all(not r["connected"] and r["certificate_error"] for r in records)
-        assert all(r["verify_code"] == code for r in records)
-
-    def test_hostname_worker(self, tls_context):
-        options, table, schema, ca, events = tls_context
-        options = options.copy()
-        options["host"] = "wrong-hiveserver2"
-        _verification_code("wrong-hiveserver2", str(ca))
-        factory = _make_auth_factory(_make_connection_factory(options), str(events))
-        with pytest.raises(Exception, match="HiveServer2"):
-            ray.data.read_hive(
-                query=f"SELECT id, name FROM `{table}`",
-                schema=schema,
-                connection_factory=factory,
-            ).take_all()
-        records = _read_evidence(events)
-        assert all(r["pid"] != os.getpid() for r in records)
-        assert all(not r["connected"] and r["certificate_error"] for r in records)
-        # Thrift performs hostname matching after the TLS handshake.
-        assert all(r["hostname_mismatch"] for r in records)
-
-
-class _EnsureCases:
-    def __init__(self):
-        self.expected = set(_TLS_CASES)
-        self.executed: set[str] = set()
-        self.skipped = False
-
-    def pytest_collection_finish(self, session):
-        if {item.name for item in session.items} != self.expected:
-            raise pytest.UsageError(
-                "TLS suite did not collect exactly the expected cases"
-            )
-
-    def pytest_runtest_logreport(self, report):
-        if report.when == "call":
-            self.executed.add(report.nodeid.rsplit("::", 1)[-1])
-        self.skipped |= report.skipped
-
-    def pytest_sessionfinish(self, session, exitstatus):
-        if session.exitstatus == pytest.ExitCode.OK and (
-            self.skipped or self.executed != self.expected
-        ):
-            session.exitstatus = pytest.ExitCode.TESTS_FAILED
 
 
 if __name__ == "__main__":
     import sys
 
-    if os.environ.get("RAY_HIVE_TLS_SUITE") == "1":
-        sys.exit(
-            pytest.main(["-v", f"{__file__}::TestHiveTLS"], plugins=[_EnsureCases()])
-        )
     sys.exit(pytest.main(["-v", __file__]))

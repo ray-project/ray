@@ -323,7 +323,7 @@ steps:
       - data
     instance_type: medium
     commands:
-      - bash ci/ray_ci/data/run_hive_integration.sh
+      - bash ci/ray_ci/data/run_hive_integration.sh --tls
     depends_on: datamongobuild-multipy
 
   - label: ":database: data: dashboard tests"

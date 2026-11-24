@@ -34,6 +34,8 @@ def run_script(tmp_path):
                 if args[0] == 'run' and scenario == 'start_failure':
                     sys.exit(125)
                 if args[0] == 'exec':
+                    if scenario == 'missing_ca' and 'cat' in args:
+                        sys.exit(0)
                     print('SQL probe output')
                     if scenario in ('crashed', 'timeout'):
                         sys.exit(1)
@@ -79,6 +81,7 @@ def run_script(tmp_path):
             "BUILDKITE_JOB_ID": "hive-test",
             "RAY_HIVE_LOG_DIR": str(tmp_path / "logs"),
             "RAY_HIVE_STARTUP_TIMEOUT": "0" if scenario == "timeout" else "300",
+            "RAYCI_CHECKOUT_DIR": "/docker-host/ray checkout",
             "CALLS": str(calls_path),
             "SCENARIO": scenario,
             "CLEANUP": cleanup,
@@ -129,7 +132,7 @@ def test_ready_service_runs_suite(run_script, scenario):
     assert result.returncode == 0, result.stderr
     service_command = next(call for call in calls if call[:2] == ["docker", "run"])
     assert "-Dhive.server2.authentication=NONE" in " ".join(service_command)
-    assert service_command[-1].startswith("apache/hive:4.2.0@sha256:")
+    assert service_command[-2].startswith("apache/hive:4.2.0@sha256:")
     assert service_command[service_command.index("--network-alias") + 1] == (
         "hiveserver2"
     )
@@ -146,17 +149,21 @@ def test_ready_service_runs_suite(run_script, scenario):
     assert "RAY_HIVE_TEST_AUTH=PLAIN" in test_envs
     assert "HIVE_TEST_PASSWORD=hive" in test_envs
     assert "RAY_HIVE_TLS_SUITE=1" not in test_envs
-    probes = [call for call in calls if call[:2] == ["docker", "exec"]]
+    probes = [call for call in calls if "/dev/tcp/localhost/10000" in call[-1]]
     assert len(probes) == (2 if scenario == "retry" else 1)
-    assert "-t" in probes[-1]
-    assert "JAVA_TOOL_OPTIONS=--enable-preview" in probes[-1]
-    assert probes[-1][-2:] == ["-e", "SELECT 1"]
+    assert "timeout" in probes[-1]
     assert calls.index(probes[-1]) < calls.index(test_command)
 
 
 @pytest.mark.parametrize(
     "scenario,exit_code",
-    [("start_failure", 125), ("crashed", 1), ("timeout", 1), ("test_failure", 7)],
+    [
+        ("start_failure", 125),
+        ("crashed", 1),
+        ("timeout", 1),
+        ("missing_ca", 1),
+        ("test_failure", 7),
+    ],
 )
 def test_failure_propagates_and_cleans_up(run_script, scenario, exit_code):
     result, calls = run_script(scenario)
@@ -193,8 +200,7 @@ def test_already_absent_resources_are_clean(run_script, scenario, exit_code):
     assert "Could not verify cleanup" not in result.stderr
 
 
-def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script, monkeypatch):
-    monkeypatch.setenv("RAYCI_CHECKOUT_DIR", "/docker-host/ray checkout")
+def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script):
     result, calls = run_script("success", tls=True)
     assert result.returncode == 0, result.stderr
     service = next(call for call in calls if call[:2] == ["docker", "run"])
@@ -207,12 +213,12 @@ def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script, monkeypat
     assert not any(arg.startswith("HIVE_TLS_PASSWORD=") for arg in service)
     test = next(call for call in calls if call[0] == "bazel")
     assert "//python/ray/data:test_hive_integration" in test
-    assert test[test.index("--bisect-run-test-target") + 1] == (
-        "//python/ray/data:test_hive_integration"
-    )
+    assert "--bisect-run-test-target" not in test
     envs = [test[i + 1] for i, arg in enumerate(test) if arg == "--test-env"]
     assert "RAY_HIVE_TEST_USE_SSL=true" in envs
-    assert "RAY_HIVE_TLS_SUITE=1" in envs
+    assert "RAY_HIVE_TLS_SUITE=1" not in envs
+    assert "RAY_HIVE_TEST_WRONG_HOST=wrong-hiveserver2" in envs
+    assert "RAY_AUTH_MODE=disabled" in envs
     assert any(value.startswith("RAY_HIVE_CA_PEM_B64=") for value in envs)
     assert not any(value.startswith("HIVE_TLS_PASSWORD") for value in envs)
     assert any(

@@ -963,6 +963,23 @@ dataset = ray.data.read_hive(
 
 Configure TLS inside `connection_factory` and make any CA file available wherever the factory runs. For GSSAPI, install `impyla[kerberos]`, set `kerberos_service_name` to the service component of the server principal (for example, `"hive"` for `hive/host@REALM`), and provide credentials wherever the factory runs.
 
+With `impyla==0.23.0`, `use_ssl=True` without `ca_cert` and with the default `verify_cert=False` doesn't verify the server certificate; an impostor could receive PLAIN credentials. For verified TLS, provide a trusted CA:
+
+```python
+import os
+
+def create_tls_connection():
+    from impala.dbapi import connect
+
+    return connect(
+        host="hive.example.com", port=10000, auth_mechanism="PLAIN",
+        user="reader", password=os.environ["HIVE_PASSWORD"],
+        use_ssl=True, ca_cert="/path/to/ca.pem", timeout=30,
+    )
+```
+
+For binary HS2, an untrusted CA may appear as a generic connection error; the underlying error may be logged at INFO by `thrift.transport.TSocket`. Check the CA file's path and permissions wherever the factory runs. For binary HS2, Impyla has no socket timeout by default. Set `timeout` to bound unresponsive socket operations. With Thrift 0.16 on Python 3.12+, hostname validation uses the certificate's common name rather than its subject alternative names.
+
 The HS2 TLS integration suite exercises verified TLS with Hive 4.2.0 and `impyla==0.23.0`, using `PLAIN` with HiveServer2 in server mode `NONE`. GSSAPI and NOSASL aren't covered by this TLS suite. Client retries configured in the factory are separate from Ray's HS2 no-replay behavior.
 
 (reading_sql)=
