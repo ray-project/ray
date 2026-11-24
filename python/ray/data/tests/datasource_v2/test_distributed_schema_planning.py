@@ -146,6 +146,8 @@ def test_driver_schema_fallback_preserves_read_placement(
         assert args["num_cpus"] == options["num_cpus"]
         if pg is not None:
             assert args["scheduling_strategy"].placement_group == pg
+            assert dataset.count() == 3
+            assert _records(trace) == before
         else:
             assert args["label_selector"] == {"schema": "zero"}
         assert sorted(dataset.take_all(), key=lambda row: row["id"]) == [
@@ -166,6 +168,7 @@ def test_driver_schema_fallback_preserves_read_placement(
 
 
 @pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.timeout(30)
 def test_driver_schema_fallback_when_workers_are_busy(
     monkeypatch,
     tmp_path,
@@ -185,12 +188,7 @@ def test_driver_schema_fallback_when_workers_are_busy(
     try:
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
-        monkeypatch.setattr(
-            inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 256
-        )
-        monkeypatch.setattr(
-            inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 256
-        )
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT", 1)
         monkeypatch.setattr(
             inference, "_FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S", 0.2
         )
@@ -198,11 +196,12 @@ def test_driver_schema_fallback_when_workers_are_busy(
         for i, path in enumerate(paths):
             pq.write_table(pa.table({"id": [i]}), path)
         trace = tmp_path / "busy-reads.jsonl"
-        schema = ray.data.read_parquet(
+        dataset = ray.data.read_parquet(
             [str(path) for path in paths],
             merge_schema=True,
             filesystem=_filesystem(trace),
-        ).schema(fetch_if_missing=False)
+        )
+        schema = dataset.schema(fetch_if_missing=False)
         assert schema.base_schema == pa.schema([("id", pa.int64())])
         records = _records(trace)
         assert Counter(record["path"] for record in records) == {
@@ -220,6 +219,8 @@ def test_driver_schema_fallback_when_workers_are_busy(
             )
             == 1
         )
+        assert dataset.count() == 2
+        assert _records(trace) == records
     finally:
         ray.kill(holder)
 

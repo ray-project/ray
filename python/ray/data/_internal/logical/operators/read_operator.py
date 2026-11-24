@@ -270,6 +270,8 @@ class ReadFiles(
     scanner: "Scanner"
     schema: "pa.Schema"
     parallelism: int
+    # Complete input count from schema planning, or None when unavailable.
+    planned_num_rows: Optional[int] = field(default=None, kw_only=True)
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     compute: Optional[ComputeStrategy] = None
     # Optional post-read block transform. Used by ``read_parquet``'s

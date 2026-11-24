@@ -5,6 +5,9 @@ Full physical-planning tests live in the CI parquet regression suite
 bundles). Here we exercise just the logical op shape and the shuffle
 factory semantics.
 """
+from dataclasses import replace
+from typing import cast
+
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
@@ -15,6 +18,7 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
+    FileManifest,
 )
 from ray.data._internal.logical.operators import ListFiles
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
@@ -52,6 +56,21 @@ def test_list_files_infers_manifest_schema(tmp_path):
     assert schema.names == [PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME]
     assert schema.field(PATH_COLUMN_NAME).type == pa.string()
     assert schema.field(FILE_SIZE_COLUMN_NAME).type == pa.int64()
+
+
+def test_prelisted_files_have_unknown_output_schema():
+    paths = ["file.parquet"]
+    op = ListFiles(
+        paths=paths, file_indexer=_mk_indexer(), filesystem=None, source_paths=paths
+    )
+    manifest = FileManifest.construct_manifest(
+        paths=paths, sizes=[1], chunk_metadatas=[None]
+    )
+    block = cast(pa.Table, manifest.as_block()).select(
+        [PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME]
+    )
+    assert replace(op, prelisted_file_infos=[]).infer_schema() is None
+    assert replace(op, prelisted_file_infos=[block]).infer_schema() is None
 
 
 def test_list_files_has_no_input_dependencies(tmp_path):

@@ -71,30 +71,6 @@ class FileChunk:
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 FILE_CHUNK_METADATA_COLUMN_NAME = "__file_chunk_metadata"
-FILE_METADATA_COLUMN_NAME = "__file_metadata"
-FILE_MTIME_COLUMN_NAME = "__file_mtime_ns"
-FILE_METADATA_TYPE = pa.struct(
-    [
-        pa.field("num_rows", pa.int64()),
-        pa.field("mtime_ns", pa.int64()),
-    ]
-)
-
-
-@dataclass(frozen=True)
-class FileMetadata:
-    """Optional planning metadata for one whole file, independent of chunks."""
-
-    num_rows: Optional[int] = None
-    mtime_ns: Optional[int] = None
-
-    def to_metadata(self) -> Dict[str, Any]:
-        return asdict(self)
-
-    @classmethod
-    def from_metadata(cls, value: Mapping[str, Any]) -> "FileMetadata":
-        return cls(**value)
-
 
 # The columns every manifest carries. A source may add its own beyond these;
 # see :meth:`FileManifest.extra_columns`.
@@ -197,7 +173,7 @@ class FileManifest:
 
         Returns:
             One row per manifest row, or ``None`` when the manifest carries
-            only the required columns.
+            only the required columns -- every plain file format.
         """
         table = BlockAccessor.for_block(self._block).to_arrow()
         names = [

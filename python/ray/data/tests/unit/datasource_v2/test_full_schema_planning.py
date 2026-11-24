@@ -147,7 +147,7 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
     assert source.infer_full_schema(sample, ray_remote_args={}) is custom_schema
     hook.assert_called_once_with(sample)
     result = source.infer_full_schema_with_metadata(sample, ray_remote_args={})
-    assert result.schema is custom_schema and result.metadata is None
+    assert result.schema is custom_schema and result.num_rows is None
     assert hook.call_count == 2
     distributed.assert_not_called()
     remote.remote.assert_not_called()
@@ -160,7 +160,7 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
         sample, ray_remote_args={}
     )
     full_hook.assert_called_once_with(sample, ray_remote_args={})
-    assert result.schema is custom_schema and result.metadata is None
+    assert result.schema is custom_schema and result.num_rows is None
 
     inherited_type = type("InheritedSource", (source_type,), {})
     inherited = inherited_type(["unused"], filesystem=pafs.LocalFileSystem())
@@ -468,7 +468,7 @@ def test_worker_returns_first_position_for_exact_payload():
         4,
         read_metadata,
     )
-    assert result.metadata is None
+    assert result.num_rows is None
     assert [index for index, _, _ in result.schemas] == [0, 1, 3]
     assert [payload for _, payload, _ in result.schemas] == [
         values[i].serialize().to_pybytes() for i in range(3)
@@ -508,7 +508,7 @@ def test_worker_uses_original_metadata_only_for_encoding_failure(
         read_metadata,
     )
     assert result.schemas == [(0, b"original metadata", True)]
-    assert result.metadata is None
+    assert result.num_rows is None
     read_metadata.assert_called_once_with("test.parquet", filesystem, 123)
 
 

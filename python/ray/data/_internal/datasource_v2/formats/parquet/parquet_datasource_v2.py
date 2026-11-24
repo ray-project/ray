@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -382,6 +383,35 @@ class ParquetDatasourceV2(FileDataSourceV2):
             and _metadata_cache_enabled()
         )
 
+    def _infer_schema_and_row_count(
+        self, sample: FileManifest
+    ) -> FullSchemaInferenceResult:
+        """Read each driver-side footer once for schema and row count."""
+        paths = sample.paths.tolist()
+        sizes = dict(zip(paths, sample.known_file_sizes))
+        retried_io_errors = DataContext.get_current().retried_io_errors
+        total_rows: Optional[int] = 0
+        lock = Lock()
+
+        def read_schema(path: str) -> pa.Schema:
+            nonlocal total_rows
+            metadata = _read_parquet_metadata(
+                path, self._filesystem, sizes[path], retried_io_errors=retried_io_errors
+            )
+            with lock:
+                if total_rows is not None:
+                    total_rows = (
+                        total_rows + metadata.num_rows
+                        if metadata.num_rows is not None
+                        else None
+                    )
+            return metadata.schema.to_arrow_schema()
+
+        schema = infer_schema_from_files(paths, read_schema, format_name="Parquet")
+        return FullSchemaInferenceResult(
+            self._augment_schema(schema, sample), total_rows
+        )
+
     @override
     def infer_full_schema_with_metadata(
         self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
@@ -400,9 +430,9 @@ class ParquetDatasourceV2(FileDataSourceV2):
             supports_distributed_reads=self.supports_distributed_reads,
         )
         if result is None:
-            return FullSchemaInferenceResult(self.infer_schema(sample))
+            return self._infer_schema_and_row_count(sample)
         return FullSchemaInferenceResult(
-            self._augment_schema(result.schema, sample), result.metadata
+            self._augment_schema(result.schema, sample), result.num_rows
         )
 
     def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:

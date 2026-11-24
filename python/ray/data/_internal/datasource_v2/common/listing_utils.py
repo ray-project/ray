@@ -1,4 +1,3 @@
-from itertools import repeat
 from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
@@ -9,12 +8,9 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FILE_METADATA_COLUMN_NAME,
-    FILE_MTIME_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
     FileManifest,
-    FileMetadata,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import FilePartitioner
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
@@ -137,23 +133,11 @@ def list_files_for_each_block(
         def _file_infos() -> Iterable[FileInfo]:
             for block in blocks:
                 assert isinstance(block, pa.Table)
-                metadatas = (
-                    block[FILE_METADATA_COLUMN_NAME].to_pylist()
-                    if FILE_METADATA_COLUMN_NAME in block.column_names
-                    else repeat(None)
-                )
-                for path, size, metadata in zip(
+                for path, size in zip(
                     block[PATH_COLUMN_NAME].to_pylist(),
                     block[FILE_SIZE_COLUMN_NAME].to_pylist(),
-                    metadatas,
                 ):
-                    yield FileInfo(
-                        path,
-                        size,
-                        metadata=(
-                            FileMetadata.from_metadata(metadata) if metadata else None
-                        ),
-                    )
+                    yield FileInfo(path=path, size=size)
 
         for manifest in indexer.list_files_from_file_infos(
             _file_infos(),
@@ -195,8 +179,6 @@ def sample_files(
     filesystem: Optional["FileSystem"],
     pruners: Optional[List[FilePruner]] = None,
     max_files: Optional[int] = 16,
-    *,
-    include_mtime: bool = False,
 ) -> FileManifest:
     """List up to ``max_files`` files, or all files when it is ``None``.
 
@@ -209,8 +191,7 @@ def sample_files(
     Uses ``list_file_infos`` (raw path + size), not ``list_files``, so that
     metadata-heavy indexers (e.g. the footer-based Parquet indexer) don't do
     their footer-read + bin-pack work on the driver just to sample a schema.
-    Full mode also retains file sizes for execution. ``include_mtime`` retains
-    modification times for consumers that validate planning metadata.
+    Full mode also retains file sizes for execution.
     """
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
@@ -218,7 +199,6 @@ def sample_files(
     # ``None`` where the filesystem didn't report a size. Full mode retains
     # these paths for execution, so dropping them here would drop their rows.
     sampled_sizes: List[Optional[int]] = []
-    sampled_mtimes: List[Optional[int]] = []
     for file_info in indexer.list_file_infos(
         paths_column,
         filesystem=filesystem,
@@ -227,19 +207,10 @@ def sample_files(
     ):
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
-        if include_mtime:
-            sampled_mtimes.append(file_info.mtime_ns)
         if max_files is not None and len(sampled_paths) >= max_files:
             break
     return FileManifest.construct_manifest(
         paths=sampled_paths,
         sizes=sampled_sizes,
         chunk_metadatas=[None] * len(sampled_paths),
-        extra_columns=(
-            pa.table(
-                {FILE_MTIME_COLUMN_NAME: pa.array(sampled_mtimes, type=pa.int64())}
-            )
-            if include_mtime
-            else None
-        ),
     )

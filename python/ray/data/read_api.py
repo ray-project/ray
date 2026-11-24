@@ -557,7 +557,6 @@ def _read_datasource_v2(
         FileDataSourceV2,
     )
     from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-        FILE_METADATA_COLUMN_NAME,
         FILE_SIZE_COLUMN_NAME,
         PATH_COLUMN_NAME,
     )
@@ -631,11 +630,6 @@ def _read_datasource_v2(
             filesystem,
             pruners,
             max_files=None if sample_all_files_for_schema else 16,
-            include_mtime=(
-                sample_all_files_for_schema
-                and isinstance(datasource, FileDataSourceV2)
-                and datasource._retain_planning_metadata
-            ),
         )
         if len(sample) == 0:
             raise ValueError(
@@ -658,14 +652,14 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
-    planning_metadata = None
+    planning_num_rows = None
     if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
         assert sample is not None
         inference = datasource.infer_full_schema_with_metadata(
             sample, ray_remote_args=ray_remote_args
         )
         schema = inference.schema
-        planning_metadata = inference.metadata
+        planning_num_rows = inference.num_rows
     else:
         schema = datasource.infer_schema(sample)
     schema_elapsed = (
@@ -679,10 +673,6 @@ def _read_datasource_v2(
         sample_block = sample.as_block()
         assert isinstance(sample_block, pa.Table)
         file_infos = sample_block.select([PATH_COLUMN_NAME, FILE_SIZE_COLUMN_NAME])
-        if planning_metadata is not None:
-            file_infos = file_infos.append_column(
-                FILE_METADATA_COLUMN_NAME, planning_metadata
-            )
         prelisted_file_infos = []
         for i in builtins.range(
             0, file_infos.num_rows, DEFAULT_SCHEMA_FILE_INFO_BLOCK_SIZE
@@ -775,6 +765,7 @@ def _read_datasource_v2(
         scanner=scanner,
         schema=schema,
         parallelism=parallelism,
+        planned_num_rows=planning_num_rows,
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
@@ -1893,10 +1884,10 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute schema I/O across Ray tasks. When available
-        and valid, planning row counts may be reused for eligible counts;
-        otherwise, counting reads the footer again. Row-group indexing reads
-        footer metadata during execution.
+        eligible reads distribute schema I/O across Ray tasks. A plain count may
+        use row counts recorded during planning. Input files must remain stable:
+        files changed or removed after planning may not be reflected in count.
+        Other counts and row-group indexing read footer metadata during execution.
         With more than 10,000 candidate files, the reader warns before schema
         merging. Retained path and size metadata adds O(files) data to serialized
         lineage.

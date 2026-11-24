@@ -16,7 +16,6 @@ from ray.data._internal.util import unify_schemas_with_validation
 from ray.data.context import DataContext
 from ray.data.tests.parquet_test_utils import write_map_with_empty_struct
 from ray.data.tests.schema_planning_utils import (
-    get_prelisted_blocks,
     read_schema_records as _records,
     recording_filesystem as _filesystem,
 )
@@ -44,9 +43,7 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
     if schema_only:
-        monkeypatch.setattr(
-            inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 0
-        )
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT", 0)
     values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
     table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
     paths = [schema_files_dir / f"map{i}.parquet" for i in range(3)]
@@ -157,7 +154,7 @@ def test_worker_schemas_preserve_driver_unifier(
 
 
 @pytest.mark.parametrize("datasource_v2", [True], indirect=True)
-def test_merge_schema_caches_each_duplicate_path(
+def test_merge_schema_counts_duplicate_paths(
     tmp_path, monkeypatch, ray_start_regular_shared_2_cpus, datasource_v2
 ):
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
@@ -173,60 +170,6 @@ def test_merge_schema_caches_each_duplicate_path(
     assert dataset.count() == 3 * len(rows)
     assert _records(trace) == before
     assert sorted(row["x"] for row in dataset.take_all()) == sorted(rows * 3)
-
-
-@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
-def test_merge_schema_generated_id_binds_after_read(
-    tmp_path,
-    restore_data_context,
-    monkeypatch,
-    ray_start_regular_shared_2_cpus,
-    datasource_v2,
-):
-    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-        FILE_METADATA_COLUMN_NAME,
-    )
-    from ray.data._internal.logical.operators import ReadFiles
-    from ray.data._internal.logical.rules.bind_generated_id_column import (
-        BindGeneratedIdColumn,
-    )
-    from ray.data.checkpoint import CheckpointConfig
-
-    first, last = tmp_path / "a.parquet", tmp_path / "z.parquet"
-    column = "late"
-    pq.write_table(pa.table({"id": [0, 1]}), first)
-    pq.write_table(pa.table({"id": [2, 3], column: [20, 30]}), last)
-    restore_data_context.checkpoint_config = None
-    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
-    dataset = ray.data.read_parquet(
-        [str(first), str(last)], merge_schema=True, override_num_blocks=1
-    )
-    blocks = get_prelisted_blocks(dataset._logical_plan.dag)
-    assert [
-        value["num_rows"]
-        for block in blocks
-        for value in block[FILE_METADATA_COLUMN_NAME].to_pylist()
-    ] == [2, 2]
-    projected = dataset.select_columns(["id", column])
-    monkeypatch.setattr(
-        projected.context,
-        "checkpoint_config",
-        CheckpointConfig(
-            checkpoint_path=str(tmp_path / "checkpoints"),
-            generated_id_column="generated_id",
-        ),
-    )
-    bound = BindGeneratedIdColumn().apply(projected._logical_plan)
-    bound_read = next(
-        op for op in bound.dag.post_order_iter() if isinstance(op, ReadFiles)
-    )
-    bound_blocks = get_prelisted_blocks(bound_read)
-    assert len(bound_blocks) == len(blocks)
-    assert all(a.equals(b) for a, b in zip(blocks, bound_blocks))
-    rows = sorted(projected.take_all(), key=lambda row: row["id"])
-    assert [row["id"] for row in rows] == list(range(4))
-    assert [row["late"] for row in rows] == [None, None, 20, 30]
-    assert len({tuple(sorted(r["generated_id"].items())) for r in rows}) == 4
 
 
 @pytest.mark.parametrize("datasource_v2", [True], indirect=True)

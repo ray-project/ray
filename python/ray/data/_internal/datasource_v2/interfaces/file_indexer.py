@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     AbstractSet,
@@ -10,10 +10,7 @@ from typing import (
 
 from pyarrow.fs import FileSystem
 
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FileManifest,
-    FileMetadata,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.block import BlockColumn
 
@@ -158,6 +155,3 @@ class FileInfo:
 
     path: str
     size: Optional[int]
-    # Optional planning observations don't change path/size identity or repr.
-    mtime_ns: Optional[int] = field(default=None, compare=False, repr=False)
-    metadata: Optional[FileMetadata] = field(default=None, compare=False, repr=False)

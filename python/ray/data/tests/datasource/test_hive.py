@@ -229,13 +229,6 @@ def test_direct_full_schema_retains_candidates_and_lineage(
     from pyarrow import orc
 
     import ray
-    from ray.data._internal.datasource_v2.formats.hive.hive_direct import (
-        _HiveFileIndexer,
-    )
-    from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-        FILE_MTIME_COLUMN_NAME,
-    )
-    from ray.data._internal.logical.operators.read_operator import ListFiles
     from ray.data.expressions import col
 
     writer = pq.write_table if file_format == "parquet" else orc.write_table
@@ -275,17 +268,6 @@ def test_direct_full_schema_retains_candidates_and_lineage(
     dataset = direct_table(
         file_format, declared, merge_schema=True, positional=positional
     )
-    listing = next(
-        op
-        for op in dataset._logical_plan.dag.post_order_iter()
-        if isinstance(op, ListFiles)
-    )
-    indexer = cast(_HiveFileIndexer, listing.file_indexer)
-    retained = indexer._retained
-    assert retained is not None
-    block = retained.as_block()
-    assert isinstance(block, pa.Table)
-    assert FILE_MTIME_COLUMN_NAME not in block.column_names
     writer(
         pa.table({"id": [99], "late": ["not planned"]}), tmp_path / "published_later"
     )

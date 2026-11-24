@@ -13,12 +13,7 @@ from pyarrow.fs import FileSystem
 import ray
 from ray import ObjectRef
 from ray._common.utils import env_float, env_integer
-from ray.data._internal.datasource_v2.interfaces.file_manifest import (
-    FILE_METADATA_TYPE,
-    FILE_MTIME_COLUMN_NAME,
-    FileManifest,
-    FileMetadata,
-)
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.execution.util import merge_label_selector
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import unify_schemas_with_validation
@@ -48,39 +43,28 @@ _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY = env_integer(
     "RAY_DATA_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY", 4
 )
 _FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S = 30
-# Estimated row-count metadata budgets, internal rather than public config.
-# Zero disables caching. Index scaffolding, schemas and temporary copies are
-# excluded from these budgets.
-_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES = env_integer(
-    "RAY_DATA_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 32 * 1024 * 1024
+_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT = env_integer(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT", 1
 )
-_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES = env_integer(
-    "RAY_DATA_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 1024 * 1024
-)
-_FILE_METADATA_RECORD_BYTES = 32
 logger = logging.getLogger(__name__)
 
 
 def _metadata_cache_enabled() -> bool:
-    return (
-        _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES >= _FILE_METADATA_RECORD_BYTES
-        and _FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES
-        >= _FILE_METADATA_RECORD_BYTES
-    )
+    return bool(_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT)
 
 
 @dataclass
 class FullSchemaInferenceResult:
-    """Schema and optional ordinary Arrow values for the same candidates."""
+    """Schema and optional total row count for the same candidates."""
 
     schema: pa.Schema
-    metadata: Optional[pa.ChunkedArray] = None
+    num_rows: Optional[int] = None
 
 
 @dataclass
 class _SchemaBatchResult:
     schemas: List[Tuple[int, bytes, bool]]
-    metadata: Optional[pa.Array]
+    num_rows: Optional[int]
 
 
 def _add_unique_schema(
@@ -138,10 +122,8 @@ def _read_schema_batch(
     read_schema_metadata: Optional[Callable] = None,
     *,
     read_metadata: Optional[Callable] = None,
-    row_records: int = 0,
-    mtimes: Optional[List[Optional[int]]] = None,
 ) -> _SchemaBatchResult:
-    """Read distinct schemas and optionally retain per-file row counts.
+    """Read distinct schemas and optionally sum per-file row counts.
 
     Use IPC when lossless; otherwise try generated or original Parquet metadata.
     """
@@ -164,11 +146,7 @@ def _read_schema_batch(
                     path, filesystem, size, retried_io_errors=context.retried_io_errors
                 )
                 schema = parquet_metadata.schema.to_arrow_schema()
-                if index < row_records:
-                    metadata = FileMetadata(
-                        num_rows=parquet_metadata.num_rows,
-                        mtime_ns=mtimes[index] if mtimes is not None else None,
-                    )
+                metadata = parquet_metadata.num_rows
             return schema, schema.serialize().to_pybytes(), metadata, parquet_metadata
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
@@ -183,10 +161,10 @@ def _read_schema_batch(
     with ThreadPoolExecutor(max_workers=min(io_concurrency, len(paths))) as executor:
         values = executor.map(read_file, enumerate(paths))
         unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
-        metadata_values: List[Optional[FileMetadata]] = []
+        total_rows: Optional[int] = 0 if read_metadata is not None else None
         for index, (schema, value, metadata, parquet_metadata) in enumerate(values):
-            if row_records:
-                metadata_values.append(metadata)
+            if total_rows is not None:
+                total_rows = total_rows + metadata if metadata is not None else None
             if parquet_metadata is not None:
                 read_original = partial(encode_original_metadata, parquet_metadata)
             else:
@@ -198,18 +176,7 @@ def _read_schema_batch(
                     else None
                 )
             _add_unique_schema(unique, index, schema, value, read_original)
-    metadata = (
-        pa.array(
-            [
-                value.to_metadata() if value is not None else None
-                for value in metadata_values
-            ],
-            type=FILE_METADATA_TYPE,
-        )
-        if row_records
-        else None
-    )
-    return _SchemaBatchResult(list(unique.values()), metadata)
+    return _SchemaBatchResult(list(unique.values()), total_rows)
 
 
 def _schema_task_options(
@@ -304,25 +271,8 @@ def _infer_full_schema_on_workers(
     )
     sizes = sample.known_file_sizes
     schemas: List[Tuple[int, pa.Schema]] = []
-    metadata_chunks: Dict[int, pa.Array] = {}
-    pending: Dict[ObjectRef[_SchemaBatchResult], Tuple[int, int]] = {}
-    row_slots = row_limit = 0
-    mtimes = None
-    if read_metadata is not None:
-        row_slots = min(
-            batch_size,
-            _FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES
-            // _FILE_METADATA_RECORD_BYTES,
-        )
-        full_batches, tail = divmod(len(paths) - 1, batch_size)
-        row_limit = min(
-            _FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES // _FILE_METADATA_RECORD_BYTES,
-            1 + full_batches * row_slots + min(tail, row_slots),
-        )
-        extra = sample.extra_columns
-        if extra is not None and FILE_MTIME_COLUMN_NAME in extra.column_names:
-            mtimes = extra[FILE_MTIME_COLUMN_NAME].to_pylist()
-    row_remaining = row_limit
+    pending: Dict[ObjectRef[_SchemaBatchResult], int] = {}
+    total_rows: Optional[int] = 0 if read_metadata is not None else None
     start = 0
     first_result = True
     try:
@@ -332,13 +282,7 @@ def _infer_full_schema_on_workers(
                 stop = min(start + (1 if start == 0 else batch_size), len(paths))
                 metadata_args = {}
                 if read_metadata is not None:
-                    row_records = min(row_slots, stop - start, row_remaining)
-                    row_remaining -= row_records
-                    metadata_args = {
-                        "read_metadata": read_metadata,
-                        "row_records": row_records,
-                        "mtimes": mtimes[start:stop] if mtimes is not None else None,
-                    }
+                    metadata_args = {"read_metadata": read_metadata}
                 ref = read_remote.remote(
                     paths[start:stop],
                     sizes[start:stop],
@@ -350,7 +294,7 @@ def _infer_full_schema_on_workers(
                     read_schema_metadata,
                     **metadata_args,
                 )
-                pending[ref] = (start, stop - start)
+                pending[ref] = start
                 start = stop
             ready, _ = ray.wait(
                 list(pending),
@@ -370,13 +314,13 @@ def _infer_full_schema_on_workers(
                 return None
             first_result = False
             ref = ready[0]
-            offset, count = pending.pop(ref)
+            offset = pending.pop(ref)
             result = ray.get(ref)
-            if read_metadata is not None:
-                metadata_chunks[offset] = (
-                    result.metadata
-                    if result.metadata is not None
-                    else pa.nulls(count, type=FILE_METADATA_TYPE)
+            if total_rows is not None:
+                total_rows = (
+                    total_rows + result.num_rows
+                    if result.num_rows is not None
+                    else None
                 )
             for index, value, parquet_encoded in result.schemas:
                 position = offset + index
@@ -388,14 +332,7 @@ def _infer_full_schema_on_workers(
                 [schema for _, schema in schemas],
                 format_name,
             ),
-            (
-                pa.chunked_array(
-                    [metadata_chunks[offset] for offset in sorted(metadata_chunks)],
-                    type=FILE_METADATA_TYPE,
-                )
-                if row_limit
-                else None
-            ),
+            total_rows,
         )
     finally:
         for ref in pending:
@@ -438,7 +375,7 @@ def infer_full_schema_with_metadata_from_files(
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
 ) -> Optional[FullSchemaInferenceResult]:
-    """Read schemas and retain row counts only when worker planning succeeds."""
+    """Read schemas and a complete row count when worker planning succeeds."""
     if not _metadata_cache_enabled():
         return None
     return _infer_full_schema_on_workers(
