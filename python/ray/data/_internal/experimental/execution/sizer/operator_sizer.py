@@ -18,10 +18,9 @@ after it launches tasks.
 from __future__ import annotations
 
 import logging
-import math
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Set
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
@@ -89,7 +88,10 @@ from ray.data._internal.experimental.execution.sizer.scale_where import (
     place_downscales,
     place_upscales,
 )
-from ray.data._internal.experimental.execution.sizer.telemetry import SizerTelemetry
+from ray.data._internal.experimental.execution.sizer.telemetry import (
+    SizerTelemetry,
+    timed,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
@@ -152,25 +154,14 @@ class OperatorSizer:
 
         self._dataset_id = dataset_id
         self._clock = clock
-        # Sizing cadence: the executor calls in every scheduling-loop step
-        # (~100ms), but queue signals are meaningless below ~1s and actor
-        # startup dominates anything we decide, so a snapshot is built (and a
-        # decision made) at most once per ``cadence_s``.
-        self.cadence_s = cadence_s
-        # -inf rather than 0: time.monotonic()'s epoch is arbitrary, so only
-        # this reads unambiguously as "never evaluated".
+        self._cadence_s = cadence_s
         self._last_tick_t: float = float("-inf")
-        self._warned_loop_lag = False
-        # WARMUP ends once every critical op has produced output, or after
-        # this long since the first tick (``_warmup_complete``).
+
         self._warmup_timeout_s = warmup_timeout_s
         self._warmup_started_t: Optional[float] = None
-        # An empty reservation is usually a cold coordinator cache, not a
-        # revoked slice (``_trust_empty_reservation``).
-        self._reservation_seen_nonempty = False
+
+        self._seen_nonempty_reservation = False
         self._consecutive_empty_reservations = 0
-        # How long the last snapshot took to build (telemetry).
-        self._build_s = 0.0
         self._placement: ActorPlacementStrategy = LocalityBasedActorPlacement()
 
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
@@ -220,6 +211,34 @@ class OperatorSizer:
 
     # --- one sizing evaluation ------------------------------------------------
 
+    def _trust_empty_reservation(self, view: "DatasetReservationView") -> bool:
+        """Whether this tick may reclaim on an empty reservation.
+
+        An empty reservation can come in 2 places:
+            - cold cache from autoscaling coordinator
+            - the autoscaling coordinator decided to hand out 0 nodes. This can
+            happen in node preemption, for example
+        """
+        if view.reserved_by_node:
+            self._seen_nonempty_reservation = True
+            self._consecutive_empty_reservations = 0
+            return True
+        if not self._seen_nonempty_reservation:
+            logger.debug(
+                "OperatorSizer: reservation empty before first grant -- "
+                "skipping reclaim this tick."
+            )
+            return False
+        self._consecutive_empty_reservations += 1
+        if self._consecutive_empty_reservations < 2:
+            logger.debug(
+                "OperatorSizer: reservation read empty after a prior grant -- "
+                "holding evictions one tick in case it is transient."
+            )
+            return False
+        return True
+
+    @timed("build")
     def maybe_build_cluster_state_snapshot(
         self,
         *,
@@ -236,28 +255,42 @@ class OperatorSizer:
         """
         self._lifecycles.on_step()
         now = self._clock()
-        if now - self._last_tick_t < self.cadence_s:
+        if now - self._last_tick_t < self._cadence_s:
             return None
-        self._warn_if_loop_lagging(now)
         self._last_tick_t = now
-        t0 = time.perf_counter()
         snapshot = ClusterStateSnapshot.build(
             cluster_view,
             self._profiles,
             seconds_since_allocation_change=seconds_since_allocation_change,
             trust_empty_reservation=self._trust_empty_reservation(cluster_view),
         )
-        self._build_s = time.perf_counter() - t0
         return snapshot
 
     def perform_sizing_decision(
         self, *, cluster_state_snapshot: ClusterStateSnapshot
     ) -> None:
-        """One sizing tick against the snapshot: hold room for held ops, run
-        the bottleneck model, advance the phase, then decide, how many,
-        where, apply. The snapshot's free maps are debited along the way."""
-        snapshot = cluster_state_snapshot
-        t0 = time.perf_counter()
+        """One sizing tick against the snapshot, then its telemetry. The
+        snapshot's free maps are debited along the way."""
+        how_many, where = self._run_tick(cluster_state_snapshot)
+        self._telemetry.record_tick(self._topology, how_many, where)
+
+    @timed("tick")
+    def _run_tick(
+        self, snapshot: ClusterStateSnapshot
+    ) -> Tuple[PerOpSizingRequest, PlacedSizingRequest]:
+        """Hold room for held ops, run the bottleneck model, advance the
+        phase, then decide, how many, where, apply."""
+        self._prepare_tick(snapshot)
+        self._decide(snapshot)
+        how_many = self._per_op_how_many(snapshot)
+        where = self._per_op_where(how_many, snapshot)
+        self._apply(where)
+        return how_many, where
+
+    @timed("prepare")
+    def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> None:
+        """Take held ops' room out of the snapshot, run the bottleneck model
+        on what is left, and move the phase forward."""
         self._note_held_ops(self._hold_for_held_ops(snapshot))
         # The bottleneck model, once per tick, before any decision debits
         # free capacity: the policy acts on it and the log line shows it.
@@ -266,74 +299,6 @@ class OperatorSizer:
         )
         self._bottleneck_observer.log_tick(self._bottleneck)
         self._advance_phase()
-        t1 = time.perf_counter()
-
-        self._decide(snapshot)
-        t2 = time.perf_counter()
-        how_many = self._per_op_how_many(snapshot)
-        t3 = time.perf_counter()
-        where = self._per_op_where(how_many, snapshot)
-        t4 = time.perf_counter()
-        self._apply(where)
-        t5 = time.perf_counter()
-        self._telemetry.record_tick(
-            self._topology,
-            how_many,
-            where,
-            prepare_s=self._build_s + (t1 - t0),
-            decide_s=t2 - t1,
-            per_op_how_many_s=t3 - t2,
-            per_op_where_s=t4 - t3,
-            apply_s=t5 - t4,
-            e2e_s=self._build_s + (t5 - t0),
-        )
-
-    # --- cadence and reservation trust ------------------------------------------
-
-    def _warn_if_loop_lagging(self, now: float) -> None:
-        """The gap between ticks measures the control loop, since the executor
-        calls in every step. A slow loop delays every sizing decision, so make
-        it visible."""
-        since = now - self._last_tick_t
-        if not math.isfinite(since):
-            return  # first tick of the run
-        if since <= 1.5 * self.cadence_s or self._warned_loop_lag:
-            return
-        self._warned_loop_lag = True
-        logger.warning(
-            "OperatorSizer: scheduling-loop lag -- %.1fs since last sizer tick "
-            "(cadence %.1fs); a slow control loop delays every sizing decision. "
-            "Logged once.",
-            since,
-            self.cadence_s,
-        )
-
-    def _trust_empty_reservation(self, view: "DatasetReservationView") -> bool:
-        """Whether this tick may reclaim on an empty reservation.
-
-        An empty reservation usually means the coordinator cache has not been
-        filled yet, not that our slice was revoked, so we do not evict on one
-        until it has persisted for two ticks. A non-empty read is always acted
-        on -- a partial shrink is real.
-        """
-        if view.reserved_by_node:
-            self._reservation_seen_nonempty = True
-            self._consecutive_empty_reservations = 0
-            return True
-        if not self._reservation_seen_nonempty:
-            logger.debug(
-                "OperatorSizer: reservation empty before first grant -- "
-                "skipping reclaim this tick."
-            )
-            return False
-        self._consecutive_empty_reservations += 1
-        if self._consecutive_empty_reservations < 2:
-            logger.debug(
-                "OperatorSizer: reservation read empty after a prior grant -- "
-                "holding evictions one tick in case it is transient."
-            )
-            return False
-        return True
 
     # --- phase ------------------------------------------------------------------
 
@@ -450,7 +415,7 @@ class OperatorSizer:
                 key=lambda n: (pressure.get(n, 0), n),
             )
             held = pack_actors(
-                free, nodes, snapshot.per_actor_resources_by_op[op], num_to_hold
+                free, nodes, op.actor_pool.per_actor_resource_usage(), num_to_hold
             )
             held_actors_by_op[op] = floor + len(held)
             logger.debug(
@@ -509,6 +474,7 @@ class OperatorSizer:
         remaining = self._how_many.remaining_work_cap(op, self._topology[op])
         return ceiling if remaining is None else min(ceiling, remaining)
 
+    @timed("decide")
     def _decide(self, snapshot: ClusterStateSnapshot) -> None:
         """Step 1: classify this tick's decision and carry it out.
 
@@ -522,6 +488,7 @@ class OperatorSizer:
         for placed in requests:
             self._apply(placed)
 
+    @timed("per_op_how_many")
     def _per_op_how_many(self, snapshot: ClusterStateSnapshot) -> PerOpSizingRequest:
         """Step 2: the per-op wants that do not need the model.
 
@@ -651,6 +618,7 @@ class OperatorSizer:
                 )
                 ledger.grant(op, delta)
 
+    @timed("per_op_where")
     def _per_op_where(
         self, request: PerOpSizingRequest, snapshot: ClusterStateSnapshot
     ) -> PlacedSizingRequest:
@@ -717,6 +685,7 @@ class OperatorSizer:
         self._telemetry.log_placement(reserved, free, placed, self._placement)
         return PlacedSizingRequest(request=placed)
 
+    @timed("apply")
     def _apply(self, request: PlacedSizingRequest) -> None:
         """Step 4: hand the resolved requests to the pools."""
         # Downscales before upscales, deterministically.

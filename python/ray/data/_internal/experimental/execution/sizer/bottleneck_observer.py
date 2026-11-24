@@ -1000,7 +1000,7 @@ class BottleneckObserver:
         for op in self._profiles.non_pg_ops:
             if op in exclude or op.has_completed():
                 continue
-            per_actor = capacity.per_actor_resources_by_op[op]
+            per_actor = op.actor_pool.per_actor_resource_usage()
             for node, states in op.actor_pool.alive_actor_states_by_node().items():
                 serving = sum(
                     1
@@ -1052,7 +1052,7 @@ class BottleneckObserver:
             return "no: at max size"
         if self._profiles.is_pg_managed(op):
             return self._pg_eligibility(op, capacity)
-        per_actor = capacity.per_actor_resources_by_op[op]
+        per_actor = pool.per_actor_resource_usage()
         nodes = [n for n in free_by_node if n in capacity.schedulable_nodes_by_op[op]]
         if not nodes:
             return "no: no allowed node"

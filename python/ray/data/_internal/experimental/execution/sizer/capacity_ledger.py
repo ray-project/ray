@@ -68,7 +68,7 @@ class ConstraintAwareCapacityLedger:
             # Headroom is max_size - total_size, and total_size still
             # counts draining actors, so revivable ones come on top.
             return self._unknown_pg_headroom[op] + reclaimable
-        per = self._capacity.per_actor_resources_by_op[op]
+        per = op.actor_pool.per_actor_resource_usage()
         free, slots = self._schedulable_slots(op)
         total = 0.0
         for slot in slots:
@@ -91,4 +91,4 @@ class ConstraintAwareCapacityLedger:
             self._unknown_pg_headroom[op] -= min(num_new, self._unknown_pg_headroom[op])
             return
         free, slots = self._schedulable_slots(op)
-        pack_actors(free, slots, self._capacity.per_actor_resources_by_op[op], num_new)
+        pack_actors(free, slots, op.actor_pool.per_actor_resource_usage(), num_new)

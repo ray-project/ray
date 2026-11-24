@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import functools
 import logging
+import time
 from collections import Counter
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, TypeVar, cast
 
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
@@ -31,6 +33,28 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def timed(phase: str) -> Callable[[_F], _F]:
+    """Method decorator: add each call's wall time to ``self._telemetry``
+    under ``phase``. Calls add up until the next ``record_tick`` emits and
+    clears them, so a method that runs on every scheduling-loop step reports
+    its total since the last tick."""
+
+    def decorate(fn: _F) -> _F:
+        @functools.wraps(fn)
+        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            t0 = time.perf_counter()
+            try:
+                return fn(self, *args, **kwargs)
+            finally:
+                self._telemetry.add_timing_phase(phase, time.perf_counter() - t0)
+
+        return cast(_F, wrapper)
+
+    return decorate
+
 
 class SizerTelemetry:
     """The control loop runs every ``SIZER_CADENCE_S``, so unconditional
@@ -50,6 +74,12 @@ class SizerTelemetry:
         # Cumulative cross-node input bytes per op at the last tick, to log the
         # per-tick delta (see _log_locality).
         self._last_remote_bytes: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        # Wall time per phase since the last ``record_tick`` (see ``timed``).
+        self._timings: Dict[str, float] = {}
+
+    def add_timing_phase(self, phase: str, seconds: float) -> None:
+        """Add ``seconds`` to ``phase``'s total for the current tick."""
+        self._timings[phase] = self._timings.get(phase, 0.0) + seconds
 
     # --- scale_how_many -------------------------------------------------------
 
@@ -184,29 +214,16 @@ class SizerTelemetry:
         topology: "Topology",
         how_many: PerOpSizingRequest,
         where: PlacedSizingRequest,
-        *,
-        prepare_s: float,
-        decide_s: float,
-        per_op_how_many_s: float,
-        per_op_where_s: float,
-        apply_s: float,
-        e2e_s: float,
     ) -> None:
-        """Close out one evaluation.
+        """Close out one evaluation: emit and clear the phase timings
+        collected since the last tick, then the actor deltas.
 
-        The phase histograms observe every step, including ones that sized
-        nothing: lifecycle transitions run on those, so durations
-        recorded only on sizing ticks would miss it. The verbose roll-up is
-        logged only when something actually changed.
+        The phase histograms observe every tick, including ones that sized
+        nothing. The verbose roll-up is logged only when something actually
+        changed.
         """
-        for phase, seconds in (
-            ("prepare", prepare_s),
-            ("decide", decide_s),
-            ("per_op_how_many", per_op_how_many_s),
-            ("per_op_where", per_op_where_s),
-            ("apply", apply_s),
-            ("e2e", e2e_s),
-        ):
+        timings, self._timings = self._timings, {}
+        for phase, seconds in timings.items():
             self._metrics.record_tick_duration(phase, seconds)
 
         if not how_many.request and not where.request:
@@ -235,15 +252,12 @@ class SizerTelemetry:
             node for r in where.request.values() if r.delta > 0 for node in r.nodes
         }
         logger.debug(
-            "OperatorSizer tick: e2e=%.1fms (decide=%.1f "
-            "per_op_how_many=%.1f per_op_where=%.1f apply=%.1f) | "
+            "OperatorSizer tick: (%s ms) | "
             "scale_up=+%d scale_down=-%d across %d ops "
             "[%s]; placed on %d nodes",
-            e2e_s * 1e3,
-            decide_s * 1e3,
-            per_op_how_many_s * 1e3,
-            per_op_where_s * 1e3,
-            apply_s * 1e3,
+            " ".join(
+                f"{phase}={seconds * 1e3:.1f}" for phase, seconds in timings.items()
+            ),
             up,
             down,
             len(where.request),

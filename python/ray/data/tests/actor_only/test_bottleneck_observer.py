@@ -673,13 +673,15 @@ def test_assessment_eligibility_and_victims(
         return {f"a{i}": SimpleNamespace(status=ActorStatus.ACTIVE) for i in range(n)}
 
     read = _Op("R", serving=2, obp_actors=2)
-    read.actor_pool = _Pool({"n1": actors(2)})
+    read.actor_pool = _Pool({"n1": actors(2)}, per_actor=_NEEDS)
     read.metrics.num_task_outputs_generated = 20
     read.metrics.num_tasks_finished = 10
     gpu = _Op("B", serving=1, obp_actors=1)
-    gpu.actor_pool = _Pool({"n2": actors(1)})
+    gpu.actor_pool = _Pool(
+        {"n2": actors(1)}, per_actor=ExecutionResources(cpu=1, gpu=1, memory=3.3 * GiB)
+    )
     write = _Op("W", serving=1, busy_slots=1.0)
-    write.actor_pool = _Pool({"n2": actors(1)}, max_size=4)
+    write.actor_pool = _Pool({"n2": actors(1)}, max_size=4, per_actor=_NEEDS)
     observer, _, step = _observer(read, gpu, write, queued=(5, 5, 5))
     for _ in range(5):
         gpu.metrics.num_task_inputs_processed += 1  # B consumes 1 block/s
@@ -702,11 +704,6 @@ def test_assessment_eligibility_and_victims(
                 "n3": zero,
             },
             schedulable_nodes_by_op={read: {"n1"}, gpu: {"n2"}, write: write_nodes},
-            per_actor_resources_by_op={
-                read: _NEEDS,
-                gpu: ExecutionResources(cpu=1, gpu=1, memory=3.3 * GiB),
-                write: _NEEDS,
-            },
         ),
     )
 
@@ -763,7 +760,7 @@ def test_pg_bottleneck_is_eligible_by_room_in_its_pg_but_never_a_recipient(
         return {f"a{i}": SimpleNamespace(status=ActorStatus.ACTIVE) for i in range(n)}
 
     producer = _Op("P", serving=2, obp_actors=2)
-    producer.actor_pool = _Pool({"n1": actors(2)})
+    producer.actor_pool = _Pool({"n1": actors(2)}, per_actor=_NEEDS)
     consumer = _Op("C", serving=1, busy_slots=1.0)
     consumer.actor_pool = _Pool(
         {"n2": actors(1)}, max_size=8, per_actor=ExecutionResources(cpu=1, gpu=1)
@@ -779,7 +776,6 @@ def test_pg_bottleneck_is_eligible_by_room_in_its_pg_but_never_a_recipient(
         SimpleNamespace(
             free_by_node={"n1": ExecutionResources(cpu=8, memory=8 * GiB)},
             schedulable_nodes_by_op={producer: {"n1"}},
-            per_actor_resources_by_op={producer: _NEEDS},
             pg_free_by_bundle=(
                 {bundle: ExecutionResources(cpu=bundle_free_cpu, gpu=bundle_free_cpu)}
                 if bundle_free_cpu is not None

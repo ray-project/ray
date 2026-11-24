@@ -9,7 +9,7 @@ import sys
 from collections import Counter
 from dataclasses import replace
 from types import SimpleNamespace
-from typing import Any, Dict, Optional, cast
+from typing import Any, Dict, List, Optional, Tuple, cast
 
 import pytest
 
@@ -89,6 +89,7 @@ from ray.data._internal.experimental.execution.sizer.scale_where import (
 )
 from ray.data._internal.experimental.execution.sizer.telemetry import (
     SizerTelemetry,
+    timed,
 )
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.util import GiB, MiB
@@ -937,7 +938,8 @@ def test_warmup_latches_off_on_critical_op_first_output():
     snapshot = sizer.next_tick()
     assert snapshot is not None
     sizer._advance_phase()
-    assert sizer.phase is SizerPhase.STEADY
+    # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
+    assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
     assert sizer._per_op_how_many(snapshot).request == {}
 
 
@@ -1298,7 +1300,6 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
     snapshot = _snapshot(
         {},
         {},
-        {op: op._pool.per_actor_resource_usage() for op in (anywhere, big)},
         pg_free=free,
         bundles=bundles.static_bundles_by_op,
     )
@@ -1602,29 +1603,6 @@ def test_tick_cadence_gate_and_idle_phases():
     assert sizer.next_tick(force=False) is None
     assert all(op._pool.scaled == [] for op in topo)
     assert all(op.actor_pool.upkeep_calls == 0 for op in topo)
-
-
-def test_loop_lag_warning_on_slow_tick(caplog, propagate_logs):
-    # When the gap between evaluations exceeds 1.5x the cadence, the control
-    # loop is running slow and a lag warning is emitted; an on-cadence tick
-    # must not warn.
-    op = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, running=20))
-    sizer, topo = _bootstrapped(op, warm=True)
-
-    def lag_records():
-        return [r for r in caplog.records if "scheduling-loop lag" in r.getMessage()]
-
-    with caplog.at_level(logging.WARNING):
-        sizer.how_many(force=False)  # first eval, no prior gap
-        sizer.clock.advance(4.0)  # 4.0s gap > 1.5 * 2s cadence -> lag
-        sizer.how_many(force=False)
-    assert len(lag_records()) == 1
-
-    caplog.clear()
-    with caplog.at_level(logging.WARNING):
-        sizer.clock.advance(2.2)  # past the gate but under the threshold
-        sizer.how_many(force=False)
-    assert not lag_records()
 
 
 # --- below-min, fixed and completed pools --------------------------------------
@@ -2020,18 +1998,20 @@ def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
 
 
 class _LedgerOp:
-    """Duck-typed op the ledger reads its reclaimable count off."""
+    """Duck-typed op the ledger reads its per-actor shape and reclaimable
+    count off."""
 
-    def __init__(self, reclaimable=0):
+    def __init__(self, per_actor=None, reclaimable=0):
+        shape = per_actor or ExecutionResources(cpu=1)
         self.actor_pool = SimpleNamespace(
-            num_reclaimable_draining_actors=lambda: reclaimable
+            per_actor_resource_usage=lambda: shape,
+            num_reclaimable_draining_actors=lambda: reclaimable,
         )
 
 
 def _snapshot(
     free,
     schedulable_nodes_by_op,
-    per_actor_resources_by_op,
     *,
     unknown_pg_headroom=None,
     pg_free=None,
@@ -2046,7 +2026,6 @@ def _snapshot(
         free_by_node=free,
         reserved_by_node=dict(free),
         schedulable_nodes_by_op=schedulable_nodes_by_op,
-        per_actor_resources_by_op=per_actor_resources_by_op,
         pg_free_by_bundle=dict(pg_free or {}),
         schedulable_bundles_by_op=dict(bundles or {}),
         unknown_pg_headroom_by_op=unknown_pg_headroom or {},
@@ -2056,24 +2035,22 @@ def _snapshot(
 def test_ledger_is_per_node_and_constraint_aware():
     # 2 nodes x 3 CPU, actor needs 2 CPU: per-node floor (1+1=2), NOT a global
     # floor(6/2)=3 -- fragmentation is visible.
-    op = cast(Any, _LedgerOp())
+    op = cast(Any, _LedgerOp(ExecutionResources(cpu=2)))
     free = {"a": ExecutionResources(cpu=3), "b": ExecutionResources(cpu=3)}
-    ledger = ConstraintAwareCapacityLedger(
-        _snapshot(free, {op: None}, {op: ExecutionResources(cpu=2)})
-    )
+    ledger = ConstraintAwareCapacityLedger(_snapshot(free, {op: None}))
     assert ledger.max_upscale_delta(op) == 2
 
     # op1 eligible on all; op2 only on the shared GPU nodes. Granting op2
     # first consumes the shared nodes, so op1 then sees less.
-    op1, op2 = cast(Any, _LedgerOp()), cast(Any, _LedgerOp())
+    op1 = cast(Any, _LedgerOp(ExecutionResources(gpu=1)))
+    op2 = cast(Any, _LedgerOp(ExecutionResources(gpu=1)))
     free = {
         "n1": ExecutionResources(cpu=8),
         "g1": ExecutionResources(gpu=4),
         "g2": ExecutionResources(gpu=4),
     }
     match = {op1: None, op2: frozenset({"g1", "g2"})}
-    per = {op1: ExecutionResources(gpu=1), op2: ExecutionResources(gpu=1)}
-    ledger = ConstraintAwareCapacityLedger(_snapshot(free, match, per))
+    ledger = ConstraintAwareCapacityLedger(_snapshot(free, match))
     assert ledger.max_upscale_delta(op2) == 8  # 2 GPU nodes x 4
     ledger.grant(op2, 8)
     assert ledger.max_upscale_delta(op2) == 0
@@ -2085,11 +2062,10 @@ def test_ledger_reclaimable_accounting():
     # max_upscale_delta = 4 + 3. Granting the 3 reclaimable takes them back from
     # their held slots and consumes ZERO free, so a peer contending for the
     # same node still sees the full 4; granting past them debits free.
-    op = cast(Any, _LedgerOp(reclaimable=3))
-    peer = cast(Any, _LedgerOp())
+    op = cast(Any, _LedgerOp(ExecutionResources(cpu=1), reclaimable=3))
+    peer = cast(Any, _LedgerOp(ExecutionResources(cpu=1)))
     free = {"n1": ExecutionResources(cpu=4)}
-    per = {op: ExecutionResources(cpu=1), peer: ExecutionResources(cpu=1)}
-    ledger = ConstraintAwareCapacityLedger(_snapshot(free, {op: None, peer: None}, per))
+    ledger = ConstraintAwareCapacityLedger(_snapshot(free, {op: None, peer: None}))
     assert ledger.max_upscale_delta(op) == 7
     ledger.grant(op, 3)
     assert ledger.max_upscale_delta(peer) == 4
@@ -2098,12 +2074,11 @@ def test_ledger_reclaimable_accounting():
 
 
 def test_ledger_pg_per_actor_ops_size_against_headroom():
-    op = cast(Any, _LedgerOp())
+    op = cast(Any, _LedgerOp(ExecutionResources(gpu=1)))
     ledger = ConstraintAwareCapacityLedger(
         _snapshot(
             {"n1": ExecutionResources(cpu=8)},
             {op: None},
-            {op: ExecutionResources(gpu=1)},
             unknown_pg_headroom={op: 3},
         )
     )
@@ -2115,11 +2090,9 @@ def test_ledger_pg_per_actor_ops_size_against_headroom():
 def test_ledger_unknown_pg_ops_revive_draining_actors_on_top_of_headroom():
     # 2 revivable draining actors and room for 1 more under max_size (whose
     # headroom already counts the draining ones): reviving needs no new room.
-    op = cast(Any, _LedgerOp(reclaimable=2))
+    op = cast(Any, _LedgerOp(ExecutionResources(gpu=1), reclaimable=2))
     ledger = ConstraintAwareCapacityLedger(
-        _snapshot(
-            {}, {op: None}, {op: ExecutionResources(gpu=1)}, unknown_pg_headroom={op: 1}
-        )
+        _snapshot({}, {op: None}, unknown_pg_headroom={op: 1})
     )
     assert ledger.max_upscale_delta(op) == 3
     ledger.grant(op, 2)  # both revived: the headroom is untouched
@@ -2132,16 +2105,13 @@ def test_ledger_ops_sharing_a_pg_spend_the_same_bundles():
     """4 bundles of {1 GPU, 4 CPU}. Alone, each op fits 4. Jointly they do
     not: every GPU actor also takes a CPU, leaving no bundle with the 4 CPU
     the other op's actor needs -- which a per-op actor cap cannot see."""
-    gpu_op, cpu_op = cast(Any, _LedgerOp()), cast(Any, _LedgerOp())
+    gpu_op = cast(Any, _LedgerOp(ExecutionResources(cpu=1, gpu=1)))
+    cpu_op = cast(Any, _LedgerOp(ExecutionResources(cpu=4)))
     keys = tuple(BundleKey("pg1", i) for i in range(4))
     ledger = ConstraintAwareCapacityLedger(
         _snapshot(
             {},
             {},
-            {
-                gpu_op: ExecutionResources(cpu=1, gpu=1),
-                cpu_op: ExecutionResources(cpu=4),
-            },
             pg_free={key: ExecutionResources(cpu=4, gpu=1) for key in keys},
             bundles={gpu_op: keys, cpu_op: keys},
         )
@@ -2674,37 +2644,62 @@ def test_build_op_profile(pool_kwargs, is_write, has_pg, pinned, expected):
     assert profiles.profile(op) is profiles.profile(op)
 
 
-def test_record_tick_emits_every_phase(monkeypatch):
-    """An idle tick -- nothing sized, nothing placed -- still reports every
-    phase: lifecycle transitions run on ticks where no operator is resized,
-    so a phase set that only appeared on sizing ticks would miss it."""
-    observed = []
-    telemetry = SizerTelemetry("test-ds")
+def _recorded_phases(monkeypatch, telemetry: SizerTelemetry) -> List[Tuple[str, float]]:
+    observed: List[Tuple[str, float]] = []
     monkeypatch.setattr(
         telemetry._metrics,
         "record_tick_duration",
         lambda phase, seconds: observed.append((phase, seconds)),
     )
-    telemetry.record_tick(
-        {},
-        PerOpSizingRequest(request={}),
-        PlacedSizingRequest(request={}),
-        prepare_s=0.0005,
-        decide_s=0.001,
-        per_op_how_many_s=0.002,
-        per_op_where_s=0.004,
-        apply_s=0.008,
-        e2e_s=0.016,
+    return observed
+
+
+def test_record_tick_emits_and_clears_collected_timings(monkeypatch):
+    """Timings add up per phase until ``record_tick``, which emits them even
+    on a tick that sized nothing, then starts the next tick empty."""
+    telemetry = SizerTelemetry("test-ds")
+    observed = _recorded_phases(monkeypatch, telemetry)
+    telemetry.add_timing_phase("build", 0.001)
+    telemetry.add_timing_phase("decide", 0.002)
+    telemetry.add_timing_phase("build", 0.003)  # a later step's build adds up
+
+    empty = (PerOpSizingRequest(request={}), PlacedSizingRequest(request={}))
+    telemetry.record_tick({}, *empty)
+    assert observed == [("build", pytest.approx(0.004)), ("decide", 0.002)]
+
+    observed.clear()
+    telemetry.record_tick({}, *empty)
+    assert observed == []
+
+
+def test_timed_adds_each_call_to_its_phase(monkeypatch):
+    """``@timed`` adds every call's wall time to the owner's telemetry under
+    its phase, returns the method's result, and records a call that raises
+    too."""
+
+    class _Owner:
+        def __init__(self):
+            self._telemetry = SizerTelemetry("test-ds")
+
+        @timed("work")
+        def work(self, x):
+            return x * 2
+
+        @timed("fail")
+        def fail(self):
+            raise ValueError("boom")
+
+    owner = _Owner()
+    observed = _recorded_phases(monkeypatch, owner._telemetry)
+    assert owner.work(2) == 4
+    owner.work(3)
+    with pytest.raises(ValueError):
+        owner.fail()
+    owner._telemetry.record_tick(
+        {}, PerOpSizingRequest(request={}), PlacedSizingRequest(request={})
     )
-    assert [phase for phase, _ in observed] == [
-        "prepare",
-        "decide",
-        "per_op_how_many",
-        "per_op_where",
-        "apply",
-        "e2e",
-    ]
-    assert dict(observed)["e2e"] == 0.016
+    assert [phase for phase, _ in observed] == ["work", "fail"]
+    assert all(seconds >= 0 for _, seconds in observed)
 
 
 # --- the operator's placement surface -----------------------------------------

@@ -40,12 +40,14 @@ class SizerMetrics:
     tick_duration_s = Histogram(
         "data_sizer_tick_duration_s",
         description=(
-            "OperatorSizer per-phase tick wall time in seconds. prepare:"
-            " lifecycle transitions plus the tick's cluster snapshot |"
-            " decide: the bottleneck policy's decision |"
-            " per_op_how_many: per-operator how_many | per_op_where: placement |"
-            " apply: handing requests to the pools | e2e: one whole"
-            " perform_sizing_decision call."
+            "OperatorSizer per-phase wall time in seconds, per tick. build:"
+            " per-step lifecycle transitions plus the tick's cluster snapshot,"
+            " summed over the steps since the last tick | prepare: holds, the"
+            " bottleneck model and the phase | decide: the bottleneck policy's"
+            " decision | per_op_how_many: per-operator how_many | per_op_where:"
+            " placement | apply: every hand-off to the pools this tick (the"
+            " decision's own included, so it overlaps decide) |"
+            " tick: one whole sizing decision (everything but build)."
         ),
         boundaries=SIZER_TICK_DURATION_BUCKETS_S,
         tag_keys=("dataset", "phase"),
