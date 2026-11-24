@@ -4082,6 +4082,55 @@ class TestIcebergDatasourceV2:
 
         assert check.every_row_matches(task) == expected
 
+    @pytest.mark.parametrize(
+        "predicate,expected_files",
+        [(None, 2), (col("col_a").is_in([1, 3, 5]), 3)],
+        ids=["no_filter", "filter_no_file_proves"],
+    )
+    def test_listing_stops_at_the_limit(
+        self, restore_data_context, clean_table, predicate, expected_files
+    ):
+        """Listing stops once ``fully_matched`` files hold the limit's rows.
+
+        No file's bounds prove ``is_in([1, 3, 5])``, so every file is listed.
+        """
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            scan_tasks_from_manifest,
+        )
+        from ray.data._internal.logical.operators.read_operator import ListFiles
+
+        _, table = clean_table
+        for value in (1, 3, 5):
+            _append_files(
+                table,
+                [
+                    {"col_a": value, "col_c": value},
+                    {"col_a": value + 1, "col_c": value},
+                ],
+            )
+        restore_data_context.use_datasource_v2 = True
+
+        listed = [
+            task
+            for manifest in self._indexer().list_files(
+                None, filesystem=None, predicate=predicate, limit=3
+            )
+            for task in scan_tasks_from_manifest(manifest)
+        ]
+        assert len(listed) == expected_files
+
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        )
+        if predicate is not None:
+            ds = ds.filter(expr=predicate)
+        ds = ds.limit(3)
+        plan = LogicalOptimizer().optimize(ds._logical_plan)
+        (list_files,) = [op for op in _walk(plan.dag) if isinstance(op, ListFiles)]
+        assert list_files.limit == 3
+        assert len(ds.take_all()) == 3
+
     def test_read_metadata_subtracts_deleted_rows(self, tmp_path):
         """A file with delete files is counted by reading it, not by metadata.
 
