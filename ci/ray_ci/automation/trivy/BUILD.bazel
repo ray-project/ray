@@ -132,6 +132,7 @@ py_binary(
         ":registry",
         ":scan_store",
         ":trivy_db",
+        ":trivy_report",
         # RayImagePushContext, so refs and tags match the publish step's.
         "//ci/ray_ci/automation",
         "//ci/ray_ci:ray_ci_lib",

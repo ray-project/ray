@@ -2,11 +2,11 @@
 
 For each image the build pushed to its wanda cache, this:
 1. checks the ref is a single-platform image for the expected architecture;
-2. pulls every image of the group into one shared OCI layout with crane, so
-   layers shared across Python versions and image types are stored once;
-3. downloads this build's vulnerability DBs from its S3 folder (staged by
+2. downloads this build's vulnerability DBs from its S3 folder (staged by
    ``trivy_db``), and checks each against the sha256 pinned in metadata.json
    and each pin against the upstream manifest it names;
+3. pulls every image of the group into one shared OCI layout with crane, so
+   layers shared across Python versions and image types are stored once;
 4. runs the pinned Trivy on each image, by digest, in a throwaway container
    with no network, no credentials, no inherited environment, a non-root
    user, a read-only root and no capabilities;
@@ -18,13 +18,16 @@ The job talks to the host's docker daemon, so bind mounts would resolve host
 paths. Files reach the Trivy containers through docker volumes filled with
 ``docker cp`` instead.
 
-A finding never fails this tool; an image that couldn't be scanned does
-(exit 1), after every other image in the group has been scanned.
+A finding never fails this tool; an image that couldn't be scanned does,
+with exit 11 (incomplete), which rayci doesn't retry: a retry would rescan
+the whole group. A failed check or scan fails only its image, after the
+others are scanned; a failed DB check or group pull fails every image.
 
 Example:
     bazel run //ci/ray_ci/automation/trivy:scan_images -- \\
         --architecture x86_64 --platform cu12.8.1-cudnn \\
-        --image ray:3.11 --image ray:3.12 --image ray-extra:3.12
+        --image ray:3.11 --image ray:3.12 --image ray-extra:3.12 \\
+        --results-dir trivy-results
 """
 
 import gzip
@@ -60,6 +63,7 @@ from ci.ray_ci.automation.trivy.trivy_db import (
     db_layer,
     manifest_created,
 )
+from ci.ray_ci.automation.trivy.trivy_report import EXIT_INCOMPLETE, resolve_path
 from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
 from ci.ray_ci.utils import ecr_docker_login
@@ -628,21 +632,30 @@ def scan_group(
                 ready, architecture, store, results_dir, workdir, base_image, report
             )
     except Exception as e:
+        # Logged even when every image is already final, e.g. a failed cleanup.
+        logger.error(f"Scanning the group failed: {_describe(e)}")
         for target in targets:
             if not target.error and not target.scanned:
                 target.error = f"group failed before scanning: {_describe(e)}"
     finally:
-        for target in targets:
-            if target.reported:
-                continue
-            if not target.error and not target.scanned:
-                target.error = "scan did not complete"
-            try:
-                _finish(results_dir, target, report)
-            except Exception as e:
-                # The others' statuses still matter.
-                target.error = target.error or "status not recorded"
-                logger.error(f"Could not record {target.name}: {_describe(e)}")
+        _finish_unreported(targets, results_dir, report)
+
+
+def _finish_unreported(
+    targets: Sequence[Target], results_dir: Path, report: Callable[[Target], None]
+) -> None:
+    """Give every target not yet reported its final status."""
+    for target in targets:
+        if target.reported:
+            continue
+        if not target.error and not target.scanned:
+            target.error = "scan did not complete"
+        try:
+            _finish(results_dir, target, report)
+        except Exception as e:
+            # The others' statuses still matter.
+            target.error = target.error or "status not recorded"
+            logger.error(f"Could not record {target.name}: {_describe(e)}")
 
 
 def _scan_ready(
@@ -667,20 +680,43 @@ def _scan_ready(
     with ContainedTrivy(base_image) as trivy:
         trivy.load(staging)
         shutil.rmtree(staging)
-        for target in ready:
-            target.db = pins
-            raw = workdir / f"{target.name}.json"
-            try:
-                trivy.scan(target, raw)
-                with open(raw, "rb") as src, gzip.open(
-                    results_dir / f"{target.name}.json.gz", "wb"
-                ) as out:
-                    shutil.copyfileobj(src, out)
-                raw.unlink()
-                target.scanned = True
-            except Exception as e:
-                target.error = _describe(e)
-            _finish(results_dir, target, report)
+        try:
+            for target in ready:
+                _scan_one(trivy, target, pins, results_dir, workdir)
+                try:
+                    _finish(results_dir, target, report)
+                except Exception as e:
+                    # Retried, and logged as an error if it fails again, at
+                    # the end; the other images still get scanned.
+                    logger.warning(f"Could not record {target.name}: {_describe(e)}")
+        except BaseException:
+            # A cancelled job may be killed before the cleanup below ends,
+            # so hand over the unfinished images' statuses first.
+            _finish_unreported(ready, results_dir, report)
+            raise
+
+
+def _scan_one(
+    trivy: ContainedTrivy,
+    target: Target,
+    pins: dict[str, Any],
+    results_dir: Path,
+    workdir: Path,
+) -> None:
+    """Scan one image into ``results_dir``, or record why it failed."""
+    target.db = pins
+    raw = workdir / f"{target.name}.json"
+    result = results_dir / f"{target.name}.json.gz"
+    try:
+        trivy.scan(target, raw)
+        with open(raw, "rb") as src, gzip.open(result, "wb") as out:
+            shutil.copyfileobj(src, out)
+        raw.unlink()
+        target.scanned = True
+    except Exception as e:
+        target.error = _describe(e)
+        # A partial result must not be uploaded beside the error.
+        result.unlink(missing_ok=True)
 
 
 def upload_result(store: ScanStore, results_dir: Path, target: Target) -> str:
@@ -728,7 +764,7 @@ def main(
     pull_request: str,
     store: ScanStore,
 ) -> None:
-    signal.signal(signal.SIGTERM, _exit_on_sigterm)
+    results_dir = resolve_path(results_dir)
     targets = build_targets(
         [parse_image(spec) for spec in images],
         platform,
@@ -769,10 +805,11 @@ def main(
         f"Scanned {len(targets) - len(failed)}/{len(targets)} images; "
         f"results in {store.url(RESULTS_FOLDER)}"
     )
-    sys.exit(1 if failed or upload_failures else 0)
+    sys.exit(EXIT_INCOMPLETE if failed or upload_failures else 0)
 
 
 if __name__ == "__main__":
-    # Only as a program: importers keep their own logging setup.
+    # Only as a program: importers keep their own logging and signal handling.
     logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+    signal.signal(signal.SIGTERM, _exit_on_sigterm)
     main()
