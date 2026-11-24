@@ -68,9 +68,16 @@ class RoundRobinPartitioner(FilePartitioner):
             input_manifest.file_chunk_metadatas,
             in_memory_size_estimates,
         ):
+            # A file of unknown size has a ``NaN`` (or ``None``) estimate.
+            # Passing ``None`` spreads such files across buckets instead of
+            # counting them as zero bytes, which would pile them all into one
+            # read task. ``x != x`` is true only for ``NaN``.
             self._partitioner.add_item(
                 (file_path, file_size, file_chunk_metadata),
-                in_memory_size_estimate,
+                None
+                if in_memory_size_estimate is None
+                or in_memory_size_estimate != in_memory_size_estimate
+                else in_memory_size_estimate,
             )
 
     def has_partition(self) -> bool:

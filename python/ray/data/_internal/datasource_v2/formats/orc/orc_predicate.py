@@ -226,11 +226,11 @@ class OrcPredicate:
                 elif stat.minimum is None:
                     values.update((False, True))
                 else:
-                    if any(stat.minimum <= item <= stat.maximum for item in members):
-                        values.add(True)
                     covered = sum(
                         stat.minimum <= item <= stat.maximum for item in members
                     )
+                    if covered:
+                        values.add(True)
                     if covered != stat.maximum - stat.minimum + 1:
                         values.add(False)
             # Arrow is_in(skip_nulls=False) produces a boolean for NULL too.

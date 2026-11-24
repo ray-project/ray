@@ -164,11 +164,11 @@ class OrcFileReader(FileReader):
         evaluated on the resulting table.
         """
         if self._partition_parser is None:
-            schema = self._file_dataset_schema
-            if schema is None:
-                schema = fragment.physical_schema
             yield from self._scan_with_statistics(
-                fragment, scanner_kwargs, schema, self._predicate
+                fragment,
+                scanner_kwargs,
+                self._get_scan_schema(fragment, scanner_kwargs),
+                self._predicate,
             )
             return
 
@@ -273,28 +273,29 @@ class OrcFileReader(FileReader):
         # Bind the original Arrow scanner first: pruning must not suppress
         # missing-field, invalid-expression, or schema binding errors.
         scanner = fragment.scanner(**scan_kwargs, schema=schema)
-        if self._statistics_pruning == "off":
-            for tagged in scanner.scan_batches():
-                yield pa.Table.from_batches([tagged.record_batch])
-            return
-        physical = fragment.physical_schema
-        output = scan_kwargs.get("columns")
-        required = set(schema.names if output is None else output)
-        if predicate is not None:
-            required.update(get_column_references(predicate))
-        decoded = pa.schema([field for field in physical if field.name in required])
-        raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded))
-        bound = OrcPredicate(predicate, physical, schema)
-        if bound.eligible and safe_scan_types(physical, schema, required):
-            with fragment.filesystem.open_input_file(fragment.path) as source:
-                try:
-                    metadata = read_metadata(source)
-                    if not bound.can_match(metadata.statistics, metadata.rows):
-                        return
-                except MetadataUnavailable as exc:
-                    logger.debug(
-                        "ORC statistics unavailable for %s: %s", fragment.path, exc
-                    )
+        if self._statistics_pruning != "off":
+            physical = fragment.physical_schema
+            output = scan_kwargs.get("columns")
+            required = set(schema.names if output is None else output)
+            if predicate is not None:
+                required.update(get_column_references(predicate))
+            decoded = pa.schema([field for field in physical if field.name in required])
+            raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded))
+            bound = (
+                OrcPredicate(predicate, physical, schema)
+                if predicate is not None
+                else None
+            )
+            if bound and bound.eligible and safe_scan_types(physical, schema, required):
+                with fragment.filesystem.open_input_file(fragment.path) as source:
+                    try:
+                        metadata = read_metadata(source)
+                        if not bound.can_match(metadata.statistics, metadata.rows):
+                            return
+                    except MetadataUnavailable as exc:
+                        logger.debug(
+                            "ORC statistics unavailable for %s: %s", fragment.path, exc
+                        )
         for tagged in scanner.scan_batches():
             yield pa.Table.from_batches([tagged.record_batch])
 

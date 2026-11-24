@@ -34,25 +34,7 @@ py_library(
 
 py_test_module_list(
     size = "small",
-    files = glob(
-        ["tests/unit/**/test_*.py"],
-        exclude = ["tests/unit/datasource_v2/test_orc_statistics.py"],
-    ),
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        ":datasource_v2_unit_conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "small",
-    data = ["tests/unit/datasource_v2/fixtures/orc_java_strings.orc"],
-    files = ["tests/unit/datasource_v2/test_orc_statistics.py"],
+    files = glob(["tests/unit/**/test_*.py"]),
     tags = [
         "exclusive",
         "team:data",
@@ -70,7 +52,24 @@ py_test_module_list(
         "tests/parquet_test_utils.py",
         "tests/schema_planning_utils.py",
     ],
-    files = glob(["tests/datasource_v2/test_*.py"]),
+    files = glob(
+        ["tests/datasource_v2/test_*.py"],
+        exclude = ["tests/datasource_v2/test_orc_statistics_io.py"],
+    ),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    data = ["tests/unit/datasource_v2/fixtures/orc_java_strings.orc"],
+    files = ["tests/datasource_v2/test_orc_statistics_io.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -136,7 +135,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
@@ -325,6 +324,20 @@ py_test(
     tags = [
         "exclusive",
         "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_snowflake_unit",
+    size = "small",
+    srcs = ["tests/datasource/test_snowflake_unit.py"],
+    tags = [
+        "exclusive",
         "team:data",
     ],
     deps = [

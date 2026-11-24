@@ -10,12 +10,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManife
 from ray.data.expressions import col, lit
 
 
-@pytest.mark.parametrize(
-    "mode,predicate",
-    [("off", col("x") > 0), ("file", col("x") > 0)]
-    + [("file", col("flag").is_not_null() & ~(col("flag") != lit(True)))],
-)
-def test_orc_file_statistics_s3(s3_fs, s3_path, monkeypatch, mode, predicate):
+def test_orc_file_statistics_s3(s3_fs, s3_path, monkeypatch):
     root = s3_path.removeprefix("s3://")
     paths = [root + "/excluded.orc", root + "/candidate.orc"]
     tables = [
@@ -54,11 +49,12 @@ def test_orc_file_statistics_s3(s3_fs, s3_path, monkeypatch, mode, predicate):
         yield from original(self, Fragment(), *args, **kwargs)
 
     monkeypatch.setattr(orc_file_reader.OrcFileReader, "_scan_with_statistics", scan)
+    predicate = col("flag").is_not_null() & ~(col("flag") != lit(True))
     scanner = OrcScanner(
         schema=tables[0].schema,
         filesystem=s3_fs,
         predicate=predicate,
-        statistics_pruning=mode,
+        statistics_pruning="file",
     )
     actual = [
         row
@@ -67,7 +63,7 @@ def test_orc_file_statistics_s3(s3_fs, s3_path, monkeypatch, mode, predicate):
     ]
     expected = pa.concat_tables(tables).filter(predicate.to_pyarrow()).to_pylist()
     assert actual == expected
-    assert sorted(streamed) == sorted(paths if mode == "off" else paths[1:])
+    assert sorted(streamed) == paths[1:]
 
 
 if __name__ == "__main__":

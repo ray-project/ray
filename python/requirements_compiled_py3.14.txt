@@ -112,8 +112,6 @@ asgiref==3.9.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
-asn1crypto==1.5.1
-    # via snowflake-connector-python
 asttokens==3.0.1
     # via stack-data
 async-exit-stack==1.0.1
@@ -235,7 +233,6 @@ boto3==1.29.7
     #   aws-sam-translator
     #   moto
     #   smart-open
-    #   snowflake-connector-python
 botocore==1.32.7
     # via
     #   -r python/requirements/cloud-requirements.txt
@@ -244,7 +241,6 @@ botocore==1.32.7
     #   boto3
     #   moto
     #   s3transfer
-    #   snowflake-connector-python
 botorch==0.16.1
     # via ax-platform
 braceexpand==0.1.7
@@ -274,7 +270,6 @@ certifi==2026.10.19
     #   msrest
     #   requests
     #   sentry-sdk
-    #   snowflake-connector-python
 cffi==2.0.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -289,9 +284,7 @@ cfgv==3.5.0
 cfn-lint==1.47.1
     # via moto
 charset-normalizer==3.4.7
-    # via
-    #   requests
-    #   snowflake-connector-python
+    # via requests
 clang-format==12.0.1
     # via -r python/requirements/lint-requirements.txt
 click==8.5.0
@@ -515,7 +508,7 @@ fastjsonschema==2.21.2
     # via nbformat
 feather-format==0.4.1
     # via -r python/requirements/test-requirements.txt
-filelock==3.29.0
+filelock==4.2.12
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -523,7 +516,6 @@ filelock==3.29.0
     #   huggingface-hub
     #   python-discovery
     #   ray
-    #   snowflake-connector-python
     #   torch
     #   virtualenv
 flask==2.1.3
@@ -679,10 +671,9 @@ greenlet==3.4.0
     # via sqlalchemy
 groovy==0.1.2
     # via gradio
-grpcio==1.76.0
+grpcio==1.85.0
     # via
     #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
@@ -776,6 +767,8 @@ humanize==4.15.0
     # via -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
+hypothesis==6.170.15
+    # via -r python/requirements/ml/data-test-requirements.txt
 identify==2.6.19
     # via pre-commit
 idna==3.15
@@ -785,7 +778,6 @@ idna==3.15
     #   httpx
     #   jsonschema
     #   requests
-    #   snowflake-connector-python
     #   trustme
     #   yarl
 imageio==2.34.2
@@ -800,7 +792,6 @@ importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
-    #   opentelemetry-api
     #   tensordict
 importlib-resources==7.1.0
     # via prophet
@@ -1293,7 +1284,7 @@ openlineage-python==1.46.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.39.0
+opentelemetry-api==1.45.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -1306,23 +1297,25 @@ opentelemetry-api==1.39.0
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.39.0
+opentelemetry-exporter-otlp-common==0.66b2
     # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.39.0
+opentelemetry-exporter-otlp-proto-common==1.45.2
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.45.2
     # via -r python/requirements/test-requirements.txt
-opentelemetry-exporter-prometheus==0.60b0
+opentelemetry-exporter-prometheus==0.66b2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
-opentelemetry-instrumentation==0.60b0
+opentelemetry-instrumentation==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.60b0
+opentelemetry-instrumentation-asgi==0.66b2
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.60b0
+opentelemetry-instrumentation-fastapi==0.66b2
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.39.0
+opentelemetry-proto==1.45.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -1330,22 +1323,23 @@ opentelemetry-proto==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.39.0
+opentelemetry-sdk==1.45.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
+    #   opentelemetry-exporter-otlp-common
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.60b0
+opentelemetry-semantic-conventions==0.66b2
     # via
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.60b0
+opentelemetry-util-http==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
@@ -1410,7 +1404,6 @@ packaging==26.3
     #   ray
     #   semgrep
     #   skops
-    #   snowflake-connector-python
     #   statsmodels
     #   taskiq
     #   tensorboard
@@ -1484,7 +1477,6 @@ platformdirs==4.9.6
     #   black
     #   jupyter-core
     #   moocore
-    #   snowflake-connector-python
     #   textual
     #   virtualenv
     #   wandb
@@ -1545,6 +1537,7 @@ protobuf==6.33.6
     #   opentelemetry-proto
     #   proto-plus
     #   ray
+    #   snowflake-connector-python
     #   tensorboard
     #   tensorboardx
     #   tensorflow-datasets
@@ -1650,7 +1643,6 @@ pyjwt==2.12.1
     #   adal
     #   azure-cli-core
     #   msal
-    #   snowflake-connector-python
 pylance==4.0.0
     # via -r python/requirements/ml/data-test-requirements.txt
 pymongo==4.18.2
@@ -1671,7 +1663,6 @@ pyopenssl==26.2.0
     #   azure-cli-core
     #   gcs-oauth2-boto-plugin
     #   gsutil
-    #   snowflake-connector-python
 pyparsing==3.3.2
     # via
     #   httplib2
@@ -1891,7 +1882,6 @@ requests==2.33.1
     #   segment-analytics-python
     #   semgrep
     #   smart-open
-    #   snowflake-connector-python
     #   tensorflow-datasets
     #   torch-geometric
     #   wandb
@@ -2041,12 +2031,12 @@ smart-open==6.2.0
     #   -r python/requirements.txt
 smmap==5.0.3
     # via gitdb
-snowflake-connector-python==4.8.0
+snowflake-connector-python==5.2.0
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
     #   distributed
-    #   snowflake-connector-python
+    #   hypothesis
 soundfile==0.13.1
     # via -r python/requirements/ml/data-test-requirements.txt
 soupsieve==2.8.3
@@ -2329,7 +2319,6 @@ typing-extensions==4.16.0
     #   pyright
     #   pytorch-lightning
     #   semgrep
-    #   snowflake-connector-python
     #   sqlalchemy
     #   testcontainers
     #   textual
