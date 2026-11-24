@@ -157,12 +157,15 @@ class WebDatasetReader(Reader[FileManifest]):
                     self._target_block_size is not None
                     and chunk_bytes >= self._target_block_size
                 ):
-                    yield self._finalize(chunk, unit, rows_before)
+                    table = self._finalize(chunk, unit, rows_before)
                     rows_before += len(chunk)
                     chunk = []
                     chunk_bytes = 0
+                    yield table
             if chunk:
-                yield self._finalize(chunk, unit, rows_before)
+                table = self._finalize(chunk, unit, rows_before)
+                chunk = []
+                yield table
 
     def _open_stream(self, path: str) -> "pa.NativeFile":
         open_args = dict(self._open_stream_args)
