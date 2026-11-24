@@ -4423,19 +4423,15 @@ class TestIcebergDatasourceV2:
         "change",
         [
             lambda update: update.rename_column("col_b", "col_s"),
-            lambda update: update.add_column("col_d", pyi_types.StringType()),
-            lambda update: update.update_column(
-                "col_a", field_type=pyi_types.LongType()
-            ),
             lambda update: update.delete_column("col_b").add_column(
                 "col_b", pyi_types.StringType()
             ),
         ],
-        ids=["rename", "add_column", "promote", "drop_and_add_same_name"],
+        ids=["rename", "drop_and_add_same_name"],
     )
     def test_parquet_route_is_off_after_a_schema_change(self, clean_table, change):
-        """A read of a column whose name, ID or type ever changed stays on
-        ``ArrowScan``.
+        """A read of a column that was renamed, or whose name another column
+        had, stays on ``ArrowScan``.
 
         Re-adding a dropped column under the same name gives it a new field ID,
         so only the ID check catches the old file: by name it would return the
@@ -4448,13 +4444,68 @@ class TestIcebergDatasourceV2:
         table = self._load_table()
         _append_files(table, [{"col_a": 2, "col_c": 2}])
 
-        # No filter: PyIceberg 0.11.1 fails to plan one on a promoted column.
         manifests, routed, _ = self._list_and_read(None)
         _, arrow_scan_only, _ = self._list_and_read(None, parquet_route=False)
 
         assert self._routed_rows(manifests) == []
         assert rows_same(routed.to_pandas(), arrow_scan_only.to_pandas())
         assert sorted(routed["col_a"].to_pylist()) == [1, 2]
+
+    @pytest.mark.parametrize(
+        "change,new_row,predicate,expected",
+        [
+            (
+                lambda update: update.add_column("col_d", pyi_types.StringType()),
+                {"col_a": 2, "col_c": 2, "col_d": "x"},
+                None,
+                [1, 2],
+            ),
+            (
+                lambda update: update.add_column("col_d", pyi_types.StringType()),
+                {"col_a": 2, "col_c": 2, "col_d": "x"},
+                col("col_d") == "x",
+                [2],
+            ),
+            (
+                lambda update: update.update_column(
+                    "col_a", field_type=pyi_types.LongType()
+                ),
+                {"col_a": 2, "col_c": 2},
+                None,
+                [1, 2],
+            ),
+            (
+                lambda update: update.update_column(
+                    "col_a", field_type=pyi_types.LongType()
+                ),
+                {"col_a": 2, "col_c": 2},
+                col("col_c") == 1,
+                [1],
+            ),
+        ],
+        ids=["add_column", "add_column_filtered", "promote", "promote_filtered"],
+    )
+    def test_parquet_route_reads_added_and_widened_columns(
+        self, clean_table, change, new_row, predicate, expected
+    ):
+        """Files written before a column was added or widened take the route
+        and read as ``ArrowScan`` reads them: nulls, and widened values."""
+        _, table = clean_table
+        _append_files(table, [{"col_a": 1, "col_b": "a", "col_c": 1}])
+        with table.update_schema() as update:
+            change(update)
+        _append_files(self._load_table(), [new_row])
+
+        manifests, routed, counted = self._list_and_read(predicate)
+        _, arrow_scan_only, _ = self._list_and_read(predicate, parquet_route=False)
+
+        assert len(self._routed_rows(manifests)) == sum(
+            len(manifest) for manifest in manifests
+        )
+        assert routed.schema == arrow_scan_only.schema
+        assert rows_same(routed.to_pandas(), arrow_scan_only.to_pandas())
+        assert sorted(routed["col_a"].to_pylist()) == expected
+        assert counted == len(expected)
 
     @pytest.mark.parametrize(
         "predicate,expected",
