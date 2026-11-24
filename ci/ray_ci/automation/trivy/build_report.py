@@ -318,7 +318,11 @@ def report_build(
     """Write the report and the annotation; returns the exit code."""
     if not pipeline_file:
         pipeline_file = registry.runfile(PIPELINE_RUNFILE)
-    expected = expected_images(yaml.safe_load(pipeline_file.read_text()))
+    pipeline = yaml.safe_load(pipeline_file.read_text(encoding="utf-8"))
+    # An empty or wrong file must not pass for "expect no images".
+    expected = expected_images(pipeline) if isinstance(pipeline, Mapping) else []
+    if not expected:
+        raise ValueError(f"{pipeline_file} has no scan steps")
     note = files_note(store)
 
     with tempfile.TemporaryDirectory() as tmp:
