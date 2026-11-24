@@ -165,24 +165,19 @@ def max_step_size(b: int, max_size: int) -> int:
 OpDecisions = Dict["ExperimentalActorPoolMapOperator", OpDecision]
 
 
-def _update_decision_with_requests(
-    *, curr_decision: OpDecisions, rule: OpRule, requests: List[PlacedSizingRequest]
+def _build_op_decisions(
+    *, rule: OpRule, requests: List[PlacedSizingRequest]
 ) -> OpDecisions:
-    """Add each placed request to its op's decision under ``rule``, in
-    order. An op can get several requests (a donor that sheds on several
-    nodes gets one per node); they all share ``rule``. Returns
-    ``curr_decision``."""
+    """Return one decision under ``rule`` for each op in ``requests``, with
+    that op's requests in order. An op can get several requests: a donor
+    that sheds on several nodes gets one per node."""
+    op_decisions: OpDecisions = {}
     for request in requests:
         for op, req in request.request.items():
-            prev = curr_decision.get(op)
-            if prev is None:
-                curr_decision[op] = OpDecision(rule, placed=(req,))
-                continue
-            assert (
-                prev.rule is rule
-            ), f"{op.name} already has rule {prev.rule}, not {rule}"
-            curr_decision[op] = OpDecision(rule, placed=(*prev.placed, req))
-    return curr_decision
+            prev = op_decisions.get(op)
+            placed = (req,) if prev is None else (*prev.placed, req)
+            op_decisions[op] = OpDecision(rule, placed=placed)
+    return op_decisions
 
 
 def _move_targets(move: BottleneckMove) -> str:
@@ -277,21 +272,25 @@ class SizingPolicy:
         Every step checks and spends capacity in ``ctx.capacity``, so a
         later step never hands out capacity an earlier one took.
         """
-        # 1. Make progress on open transfer (downscaling donors, upscaling recipients)
+        # 1. Move the open transfers along, and bring up the actors each one
+        # owes its recipient (FUND).
         self._transfer_book.advance(ctx)
-        op_decisions = _update_decision_with_requests(
-            curr_decision={},
+        op_decisions = _build_op_decisions(
             rule=OpRule.FUND,
             requests=self._transfer_book.bring_up_held_actors(),
         )
 
+        # Step 1 funds only the recipients of open transfers. Each recipient is
+        # Receiving, or Completed if it finished during its transfer, so none
+        # is Active. Step 1 issues nothing for the donors, which stay Donating
+        # until their transfer closes.
         active_ops = self._statuses.active_ops(ctx.apmo_profiles.actor_pool_ops)
         funded_active = op_decisions.keys() & active_ops
         assert (
             not funded_active
         ), f"transfers cannot fund Active ops, but got: {funded_active}"
 
-        # 2. The one bottleneck move of this tick, over the Active ops.
+        # 2. Choose this tick's bottleneck move and make it on the Active ops.
         move = choose_bottleneck_move(ctx, active_ops)
         self.last_move = move
         logger.debug(
@@ -302,13 +301,15 @@ class SizingPolicy:
             _move_targets(move),
             move.reason,
         )
-        # The move only resizes Active ops, so it never shares an op with the
-        # transfers above.
+        # The move resizes only Active ops, so it never resizes an op that
+        # step 1 funded.
         moved = self._make_move(move, ctx, active_ops)
         not_active = moved.keys() - active_ops
         assert not not_active, f"{move.name} resized ops not Active: {not_active}"
         op_decisions.update(moved)
 
+        # 3. Size every op that steps 1 and 2 left alone with the per-op rules.
+        # A completed op always gets its per-op action.
         if ctx.snapshot is not None:
             for op in ctx.snapshot.ordered_ops:
                 if op in op_decisions and not op.has_completed():
@@ -335,26 +336,22 @@ class SizingPolicy:
         """Resize the ops ``move`` names, each under its ``OpRule``."""
         match move:
             case GrowFree(op=op, target=target):
-                return _update_decision_with_requests(
-                    curr_decision={},
+                return _build_op_decisions(
                     rule=OpRule.GROW_FREE,
                     requests=self._grow_each({op: target}, move.reason, ctx),
                 )
             case GrowBalanced(targets=targets):
-                return _update_decision_with_requests(
-                    curr_decision={},
+                return _build_op_decisions(
                     rule=OpRule.GROW_BALANCED,
                     requests=self._grow_each(targets, move.reason, ctx),
                 )
             case FundRecipient(recipient=recipient):
-                return _update_decision_with_requests(
-                    curr_decision={},
+                return _build_op_decisions(
                     rule=OpRule.DONATE,
                     requests=self._fund_recipient(recipient, ctx, active),
                 )
             case ShrinkSurplus():
-                return _update_decision_with_requests(
-                    curr_decision={},
+                return _build_op_decisions(
                     rule=OpRule.SHRINK_SURPLUS,
                     requests=self._shrink_surplus(ctx, active),
                 )
@@ -388,18 +385,21 @@ class SizingPolicy:
         ctx: DecisionContext,
         active: AbstractSet["ExperimentalActorPoolMapOperator"],
     ) -> List[PlacedSizingRequest]:
-        """The donors' downscales: a new transfer to ``recipient`` when none
-        is open, and drains of donors' surplus toward it. The recipient's
-        actors come up on later ticks, as donors free their room (FUND, in
-        ``bring_up_held_actors``)."""
+        """Return the donors' downscales that fund ``recipient``: a new
+        transfer when none is open, and drains of donors' surplus. The
+        recipient's actors come up on later ticks, as the donors' actors go
+        (FUND, in ``bring_up_held_actors``)."""
         tick = ctx.bottleneck
         assert tick is not None
         self._blocked_streak.clear()
         requests: List[PlacedSizingRequest] = []
-        if (
+        can_begin_transfer: bool = (
+            # 1) Must not have multiple transfers in flight
             self._transfer_book.phase is TransferPhase.IDLE
+            # 2) Must be able to grow
             and why_cannot_grow(recipient, active) is None
-        ):
+        )
+        if can_begin_transfer:
             # One transfer at a time: let the window refill before the next.
             requests.extend(self._transfer_to(recipient, tick, ctx, active))
         requests.extend(self._shrink_toward_keep(recipient, tick, ctx, active))

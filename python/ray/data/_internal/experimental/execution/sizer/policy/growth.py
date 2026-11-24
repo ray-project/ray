@@ -212,6 +212,7 @@ def plan_free_growth(
     step = min(max(1, target - size), ceiling - size)
     if not ctx.is_pg_managed(op):
         per_actor = pool.per_actor_resource_usage()
+        # This checks: Does any node fit this actor?
         if not any(
             max_placeable_actors(ctx.capacity.free[n], per_actor) >= 1
             for n in ctx.capacity.free_nodes(op)

@@ -326,9 +326,9 @@ def _open_transfer(book: TransferBook, transfer: TransferInFlight) -> None:
     """Put ``transfer`` in flight as firing it would: the recipient receiving,
     each donor donating to it."""
     book.state.in_flight[transfer.recipient] = transfer
-    book._statuses.start_receiving(transfer.recipient)
+    book._status_machine.start_receiving(transfer.recipient)
     for donor in transfer.donors:
-        book._statuses.start_donating(donor, transfer.recipient)
+        book._status_machine.start_donating(donor, transfer.recipient)
 
 
 def _donor_op(name: str = "donor", output_dependencies: tuple = ()) -> Any:

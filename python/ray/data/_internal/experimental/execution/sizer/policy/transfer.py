@@ -758,11 +758,8 @@ class TransferBook:
         recipient: "ExperimentalActorPoolMapOperator",
         ctx: DecisionContext,
     ) -> List[NodeIdStr]:
-        """The recipient's schedulable nodes no open transfer still owes on.
-
-        One open transfer per node: holds come out of the shared free pool in
-        in-flight order, so a second transfer on a node that still owes
-        actors could lose its donors' freed slots to the first one.
+        """Return the nodes the recipient may run on, minus any node where an
+        open transfer has not yet brought up all of its recipient's actors.
         """
         busy_nodes = {
             node
