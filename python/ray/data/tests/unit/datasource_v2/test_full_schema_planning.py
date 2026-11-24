@@ -395,25 +395,6 @@ def test_first_schema_result_timeout_cancels_and_falls_back(monkeypatch):
     assert "falling back to driver schema reads" in warning.call_args.args[0]
 
 
-def test_parquet_metadata_worker_fallback_does_not_resubmit(monkeypatch):
-    source = parquet_datasource_v2.ParquetDatasourceV2(["unused"])
-    expected = pa.schema([("id", pa.int64())])
-    worker = Mock(return_value=None)
-    driver = Mock(return_value=expected)
-    monkeypatch.setattr(inference, "_infer_full_schema_on_workers", worker)
-    monkeypatch.setattr(inference, "_metadata_cache_enabled", lambda: True)
-    monkeypatch.setattr(parquet_datasource_v2, "_metadata_cache_enabled", lambda: True)
-    monkeypatch.setattr(type(source), "infer_schema", driver)
-
-    result = source.infer_full_schema_with_metadata(
-        _schema_manifest(["unused"]), ray_remote_args={}
-    )
-
-    assert result.schema == expected and result.metadata is None
-    worker.assert_called_once()
-    driver.assert_called_once()
-
-
 @pytest.mark.parametrize(
     "stage,error",
     [

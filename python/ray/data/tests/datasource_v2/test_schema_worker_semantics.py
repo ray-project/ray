@@ -30,17 +30,17 @@ def schema_files_dir(tmp_path):
 
 @pytest.mark.parametrize("empty_struct", [False, True])
 @pytest.mark.parametrize("schema_only", [False, True])
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
 def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     monkeypatch,
     tmp_path,
     schema_files_dir,
     ray_start_regular_shared_2_cpus,
+    datasource_v2,
     empty_struct,
     schema_only,
 ):
     monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "use_datasource_v2", True)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
     if schema_only:

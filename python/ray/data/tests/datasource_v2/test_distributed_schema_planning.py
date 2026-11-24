@@ -165,8 +165,14 @@ def test_driver_schema_fallback_preserves_read_placement(
             remove_placement_group(pg)
 
 
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
 def test_driver_schema_fallback_when_workers_are_busy(
-    monkeypatch, tmp_path, ray_start_2_cpus
+    monkeypatch,
+    tmp_path,
+    ray_start_2_cpus_shared,
+    datasource_v2,
+    caplog,
+    propagate_logs,
 ):
     class HoldResources:
         def ready(self):
@@ -177,10 +183,14 @@ def test_driver_schema_fallback_when_workers_are_busy(
     )
     ray.get(holder.ready.remote())
     try:
-        ctx = DataContext.get_current()
-        monkeypatch.setattr(ctx, "use_datasource_v2", True)
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
         monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
+        monkeypatch.setattr(
+            inference, "_FULL_SCHEMA_INFERENCE_METADATA_BUDGET_BYTES", 256
+        )
+        monkeypatch.setattr(
+            inference, "_FULL_SCHEMA_INFERENCE_TASK_METADATA_BUDGET_BYTES", 256
+        )
         monkeypatch.setattr(
             inference, "_FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S", 0.2
         )
@@ -199,6 +209,17 @@ def test_driver_schema_fallback_when_workers_are_busy(
             str(path): 1 for path in paths
         }
         assert all(record["pid"] == os.getpid() for record in records)
+        timeout_message = (
+            "Timed out waiting for the first distributed Parquet schema read"
+        )
+        assert (
+            sum(
+                timeout_message in record.getMessage()
+                for record in caplog.records
+                if record.name == inference.__name__
+            )
+            == 1
+        )
     finally:
         ray.kill(holder)
 
