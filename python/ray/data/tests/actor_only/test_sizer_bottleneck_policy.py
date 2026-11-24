@@ -36,8 +36,10 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     PG_ELIGIBLE,
 )
 from ray.data._internal.experimental.execution.sizer.lifecycle import (
+    Held,
     OpLifecycle,
     OpLifecycles,
+    Released,
 )
 from ray.data._internal.experimental.execution.sizer.policy import growth
 from ray.data._internal.experimental.execution.sizer.policy.bottleneck_policy import (  # noqa: E501
@@ -464,19 +466,29 @@ def test_classify_skips_a_named_bottleneck_held_by_a_transfer():
 # --- OpLifecycles ----------------------------------------------------------------
 
 
-def test_lifecycle_releases_an_op_once_its_first_input_arrives():
+def test_lifecycle_holds_an_op_until_its_first_input_then_releases_it_for_a_tick():
     write = _op("Write")
     write.pending_first_input = True
     lifecycles = _lifecycles(write)
-    assert lifecycles.state(write) is OpLifecycle.AWAITING_FIRST_INPUT
+    assert lifecycles.state(write) == Held(reserved=0)
+    assert not lifecycles.can_scale(write)
+    assert not lifecycles.may_refill_to_min(write)  # stays at zero actors
+
+    lifecycles.set_reserved(write, 4)
+    lifecycles.on_step()
+    lifecycles.on_tick()
+    assert lifecycles.state(write) == Held(reserved=4)  # still waiting
+
+    # Its first input arrives: released for one tick with the room it held,
+    # which the how-many pass may size but the policy may not yet touch.
+    write.pending_first_input = False
+    lifecycles.on_tick()
+    assert lifecycles.state(write) == Released(grow_to=4)
+    assert lifecycles.may_refill_to_min(write)
     assert not lifecycles.can_scale(write)
 
-    lifecycles.on_step()
-    assert not lifecycles.can_scale(write)  # still waiting
-
-    write.pending_first_input = False
-    lifecycles.on_step()
-    assert lifecycles.state(write) is OpLifecycle.ACTIVE
+    lifecycles.on_tick()
+    assert lifecycles.kind(write) is OpLifecycle.ACTIVE
     assert lifecycles.can_scale(write)
 
 
@@ -485,7 +497,7 @@ def test_lifecycle_transfer_states_block_scaling_until_activated():
     lifecycles = _lifecycles(recipient, donor)
     lifecycles.start_receiving(recipient)
     lifecycles.start_donating(donor, recipient)
-    assert lifecycles.state(recipient) is OpLifecycle.RECEIVING
+    assert lifecycles.kind(recipient) is OpLifecycle.RECEIVING
     assert lifecycles.reason(donor) == "donating (to recipient)"
     assert lifecycles.ops_in(OpLifecycle.DONATING) == {donor}
     assert not lifecycles.can_scale(recipient) and not lifecycles.can_scale(donor)
@@ -501,7 +513,7 @@ def test_lifecycle_cooldown_counts_scheduling_steps():
     lifecycles.start_cooling(donor)
     for _ in range(2):
         lifecycles.on_step()
-        assert lifecycles.state(donor) is OpLifecycle.COOLING
+        assert lifecycles.kind(donor) is OpLifecycle.COOLING
     lifecycles.on_step()
     assert lifecycles.can_scale(donor)
 
@@ -509,7 +521,7 @@ def test_lifecycle_cooldown_counts_scheduling_steps():
 def test_lifecycle_reports_completed_ops():
     op = _op("op")
     op.has_completed = lambda: True
-    assert _lifecycles(op).state(op) is OpLifecycle.COMPLETED
+    assert _lifecycles(op).kind(op) is OpLifecycle.COMPLETED
 
 
 # --- TransferBook: transfer mechanics ------------------------------------------
@@ -714,7 +726,7 @@ def test_donor_cools_down_after_a_transfer_closes():
     book.advance(_ctx(now=1000.0))
     assert not book.state.in_flight
     assert lifecycles.can_scale(recipient)
-    assert lifecycles.state(donor) is OpLifecycle.COOLING
+    assert lifecycles.kind(donor) is OpLifecycle.COOLING
 
     lifecycles.on_step()
     assert not lifecycles.can_scale(donor)
@@ -748,12 +760,12 @@ def test_donor_funding_two_transfers_stays_donating_until_the_last_closes():
     book.advance(_ctx(now=1000.0))
     lifecycles.on_step()
     assert set(book.state.in_flight) == {still_draining}  # only one closed
-    assert lifecycles.state(donor) is OpLifecycle.DONATING
+    assert lifecycles.kind(donor) is OpLifecycle.DONATING
 
     # Once the last transfer lands, the cooldown starts, then ends.
     still_draining._pool.pending_ids = {}
     book.advance(_ctx(now=1000.0))
-    assert lifecycles.state(donor) is OpLifecycle.COOLING
+    assert lifecycles.kind(donor) is OpLifecycle.COOLING
     lifecycles.on_step()
     assert lifecycles.can_scale(donor)
 
@@ -956,8 +968,8 @@ def test_bottleneck_transfer_holds_recipient_and_donors_until_it_closes():
     lifecycles = _lifecycles(labeled, gen)
     policy = _policy(lifecycles=lifecycles)
     _apply_bottleneck(policy, tick, [labeled, gen])
-    assert lifecycles.state(labeled) is OpLifecycle.RECEIVING
-    assert lifecycles.state(gen) is OpLifecycle.DONATING
+    assert lifecycles.kind(labeled) is OpLifecycle.RECEIVING
+    assert lifecycles.kind(gen) is OpLifecycle.DONATING
     assert policy.transfer_phase is TransferPhase.IN_FLIGHT
 
 

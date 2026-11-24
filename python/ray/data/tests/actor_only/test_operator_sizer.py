@@ -61,6 +61,10 @@ from ray.data._internal.experimental.execution.sizer.capacity import (
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
+from ray.data._internal.experimental.execution.sizer.lifecycle import (
+    Held,
+    OpLifecycle,
+)
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
     PerOpSizingRequest,
@@ -514,7 +518,8 @@ class _TestSizer(OperatorSizer):
         as every later step of a tick sees it."""
         snapshot = self.next_tick(force=force)
         assert snapshot is not None
-        self._note_held_ops(self._hold_for_held_ops(snapshot))
+        self._lifecycles.on_tick()
+        self._hold_for_held_ops(snapshot)
         return snapshot
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
@@ -814,7 +819,7 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
 
     assert write not in _tick(sizer).request
     snapshot = _snapshot_of(sizer)
-    assert sizer._held_actors_by_op[write] == 4
+    assert _reserved(sizer, write) == 4
     # 61.6 - 3 running 1-actor stages (2.4 + 2.4 + 3.3) - 4 held x 2.4.
     assert snapshot.free_by_node["node0"].memory == pytest.approx(
         (61.6 - 8.1 - 9.6) * GiB, rel=1e-6
@@ -830,24 +835,35 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_released():
     assert _tick(sizer).request[write].reason == "below min size"
 
 
-def test_op_waiting_on_upstream_output_reserves_its_share():
-    # The PR #68257 hold keeps an op at min until its upstream produces
-    # output. Its share is held meanwhile, and it grows to it once the
-    # upstream output arrives.
+def _reserved(sizer: _TestSizer, op) -> int:
+    """The room held for ``op`` this tick (it must be held)."""
+    state = sizer._lifecycles.state(op)
+    assert isinstance(state, Held), state
+    return state.reserved
+
+
+def test_ops_awaiting_first_input_each_reserve_their_share():
+    # Every stage downstream of read waits on its first input: each holds its
+    # warmup share (no actors started), and each grows to it once its own
+    # input arrives.
     ops, view = _video_pipeline()
+    for name in ("resize", "features", "write"):
+        ops[name].pending_first_input = True
     sizer, _ = _bootstrapped(*ops.values(), view=view)
 
     _snapshot_of(sizer)
-    held = sizer._held_actors_by_op
-    # resize, features and write wait on upstream output; read is a source.
-    assert set(held) == {ops["resize"], ops["features"], ops["write"]}
-    assert held[ops["features"]] == 5
+    held = sizer._lifecycles.ops_in(OpLifecycle.HELD)
+    assert held == {ops["resize"], ops["features"], ops["write"]}
+    assert _reserved(sizer, ops["features"]) == 5
+    resize_reserved = _reserved(sizer, ops["resize"])
 
-    ops["read"].metrics.num_task_outputs_generated = 1
+    ops["resize"].pending_first_input = False
     request = _tick(sizer).request
-    # resize's hold released: one grant to its held count (4 here is its share;
-    # it already has 1 actor).
-    assert request[ops["resize"]].delta == held[ops["resize"]] - 1
+    # resize's hold released: one grant to its held count (it already has 1
+    # actor); the others stay held.
+    assert request[ops["resize"]].delta == resize_reserved - 1
+    assert request[ops["resize"]].reason == "held share (hold released)"
+    assert sizer._lifecycles.kind(ops["features"]) is OpLifecycle.HELD
 
 
 def test_steady_how_many_only_sheds_idle_actors():
