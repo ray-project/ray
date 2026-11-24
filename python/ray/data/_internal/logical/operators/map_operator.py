@@ -12,6 +12,7 @@ from typing import (
     Literal,
     Optional,
     Sequence,
+    Set,
     Tuple,
     Union,
 )
@@ -21,6 +22,7 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
@@ -117,6 +119,32 @@ class AbstractMap(AbstractOneToOne):
 
     def set_per_block_limit(self, per_block_limit: int):
         object.__setattr__(self, "per_block_limit", per_block_limit)
+
+
+@dataclass(frozen=True, repr=False, eq=False, init=False)
+class DiskShuffleMap(AbstractMap):
+    """Logical identity of a disk-shuffle writer (``plan_disk_hash_shuffle_map``).
+
+    The writer is a plain task-pool map, but the planner would tag it with the
+    shuffle's logical op (Repartition, Sort, Aggregate, Join), which map fusion
+    can't reason about. The plan function tags the writer with this op instead
+    so the upstream read or map fuses into it like into any other map. Not
+    user-facing: it never appears in a logical plan.
+    """
+
+    def __init__(
+        self,
+        name: str,
+        input_op: Optional[LogicalOperator],
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__(
+            name,
+            [input_op] if input_op is not None else [],
+            # The writer emits one handle row per task, unrelated to its input.
+            can_modify_num_rows=True,
+            ray_remote_args=ray_remote_args,
+        )
 
     def _get_args(self) -> Dict[str, Any]:
         args = super()._get_args()
@@ -303,7 +331,11 @@ class MapBatches(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class ShuffleBatches(AbstractMap, LogicalOperatorPreservesSchema):
+class ShuffleBatches(
+    AbstractMap,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Shuffle rows within target-sized batches or whole input blocks.
 
     Limit pushdown can truncate shuffle batches. Fusion must not rebundle them
@@ -333,6 +365,11 @@ class ShuffleBatches(AbstractMap, LogicalOperatorPreservesSchema):
         )
         object.__setattr__(self, "_name", "ShuffleBatches")
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class MapRows(AbstractUDFMap):
@@ -359,7 +396,11 @@ class MapRows(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
+class Filter(
+    AbstractUDFMap,
+    LogicalOperatorSupportsProjectionPassThrough,
+    LogicalOperatorPreservesSchema,
+):
     """Logical operator for filter."""
 
     predicate_expr: Optional[Expr] = None
@@ -396,6 +437,18 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
     def is_expression_based(self) -> bool:
         return self.predicate_expr is not None
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if self.predicate_expr is None or required_output_columns is None:
+            return None
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        predicate_columns = set(get_column_references(self.predicate_expr))
+        return [required_output_columns | predicate_columns]
+
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         if self.is_expression_based():
             # Get a concise inline string representation of the expression
@@ -415,7 +468,11 @@ class Filter(AbstractUDFMap, LogicalOperatorPreservesSchema):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
+class Project(
+    AbstractMap,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
+):
     """Logical operator for all Projection Operations."""
 
     exprs: list["Expr"]
@@ -526,6 +583,27 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
         """Both projection expressions and common expressions"""
         return [*self._common_sub_exprs, *self.exprs]
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if self.has_star_expr():
+            return None
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        exprs = [
+            expr
+            for expr in self.exprs
+            if required_output_columns is None or expr.name in required_output_columns
+        ]
+        common_sub_exprs = self.get_common_sub_exprs()
+        temp_names = {expr.name for expr in common_sub_exprs}
+        required: Set[str] = set()
+        for expr in [*common_sub_exprs, *exprs]:
+            required.update(get_column_references(expr))
+        return [required - temp_names]
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.PASSTHROUGH_WITH_SUBSTITUTION
 
@@ -625,6 +703,7 @@ class FlatMap(AbstractUDFMap):
 class StreamingRepartition(
     AbstractMap,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for streaming repartition operation.
@@ -664,6 +743,11 @@ class StreamingRepartition(
             "_name",
             f"StreamingRepartition[num_rows_per_block={self.target_num_rows_per_block},strict={self.strict}]",
         )
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # StreamingRepartition only re-bundles rows into different block sizes.

@@ -9,7 +9,7 @@ collect without it.
 import json
 import shutil
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
 from pyarrow.fs import LocalFileSystem
@@ -22,6 +22,9 @@ from ray.data._internal.datasource_v2.common.online_bin_packer import OnlineBinP
 from ray.data._internal.datasource_v2.formats.mcap.mcap_chunks import (
     SelectedMessageReader,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_datasource_v2 import (
+    MCAPDatasourceV2,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_options import MCAPSelection
 from ray.data._internal.datasource_v2.formats.mcap.mcap_summary import read_summary
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
@@ -30,6 +33,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 
+SECOND = 1_000_000_000  # one second in nanoseconds
 BASE_TIME = 1_000_000_000  # log time of the first message, in nanoseconds
 STEP = 1_000_000  # 1 ms between consecutive messages
 CHUNKED_FILE_MESSAGES = 9  # messages, one per chunk, in the ``chunked_file`` fixture
@@ -111,7 +115,9 @@ def mixed_encoding_messages(n=6):
     return messages
 
 
-def write_mcap_without_summary_schemas(path):
+def write_mcap_without_summary_schemas(
+    path, b_declared_in_chunk_1=False, message_indexes=True
+):
     """Write two JSON channels with two schemas, one message per chunk.
 
     The schema records are written only inside the chunks
@@ -120,6 +126,10 @@ def write_mcap_without_summary_schemas(path):
 
         chunk   0   1   2   3   4   5
         topic   /a  /b  /a  /b  /a  /b
+
+    Both schemas are declared in chunk 0, or with ``b_declared_in_chunk_1``,
+    ``other_schema`` only in chunk 1. Without ``message_indexes``, the chunk
+    indexes do not say which channels a chunk holds, so a read opens every chunk.
     """
     from mcap.writer import CompressionType, IndexType, Writer
 
@@ -128,22 +138,62 @@ def write_mcap_without_summary_schemas(path):
             stream,
             chunk_size=1,
             compression=CompressionType.ZSTD,
-            index_types=IndexType.ALL,
+            index_types=IndexType.ALL if message_indexes else IndexType.CHUNK,
             repeat_schemas=False,
         )
         writer.start(profile="", library="ray-test")
         channels = {}
-        for topic, name in (("/a", "test_schema"), ("/b", "other_schema")):
+
+        def declare(topic, name):
             schema_id = writer.register_schema(
                 name=name, encoding="jsonschema", data=b'{"type": "object"}'
             )
             channels[topic] = writer.register_channel(
                 schema_id=schema_id, topic=topic, message_encoding="json"
             )
+
+        declare("/a", "test_schema")
+        if not b_declared_in_chunk_1:
+            declare("/b", "other_schema")
         for i in range(6):
             topic = "/a" if i % 2 == 0 else "/b"
+            if topic not in channels:
+                # Chunk 0 closed after its message, so this lands in chunk 1.
+                declare(topic, "other_schema")
             writer.add_message(
                 channel_id=channels[topic],
+                log_time=BASE_TIME + i * STEP,
+                publish_time=BASE_TIME + i * STEP,
+                data=json.dumps({"seq": i}).encode(),
+            )
+        writer.finish()
+
+
+UNDECLARED_CHANNEL = 99  # the channel id ``write_undeclared_channel`` never declares
+
+
+def write_undeclared_channel(path):
+    """Write one chunk that holds a message on ``/a``, then a message on channel
+    ``UNDECLARED_CHANNEL``, which no record of the file declares.
+
+    The chunk decodes, but the reader cannot place its second message.
+    """
+    from mcap.writer import CompressionType, IndexType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream, compression=CompressionType.ZSTD, index_types=IndexType.ALL
+        )
+        writer.start(profile="", library="ray-test")
+        schema_id = writer.register_schema(
+            name="test_schema", encoding="jsonschema", data=b'{"type": "object"}'
+        )
+        channel_id = writer.register_channel(
+            schema_id=schema_id, topic="/a", message_encoding="json"
+        )
+        for i, channel in enumerate([channel_id, UNDECLARED_CHANNEL]):
+            writer.add_message(
+                channel_id=channel,
                 log_time=BASE_TIME + i * STEP,
                 publish_time=BASE_TIME + i * STEP,
                 data=json.dumps({"seq": i}).encode(),
@@ -316,6 +366,22 @@ def write_corrupt_chunk(path: str, source: str, index: int) -> str:
     return path
 
 
+NOT_JSON = b"not json"  # a payload on a JSON-encoded topic that does not decode
+
+
+def write_invalid_json(path: str, bad: Iterable[int], **options: Any) -> str:
+    """Write ``CHUNKED_FILE_MESSAGES`` ``round_robin_messages`` to ``path``, with
+    the payloads of the messages whose ``seq`` is in ``bad`` set to ``NOT_JSON``.
+
+    ``options`` go to ``write_mcap``; by default each message is its own chunk.
+    """
+    messages = round_robin_messages(CHUNKED_FILE_MESSAGES)
+    for seq in bad:
+        messages[seq]["data"] = NOT_JSON
+    write_mcap(path, messages, **options)
+    return path
+
+
 # Where a chunk record's compression name starts: after the opcode (1 byte),
 # the record length (8), the message start and end times (8 each), the
 # uncompressed size (8), its CRC (4) and the name's length (4).
@@ -411,10 +477,123 @@ def record_parsed_chunks(monkeypatch) -> List[int]:
     real_read_chunks = mcap_chunks.read_chunks
     offsets: List[int] = []
 
-    def read_chunks(f, chunk_indexes, reads):
-        for chunk_index, chunk in real_read_chunks(f, chunk_indexes, reads):
+    def read_chunks(f, chunk_indexes, reads, on_corrupt=None):
+        chunks = real_read_chunks(f, chunk_indexes, reads, on_corrupt)
+        for chunk_index, chunk in chunks:
             offsets.append(chunk_index.chunk_start_offset)
             yield chunk_index, chunk
 
     monkeypatch.setattr(mcap_chunks, "read_chunks", read_chunks)
     return offsets
+
+
+def read_samples(
+    samples: List[Dict[str, Any]], topics: Dict[str, Any], **options
+) -> List[Dict[str, Any]]:
+    """The rows of ``iter_sample_rows``, as a list."""
+    return list(iter_sample_rows(samples, topics, **options))
+
+
+def iter_sample_rows(
+    samples: List[Dict[str, Any]],
+    topics: Dict[str, Any],
+    *,
+    columns: Optional[List[str]] = None,
+    limit: Optional[int] = None,
+    filesystem=None,
+    **options,
+) -> Iterator[Dict[str, Any]]:
+    """Read ``samples`` as one read task of ``read_mcap(samples=...)`` does,
+    yielding each row as the task yields its table.
+
+    Each sample is a dict with ``files``, ``clip_start``, ``clip_end`` and
+    ``anchor``, and any other columns. ``topics`` maps each topic to its
+    ``TopicSpec``. ``columns`` prunes the read and ``limit`` caps its rows, as
+    the optimizer's pushdowns do. ``options`` go to the datasource.
+    """
+    from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
+        sample_manifest,
+    )
+
+    table = pa.Table.from_pylist(samples)
+    datasource = MCAPDatasourceV2(
+        [], topics=topics, samples_schema=table.schema, filesystem=filesystem, **options
+    )
+    scanner = datasource.create_scanner(datasource.infer_schema(None), filesystem)
+    if columns is not None:
+        scanner = scanner.prune_columns(columns)
+    if limit is not None:
+        scanner = scanner.push_limit(limit)
+    # As read_mcap does, an anchor is required only when a topic measures from it.
+    needs_anchor = any(spec.needs_anchor for spec in topics.values())
+    (rows,) = sample_manifest(table, needs_anchor=needs_anchor)
+    manifest = FileManifest(rows)
+    for result in scanner.create_reader().read(manifest):
+        if columns != []:
+            assert result.schema.equals(scanner.read_schema()), result.schema
+        yield from result.to_pylist()
+
+
+# -- the camera and IMU recording (the ``recording`` fixture) -----------------
+
+CAM_FPS = 10
+IMU_HZ = 50
+DURATION_S = 5
+
+
+def frame_time(k: int) -> int:
+    """The log time of camera frame ``k``."""
+    return k * SECOND // CAM_FPS
+
+
+def write_recording(path, *, chunk_size=600, index=True):
+    """Five seconds of a 10 fps camera and a 50 Hz IMU, in small chunks.
+
+    Camera frame ``k`` is logged at ``frame_time(k)`` and its payload ends with
+    ``k`` as four big-endian bytes. IMU sample ``i`` is ``i`` as eight bytes.
+    The ``recording`` fixture's docstring draws the timeline.
+    """
+    from mcap.writer import CompressionType, IndexType, Writer
+
+    with open(path, "wb") as stream:
+        writer = Writer(
+            stream,
+            chunk_size=chunk_size,
+            compression=CompressionType.ZSTD,
+            index_types=IndexType.ALL if index else IndexType.NONE,
+            use_chunking=index,
+            use_statistics=index,
+            use_summary_offsets=index,
+        )
+        writer.start(profile="ros2", library="ray-test")
+        cam_schema = writer.register_schema(
+            name="test_msgs/msg/Frame",
+            encoding="ros2msg",
+            data=b"string format\nuint8[] data",
+        )
+        imu_schema = writer.register_schema(
+            name="sensor_msgs/msg/Imu", encoding="ros2msg", data=b"float64 x"
+        )
+        cam = writer.register_channel(
+            schema_id=cam_schema, topic="/cam", message_encoding="cdr"
+        )
+        imu = writer.register_channel(
+            schema_id=imu_schema, topic="/imu", message_encoding="cdr"
+        )
+        messages = []
+        for frame in range(CAM_FPS * DURATION_S):
+            messages.append(
+                (frame_time(frame), cam, b"frame" + frame.to_bytes(4, "big"))
+            )
+        for i in range(IMU_HZ * DURATION_S):
+            messages.append((i * SECOND // IMU_HZ, imu, i.to_bytes(8, "big")))
+        messages.sort()
+        for log_time, channel_id, payload in messages:
+            writer.add_message(
+                channel_id=channel_id,
+                log_time=log_time,
+                publish_time=log_time,
+                data=payload,
+                sequence=0,
+            )
+        writer.finish()

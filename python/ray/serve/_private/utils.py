@@ -608,10 +608,17 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
         The ``self`` object if it's a method call, else ``None``.
     """
     if len(args) > 0:
-        method = getattr(args[0], func.__name__, False)
+        method = getattr(args[0], func.__name__, None)
         if method:
-            wrapped = getattr(method, "__wrapped__", False)
-            if wrapped and wrapped == func:
+            # Follow the full ``__wrapped__`` chain set by ``functools.wraps``.
+            # The chain can be longer than one hop when ``@serve.batch`` is
+            # combined with other wrapping decorators, e.g.
+            # ``@other_decorator @serve.batch(...)``. See #47449.
+            # Stop at non-callables: ``DeploymentHandle`` fabricates ``__wrapped__``.
+            unwrapped = inspect.unwrap(
+                method, stop=lambda f: f is func or not callable(f)
+            )
+            if unwrapped is func:
                 return args[0]
 
     return None
