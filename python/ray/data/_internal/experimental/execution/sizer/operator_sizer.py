@@ -300,6 +300,126 @@ class OperatorSizer:
         self._bottleneck_observer.log_tick(self._bottleneck)
         self._advance_phase()
 
+    @timed("decide")
+    def _decide(self, snapshot: ClusterStateSnapshot) -> None:
+        """Step 1: classify this tick's decision and carry it out.
+
+        This lands before how_many on purpose: a decision debits what it claims
+        (or holds for a later tick) off the shared free map, and what it
+        places becomes targeted pendings in committed accounting, so how_many
+        already sees the space it reserved. Ops a transfer claimed are no
+        longer ACTIVE, so how_many leaves them alone this tick.
+        """
+        self._decision, requests = self._policy.step(self._decision_context(snapshot))
+        for placed in requests:
+            self._apply(placed)
+
+    @timed("per_op_how_many")
+    def _per_op_how_many(self, snapshot: ClusterStateSnapshot) -> PerOpSizingRequest:
+        """Step 2: the per-op wants that do not need the model.
+
+        Two passes over the operators, in the tick's shared order:
+
+        - WANT    each op's desired delta from its own state alone (see
+                  OpSizingPolicy). Capacity is not consulted, so order does not
+                  matter here.
+        - GRANT   clamp each want to what the cluster can hold and debit it.
+                  Grant order is placement order, so anything granted here is
+                  placeable in step 3 by construction.
+
+        Capacity this tick's downscales will free is not credited: a running
+        victim holds its resources until it is dead, so the ledger sees it
+        on a later tick.
+        """
+        ledger = ConstraintAwareCapacityLedger(snapshot)
+        request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
+        wants = self._collect_wants(snapshot)
+        self._grant_within_capacity(snapshot.ordered_ops, wants, ledger, request)
+        self._telemetry.log_request_summary(request)
+        return PerOpSizingRequest(request=request)
+
+    @timed("per_op_where")
+    def _per_op_where(
+        self, request: PerOpSizingRequest, snapshot: ClusterStateSnapshot
+    ) -> PlacedSizingRequest:
+        """Step 3: resolve each delta to nodes.
+
+        1. shed off nodes being removed from the dataset's allocation
+        2. resolve downscales to the nodes they shed from
+        3. resolve upscales to the nodes new actors land on
+
+        Stateless across ticks: placement is re-derived from current state
+        every time, so a failed placement or a slow drain simply retries when
+        scale_how_many re-emits its delta next tick.
+        """
+        if not request.request and not snapshot.nodes_to_reclaim:
+            return PlacedSizingRequest(request={})
+
+        reserved = dict(snapshot.reserved_by_node)
+        # Copy: place_upscales spends from this map; the snapshot stays intact.
+        free = {node_id: res.copy() for node_id, res in snapshot.free_by_node.items()}
+        placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest] = {}
+
+        # Give back nodes we are losing first -- that takes precedence over
+        # this tick's sizing for the same op, which re-requests next tick.
+        evicted_ops = evict_from_reclaimed_nodes(
+            placed=placed,
+            nodes_to_reclaim=snapshot.nodes_to_reclaim,
+            profiles=self._profiles,
+        )
+        views = build_placement_views(request=request.request, capacity=snapshot)
+        # Nodes the capacity-short upscalers want freed, so downscales shed
+        # where the freed capacity actually helps.
+        favored = compute_favored_nodes(
+            request=request.request,
+            views=views,
+            reserved=reserved,
+            free=free,
+            placement=self._placement,
+            profiles=self._profiles,
+            ordered_ops=snapshot.ordered_ops,
+        )
+        # Downscales first: cancelling a pending refunds capacity this tick's
+        # upscales can immediately reuse.
+        place_downscales(
+            placed=placed,
+            request=request.request,
+            views=views,
+            favored=favored,
+            free=free,
+            placement=self._placement,
+            evicted_ops=evicted_ops,
+        )
+        place_upscales(
+            placed=placed,
+            request=request.request,
+            views=views,
+            free=free,
+            placement=self._placement,
+            profiles=self._profiles,
+            ordered_ops=snapshot.ordered_ops,
+            evicted_ops=evicted_ops,
+            telemetry=self._telemetry,
+        )
+
+        self._telemetry.log_placement(reserved, free, placed, self._placement)
+        return PlacedSizingRequest(request=placed)
+
+    @timed("apply")
+    def _apply(self, request: PlacedSizingRequest) -> None:
+        """Step 4: hand the resolved requests to the pools."""
+        # Downscales before upscales, deterministically.
+        for op, req in sorted(
+            request.request.items(), key=lambda entry: entry[1].delta
+        ):
+            logger.debug(
+                "scale: %s delta=%d nodes=%s",
+                op.name,
+                req.delta,
+                dict(Counter(req.nodes)),
+            )
+            op.actor_pool.scale(req)
+
     # --- phase ------------------------------------------------------------------
 
     def _advance_phase(self) -> None:
@@ -442,13 +562,9 @@ class OperatorSizer:
         scheduling loop once per step after it launches tasks, not at the
         start of ``perform_sizing_decision``.
 
-        The observer reads each op's slots at one instant. Before the launch,
-        every slot a task freed this step is still empty, though the launch
-        refills it moments later: a consumer looks like it has an idle slot,
-        and its producer's output-backpressured time counts as self-limited
-        instead of blocked by the consumer. Consumers whose tasks finish every
-        few seconds would almost always look that way. After the launch, a
-        slot is empty only if the consumer had no work for it.
+        We observe after launch because we want to consider truly IDLE slots,
+        ie, slots that even after launching tasks are still free. This truly
+        indicates no work for the sizer.
         """
         self._bottleneck_observer.observe(self._topology)
 
@@ -473,44 +589,6 @@ class OperatorSizer:
         ceiling = op.actor_pool.bounded_max_size()
         remaining = self._how_many.remaining_work_cap(op, self._topology[op])
         return ceiling if remaining is None else min(ceiling, remaining)
-
-    @timed("decide")
-    def _decide(self, snapshot: ClusterStateSnapshot) -> None:
-        """Step 1: classify this tick's decision and carry it out.
-
-        This lands before how_many on purpose: a decision debits what it claims
-        (or holds for a later tick) off the shared free map, and what it
-        places becomes targeted pendings in committed accounting, so how_many
-        already sees the space it reserved. Ops a transfer claimed are no
-        longer ACTIVE, so how_many leaves them alone this tick.
-        """
-        self._decision, requests = self._policy.step(self._decision_context(snapshot))
-        for placed in requests:
-            self._apply(placed)
-
-    @timed("per_op_how_many")
-    def _per_op_how_many(self, snapshot: ClusterStateSnapshot) -> PerOpSizingRequest:
-        """Step 2: the per-op wants that do not need the model.
-
-        Two passes over the operators, in the tick's shared order:
-
-        - WANT    each op's desired delta from its own state alone (see
-                  OpSizingPolicy). Capacity is not consulted, so order does not
-                  matter here.
-        - GRANT   clamp each want to what the cluster can hold and debit it.
-                  Grant order is placement order, so anything granted here is
-                  placeable in step 3 by construction.
-
-        Capacity this tick's downscales will free is not credited: a running
-        victim holds its resources until it is dead, so the ledger sees it
-        on a later tick.
-        """
-        ledger = ConstraintAwareCapacityLedger(snapshot)
-        request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        wants = self._collect_wants(snapshot)
-        self._grant_within_capacity(snapshot.ordered_ops, wants, ledger, request)
-        self._telemetry.log_request_summary(request)
-        return PerOpSizingRequest(request=request)
 
     def _collect_wants(
         self, snapshot: ClusterStateSnapshot
@@ -617,88 +695,6 @@ class OperatorSizer:
                     delta=delta, reason=want.reason
                 )
                 ledger.grant(op, delta)
-
-    @timed("per_op_where")
-    def _per_op_where(
-        self, request: PerOpSizingRequest, snapshot: ClusterStateSnapshot
-    ) -> PlacedSizingRequest:
-        """Step 3: resolve each delta to nodes.
-
-        1. shed off nodes being removed from the dataset's allocation
-        2. resolve downscales to the nodes they shed from
-        3. resolve upscales to the nodes new actors land on
-
-        Stateless across ticks: placement is re-derived from current state
-        every time, so a failed placement or a slow drain simply retries when
-        scale_how_many re-emits its delta next tick.
-        """
-        if not request.request and not snapshot.nodes_to_reclaim:
-            return PlacedSizingRequest(request={})
-
-        reserved = dict(snapshot.reserved_by_node)
-        # Copy: place_upscales spends from this map; the snapshot stays intact.
-        free = {node_id: res.copy() for node_id, res in snapshot.free_by_node.items()}
-        placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest] = {}
-
-        # Give back nodes we are losing first -- that takes precedence over
-        # this tick's sizing for the same op, which re-requests next tick.
-        evicted_ops = evict_from_reclaimed_nodes(
-            placed=placed,
-            nodes_to_reclaim=snapshot.nodes_to_reclaim,
-            profiles=self._profiles,
-        )
-        views = build_placement_views(request=request.request, capacity=snapshot)
-        # Nodes the capacity-short upscalers want freed, so downscales shed
-        # where the freed capacity actually helps.
-        favored = compute_favored_nodes(
-            request=request.request,
-            views=views,
-            reserved=reserved,
-            free=free,
-            placement=self._placement,
-            profiles=self._profiles,
-            ordered_ops=snapshot.ordered_ops,
-        )
-        # Downscales first: cancelling a pending refunds capacity this tick's
-        # upscales can immediately reuse.
-        place_downscales(
-            placed=placed,
-            request=request.request,
-            views=views,
-            favored=favored,
-            free=free,
-            placement=self._placement,
-            evicted_ops=evicted_ops,
-        )
-        place_upscales(
-            placed=placed,
-            request=request.request,
-            views=views,
-            free=free,
-            placement=self._placement,
-            profiles=self._profiles,
-            ordered_ops=snapshot.ordered_ops,
-            evicted_ops=evicted_ops,
-            telemetry=self._telemetry,
-        )
-
-        self._telemetry.log_placement(reserved, free, placed, self._placement)
-        return PlacedSizingRequest(request=placed)
-
-    @timed("apply")
-    def _apply(self, request: PlacedSizingRequest) -> None:
-        """Step 4: hand the resolved requests to the pools."""
-        # Downscales before upscales, deterministically.
-        for op, req in sorted(
-            request.request.items(), key=lambda entry: entry[1].delta
-        ):
-            logger.debug(
-                "scale: %s delta=%d nodes=%s",
-                op.name,
-                req.delta,
-                dict(Counter(req.nodes)),
-            )
-            op.actor_pool.scale(req)
 
     # --- construction-time validation -----------------------------------------
 
