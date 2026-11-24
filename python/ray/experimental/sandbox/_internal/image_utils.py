@@ -1420,6 +1420,14 @@ def _erofs_pull_binary() -> Optional[str]:
     return binary if binary != "0" and os.access(binary, os.X_OK) else None
 
 
+def _erofs_pull_can_build(layers: List[dict]) -> bool:
+    """Whether erofs-pull can try the image: it's there, and the manifest
+    gives every layer's size (an int, not a bool)."""
+    return _erofs_pull_binary() is not None and all(
+        type(layer.get("size")) is int and layer["size"] >= 0 for layer in layers
+    )
+
+
 def _build_image_with_erofs_pull(
     image: str,
     manifest: dict,
@@ -1458,9 +1466,7 @@ def _build_image_with_erofs_pull(
     """
     binary = _erofs_pull_binary()
     layers = manifest["layers"]
-    if binary is None or not all(
-        isinstance(layer.get("size"), int) for layer in layers
-    ):
+    if not _erofs_pull_can_build(layers):
         return False
     spec = {
         "base_url": base_url,
@@ -1664,7 +1670,8 @@ def _extract_image_layers(
             try:
                 require_mkfs_erofs()
             except SandboxCreationError as err:
-                if _erofs_pull_binary() is None:
+                # Blame erofs-pull only if it ran.
+                if not _erofs_pull_can_build(layers):
                     raise
                 raise SandboxCreationError(
                     f"erofs-pull failed to build image '{image}' (its error is "

@@ -1367,11 +1367,13 @@ def _send(handler, body: bytes) -> None:
 
 
 @contextlib.contextmanager
-def _serve_image(monkeypatch, layers, serve_blob=None):
+def _serve_image(monkeypatch, layers, serve_blob=None, size=len):
     """Serve an image made of ``layers`` as Docker Hub's mirror.
 
     ``serve_blob(index, handler, blob)`` answers the request for layer
-    ``index``; by default the blob goes out whole. Yields the image to pull.
+    ``index``; by default the blob goes out whole. ``size(blob)`` is the
+    size the manifest gives a layer, left out if None. Yields the image to
+    pull.
     """
     digests = [f"sha256:{hashlib.sha256(blob).hexdigest()}" for blob in layers]
     manifest = json.dumps(
@@ -1382,7 +1384,7 @@ def _serve_image(monkeypatch, layers, serve_blob=None):
                 {
                     "mediaType": "application/vnd.docker.image.rootfs.diff.tar.gzip",
                     "digest": digest,
-                    "size": len(blob),
+                    **({} if size(blob) is None else {"size": size(blob)}),
                 }
                 for digest, blob in zip(digests, layers)
             ],
@@ -1701,10 +1703,6 @@ def test_extract_tar_layer_reads_a_layer_once(tmp_path):
     assert reader.bytes_read <= len(blob)
 
 
-if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
-
-
 # The erofs-pull binary the tests below run: RAY_SANDBOX_EROFS_PULL as the
 # test run starts (a Bazel-built one, say), else the one packaged with Ray.
 _EROFS_PULL_UNDER_TEST = next(
@@ -1925,6 +1923,22 @@ def test_failed_erofs_pull_without_mkfs_erofs(tmp_path, erofs_pull, monkeypatch)
     with _serve_image(monkeypatch, layers, _cut_short) as image:
         with pytest.raises(SandboxCreationError, match="erofs-pull failed to build"):
             pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+
+
+@pytest.mark.parametrize(
+    "size", [lambda blob: None, lambda blob: True], ids=["missing", "bool"]
+)
+def test_pull_without_layer_sizes_or_mkfs_erofs(tmp_path, monkeypatch, size):
+    """erofs-pull doesn't run on a manifest without layer sizes, so when
+    mkfs.erofs is missing too, the error doesn't blame erofs-pull."""
+    # Never runs; if it did, it would "build" an image without writing one.
+    monkeypatch.setenv("RAY_SANDBOX_EROFS_PULL", shutil.which("true"))
+    monkeypatch.setattr(image_utils, "mkfs_erofs_path", lambda: None)
+    layers = [_layer(("a", b"a", {}))]
+    with _serve_image(monkeypatch, layers, size=size) as image:
+        with pytest.raises(SandboxCreationError, match="Install erofs-utils") as info:
+            pull_and_extract_container_image(image, images_dir=str(tmp_path / "images"))
+    assert "erofs-pull" not in str(info.value)
 
 
 def test_concurrent_erofs_pulls_sharing_layers(tmp_path, erofs_pull, monkeypatch):
@@ -2363,3 +2377,7 @@ def test_extracting_layers_never_uses_erofs_pull(tmp_path, erofs_pull, monkeypat
     assert ownership == {}
     assert (rootfs / "bin" / "sleep").read_bytes() == b"sleep"
     assert not (tmp_path / ROOTFS_IMAGE).exists()
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
