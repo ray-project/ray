@@ -117,11 +117,12 @@ Status ObjectBufferPool::CreateChunk(const ObjectID &object_id,
   return Status::OK();
 }
 
-void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
+bool ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t data_size,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
-                                  const std::string &data) {
+                                  const std::string &data,
+                                  bool defer_release) {
   std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
   {
     absl::MutexLock lock(&pool_mutex_);
@@ -131,12 +132,12 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
         it->second.chunk_state_.at(chunk_index) != CreateChunkState::REFERENCED) {
       RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
                      << " could be sealed";
-      return;
+      return false;
     }
     if (it->second.data_size_ != data_size ||
         it->second.metadata_size_ != metadata_size) {
       RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
-      return;
+      return false;
     }
     RAY_CHECK(it->second.chunk_info_.size() > chunk_index);
 
@@ -167,14 +168,22 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
     // Decrement the number of inflight copies to ensure Abort can release the buffer.
     it->second.num_inflight_copies_--;
     it->second.num_seals_remaining_--;
-    if (it->second.num_seals_remaining_ == 0) {
-      RAY_CHECK_OK(store_client_->Seal(object_id));
-      RAY_CHECK_OK(store_client_->Release(object_id));
-      create_buffer_state_.erase(it);
-      RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
-                     << ", last chunk index: " << chunk_index;
+    if (it->second.num_seals_remaining_ != 0) {
+      return false;
     }
+    RAY_CHECK_OK(store_client_->Seal(object_id));
+    RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
+                   << ", last chunk index: " << chunk_index;
+    if (!defer_release) {
+      RAY_CHECK_OK(store_client_->Release(object_id));
+    }
+    create_buffer_state_.erase(it);
+    return true;
   }
+}
+
+void ObjectBufferPool::ReleaseObject(const ObjectID &object_id) {
+  RAY_CHECK_OK(store_client_->Release(object_id));
 }
 
 void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
