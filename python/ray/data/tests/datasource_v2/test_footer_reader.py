@@ -244,7 +244,7 @@ def test_arithmetic_prunes_only_files_stored_at_the_read_types(
     read_schema = pa.schema([("x", read)]) if read is not None else None
     expression = operation(col("x"), col("x"))
     read_table = table if read_schema is None else table.cast(read_schema)
-    answer = eval_expr(expression, read_table)[0].as_py()
+    answer = eval_expr(expr=expression, block=read_table)[0].as_py()
 
     chunks = _reader(
         filter_expr=expression == (answer if matches else answer + 1),

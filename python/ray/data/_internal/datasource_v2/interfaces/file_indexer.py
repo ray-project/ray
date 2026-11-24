@@ -48,10 +48,12 @@ class FileIndexer(ABC):
         return None
 
     def with_read_schema(self, schema: "pa.Schema") -> "FileIndexer":
-        """An indexer that knows the schema its files are read with.
+        """Return an indexer that knows the schema the files are read with.
 
-        Default returns ``self``. Override when listing prunes on file metadata
-        and the answer depends on the column types the read computes with.
+        The default returns ``self``. Override this when listing skips files by
+        evaluating the filter on file metadata. Parquet does: on a row group's
+        min/max, int8 ``x * x`` wraps where a read that widens ``x`` to int64
+        doesn't, so it skips only files stored at the read's types.
         """
         return self
 
