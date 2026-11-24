@@ -44,18 +44,12 @@ def main(args):
         # (l_partkey, l_suppkey), then joining with partsupp on the same
         # composite key and applying the threshold filter.
 
-        # Load tables with early projection.
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_name", "s_address", "s_nationkey"]
-        )
-        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
-        part = load_table("part", args.sf).select_columns(["p_partkey", "p_name"])
-        partsupp = load_table("partsupp", args.sf).select_columns(
-            ["ps_partkey", "ps_suppkey", "ps_availqty"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_partkey", "l_suppkey", "l_quantity", "l_shipdate"]
-        )
+        # Load tables. Projection pushdown derives the columns each read needs.
+        supplier = load_table("supplier", args.sf)
+        nation = load_table("nation", args.sf)
+        part = load_table("part", args.sf)
+        partsupp = load_table("partsupp", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q20 parameters
         color = "forest"
@@ -64,9 +58,7 @@ def main(args):
         date_end = datetime(1995, 1, 1)
 
         # ── Innermost subquery: forest parts ────────────────────────────
-        forest_parts = part.filter(
-            expr=col("p_name").str.starts_with(color)
-        ).select_columns(["p_partkey"])
+        forest_parts = part.filter(expr=col("p_name").str.starts_with(color))
 
         # ── Restrict partsupp to forest parts (IN subquery) ─────────────
         ps_forest = partsupp.join(
@@ -86,9 +78,7 @@ def main(args):
         li_agg = li_filtered.groupby(["l_partkey", "l_suppkey"]).aggregate(
             Sum(on="l_quantity", alias_name="sum_qty")
         )
-        li_agg = li_agg.with_column("sum_qty_f", to_f64(col("sum_qty"))).select_columns(
-            ["l_partkey", "l_suppkey", "sum_qty_f"]
-        )
+        li_agg = li_agg.with_column("sum_qty_f", to_f64(col("sum_qty")))
 
         # ── Join partsupp with lineitem aggregate and apply threshold ───
         ps_forest = ps_forest.with_column("ps_availqty_f", to_f64(col("ps_availqty")))
@@ -99,9 +89,7 @@ def main(args):
             on=("ps_partkey", "ps_suppkey"),
             right_on=("l_partkey", "l_suppkey"),
         )
-        qualified_ps = ps_li.filter(
-            expr=col("ps_availqty_f") > 0.5 * col("sum_qty_f")
-        ).select_columns(["ps_suppkey"])
+        qualified_ps = ps_li.filter(expr=col("ps_availqty_f") > 0.5 * col("sum_qty_f"))
 
         # ── Main pipeline: Canadian suppliers with qualifying parts ─────
         nation_filtered = nation.filter(expr=col("n_name") == nation_name)
@@ -111,7 +99,7 @@ def main(args):
             num_partitions=200,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
-        ).select_columns(["s_suppkey", "s_name", "s_address"])
+        )
 
         result = canadian_suppliers.join(
             qualified_ps,
