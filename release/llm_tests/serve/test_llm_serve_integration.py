@@ -531,6 +531,57 @@ def test_pooling_model(model_name, engine_kwargs, endpoint, validate_item):
 
 
 @direct_streaming_only
+def test_direct_streaming_drops_operational_routes():
+    """Clients reach inference routes but not vLLM's operational routes."""
+    model_name = "Qwen/Qwen3-0.6B"
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_name),
+        deployment_config=dict(num_replicas=1),
+        engine_kwargs=dict(enforce_eager=True, max_model_len=512),
+        runtime_env=dict(
+            env_vars={
+                # Mounts /pause, /collective_rpc, /reset_prefix_cache, ...
+                "VLLM_SERVER_DEV_MODE": "1",
+                "RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES": "/reset_prefix_cache",
+            }
+        ),
+    )
+    try:
+        serve.run(build_openai_app({"llm_configs": [llm_config]}), blocking=False)
+        wait_for_condition(is_default_app_running, timeout=300)
+
+        base_url = "http://localhost:8000"
+        response = requests.post(
+            f"{base_url}/v1/chat/completions",
+            json={
+                "model": model_name,
+                "messages": [{"role": "user", "content": "Hi"}],
+                "max_tokens": 4,
+            },
+            timeout=120,
+        )
+        assert response.status_code == 200, response.text
+
+        # Served because it's in RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES.
+        response = requests.post(f"{base_url}/reset_prefix_cache", timeout=60)
+        assert response.status_code == 200, response.text
+
+        for method, path in [
+            ("POST", "/scale_elastic_ep"),
+            ("POST", "/pause"),
+            ("POST", "/collective_rpc"),
+            ("GET", "/server_info"),
+            ("GET", "/metrics"),
+        ]:
+            response = requests.request(
+                method, f"{base_url}{path}", json={}, timeout=60
+            )
+            assert response.status_code == 404, (path, response.text)
+    finally:
+        shutdown_serve_and_wait_for_controller()
+
+
+@direct_streaming_only
 @pytest.mark.timeout(900)
 @pytest.mark.requires_4GPU
 def test_diffusion_gemma_structured_read():

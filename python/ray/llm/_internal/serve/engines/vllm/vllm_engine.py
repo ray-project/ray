@@ -27,6 +27,10 @@ from vllm.exceptions import VLLMClientError
 import ray
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
+from ray.llm._internal.serve.constants import (
+    DIRECT_STREAMING_VLLM_ROUTES,
+    RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -100,6 +104,18 @@ if TYPE_CHECKING:
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
+
+
+def _drop_non_client_routes(app) -> None:
+    """Drop routes not in DIRECT_STREAMING_VLLM_ROUTES or the extra routes."""
+    allowed = DIRECT_STREAMING_VLLM_ROUTES | RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES
+    dropped = sorted({r.path for r in app.routes if r.path not in allowed})
+    app.routes[:] = [r for r in app.routes if r.path in allowed]
+    logger.info(
+        "Not serving vLLM routes: %s. To serve one, add it to "
+        "RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES.",
+        ", ".join(dropped),
+    )
 
 
 def _canonicalize_request_id_header(
@@ -374,6 +390,7 @@ class VLLMEngine(LLMEngine):
             supported_tasks=supported_tasks,
             model_config=self._engine_client.model_config,
         )
+        _drop_non_client_routes(app)
         # HTTP handlers and resolve_lora() must share the same model registry.
         app.state._state.update(self._app_state._state)
         # build_app() attaches plugins after start() initializes the serving state.
