@@ -17,7 +17,19 @@ import pytest
 
 import ray
 from ray.data._internal.logical.operators import Project
-from ray.data.aggregate import Count, Max, Mean, Min, Sum
+from ray.data.aggregate import (
+    AsList,
+    Count,
+    CountDistinct,
+    Max,
+    Mean,
+    Min,
+    MissingValuePercentage,
+    Quantile,
+    Sum,
+    Unique,
+    ZeroPercentage,
+)
 from ray.data.expressions import col, lit, star
 from ray.data.tests.conftest import *  # noqa: F401,F403
 from ray.data.tests.util import assert_exprs_equal
@@ -233,6 +245,66 @@ class TestAggregate:
         )
         assert _static_schema(ds) == pa.schema(
             [pa.field("k", pa.string()), pa.field("sum(a)", pa.int64())]
+        )
+
+    def test_groupby_list_and_percentage_aggs(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .groupby("k")
+            .aggregate(
+                CountDistinct("a"),
+                Unique("a"),
+                AsList("b"),
+                Quantile("a", q=0.5),
+                MissingValuePercentage("a"),
+                ZeroPercentage("b"),
+            )
+        )
+        assert _static_schema(ds) == pa.schema(
+            [
+                pa.field("k", pa.string()),
+                pa.field("count_distinct(a)", pa.int64(), nullable=False),
+                pa.field("unique(a)", pa.list_(pa.int32())),
+                pa.field("list(b)", pa.list_(pa.float32())),
+                pa.field("quantile(a)", pa.float64()),
+                pa.field("missing_pct(a)", pa.float64()),
+                pa.field("zero_pct(b)", pa.float64()),
+            ]
+        )
+
+    def test_quantile_on_string_falls_back(
+        self, ray_start_regular_shared_2_cpus, parquet_path
+    ):
+        # ``pc.quantile`` has no kernel for strings, so the aggregator can't
+        # declare its output type and the whole chain falls back.
+        ds = (
+            ray.data.read_parquet(str(parquet_path))
+            .groupby("k")
+            .aggregate(Quantile("k", q=0.5))
+        )
+        assert ds.schema(fetch_if_missing=False) is None
+
+    def test_unique_on_list_column_falls_back(self, ray_start_regular_shared_2_cpus):
+        # ``Unique`` over a nested column is computed by polars, which rewrites
+        # ``list`` to ``large_list``, so its output type isn't declared.
+        # ``AsList`` keeps the input type verbatim and stays resolvable.
+        table = pa.table(
+            {
+                "k": ["x", "y"],
+                "l": pa.array([[1, 2], [3]], type=pa.list_(pa.int16())),
+            }
+        )
+        unique_ds = ray.data.from_arrow(table).groupby("k").aggregate(Unique("l"))
+        assert unique_ds.schema(fetch_if_missing=False) is None
+
+        as_list_ds = ray.data.from_arrow(table).groupby("k").aggregate(AsList("l"))
+        assert _static_schema(as_list_ds) == pa.schema(
+            [
+                pa.field("k", pa.string()),
+                pa.field("list(l)", pa.list_(pa.list_(pa.int16()))),
+            ]
         )
 
 

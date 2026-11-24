@@ -39,6 +39,7 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -446,7 +447,7 @@ def _empty_block_from_schema(schema: Schema) -> Block:
             }
         )
     assert isinstance(schema, pa.Schema), type(schema)
-    return schema.empty_table()
+    return _create_empty_table(schema)
 
 
 def _final_top_n_task(

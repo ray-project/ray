@@ -34,7 +34,7 @@ each; the framework calls it.
 | 2. Optimize | `Scanner` | driver, optimizer rules | each rule calls a `push_*` method on the scanner and gets a new scanner back; the pushdowns it accepted are copied onto `ListFiles` as a `ListFilesPushdown`. |
 | 3. Index | `FileIndexer` | `ListFiles` tasks | turns the datasource's `paths` into `FileManifest` rows, skipping pieces the pushdowns rule out by metadata. |
 | 4. Partition | `FilePartitioner` | same tasks | regroups manifest rows into one manifest per read task. |
-| 5. Read | `Reader` | `ReadFiles` tasks, one per manifest | `scanner.create_reader().read(manifest)` yields `pyarrow.Table`s, honouring every pushdown. |
+| 5. Read | `Reader` | `ReadFiles` tasks, one per manifest | `scanner.create_reader().read(manifest)` yields `pyarrow.Table`s (pandas `DataFrame`s for `read_json(lines=True)`), honouring every pushdown. |
 
 Indexing skips whole pieces; the reader filters rows and is what makes the
 result correct, so a scanner must never report a pushdown its reader does not

@@ -2559,7 +2559,8 @@ class ActorHandle(Generic[T]):
                 on another node, the value is moved there: once the consumer's node
                 has its copy, the copy in the object store on the producing actor's
                 node is freed. If the consumer runs on the same node, it uses that
-                copy, and nothing is copied.
+                copy, and nothing is copied. A value small enough to be inlined into
+                the consuming task is copied, and moving it is a no-op.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor

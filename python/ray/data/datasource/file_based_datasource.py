@@ -425,17 +425,8 @@ class FileBasedDatasource(Datasource):
         filesystem: "RetryingPyFileSystem",
     ) -> "pyarrow.PythonFile":
         import pyarrow as pa
-        import snappy
-        from pyarrow.fs import HadoopFileSystem
 
-        stream = io.BytesIO()
-        if isinstance(filesystem.unwrap(), HadoopFileSystem):
-            snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
-        else:
-            snappy.stream_decompress(src=file, dst=stream)
-        stream.seek(0)
-
-        return pa.PythonFile(stream, mode="r")
+        return pa.PythonFile(_decompress_snappy(file, filesystem.unwrap()), mode="r")
 
     def _open_input_source(
         self,
@@ -485,6 +476,27 @@ class FileBasedDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+
+def _decompress_snappy(
+    file: "pyarrow.NativeFile", filesystem: "pyarrow.fs.FileSystem"
+) -> io.BytesIO:
+    """Decompress a whole Snappy file into memory, positioned at its start.
+
+    Arrow can't stream Snappy, since the C++ Snappy library has no streaming
+    decompression, so this uses python-snappy. HDFS files use Hadoop's
+    framing.
+    """
+    import snappy
+    from pyarrow.fs import HadoopFileSystem
+
+    stream = io.BytesIO()
+    if isinstance(filesystem, HadoopFileSystem):
+        snappy.hadoop_snappy.stream_decompress(src=file, dst=stream)
+    else:
+        snappy.stream_decompress(src=file, dst=stream)
+    stream.seek(0)
+    return stream
 
 
 def _add_partitions(
@@ -567,9 +579,17 @@ def _add_partitions_to_dataframe(
         column = pd.Series(data=[value] * len(df), name=field)
 
         if field in df:
-            column = column.astype(df[field].dtype)
-            mask = df[field].notna()
-            if not df[field][mask].equals(column[mask]):
+            if value is None:
+                # Don't cast None to the file's dtype: `astype(bool)` turns it
+                # into False and hides a conflict. A null partition value only
+                # matches a column that is all null.
+                conflict = df[field].notna().any()
+                column = df[field]
+            else:
+                column = column.astype(df[field].dtype)
+                mask = df[field].notna()
+                conflict = not df[field][mask].equals(column[mask])
+            if conflict:
                 raise ValueError(
                     f"Partition column {field} exists in table data, but partition "
                     f"value '{value}' is different from in-data values: "

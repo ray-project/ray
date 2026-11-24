@@ -1,12 +1,20 @@
+from dataclasses import replace
 from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorSupportsProjectionPushdown,
     LogicalPlan,
     Rule,
 )
-from ray.data._internal.logical.operators import Project
+from ray.data._internal.logical.operators import (
+    AbstractAllToAll,
+    Filter,
+    Join,
+    Project,
+)
+from ray.data._internal.logical.rules.combine_shuffles import CombineShuffles
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnReferenceCollector,
     _ColumnSubstitutionVisitor,
@@ -16,6 +24,7 @@ from ray.data.expressions import (
     AliasExpr,
     Expr,
     StarExpr,
+    col,
     is_rename_expr,
 )
 
@@ -335,74 +344,128 @@ def _filter_out_star(exprs: List[Expr]) -> List[Expr]:
 class ProjectionPushdown(Rule):
     """Optimization rule that pushes projections (column selections) down the query plan.
 
-    This rule performs two optimizations:
-    1. Fuses consecutive Project operations to eliminate redundant projections
-    2. Pushes projections into data sources (e.g., Read operations) to enable
+    This rule performs three optimizations:
+    1. Derives the columns each operator needs from what its consumers
+       reference, top-down through pass-through operators (``Join``,
+       ``Aggregate``, ``Sort``, ``Filter``, ...), and inserts pure-prune
+       ``Project`` ops where the derived set is narrower than what flows
+    2. Fuses consecutive Project operations to eliminate redundant projections
+    3. Pushes projections into data sources (e.g., Read operations) to enable
        column pruning at the storage layer
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         """Apply projection pushdown optimization to the entire plan."""
         dag = plan.dag
-        # Insert a pruning projection below consuming ops (e.g. ``Aggregate``)
-        # first, so the fuse/push steps can carry the narrowed columns into the
-        # read.
-        new_dag = dag._apply_transform(self._prune_aggregate_input)
+        # Insert pruning projections first, so the fuse/push steps can carry
+        # the narrowed columns into the read.
+        new_dag = self._derive_required_columns(dag, None)
         new_dag = new_dag._apply_transform(self._try_fuse_projects)
         new_dag = new_dag._apply_transform(self._push_projection_into_read_op)
         return LogicalPlan(new_dag, plan.context) if dag is not new_dag else plan
 
     @classmethod
-    def _prune_aggregate_input(cls, op: LogicalOperator) -> LogicalOperator:
-        """Insert a ``Project`` below an ``Aggregate`` that keeps only the
-        columns it consumes (group keys + each aggregation's target column).
+    def _derive_required_columns(
+        cls, op: LogicalOperator, required: Optional[Set[str]]
+    ) -> LogicalOperator:
+        """Rebuild ``op``'s subtree with pure-prune ``Project`` ops inserted
+        wherever an input carries columns nobody downstream of it needs.
 
-        The aggregation drops every other column anyway, so pruning them before
-        the shuffle avoids dragging unused (often wide) columns through it --
-        which otherwise inflates both the aggregator's memory reservation and
-        the bytes shuffled. The inserted projection is fused/pushed toward the
-        read by the steps in ``apply``.
+        ``required`` is the set of ``op``'s output columns its consumers
+        reference (``None``: all of them). Operators implementing
+        ``LogicalOperatorSupportsProjectionPassThrough`` translate it into a
+        set per input; any other operator (a UDF map, a read, ...) may consume
+        anything, so its inputs keep every column.
         """
-        from dataclasses import replace
-
-        from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-        from ray.data.aggregate import AggregateFnV2
-        from ray.data.expressions import col
-
-        if not isinstance(op, Aggregate):
+        inputs = op.input_dependencies
+        if not inputs:
             return op
 
-        keys = op.key if isinstance(op.key, list) else ([op.key] if op.key else [])
-        required: List[str] = list(keys)
-        for agg in op.aggs:
-            # A generic ``AggregateFn`` may read arbitrary columns, so only
-            # prune when every aggregation declares the column it reads.
-            if not isinstance(agg, AggregateFnV2):
+        op_required = required
+        if isinstance(op, Project) and required is not None and not op.has_star_expr():
+            kept = [expr for expr in op.exprs if expr.name in required]
+            if not kept:
+                op_required = None
+            elif len(kept) < len(op.exprs):
+                op = replace(op, exprs=kept)
+
+        per_input: Optional[List[Optional[Set[str]]]] = None
+        if isinstance(op, LogicalOperatorSupportsProjectionPassThrough):
+            per_input = op.required_input_columns(op_required)
+        if per_input is None:
+            per_input = [None] * len(inputs)
+
+        new_inputs = []
+        for input_op, input_required in zip(inputs, per_input):
+            new_input = cls._derive_required_columns(input_op, input_required)
+            if input_required is not None and cls._should_prune_below(op, new_input):
+                new_input = cls._prune_to(new_input, input_required)
+            new_inputs.append(new_input)
+        if all(new is old for new, old in zip(new_inputs, inputs)):
+            return op
+
+        new_op = op._with_new_input_dependencies(new_inputs)
+        if cls._column_names(op) is None:
+            for old_input, new_input, input_required in zip(
+                inputs, new_inputs, per_input
+            ):
+                if input_required is None or cls._column_names(old_input) is None:
+                    continue
+                new_names = cls._column_names(new_input)
+                if new_names is None or not input_required <= new_names:
+                    return op
+        elif required is not None:
+            new_names = cls._column_names(new_op)
+            if new_names is None or not required <= new_names:
                 return op
-            target = agg.get_target_column()
-            if target is not None:
-                required.append(target)
+        return new_op
 
-        # Order-preserving dedup; empty means nothing safe to prune to (e.g. a
-        # global count reading no columns).
-        required = list(dict.fromkeys(required))
-        if not required:
-            return op
-
-        input_op = op.input_dependencies[0]
-        schema = input_op.infer_schema()
+    @staticmethod
+    def _column_names(op: LogicalOperator) -> Optional[Set[str]]:
+        """``op``'s output column names, or ``None`` when its schema is unknown."""
+        schema = op.infer_schema()
         if schema is None or not hasattr(schema, "names"):
-            return op  # unknown schema: can't prove pruning helps
+            return None
+        return set(schema.names)
 
-        # Insert only when ``required`` is a strict subset of the input columns:
-        # this guarantees there's something to drop and keeps the rule
-        # idempotent (once the input yields exactly ``required`` nothing more is
-        # inserted, so the fixed-point optimizer terminates).
-        if not set(required) < set(schema.names):
+    @staticmethod
+    def _should_prune_below(op: LogicalOperator, input_op: LogicalOperator) -> bool:
+        """Whether a pruning ``Project`` belongs right between ``op`` and
+        ``input_op`` (if there is anything to prune), rather than further down.
+        """
+        if isinstance(op, Project):
+            return False
+        if isinstance(op, (AbstractAllToAll, Join)):
+            # ``PredicatePushdown`` moves an expression filter below the
+            # shuffle under it, which leaves ``op`` right on top of that one.
+            below = input_op
+            while isinstance(below, Filter) and below.is_expression_based():
+                below = below.input_dependencies[0]
+            return not CombineShuffles.combines(op, below)
+        return (
+            isinstance(input_op, LogicalOperatorSupportsProjectionPushdown)
+            and input_op.supports_projection_pushdown()
+        )
+
+    @staticmethod
+    def _prune_to(op: LogicalOperator, required: Set[str]) -> LogicalOperator:
+        """``op`` under a ``Project`` keeping only ``required``, or ``op`` itself
+        when its schema is unknown or already no wider than ``required``.
+
+        Inserting only for a strict subset keeps the rule idempotent: once the
+        input yields exactly ``required`` nothing more is inserted, so the
+        fixed-point optimizer terminates.
+        """
+        schema = op.infer_schema()
+        if not required or schema is None or not hasattr(schema, "names"):
             return op
-
-        prune = Project(exprs=[col(c) for c in required], input_dependencies=[input_op])
-        return replace(op, input_dependencies=[prune])
+        names = list(schema.names)
+        if not required < set(names):
+            return op
+        return Project(
+            exprs=[col(name) for name in names if name in required],
+            input_dependencies=[op],
+        )
 
     @classmethod
     def _try_fuse_projects(cls, op: LogicalOperator) -> LogicalOperator:

@@ -14,7 +14,6 @@ from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
 )
 from ray.data._internal.execution.operators.hash_shuffle_v2 import (
-    _SHUFFLE_MAP_RUNTIME_ENV,
     _make_hash_partition_fn,
 )
 from ray.data._internal.execution.operators.input_data_buffer import (
@@ -199,7 +198,6 @@ def _plan_join_shuffle_v2(
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(left_keys, num_partitions),
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}JoinShuffleMapLeft(keys={tuple(left_keys)}, "
             f"parts={num_partitions})"
@@ -210,7 +208,6 @@ def _plan_join_shuffle_v2(
         data_context,
         num_partitions=num_partitions,
         partition_fn=_make_hash_partition_fn(right_keys, num_partitions),
-        map_runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         name=(
             f"{prefix}JoinShuffleMapRight(keys={tuple(right_keys)}, "
             f"parts={num_partitions})"
@@ -461,12 +458,15 @@ class Planner:
         queue = [physical_op]
         while queue:
             curr_physical_op = queue.pop()
-            if curr_physical_op._logical_operators:
+            if curr_physical_op in op_map:
                 continue
 
-            curr_physical_op.set_logical_operators(logical_op)
+            # A plan fn may tag an op it created with its own logical op (e.g. the
+            # disk-shuffle writer); we should keep their tag.
+            if not curr_physical_op._logical_operators:
+                curr_physical_op.set_logical_operators(logical_op)
             # Add this operator to the op_map so optimizer can find it
-            op_map[curr_physical_op] = logical_op
+            op_map[curr_physical_op] = curr_physical_op._logical_operators[0]
             queue.extend(curr_physical_op.input_dependencies)
 
         # Also add the final operator (in case the loop didn't catch it)
