@@ -1,7 +1,14 @@
-"""Worker-side reader for WebDataset tar shards."""
+"""``WebDatasetReader``: reads WebDataset tar shards into Arrow tables.
+
+Each shard is read sequentially from start to end. Members that share a key
+form one sample, which is decoded and added to the current table. A table is
+cut every ``WEBDATASET_READ_CHUNK_SIZE`` samples or once its samples reach
+``target_block_size`` bytes. A tar stream can't be rewound, so a retryable error
+reopens the shard and reads it again from the start, skipping the tables already
+yielded. Snappy shards are decompressed whole into memory.
+"""
 
 import functools
-import io
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -18,6 +25,9 @@ from typing import (
 
 import pyarrow as pa
 
+from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
+    read_snappy_buffer,
+)
 from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
     WEBDATASET_READ_CHUNK_SIZE,
     iter_webdataset_rows,
@@ -175,26 +185,9 @@ class WebDatasetReader(Reader[FileManifest]):
         compression = open_args.get("compression")
         if compression is None:
             compression = infer_compression(path)
-        if compression != "snappy":
-            return self._filesystem.open_input_stream(path, **open_args)
-        # Arrow can't decompress Snappy as a stream, so decompress the whole
-        # file with python-snappy.
-        import snappy
-        from pyarrow.fs import HadoopFileSystem
-
-        open_args["compression"] = None
-        filesystem = self._filesystem
-        if hasattr(filesystem, "unwrap"):
-            filesystem = filesystem.unwrap()
-        decompressed = io.BytesIO()
-        with self._filesystem.open_input_stream(path, **open_args) as file:
-            if isinstance(filesystem, HadoopFileSystem):
-                # pyrefly: ignore[missing-attribute]
-                snappy.hadoop_snappy.stream_decompress(src=file, dst=decompressed)
-            else:
-                snappy.stream_decompress(src=file, dst=decompressed)
-        decompressed.seek(0)
-        return pa.PythonFile(decompressed, mode="r")
+        if compression == "snappy":
+            return pa.BufferReader(read_snappy_buffer(path, self._filesystem))
+        return self._filesystem.open_input_stream(path, **open_args)
 
     def _finalize(
         self, chunk: List[Dict[str, Any]], unit: ReadUnit, rows_before: int

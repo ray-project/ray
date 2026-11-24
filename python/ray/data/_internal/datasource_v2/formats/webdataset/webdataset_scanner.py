@@ -1,3 +1,10 @@
+"""The WebDataset ``Scanner``: the read's options, sent to every read task.
+
+``WebDatasetScanner`` is a frozen dataclass that creates one
+``WebDatasetReader`` per read task. It takes no filter, projection or limit
+pushdown.
+"""
+
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple, Union
 
