@@ -47,7 +47,17 @@ class TestParseUri:
                 Protocol.ABFSS,
                 f"abfss_{_sha1_hex('abfss://container@account.dfs.core.windows.net/file.zip')}.zip",
             ),
+            (
+                "oss://bucket/packages/file.tar.gz",
+                Protocol.OSS,
+                f"oss_{_sha1_hex('oss://bucket/packages/file.tar.gz')}.tar.gz",
+            ),
             # .whl URIs bypass the hash path (PEP 427 — names must round-trip).
+            (
+                "oss://bucket/packages/example-0.0.1-py3-none-any.whl",
+                Protocol.OSS,
+                "example-0.0.1-py3-none-any.whl",
+            ),
             (
                 "https://test.com/package-0.0.1-py2.py3-none-any.whl?param=value",
                 Protocol.HTTPS,
@@ -199,6 +209,7 @@ class TestParseUri:
         [
             "s3://bucket/package{ext}",  # extension in path
             "s3://package{ext}",  # extension in netloc (no path component)
+            "oss://bucket/package{ext}",
         ],
     )
     @pytest.mark.parametrize("ext", [".zip", ".tar.gz", ".tar.bz2", ".tar.xz"])

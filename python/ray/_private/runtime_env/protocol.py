@@ -3,7 +3,7 @@ import shutil
 from urllib.parse import urlparse
 from urllib.request import url2pathname
 
-from ray._common.runtime_env_uri import Protocol
+from ray._common.runtime_env_uri import Protocol, parse_oss_uri
 
 RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
 RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
@@ -40,6 +40,8 @@ class ProtocolsProvider:
             "azure",
             # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
             "abfss",
+            # Remote Alibaba Cloud Object Storage Service package.
+            "oss",
             # File storage path, assumes everything packed in one zip file.
             "file",
             # A directory that is already present on every node. Assumes absolute path.
@@ -48,7 +50,7 @@ class ProtocolsProvider:
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"http", "https", "s3", "gs", "azure", "abfss", "file"}
+        return {"http", "https", "s3", "gs", "azure", "abfss", "oss", "file"}
 
     @classmethod
     def _handle_s3_protocol(cls):
@@ -209,6 +211,32 @@ class ProtocolsProvider:
         return open_file, None
 
     @classmethod
+    def _download_oss_uri(cls, source_uri: str, dest_file: str):
+        bucket, key = parse_oss_uri(source_uri)
+        try:
+            import alibabacloud_oss_v2 as oss
+        except ImportError as exc:
+            raise ImportError(
+                "You must `pip install alibabacloud-oss-v2` to fetch OSS URIs. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            ) from exc
+
+        region = os.environ.get("OSS_REGION")
+        if not region:
+            raise ValueError("Set OSS_REGION to the region of the OSS bucket.")
+        config = oss.config.load_default()
+        config.region = region
+        config.endpoint = os.environ.get("OSS_ENDPOINT") or None
+        config.credentials_provider = (
+            oss.credentials.EnvironmentVariableCredentialsProvider()
+        )
+        # Preserve archive bytes even when the object has Content-Encoding: gzip.
+        request = oss.GetObjectRequest(
+            bucket=bucket, key=key, response_content_encoding="identity"
+        )
+        oss.Client(config).get_object_to_file(request, dest_file)
+
+    @classmethod
     def _http_headers(cls) -> dict:
         headers = {
             "User-Agent": os.environ.get(
@@ -279,6 +307,9 @@ class ProtocolsProvider:
             open_file, tp = cls._handle_azure_protocol()
         elif protocol == "abfss":
             open_file, tp = cls._handle_abfss_protocol()
+        elif protocol == "oss":
+            cls._download_oss_uri(source_uri, dest_file)
+            return
         else:
             try:
                 from smart_open import open as open_file

@@ -836,7 +836,7 @@ runtime_env = {..., "working_dir": "s3://example_bucket/example.tar.xz", ...}
 Check for hidden files and metadata directories in archived dependencies. You can inspect an archive's contents by running `zipinfo -1 archive.zip` or `tar -tzf archive.tar.gz` in a terminal. Some archiving methods can cause hidden files or metadata directories to appear at the top level. To avoid this, run `zip -r` or `tar -czf` directly on the directory you want to compress, from its parent directory. For example, if you have a directory structure such as `a/b` and you want to compress `b`, run the command from directory `a`. If Ray detects more than a single directory at the top level, it uses the entire archive instead of the top-level directory, which might lead to unexpected behavior.
 :::
 
-Remote URIs support `.zip`, `.tar.gz`, `.tgz`, and `.tar.xz` archive formats. Supported schemes are `http`, `https`, `s3`, `gs`, `azure`, `abfss`, and `file`. The following list describes the most common remote storage types:
+Remote URIs support `.zip`, `.tar.gz`, `.tgz`, and `.tar.xz` archive formats. Supported schemes are `http`, `https`, `s3`, `gs`, `azure`, `abfss`, `oss`, and `file`. The following list describes the most common remote storage types:
 
 - `HTTPS`: URLs that start with `https`. These URLs are particularly useful because remote Git providers such as GitHub, Bitbucket, and GitLab use `https` URLs as download links for repository archives. As a result, you can host your dependencies on remote Git providers, push updates to them, and specify which dependency versions, meaning commits, your jobs should use. To use packages through `HTTPS` URIs, you must have the `smart_open` library. Install it with `pip install smart_open`.
 
@@ -865,8 +865,16 @@ Remote URIs support `.zip`, `.tar.gz`, `.tgz`, and `.tar.xz` archive formats. Su
 
     - `runtime_env = {"working_dir": "azure://container-name/example_file.zip"}`
 
+- `OSS` URIs such as `oss://example-bucket/jobs/example.zip` point to packages in Alibaba Cloud Object Storage Service (OSS). Install the [OSS SDK for Python V2](https://github.com/aliyun/alibabacloud-oss-python-sdk-v2) with `pip install alibabacloud-oss-v2`. Set `OSS_REGION` to your bucket's region, such as `cn-hangzhou`. Set `OSS_ENDPOINT` if you need a specific endpoint. The SDK reads `OSS_ACCESS_KEY_ID`, `OSS_ACCESS_KEY_SECRET`, and the optional `OSS_SESSION_TOKEN` from the node environment. Give the credentials permission to read the object.
+
+  Use `oss://bucket/key` without a query string or fragment. Percent-encode special characters in the object key, for example `%23` for `#`.
+
+  ```python
+  runtime_env = {"working_dir": "oss://example-bucket/jobs/example.zip"}
+  ```
+
 :::{caution}
-The `smart_open`, `boto3`, `google-cloud-storage`, `azure-storage-blob`, and `azure-identity` packages aren't installed by default, and specifying them in the `pip` section of your `runtime_env` isn't sufficient. The relevant packages must already be installed on all nodes of the cluster when Ray starts.
+Install your storage scheme's dependencies on all cluster nodes and configure its credentials before starting Ray. Ray downloads the package before it installs dependencies from the `pip` section of `runtime_env`.
 :::
 
 ## Hosting a dependency on a remote Git provider: Step-by-step guide
