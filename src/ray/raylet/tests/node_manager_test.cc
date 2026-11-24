@@ -879,6 +879,28 @@ TEST_F(NodeManagerTest, TestHandleObjectLocalPinsMovedObject) {
   EXPECT_EQ(fake_object_directory_->primary_moved_objects, std::vector<ObjectID>{moved});
 }
 
+/// A failed move pull leaves an error object without an owner, which is not pinned.
+TEST_F(NodeManagerTest, TestHandleObjectLocalSkipsMovedObjectWithoutOwner) {
+  rpc::Address no_owner;
+  no_owner.set_worker_id(WorkerID::Nil().Binary());
+  no_owner.set_node_id(NodeID::Nil().Binary());
+  const ObjectID moved = ObjectID::FromRandom();
+  RAY_UNUSED(fake_store_client_->TryCreateImmediately(
+      moved,
+      no_owner,
+      1024,
+      nullptr,
+      1024,
+      nullptr,
+      plasma::flatbuf::ObjectSource::ErrorStoredByRaylet,
+      0));
+  fake_object_manager_->MarkMovePull(moved);
+
+  node_manager_->HandleObjectLocal(MakeObjectInfo(moved, no_owner));
+  EXPECT_TRUE(local_object_manager_->pinned_objects.empty());
+  EXPECT_TRUE(fake_object_directory_->primary_moved_objects.empty());
+}
+
 TEST_F(NodeManagerTest, TestConsumeSyncMessages) {
   // Create and wrap a mock resource view sync message.
   syncer::ResourceViewSyncMessage payload;

@@ -2739,6 +2739,12 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
 
 bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
                                           const rpc::Address &owner_address) {
+  // The error object that MarkObjectFailed writes for a failed pull has no owner,
+  // so nothing would ever free its pin.
+  if (WorkerID::FromBinary(owner_address.worker_id()).IsNil()) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Not pinning moved object without an owner";
+    return false;
+  }
   if (failed_workers_cache_.contains(WorkerID::FromBinary(owner_address.worker_id())) ||
       failed_nodes_cache_.contains(NodeID::FromBinary(owner_address.node_id()))) {
     RAY_LOG(DEBUG).WithField(object_id)
