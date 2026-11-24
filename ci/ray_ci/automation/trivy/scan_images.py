@@ -67,6 +67,8 @@ from ci.ray_ci.utils import ecr_docker_login
 logger = logging.getLogger(__name__)
 
 # Trivy is a static binary; this image only provides an empty, non-root root.
+# It pins a multi-arch index, but the Trivy binary staged into it is linux
+# x86_64, so scan jobs must run on x86_64 hosts.
 BASE_IMAGE = (
     "gcr.io/distroless/static-debian12"
     "@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab"
@@ -76,10 +78,17 @@ IGNORE_RUNFILE = "io_ray/ci/ray_ci/automation/trivy/ignore/{}.trivyignore.yaml"
 SCAN_USER = "65534:65534"
 # Everything the scan creates on the docker host carries this label.
 LABEL = "ray-trivy-scan=1"
-# Leftovers older than this come from jobs that died without cleaning up;
+# Leftovers older than this come from jobs that died without cleaning up:
+# every scan step times out after 60 minutes (image-scan.rayci.yml), so
 # younger ones may belong to a job still running on the same host.
-STALE_AFTER = timedelta(hours=6)
+STALE_AFTER = timedelta(hours=2)
 SCAN_TIMEOUT = "30m"
+# Seconds a docker call may take: a scan gets a margin over Trivy's own
+# SCAN_TIMEOUT, copying the layout and DBs into the volumes can take a
+# while, and everything else is quick.
+DOCKER_RUN_TIMEOUT = 35 * 60
+DOCKER_CP_TIMEOUT = 30 * 60
+DOCKER_TIMEOUT = 2 * 60
 # Single-platform manifests; an index would let Trivy silently pick one.
 IMAGE_MANIFEST_TYPES = frozenset(
     {
@@ -316,10 +325,25 @@ def fetch_db(
     }
 
 
-def _run(args: Sequence[str], check: bool = True) -> str:
-    result = subprocess.run(list(args), capture_output=True, text=True, check=False)
+def _run(args: Sequence[str], check: bool = True, timeout: int = DOCKER_TIMEOUT) -> str:
+    """Run a docker command. A timeout, or a docker that can't run, is a
+    ScanError even with ``check=False``."""
+    what = " ".join(args[:3])
+    try:
+        result = subprocess.run(
+            list(args),
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise ScanError(f"{what} timed out after {timeout}s") from None
+    except OSError as e:
+        raise ScanError(f"{what} could not run: {e}") from e
     if check and result.returncode != 0:
-        raise ScanError(f"{' '.join(args[:3])} failed: {result.stderr.strip()[-2000:]}")
+        raise ScanError(f"{what} failed: {result.stderr.strip()[-2000:]}")
     return result.stdout
 
 
@@ -408,13 +432,19 @@ class ContainedTrivy:
     def __exit__(self, *exc: object) -> None:
         # rm -f also stops a scan container left running by an interrupted
         # `docker run`; killing the CLI doesn't stop the container.
-        _run(["docker", "rm", "-f", self.loader, *self.scans], check=False)
-        _run(["docker", "volume", "rm", "-f", self.data, self.work], check=False)
+        try:
+            _run(["docker", "rm", "-f", self.loader, *self.scans], check=False)
+        finally:
+            # Even if that failed, or the job is being stopped.
+            _run(["docker", "volume", "rm", "-f", self.data, self.work], check=False)
 
     def load(self, staging: Path) -> None:
         """Copy ``staging/data`` and ``staging/work`` into the volumes."""
-        _run(["docker", "cp", f"{staging / 'data'}/.", f"{self.loader}:/data"])
-        _run(["docker", "cp", f"{staging / 'work'}/.", f"{self.loader}:/work"])
+        for volume in ("data", "work"):
+            _run(
+                ["docker", "cp", f"{staging / volume}/.", f"{self.loader}:/{volume}"],
+                timeout=DOCKER_CP_TIMEOUT,
+            )
 
     def docker_run_args(self, target: Target, name: str) -> list[str]:
         return [
@@ -457,7 +487,7 @@ class ContainedTrivy:
         logger.info(f"Scanning {target.name} ({target.digest})")
         name = f"{self.prefix}-scan-{len(self.scans)}"
         self.scans.append(name)
-        _run(self.docker_run_args(target, name))
+        _run(self.docker_run_args(target, name), timeout=DOCKER_RUN_TIMEOUT)
         _run(["docker", "cp", f"{self.loader}:/work/out/{target.name}.json", str(dest)])
 
 
@@ -498,7 +528,9 @@ def _prune_stale(now: Optional[datetime] = None) -> None:
         ).split()
         for name in names:
             created = _created(kind, name)
-            if created and now - created > STALE_AFTER:
+            if created is None:
+                logger.warning(f"Can't tell when {kind} {name} was created; left")
+            elif now - created > STALE_AFTER:
                 logger.info(f"Removing stale {kind} {name} (created {created})")
                 _run([*remove, name], check=False)
 
@@ -540,18 +572,19 @@ def stage(
     for name, path in dbs.items():
         shutil.move(str(path), data / name.replace("_", "-"))
 
-    # crane writes blobs 0600 and docker cp makes root the owner, so the
-    # non-root scan user can only read what is world-readable.
+    # crane writes blobs 0600, and docker cp keeps the job's owner, which isn't
+    # the scan user, so the scan user can only read what is world-readable.
     _make_world_readable(data)
 
     work = staging / "work"
     for sub in ("cache", "out", "tmp", "home"):
         (work / sub).mkdir(parents=True)
-        # docker cp makes root the owner; the scan runs as nobody.
+        # docker cp keeps the job's owner; the scan runs as nobody.
         (work / sub).chmod(0o1777)
     # Trivy reads its DBs from the cache dir; point it at the read-only copies.
-    (work / "cache" / "db").symlink_to("/data/db")
-    (work / "cache" / "java-db").symlink_to("/data/java-db")
+    for name in dbs:
+        db_dir = name.replace("_", "-")
+        (work / "cache" / db_dir).symlink_to(f"/data/{db_dir}")
     return staging
 
 

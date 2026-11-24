@@ -102,7 +102,6 @@ py_binary(
     deps = [
         ":registry",
         ":scan_store",
-        ci_require("bazel-runfiles"),
         ci_require("click"),
     ],
 )
@@ -136,7 +135,6 @@ py_binary(
         # RayImagePushContext, so refs and tags match the publish step's.
         "//ci/ray_ci/automation",
         "//ci/ray_ci:ray_ci_lib",
-        ci_require("bazel-runfiles"),
         ci_require("click"),
     ],
 )
@@ -193,7 +191,6 @@ py_binary(
         ":trivy_db",
         ":trivy_report",
         "//ci/ray_ci:ray_ci_lib",
-        ci_require("bazel-runfiles"),
         ci_require("click"),
         ci_require("pyyaml"),
     ],
