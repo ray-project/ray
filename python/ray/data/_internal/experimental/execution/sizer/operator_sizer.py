@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Sequence, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
@@ -116,21 +116,21 @@ class OperatorSizer:
     - ``OpStatus`` per op (``op_status``): what the sizer may do to it now.
     - ``OpRule`` per op: the one action that sized it this tick.
 
-    Each tick runs in four steps:
+    Each tick runs in three steps:
 
     1. DECIDE    ``SizingPolicy.decide`` picks one action per op (``OpRule``).
                  It acts on the bottleneck model first: grow a bottleneck or
                  balanced stages into free capacity, fund the recipient from
                  donors, or shed blocked surplus. Those requests already name
-                 their nodes, and we apply them at once, so the steps below
-                 see the room they took. Every other op gets a per-op action:
-                 release a completed pool, grow to held room, grow toward the
-                 warmup share, shed idle actors, or refill to min size.
-    2. HOW MANY  The ledger (``ConstraintAwareCapacityLedger``) clamps each
-                 per-op upscale to what the cluster can place.
-    3. WHERE     The ``ActorPlacementStrategy`` picks nodes for each delta;
-                 the pool picks the actors.
-    4. APPLY     We hand the placed requests to the pools.
+                 their nodes and take their room from the snapshot. Every
+                 other op gets a per-op action: release a completed pool,
+                 grow to held room, grow toward the warmup share, shed idle
+                 actors, or refill to min size. The ledger
+                 (``ConstraintAwareCapacityLedger``) then clamps each per-op
+                 upscale to what the cluster can still place.
+    2. WHERE     The ``ActorPlacementStrategy`` picks nodes for each per-op
+                 delta; the pool picks the actors.
+    3. APPLY     We hand every placed request to the pools.
 
     Alongside, it gives back capacity when the coordinator shrinks this
     dataset's slice: the tick reports where we now hold more than we are
@@ -277,12 +277,11 @@ class OperatorSizer:
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[PerOpSizingRequest, PlacedSizingRequest]:
         """Hold room for held ops, run the bottleneck model, advance the
-        phase, then decide, how many, where, apply."""
+        phase, then decide, where, apply."""
         self._prepare_tick(snapshot)
-        decisions = self._decide(snapshot)
-        how_many = self._per_op_how_many(snapshot, decisions)
+        decisions, how_many = self._decide(snapshot)
         where = self._per_op_where(how_many, snapshot)
-        self._apply(where)
+        self._apply(decisions, where)
         return how_many, where
 
     @timed("prepare")
@@ -303,48 +302,33 @@ class OperatorSizer:
     @timed("decide")
     def _decide(
         self, snapshot: ClusterStateSnapshot
-    ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
-        """Step 1: the policy picks one action per op, and we apply the
-        bottleneck model's requests at once.
+    ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PerOpSizingRequest]:
+        """Step 1: pick one action per op, then clamp the per-op upscales.
 
-        Those requests already name their nodes. They debit what they claim
-        from the shared free map, and their pendings count as committed, so
-        the how-many pass below already sees the room they took.
+        ``SizingPolicy.decide`` picks the actions. The bottleneck model's
+        requests already name their nodes, and they debit what they claim
+        from the snapshot's free maps. Then the ledger clamps each per-op
+        upscale to what is still free, and debits it, in the tick's op order.
+        Grant order is placement order, so step 2 can place everything
+        granted here.
+
+        Capacity this tick's downscales will free is not credited: a running
+        victim holds its resources until it is dead, so the ledger sees it on
+        a later tick.
         """
         decisions = self._policy.decide(self._decision_context(snapshot))
         self._decision = self._policy.last_decision
-        for op, decision in decisions.items():
-            for placed in decision.placed:
-                self._apply(PlacedSizingRequest(request={op: placed}))
-        return decisions
-
-    @timed("per_op_how_many")
-    def _per_op_how_many(
-        self,
-        snapshot: ClusterStateSnapshot,
-        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
-    ) -> PerOpSizingRequest:
-        """Step 2: grant the per-op actions' requests.
-
-        Clamp each upscale to what the cluster can hold, and debit it, in the
-        tick's op order. Grant order is placement order, so step 3 can place
-        everything granted here.
-
-        Capacity this tick's downscales will free is not credited: a running
-        victim holds its resources until it is dead, so the ledger sees it
-        on a later tick.
-        """
         ledger = ConstraintAwareCapacityLedger(snapshot)
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
         self._grant_within_capacity(snapshot.ordered_ops, decisions, ledger, request)
         self._telemetry.log_request_summary(request)
-        return PerOpSizingRequest(request=request)
+        return decisions, PerOpSizingRequest(request=request)
 
     @timed("per_op_where")
     def _per_op_where(
         self, request: PerOpSizingRequest, snapshot: ClusterStateSnapshot
     ) -> PlacedSizingRequest:
-        """Step 3: resolve each delta to nodes.
+        """Step 2: resolve each per-op delta to nodes.
 
         1. shed off nodes being removed from the dataset's allocation
         2. resolve downscales to the nodes they shed from
@@ -408,12 +392,25 @@ class OperatorSizer:
         return PlacedSizingRequest(request=placed)
 
     @timed("apply")
-    def _apply(self, request: PlacedSizingRequest) -> None:
-        """Step 4: hand the resolved requests to the pools."""
-        # Downscales before upscales, deterministically.
-        for op, req in sorted(
-            request.request.items(), key=lambda entry: entry[1].delta
-        ):
+    def _apply(
+        self,
+        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
+        where: PlacedSizingRequest,
+    ) -> None:
+        """Step 3: hand every placed request to the pools: the bottleneck
+        model's (from ``decisions``) and the per-op ones (``where``). One op
+        never has both, since each op gets one action per tick."""
+        requests: List[
+            Tuple[ExperimentalActorPoolMapOperator, PlacedScalingRequest]
+        ] = [
+            (op, placed)
+            for op, decision in decisions.items()
+            for placed in decision.placed
+        ]
+        requests.extend(where.request.items())
+        # Downscales before upscales. The sort is stable, so an op's own
+        # requests keep their order.
+        for op, req in sorted(requests, key=lambda entry: entry[1].delta):
             logger.debug(
                 "scale: %s delta=%d nodes=%s",
                 op.name,

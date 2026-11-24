@@ -526,11 +526,12 @@ class _TestSizer(OperatorSizer):
         return snapshot
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
-        """One per-op how_many evaluation, after the step's lifecycle
+        """One decide step's per-op requests, after the step's status
         transitions, the holds and the tick's phase update."""
         snapshot = self.held_snapshot(force=force)
         self._advance_phase()
-        return self._per_op_how_many(snapshot, self._decide(snapshot))
+        _, how_many = self._decide(snapshot)
+        return how_many
 
     @property
     def statuses(self):
@@ -1096,7 +1097,7 @@ def test_warmup_latches_off_on_critical_op_first_output():
     sizer._advance_phase()
     # _advance_phase moves the phase; pyrefly keeps the earlier narrowing.
     assert sizer.phase is SizerPhase.STEADY  # pyrefly: ignore[unnecessary-comparison]
-    assert sizer._per_op_how_many(snapshot, sizer._decide(snapshot)).request == {}
+    assert sizer._decide(snapshot)[1].request == {}
 
 
 def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_logs):
