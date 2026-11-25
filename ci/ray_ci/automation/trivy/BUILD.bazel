@@ -140,6 +140,14 @@ py_binary(
     ],
 )
 
+py_library(
+    name = "fake_tools",
+    testonly = True,
+    srcs = ["fake_tools.py"],
+    data = ["testdata/ray-py3.12-cpu.json"],
+    deps = [":scan_images"],
+)
+
 py_test(
     name = "test_scan_images",
     size = "small",
@@ -152,6 +160,7 @@ py_test(
     ],
     deps = [
         ":fake_s3",
+        ":fake_tools",
         ":scan_images",
         ":trivy_report",
         ci_require("click"),

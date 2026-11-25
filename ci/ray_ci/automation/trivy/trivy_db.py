@@ -33,7 +33,7 @@ from typing import Any, Mapping
 import click
 
 from ci.ray_ci.automation.trivy import registry, scan_store
-from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER, ScanStore
+from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER, ScanStore, Store
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ def manifest_created(manifest: Mapping[str, Any]) -> str:
     return created
 
 
-def stage_db(source: DbSource, store: ScanStore, workdir: Path) -> dict[str, Any]:
+def stage_db(source: DbSource, store: Store, workdir: Path) -> dict[str, Any]:
     """Upload one DB, pinned by digest, to the build's db/ folder."""
     manifest_digest = registry.digest(source.upstream)
     pinned = f"{source.upstream_repo}@{manifest_digest}"
@@ -122,6 +122,19 @@ def load_trivy_pin() -> dict[str, Any]:
     return json.loads(registry.runfile(TRIVY_PIN_RUNFILE).read_text())
 
 
+def stage_snapshot(store: Store, workdir: Path) -> Path:
+    """Stage a DB snapshot: every DB in the store's db/ folder, then
+    metadata.json; returns the local copy of metadata.json, in ``workdir``."""
+    metadata = {"trivy": load_trivy_pin()}
+    for source in DB_SOURCES:
+        metadata[source.name] = stage_db(source, store, workdir)
+    staged = workdir / DB_METADATA
+    staged.write_text(json.dumps(metadata, indent=2) + "\n")
+    # Last: scan jobs take metadata.json to mean every DB is in place.
+    store.upload(staged, DB_FOLDER)
+    return staged
+
+
 @click.command()
 @click.option(
     "--output",
@@ -139,15 +152,8 @@ def main(output: Path, store: ScanStore) -> None:
         store.download(DB_FOLDER, DB_METADATA, output)
         logger.info(f"Reusing the DB snapshot in {store.url(DB_FOLDER)}")
         return
-    metadata = {"trivy": load_trivy_pin()}
     with tempfile.TemporaryDirectory() as tmp:
-        for source in DB_SOURCES:
-            metadata[source.name] = stage_db(source, store, Path(tmp))
-        staged = Path(tmp) / DB_METADATA
-        staged.write_text(json.dumps(metadata, indent=2) + "\n")
-        # Last: scan jobs take metadata.json to mean every DB is in place.
-        store.upload(staged, DB_FOLDER)
-        shutil.copy(staged, output)
+        shutil.copy(stage_snapshot(store, Path(tmp)), output)
     logger.info(f"Wrote {output} and {store.url(DB_FOLDER)}{DB_METADATA}")
 
 

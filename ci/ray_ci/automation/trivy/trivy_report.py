@@ -35,6 +35,7 @@ EXIT_INCOMPLETE = 11
 
 ANNOTATION_CONTEXT = "trivy-scan"
 MISSING_STATUS = "no status record: its scan job did not run or did not upload"
+NO_OS_PACKAGES = "no OS packages detected"
 # A package with more no-fix CVEs than this in one image shows a count: kernel
 # headers alone carry ~500 per CUDA image, too many to list for every image.
 NO_FIX_LIST_LIMIT = 10
@@ -275,7 +276,16 @@ def parse_trivy_report(report: Any) -> ParsedReport:
     )
 
 
-def _load_scan(results_dir: Path, image: Image, record: Mapping[str, Any]) -> ImageScan:
+def load_scan(
+    results_dir: Path,
+    image: Image,
+    record: Mapping[str, Any],
+    require_os_packages: bool = True,
+) -> ImageScan:
+    """One image's scan, from its status ``record`` and its result in
+    ``results_dir``. local_scan_images calls it with images it knows itself, and
+    without ``require_os_packages`` for an image with no distro, such as one
+    built FROM scratch."""
     status = record.get("status", "")
     if status != "scanned":
         return ImageScan(image=image, error=record.get("error") or f"status {status!r}")
@@ -300,8 +310,8 @@ def _load_scan(results_dir: Path, image: Image, record: Mapping[str, Any]) -> Im
     # Trivy only warns when it can't detect the OS, and skips its packages.
     if not parsed.packages:
         error = "no packages detected"
-    elif not parsed.os_packages:
-        error = f"no OS packages detected (OS: {parsed.os_name or 'not detected'})"
+    elif not parsed.os_packages and require_os_packages:
+        error = f"{NO_OS_PACKAGES} (OS: {parsed.os_name or 'not detected'})"
     else:
         error = ""
     return ImageScan(
@@ -363,7 +373,7 @@ def load_scans(results_dir: Path) -> list[ImageScan]:
         if error:
             scans.append(ImageScan(image=image, error=error))
         else:
-            scans.append(_load_scan(results_dir, image, record))
+            scans.append(load_scan(results_dir, image, record))
     return sorted(scans, key=lambda s: _image_sort_key(s.image))
 
 
@@ -514,6 +524,9 @@ def describe_images(images: Sequence[Image], everything: Sequence[Image]) -> str
     """
     if len(images) > 1 and set(images) == set(everything):
         return f"all {len(images)} scanned images"
+    # Images with no Ray variant (local_scan_images' scans) go by name.
+    named = sorted(i.name for i in images if not (i.python_version or i.platform))
+    images = [i for i in images if i.python_version or i.platform]
     # Labels from every image, so a label means the same platform in every row.
     labels = _platform_labels({i.platform for i in [*images, *everything]})
     by_type: dict[str, list[Image]] = {}
@@ -525,9 +538,14 @@ def describe_images(images: Sequence[Image], everything: Sequence[Image]) -> str
         parts = tuple(_variant_parts(by_type[image_type], labels))
         types_by_parts.setdefault(parts, []).append(image_type)
     return "; ".join(
-        f"{', '.join(types)} {part}"
-        for parts, types in types_by_parts.items()
-        for part in parts
+        [
+            *(
+                f"{', '.join(types)} {part}"
+                for parts, types in types_by_parts.items()
+                for part in parts
+            ),
+            *named,
+        ]
     )
 
 
