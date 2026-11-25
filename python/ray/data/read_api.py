@@ -2876,6 +2876,15 @@ def read_text(
         Ray. This shared setting also affects ``read_parquet()`` and
         ``read_orc()``.
 
+        DataSourceV2 reads ASCII, Latin-1, UTF-8, and explicitly little- or
+        big-endian UTF-16/32 incrementally. A pushed-down limit can stop the
+        read before it encounters errors later in the file. If
+        ``DataContext.max_errored_blocks`` allows a read failure, the result
+        can include rows the task already produced from the damaged file.
+        Other encodings, including ``utf-8-sig``, ``utf-16``, and ``utf-32``,
+        use whole-file decoding before applying the limit. Snappy files
+        require whole-file decompression.
+
     Examples:
         Read a file in remote storage.
 

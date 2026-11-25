@@ -5,15 +5,30 @@ directly, like the MCAP reader. Line semantics match V1 ``TextDatasource``:
 ``str.splitlines()`` splits, and ``drop_empty_lines`` drops whitespace-only lines.
 """
 
+import codecs
 import io
+from contextlib import closing, contextmanager
 from functools import partial
-from typing import Any, Iterator, Optional, Sequence, Set, Tuple
+from itertools import islice
+from typing import (
+    Any,
+    Generator,
+    Iterator,
+    List,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, HadoopFileSystem, LocalFileSystem
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource.text_datasource import TEXT_COLUMN_NAME
+from ray.data._internal.datasource_v2.common.file_reader import (
+    _ARROW_DEFAULT_BATCH_SIZE,
+)
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
 )
@@ -37,6 +52,101 @@ from ray.data.datasource.partitioning import (
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
+# Keep decoding and Python row accumulation bounded independently of the
+# downstream block size. A single line can still exceed these sizes.
+_READ_CHUNK_SIZE = 64 * 1024
+_TARGET_BATCH_SIZE = 1024 * 1024
+_LINE_ENDINGS = "\n\r\v\f\x1c\x1d\x1e\x85\u2028\u2029"
+# CodecInfo.incrementaldecoder being present doesn't guarantee equivalence
+# with bytes.decode. In particular, the UTF-16/32 incremental decoders require
+# a BOM, and UTF-8-SIG ignores an incomplete initial BOM at EOF.
+_STREAMING_ENCODINGS = frozenset(
+    {
+        "ascii",
+        "iso8859-1",
+        "utf-8",
+        "utf-16-le",
+        "utf-16-be",
+        "utf-32-le",
+        "utf-32-be",
+    }
+)
+
+
+def _iter_line_batches(
+    stream: pa.NativeFile, encoding: str, read_size: int
+) -> Generator[List[str], None, None]:
+    """Read lines with the semantics of ``bytes.decode(encoding).splitlines()``.
+
+    Args:
+        stream: Decompressed input stream.
+        encoding: Python text encoding.
+        read_size: Decompressed bytes per chunk for streaming encodings.
+
+    Yields:
+        List[str]: Complete lines without their line endings.
+    """
+    codec = codecs.lookup(encoding)
+    if codec.name not in _STREAMING_ENCODINGS or codec.incrementaldecoder is None:
+        # Yield the temporary directly so a caller that keeps only a prefix
+        # can release the full list while this generator is suspended.
+        yield stream.readall().decode(encoding).splitlines()
+        return
+
+    decoder = codec.incrementaldecoder()
+    fragments = []
+    skip_lf = False
+    final = False
+    while not final:
+        chunk = _read_chunk(stream, read_size)
+        final = len(chunk) < read_size
+        text = decoder.decode(chunk, final=final)
+        if not text:
+            continue
+        if skip_lf:
+            text = text.removeprefix("\n")
+        skip_lf = text.endswith("\r")
+        lines = text.splitlines()
+        remainder = None
+        if text and not final and text[-1] not in _LINE_ENDINGS:
+            remainder = lines.pop()
+        if fragments and lines:
+            fragments.append(lines[0])
+            lines[0] = "".join(fragments)
+            fragments.clear()
+        if lines:
+            yield lines
+        if remainder is not None:
+            # Scan only newly decoded text. Joining an unfinished long line
+            # on every chunk would make its processing quadratic.
+            fragments.append(remainder)
+    if fragments:
+        yield ["".join(fragments)]
+
+
+def _read_chunk(stream: pa.NativeFile, size: int) -> bytes:
+    """Fill one chunk so short reads don't change retry batch boundaries.
+
+    Args:
+        stream: Decompressed input stream.
+        size: Number of bytes per chunk, except the final chunk at EOF.
+
+    Returns:
+        A full chunk, or fewer bytes once the stream reaches EOF.
+    """
+    chunk = stream.read(size)
+    if not chunk or len(chunk) == size:
+        return chunk
+    fragments = [chunk]
+    remaining = size - len(chunk)
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            break
+        fragments.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(fragments)
+
 
 def _raise_on_text_partition_field(partition_names) -> None:
     """Reject a partition key that would replace the lines column."""
@@ -49,7 +159,13 @@ def _raise_on_text_partition_field(partition_names) -> None:
 
 @DeveloperAPI
 class TextReader(Reader[FileManifest]):
-    """Reads the text files a manifest assigns to one task, one table per file."""
+    """Read a manifest's text files in bounded batches without splitting files.
+
+    ASCII, Latin-1, UTF-8, and explicit-endian UTF-16/32 use memory proportional
+    to the stream buffer, the longest line, and a batch of decoded rows. Other
+    encodings use whole-file decoding. Snappy uses whole-file decompression.
+    A pushed-down limit can leave errors in an unread suffix undetected.
+    """
 
     def __init__(
         self,
@@ -95,7 +211,7 @@ class TextReader(Reader[FileManifest]):
         self._schema = schema
 
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
-        """Read the files named by ``input_split``, one table per file."""
+        """Read the files named by ``input_split`` in manifest order."""
         from ray.data.context import DataContext
 
         if len(input_split) == 0:
@@ -104,7 +220,14 @@ class TextReader(Reader[FileManifest]):
         assert all(
             metadata is None for metadata in input_split.file_chunk_metadatas
         ), "TextReader reads whole files; the manifest carries chunk metadata"
-        retried_io_errors = DataContext.get_current().retried_io_errors
+        context = DataContext.get_current()
+        retried_io_errors = context.retried_io_errors
+        buffer_size = context.streaming_read_buffer_size
+        read_chunk_size = min(
+            context.target_max_block_size or _TARGET_BATCH_SIZE, _TARGET_BATCH_SIZE
+        )
+        if self._limit is not None:
+            read_chunk_size = min(read_chunk_size, _READ_CHUNK_SIZE)
         remaining = self._limit
         for path in input_split.paths:
             if remaining is not None and remaining <= 0:
@@ -113,57 +236,94 @@ class TextReader(Reader[FileManifest]):
             if not self._partition_matches(path):
                 continue
             tables = iterate_with_retry(
-                partial(self._read_file, path, remaining),
+                partial(self._read_file, path, remaining, buffer_size, read_chunk_size),
                 f"read text file {path}",
                 match=retried_io_errors,
             )
-            for table in tables:
-                if remaining is not None:
-                    remaining -= table.num_rows
-                yield table
+            with closing(tables):
+                for table in tables:
+                    if remaining is not None:
+                        remaining -= table.num_rows
+                    yield table
 
-    def _read_file(self, path: str, limit: Optional[int]) -> Iterator[pa.Table]:
-        """Yield the lines of one file as a table, at most ``limit`` of them.
+    def _read_file(
+        self, path: str, limit: Optional[int], buffer_size: int, read_chunk_size: int
+    ) -> Generator[pa.Table, None, None]:
+        """Reopen a file and replay the same batches on every retry.
 
-        Reopens the file on every call, so a retry replays the same rows.
+        Args:
+            path: File to read from the beginning.
+            limit: Maximum number of retained rows from this file.
+            buffer_size: Filesystem stream buffer size.
+            read_chunk_size: Number of decompressed bytes to decode per batch.
+
+        Yields:
+            pa.Table: Tables with deterministic boundaries across short reads.
         """
-        lines = self._read_bytes(path).decode(self._encoding).splitlines()
-        if self._drop_empty_lines:
-            lines = [line for line in lines if line.strip() != ""]
-        if limit is not None:
-            lines = lines[:limit]
-        if not lines:
-            return
+        rows_before = 0
+        final_table = None
+        read_size = min(read_chunk_size, buffer_size or read_chunk_size)
+        with self._open_input_stream(path, buffer_size) as stream:
+            for lines in _iter_line_batches(stream, self._encoding, read_size):
+                if limit is not None:
+                    remaining = min(limit - rows_before, len(lines))
+                    if self._drop_empty_lines:
+                        lines = list(
+                            islice((line for line in lines if line.strip()), remaining)
+                        )
+                    else:
+                        del lines[remaining:]
+                elif self._drop_empty_lines:
+                    lines = [line for line in lines if line.strip()]
+                # Bound row counts as well as input bytes, including when
+                # every line is empty and the text column is projected away.
+                for start in range(0, len(lines), _ARROW_DEFAULT_BATCH_SIZE):
+                    batch = lines[start : start + _ARROW_DEFAULT_BATCH_SIZE]
+                    table = self._finish(self._make_table(batch), path, rows_before)
+                    rows_before += len(batch)
+                    if limit is not None and rows_before >= limit:
+                        final_table = table
+                        break
+                    yield table
+                if final_table is not None:
+                    break
+        # Close before exposing the batch that satisfies the limit: downstream
+        # can cancel the task without ever resuming it after its final yield.
+        if final_table is not None:
+            yield final_table
+
+    def _make_table(self, lines: List[str]) -> pa.Table:
+        """Build the text column, or just preserve row counts for a projection."""
         if self._columns is not None and TEXT_COLUMN_NAME not in self._columns:
             # ``text`` is projected away (``count()``): keep only the row count.
-            table = pa.table(
+            return pa.table(
                 {_BATCH_SIZE_PRESERVING_STUB_COL_NAME: pa.nulls(len(lines))}
             )
-        else:
-            table = pa.table({TEXT_COLUMN_NAME: pa.array(lines, type=pa.string())})
-        yield self._finish(table, path)
+        return pa.table({TEXT_COLUMN_NAME: pa.array(lines, type=pa.string())})
 
-    def _read_bytes(self, path: str) -> bytes:
-        """Return the file's decompressed bytes, inferring the codec from its name."""
-        from ray.data.context import DataContext
-
+    @contextmanager
+    def _open_input_stream(
+        self, path: str, buffer_size: int
+    ) -> Iterator[pa.NativeFile]:
+        """Open a decompressed stream, retaining the whole-file Snappy fallback."""
         filesystem = self._filesystem or LocalFileSystem()
         compression = infer_compression(path)
         # Read in blocks of this size, as the V1 reader does. An HTTP server
         # without range requests (such as ``python -m http.server``) then
         # returns a file up to this size in one request; fsspec's own 5 MiB
         # blocks would need a range request for anything larger.
-        buffer_size = DataContext.get_current().streaming_read_buffer_size
         if compression == "snappy":
             # Arrow's own codec detection raises on ``.snappy``; open raw.
             with filesystem.open_input_stream(
                 path, compression=None, buffer_size=buffer_size
             ) as f:
-                return _decompress_snappy(f, filesystem)
+                with pa.BufferReader(_decompress_snappy(f, filesystem)) as stream:
+                    yield stream
+            return
         with filesystem.open_input_stream(
             path, compression=compression, buffer_size=buffer_size
         ) as f:
-            return f.readall()
+            yield f
 
     def _partition_matches(self, path: str) -> bool:
         """Return whether the path's partition values pass the pushed-down predicate."""
@@ -181,13 +341,13 @@ class TextReader(Reader[FileManifest]):
             )
         )
 
-    def _finish(self, table: pa.Table, path: str) -> pa.Table:
+    def _finish(self, table: pa.Table, path: str, rows_before: int) -> pa.Table:
         """Append partition and synthesized columns, then apply the projection."""
         wanted = set(self._columns) if self._columns is not None else None
         num_rows = table.num_rows
         unit = ReadUnit(id=path, source=path, count=1)
         table = self._append_partition_columns(table, path, wanted)
-        table = self._append_synthesized_columns(table, unit, wanted)
+        table = self._append_synthesized_columns(table, unit, wanted, rows_before)
         table = self._fill_missing_planned_columns(table, wanted)
         if self._columns is not None:
             produced = set(table.column_names)
@@ -241,11 +401,15 @@ class TextReader(Reader[FileManifest]):
         return table
 
     def _append_synthesized_columns(
-        self, table: pa.Table, unit: ReadUnit, wanted: Optional[Set[str]]
+        self,
+        table: pa.Table,
+        unit: ReadUnit,
+        wanted: Optional[Set[str]],
+        rows_before: int,
     ) -> pa.Table:
         """Append the wanted synthesized columns, replacing any of the same name."""
         num_rows = table.num_rows
-        position = ReadUnitPosition(unit=unit, rows_before=0)
+        position = ReadUnitPosition(unit=unit, rows_before=rows_before)
         for column in self._synthesized_columns:
             if wanted is not None and column.name not in wanted:
                 continue

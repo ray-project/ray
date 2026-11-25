@@ -21,11 +21,19 @@ This guide shows you how to do the following:
 
 Ray Data reads lines of text and JSON Lines files. For other text formats, read the raw binary files and decode the data yourself.
 
-::::{tab-set}
+:::::{tab-set}
 
-:::{tab-item} Text lines
+::::{tab-item} Text lines
 
 To read lines of text, call {func}`~ray.data.read_text`. Ray Data creates a row for each line of text. The column name in the schema defaults to `text`.
+
+DataSourceV2 reads text incrementally when you select ASCII, Latin-1, UTF-8, or an explicit byte order for UTF-16 or UTF-32 (such as `utf-16-le` or `utf-32-be`). Reader memory usage depends on the stream buffer, the longest line, and a batch of decoded rows. For other encodings, including `utf-8-sig`, `utf-16`, and `utf-32`, Ray Data decodes each file in full with Python's `bytes.decode()`. Snappy files also require whole-file decompression.
+
+:::{note}
+On the streaming path, a read task can stop once it satisfies a pushed-down limit. An unread part of the file can contain encoding or compression errors that the task never encounters. The downstream limit operator enforces the total row limit across tasks. Whole-file decoding checks the entire file before applying a limit.
+
+If you configure `DataContext.max_errored_blocks` to tolerate read failures, a full scan can return rows from a damaged file. Ray Data keeps the rows the task already produced before it encountered the error.
+:::
 
 ```{testcode}
 import ray
@@ -41,9 +49,9 @@ ds.show(3)
 {'text': 'Explicit is better than implicit.'}
 ```
 
-:::
+::::
 
-:::{tab-item} JSON Lines
+::::{tab-item} JSON Lines
 
 [JSON Lines](https://jsonlines.org/) is a text format for structured data. It's typically used to process data one record at a time.
 
@@ -63,9 +71,9 @@ ds.show(3)
 {'timestamp': datetime.datetime(2028, 9, 9, 5, 6, 7), 'size': 2163626}
 ```
 
-:::
+::::
 
-:::{tab-item} Other formats
+::::{tab-item} Other formats
 
 To read other text formats, call {func}`~ray.data.read_binary_files`. Then call {meth}`~ray.data.Dataset.map` to decode your data.
 
@@ -91,9 +99,9 @@ ds.show()
 {'text': 'Batoidea\nBatoidea is a superorder of cartilaginous fishes...'}
 ```
 
-:::
-
 ::::
+
+:::::
 
 For more information on reading files, see {ref}`Loading data <loading_data>`.
 
