@@ -41,7 +41,7 @@ class ReadGatedLocalFileSystem(UnknownSizeLocalFileSystem):
 
     def ls(self, path, detail=True, **kwargs):
         if (
-            os.path.basename(path) == "later"
+            os.path.basename(os.path.normpath(path)) == "later"
             and ray.get_runtime_context().get_task_id() is not None
         ):
             ray.get(self.listing_blocked.send.remote())
