@@ -461,7 +461,11 @@ def test_decide_op_keeps_a_blocked_op_that_feeds_a_starving_op(
     policy, _ = _policy([producer, consumer], next_ops={producer: [consumer]})
     bottleneck_snapshot = _bottleneck_snapshot(
         {producer: (0.1, 0.85, 0.05), consumer: (0.5, 0, consumer_starved)},
-        edge_shares={(producer, consumer): EdgeShares(blocked=0.85, self_limited=0)},
+        edge_shares={
+            (producer, consumer): EdgeShares(
+                producer_blocked=0.85, producer_self_limited=0
+            )
+        },
     )
     decision = policy.decide_op(
         op=producer,

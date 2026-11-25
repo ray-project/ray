@@ -107,10 +107,10 @@ class EdgeShares:
     consumer was doing at that moment."""
 
     # The consumer had no idle slot: it is what holds the producer back.
-    blocked: float
+    producer_blocked: float
     # The consumer had an idle slot: the producer's own output budget (blocks
     # still in flight, counted against it until consumed) held it back.
-    self_limited: float
+    producer_self_limited: float
 
 
 # Each op's nearest actor-pool neighbours on one side (``prev_ops`` or
@@ -126,8 +126,8 @@ EdgeSharesByEdge = Dict[EdgeKey[K], EdgeShares]
 class Edge(Generic[K]):
     producer: K
     consumer: K
-    producer_blocked: float
-    producer_self_limited: float
+    # The edge's joint shares, as fractions of the producer's slot time.
+    shares: EdgeShares
     consumer_starved: float
     arrow: Arrow
 
@@ -139,7 +139,7 @@ class Snapshot(Generic[K]):
     # Bottlenecks, most severe first, with their severity.
     bottlenecks: Tuple[Tuple[K, float], ...]
     # Joint shares per (producer, consumer); an edge missing here falls back
-    # to the producer's whole output backpressure as ``blocked``.
+    # to the producer's whole output backpressure as ``producer_blocked``.
     edge_shares: EdgeSharesByEdge[K] = field(default_factory=dict)
 
 
@@ -178,7 +178,7 @@ def edge_shares_of(
     joint = (edge_shares or {}).get((producer, consumer))
     if joint is not None:
         return joint
-    return EdgeShares(blocked=shares[producer].obp, self_limited=0.0)
+    return EdgeShares(producer_blocked=shares[producer].obp, producer_self_limited=0.0)
 
 
 def blocked_share(
@@ -193,7 +193,9 @@ def blocked_share(
     consumers = [c for c in next_ops.get(op, ()) if c in shares]
     if not consumers:
         return shares[op].obp
-    return max(edge_shares_of(op, c, shares, edge_shares).blocked for c in consumers)
+    return max(
+        edge_shares_of(op, c, shares, edge_shares).producer_blocked for c in consumers
+    )
 
 
 def build_edges(
@@ -214,12 +216,16 @@ def build_edges(
             c_starved = shares[consumer].starved
             edges.append(
                 Edge(
-                    producer,
-                    consumer,
-                    joint.blocked,
-                    joint.self_limited,
-                    c_starved,
-                    classify_edge(joint.blocked, joint.self_limited, c_starved, margin),
+                    producer=producer,
+                    consumer=consumer,
+                    shares=joint,
+                    consumer_starved=c_starved,
+                    arrow=classify_edge(
+                        joint.producer_blocked,
+                        joint.producer_self_limited,
+                        c_starved,
+                        margin,
+                    ),
                 )
             )
     return tuple(edges)
@@ -264,7 +270,7 @@ def severity(
     held it back: blocked(producers -> op) + starved(consumers) -
     (blocked(op) + starved(op))."""
     waiting_on = sum(
-        edge_shares_of(p, op, shares, edge_shares).blocked
+        edge_shares_of(p, op, shares, edge_shares).producer_blocked
         for p in prev_ops.get(op, ())
         if p in shares
     )
@@ -339,8 +345,9 @@ def why_should_not_upscale_blocker(
         ):
             return "a more severe bottleneck is upstream"
     for edge in snapshot.edges:
-        if edge.consumer is op and edge.producer_self_limited >= margin:
-            return f"input self-limited ({edge.producer_self_limited:.2f})"
+        self_limited = edge.shares.producer_self_limited
+        if edge.consumer is op and self_limited >= margin:
+            return f"input self-limited ({self_limited:.2f})"
     return None
 
 
@@ -434,7 +441,7 @@ class ShareWindow:
 class EdgeWindow:
     """One edge's producer slot time over the last ``window_s`` seconds,
     with the parts output-backpressured while the consumer was saturated
-    (``blocked``) or had an idle slot (``self_limited``)."""
+    (``producer_blocked``) or had an idle slot (``producer_self_limited``)."""
 
     def __init__(self, window_s: float):
         assert window_s > 0
@@ -468,8 +475,8 @@ class EdgeWindow:
         if slot_s <= 0:
             return None
         return EdgeShares(
-            blocked=sum(sample.blocked_s for sample in self._samples) / slot_s,
-            self_limited=sum(sample.self_limited_s for sample in self._samples)
+            producer_blocked=sum(sample.blocked_s for sample in self._samples) / slot_s,
+            producer_self_limited=sum(sample.self_limited_s for sample in self._samples)
             / slot_s,
         )
 
@@ -659,7 +666,8 @@ def format_snapshot(*, snapshot: Snapshot[Any], names: Dict[Any, str]) -> str:
     )
     edges = ", ".join(
         f"{name(e.producer)}->{name(e.consumer)} "
-        f"blocked={e.producer_blocked:.2f}/self={e.producer_self_limited:.2f}"
+        f"blocked={e.shares.producer_blocked:.2f}"
+        f"/self={e.shares.producer_self_limited:.2f}"
         f"/starved={e.consumer_starved:.2f} [{e.arrow.value}]"
         for e in snapshot.edges
     )

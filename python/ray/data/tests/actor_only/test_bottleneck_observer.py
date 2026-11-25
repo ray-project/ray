@@ -229,12 +229,12 @@ def test_output_backpressure_is_attributed_by_what_the_consumer_was_doing(
         ),
     }
     b_out = (
-        EdgeShares(blocked=0.8, self_limited=0.0)
+        EdgeShares(producer_blocked=0.8, producer_self_limited=0.0)
         if consumer_saturated
-        else EdgeShares(blocked=0.0, self_limited=0.8)
+        else EdgeShares(producer_blocked=0.0, producer_self_limited=0.8)
     )
     edge_shares = {
-        ("A", "B"): EdgeShares(blocked=1.0, self_limited=0.0),
+        ("A", "B"): EdgeShares(producer_blocked=1.0, producer_self_limited=0.0),
         ("B", "W"): b_out,
     }
     prev_ops, next_ops = _chain("A", "B", "W")
@@ -485,9 +485,13 @@ def test_observer_attributes_output_backpressure_by_consumer_state(
 
     (edge,) = snapshot.edges
     if expected == "C":
-        assert (edge.producer_blocked, edge.producer_self_limited) == (1.0, 0.0)
+        assert edge.shares == EdgeShares(
+            producer_blocked=1.0, producer_self_limited=0.0
+        )
     else:
-        assert (edge.producer_blocked, edge.producer_self_limited) == (0.0, 1.0)
+        assert edge.shares == EdgeShares(
+            producer_blocked=0.0, producer_self_limited=1.0
+        )
     names: Dict[Any, str] = {producer: "P", consumer: "C"}
     assert [names[op] for op, _ in snapshot.bottlenecks] == [expected]
 
@@ -552,8 +556,9 @@ def test_why_should_not_upscale_blocker(named, self_limited, op, expected):
     edge = bottleneck_observer.Edge(
         producer="R",
         consumer="C",
-        producer_blocked=1.0 - self_limited,
-        producer_self_limited=self_limited,
+        shares=EdgeShares(
+            producer_blocked=1.0 - self_limited, producer_self_limited=self_limited
+        ),
         consumer_starved=0.0,
         arrow=Arrow.DOWNSTREAM,
     )
