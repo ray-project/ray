@@ -1,7 +1,6 @@
 # Exported as a submodule, not as loose names: upstream spells these
 # ``modal.types.FileInfo`` and lists only ``types`` in its own ``__all__``.
 from ray.experimental.sandbox.modal import types  # noqa: F401
-from ray.experimental.sandbox.modal.app import App
 from ray.experimental.sandbox.modal.exception import (
     AlreadyExistsError,  # noqa: F401
     ClientClosed,  # noqa: F401
@@ -37,7 +36,6 @@ from ray.experimental.sandbox.modal.stream_type import StreamType
 
 __all__ = [
     "AlreadyExistsError",
-    "App",
     "ClientClosed",
     "ConflictError",
     "ConnectionError",
