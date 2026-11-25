@@ -275,16 +275,24 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
             cheap_by_node[node_id] = num_pending + num_idle
             busy_by_node[node_id] = num_running - num_idle
 
-        # Cost-class-major: every cheap victim across all nodes before any
-        # busy actor. Killing a busy actor wastes its in-flight work AND
-        # delivers the capacity late. Within a class, favored nodes go first.
+        # Favored nodes first, when there are any: a short upscaler needs the
+        # room there, and the downscale was sized to make exactly that room
+        # (``SizingPolicy.decide``), so an actor removed elsewhere makes none
+        # of it. Then cost-class-major: cheap victims before busy ones,
+        # since killing a busy actor wastes its in-flight work and delivers
+        # the capacity late.
+        favored = [node_id for node_id in nodes if node_id in favored_nodes]
+        others = [node_id for node_id in nodes if node_id not in favored_nodes]
         picked: List[NodeIdStr] = []
-        for available_by_node in (cheap_by_node, busy_by_node):
-            for node_id in nodes:
-                remaining = count - len(picked)
-                if remaining <= 0:
-                    break
-                picked.extend([node_id] * min(available_by_node[node_id], remaining))
+        for group in (favored, others):
+            for available_by_node in (cheap_by_node, busy_by_node):
+                for node_id in group:
+                    remaining = count - len(picked)
+                    if remaining <= 0:
+                        break
+                    picked.extend(
+                        [node_id] * min(available_by_node[node_id], remaining)
+                    )
 
         logger.debug(
             "pick_downscale_nodes[%s]: wanted=%d picked=%s favored=%s",

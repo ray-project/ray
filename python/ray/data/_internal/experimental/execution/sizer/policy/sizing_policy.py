@@ -47,7 +47,8 @@ from ray.data._internal.execution.execution_flags import (
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import ActorStatus, NodeIdStr
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
-    nodes_where_freeing_fits,
+    FIT_EPS,
+    PLACEMENT_RESOURCE_DIMS,
 )
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     Snapshot,
@@ -144,12 +145,14 @@ class SizingPolicy:
         1. ``decide_op`` picks each op's rule and request.
         2. Upscales take free capacity in priority order (see the module
            docstring), each cut to what the ledger still has.
-        3. A blocked op downscales only if an upscaler is short and would
-           fit on a node where the blocked op frees actors. Its actors have
-           queued work, so removing them when no op needs the room only
-           costs drains, and they are needed again once the consumer speeds
-           up. Downscales sort last, so every upscale's ``unmet`` part is
-           known by then. A blocked op that is kept may still downscale as
+        3. A blocked op downscales only to make room for upscalers that
+           are short (``unmet``), and by no more than that room
+           (``_RoomToMake``). Its actors have queued work, so removing
+           them when no op needs the room only costs drains, and they are
+           needed again once the consumer speeds up. Downscales sort last,
+           so every upscale's ``unmet`` part is known by then. Blocked ops
+           share the room still needed, so two of them do not both make the
+           same room. A blocked op that is kept may still downscale as
            idle.
         4. Each op the policy stepped starts cooling. A downscale records
            its step now; an upscale records it once its actors land
@@ -170,24 +173,30 @@ class SizingPolicy:
             return (rank, -severity.get(op, 0.0), order[op])
 
         decisions: OpDecisions = {}
+        # The room short upscalers still need; made when the first blocked
+        # downscale comes up, after every upscale is granted.
+        room: Optional[_RoomToMake] = None
         for op in sorted(wanted, key=priority):
             decision = _within_capacity(op=op, decision=wanted[op], ctx=ctx)
-            if (
-                decision.rule is OpRule.DOWNSCALE_BLOCKED
-                and decision.request is not None
-                and not _frees_room_for_short_op(
-                    op=op,
-                    delta=decision.request.delta,
-                    decisions=decisions,
-                    ctx=ctx,
-                )
-            ):
-                logger.debug(
-                    "SizingPolicy: %s not downscaled as blocked: no short "
-                    "upscaler would fit where it frees actors",
-                    op.name,
-                )
-                decision = self._downscale_idle(op=op, ctx=ctx)
+            request = decision.request
+            if decision.rule is OpRule.DOWNSCALE_BLOCKED and request is not None:
+                if room is None:
+                    room = _RoomToMake(decisions=decisions, ctx=ctx)
+                remove = room.make(op=op, most=-request.delta)
+                if remove == 0:
+                    logger.debug(
+                        "SizingPolicy: %s not downscaled as blocked: no short "
+                        "upscaler would fit where it frees actors",
+                        op.name,
+                    )
+                    decision = self._downscale_idle(op=op, ctx=ctx)
+                elif remove < -request.delta:
+                    decision = OpDecision(
+                        decision.rule,
+                        ActorPoolScalingRequest.downscale(
+                            delta=-remove, force=True, reason=request.reason
+                        ),
+                    )
             decisions[op] = decision
             if decision.rule in STEP_RULES and decision.request is not None:
                 size = op.actor_pool.serving_size()
@@ -431,42 +440,98 @@ class SizingPolicy:
         self._last_allocation_age_s = age
 
 
-def _frees_room_for_short_op(
+class _RoomToMake:
+    """The room short upscalers still need this tick, and the blocked ops'
+    actors that make it.
+
+    A short upscaler is one whose upscale found no room in the ledger
+    (``OpDecision.unmet``). Its actors can only land on nodes where free
+    capacity, plus what the blocked ops free there, holds one of them: an
+    actor needing a GPU and a CPU gains nothing from CPUs freed next to a
+    GPU already taken. So the room is counted per node: on each node a short
+    actor may use, the blocked ops remove only enough actors to cover what
+    that actor lacks there. WHERE removes actors on those nodes first
+    (``scale_where.compute_favored_nodes``).
+    """
+
+    def __init__(self, *, decisions: OpDecisions, ctx: DecisionContext):
+        self._ctx = ctx
+        # Short op -> actors it still needs room for.
+        self._needed: Dict["ExperimentalActorPoolMapOperator", int] = {
+            op: d.unmet
+            for op, d in decisions.items()
+            if d.unmet > 0 and not ctx.apmo_profiles.is_pg_managed(op)
+        }
+        # Per node: free capacity, plus what blocked ops removed this tick,
+        # minus what the short actors placed on it this tick take.
+        self._room: Dict[NodeIdStr, ExecutionResources] = {
+            node_id: res.copy() for node_id, res in ctx.snapshot.free_by_node.items()
+        }
+
+    def make(self, *, op: "ExperimentalActorPoolMapOperator", most: int) -> int:
+        """How many of ``op``'s actors to remove, at most ``most``, to make
+        room for the short actors still waiting. Short actors are placed in
+        the plan one at a time, in the order their ops were granted."""
+        per_actor = op.actor_pool.per_actor_resource_usage()
+        left = self._serving_by_node(op)
+        removed = 0
+        for short_op in self._needed:
+            short_per_actor = short_op.actor_pool.per_actor_resource_usage()
+            nodes = sorted(self._ctx.snapshot.schedulable_nodes_by_op.get(short_op, ()))
+            for node_id in nodes:
+                while self._needed[short_op] > 0:
+                    zero = ExecutionResources.zero()
+                    room = self._room.get(node_id, zero)
+                    cost = _actors_to_fit(
+                        room=room, per_actor=per_actor, short_per_actor=short_per_actor
+                    )
+                    if cost is None or cost > left.get(node_id, 0):
+                        break
+                    if removed + cost > most:
+                        return removed
+                    removed += cost
+                    left[node_id] = left.get(node_id, 0) - cost
+                    self._room[node_id] = room.add(per_actor.scale(cost)).subtract(
+                        short_per_actor
+                    )
+                    self._needed[short_op] -= 1
+        return removed
+
+    @staticmethod
+    def _serving_by_node(
+        op: "ExperimentalActorPoolMapOperator",
+    ) -> Dict[NodeIdStr, int]:
+        """``op``'s actors per node that a downscale can still remove."""
+        serving_by_node: Dict[NodeIdStr, int] = {}
+        for node_id, counts in op.actor_counts_by_node().items():
+            serving = sum(
+                n for status, n in counts.items() if status is not ActorStatus.DRAINING
+            )
+            if serving > 0:
+                serving_by_node[node_id] = serving
+        return serving_by_node
+
+
+def _actors_to_fit(
     *,
-    op: "ExperimentalActorPoolMapOperator",
-    delta: int,
-    decisions: OpDecisions,
-    ctx: DecisionContext,
-) -> bool:
-    """Whether removing ``-delta`` of ``op``'s actors could let an upscaler
-    that found no room this tick (``unmet``) place one actor: on some node it
-    may use, free capacity plus what ``op`` frees there fits one of its
-    actors. WHERE removes actors on those nodes first
-    (``scale_where.compute_favored_nodes``)."""
-    short = [
-        other
-        for other, decision in decisions.items()
-        if decision.unmet > 0 and not ctx.apmo_profiles.is_pg_managed(other)
-    ]
-    if not short:
-        return False
-    per_actor = op.actor_pool.per_actor_resource_usage()
-    freeable: Dict[NodeIdStr, ExecutionResources] = {}
-    for node_id, counts in op.actor_counts_by_node().items():
-        serving = sum(
-            n for status, n in counts.items() if status is not ActorStatus.DRAINING
-        )
-        if serving > 0:
-            freeable[node_id] = per_actor.scale(min(serving, -delta))
-    return any(
-        nodes_where_freeing_fits(
-            per_actor=other.actor_pool.per_actor_resource_usage(),
-            nodes=ctx.snapshot.schedulable_nodes_by_op.get(other, ()),
-            free=ctx.snapshot.free_by_node,
-            freeable=freeable,
-        )
-        for other in short
-    )
+    room: ExecutionResources,
+    per_actor: ExecutionResources,
+    short_per_actor: ExecutionResources,
+) -> Optional[int]:
+    """How many actors of shape ``per_actor`` to remove from a node with
+    ``room`` left so that one actor of shape ``short_per_actor`` fits there,
+    or None if removing them cannot make it fit (it lacks a resource they do
+    not hold)."""
+    count = 0
+    for dim in PLACEMENT_RESOURCE_DIMS:
+        lacking = getattr(short_per_actor, dim) - getattr(room, dim)
+        if lacking <= FIT_EPS:
+            continue
+        mine = getattr(per_actor, dim)
+        if mine <= 0:
+            return None
+        count = max(count, math.ceil(lacking / mine - FIT_EPS))
+    return count
 
 
 def _downscale_floor(*, op: "ExperimentalActorPoolMapOperator", wasted: float) -> int:

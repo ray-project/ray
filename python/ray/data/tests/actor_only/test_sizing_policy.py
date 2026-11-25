@@ -36,6 +36,7 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
 )
 from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (
     SizingPolicy,
+    _actors_to_fit,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     OpRule,
@@ -45,6 +46,7 @@ from ray.data._internal.experimental.execution.sizer.policy.steps import (
     Direction,
     StepSizes,
 )
+from ray.data._internal.util import GiB, MiB
 
 # --- doubles -------------------------------------------------------------------
 
@@ -685,6 +687,103 @@ def test_decide_still_downscales_a_kept_blocked_op_that_is_idle():
     decision = policy.decide(ctx=ctx)[producer]
     assert decision.rule is OpRule.DOWNSCALE_IDLE
     assert decision.request is not None and decision.request.delta < 0
+
+
+def _gpu_node_ctx(ops, *, free_by_node, shares, bottlenecks):
+    """A STEADY context over nodes with 8 CPUs and 1 GPU each, every op
+    allowed on every node."""
+    nodes = frozenset(free_by_node)
+    snapshot = ClusterStateSnapshot(
+        schedulable_nodes_by_op={op: nodes for op in ops},
+        reserved_by_node={n: ExecutionResources(cpu=8, gpu=1) for n in nodes},
+        free_by_node=free_by_node,
+        ordered_ops=tuple(ops),
+    )
+    return DecisionContext(
+        topology=cast(Any, {op: SimpleNamespace() for op in ops}),
+        phase=SizerPhase.STEADY,
+        capacity=ConstraintAwareCapacityLedger(snapshot),
+        apmo_profiles=cast(Any, _profiles(ops)),
+        snapshot=snapshot,
+        now=0.0,
+        bottleneck_snapshot=_bottleneck_snapshot(shares, bottlenecks=bottlenecks),
+    )
+
+
+def test_decide_makes_only_the_room_a_short_bottleneck_needs():
+    """image_classification_fixed_size: the GPU op is 3 actors short, and
+    its GPU is free on g1-g3, whose CPUs CPU-only actors hold. Removing one
+    actor on each of those nodes makes the room, so the blocked op removes 3,
+    not the 5 of a full step (x0.8 of 25)."""
+    producer = _op("preprocess", current=25)
+    producer.actors_by_node = {"g1": 8, "g2": 8, "g3": 8, "g4": 1}
+    gpu_op = _op("Predictor", current=7, max_size=10, cpu=1, gpu=1)
+    ops = [producer, gpu_op]
+    policy, _ = _policy(ops, next_ops={producer: [gpu_op]})
+    free = {n: ExecutionResources(cpu=0, gpu=1) for n in ("g1", "g2", "g3")}
+    free["g4"] = ExecutionResources(cpu=5, gpu=0)
+    ctx = _gpu_node_ctx(
+        ops,
+        free_by_node=free,
+        shares={producer: (0.1, 0.9, 0.0), gpu_op: (1.0, 0.0, 0.0)},
+        bottlenecks=[(gpu_op, 0.9)],
+    )
+    decisions = policy.decide(ctx=ctx)
+    assert decisions[gpu_op].unmet == 3
+    assert decisions[producer].rule is OpRule.DOWNSCALE_BLOCKED
+    assert _delta(decisions[producer]) == -3
+
+
+def test_decide_blocked_ops_share_the_room_to_make():
+    """Two blocked ops in a row, and one GPU actor short: the first makes
+    the room, so the second keeps its actors."""
+    read = _op("read", current=8)
+    read.actors_by_node = {"g1": 4, "g2": 4}
+    preprocess = _op("preprocess", current=8)
+    preprocess.actors_by_node = {"g1": 4, "g2": 4}
+    gpu_op = _op("Predictor", current=1, max_size=2, cpu=1, gpu=1)
+    ops = [read, preprocess, gpu_op]
+    policy, _ = _policy(ops, next_ops={read: [preprocess], preprocess: [gpu_op]})
+    ctx = _gpu_node_ctx(
+        ops,
+        free_by_node={
+            "g1": ExecutionResources(cpu=0, gpu=1),
+            "g2": ExecutionResources(cpu=0, gpu=0),
+        },
+        shares={
+            read: (0.1, 0.9, 0.0),
+            preprocess: (0.1, 0.9, 0.0),
+            gpu_op: (1.0, 0.0, 0.0),
+        },
+        bottlenecks=[(gpu_op, 0.9)],
+    )
+    decisions = policy.decide(ctx=ctx)
+    assert decisions[gpu_op].unmet == 1
+    removed = {op: _delta(decisions[op]) for op in (read, preprocess)}
+    assert sorted(removed.values()) == [-1, 0]
+
+
+@pytest.mark.parametrize(
+    "room, expected",
+    [
+        # One CPU lacking: one 1-CPU actor. The GiBs of memory the short
+        # actor wants are already free, so they cost nothing.
+        (ExecutionResources(cpu=0, gpu=1, memory=10 * GiB), 1),
+        # Already fits: nothing to remove.
+        (ExecutionResources(cpu=2, gpu=1, memory=10 * GiB), 0),
+        # The GPU is taken: CPU actors cannot make it fit.
+        (ExecutionResources(cpu=0, gpu=0, memory=10 * GiB), None),
+    ],
+)
+def test_actors_to_fit_counts_only_what_the_node_lacks(room, expected):
+    assert (
+        _actors_to_fit(
+            room=room,
+            per_actor=ExecutionResources(cpu=1, memory=25 * MiB),
+            short_per_actor=ExecutionResources(cpu=1, gpu=1, memory=2 * GiB),
+        )
+        == expected
+    )
 
 
 if __name__ == "__main__":

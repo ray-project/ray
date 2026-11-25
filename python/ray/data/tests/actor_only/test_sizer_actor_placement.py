@@ -220,14 +220,18 @@ def test_max_placeable_actors(free, per_actor, expected):
 @pytest.mark.parametrize(
     "count,favored,expected",
     [
-        # Cost-class-major: pending/idle victims on EVERY node are taken
-        # before a favored node's busy actor (node-major would take A third).
-        pytest.param(4, {"A"}, ["A", "A", "B", "C"], id="all-cheap-before-busy"),
-        # Busy actors follow, favored node first.
-        pytest.param(5, {"A"}, ["A", "A", "B", "C", "A"], id="busy-favored-first"),
-        pytest.param(2, {"A"}, ["A", "A"], id="favored-first-within-class"),
-        # No favored nodes: the cheap class walks nodes by queue size.
+        # A favored node gives up its busy actor before any other node gives
+        # up even a cheap one: a short upscaler needs the room there.
+        pytest.param(
+            4, {"A"}, ["A", "A", "A", "B"], id="favored-busy-before-other-cheap"
+        ),
+        # Then the other nodes, cheap victims before busy ones.
+        pytest.param(5, {"A"}, ["A", "A", "A", "B", "C"], id="then-others-cheap-first"),
+        pytest.param(2, {"A"}, ["A", "A"], id="favored-cheap-first"),
+        # No favored nodes: cost-class-major, cheap victims on every node
+        # (by queue size) before any busy one.
         pytest.param(3, set(), ["A", "A", "B"], id="unfavored-by-queue-size"),
+        pytest.param(5, set(), ["A", "A", "B", "C", "A"], id="unfavored-cheap-first"),
     ],
 )
 def test_locality_victims(count, favored, expected):

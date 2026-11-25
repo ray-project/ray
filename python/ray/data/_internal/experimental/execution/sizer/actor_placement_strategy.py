@@ -210,12 +210,13 @@ class ActorPlacementStrategy(abc.ABC):
             view: The operator's placement snapshot.
             count: Number of actors to remove.
             favored_nodes: Nodes that capacity-short upscaling operators
-                want freed -- removing actors there is preferred so the freed
-                capacity benefits the upscaler.
+                want freed. Actors there are removed before any elsewhere,
+                so the freed capacity reaches the upscaler.
 
         Returns:
             One node id per actor to remove (a node repeats when several leave
-            it), cheapest-to-free first. May be shorter than ``count``.
+            it): favored nodes first, and cheapest-to-free first within each.
+            May be shorter than ``count``.
         """
         ...
 
