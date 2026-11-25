@@ -74,6 +74,8 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
                 or e.__class__.__name__ == "NotSupportedError"
             ):
                 pass
+            else:
+                raise
         raise
     finally:
         connection.close()
@@ -112,9 +114,11 @@ class SQLDatasource(Datasource):
         self.shard_hash_fn = shard_hash_fn
         self.connection_factory = connection_factory
         self.sql_params = sql_params
-        # Modulo syntax detected by ``supports_sharding()``: ``"MOD"`` or
-        # ``"%"``. Stays ``None`` until a probe succeeds.
+        # Modulo syntax detected by ``supports_sharding()``: ``"MOD"``, ``"%"``,
+        # or ``"%%"`` when parameters require an escaped percent sign. Stays
+        # ``None`` until a probe succeeds.
         self._modulo_syntax = None
+        self._last_probe_error: Optional[Exception] = None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
@@ -123,14 +127,19 @@ class SQLDatasource(Datasource):
         """Build the modulo expression used to bucket rows into shards.
 
         ``"MOD"`` renders the SQL-standard ``MOD(x, n)`` function; ``"%"``
-        renders the ``x % n`` operator. The operand is wrapped in ``ABS()`` so
-        the bucket index is always in ``[0, parallelism)``, independent of how
-        each database signs negative modulo results.
+        renders the ``x % n`` operator. ``"%%"`` renders the same operator with
+        the literal percent escaped for DB API drivers using ``format`` or
+        ``pyformat`` parameters. The operand is wrapped in ``ABS()`` so integer
+        hash outputs produce non-negative bucket indices in
+        ``[0, parallelism)``, independent of how each database signs negative
+        modulo results.
         """
         operand = f"ABS({hash_fn}({self.shard_keys}))"
         if syntax == "MOD":
             return f"MOD({operand}, {parallelism})"
-        return f"({operand} % {parallelism})"
+        if syntax in ("%", "%%"):
+            return f"({operand} {syntax} {parallelism})"
+        raise ValueError(f"Unsupported modulo syntax: {syntax}")
 
     def supports_sharding(self, parallelism: int) -> bool:
         """Check if the database supports hash sharding.
@@ -139,9 +148,10 @@ class SQLDatasource(Datasource):
         multi-column keys), ``COALESCE``, and a modulo operation. The modulo
         syntax is not portable -- ``MOD()`` is missing on SQL Server and on
         SQLite built without math functions, while the ``%`` operator is missing
-        on Oracle -- so this probes ``MOD()`` first and falls back to ``%``. The
-        winning syntax is cached in ``self._modulo_syntax`` so the per-task read
-        queries match the probe.
+        on Oracle -- so this probes ``MOD()`` first and falls back to ``%``. With
+        bound parameters, it also tries ``%%`` for drivers using ``format`` or
+        ``pyformat`` placeholders. The winning syntax is cached in
+        ``self._modulo_syntax`` so the per-task read queries match the probe.
 
         Args:
             parallelism: The number of shards to split the read into.
@@ -150,43 +160,55 @@ class SQLDatasource(Datasource):
             bool: True if sharding is supported, False otherwise.
 
         Raises:
-            Exception: Any error raised while establishing the database
-                connection (authentication, network, or configuration problems)
-                is propagated instead of being masked as "sharding not
-                supported".
+            Exception: Errors raised while establishing the database connection
+                or cursor, committing or closing the transaction, or rollback
+                failures not suppressed for optional rollback support are
+                propagated rather than treated as an unsupported sharding
+                operation.
         """
+        self._modulo_syntax = None
+        self._last_probe_error = None
         if parallelism <= 1 or self.shard_keys is None:
             return False
 
         hash_fn = self.shard_hash_fn
-        last_error: Optional[Exception] = None
-        for syntax in self._MODULO_SYNTAXES:
+        syntaxes = self._MODULO_SYNTAXES
+        if self.sql_params is not None:
+            # DB API drivers with format/pyformat parameters interpret a literal
+            # percent as a placeholder introducer unless it is escaped.
+            syntaxes += ("%%",)
+        for syntax in syntaxes:
             modulo_expr = self._build_modulo_expr(syntax, hash_fn, parallelism)
             bucket = f"COALESCE({modulo_expr}, 0)"
             query = f"SELECT COUNT(1) FROM ({self.sql}) as T WHERE {bucket} = 0"
-            connected = False
+            probe_error: Optional[Exception] = None
             try:
                 with _connect(self.connection_factory) as cursor:
-                    connected = True
-                    _execute(cursor, query, self.sql_params)
+                    try:
+                        _execute(cursor, query, self.sql_params)
+                    except Exception as e:
+                        probe_error = e
+                        raise
             except Exception as e:
-                # A failure while establishing the connection/cursor is not a
-                # modulo-syntax problem, so surface it instead of misreporting
-                # the database as "sharding not supported".
-                if not connected:
+                # A query error re-raised unchanged by _connect indicates that
+                # this modulo candidate failed. Connection/cursor acquisition and
+                # commit/close failures are propagated rather than treated as a
+                # failed modulo candidate.
+                if probe_error is None or e is not probe_error:
                     raise
-                last_error = e
-                logger.debug(f"Sharding probe using {syntax!r} failed: {str(e)}.")
+                self._last_probe_error = probe_error
+                logger.debug(
+                    f"Sharding probe using {syntax!r} failed: {str(probe_error)}."
+                )
                 continue
             self._modulo_syntax = syntax
             return True
 
-        # Every modulo syntax failed. Include the last underlying error at info
-        # level so an unrelated failure (e.g. a misconfigured ``shard_hash_fn``)
-        # is not hidden behind the generic "not supported" message.
+        # Keep the wording neutral: a missing hash function or another query
+        # error can make every probe fail even when both modulo syntaxes exist.
         logger.info(
-            "Database does not support sharding: neither the MOD() function "
-            f"nor the % operator is available. Last probe error: {last_error!r}"
+            "Sharding probe failed (tried modulo syntaxes): "
+            f"{self._last_probe_error!r}"
         )
         return False
 
@@ -205,10 +227,11 @@ class SQLDatasource(Datasource):
         # Check if sharding is supported by the database first
         # If not, fall back to reading all data in a single task without counting rows
         if not self.supports_sharding(parallelism):
-            logger.info(
-                "Sharding is not supported. "
-                "Falling back to reading all data in a single task."
-            )
+            if self._last_probe_error is not None:
+                logger.info(
+                    "Sharding probe failed. "
+                    "Falling back to reading all data in a single task."
+                )
             metadata = BlockMetadata(None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 
@@ -256,8 +279,7 @@ class SQLDatasource(Datasource):
         # A NULL hash produces a NULL bucket. Route those rows to task 0 while
         # keeping every row with a usable bucket in its normal shard.
         predicate = f"COALESCE({modulo_expr}, 0) = {task_id}"
-
-        query = f"SELECT * FROM ({self.sql}) AS T WHERE {predicate}"
+        query = f"SELECT * FROM ({self.sql}) as T WHERE {predicate}"
 
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:

@@ -15,8 +15,11 @@ def temp_database_fixture() -> Generator[str, None, None]:
         yield file.name
 
 
-def _sqlite_connection_factory(database: str, denied_functions=()):
+def _sqlite_connection_factory(database: str, denied_functions=(), query_log=None):
     def connect() -> sqlite3.Connection:
+        def signed_hash(value):
+            return value
+
         def stable_hash(value):
             if value is None or value == "":
                 return None
@@ -33,6 +36,7 @@ def _sqlite_connection_factory(database: str, denied_functions=()):
         # SQLite only enables MOD() when compiled with math functions, and CONCAT()
         # was added in SQLite 3.44.0. Provide both so sharding tests exercise the
         # datasource logic independently of the installed SQLite version.
+        connection.create_function("signed_hash", 1, signed_hash)
         connection.create_function(
             "MOD", 2, lambda value, divisor: None if value is None else value % divisor
         )
@@ -45,6 +49,13 @@ def _sqlite_connection_factory(database: str, denied_functions=()):
         )
         connection.create_function("stable_hash", 1, stable_hash)
         connection.set_authorizer(authorize)
+        if query_log is not None:
+
+            def record_query(sql):
+                with open(query_log, "a", encoding="utf-8") as log:
+                    log.write(sql + "\n")
+
+            connection.set_trace_callback(record_query)
         return connection
 
     return connect
@@ -148,8 +159,8 @@ def test_read_sql_with_parallelism_handles_null_hashes(case: str, temp_database:
         shard_keys=shard_keys,
     )
     dataset = dataset.materialize()
-    assert dataset.num_blocks() == num_blocks
 
+    assert dataset.num_blocks() == num_blocks
     actual_values = [
         (record["id"], record["customer_id"], record["region"])
         for record in dataset.take_all()
@@ -179,175 +190,319 @@ def test_read_sql_override_detects_unsupported_coalesce(temp_database: str):
         )
 
 
-class _ModuloProbingCursor:
-    """A DB-API2 cursor double that simulates a database's modulo support.
-
-    ``MOD()`` and the ``%`` operator are not portable across databases, so
-    these tests control which syntax the fake "database" accepts. Using an
-    unsupported syntax raises the same kind of error a real driver would, and
-    every statement is recorded so tests can assert on the generated SQL.
-    """
-
-    def __init__(self, mod_supported: bool, percent_supported: bool):
-        self._mod_supported = mod_supported
-        self._percent_supported = percent_supported
-        self.executed = []
-        self.description = [("id",)]
-
-    def execute(self, sql, params=None):
-        self.executed.append(sql)
-        if "MOD(" in sql and not self._mod_supported:
-            raise sqlite3.OperationalError("no such function: MOD")
-        if " % " in sql and not self._percent_supported:
-            raise sqlite3.OperationalError('near "%": syntax error')
-
-    def executemany(self, sql, *args):
-        pass
-
-    def fetchone(self):
-        return (0,)
-
-    def fetchall(self):
-        return []
-
-
-class _ModuloProbingConnection:
-    """A DB-API2 connection double that hands out `_ModuloProbingCursor`s."""
-
-    def __init__(self, mod_supported: bool, percent_supported: bool):
-        self._mod_supported = mod_supported
-        self._percent_supported = percent_supported
-        self.cursors = []
-
-    def cursor(self):
-        cursor = _ModuloProbingCursor(self._mod_supported, self._percent_supported)
-        self.cursors.append(cursor)
-        return cursor
-
-    def commit(self):
-        pass
-
-    def rollback(self):
-        pass
-
-    def close(self):
-        pass
-
-
-def _make_probe_datasource(mod_supported: bool, percent_supported: bool):
-    """Build a SQLDatasource backed by a fake connection with given modulo support."""
-    connection = _ModuloProbingConnection(mod_supported, percent_supported)
-    datasource = SQLDatasource(
-        sql="SELECT * FROM events",
-        connection_factory=lambda: connection,
-        shard_hash_fn="MD5",
-        shard_keys=["customer_id"],
-    )
-    return datasource, connection
-
-
-def _all_queries(connection) -> list:
-    return [sql for cursor in connection.cursors for sql in cursor.executed]
-
-
-@pytest.mark.parametrize(
-    "mod_supported, percent_supported, expected, expected_syntax",
-    [
-        # MOD() works: it wins the probe and the % operator is never reached.
-        (True, True, True, "MOD"),
-        # MOD() unavailable (SQLite without math functions, SQL Server): fall
-        # back to the % operator.
-        (False, True, True, "%"),
-        # Neither syntax works: sharding is genuinely unsupported.
-        (False, False, False, None),
-    ],
-)
-def test_supports_sharding_probes_modulo_syntaxes(
-    mod_supported: bool, percent_supported: bool, expected: bool, expected_syntax
+@pytest.mark.parametrize("denied_functions", [(), ("mod",)])
+@pytest.mark.parametrize("override_num_blocks", [None, 4])
+def test_read_sql_with_parallelism_fallback(
+    temp_database: str, denied_functions, override_num_blocks, tmp_path
 ):
-    datasource, connection = _make_probe_datasource(mod_supported, percent_supported)
-    assert datasource.supports_sharding(4) is expected
-    assert datasource._modulo_syntax == expected_syntax
-    queries = _all_queries(connection)
-    # MOD() is always probed first.
-    assert any("MOD(" in q for q in queries)
-    # The % operator is only reached once MOD() has failed.
-    if mod_supported:
-        assert not any(" % " in q for q in queries)
-    else:
-        assert any(" % " in q for q in queries)
-
-
-def test_parallel_read_fn_uses_detected_modulo_syntax():
-    # The per-task read query must reuse the syntax that won the probe;
-    # otherwise the probe and the actual read would disagree and fail.
-    datasource, connection = _make_probe_datasource(
-        mod_supported=False, percent_supported=True
-    )
-    assert datasource.supports_sharding(4) is True
-    assert datasource._modulo_syntax == "%"
-
-    read_fn = datasource._create_parallel_read_fn(1, 4)
-    read_fn()
-
-    read_queries = [
-        q for q in _all_queries(connection) if q.startswith("SELECT * FROM (")
-    ]
-    assert read_queries, "expected a sharded read query to be executed"
-    assert all(" % " in q for q in read_queries)
-    assert not any("MOD(" in q for q in read_queries)
-
-
-def test_read_sql_falls_back_to_percent_when_mod_denied(temp_database: str):
-    """End-to-end fallback: deny MOD() via SQLite's set_authorizer and confirm
-    read_sql still shards through the % operator, reading every row exactly once.
-
-    Unlike the cursor-double tests above, this drives the full path (probe ->
-    cached syntax -> per-task reads) against a real SQLite database. Denying
-    MOD() emulates a database without it and is deterministic whether or not the
-    local SQLite build ships the math functions.
-    """
     connection = sqlite3.connect(temp_database)
-    connection.execute("CREATE TABLE grade(name, id, score)")
-    base_tuple = ("xiaoming", 1, 8.2)
+    connection.execute(
+        "CREATE TABLE events (id INTEGER, shard_key INTEGER, score REAL)"
+    )
+    # Include negative keys, for which databases differ on the sign of modulo,
+    # and NULL keys, whose computed bucket is routed to task 0.
     expected_values = [
-        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
+        (i, None if i % 20 == 0 else i - 250, i + 0.5) for i in range(500)
     ]
-    connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
+    connection.executemany("INSERT INTO events VALUES (?, ?, ?)", expected_values)
     connection.commit()
     connection.close()
 
-    def deny_mod(action, arg1, arg2, db_name, trigger):
-        # Authorizer callback: refuse the MOD() function so the probe must fall
-        # back to the % operator. For SQLITE_FUNCTION, SQLite passes NULL as
-        # arg1 and the function name as arg2, and the name's case is arbitrary
-        # (see SQLite's "Authorizer Action Codes"), so match arg2
-        # case-insensitively.
-        if action == sqlite3.SQLITE_FUNCTION:
-            name = arg2.decode() if isinstance(arg2, bytes) else (arg2 or "")
-            if name.lower() == "mod":
-                return sqlite3.SQLITE_DENY
-        return sqlite3.SQLITE_OK
-
-    def connection_factory():
-        conn = sqlite3.connect(temp_database)
-        conn.set_authorizer(deny_mod)
-        return conn
-
-    num_blocks = 4
+    query_log = tmp_path / "queries.log"
+    kwargs = {}
+    if override_num_blocks is not None:
+        kwargs["override_num_blocks"] = override_num_blocks
     dataset = ray.data.read_sql(
-        "SELECT * FROM grade",
-        connection_factory,
-        override_num_blocks=num_blocks,
-        shard_hash_fn="unicode",
-        shard_keys=["id"],
+        "SELECT * FROM events",
+        _sqlite_connection_factory(temp_database, denied_functions, str(query_log)),
+        shard_hash_fn="signed_hash",
+        shard_keys=["shard_key"],
+        **kwargs,
     )
     dataset = dataset.materialize()
-    # Sharding actually happened (not the single-task fallback)...
-    assert dataset.num_blocks() == num_blocks
-    # ...and every row is read exactly once through the % operator.
-    actual_values = [tuple(record.values()) for record in dataset.take_all()]
-    assert sorted(actual_values) == sorted(expected_values)
+    if override_num_blocks is None:
+        # Automatic parallelism uses multiple shards when resources allow.
+        assert dataset.num_blocks() > 1
+    else:
+        assert dataset.num_blocks() == override_num_blocks
+
+    actual_values = [
+        (record["id"], record["shard_key"], record["score"])
+        for record in dataset.take_all()
+    ]
+    assert sorted(actual_values, key=lambda row: row[0]) == expected_values
+
+    # num_blocks() alone can also be produced by repartitioning a single-task
+    # fallback. Verify that distinct shard queries ran.
+    executed_queries = query_log.read_text(encoding="utf-8").splitlines()
+    shard_queries = {
+        query
+        for query in executed_queries
+        if query.lower().startswith("select * from (select * from events) as t where")
+    }
+    if override_num_blocks is None:
+        assert len(shard_queries) > 1
+    else:
+        assert len(shard_queries) == override_num_blocks
+    if denied_functions:
+        assert all(" % " in query for query in shard_queries)
+    else:
+        assert all("MOD(" in query for query in shard_queries)
+
+
+@pytest.mark.parametrize(
+    "sql, sql_params",
+    [
+        ("SELECT * FROM events WHERE id >= %s", (100,)),
+        ("SELECT * FROM events WHERE id >= %(min_id)s", {"min_id": 100}),
+    ],
+)
+@pytest.mark.parametrize(
+    "denied_functions, expected_syntax",
+    [
+        pytest.param((), "MOD", id="mod_supported"),
+        pytest.param(("mod",), "%%", id="percent_fallback"),
+    ],
+)
+def test_modulo_probe_with_format_params(
+    temp_database: str, sql: str, sql_params, denied_functions, expected_syntax
+):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER, shard_key INTEGER)")
+    expected_values = [(i, i - 100) for i in range(200)]
+    connection.executemany("INSERT INTO events VALUES (?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    class FormatStyleCursor:
+        def __init__(self, cursor):
+            self.cursor = cursor
+
+        def execute(self, query, params=None):
+            if params is None:
+                return self.cursor.execute(query)
+            try:
+                # Emulate DB API format/pyformat parameter processing.
+                query = query % params
+            except (TypeError, ValueError) as e:
+                raise sqlite3.OperationalError(str(e)) from e
+            return self.cursor.execute(query)
+
+        def __getattr__(self, name):
+            return getattr(self.cursor, name)
+
+    class FormatStyleConnection:
+        def __init__(self):
+            self.connection = _sqlite_connection_factory(
+                temp_database, denied_functions=denied_functions
+            )()
+
+        def cursor(self):
+            return FormatStyleCursor(self.connection.cursor())
+
+        def commit(self):
+            self.connection.commit()
+
+        def rollback(self):
+            self.connection.rollback()
+
+        def close(self):
+            self.connection.close()
+
+    datasource = SQLDatasource(
+        sql,
+        FormatStyleConnection,
+        "signed_hash",
+        shard_keys=["shard_key"],
+        sql_params=sql_params,
+    )
+    tasks = datasource.get_read_tasks(4)
+    assert datasource._modulo_syntax == expected_syntax
+
+    actual_values = [
+        (row["id"], row["shard_key"])
+        for task in tasks
+        for block in task()
+        for row in block.to_pylist()
+    ]
+    assert sorted(actual_values) == expected_values[100:]
+
+
+@pytest.mark.parametrize(
+    "sql, sql_params",
+    [
+        ("SELECT * FROM events WHERE id >= ?", (100,)),
+        ("SELECT * FROM events WHERE id >= :min_id", {"min_id": 100}),
+    ],
+)
+def test_read_sql_with_params_uses_percent_fallback(
+    temp_database: str, sql: str, sql_params
+):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER, shard_key INTEGER)")
+    expected_values = [(i, i - 100) for i in range(200)]
+    connection.executemany("INSERT INTO events VALUES (?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    dataset = ray.data.read_sql(
+        sql,
+        _sqlite_connection_factory(temp_database, denied_functions=("mod",)),
+        sql_params=sql_params,
+        override_num_blocks=4,
+        shard_hash_fn="signed_hash",
+        shard_keys=["shard_key"],
+    )
+    dataset = dataset.materialize()
+
+    assert dataset.num_blocks() == 4
+    actual_values = [
+        (record["id"], record["shard_key"]) for record in dataset.take_all()
+    ]
+    assert sorted(actual_values) == expected_values[100:]
+
+
+def test_build_modulo_expr_rejects_unknown_syntax():
+    datasource = SQLDatasource(
+        "SELECT * FROM events",
+        lambda: sqlite3.connect(":memory:"),
+        "MD5",
+        shard_keys=["id"],
+    )
+    with pytest.raises(ValueError, match="Unsupported modulo syntax: unknown"):
+        datasource._build_modulo_expr("unknown", "MD5", 4)
+
+
+def test_supports_sharding_propagates_connection_error():
+    def connection_factory():
+        raise sqlite3.OperationalError("connection failed")
+
+    datasource = SQLDatasource(
+        "SELECT * FROM events",
+        connection_factory,
+        "MD5",
+        shard_keys=["id"],
+    )
+    with pytest.raises(sqlite3.OperationalError, match="connection failed"):
+        datasource.supports_sharding(4)
+
+
+@pytest.mark.parametrize("failing_method", ["cursor", "commit", "rollback", "close"])
+def test_supports_sharding_propagates_acquisition_and_cleanup_errors(
+    temp_database: str, failing_method: str
+):
+    denied_functions = ("mod",) if failing_method == "rollback" else ()
+
+    class FailingConnection:
+        def __init__(self):
+            self.connection = _sqlite_connection_factory(
+                temp_database, denied_functions
+            )()
+
+        def cursor(self):
+            if failing_method == "cursor":
+                raise RuntimeError("cursor failed")
+            return self.connection.cursor()
+
+        def commit(self):
+            self.connection.commit()
+            if failing_method == "commit":
+                raise RuntimeError("commit failed")
+
+        def rollback(self):
+            self.connection.rollback()
+            if failing_method == "rollback":
+                raise RuntimeError("rollback failed")
+
+        def close(self):
+            self.connection.close()
+            if failing_method == "close":
+                raise RuntimeError("close failed")
+
+    calls = []
+
+    def connection_factory():
+        calls.append(True)
+        return FailingConnection()
+
+    datasource = SQLDatasource(
+        "SELECT 1 AS id",
+        connection_factory,
+        "signed_hash",
+        shard_keys=["id"],
+    )
+    with pytest.raises(RuntimeError, match=f"{failing_method} failed"):
+        datasource.supports_sharding(4)
+    # Acquisition and cleanup errors propagate without trying another modulo
+    # syntax.
+    assert len(calls) == 1
+
+
+def test_read_sql_override_includes_last_probe_error(temp_database: str, caplog):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER)")
+    connection.execute("INSERT INTO events VALUES (1)")
+    connection.commit()
+    connection.close()
+
+    caplog.set_level("INFO")
+    with pytest.raises(ValueError, match="Last sharding probe error.*missing_hash"):
+        ray.data.read_sql(
+            "SELECT * FROM events",
+            lambda: sqlite3.connect(temp_database),
+            override_num_blocks=4,
+            shard_hash_fn="missing_hash",
+            shard_keys=["id"],
+        )
+
+    assert "Sharding probe failed (tried modulo syntaxes)" in caplog.text
+    assert "no such function: missing_hash" in caplog.text
+
+
+def test_get_read_tasks_logs_neutral_probe_failure(temp_database: str, caplog):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER)")
+    connection.execute("INSERT INTO events VALUES (1)")
+    connection.commit()
+    connection.close()
+
+    datasource = SQLDatasource(
+        "SELECT * FROM events",
+        lambda: sqlite3.connect(temp_database),
+        "missing_hash",
+        shard_keys=["id"],
+    )
+    caplog.set_level("INFO")
+    tasks = datasource.get_read_tasks(4)
+    assert len(tasks) == 1
+    rows = [row for block in tasks[0]() for row in block.to_pylist()]
+    assert rows == [{"id": 1}]
+    assert "Sharding probe failed" in caplog.text
+    assert "neither the MOD() function" not in caplog.text
+
+
+@pytest.mark.parametrize("parallelism, shard_keys", [(1, ["id"]), (4, None)])
+def test_get_read_tasks_does_not_log_probe_failure_without_probe(
+    parallelism, shard_keys, caplog
+):
+    calls = []
+
+    def connection_factory():
+        calls.append(True)
+        return sqlite3.connect(":memory:")
+
+    datasource = SQLDatasource(
+        "SELECT 1 AS id",
+        connection_factory,
+        "signed_hash",
+        shard_keys=shard_keys,
+    )
+    caplog.set_level("INFO")
+    tasks = datasource.get_read_tasks(parallelism)
+    assert len(tasks) == 1
+    assert calls == []
+    assert "Sharding probe failed" not in caplog.text
+    assert "Sharding is not supported" not in caplog.text
 
 
 # for mysql test
