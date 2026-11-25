@@ -501,7 +501,8 @@ class BottleneckObserver:
     def reset_windows(self) -> None:
         """Drop every window's samples, so each op needs a new full window
         before the snapshot reports it. The cumulative busy readings stay, so
-        the next sample still measures from the last one."""
+        the next sample still measures from the last one (Basically used in
+        warmup)."""
         self._windows.clear()
         self._edge_windows.clear()
 

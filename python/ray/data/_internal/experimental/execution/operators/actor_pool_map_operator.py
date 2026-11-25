@@ -268,14 +268,11 @@ class SlotUsage:
     serving_actors: int
     # serving_actors x max_concurrency.
     slots: int
-    # Slots of actors whose pull budget is exhausted: none of them can take
-    # new work, whatever they hold.
+    # Number of open/used slots of obp actors.
     obp_slots: int
-    # Of ``obp_slots``, those holding a task. The busy-slot integral counts
-    # them; the observer moves them from busy to output-backpressured.
+    # Of ``obp_slots``, just those being used (running a task).
     obp_busy_slots: int
-    # Slots holding a task right now on actors not output-backpressured. With
-    # ``obp_slots``, says whether the op has an idle slot at this moment.
+    # Slots holding a task right now on non-obp actors.
     busy_slots: int
     # The pool's cumulative busy-slot seconds (see
     # ``_ExperimentalActorPool.busy_slot_seconds``).
@@ -1784,8 +1781,6 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         scan. Busy time comes from the pool's event-driven integral, so tasks
         shorter than a sizer tick still count; output backpressure is sampled
         here, since it changes on output pulls the pool does not see.
-        Unlike ``output_backpressured_actors`` this also counts while actors
-        are pending, so an observer's history has no gaps during a resize.
         """
         zeros = TaskPullRequest.zero()
         conc = max(1, self.actor_pool.max_actor_concurrency())
