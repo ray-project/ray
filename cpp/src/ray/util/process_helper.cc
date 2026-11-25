@@ -16,8 +16,20 @@
 
 #include <ray/api/ray_exception.h>
 
+#ifndef _WIN32
+#include <spawn.h>
+#include <sys/wait.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+
+extern char **environ;
+#endif
+
 #include <boost/algorithm/string.hpp>
 #include <string>
+#include <vector>
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -32,7 +44,7 @@ namespace internal {
 using ray::core::CoreWorkerProcess;
 using ray::core::WorkerType;
 
-void ProcessHelper::StartRayNode(const std::string node_id_address,
+bool ProcessHelper::StartRayNode(const std::string node_id_address,
                                  const int port,
                                  const std::string redis_username,
                                  const std::string redis_password,
@@ -52,10 +64,30 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
     cmdargs.insert(cmdargs.end(), head_args.begin(), head_args.end());
   }
   RAY_LOG(INFO) << CreateCommandLine(cmdargs);
+#ifdef _WIN32
   auto [proc, ec] = Process::Spawn(cmdargs, true);
   RAY_CHECK(!ec) << "Failed to spawn process to start ray node: " << ec.message();
-  proc->Wait();
-  return;
+  return proc->Wait() == 0;
+#else
+  std::vector<char *> argv;
+  argv.reserve(cmdargs.size() + 1);
+  for (auto &arg : cmdargs) {
+    argv.push_back(arg.data());
+  }
+  argv.push_back(nullptr);
+  pid_t pid = -1;
+  int spawn_rc = posix_spawnp(&pid, argv[0], nullptr, nullptr, argv.data(), environ);
+  RAY_CHECK(spawn_rc == 0) << "Failed to spawn process to start ray node: "
+                           << std::strerror(spawn_rc);
+  int status = 0;
+  pid_t wait_rc = -1;
+  do {
+    wait_rc = waitpid(pid, &status, 0);
+  } while (wait_rc == -1 && errno == EINTR);
+  RAY_CHECK(wait_rc == pid) << "Failed to wait for ray start process: "
+                            << std::strerror(errno);
+  return WIFEXITED(status) && WEXITSTATUS(status) == 0;
+#endif
 }
 
 void ProcessHelper::StopRayNode() {
@@ -86,16 +118,29 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
   std::string bootstrap_ip = ConfigInternal::Instance().bootstrap_ip;
   int bootstrap_port = ConfigInternal::Instance().bootstrap_port;
 
+  struct LocalNodeRollbackGuard {
+    ProcessHelper *helper;
+    bool active = false;
+    ~LocalNodeRollbackGuard() {
+      if (active && helper->started_ray_node_) {
+        helper->StopRayNode();
+        helper->started_ray_node_ = false;
+      }
+    }
+  } rollback_guard{this, false};
+
+  started_ray_node_ = false;
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
     bootstrap_ip = ray::GetNodeIpAddressFromPerspective();
     const std::string token_error = rpc::CreateTokenIfMissingForOwnCluster();
     RAY_CHECK(token_error.empty()) << token_error;
-    StartRayNode(bootstrap_ip,
-                 bootstrap_port,
-                 ConfigInternal::Instance().redis_username,
-                 ConfigInternal::Instance().redis_password,
-                 ConfigInternal::Instance().head_args);
+    started_ray_node_ = StartRayNode(bootstrap_ip,
+                                     bootstrap_port,
+                                     ConfigInternal::Instance().redis_username,
+                                     ConfigInternal::Instance().redis_password,
+                                     ConfigInternal::Instance().head_args);
+    rollback_guard.active = started_ray_node_;
   }
 
   std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
@@ -198,12 +243,14 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       << "Could not start ray cluster: failed to serialize job config";
   options.serialized_job_config = serialized_job_config;
   CoreWorkerProcess::Initialize(options);
+  rollback_guard.active = false;
 }
 
 void ProcessHelper::RayStop() {
   CoreWorkerProcess::Shutdown();
-  if (ConfigInternal::Instance().bootstrap_ip.empty()) {
+  if (started_ray_node_) {
     StopRayNode();
+    started_ray_node_ = false;
   }
 }
 

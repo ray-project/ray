@@ -68,7 +68,7 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
     } catch (...) {
       internal::RayRuntimeHolder::Instance().Init(nullptr);
       abstract_ray_runtime_ = nullptr;
-      CoreWorkerProcess::Shutdown();
+      ProcessHelper::GetInstance().RayStop();
       throw;
     }
   }
