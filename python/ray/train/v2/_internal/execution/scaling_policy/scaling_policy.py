@@ -163,3 +163,8 @@ class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
         self._coordinator_client.register_placement_group(
             placement_group_id=placement_group.id.hex()
         )
+
+    def before_worker_group_shutdown(self, worker_group: WorkerGroup):
+        """Unregister the worker group's placement group from the coordinator."""
+        assert self._coordinator_client is not None
+        self._coordinator_client.register_placement_group(placement_group_id=None)

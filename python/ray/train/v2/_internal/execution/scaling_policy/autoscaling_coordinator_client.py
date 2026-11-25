@@ -92,9 +92,16 @@ class TrainAutoscalingCoordinatorClient:
             return
         self.send_resource_request(scaling_config, num_workers)
 
-    def register_placement_group(self, placement_group_id: PlacementGroupIdStr) -> None:
+    def register_placement_group(
+        self, placement_group_id: PlacementGroupIdStr | None
+    ) -> None:
         """Tell the coordinator which placement group holds the worker bundles,
-        so it reserves them on the nodes Ray actually placed them on."""
+        so it reserves them on the nodes Ray actually placed them on.
+
+        Args:
+            placement_group_id: The worker group's placement group. ``None``
+                unregisters the current one.
+        """
         try:
             ray.get(
                 self._autoscaling_coordinator.register_placement_group.remote(
