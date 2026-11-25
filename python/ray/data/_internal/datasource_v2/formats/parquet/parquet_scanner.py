@@ -9,9 +9,7 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
-    combine_predicate_chain,
     combine_predicates,
-    flatten_predicate_chain,
     float_column_names,
     has_column_arithmetic,
     is_statistics_safe,
@@ -27,6 +25,10 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data.expressions import Expr, Operation
+from ray.data.util.expression_utils import (
+    combine_predicate_chain,
+    flatten_predicate_chain,
+)
 from ray.util.annotations import DeveloperAPI
 
 

@@ -4,8 +4,6 @@ from typing import AbstractSet, Dict, List, Optional, Tuple
 
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     append_unique_predicate,
-    combine_predicate_chain,
-    flatten_predicate_chain,
 )
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsPartitionPruning,
@@ -36,6 +34,10 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
 from ray.data.expressions import BinaryExpr, Expr, Operation, col
+from ray.data.util.expression_utils import (
+    combine_predicate_chain,
+    flatten_predicate_chain,
+)
 
 __all__ = [
     "PredicatePushdown",

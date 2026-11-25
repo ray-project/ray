@@ -1,6 +1,5 @@
-import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, AbstractSet, Iterable, List, Optional, Set
+from typing import TYPE_CHECKING, AbstractSet, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -23,6 +22,10 @@ from ray.data.expressions import (
     Operation,
     PyArrowComputeUDFExpr,
     UnaryExpr,
+)
+from ray.data.util.expression_utils import (
+    combine_predicate_chain,
+    flatten_predicate_chain,
 )
 
 if TYPE_CHECKING:
@@ -105,25 +108,6 @@ def combine_predicates(left: Optional[Expr], right: Optional[Expr]) -> Optional[
     if right is None:
         return left
     return left & right
-
-
-def flatten_predicate_chain(predicate: Expr, op: Operation) -> Iterable[Expr]:
-    """Operands of ``predicate``'s top level ``op`` chain, left to right (iterative)."""
-    stack = [predicate]
-    while stack:
-        expr = stack.pop()
-        if isinstance(expr, BinaryExpr) and expr.op == op:
-            stack.append(expr.right)
-            stack.append(expr.left)
-        else:
-            yield expr
-
-
-def combine_predicate_chain(predicates: List[Expr], op: Operation) -> Optional[Expr]:
-    """Fold ``predicates`` into one ``op`` chain, left to right; ``None`` if empty."""
-    if not predicates:
-        return None
-    return functools.reduce(lambda left, right: BinaryExpr(op, left, right), predicates)
 
 
 def append_unique_predicate(predicates: List[Expr], predicate: Expr) -> None:

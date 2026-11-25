@@ -1432,12 +1432,10 @@ def test_join_derived_predicates_survive_replanning(ray_start_regular_shared_2_c
     """Executing twice re-optimizes the already derived plan; the derived filters
     must not stack up.
     """
-    from ray.data._internal.datasource_v2.common.pushdown_utils import (
-        flatten_predicate_chain,
-    )
     from ray.data._internal.logical.operators import Filter
     from ray.data.expressions import Operation, col
     from ray.data.tests.test_util import get_operators_of_type
+    from ray.data.util.expression_utils import flatten_predicate_chain
 
     left_ds, right_ds = _duplicate_key_join_inputs()
     joined = left_ds.join(
