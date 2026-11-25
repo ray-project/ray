@@ -311,34 +311,31 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
             sock.connect(sock_path)
 
-        # Malformed payloads fail in the child (lifetime pipe EOF) without stalling server.
+        # Malformed payloads fail in the child before replying (EOF on request socket).
         for bad_payload in (b"not-json\n", b'{"args": null}\n'):
             raw, fds = _request(sock_path, bad_payload)
-            assert len(fds) == 1
             try:
-                assert json.loads(raw)["pid"] > 0
-                assert _wait_pipe_eof(fds[0], timeout_s=5.0)
+                assert raw == b""
+                assert fds == []
             finally:
                 for fd in fds:
                     os.close(fd)
 
-        # Oversized (>4 MiB) payload terminates the child without harming the server.
+        # Oversized (>4 MiB) payload closes the child socket (EOF) without harming server.
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as big_sock:
             big_sock.settimeout(5.0)
             big_sock.connect(sock_path)
+            with suppress(BrokenPipeError, ConnectionResetError):
+                big_sock.sendall(b"x" * (4 * 1024 * 1024 + 64) + b"\n")
             raw, fds, _flags, _addr = socket.recv_fds(big_sock, 4096, 4)
-            assert len(fds) == 1
             try:
-                assert json.loads(raw)["pid"] > 0
-                with suppress(BrokenPipeError, ConnectionResetError):
-                    big_sock.sendall(b"x" * (4 * 1024 * 1024 + 64) + b"\n")
-                assert _wait_pipe_eof(fds[0], timeout_s=5.0)
+                assert raw == b""
+                assert fds == []
             finally:
                 for fd in fds:
                     os.close(fd)
 
         # An idle client must not block subsequent fork requests (fork-before-read).
-        idle_fds: List[int] = []
         children = []
         user_py_dir = str(tmp_path / "user_py")
         grandchild_pids = []
@@ -346,7 +343,6 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as idle_sock:
                 idle_sock.settimeout(5.0)
                 idle_sock.connect(sock_path)
-                _idle_msg, idle_fds, _flags, _addr = socket.recv_fds(idle_sock, 4096, 4)
                 for idx in range(2):
                     out = tmp_path / f"child_{idx}.json"
                     hold = tmp_path / f"release_{idx}"
@@ -388,8 +384,6 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
                     finally:
                         os.close(life_r)
         finally:
-            for fd in idle_fds:
-                os.close(fd)
             for grandchild_pid in grandchild_pids:
                 with suppress(OSError):
                     os.kill(grandchild_pid, signal.SIGKILL)

@@ -557,7 +557,6 @@ class WorkerPool : public WorkerPoolInterface {
     int64_t until_ms = 0;
     uint64_t st_dev = 0;
     uint64_t st_ino = 0;
-    int consecutive_timeouts = 0;
   };
 
   /// A helper function that returns the reference of the pool state

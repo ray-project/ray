@@ -797,6 +797,15 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   if (default_worker_it == worker_command_args.end()) {
     return nullptr;
   }
+  constexpr std::string_view kSetupWorkerFilename = "setup_worker.py";
+  const size_t prefix_len =
+      static_cast<size_t>(default_worker_it - worker_command_args.begin());
+  if (prefix_len < 1 || prefix_len > 2 || worker_command_args[0].empty() ||
+      worker_command_args[0][0] == '-' ||
+      (prefix_len == 2 && worker_command_args[1] != kSetupWorkerFilename &&
+       !absl::EndsWith(worker_command_args[1], "/setup_worker.py"))) {
+    return nullptr;
+  }
 
   constexpr std::string_view kSerializedCtxPrefix = "--serialized-runtime-env-context=";
   constexpr std::string_view kLanguagePrefix = "--language=";
@@ -846,7 +855,8 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     while (temp_dir.size() > 1 && temp_dir.back() == '/') {
       temp_dir.pop_back();
     }
-    fork_server_socket_path = absl::StrCat(temp_dir, "/", session_name, "/sockets/fs_0");
+    fork_server_socket_path = absl::StrCat(
+        temp_dir, "/", session_name, "/sockets/fs_", node_id_.Hex().substr(0, 8), "_0");
   }
 
   if (fork_server_socket_path.empty()) {
@@ -873,21 +883,16 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
   const uint64_t cur_ino = static_cast<uint64_t>(sock_st.st_ino);
 
   constexpr int64_t kUnhealthySocketCooldownMs = 5000;
-  constexpr int kMaxConsecutiveTimeoutsBeforeCooldown = 3;
   const int64_t now_steady_ms = clock_.SteadyNowMillis();
   auto unhealthy_it = unhealthy_fork_server_sockets_.find(fork_server_socket_path);
   if (unhealthy_it != unhealthy_fork_server_sockets_.end()) {
     if (unhealthy_it->second.st_dev != cur_dev ||
         unhealthy_it->second.st_ino != cur_ino) {
       unhealthy_fork_server_sockets_.erase(unhealthy_it);
-    } else if (unhealthy_it->second.until_ms > 0) {
-      if (now_steady_ms < unhealthy_it->second.until_ms) {
-        return nullptr;
-      }
-      // Half-open probe: allow one retry; re-enter cooldown immediately on timeout.
-      unhealthy_it->second.until_ms = 0;
-      unhealthy_it->second.consecutive_timeouts =
-          kMaxConsecutiveTimeoutsBeforeCooldown - 1;
+    } else if (now_steady_ms < unhealthy_it->second.until_ms) {
+      return nullptr;
+    } else {
+      unhealthy_fork_server_sockets_.erase(unhealthy_it);
     }
   }
 
@@ -912,30 +917,16 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     return nullptr;
   }
 
-  auto record_failure_and_fallback =
-      [&](bool is_timeout) -> std::unique_ptr<ProcessInterface> {
+  auto record_failure_and_fallback = [&]() -> std::unique_ptr<ProcessInterface> {
     const int64_t fail_ms = clock_.SteadyNowMillis();
     constexpr size_t kMaxTrackedUnhealthySockets = 64;
     if (unhealthy_fork_server_sockets_.size() >= kMaxTrackedUnhealthySockets &&
         !unhealthy_fork_server_sockets_.contains(fork_server_socket_path)) {
       unhealthy_fork_server_sockets_.clear();
     }
-    if (is_timeout) {
-      // Key by pre-connect inode so a newly replaced socket isn't poisoned;
-      // cool down only after 3 consecutive timeouts on the same inode.
-      UnhealthyForkServerSocket &entry =
-          unhealthy_fork_server_sockets_[fork_server_socket_path];
-      if (entry.st_dev != cur_dev || entry.st_ino != cur_ino) {
-        entry = UnhealthyForkServerSocket{0, cur_dev, cur_ino, 0};
-      }
-      entry.consecutive_timeouts++;
-      if (entry.consecutive_timeouts >= kMaxConsecutiveTimeoutsBeforeCooldown) {
-        entry.until_ms = fail_ms + kUnhealthySocketCooldownMs;
-      }
-    } else {
-      unhealthy_fork_server_sockets_[fork_server_socket_path] = UnhealthyForkServerSocket{
-          fail_ms + kUnhealthySocketCooldownMs, cur_dev, cur_ino, 0};
-    }
+    // Key by pre-connect inode so a newly replaced socket isn't poisoned.
+    unhealthy_fork_server_sockets_[fork_server_socket_path] =
+        UnhealthyForkServerSocket{fail_ms + kUnhealthySocketCooldownMs, cur_dev, cur_ino};
     return nullptr;
   };
 
@@ -1016,9 +1007,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       RAY_LOG(WARNING).WithField(worker_id)
           << "Failed to connect to fork server at " << fork_server_socket_path << ": "
           << strerror(connect_errno) << "; falling back to execvpe.";
-      return record_failure_and_fallback(connect_errno == EAGAIN ||
-                                         connect_errno == EWOULDBLOCK ||
-                                         connect_errno == ETIMEDOUT);
+      return record_failure_and_fallback();
     }
   }
 
@@ -1039,7 +1028,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
       RAY_LOG(WARNING).WithField(worker_id)
           << "Failed to send fork request to " << fork_server_socket_path << ": "
           << strerror(write_errno) << "; falling back to execvpe.";
-      return record_failure_and_fallback(write_errno == ETIMEDOUT);
+      return record_failure_and_fallback();
     }
     total_sent += static_cast<size_t>(sent);
   }
@@ -1130,7 +1119,7 @@ std::unique_ptr<ProcessInterface> WorkerPool::TryStartProcessViaForkServer(
     RAY_LOG(WARNING).WithField(worker_id)
         << "Invalid or timed-out response from fork server at " << fork_server_socket_path
         << ": " << response_summary << "; falling back to execvpe.";
-    return record_failure_and_fallback(io_timed_out && response.empty());
+    return record_failure_and_fallback();
   }
 
   unhealthy_fork_server_sockets_.erase(fork_server_socket_path);

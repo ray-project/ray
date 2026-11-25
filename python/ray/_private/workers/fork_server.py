@@ -41,6 +41,7 @@ _PRE_FORK_ENV_OVERRIDES = {
 }
 
 _MAX_FORK_REQUEST_BYTES = 4 * 1024 * 1024
+_CHILD_SETUP_TIMEOUT_S = 5
 # Omit POLLRDHUP so half-closed (SHUT_WR) clients are served; full close sets POLLHUP.
 _PEER_DISCONNECTED_MASK = getattr(select, "POLLHUP", 0) | getattr(select, "POLLERR", 0)
 _worker_lifetime_pipe_w: Optional[int] = None
@@ -406,29 +407,28 @@ def _prepare_child_environment(
 def _handle_forked_child(
     conn: socket.socket,
     server_sock: socket.socket,
-    life_r: int,
-    life_w: int,
     fds_to_close: Sequence[Optional[int]],
     saved_pre_fork_env: Mapping[str, Optional[str]],
     plugin_py_dirs: Sequence[str],
     cluster_py_dirs: Sequence[str],
 ) -> None:
-    """Reads the fork request in the child process and prepares its environment.
+    """Reads the fork request in the child, prepares its env, and replies with its PID.
 
-    Exits immediately via os._exit on EOF, validation failure, or error so the
-    child never runs the parent server's cleanup handlers.
+    Replies only after setup completes so any pre-entrypoint error closes the socket
+    (EOF) and lets the raylet fall back to execvpe immediately. Exits via os._exit on
+    error so the child never runs the parent server's cleanup handlers.
     """
     try:
         global _worker_lifetime_pipe_w
-        os.close(life_r)
-        _worker_lifetime_pipe_w = life_w
         with suppress(OSError):
             os.setpgrp()
         signal.set_wakeup_fd(-1)
         signal.signal(signal.SIGCHLD, signal.SIG_DFL)
         signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        signal.signal(signal.SIGALRM, signal.SIG_DFL)
         signal.signal(signal.SIGINT, signal.default_int_handler)
-        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
+        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT, signal.SIGALRM})
+        signal.alarm(_CHILD_SETUP_TIMEOUT_S)
 
         server_sock.close()
         for fd_to_close in fds_to_close:
@@ -436,16 +436,14 @@ def _handle_forked_child(
                 with suppress(OSError):
                     os.close(fd_to_close)
 
-        try:
-            line = _recv_line(conn, timeout_s=2.0)
-        finally:
-            conn.close()
-
+        line = _recv_line(conn, timeout_s=2.0)
         if not line:
+            conn.close()
             os._exit(0)
 
         request = json.loads(line)
         if not isinstance(request, dict):
+            conn.close()
             os._exit(1)
         child_args = request.get("args", [])
         child_env = request.get("env", {})
@@ -464,6 +462,7 @@ def _handle_forked_child(
                 for key, value in runtime_env_vars.items()
             )
         ):
+            conn.close()
             os._exit(1)
 
         _prepare_child_environment(
@@ -474,6 +473,18 @@ def _handle_forked_child(
             plugin_py_dirs=plugin_py_dirs,
             cluster_py_dirs=cluster_py_dirs,
         )
+
+        life_r, _worker_lifetime_pipe_w = os.pipe()
+        try:
+            conn.settimeout(1.0)
+            reply = f'{{"pid":{os.getpid()}}}\n'.encode("ascii")
+            sent = socket.send_fds(conn, [reply], [life_r])
+            if sent < len(reply):
+                conn.sendall(reply[sent:])
+        finally:
+            os.close(life_r)
+            conn.close()
+        signal.alarm(0)
     except BaseException:
         with suppress(Exception):
             traceback.print_exc()
@@ -647,46 +658,24 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
                 conn.close()
                 continue
 
-            # Fork on accept() so slow clients don't stall the server or dirty CoW pages.
-            try:
-                life_r, life_w = os.pipe()
-            except OSError as e:
-                logger.warning("ForkServer os.pipe() failed: %s", e)
-                conn.close()
-                continue
-
+            # Fork on accept() so slow clients don't stall the server or dirty CoW pages;
+            # the child sends its PID and lifetime pipe after completing setup.
             try:
                 pid = os.fork()
             except OSError as e:
-                os.close(life_r)
-                os.close(life_w)
                 logger.warning("ForkServer os.fork() failed: %s", e)
                 conn.close()
                 continue
 
             if pid > 0:
-                os.close(life_w)
                 with suppress(OSError):
                     os.setpgid(pid, pid)
-                try:
-                    conn.settimeout(1.0)
-                    reply = f'{{"pid":{pid}}}\n'.encode("ascii")
-                    sent = socket.send_fds(conn, [reply], [life_r])
-                    if sent < len(reply):
-                        conn.sendall(reply[sent:])
-                except OSError:
-                    with suppress(OSError):
-                        os.kill(pid, signal.SIGKILL)
-                finally:
-                    os.close(life_r)
-                    conn.close()
+                conn.close()
                 continue
 
             _handle_forked_child(
                 conn=conn,
                 server_sock=server_sock,
-                life_r=life_r,
-                life_w=life_w,
                 fds_to_close=(wakeup_r, wakeup_w, lifeline_fd),
                 saved_pre_fork_env=saved_pre_fork_env,
                 plugin_py_dirs=plugin_py_dirs,
