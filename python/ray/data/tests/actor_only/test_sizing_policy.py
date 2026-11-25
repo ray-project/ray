@@ -541,6 +541,9 @@ def test_decide_grants_free_capacity_in_priority_order():
     assert _delta(decisions[severe]) == 1  # wanted 1 (x1.5 of 2), got 1
     assert decisions[mild].rule is OpRule.UPSCALE_BOTTLENECK
     assert decisions[mild].request is None  # no room left
+    # The part that found no room stays on the decision, for WHERE.
+    assert decisions[mild].unmet == 1
+    assert decisions[severe].unmet == 0
     # Only the op the policy stepped cools down.
     assert statuses.kind(severe) is OpStatusKind.COOLING
     assert statuses.kind(mild) is OpStatusKind.ACTIVE

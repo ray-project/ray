@@ -66,3 +66,7 @@ class OpDecision:
 
     rule: OpRule
     request: Optional["ActorPoolScalingRequest"] = None
+    # Actors an upscale wanted that free capacity could not hold this tick.
+    # WHERE uses it to pick downscale victims on nodes where the capacity
+    # they free would fit this op's actors.
+    unmet: int = 0

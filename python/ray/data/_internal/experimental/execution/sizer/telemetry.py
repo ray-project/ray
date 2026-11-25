@@ -96,17 +96,20 @@ class SizerTelemetry:
     ) -> None:
         """Log, once per tick, why each op is sized the way it is: the
         phase, and each op's status, rule, delta and reason. The delta is
-        what fits after the ledger."""
+        what fits after the ledger; ``no room for n`` is the part that did
+        not."""
         parts = []
         for op, op_decision in decisions.items():
             status = statuses[op].kind.name.lower()
             rule = op_decision.rule.name.lower()
             request = op_decision.request
+            no_room = f" (no room for {op_decision.unmet})" if op_decision.unmet else ""
             if request is None:
-                parts.append(f"{op.name}[{status}]: {rule}")
+                parts.append(f"{op.name}[{status}]: {rule}{no_room}")
                 continue
             parts.append(
-                f"{op.name}[{status}]: {rule} {request.delta:+d} ({request.reason})"
+                f"{op.name}[{status}]: {rule} {request.delta:+d} "
+                f"({request.reason}){no_room}"
             )
         logger.debug("OperatorSizer tick: phase=%s | %s", phase.value, "; ".join(parts))
 

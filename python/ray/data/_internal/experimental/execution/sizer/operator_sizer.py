@@ -327,15 +327,22 @@ class OperatorSizer:
             for op, decision in decisions.items()
             if decision.request is not None
         }
-        return PlacedRequests(by_op=self._place_counts(counts, snapshot))
+        unmet = {op: d.unmet for op, d in decisions.items() if d.unmet > 0}
+        return PlacedRequests(
+            by_op=self._place_counts(counts, snapshot=snapshot, unmet=unmet)
+        )
 
     def _place_counts(
         self,
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
+        *,
         snapshot: ClusterStateSnapshot,
+        unmet: Optional[Dict[ExperimentalActorPoolMapOperator, int]] = None,
     ) -> Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest]:
         """Nodes for each count, in its order, plus the downscales off nodes
-        being reclaimed."""
+        being reclaimed. ``unmet`` is each upscale's part that free capacity
+        could not hold; downscales free room on the nodes where it would."""
+        unmet = unmet or {}
         if not request and not snapshot.nodes_to_reclaim:
             return {}
 
@@ -356,12 +363,13 @@ class OperatorSizer:
         # actors where the freed capacity actually helps.
         favored = compute_favored_nodes(
             request=request,
+            unmet=unmet,
             views=views,
-            reserved=reserved,
+            capacity=snapshot,
             free=free,
             placement=self._placement,
             profiles=self._profiles,
-            ordered_ops=list(request),
+            ordered_ops=list(snapshot.ordered_ops),
         )
         # Downscales first: cancelling a pending refunds capacity this tick's
         # upscales can immediately reuse.

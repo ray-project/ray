@@ -61,6 +61,9 @@ from ray.data._internal.experimental.execution.sizer.capacity import (
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
+from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
+    LocalityBasedActorPlacement,
+)
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
     PlacedRequests,
@@ -96,6 +99,7 @@ from ray.data._internal.experimental.execution.sizer.policy.states import (
     SizerPhase,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
+    compute_favored_nodes,
     place_downscales,
     resolve_evictions,
 )
@@ -2559,6 +2563,64 @@ def test_place_downscales_sheds_untargeted_pendings_by_id(
     assert req.nodes == expected_nodes
 
 
+@pytest.mark.parametrize("unmet", [0, 2])
+def test_downscales_free_capacity_where_a_short_upscaler_fits(unmet):
+    """image_classification_fixed_size: each node has 8 CPUs and 1 GPU, and
+    the GPU op (1 CPU + 1 GPU per actor) is the bottleneck. On g3 and g4 its
+    GPU is free but CPU actors hold every CPU, so the ledger has no room for
+    it. CPUs freed on g1 or g2, whose GPU it already uses, never help it, so
+    downscales should remove CPU actors on g3 and g4."""
+    nodes = ("g1", "g2", "g3", "g4")
+    free = {
+        "g1": ExecutionResources(cpu=3, gpu=0),
+        "g2": ExecutionResources(cpu=2, gpu=0),
+        "g3": ExecutionResources(cpu=0, gpu=1),
+        "g4": ExecutionResources(cpu=0, gpu=1),
+    }
+    gpu_op = _FakeOp(
+        "Predictor",
+        _FakePool(min_size=1, max_size=10, cpu=1, gpu=1),
+        view=_placement_view(per_actor=ExecutionResources(cpu=1, gpu=1)),
+    )
+    cpu_view = _placement_view(
+        per_actor=ExecutionResources(cpu=1),
+        victim_ids_by_node={
+            "g1": ["a", "b"],
+            "g2": ["c"],
+            "g3": ["d", "e"],
+            "g4": ["f", "g"],
+        },
+    )
+    cpu_op = _FakeOp(
+        "preprocess", _FakePool(min_size=1, max_size=40, cpu=1), view=cpu_view
+    )
+    snapshot = ClusterStateSnapshot(
+        schedulable_nodes_by_op={op: frozenset(nodes) for op in (gpu_op, cpu_op)},
+        reserved_by_node={n: ExecutionResources(cpu=8, gpu=1) for n in nodes},
+        free_by_node=free,
+    )
+    request = {cpu_op: ActorPoolScalingRequest.downscale(delta=-4)}
+    favored = compute_favored_nodes(
+        request=cast(Any, request),
+        unmet=cast(Any, {gpu_op: unmet} if unmet else {}),
+        views=cast(Any, {cpu_op: cpu_view}),
+        capacity=snapshot,
+        free=free,
+        placement=LocalityBasedActorPlacement(),
+        profiles=OpProfiles(_topology(cpu_op, gpu_op)),
+        ordered_ops=(gpu_op, cpu_op),
+    )
+    if not unmet:
+        # Nobody is short: downscales go wherever is cheapest.
+        assert favored == set()
+        return
+    assert favored == {"g3", "g4"}
+    victims = LocalityBasedActorPlacement().pick_downscale_nodes(
+        cpu_view, count=4, favored_nodes=favored
+    )
+    assert sorted(victims) == ["g3", "g3", "g4", "g4"]
+
+
 def test_resolve_evictions_mixed_overage_takes_one_actor_per_dimension():
     """Over by {1 CPU, 1 GPU} with three CPU actors and one GPU actor: one of
     each goes. Once the CPU dimension is covered, the other CPU actors no
@@ -2651,18 +2713,26 @@ def test_log_decisions_names_each_ops_status_rule_and_reason(caplog, propagate_l
     grown = _FakeOp("Grown", _FakePool(min_size=1, max_size=10, cpu=1))
     held = _FakeOp("Held", _FakePool(min_size=1, max_size=10, cpu=1))
     shed = _FakeOp("Shed", _FakePool(min_size=1, max_size=10, cpu=1))
+    short = _FakeOp("Short", _FakePool(min_size=1, max_size=10, cpu=1))
     decisions = {
         grown: OpDecision(
             OpRule.UPSCALE_BOTTLENECK,
             request=ActorPoolScalingRequest.upscale(delta=2, reason="bottleneck"),
+            unmet=1,
         ),
+        short: OpDecision(OpRule.UPSCALE_BUSY, unmet=3),
         held: OpDecision(OpRule.NONE),
         shed: OpDecision(
             OpRule.DOWNSCALE_IDLE,
             request=ActorPoolScalingRequest.downscale(delta=-2, reason="idle"),
         ),
     }
-    statuses = {grown: Active(), held: Held(reserved=4), shed: Active()}
+    statuses = {
+        grown: Active(),
+        short: Active(),
+        held: Held(reserved=4),
+        shed: Active(),
+    }
     with caplog.at_level(logging.DEBUG):
         SizerTelemetry("test-ds").log_decisions(
             phase=SizerPhase.STEADY,
@@ -2672,7 +2742,8 @@ def test_log_decisions_names_each_ops_status_rule_and_reason(caplog, propagate_l
     (line,) = [r.getMessage() for r in caplog.records if "tick:" in r.getMessage()]
     assert line == (
         "OperatorSizer tick: phase=steady | "
-        "Grown[active]: upscale_bottleneck +2 (bottleneck); Held[held]: none; "
+        "Grown[active]: upscale_bottleneck +2 (bottleneck) (no room for 1); "
+        "Short[active]: upscale_busy (no room for 3); Held[held]: none; "
         "Shed[active]: downscale_idle -2 (idle)"
     )
 

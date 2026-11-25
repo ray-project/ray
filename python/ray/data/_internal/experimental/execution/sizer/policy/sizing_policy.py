@@ -429,18 +429,20 @@ def _within_capacity(
     ctx: DecisionContext,
 ) -> OpDecision:
     """``decision`` with its upscale cut to what still fits, granted in the
-    ledger. Downscales pass through. An upscale with no room left keeps its
-    rule but drops its request."""
+    ledger, and the part that did not fit kept as ``unmet``. Downscales pass
+    through. An upscale with no room left keeps its rule but drops its
+    request."""
     want = decision.request
     if want is None or want.delta <= 0:
         return decision
     delta = min(want.delta, ctx.capacity.max_upscale_delta(op))
     if delta <= 0:
-        return OpDecision(decision.rule)
+        return OpDecision(decision.rule, unmet=want.delta)
     ctx.capacity.grant(op, delta)
     if delta == want.delta:
         return decision
     return OpDecision(
         decision.rule,
         request=ActorPoolScalingRequest.upscale(delta=delta, reason=want.reason),
+        unmet=want.delta - delta,
     )
