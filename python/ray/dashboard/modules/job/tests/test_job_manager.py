@@ -1706,5 +1706,105 @@ async def test_no_task_events_exported(shared_ray_instance, tmp_path):
         assert "JobSupervisor" not in t.name
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("commit_before_timeout", [False, True])
+async def test_supervisor_running_status_write_timeout(commit_before_timeout):
+    """Regression test for https://github.com/ray-project/ray/issues/55996.
+
+    If updating the job status to RUNNING times out (either before or after the
+    GCS server commits the write), JobSupervisor.run() must catch the error,
+    transition the job to FAILED without launching the driver subprocess, and
+    exit the supervisor actor cleanly.
+    """
+    import logging
+    from contextlib import ExitStack
+    from types import SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from ray._raylet import GRPC_STATUS_CODE_DEADLINE_EXCEEDED
+    from ray.dashboard.modules.job.common import JobInfo, JobInfoStorageClient
+    from ray.exceptions import RpcError
+
+    job_id = f"raysubmit_timeout_{commit_before_timeout}"
+    kv_store = {}
+    running_put_failed = False
+
+    class _FakeGcsClient:
+        async def async_internal_kv_get(self, key, namespace=None, timeout=None):
+            return kv_store.get((namespace, key))
+
+        async def async_internal_kv_put(
+            self, key, value, overwrite=True, namespace=None, timeout=None
+        ):
+            nonlocal running_put_failed
+            payload = json.loads(value.decode())
+            if (
+                payload.get("status") == JobStatus.RUNNING.value
+                and not running_put_failed
+            ):
+                running_put_failed = True
+                if commit_before_timeout:
+                    kv_store[(namespace, key)] = value
+                raise RpcError(
+                    "Deadline Exceeded",
+                    rpc_code=GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
+                )
+            existed = (namespace, key) in kv_store
+            if not existed or overwrite:
+                kv_store[(namespace, key)] = value
+            return 0 if existed else 1
+
+    storage_client = JobInfoStorageClient(_FakeGcsClient())
+    await storage_client.put_info(
+        job_id,
+        JobInfo(status=JobStatus.PENDING, entrypoint="echo hi"),
+    )
+
+    supervisor = JobSupervisor.__new__(JobSupervisor)
+    supervisor._job_id = job_id
+    supervisor._job_info_client = storage_client
+    supervisor._log_client = MagicMock()
+    supervisor._entrypoint = "echo hi"
+    supervisor._metadata = {JOB_ID_METADATA_KEY: job_id, JOB_NAME_METADATA_KEY: job_id}
+    supervisor._stop_event = asyncio.Event()
+    supervisor._win32_job_object = None
+    supervisor._logger = logging.getLogger(f"{__name__}.test-{job_id}")
+    supervisor._exec_entrypoint = MagicMock()
+
+    fake_node = SimpleNamespace(
+        node_ip_address="127.0.0.1",
+        dashboard_agent_listen_port=DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+    )
+    fake_runtime_ctx = SimpleNamespace(get_node_id=lambda: "node-1")
+
+    with ExitStack() as stack:
+        stack.enter_context(
+            patch.object(
+                ray._private.worker.global_worker, "node", fake_node, create=True
+            )
+        )
+        stack.enter_context(
+            patch.object(ray, "get_runtime_context", return_value=fake_runtime_ctx)
+        )
+        mock_exit_actor = stack.enter_context(patch.object(ray.actor, "exit_actor"))
+        stack.enter_context(
+            patch(
+                "ray.dashboard.modules.job.job_supervisor."
+                "submission_job_events_enabled",
+                return_value=False,
+            )
+        )
+        await supervisor.run()
+
+    info = await storage_client.get_info(job_id)
+    assert info is not None
+    assert info.status == JobStatus.FAILED
+    assert info.end_time is not None
+    assert info.error_type == JobErrorType.JOB_ENTRYPOINT_COMMAND_START_ERROR
+    assert "Deadline Exceeded" in (info.message or "")
+    supervisor._exec_entrypoint.assert_not_called()
+    mock_exit_actor.assert_called_once()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
