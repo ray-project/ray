@@ -118,7 +118,7 @@ from ray.data.datasource import (
     Datasource,
     PathPartitionFilter,
 )
-from ray.data.datasource.datasource import Reader
+from ray.data.datasource.datasource import Reader, _DuckTypedReader
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
     _validate_shuffle_arg,
@@ -7087,7 +7087,12 @@ def _get_datasource_or_legacy_reader(
             "`Datasource.estimate_inmemory_data_size`.",
             RayDeprecationWarning,
         )
-        datasource_or_legacy_reader = ds.create_reader(**kwargs)
+        with forbid_untrusted_unpickling():
+            datasource_or_legacy_reader = ds.create_reader(**kwargs)
+        if not isinstance(datasource_or_legacy_reader, Reader):
+            # A reader written to the interface without subclassing ``Reader``
+            # lacks the guarded entry points the framework calls.
+            datasource_or_legacy_reader = _DuckTypedReader(datasource_or_legacy_reader)
     else:
         datasource_or_legacy_reader = ds
 

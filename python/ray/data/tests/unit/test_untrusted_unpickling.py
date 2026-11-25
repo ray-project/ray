@@ -8,6 +8,7 @@ and Ray-internal ``ray.get`` under the guard are covered end to end by
 """
 
 import abc
+import gc
 import io
 import multiprocessing
 import os
@@ -279,6 +280,23 @@ def test_pickled_column_via_c_data_interface_refused_inside_read(shape):
     assert pa.record_batch(_NativeBatch()).num_rows == 1
 
 
+def test_types_built_outside_read_resolve_inside_read(tmp_path):
+    # pyarrow rebuilds a type's Python instance once the old one is collected.
+    # The type is a single long-lived instance, so a schema built outside a read
+    # (a block from Ray's transport, schema inference on a helper thread) never
+    # hits the refusal when touched inside one. Refusing there used to crash the
+    # process in ``unify_schemas``.
+    in_memory = pa.table({"col": _object_array()})
+    for i in range(2):
+        pq.write_table(in_memory, tmp_path / f"{i}.parquet")
+    schemas = [pq.read_schema(tmp_path / f"{i}.parquet") for i in range(2)]
+    gc.collect()
+    with forbid_untrusted_unpickling():
+        assert in_memory.schema.field("col").type == ArrowPythonObjectType()
+        merged = pa.unify_schemas(schemas)
+    assert merged.field("col").type is ArrowPythonObjectType()
+
+
 def test_plain_columns_read_inside_read(tmp_path):
     path = tmp_path / "data.parquet"
     pq.write_table(
@@ -467,6 +485,39 @@ def test_legacy_reader_guarded_entry_points():
     reader.guarded_estimate_inmemory_data_size()
     reader.guarded_get_read_tasks(1)
     assert reader.seen == {"estimate_inmemory_data_size": True, "get_read_tasks": True}
+
+
+def test_duck_typed_legacy_reader_gets_guarded_entry_points():
+    # A deprecated ``create_reader`` may return a reader that implements the
+    # interface without subclassing ``Reader``.
+    from ray.data.context import DataContext
+    from ray.data.read_api import _get_datasource_or_legacy_reader
+
+    class _DuckReader:
+        seen: Dict[str, Any] = {}
+
+        def estimate_inmemory_data_size(self):
+            self.seen["estimate_inmemory_data_size"] = is_unpickling_forbidden()
+            return 7
+
+        def get_read_tasks(self, parallelism):
+            self.seen["get_read_tasks"] = is_unpickling_forbidden()
+            return []
+
+    class _LegacyDatasource(Datasource):
+        def create_reader(self, **read_args) -> Any:
+            return _DuckReader()
+
+    with pytest.warns(DeprecationWarning):
+        reader = _get_datasource_or_legacy_reader(
+            _LegacyDatasource(), DataContext.get_current(), {}
+        )
+    assert reader.guarded_estimate_inmemory_data_size() == 7
+    assert reader.guarded_get_read_tasks(1) == []
+    assert _DuckReader.seen == {
+        "estimate_inmemory_data_size": True,
+        "get_read_tasks": True,
+    }
 
 
 if __name__ == "__main__":

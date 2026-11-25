@@ -5,6 +5,7 @@ import pytest
 import ray
 from ray.data._internal.util import _autodetect_parallelism
 from ray.data.context import DataContext
+from ray.data.datasource.datasource import Reader
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -109,7 +110,7 @@ TEST_CASES = [
 def test_autodetect_parallelism(
     shutdown_only, avail_cpus, target_max_block_size, data_size, expected
 ):
-    class MockReader:
+    class MockReader(Reader):
         def estimate_inmemory_data_size(self):
             return data_size
 

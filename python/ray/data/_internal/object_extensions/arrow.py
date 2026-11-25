@@ -66,9 +66,27 @@ class ArrowPythonObjectType(pa.ExtensionType):
     take any arguments
     """
 
+    _instance: typing.Optional["ArrowPythonObjectType"] = None
+
+    def __new__(cls) -> "ArrowPythonObjectType":
+        # Every construction returns one long-lived instance. pyarrow keeps only a
+        # weak reference from the C++ type to its Python instance and, once that
+        # instance is gone, rebuilds it through ``__arrow_ext_deserialize__``. A
+        # rebuild that refuses inside ``forbid_untrusted_unpickling()`` from such
+        # an internal path (schema merge, repr) crashes the process, so the
+        # instance must never die. The module creates it at import.
+        if cls._instance is None:
+            instance = super().__new__(cls)
+            # Defines the underlying storage type as the PyArrow LargeBinary type
+            pa.ExtensionType.__init__(
+                instance, pa.large_binary(), ARROW_PYTHON_OBJECT_EXTENSION_NAME
+            )
+            cls._instance = instance
+        return cls._instance
+
     def __init__(self) -> None:
-        # Defines the underlying storage type as the PyArrow LargeBinary type
-        super().__init__(pa.large_binary(), ARROW_PYTHON_OBJECT_EXTENSION_NAME)
+        # ``__new__`` already initialized the shared instance.
+        pass
 
     def __arrow_ext_serialize__(self) -> bytes:
         # Since there are no type parameters, we are free to return empty
@@ -87,7 +105,9 @@ class ArrowPythonObjectType(pa.ExtensionType):
                 f"This data contains a column stored as "
                 f"'{ARROW_PYTHON_OBJECT_EXTENSION_NAME}'. Reading it requires "
                 f"unpickling, which can execute arbitrary code and is unsafe with "
-                f"untrusted files. If you trust the source of this data, set "
+                f"untrusted files. The read is refused even if it doesn't select "
+                f"that column, because pyarrow rebuilds the type of every column in "
+                f"the schema. If you trust the source of this data, set "
                 f"{AUTOLOAD_PICKLE_OBJECT_SCALAR_ENV_VAR}=1 on all worker nodes "
                 f"(e.g. via 'runtime_env')."
             )

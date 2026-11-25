@@ -176,6 +176,11 @@ class Datasource(
 
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
 
+    ``Datasource`` has a metaclass that constructs instances with unpickling
+    forbidden. A subclass that also inherits from a class with another
+    metaclass needs a metaclass derived from both, for example
+    ``class Meta(type(Datasource), type(Other))``.
+
     Example:
         >>> from ray.data.context import DataContext
         >>> class MyDatasource(Datasource):
@@ -368,6 +373,29 @@ class Reader:
             datasource in parallel.
         """
         raise NotImplementedError
+
+
+class _DuckTypedReader(Reader):
+    """Gives a legacy reader that doesn't subclass ``Reader`` the guarded entry points.
+
+    Deprecated ``Datasource.create_reader`` implementations may return any object
+    with ``get_read_tasks`` and ``estimate_inmemory_data_size``.
+    """
+
+    def __init__(self, reader: Any):
+        self._reader = reader
+
+    def estimate_inmemory_data_size(self) -> Optional[int]:
+        return self._reader.estimate_inmemory_data_size()
+
+    def get_read_tasks(self, parallelism: int, **kwargs: Any) -> List["ReadTask"]:
+        return self._reader.get_read_tasks(parallelism, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        if name == "_reader":
+            # Not set yet, e.g. while unpickling.
+            raise AttributeError(name)
+        return getattr(self._reader, name)
 
 
 class _LegacyDatasourceReader(Reader):
