@@ -1,6 +1,6 @@
 """Utility functions for expression-based operations."""
 
-from typing import TYPE_CHECKING, Any, Callable, Hashable, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Hashable, List, Optional, Set
 
 if TYPE_CHECKING:
     from ray.data.expressions import (
@@ -262,3 +262,21 @@ def _random_fingerprint_key(expr: "RandomExpr") -> Hashable:
 
 def _uuid_fingerprint_key(expr: "UUIDExpr") -> Hashable:
     return ("uuid", _data_type_key(expr))
+
+
+def division_column_names(predicate: "Expr") -> Set[str]:
+    """Columns of the top-level ``AND`` conjuncts that use ``/``."""
+    from ray.data._internal.datasource_v2.common.pushdown_utils import (
+        flatten_predicate_chain,
+    )
+    from ray.data._internal.planner.plan_expression.expression_visitors import (
+        get_column_references,
+    )
+    from ray.data.expressions import Operation
+
+    return {
+        name
+        for conjunct in flatten_predicate_chain(predicate, Operation.AND)
+        if conjunct._has_division()
+        for name in get_column_references(conjunct)
+    }

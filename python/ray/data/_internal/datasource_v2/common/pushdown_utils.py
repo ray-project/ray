@@ -1,6 +1,6 @@
 import functools
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, AbstractSet, List, Optional, Set
+from typing import TYPE_CHECKING, AbstractSet, Iterable, List, Optional, Set
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -107,9 +107,8 @@ def combine_predicates(left: Optional[Expr], right: Optional[Expr]) -> Optional[
     return left & right
 
 
-def flatten_predicate_chain(predicate: Expr, op: Operation) -> List[Expr]:
+def flatten_predicate_chain(predicate: Expr, op: Operation) -> Iterable[Expr]:
     """Operands of ``predicate``'s top level ``op`` chain, left to right (iterative)."""
-    operands: List[Expr] = []
     stack = [predicate]
     while stack:
         expr = stack.pop()
@@ -117,8 +116,7 @@ def flatten_predicate_chain(predicate: Expr, op: Operation) -> List[Expr]:
             stack.append(expr.right)
             stack.append(expr.left)
         else:
-            operands.append(expr)
-    return operands
+            yield expr
 
 
 def combine_predicate_chain(predicates: List[Expr], op: Operation) -> Optional[Expr]:
@@ -234,36 +232,6 @@ def has_column_arithmetic(expr: Expr) -> bool:
             return bool(get_column_references(expr))
         return any(has_column_arithmetic(expr=arg) for arg in expr.args)
     return False
-
-
-def has_division(expr: Expr) -> bool:
-    """Whether ``expr`` uses ``/``.
-
-    Ray divides integers as floats, but ``Expr.to_pyarrow()`` can't see column
-    types, so the PyArrow filter it builds truncates them.
-    """
-    expr = expr._unalias()
-    if isinstance(expr, BinaryExpr):
-        return (
-            expr.op == Operation.DIV
-            or has_division(expr=expr.left)
-            or has_division(expr=expr.right)
-        )
-    if isinstance(expr, UnaryExpr):
-        return has_division(expr=expr.operand)
-    if isinstance(expr, PyArrowComputeUDFExpr):
-        return any(has_division(expr=arg) for arg in expr.args)
-    return False
-
-
-def division_column_names(predicate: Expr) -> Set[str]:
-    """Columns of the top-level ``AND`` conjuncts that use ``/``."""
-    return {
-        name
-        for conjunct in flatten_predicate_chain(predicate, Operation.AND)
-        if has_division(expr=conjunct)
-        for name in get_column_references(conjunct)
-    }
 
 
 @dataclass

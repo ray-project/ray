@@ -28,7 +28,6 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
     combine_predicates,
-    division_column_names,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
@@ -46,6 +45,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.util.expression_utils import division_column_names
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc

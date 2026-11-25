@@ -225,6 +225,7 @@ def _pa_true_divide(left: Any, right: Any) -> Any:
         )
         # Checked, so integer division by zero still raises.
         return pc.divide_checked(left, right)
+    # Unchecked, so float division by zero stays inf or NaN, as on pandas blocks.
     return pc.divide(left, right)
 
 

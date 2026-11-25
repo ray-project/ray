@@ -957,6 +957,10 @@ class Expr(ABC):
     def _unalias(self) -> "Expr":
         return self
 
+    def _has_division(self) -> bool:
+        """Whether this expression uses ``/``."""
+        return False
+
     def get_type(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.DataType"]:
         """Resolve the output PyArrow data type given the input schema.
 
@@ -1173,6 +1177,13 @@ class BinaryExpr(Expr):
     def nullable(self, input_schema: "pyarrow.Schema") -> bool:
         return self.left.nullable(input_schema) or self.right.nullable(input_schema)
 
+    def _has_division(self) -> bool:
+        return (
+            self.op == Operation.DIV
+            or self.left._has_division()
+            or self.right._has_division()
+        )
+
 
 @DeveloperAPI(stability="alpha")
 @dataclass(frozen=True, eq=False, repr=False)
@@ -1224,6 +1235,9 @@ class UnaryExpr(Expr):
         if self.op in (Operation.IS_NULL, Operation.IS_NOT_NULL):
             return False
         return self.operand.nullable(input_schema)
+
+    def _has_division(self) -> bool:
+        return self.operand._has_division()
 
 
 @dataclass(frozen=True)
@@ -1481,6 +1495,9 @@ class PyArrowComputeUDFExpr(UDFExpr):
     pc_func: Callable[..., pyarrow.Array] = field(default=None)  # type: ignore[assignment]
     pc_positional: Tuple[Any, ...] = field(default=())
     pc_kwargs: Dict[str, Any] = field(default_factory=dict)
+
+    def _has_division(self) -> bool:
+        return any(arg._has_division() for arg in self.args)
 
     def structurally_equals(self, other: Any) -> bool:
         if not isinstance(other, PyArrowComputeUDFExpr):
@@ -1826,6 +1843,9 @@ class AliasExpr(Expr):
 
     def _unalias(self) -> "Expr":
         return self.expr
+
+    def _has_division(self) -> bool:
+        return self.expr._has_division()
 
     def structurally_equals(self, other: Any) -> bool:
         return (

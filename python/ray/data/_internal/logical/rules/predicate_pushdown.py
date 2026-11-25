@@ -6,7 +6,6 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     append_unique_predicate,
     combine_predicate_chain,
     flatten_predicate_chain,
-    has_division,
 )
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsPartitionPruning,
@@ -245,7 +244,7 @@ class PredicatePushdown(Rule):
         residual: List[Expr] = []
         for conjunct in flatten_predicate_chain(predicate, Operation.AND):
             if conjunct._is_pyarrow_convertible() and (
-                not has_division(expr=conjunct)
+                not conjunct._has_division()
                 or set(get_column_references(conjunct)) <= partition_columns
             ):
                 convertible.append(conjunct)

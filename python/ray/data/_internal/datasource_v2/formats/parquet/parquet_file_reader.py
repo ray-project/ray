@@ -36,7 +36,6 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
     combine_predicates,
-    division_column_names,
 )
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import _leaf_matches
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
@@ -69,6 +68,7 @@ from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_co
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
+from ray.data.util.expression_utils import division_column_names
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
