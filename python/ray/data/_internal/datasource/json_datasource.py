@@ -1,11 +1,10 @@
 import io
 import logging
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 import pandas as pd
 
 from ray.data._internal.pandas_block import PandasBlockAccessor
-from ray.data._internal.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.context import DataContext
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -13,6 +12,55 @@ if TYPE_CHECKING:
     import pyarrow
 
 logger = logging.getLogger(__name__)
+
+
+def read_with_python_json(
+    buffer: "pyarrow.Buffer", path: str
+) -> Optional["pyarrow.Table"]:
+    """Read a whole JSON document with ``json.load``.
+
+    The fallback for input ``pyarrow.json`` rejects, such as a top-level
+    array. Decode errors are re-raised with ``path`` in the message.
+
+    Args:
+        buffer: The JSON document.
+        path: The file it came from, for error messages.
+
+    Returns:
+        The document as a table, or ``None`` when ``buffer`` is empty.
+    """
+    import json
+
+    import pyarrow as pa
+
+    if buffer.size == 0:
+        return None
+    try:
+        parsed_json = json.load(io.BytesIO(buffer))
+    except json.JSONDecodeError as json_error:
+        raise json.JSONDecodeError(
+            (
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file contains valid JSON. "
+                f"{json_error.msg}"
+            ),
+            json_error.doc,
+            json_error.pos,
+        ) from json_error
+    except UnicodeDecodeError as decode_error:
+        raise UnicodeDecodeError(
+            decode_error.encoding,
+            decode_error.object,
+            decode_error.start,
+            decode_error.end,
+            (
+                f"{decode_error.reason}. "
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file uses a valid text encoding."
+            ),
+        ) from decode_error
+    return pa.Table.from_pylist(parsed_json)
+
 
 JSON_FILE_EXTENSIONS = [
     "json",
@@ -116,37 +164,8 @@ class ArrowJSONDatasource(FileBasedDatasource):
                     # unrelated error, simply reraise
                     raise e
 
-    def _read_with_python_json(self, buffer: "pyarrow.lib.Buffer"):
-        """Fallback method to read JSON files with Python's native json.load(),
-        in case the default pyarrow json reader fails."""
-        import json
-
-        import pyarrow as pa
-
-        # Check if the buffer is empty
-        if buffer.size == 0:
-            return
-
-        parsed_json = json.load(io.BytesIO(buffer))
-        try:
-            yield pa.Table.from_pylist(parsed_json)
-        except AttributeError as e:
-            # For PyArrow < 7.0.0, `pa.Table.from_pylist()` is not available.
-            # Construct a dict from the list and call
-            # `pa.Table.from_pydict()` instead.
-            assert "no attribute 'from_pylist'" in str(e), str(e)
-            from collections import defaultdict
-
-            dct = defaultdict(list)
-            for row in parsed_json:
-                for k, v in row.items():
-                    dct[k].append(v)
-            yield pyarrow_table_from_pydict(dct)
-
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        import json
-
         import pyarrow as pa
 
         buffer: pa.lib.Buffer = f.read_buffer()
@@ -160,45 +179,114 @@ class ArrowJSONDatasource(FileBasedDatasource):
                 f"Falling back to native json.load(), which may be slower. "
                 f"PyArrow error was:\n{e}"
             )
-            try:
-                yield from self._read_with_python_json(buffer)
-            except json.JSONDecodeError as json_error:
-                raise json.JSONDecodeError(
-                    (
-                        f"Failed to read JSON file: {path}. "
-                        "Please check that the file contains valid JSON. "
-                        f"{json_error.msg}"
-                    ),
-                    json_error.doc,
-                    json_error.pos,
-                ) from json_error
-            except UnicodeDecodeError as decode_error:
-                raise UnicodeDecodeError(
-                    decode_error.encoding,
-                    decode_error.object,
-                    decode_error.start,
-                    decode_error.end,
-                    (
-                        f"{decode_error.reason}. "
-                        f"Failed to read JSON file: {path}. "
-                        "Please check that the file uses a valid text encoding."
-                    ),
-                ) from decode_error
+            table = read_with_python_json(buffer, path)
+            if table is not None:
+                yield table
+
+
+# Buffer size in bytes for reading files. Default is 1MB.
+#
+# pandas reads data in small chunks (~8 KiB), which leads to many costly
+# small read requests when accessing cloud storage. To reduce overhead and
+# improve performance, we wrap the file in a larger buffered reader that
+# reads bigger blocks at once.
+_BUFFER_SIZE = 1024**2
+
+# In the case of zipped json files, we cannot infer the chunk_size.
+_DEFAULT_CHUNK_SIZE = 10000
+
+
+def iter_json_lines_frames(
+    f: "pyarrow.NativeFile", path: str, target_output_size_bytes: Optional[int]
+) -> Iterator[pd.DataFrame]:
+    """Parse JSON Lines with ``pandas.read_json``, a block of about
+    ``target_output_size_bytes`` at a time.
+
+    Args:
+        f: The open file. Seekable files get a chunksize sampled from their
+            first row; others get ``_DEFAULT_CHUNK_SIZE`` rows.
+        path: The file's path, for error messages.
+        target_output_size_bytes: The size of each yielded frame, or ``None``
+            for one frame per file.
+
+    Yields:
+        pd.DataFrame: The file's rows.
+    """
+    try:
+        chunksize = _estimate_chunksize(f, target_output_size_bytes)
+
+        with StrictBufferedReader(f, buffer_size=_BUFFER_SIZE) as stream:
+            if chunksize is None:
+                # When chunksize=None, pandas returns DataFrame directly
+                # (no context manager).
+                df = pd.read_json(stream, chunksize=chunksize, lines=True)
+                yield _cast_range_index_to_string(df)
+            else:
+                # When chunksize is a number, pandas returns JsonReader
+                # (supports context manager).
+                with pd.read_json(stream, chunksize=chunksize, lines=True) as reader:
+                    for df in reader:
+                        yield _cast_range_index_to_string(df)
+    except UnicodeDecodeError as decode_error:
+        raise UnicodeDecodeError(
+            decode_error.encoding,
+            decode_error.object,
+            decode_error.start,
+            decode_error.end,
+            (
+                f"{decode_error.reason}. "
+                f"Failed to read JSON file: {path}. "
+                "Please check that the file uses a valid text encoding."
+            ),
+        ) from decode_error
+    except ValueError as e:
+        raise ValueError(
+            f"Failed to parse line-delimited JSON from file: {path}. "
+            f"Original error: {e}"
+        ) from e
+
+
+def _estimate_chunksize(
+    f: "pyarrow.NativeFile", target_output_size_bytes: Optional[int]
+) -> Optional[int]:
+    """Estimate the chunksize by sampling the first row.
+
+    This is necessary to avoid OOMs while reading the file.
+    """
+
+    if not f.seekable():
+        return _DEFAULT_CHUNK_SIZE
+
+    # Defensive: `FileBasedDatasource` opens a fresh handle for every read
+    # attempt, but a caller may still hand us an advanced one.
+    f.seek(0)
+
+    if target_output_size_bytes is None:
+        return None
+
+    try:
+        with StrictBufferedReader(f, buffer_size=_BUFFER_SIZE) as stream:
+            with pd.read_json(stream, chunksize=1, lines=True) as reader:
+                try:
+                    df = _cast_range_index_to_string(next(reader))
+                except StopIteration:
+                    return 1
+
+        block_accessor = PandasBlockAccessor.for_block(df)
+        if block_accessor.num_rows() == 0:
+            chunksize = 1
+        else:
+            bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
+            chunksize = max(round(target_output_size_bytes / bytes_per_row), 1)
+
+        return chunksize
+    finally:
+        # Sampling consumed part of the file. Rewind so the actual read
+        # starts at the first row.
+        f.seek(0)
 
 
 class PandasJSONDatasource(FileBasedDatasource):
-
-    # Buffer size in bytes for reading files. Default is 1MB.
-    #
-    # pandas reads data in small chunks (~8 KiB), which leads to many costly
-    # small read requests when accessing cloud storage. To reduce overhead and
-    # improve performance, we wrap the file in a larger buffered reader that
-    # reads bigger blocks at once.
-    _BUFFER_SIZE = 1024**2
-
-    # In the case of zipped json files, we cannot infer the chunk_size.
-    _DEFAULT_CHUNK_SIZE = 10000
-
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -210,79 +298,7 @@ class PandasJSONDatasource(FileBasedDatasource):
         self._target_output_size_bytes = target_output_size_bytes
 
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
-        try:
-            chunksize = self._estimate_chunksize(f)
-
-            with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
-                if chunksize is None:
-                    # When chunksize=None, pandas returns DataFrame directly
-                    # (no context manager).
-                    df = pd.read_json(stream, chunksize=chunksize, lines=True)
-                    yield _cast_range_index_to_string(df)
-                else:
-                    # When chunksize is a number, pandas returns JsonReader
-                    # (supports context manager).
-                    with pd.read_json(
-                        stream, chunksize=chunksize, lines=True
-                    ) as reader:
-                        for df in reader:
-                            yield _cast_range_index_to_string(df)
-        except UnicodeDecodeError as decode_error:
-            raise UnicodeDecodeError(
-                decode_error.encoding,
-                decode_error.object,
-                decode_error.start,
-                decode_error.end,
-                (
-                    f"{decode_error.reason}. "
-                    f"Failed to read JSON file: {path}. "
-                    "Please check that the file uses a valid text encoding."
-                ),
-            ) from decode_error
-        except ValueError as e:
-            raise ValueError(
-                f"Failed to parse line-delimited JSON from file: {path}. "
-                f"Original error: {e}"
-            ) from e
-
-    def _estimate_chunksize(self, f: "pyarrow.NativeFile") -> Optional[int]:
-        """Estimate the chunksize by sampling the first row.
-
-        This is necessary to avoid OOMs while reading the file.
-        """
-
-        if not f.seekable():
-            return self._DEFAULT_CHUNK_SIZE
-
-        # Defensive: `FileBasedDatasource` opens a fresh handle for every read
-        # attempt, but a caller may still hand us an advanced one.
-        f.seek(0)
-
-        if self._target_output_size_bytes is None:
-            return None
-
-        try:
-            with StrictBufferedReader(f, buffer_size=self._BUFFER_SIZE) as stream:
-                with pd.read_json(stream, chunksize=1, lines=True) as reader:
-                    try:
-                        df = _cast_range_index_to_string(next(reader))
-                    except StopIteration:
-                        return 1
-
-            block_accessor = PandasBlockAccessor.for_block(df)
-            if block_accessor.num_rows() == 0:
-                chunksize = 1
-            else:
-                bytes_per_row = block_accessor.size_bytes() / block_accessor.num_rows()
-                chunksize = max(
-                    round(self._target_output_size_bytes / bytes_per_row), 1
-                )
-
-            return chunksize
-        finally:
-            # Sampling consumed part of the file. Rewind so the actual read in
-            # `_read_stream` starts at the first row.
-            f.seek(0)
+        yield from iter_json_lines_frames(f, path, self._target_output_size_bytes)
 
     def _open_input_source(
         self,

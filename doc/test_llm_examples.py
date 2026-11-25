@@ -26,6 +26,10 @@ def cleanup_ray_resources():
         "source/data/doc_code/working-with-llms/minimal_quickstart.py",
         "source/data/doc_code/working-with-llms/omni_audio_example.py",
         "source/data/doc_code/working-with-llms/openai_api_example.py",
+        pytest.param(
+            "source/data/doc_code/working-with-llms/sglang_score_example.py",
+            marks=pytest.mark.sglang,
+        ),
         "source/data/doc_code/working-with-llms/tokenization_aggregation_example.py",
         "source/data/doc_code/working-with-llms/tokenization_disaggregation_example.py",
         "source/data/doc_code/working-with-llms/vlm_image_example.py",

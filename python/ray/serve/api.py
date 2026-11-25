@@ -115,7 +115,11 @@ def start(
             controller & proxy).
         tracing_config: Tracing config for distributed tracing. Can be passed as
             a dictionary or a ``TracingConfig`` instance. See ``TracingConfig``
-            for supported options.
+            for supported options. Tracing configuration is fixed when Serve
+            starts; to change it, shut down and restart Serve. Calling
+            ``serve.start`` again with a different config raises an error. A
+            custom exporter is called once in the controller to validate it,
+            so an exporter that raises fails ``serve.start``.
         controller_options: [EXPERIMENTAL] Options for the Serve controller actor.
           Currently scoped to a strictly-validated ``runtime_env.env_vars``
           (other ``runtime_env`` keys are rejected). See
@@ -1061,6 +1065,16 @@ def run(
 
         handle = serve.run(MyDeployment.bind())
         ray.get(handle.remote())
+
+    `serve.run` deploys imperatively: it deploys an application object. Serve
+    can't tell which version of the code an application object holds, so every
+    `serve.run` call redeploys the whole application, replacing all of its
+    replicas, even when only a deployment option such as `num_replicas` changed.
+    To update a running application in place, deploy it declaratively instead,
+    from a config file with `serve deploy` or through the REST API: Serve then
+    applies a lightweight config change, such as `num_replicas`,
+    `autoscaling_config` or `user_config`, to the running replicas without
+    restarting them. See :ref:`serve-inplace-updates`.
 
     Args:
         target:

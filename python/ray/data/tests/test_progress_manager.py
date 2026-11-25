@@ -2,6 +2,7 @@ import builtins
 from unittest.mock import MagicMock, patch
 
 import pytest
+from rich.progress import TaskID
 
 import ray
 from ray.data._internal.progress import get_progress_manager
@@ -13,6 +14,7 @@ from ray.data._internal.progress.logging_progress import (
 )
 from ray.data._internal.progress.rich_progress import (
     RichExecutionProgressManager,
+    RichSubProgressBar,
 )
 from ray.data._internal.progress.tqdm_progress import (
     TqdmExecutionProgressManager,
@@ -229,6 +231,24 @@ class TestLoggingProgressManager:
         pg.refresh()
         mock_logger.info.assert_any_call("======= Running Dataset: dataset_123 =======")
         mock_logger.info.assert_any_call("Total Progress: 1/10")
+
+
+def test_rich_sub_progress_bar_redraws_on_total_only_update():
+    """Totals often arrive without an increment (estimates refined as tasks
+    finish); the Rich bar must apply them like the tqdm bar does."""
+    progress = MagicMock()
+    bar = RichSubProgressBar("Finalize", progress=progress, tid=TaskID(1))
+
+    bar.update(total=30)
+    assert progress.update.call_args.kwargs["total"] == 30
+
+    bar.update(increment=10)
+    assert progress.update.call_args.kwargs["completed"] == 10
+    assert progress.update.call_args.kwargs["total"] == 30
+
+    # An unchanged total with nothing completed is not worth a redraw.
+    bar.update(total=30)
+    assert progress.update.call_count == 2
 
 
 if __name__ == "__main__":

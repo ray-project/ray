@@ -3,14 +3,19 @@
 ``read_api.read_mcap`` constructs it when ``DataContext.use_datasource_v2`` is
 set. Listing reads each file's summary, drops files that cannot match the
 selection, and emits one row per chunk (``MCAPSummaryIndexer``), weighted by
-the memory reading it is estimated to need. ``OnlineBinPacker`` groups the
-chunks into read tasks of about ``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that
-estimate (128 MiB by default). When the read keeps order, ``OrderedFileGrouper``
-first joins each file's chunks so that one task reads the file (``mcap_file_cuts``).
-``TaskSummaryPartitioner`` adds to each task the summary records it needs.
+the memory reading it is estimated to need. Read tasks hold about
+``RAY_DATA_MCAP_BIN_PACKING_BYTES`` of that estimate (128 MiB by default).
+``OrderedFileCutter`` cuts a large file into tasks that leave in order, and
+``OnlineBinPacker`` packs small files whole into shared tasks
+(``mcap_file_cuts``). ``TaskSummaryPartitioner`` adds to each task the summary
+records it needs.
 ``MCAPScanner`` holds the optimizer's pushdowns and builds the ``MCAPReader``,
 which seeks to each task's chunks. ``infer_schema`` calls ``infer_data_type``
 (``mcap_data_column``) to decide whether ``data`` holds JSON values or bytes.
+
+A sample read (``read_mcap(samples=...)``) lists nothing: the samples dataset
+names the files, and ``read_api`` feeds it to the read tasks as their manifest.
+Its rows hold each topic's steps around a sample's anchor (``mcap_samples``).
 
 Format specification: https://mcap.dev/spec
 """
@@ -25,7 +30,9 @@ from typing import (
     Iterator,
     List,
     Literal,
+    Mapping,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -38,7 +45,7 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_data_column import (
     infer_data_type,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_file_cuts import (
-    OrderedFileGrouper,
+    OrderedFileCutter,
 )
 from ray.data._internal.datasource_v2.formats.mcap.mcap_file_indexer import (
     MCAPSummaryIndexer,
@@ -51,10 +58,18 @@ from ray.data._internal.datasource_v2.formats.mcap.mcap_options import (
     MCAPSelection,
     TimeRange,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_sample_rows import (
+    DEFAULT_MAX_ROW_BYTES,
+)
+from ray.data._internal.datasource_v2.formats.mcap.mcap_samples import (
+    TopicPlan,
+    sample_row_schema,
+)
 from ray.data._internal.datasource_v2.formats.mcap.mcap_scanner import MCAPScanner
 from ray.data._internal.datasource_v2.formats.mcap.mcap_task_summary import (
     TaskSummaryPartitioner,
 )
+from ray.data._internal.datasource_v2.formats.mcap.mcap_topic_spec import TopicSpec
 from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
     DatasourceCategory,
     FileDataSourceV2,
@@ -81,7 +96,8 @@ if TYPE_CHECKING:
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 # Chunks are packed into read tasks of about this many bytes of estimated read
-# memory (``mcap_summary.chunk_run``).
+# memory (``mcap_summary.chunk_runs``). A listing task holds at most this many
+# bytes of summary sections at once.
 _BIN_PACKING_BYTES = env_integer("RAY_DATA_MCAP_BIN_PACKING_BYTES", 128 * MiB)
 # How many partly filled read tasks the packer keeps open at once.
 _BIN_PACKING_MAX_SHARED_OPEN_BINS = env_integer(
@@ -97,7 +113,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
         self,
         paths: List[str],
         *,
-        topics: Optional[Iterable[str]] = None,
+        topics: Optional[Union[Iterable[str], Mapping[str, TopicSpec]]] = None,
         time_range: Optional[TimeRange] = None,
         message_types: Optional[Iterable[str]] = None,
         include_metadata: bool = True,
@@ -110,18 +126,39 @@ class MCAPDatasourceV2(FileDataSourceV2):
         file_extensions: Optional[Union[List[str], tuple[str, ...]]] = ("mcap",),
         ignore_missing_paths: bool = False,
         shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
+        samples_schema: Optional[pa.Schema] = None,
+        local_sample_files: bool = False,
     ):
+        """Set up a read of ``paths``, or, with ``samples_schema``, a sample read.
+
+        A sample read takes ``topics`` as a mapping from each topic to its
+        ``TopicSpec``, and ``samples_schema`` is the samples dataset's schema.
+        Its files come with the samples, so ``paths`` is empty and the read
+        tasks resolve each file against ``filesystem``, or its URI. With
+        ``local_sample_files``, the files use the ``local://`` scheme, so the
+        read tasks run on the driver's node.
+        """
         super().__init__(name="MCAP", category=DatasourceCategory.FILE_BASED)
         _check_import(self, module="mcap", package="mcap")
-
-        # Captured against the original paths: resolution below strips the
-        # ``local://`` scheme (see ``ParquetDatasourceV2``).
-        self._supports_distributed_reads = not _is_local_scheme(paths)
-        resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
-            paths, filesystem
-        )
-        self._paths: List[str] = resolved_paths
-        self._filesystem = resolved_filesystem
+        self._samples_schema = samples_schema
+        self._topic_plans: Tuple[TopicPlan, ...] = ()
+        if samples_schema is not None:
+            assert isinstance(topics, Mapping), "a sample read maps topics to specs"
+            self._topic_plans = tuple(
+                TopicPlan.from_spec(topic, spec) for topic, spec in topics.items()
+            )
+            self._supports_distributed_reads = not local_sample_files
+            self._paths: List[str] = []
+            self._filesystem = filesystem
+        else:
+            # Captured against the original paths: resolution below strips the
+            # ``local://`` scheme (see ``ParquetDatasourceV2``).
+            self._supports_distributed_reads = not _is_local_scheme(paths)
+            resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
+                paths, filesystem
+            )
+            self._paths = resolved_paths
+            self._filesystem = resolved_filesystem
         self._selection = MCAPSelection.create(topics, time_range, message_types)
         self._include_metadata = include_metadata
         self._log_time_order = log_time_order
@@ -159,11 +196,17 @@ class MCAPDatasourceV2(FileDataSourceV2):
     def selection(self) -> MCAPSelection:
         return self._selection
 
+    @property
+    def topic_plans(self) -> Tuple[TopicPlan, ...]:
+        """For a sample read, each topic's steps; empty otherwise."""
+        return self._topic_plans
+
     def _get_file_indexer(self) -> FileIndexer:
         return MCAPSummaryIndexer(
             selection=self._selection,
             ignore_missing_paths=self._ignore_missing_paths,
             read_task_bytes=_BIN_PACKING_BYTES,
+            log_time_order=self._log_time_order,
             row_layout=MessageRowLayout(
                 include_metadata=self._include_metadata,
                 include_row_id=self._include_row_id,
@@ -173,9 +216,10 @@ class MCAPDatasourceV2(FileDataSourceV2):
 
     def get_file_partitioner(self, **kwargs):
         # Each listing row is one chunk weighted by its estimated read memory,
-        # so chunks are packed into read tasks by that estimate. When the read
-        # keeps order, each file is kept in one task, and files keep their
-        # listing order (``mcap_file_cuts``).
+        # so read tasks are sized by that estimate. A large file is cut into
+        # tasks that leave in order, and small files are packed whole. When the
+        # read keeps order, files also keep their listing order
+        # (``mcap_file_cuts`` says when a file is read whole).
         #
         # Packing is per listing shard, not global, so listing can run as many
         # parallel tasks. Each chunk still lands in exactly one read task; the
@@ -189,9 +233,12 @@ class MCAPDatasourceV2(FileDataSourceV2):
             max_shared_open_bins=_BIN_PACKING_MAX_SHARED_OPEN_BINS,
             requires_global_input=False,
         )
-        return TaskSummaryPartitioner(
-            OrderedFileGrouper(packer, budget=_BIN_PACKING_BYTES)
+        cutter = OrderedFileCutter(
+            packer,
+            budget=_BIN_PACKING_BYTES,
+            log_time_order=self._log_time_order,
         )
+        return TaskSummaryPartitioner(cutter)
 
     @property
     @override
@@ -229,8 +276,11 @@ class MCAPDatasourceV2(FileDataSourceV2):
         values when every selected channel of the sampled files is JSON-encoded,
         and the raw payload bytes (``binary``) otherwise. The reader follows this
         one decision for every file, so a selection that mixes encodings keeps
-        every payload as bytes.
+        every payload as bytes. Sample rows hold the samples' own columns, then
+        each topic's (``sample_row_schema``).
         """
+        if self._samples_schema is not None:
+            return sample_row_schema(self._samples_schema, self._topic_plans)
         assert sample is not None, "MCAP always receives a sample"
         data_type = (
             infer_data_type(
@@ -238,6 +288,7 @@ class MCAPDatasourceV2(FileDataSourceV2):
                 self._filesystem,
                 sample.paths.tolist(),
                 self._listed_paths,
+                summary_budget_bytes=_BIN_PACKING_BYTES,
             )
             if len(sample) > 0
             else None
@@ -298,4 +349,10 @@ class MCAPDatasourceV2(FileDataSourceV2):
             synthesized_columns=self._synthesized_columns,
             shuffle=self._shuffle,
             target_block_size=DataContext.get_current().target_max_block_size,
+            max_row_bytes=env_integer(
+                "RAY_DATA_MCAP_MAX_ROW_BYTES", DEFAULT_MAX_ROW_BYTES
+            ),
+            topic_plans=self._topic_plans,
+            # A run of samples holds at most a read task's budget of chunks.
+            max_run_bytes=_BIN_PACKING_BYTES,
         )

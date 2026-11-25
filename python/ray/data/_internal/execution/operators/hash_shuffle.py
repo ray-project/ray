@@ -38,10 +38,7 @@ from ray._private.ray_constants import (
 from ray._raylet import StreamingGeneratorStats
 from ray.actor import ActorHandle
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    _create_empty_table,
-    hash_partition,
-)
+from ray.data._internal.arrow_ops.transform_pyarrow import hash_partition
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     ExecutionOptions,
@@ -63,6 +60,7 @@ from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeO
 from ray.data._internal.stats import OpRuntimeMetrics
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -869,6 +867,11 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
     def has_next(self) -> bool:
         self._try_finalize()
         return len(self._output_queue) > 0
+
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # Partitions are finalized only after every input has been shuffled.
+        return True
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()

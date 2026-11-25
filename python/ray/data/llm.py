@@ -229,8 +229,9 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             the throughput and fault-tolerance based on your use case.
         engine_kwargs: The kwargs to pass to the SGLang engine. Default engine kwargs are
             tp_size: 1, dp_size: 1, skip_tokenizer_init: True.
-        task_type: The task type to use. If not specified, will use 'generate' by default.
-        task_kwargs: Options for the task type. The 'generate' task takes none.
+        task_type: The task type to use: 'generate' (default) or 'score'.
+        task_kwargs: Options for the task type. The ``generate`` task takes none.
+            For the ``score`` task, see :ref:`sglang_score`.
         runtime_env: The runtime environment to use for the SGLang engine. See
             :ref:`this doc <handling_dependencies>` for more details.
         max_pending_requests: The maximum number of pending requests. If not specified,
@@ -250,13 +251,15 @@ class SGLangEngineProcessorConfig(_SGLangEngineProcessorConfig, ProcessorConfig)
             ``RAY_DATA_ACTOR_DEFAULT_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR``
             env var.
         chat_template_stage: Chat templating stage config (bool | dict | ChatTemplateStageConfig).
-            Defaults to True. Use nested config for per-stage control over batch_size,
+            Defaults to True, except for the ``score`` task, which doesn't support it.
+            Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, and memory.
         tokenize_stage: Tokenizer stage config (bool | dict | TokenizerStageConfig).
             Defaults to True. Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         detokenize_stage: Detokenizer stage config (bool | dict | DetokenizeStageConfig).
-            Defaults to True. Use nested config for per-stage control over batch_size,
+            Defaults to True, except for the ``score`` task, which doesn't support it.
+            Use nested config for per-stage control over batch_size,
             concurrency, runtime_env, num_cpus, memory, and model_source.
         accelerator_type: The accelerator type used by the LLM stage in a processor.
             Default to None, meaning that only the CPU will be used.
