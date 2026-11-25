@@ -104,8 +104,10 @@ class NonSamplingFileIndexer(FileIndexer):
         skip_paths: Optional[Iterable[str]] = None,
         num_workers: Optional[int] = None,
         max_paths_per_output: Optional[int] = None,
+        keep_empty_files: bool = False,
     ):
         self._ignore_missing_paths = ignore_missing_paths
+        self._keep_empty_files = keep_empty_files
         # Resolved paths to exclude from the listing (see
         # ``ParquetDatasourceV2``). ``frozenset()`` when unset so the membership
         # check in ``_get_path_contents`` is a cheap no-op.
@@ -146,6 +148,7 @@ class NonSamplingFileIndexer(FileIndexer):
             skip_paths=self._skip_paths,
             num_workers=self._num_workers,
             max_paths_per_output=self._max_paths_per_output,
+            keep_empty_files=self._keep_empty_files,
         )
 
     def list_files(
@@ -392,9 +395,9 @@ class NonSamplingFileIndexer(FileIndexer):
         into manifests. The footer-based Parquet path consumes this same
         stream -- it reads each file's footer and bin-packs row groups
         itself, so it needs paths + sizes rather than pre-chunked manifest
-        rows. Zero-size files are skipped and ``pruners`` (file-extension /
-        partition filters) are applied here, so both listing paths share one
-        filtering point.
+        rows. Zero-size files are skipped unless ``keep_empty_files`` is set,
+        and ``pruners`` (file-extension / partition filters) are applied here,
+        so both listing paths share one filtering point.
 
         A file whose size the filesystem doesn't report (``size`` is
         ``None``, e.g. an HTTP server that sends no ``Content-Length``) is
@@ -412,7 +415,7 @@ class NonSamplingFileIndexer(FileIndexer):
             paths, filesystem, preserve_order
         )
         for file_info in file_info_iterator:
-            if file_info.size == 0:
+            if file_info.size == 0 and not self._keep_empty_files:
                 logger.warning(f"Skipping zero-size file: {file_info.path!r}")
                 continue
             if not all(pruner.should_include(file_info.path) for pruner in pruners):
