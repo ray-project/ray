@@ -5,9 +5,11 @@ from typing import Dict, Type
 from ray.llm._internal.batch.constants import SGLangTaskType
 from ray.llm._internal.batch.tasks.sglang.base import _SGLangTask
 from ray.llm._internal.batch.tasks.sglang.generate import _SGLangGenerateTask
+from ray.llm._internal.batch.tasks.sglang.score import _SGLangScoreTask
 
 _TASKS: Dict[str, Type[_SGLangTask]] = {
     SGLangTaskType.GENERATE: _SGLangGenerateTask,
+    SGLangTaskType.SCORE: _SGLangScoreTask,
 }
 
 

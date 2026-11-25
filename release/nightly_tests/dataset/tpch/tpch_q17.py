@@ -29,13 +29,9 @@ def main(args):
         # This avoids a double S3 read of lineitem and scopes the groupby
         # to only the matching rows.
 
-        # Load tables with early projection.
-        part = load_table("part", args.sf).select_columns(
-            ["p_partkey", "p_brand", "p_container"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_partkey", "l_quantity", "l_extendedprice"]
-        )
+        # Load tables. Projection pushdown derives the columns each read needs.
+        part = load_table("part", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q17 parameters
         brand = "Brand#23"
@@ -44,12 +40,13 @@ def main(args):
         # Filter part by brand and container.
         part_filtered = part.filter(
             expr=(col("p_brand") == brand) & (col("p_container") == container)
-        ).select_columns(["p_partkey"])
+        )
 
         # Join lineitem with filtered parts first, then materialize the small
         # result for dual consumption (avg_qty groupby + filter pipeline).
         # This avoids a double S3 read of lineitem and reduces the groupby
         # from the full lineitem table to only matching rows.
+        # Projection pushdown stops at materialize(), so prune by hand first.
         joined = (
             part_filtered.join(
                 lineitem,
@@ -63,10 +60,8 @@ def main(args):
         )
 
         # Decorrelate: compute average quantity per part (only matching parts).
-        avg_qty = (
-            joined.select_columns(["p_partkey", "l_quantity"])
-            .groupby("p_partkey")
-            .aggregate(Mean(on="l_quantity", alias_name="avg_quantity"))
+        avg_qty = joined.groupby("p_partkey").aggregate(
+            Mean(on="l_quantity", alias_name="avg_quantity")
         )
 
         # Join with average quantity per part.
@@ -75,7 +70,7 @@ def main(args):
             join_type="inner",
             num_partitions=200,
             on=("p_partkey",),
-        ).select_columns(["l_quantity", "l_extendedprice", "avg_quantity"])
+        )
 
         # Filter: keep lineitems with quantity < 0.2 * avg_quantity.
         ds = ds.filter(

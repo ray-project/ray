@@ -395,6 +395,10 @@ class NonSamplingFileIndexer(FileIndexer):
         rows. Zero-size files are skipped and ``pruners`` (file-extension /
         partition filters) are applied here, so both listing paths share one
         filtering point.
+
+        A file whose size the filesystem doesn't report (``size`` is
+        ``None``, e.g. an HTTP server that sends no ``Content-Length``) is
+        kept: its size isn't zero, just unknown.
         """
         if filesystem is None:
             raise ValueError(
@@ -408,7 +412,7 @@ class NonSamplingFileIndexer(FileIndexer):
             paths, filesystem, preserve_order
         )
         for file_info in file_info_iterator:
-            if file_info.size is None or file_info.size == 0:
+            if file_info.size == 0:
                 logger.warning(f"Skipping zero-size file: {file_info.path!r}")
                 continue
             if not all(pruner.should_include(file_info.path) for pruner in pruners):
@@ -425,14 +429,13 @@ class NonSamplingFileIndexer(FileIndexer):
         # a file to split it (the Parquet footer indexer) override
         # ``list_files`` instead.
         running_paths: List[str] = []
-        running_file_sizes: List[int] = []
+        # ``None`` where the filesystem didn't report a size.
+        running_file_sizes: List[Optional[int]] = []
         running_chunk_metadatas: List[Optional[ChunkMetadata]] = []
         manifests_count = 0
         files_count = 0
 
         for file_info in file_infos:
-            # ``list_file_infos`` already dropped zero/None-size files.
-            assert file_info.size is not None
             files_count += 1
             for chunk_metadata in self._chunk_metadatas_of_file(file_info):
                 running_paths.append(file_info.path)
@@ -473,7 +476,9 @@ class NonSamplingFileIndexer(FileIndexer):
         ``FileInfo``.
 
         Args:
-            file_info: The file, with its size already known to be positive.
+            file_info: The file. Its size is positive, or ``None`` when the
+                filesystem doesn't report one; such a file can only be read
+                whole.
 
         Returns:
             One entry per manifest row for this file, in read order.
