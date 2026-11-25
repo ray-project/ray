@@ -2599,7 +2599,12 @@ def read_csv(
         uncompressed file into byte ranges read by separate tasks, unless
         ``parse_options.newlines_in_values`` or ``parse_options.escape_char``
         is set, ``read_options`` skips rows, or the encoding isn't UTF-8.
-        Each piece of a split file parses with its own file's header line.
+        Each piece of a split file parses with its own file's header. By
+        default, the reader skips empty lines before the header. For schema
+        inference, the header of each sampled file must fit in Arrow's first
+        read block (configured by ``read_options.block_size``), including any
+        leading empty lines. When planning splits, Ray keeps a file whole if
+        those skipped lines fill its first byte range.
         Column types are inferred per piece, so :meth:`Dataset.schema` before
         execution is a guess from the first about 1 MiB of up to 16 sampled
         files, and one file's pieces can produce different types for the same

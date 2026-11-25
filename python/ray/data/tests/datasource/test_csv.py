@@ -247,6 +247,30 @@ def test_read_csv_v2_splits_large_files(
     assert {row["path"] for row in rows} == {path}
 
 
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "prefix",
+    [
+        pytest.param("\n", id="one_blank_line"),
+        pytest.param("\r\n" * 2, id="blank_crlf_lines"),
+        pytest.param("\r\r\n", id="mixed_cr_and_crlf"),
+        pytest.param("\n" * 300, id="header_past_first_chunk"),
+    ],
+)
+def test_read_csv_v2_leading_empty_lines(
+    ray_start_regular_shared, tmp_path, monkeypatch, datasource_v2, prefix
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", "256")
+    path = tmp_path / "data.csv"
+    expected = pd.DataFrame({"id": range(200), "value": ["x"] * 200})
+    with path.open("w", newline="") as file:
+        file.write(prefix)
+        expected.to_csv(file, index=False)
+
+    rows = ray.data.read_csv(str(path)).take_all()
+    assert sorted(rows, key=lambda row: row["id"]) == expected.to_dict("records")
+
+
 def test_read_csv_v2_preserve_order_keeps_chunks_in_order(
     ray_start_regular_shared, tmp_path, csv_v2_small_chunks, restore_data_context
 ):
