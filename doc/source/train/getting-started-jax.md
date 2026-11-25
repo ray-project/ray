@@ -184,7 +184,7 @@ trainer = JaxTrainer(
     scaling_config=scaling_config,
 )
 result = trainer.fit()
-print(f"Training finished. Final loss: {result.metrics['loss']:.4f}")
+print(f"Training finished. Final loss: {result.latest_metrics['loss']:.4f}")
 ```
 :::
 
@@ -344,8 +344,8 @@ result = trainer.fit()
 When training completes, `fit()` returns a {class}`~ray.train.Result` object that contains information about the training run, including the metrics and checkpoints reported during training.
 
 ```python
-result.metrics     # The metrics reported during training.
-result.checkpoint  # The latest checkpoint reported during training.
+result.latest_metrics     # The metrics reported during training.
+result.latest_checkpoint  # The latest checkpoint reported during training.
 result.path        # The path where logs are stored.
 result.error       # The exception that was raised, if training failed.
 ```

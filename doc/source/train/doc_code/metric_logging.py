@@ -90,7 +90,7 @@ trainer = TorchTrainer(
     scaling_config=ScalingConfig(num_workers=2),
 )
 result = trainer.fit()
-print(result.metrics["valid_loss"], result.metrics["mean_valid_loss_collected"])
+print(result.latest_metrics["valid_loss"], result.latest_metrics["mean_valid_loss_collected"])
 # 0.5109779238700867 0.5512474775314331
 
 # __torchmetrics_end__

@@ -180,7 +180,7 @@ def train_gnn(
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
     )
     result = trainer.fit()
-    print(result.metrics)
+    print(result.latest_metrics)
 
 
 if __name__ == "__main__":

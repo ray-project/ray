@@ -106,7 +106,7 @@ result = trainer.fit()
 # 7. Load the trained model
 import os
 
-with result.checkpoint.as_directory() as checkpoint_dir:
+with result.latest_checkpoint.as_directory() as checkpoint_dir:
     model_path = os.path.join(checkpoint_dir, RayTrainReportCallback.CHECKPOINT_NAME)
     model = xgboost.Booster()
     model.load_model(model_path)

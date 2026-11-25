@@ -99,6 +99,19 @@ def test_result_repr():
     assert "metrics={'iter': 0, 'metric': 1.0}" in repr(res)
 
 
+def test_latest_metrics_and_checkpoint():
+    """`latest_metrics` and `latest_checkpoint` alias `metrics` and `checkpoint`."""
+    metrics = {"iter": 3, "metric": 4.0}
+    checkpoint = Checkpoint("/bucket/path/ckpt3")
+    res = Result(metrics=metrics, checkpoint=checkpoint, error=None, path="/b")
+    assert res.latest_metrics is metrics
+    assert res.latest_checkpoint is checkpoint
+
+    empty = Result(metrics=None, checkpoint=None, error=None, path="/b")
+    assert empty.latest_metrics is None
+    assert empty.latest_checkpoint is None
+
+
 def test_get_best_checkpoint():
     res = Result(
         metrics={},

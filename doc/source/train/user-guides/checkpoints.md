@@ -96,7 +96,7 @@ At the end of each training epoch, the callback does the following:
 :end-before: __lightning_save_example_end__
 ```
 
-You can get the saved checkpoint path from {attr}`result.checkpoint <ray.train.Result>` and {attr}`result.best_checkpoints <ray.train.Result>`.
+You can get the saved checkpoint path from {attr}`result.latest_checkpoint <ray.train.Result>` and {attr}`result.best_checkpoints <ray.train.Result>`.
 
 For more advanced usage, such as reporting at a different frequency or reporting custom checkpoint files, implement your own callback. The following example reports a checkpoint every three epochs:
 
@@ -309,7 +309,7 @@ This function supports two consistency modes:
 
 ## Use checkpoints after training
 
-Access the latest saved checkpoint with {attr}`Result.checkpoint <ray.train.Result>`.
+Access the latest saved checkpoint with {attr}`Result.latest_checkpoint <ray.train.Result>`.
 
 Access the best checkpoints with {attr}`Result.best_checkpoints <ray.train.Result>`. If you set {class}`CheckpointConfig(num_to_keep) <ray.train.CheckpointConfig>`, this list contains the best `num_to_keep` checkpoints. It doesn't include the latest checkpoint unless the latest is also one of the best, even though Ray Train keeps the latest checkpoint on disk.
 

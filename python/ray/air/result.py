@@ -31,16 +31,19 @@ class Result:
     of ``Result`` objects.
 
     This API is the recommended way to access the outputs such as:
-    - checkpoints (``Result.checkpoint``)
-    - the history of reported metrics (``Result.metrics_dataframe``, ``Result.metrics``)
+    - checkpoints (``Result.latest_checkpoint``)
+    - the history of reported metrics (``Result.metrics_dataframe``,
+      ``Result.latest_metrics``)
     - errors encountered during a training run (``Result.error``)
 
     The constructor is a private API -- use ``Result.from_path`` to create a result
     object from a directory.
 
     Attributes:
-        metrics: The latest set of reported metrics.
-        checkpoint: The latest checkpoint.
+        metrics: The latest set of reported metrics. Prefer the equivalent
+            ``latest_metrics`` property, whose name makes this explicit.
+        checkpoint: The latest checkpoint. Prefer the equivalent
+            ``latest_checkpoint`` property, whose name makes this explicit.
         error: The execution error of the Trainable run, if the trial finishes in error.
         path: Path pointing to the result directory on persistent storage. This can
             point to a remote storage location (e.g. S3) or to a local location (path
@@ -69,6 +72,22 @@ class Result:
     ] = None
     _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
     _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
+
+    @property
+    def latest_metrics(self) -> Optional[Dict[str, Any]]:
+        """The latest set of reported metrics.
+
+        Equivalent to ``Result.metrics``.
+        """
+        return self.metrics
+
+    @property
+    def latest_checkpoint(self) -> Optional["ray.tune.Checkpoint"]:
+        """The latest checkpoint.
+
+        Equivalent to ``Result.checkpoint``.
+        """
+        return self.checkpoint
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:

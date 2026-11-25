@@ -118,7 +118,7 @@ class TorchTrainer(DataParallelTrainer):
         >>> # Train the model.
         >>> result = trainer.fit()
         >>> # Inspect the results.
-        >>> final_loss = result.metrics["loss"]
+        >>> final_loss = result.latest_metrics["loss"]
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.

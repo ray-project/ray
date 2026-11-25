@@ -418,14 +418,14 @@ assert Path(checkpoint_dir).joinpath("model.pt").exists()
 
 # __inspect_transformers_checkpoint_example_start__
 # After training finished
-checkpoint = result.checkpoint
+checkpoint = result.latest_checkpoint
 with checkpoint.as_directory() as checkpoint_dir:
     hf_checkpoint_path = f"{checkpoint_dir}/checkpoint/"
 # __inspect_transformers_checkpoint_example_end__
 
 # __inspect_lightning_checkpoint_example_start__
 # After training finished
-checkpoint = result.checkpoint
+checkpoint = result.latest_checkpoint
 with checkpoint.as_directory() as checkpoint_dir:
     lightning_checkpoint_path = f"{checkpoint_dir}/checkpoint.ckpt"
 # __inspect_lightning_checkpoint_example_end__

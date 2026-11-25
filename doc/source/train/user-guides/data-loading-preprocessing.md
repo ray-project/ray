@@ -558,7 +558,7 @@ my_trainer = TorchTrainer(
 )
 
 # Get the fitted preprocessor back from the result metadata.
-metadata = my_trainer.fit().checkpoint.get_metadata()
+metadata = my_trainer.fit().latest_checkpoint.get_metadata()
 # Decode from base64 before deserializing
 serialized_data = base64.b64decode(metadata["preprocessor_pkl"])
 print(StandardScaler.deserialize(serialized_data))

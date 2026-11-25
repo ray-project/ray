@@ -68,7 +68,7 @@ class XGBoostTrainer(DataParallelTrainer):
         ...     scaling_config=ray.train.ScalingConfig(num_workers=2),
         ... )
         >>> result = trainer.fit()
-        >>> booster = RayTrainReportCallback.get_model(result.checkpoint)
+        >>> booster = RayTrainReportCallback.get_model(result.latest_checkpoint)
 
     Args:
         train_loop_per_worker: The training function to execute on each worker.
