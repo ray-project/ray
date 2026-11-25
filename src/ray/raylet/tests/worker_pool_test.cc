@@ -148,7 +148,8 @@ class FakeRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
-                             GetOrCreateRuntimeEnvCallback callback) override {
+                             GetOrCreateRuntimeEnvCallback callback,
+                             const std::string &source_process) override {
     if (serialized_runtime_env == kBadRuntimeEnv) {
       callback(false, "", std::string(kBadRuntimeEnvErrorMsg));
     } else {
@@ -164,7 +165,8 @@ class FakeRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   };
 
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
+                                  DeleteRuntimeEnvIfPossibleCallback callback,
+                                  const std::string &source_process) override {
     auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
     runtime_env_reference[serialized_runtime_env] -= 1;

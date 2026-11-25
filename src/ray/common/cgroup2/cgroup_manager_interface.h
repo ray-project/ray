@@ -87,6 +87,11 @@ class CgroupManagerInterface {
   virtual std::string GetUserCgroupPath() const = 0;
 
   /**
+    @return the path to the workers leaf cgroup under the user cgroup.
+  */
+  virtual std::string GetWorkersCgroupPath() const = 0;
+
+  /**
     Gets the constraint value within the system cgroup for a given constraint name.
 
     @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").

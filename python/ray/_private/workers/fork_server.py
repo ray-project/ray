@@ -1,6 +1,8 @@
 """Pre-initialized Python worker fork server daemon and launcher."""
 
 import argparse
+import asyncio
+import copy
 import gc
 import importlib
 import importlib.metadata
@@ -9,6 +11,7 @@ import logging
 import os
 import random
 import select
+import shlex
 import signal
 import socket
 import subprocess
@@ -21,9 +24,15 @@ from types import ModuleType
 from typing import TYPE_CHECKING, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import ray
+import ray._common.ray_constants as common_ray_constants
+import ray._common.serialization as common_serialization
 import ray._private.ray_constants as ray_constants
+import ray._private.ray_logging as ray_logging
+import ray._private.serialization as private_serialization
+import ray._private.services as services
 import ray._private.utils
 import ray._private.worker
+from ray._private.async_compat import try_install_uvloop
 
 if TYPE_CHECKING:
     from ray._private.runtime_env.context import RuntimeEnvContext
@@ -34,16 +43,24 @@ _PRE_FORK_ENV_OVERRIDES = {
     "OMP_NUM_THREADS": "1",
     "OPENBLAS_NUM_THREADS": "1",
     "MKL_NUM_THREADS": "1",
-    "JE_ARROW_MALLOC_CONF": "background_thread:false",
-    "_RJEM_MALLOC_CONF": "background_thread:false",
     "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
     "TORCH_DEVICE_BACKEND_AUTOLOAD": "0",
+}
+_PRE_FORK_ENV_DEFAULTS = {
+    "JE_ARROW_MALLOC_CONF": "background_thread:false",
+    "_RJEM_MALLOC_CONF": "background_thread:false",
 }
 
 _MAX_FORK_REQUEST_BYTES = 4 * 1024 * 1024
 _CHILD_SETUP_TIMEOUT_S = 5
 # Omit POLLRDHUP so half-closed (SHUT_WR) clients are served; full close sets POLLHUP.
 _PEER_DISCONNECTED_MASK = getattr(select, "POLLHUP", 0) | getattr(select, "POLLERR", 0)
+_DEDUP_LOG_ENV_KEYS = (
+    "RAY_DEDUP_LOGS",
+    "RAY_DEDUP_LOGS_AGG_WINDOW_S",
+    "RAY_DEDUP_LOGS_ALLOW_REGEX",
+    "RAY_DEDUP_LOGS_SKIP_REGEX",
+)
 _worker_lifetime_pipe_w: Optional[int] = None
 _at_fork_registered = False
 
@@ -104,6 +121,77 @@ def _recv_line(conn: socket.socket, timeout_s: float = 2.0) -> bytes:
         buffer.extend(chunk)
 
 
+def _validate_socket_path(socket_path: str) -> str:
+    """Validates and normalizes a Unix domain socket path for a fork server."""
+    if os.path.basename(socket_path) in ("", ".", ".."):
+        raise OSError(f"Invalid fork server socket path: {socket_path!r}")
+    norm_path = os.path.abspath(socket_path)
+    ray._private.utils.validate_socket_filepath(norm_path)
+    return norm_path
+
+
+def _normalize_pythonpath(raw_pythonpath: str) -> str:
+    if not raw_pythonpath:
+        return ""
+    return os.pathsep.join(
+        os.path.abspath(p) if p and "$" not in p else p
+        for p in raw_pythonpath.split(os.pathsep)
+    )
+
+
+def _extract_expected_cwd(context: Optional["RuntimeEnvContext"]) -> Optional[str]:
+    """Extracts the working_dir path from a RuntimeEnvContext command_prefix."""
+    if context is None:
+        return None
+    prefix = context.command_prefix
+    for i in range(len(prefix) - 2):
+        if prefix[i] == "cd" and prefix[i + 2] == "&&":
+            try:
+                unquoted = shlex.split(prefix[i + 1])
+            except ValueError:
+                return prefix[i + 1]
+            return unquoted[0] if len(unquoted) == 1 else prefix[i + 1]
+    return None
+
+
+def _emit_startup_warning(msg: str) -> None:
+    if logger.hasHandlers():
+        logger.warning("%s", msg)
+    print(msg, file=sys.stderr, flush=True)
+
+
+def _redirect_post_preload_stdio(
+    logs_dir: Optional[str],
+    worker_stdout_fd: Optional[int],
+    worker_stderr_fd: Optional[int],
+) -> None:
+    """Switches fork-server fd 1/2 from setup logs to raylet.out/err or container stdio."""
+    with suppress(OSError):
+        sys.stdout.flush()
+    with suppress(OSError):
+        sys.stderr.flush()
+    if worker_stdout_fd is not None and worker_stderr_fd is not None:
+        try:
+            os.dup2(worker_stdout_fd, 1)
+            os.dup2(worker_stderr_fd, 2)
+        finally:
+            for fd in {worker_stdout_fd, worker_stderr_fd}:
+                if fd > 2:
+                    with suppress(OSError):
+                        os.close(fd)
+        return
+    if logs_dir:
+        os.makedirs(logs_dir, exist_ok=True)
+        for target_fd, filename in ((1, "raylet.out"), (2, "raylet.err")):
+            path = os.path.join(logs_dir, filename)
+            fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+            try:
+                os.dup2(fd, target_fd)
+            finally:
+                if fd != target_fd:
+                    os.close(fd)
+
+
 def _bind_staging_socket(
     sock: socket.socket, socket_dir: str, tmp_name: str, tmp_socket_path: str
 ) -> None:
@@ -130,26 +218,71 @@ class ForkServerProcess:
         cgroup_path: Optional[str] = None,
         wait_ready: bool = True,
         timeout_s: float = 120.0,
+        logs_dir: Optional[str] = None,
+        setup_log_path: Optional[str] = None,
+        worker_stdout_fd: Optional[int] = None,
+        worker_stderr_fd: Optional[int] = None,
     ):
-        self.socket_path = os.path.abspath(socket_path)
-        ray._private.utils.validate_socket_filepath(self.socket_path)
+        self.socket_path = _validate_socket_path(socket_path)
+        self.started_at = time.monotonic()
+        self.ready_at: Optional[float] = None
+        self._stopped = False
+        self._socket_id: Optional[Tuple[int, int, int]] = None
+        self.expected_cwd_path = _extract_expected_cwd(context)
+        self.expected_cwd_dev_ino: Optional[Tuple[int, int]] = None
+        if self.expected_cwd_path is not None:
+            with suppress(OSError):
+                st = os.stat(self.expected_cwd_path)
+                self.expected_cwd_dev_ino = (st.st_dev, st.st_ino)
+
+        os.makedirs(os.path.dirname(self.socket_path), exist_ok=True)
         Path(self.socket_path).unlink(missing_ok=True)
 
         workers_dir = os.path.dirname(os.path.abspath(__file__))
-        cmd = [sys.executable]
-        if context is not None:
-            cmd += [
-                os.path.join(workers_dir, "setup_worker.py"),
-                f"--serialized-runtime-env-context={context.serialize()}",
-                "--language=PYTHON",
-            ]
-        cmd += [
+        cluster_pythonpath = _normalize_pythonpath(os.environ.get("PYTHONPATH", ""))
+        fork_server_args = [
             os.path.abspath(__file__),
             f"--socket-path={self.socket_path}",
             f"--preload-modules={','.join(preload_modules or [])}",
-            f"--cluster-pythonpath={os.environ.get('PYTHONPATH', '')}",
+            f"--cluster-pythonpath={cluster_pythonpath}",
             "--monitor-stdin",
         ]
+        if logs_dir:
+            fork_server_args.append(f"--logs-dir={logs_dir}")
+
+        pass_fds: List[int] = []
+        if worker_stdout_fd is not None and worker_stderr_fd is not None:
+            fork_server_args.extend(
+                [
+                    f"--worker-stdout-fd={worker_stdout_fd}",
+                    f"--worker-stderr-fd={worker_stderr_fd}",
+                ]
+            )
+            pass_fds.extend([worker_stdout_fd, worker_stderr_fd])
+
+        site_flags = services._site_flags()
+        if context is not None:
+            launch_ctx = copy.copy(context)
+            launch_ctx.env_vars = dict(context.env_vars)
+            if self.expected_cwd_path is None and "PYTHONPATH" in launch_ctx.env_vars:
+                launch_ctx.env_vars["PYTHONPATH"] = _normalize_pythonpath(
+                    launch_ctx.env_vars["PYTHONPATH"]
+                )
+            if site_flags and context.py_executable == sys.executable:
+                launch_ctx.py_executable = " ".join(
+                    [shlex.quote(sys.executable), *site_flags]
+                )
+            cmd = [
+                sys.executable,
+                *site_flags,
+                os.path.join(workers_dir, "setup_worker.py"),
+                f"--serialized-runtime-env-context={launch_ctx.serialize()}",
+                "--language=PYTHON",
+                *fork_server_args,
+            ]
+        else:
+            cmd = [sys.executable, *site_flags, *fork_server_args]
+
         if cgroup_path and sys.platform.startswith("linux"):
             cmd = [
                 sys.executable,
@@ -159,20 +292,128 @@ class ForkServerProcess:
                 *cmd,
             ]
 
-        self.process = subprocess.Popen(
-            cmd,
-            stdin=subprocess.PIPE,
-            start_new_session=True,
+        # Scrub agent-inherited internal/allocator vars unless explicitly requested.
+        popen_env = os.environ.copy()
+        if cluster_pythonpath:
+            popen_env["PYTHONPATH"] = cluster_pythonpath
+        ctx_env_vars = context.env_vars if context is not None else {}
+        for scrubbed_key in ("RAY_RUNTIME_ENV_CREATE_WORKING_DIR", "MALLOC_CONF"):
+            if scrubbed_key not in ctx_env_vars:
+                popen_env.pop(scrubbed_key, None)
+
+        # Redirect pre-fork bootstrap output so forked workers never inherit
+        # RuntimeEnvAgent's PipeLogger pipes (which can deadlock agent teardown).
+        self._setup_log_path: Optional[str] = setup_log_path or (
+            os.path.join(logs_dir, "fork_server_default.log") if logs_dir else None
         )
-        self._socket_id = None
+        self._setup_log_offset = 0
+        if self._setup_log_path is not None:
+            os.makedirs(os.path.dirname(self._setup_log_path), exist_ok=True)
+            log_fd = os.open(
+                self._setup_log_path,
+                os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+                0o644,
+            )
+            with suppress(OSError):
+                self._setup_log_offset = os.fstat(log_fd).st_size
+        else:
+            log_fd = os.open(os.devnull, os.O_WRONLY)
+
+        try:
+            self.process = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=log_fd,
+                stderr=log_fd,
+                env=popen_env,
+                close_fds=True,
+                pass_fds=tuple(pass_fds),
+                start_new_session=True,
+            )
+        finally:
+            os.close(log_fd)
+
         if wait_ready:
             self.wait_ready(timeout_s=timeout_s)
+
+    @property
+    def stopped(self) -> bool:
+        """Returns True if stop() has been called on this fork server."""
+        return self._stopped
+
+    def is_alive(self) -> bool:
+        """Returns True if the fork server has not been stopped and is still running."""
+        return not self._stopped and self.process.poll() is None
+
+    def has_valid_cwd(self) -> bool:
+        """Returns False if the fork server's working_dir was unlinked or replaced."""
+        if not self.is_alive():
+            return False
+        if self.expected_cwd_path is not None:
+            try:
+                cur_st = os.stat(self.expected_cwd_path)
+            except OSError:
+                return False
+            if (
+                self.expected_cwd_dev_ino is not None
+                and (cur_st.st_dev, cur_st.st_ino) != self.expected_cwd_dev_ino
+            ):
+                return False
+        if sys.platform.startswith("linux"):
+            proc_cwd = f"/proc/{self.process.pid}/cwd"
+            try:
+                if os.readlink(proc_cwd).endswith(" (deleted)"):
+                    return False
+                if self.expected_cwd_dev_ino is not None:
+                    proc_st = os.stat(proc_cwd)
+                    if (proc_st.st_dev, proc_st.st_ino) != self.expected_cwd_dev_ino:
+                        return False
+            except OSError:
+                return False
+        return True
+
+    def read_startup_warnings(self) -> List[str]:
+        """Returns new preload/startup warning lines emitted to the setup log."""
+        if self._setup_log_path is None:
+            return []
+        try:
+            with open(
+                self._setup_log_path, "r", encoding="utf-8", errors="replace"
+            ) as f:
+                f.seek(self._setup_log_offset)
+                data = f.read()
+                self._setup_log_offset = f.tell()
+        except OSError:
+            return []
+        warnings_found = [
+            stripped
+            for line in data.splitlines()
+            if (
+                "ForkServer failed to preload module" in (stripped := line.strip())
+                or "ForkServer refusing to start" in stripped
+            )
+        ]
+        return list(dict.fromkeys(warnings_found))
+
+    def _record_ready_state(self) -> None:
+        st = os.lstat(self.socket_path)
+        self._socket_id = (st.st_dev, st.st_ino, st.st_ctime_ns)
+        if self.ready_at is None:
+            self.ready_at = time.monotonic()
+        if (
+            self.expected_cwd_dev_ino is None
+            and sys.platform.startswith("linux")
+            and self.is_alive()
+        ):
+            with suppress(OSError):
+                proc_st = os.stat(f"/proc/{self.process.pid}/cwd")
+                self.expected_cwd_dev_ino = (proc_st.st_dev, proc_st.st_ino)
 
     def wait_ready(self, timeout_s: float = 120.0) -> None:
         try:
             deadline = time.monotonic() + timeout_s
             while not os.path.exists(self.socket_path):
-                if self.process.poll() is not None:
+                if self._stopped or self.process.poll() is not None:
                     raise RuntimeError(
                         f"ForkServer exited prematurely with code {self.process.returncode}"
                     )
@@ -181,8 +422,11 @@ class ForkServerProcess:
                         f"Timed out waiting for ForkServer socket at {self.socket_path}"
                     )
                 time.sleep(0.01)
-            st = os.lstat(self.socket_path)
-            self._socket_id = (st.st_dev, st.st_ino)
+            if self._stopped or self.process.poll() is not None:
+                raise RuntimeError(
+                    f"ForkServer exited prematurely with code {self.process.returncode}"
+                )
+            self._record_ready_state()
         except BaseException as e:
             if isinstance(e, Exception):
                 logger.warning(
@@ -191,22 +435,53 @@ class ForkServerProcess:
             self.stop()
             raise
 
+    async def wait_ready_async(self, timeout_s: Optional[float] = None) -> None:
+        """Asynchronously waits until the fork server socket is published.
+
+        Unlike wait_ready(), does not call stop() on timeout or failure so callers
+        can inspect warnings or let a shared default server finish preloading.
+        """
+        if timeout_s is None:
+            timeout_s = float(
+                os.environ.get("RAY_fork_server_ready_timeout_s", "120.0")
+            )
+        deadline = time.monotonic() + timeout_s
+        while not os.path.exists(self.socket_path):
+            if self._stopped or self.process.poll() is not None:
+                raise RuntimeError(
+                    f"ForkServer exited prematurely with code {self.process.returncode}"
+                )
+            if time.monotonic() >= deadline:
+                raise TimeoutError(
+                    f"Timed out waiting for ForkServer socket at {self.socket_path}"
+                )
+            await asyncio.sleep(0.01)
+        if self._stopped or self.process.poll() is not None:
+            raise RuntimeError(
+                f"ForkServer exited prematurely with code {self.process.returncode}"
+            )
+        self._record_ready_state()
+
     def stop(self) -> None:
+        if self._stopped:
+            return
+        self._stopped = True
         if self.process.stdin is not None:
             try:
                 self.process.stdin.close()
             except OSError as e:
-                logger.debug(f"Failed to close ForkServer stdin: {e}")
+                logger.debug("Failed to close ForkServer stdin: %s", e)
+        had_socket_id = self._socket_id is not None
         if self._socket_id is not None:
             try:
                 st = os.lstat(self.socket_path)
-                if (st.st_dev, st.st_ino) == self._socket_id:
+                if (st.st_dev, st.st_ino, st.st_ctime_ns) == self._socket_id:
                     os.unlink(self.socket_path)
             except FileNotFoundError:
                 pass
             except OSError as e:
                 logger.warning(
-                    f"Failed to unlink ForkServer socket {self.socket_path}: {e}"
+                    "Failed to unlink ForkServer socket %s: %s", self.socket_path, e
                 )
             self._socket_id = None
         for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -226,8 +501,17 @@ class ForkServerProcess:
                 )
             except OSError as e:
                 logger.warning(
-                    f"Failed to stop ForkServer pid={self.process.pid} with {sig.name}: {e}"
+                    "Failed to stop ForkServer pid=%s with %s: %s",
+                    self.process.pid,
+                    sig.name,
+                    e,
                 )
+        if not had_socket_id:
+            # The process may have published socket_path before _record_ready_state()
+            # ran (e.g. crashed or required SIGKILL during startup). Safe to unlink
+            # once exited because callers complete stop() before starting replacements.
+            with suppress(OSError):
+                os.unlink(self.socket_path)
 
 
 def _preload_modules(preload_arg: str) -> None:
@@ -240,8 +524,10 @@ def _preload_modules(preload_arg: str) -> None:
     for module in modules:
         try:
             importlib.import_module(module)
-        except Exception:
-            logger.warning(f"Failed to preload module '{module}'", exc_info=True)
+        except Exception as e:
+            _emit_startup_warning(
+                f"ForkServer failed to preload module '{module}': {e}"
+            )
 
 
 def _env_int(name: str, default: int = 0) -> int:
@@ -258,6 +544,7 @@ def _prepare_child_environment(
     runtime_env_vars: Optional[Dict[str, str]] = None,
     plugin_py_dirs: Sequence[str] = (),
     cluster_py_dirs: Sequence[str] = (),
+    entrypoint_file: Optional[str] = None,
 ) -> None:
     ray._private.worker.t0 = time.time()
     runtime_env_vars = runtime_env_vars or {}
@@ -314,7 +601,10 @@ def _prepare_child_environment(
             ]
             sys.path[idx:idx] = merged_py_dirs
             importlib.invalidate_caches()
-    ray._private.utils._torch_backends_autoload_pending = "torch" in sys.modules
+    ray._private.utils._torch_backends_autoload_pending = (
+        "torch" in sys.modules
+        and os.environ.get("TORCH_DEVICE_BACKEND_AUTOLOAD") != "0"
+    )
 
     omp_threads = _env_int("OMP_NUM_THREADS")
     if omp_threads > 0:
@@ -343,20 +633,41 @@ def _prepare_child_environment(
         or k == "FUNCTION_SIZE_ERROR_THRESHOLD"
         for k in changed_keys
     ):
+        importlib.reload(common_ray_constants)
         importlib.reload(ray_constants)
-        default_worker_mod = sys.modules.get("ray._private.workers.default_worker")
-        if default_worker_mod is not None:
-            default_worker_mod.parser.set_defaults(
-                logging_level=ray_constants.LOGGER_LEVEL
+        if any(k in changed_keys for k in _DEDUP_LOG_ENV_KEYS):
+            ray_logging.RAY_DEDUP_LOGS = ray_constants.RAY_DEDUP_LOGS
+            ray_logging.RAY_DEDUP_LOGS_AGG_WINDOW_S = (
+                ray_constants.RAY_DEDUP_LOGS_AGG_WINDOW_S
             )
+            ray_logging.RAY_DEDUP_LOGS_ALLOW_REGEX = (
+                ray_constants.RAY_DEDUP_LOGS_ALLOW_REGEX
+            )
+            ray_logging.RAY_DEDUP_LOGS_SKIP_REGEX = (
+                ray_constants.RAY_DEDUP_LOGS_SKIP_REGEX
+            )
+            ray_logging.stdout_deduplicator = ray_logging.LogDeduplicator(
+                ray_constants.RAY_DEDUP_LOGS_AGG_WINDOW_S,
+                ray_constants.RAY_DEDUP_LOGS_ALLOW_REGEX,
+                ray_constants.RAY_DEDUP_LOGS_SKIP_REGEX,
+            )
+            ray_logging.stderr_deduplicator = ray_logging.LogDeduplicator(
+                ray_constants.RAY_DEDUP_LOGS_AGG_WINDOW_S,
+                ray_constants.RAY_DEDUP_LOGS_ALLOW_REGEX,
+                ray_constants.RAY_DEDUP_LOGS_SKIP_REGEX,
+            )
+            ray._private.worker.stdout_deduplicator = ray_logging.stdout_deduplicator
+            ray._private.worker.stderr_deduplicator = ray_logging.stderr_deduplicator
+        if "RAY_USE_UVLOOP" in changed_keys and not ray_constants.env_bool(
+            "RAY_USE_UVLOOP", True
+        ):
+            asyncio.set_event_loop_policy(None)
     if "RAY_allow_out_of_band_object_ref_serialization" in changed_keys:
-        serialization_mod = sys.modules.get("ray._private.serialization")
-        if serialization_mod is not None:
-            serialization_mod.ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = (
-                ray_constants.env_bool(
-                    "RAY_allow_out_of_band_object_ref_serialization", True
-                )
-            )
+        oob_allowed = ray_constants.env_bool(
+            "RAY_allow_out_of_band_object_ref_serialization", True
+        )
+        common_serialization.ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = oob_allowed
+        private_serialization.ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = oob_allowed
     tempfile_mod = sys.modules.get("tempfile")
     if tempfile_mod is not None and changed_keys & {"TMPDIR", "TEMP", "TMP"}:
         tempfile_mod.tempdir = None
@@ -401,7 +712,7 @@ def _prepare_child_environment(
         if mod is not None and hasattr(mod, "seed"):
             mod.seed()
 
-    sys.argv = [sys.argv[0], *child_args]
+    sys.argv = [entrypoint_file or sys.argv[0], *child_args]
 
 
 def _handle_forked_child(
@@ -411,6 +722,7 @@ def _handle_forked_child(
     saved_pre_fork_env: Mapping[str, Optional[str]],
     plugin_py_dirs: Sequence[str],
     cluster_py_dirs: Sequence[str],
+    entrypoint_file: Optional[str] = None,
 ) -> None:
     """Reads the fork request in the child, prepares its env, and replies with its PID.
 
@@ -472,6 +784,7 @@ def _handle_forked_child(
             runtime_env_vars,
             plugin_py_dirs=plugin_py_dirs,
             cluster_py_dirs=cluster_py_dirs,
+            entrypoint_file=entrypoint_file,
         )
 
         life_r, _worker_lifetime_pipe_w = os.pipe()
@@ -495,7 +808,10 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     parser = argparse.ArgumentParser(description="Ray Python worker fork server")
     parser.add_argument("--socket-path", required=True, type=str)
     parser.add_argument("--preload-modules", default="", type=str)
+    parser.add_argument("--logs-dir", default=None, type=str)
     parser.add_argument("--cluster-pythonpath", default=None, type=str)
+    parser.add_argument("--worker-stdout-fd", default=None, type=int)
+    parser.add_argument("--worker-stderr-fd", default=None, type=int)
     parser.add_argument("--monitor-stdin", action="store_true")
     args = parser.parse_args(argv)
 
@@ -529,15 +845,54 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         finally:
             os.close(devnull_fd)
 
+    for passed_fd in (args.worker_stdout_fd, args.worker_stderr_fd):
+        if passed_fd is not None and passed_fd > 2:
+            with suppress(OSError):
+                os.set_inheritable(passed_fd, False)
+
+    passed_stdio_fds = {
+        fd for fd in (args.worker_stdout_fd, args.worker_stderr_fd) if fd is not None
+    }
+
+    def _close_unredirected_stdio_fds() -> None:
+        for fd in list(passed_stdio_fds):
+            if fd > 2:
+                with suppress(OSError):
+                    os.close(fd)
+        passed_stdio_fds.clear()
+
+    def _refuse_startup(msg: str, cause: Optional[BaseException] = None) -> None:
+        _emit_startup_warning(msg)
+        _close_unredirected_stdio_fds()
+        if lifeline_fd is not None:
+            with suppress(OSError):
+                os.close(lifeline_fd)
+        if cause is not None:
+            raise SystemExit(1) from cause
+        raise SystemExit(1)
+
+    try:
+        socket_path = _validate_socket_path(args.socket_path)
+    except OSError as e:
+        _refuse_startup(f"ForkServer refusing to start: {e}", cause=e)
+
     _register_lifetime_pipe_at_fork_once()
 
-    # Keep library imports single-threaded before fork().
-    saved_pre_fork_env = {k: os.environ.get(k) for k in _PRE_FORK_ENV_OVERRIDES}
+    # Keep library imports single-threaded before fork(). Preserve any explicit
+    # exec-bound jemalloc config via setdefault() instead of overwriting it.
+    saved_pre_fork_env = {
+        k: os.environ.get(k)
+        for k in (*_PRE_FORK_ENV_OVERRIDES, *_PRE_FORK_ENV_DEFAULTS)
+    }
     os.environ.update(_PRE_FORK_ENV_OVERRIDES)
+    for key, default_val in _PRE_FORK_ENV_DEFAULTS.items():
+        os.environ.setdefault(key, default_val)
 
     import ray._common.usage.usage_lib as _usage_lib  # noqa: F401
+    import ray._private.accelerators as _accelerators  # noqa: F401
     import ray._private.workers.default_worker as default_worker
 
+    try_install_uvloop()
     try:
         ray._private.worker.global_worker.get_serialization_context()
     except Exception:
@@ -547,19 +902,21 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         )
     _preload_modules(args.preload_modules)
     ray._private.utils.cache_native_thread_pool_setters()
-    ray._private.utils._cached_torch_backend_eps = list(
-        importlib.metadata.entry_points(group="torch.backends")
-    )
+    if "torch" in sys.modules:
+        ray._private.utils._cached_torch_backend_eps = list(
+            importlib.metadata.entry_points(group="torch.backends")
+        )
     if getattr(sys.modules.get("torch.cuda"), "_initialized", False):
-        raise RuntimeError(
-            "Preloaded module initialized CUDA before fork(); refusing to start ForkServer"
+        _refuse_startup(
+            "ForkServer refusing to start because a preloaded module initialized "
+            "CUDA before fork(); falling back to spawning workers via execvpe."
         )
     if sys.platform.startswith("linux"):
         with suppress(OSError):
             if len(os.listdir("/proc/self/task")) > 1:
-                raise RuntimeError(
-                    "Preloaded module started background threads before fork(); "
-                    "refusing to start ForkServer"
+                _refuse_startup(
+                    "ForkServer refusing to start because a preloaded module started "
+                    "background threads before fork(); falling back to execvpe."
                 )
 
     # Ignore SIGCHLD after preloading so preloaded modules calling subprocesses
@@ -569,10 +926,12 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     gc.collect()
     gc.freeze()
 
-    socket_path = os.path.abspath(args.socket_path)
-    ray._private.utils.validate_socket_filepath(socket_path)
     socket_dir = os.path.dirname(socket_path)
     os.makedirs(socket_dir, exist_ok=True)
+    if os.path.isdir(socket_path) and not os.path.islink(socket_path):
+        _refuse_startup(
+            f"ForkServer refusing to start: socket path is a directory: {socket_path}"
+        )
     server_pid = os.getpid()
     tmp_name = f".f{server_pid}"
     tmp_socket_path = os.path.join(socket_dir, tmp_name)
@@ -582,7 +941,7 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
     peer_poller = select.poll()
     wakeup_r: Optional[int] = None
     wakeup_w: Optional[int] = None
-    published_stat: Optional[Tuple[int, int]] = None
+    published_stat: Optional[Tuple[int, int, int]] = None
     stop_requested = False
 
     def _handle_sigterm(_signum, _frame):
@@ -590,24 +949,45 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
         stop_requested = True
 
     try:
-        wakeup_r, wakeup_w = os.pipe()
-        os.set_blocking(wakeup_r, False)
-        os.set_blocking(wakeup_w, False)
-        signal.set_wakeup_fd(wakeup_w, warn_on_full_buffer=False)
-        signal.signal(signal.SIGTERM, _handle_sigterm)
+        try:
+            wakeup_r, wakeup_w = os.pipe()
+            os.set_blocking(wakeup_r, False)
+            os.set_blocking(wakeup_w, False)
+            signal.set_wakeup_fd(wakeup_w, warn_on_full_buffer=False)
+            signal.signal(signal.SIGTERM, _handle_sigterm)
 
-        _bind_staging_socket(server_sock, socket_dir, tmp_name, tmp_socket_path)
-        os.chmod(tmp_socket_path, 0o600)
-        tmp_stat = os.lstat(tmp_socket_path)
-        server_sock.listen(128)
-        server_sock.setblocking(False)
-        if stop_requested:
-            return None
-        if lifeline_fd is not None and _is_lifeline_closed(lifeline_fd):
-            return None
+            _bind_staging_socket(server_sock, socket_dir, tmp_name, tmp_socket_path)
+            os.chmod(tmp_socket_path, 0o600)
+            server_sock.listen(128)
+            server_sock.setblocking(False)
+            if stop_requested:
+                return None
+            if lifeline_fd is not None and _is_lifeline_closed(lifeline_fd):
+                return None
 
-        os.replace(tmp_socket_path, socket_path)
-        published_stat = (tmp_stat.st_dev, tmp_stat.st_ino)
+            _redirect_post_preload_stdio(
+                args.logs_dir, args.worker_stdout_fd, args.worker_stderr_fd
+            )
+            if args.worker_stdout_fd is not None and args.worker_stderr_fd is not None:
+                passed_stdio_fds.clear()
+            else:
+                _close_unredirected_stdio_fds()
+
+            os.replace(tmp_socket_path, socket_path)
+            with suppress(OSError):
+                pub_stat = os.lstat(socket_path)
+                published_stat = (
+                    pub_stat.st_dev,
+                    pub_stat.st_ino,
+                    pub_stat.st_ctime_ns,
+                )
+        except Exception as e:
+            _emit_startup_warning(
+                f"ForkServer refusing to start because socket setup failed for "
+                f"{socket_path!r}: {e}"
+            )
+            traceback.print_exc(file=sys.stderr)
+            raise SystemExit(1) from e
 
         sys.stdout.flush()
         sys.stderr.flush()
@@ -680,10 +1060,12 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
                 saved_pre_fork_env=saved_pre_fork_env,
                 plugin_py_dirs=plugin_py_dirs,
                 cluster_py_dirs=cluster_py_dirs,
+                entrypoint_file=default_worker.__file__,
             )
             return default_worker
     finally:
         if os.getpid() == server_pid:
+            _close_unredirected_stdio_fds()
             with suppress(ValueError, OSError):
                 signal.set_wakeup_fd(-1)
             with suppress(OSError):
@@ -697,7 +1079,11 @@ def _run_fork_server(argv: Optional[List[str]] = None) -> Optional[ModuleType]:
             if published_stat is not None:
                 with suppress(OSError):
                     cur_stat = os.lstat(socket_path)
-                    if (cur_stat.st_dev, cur_stat.st_ino) == published_stat:
+                    if (
+                        cur_stat.st_dev,
+                        cur_stat.st_ino,
+                        cur_stat.st_ctime_ns,
+                    ) == published_stat:
                         os.unlink(socket_path)
 
     return None

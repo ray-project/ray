@@ -43,6 +43,8 @@ class NoopCgroupManager : public CgroupManagerInterface {
 
   std::string GetUserCgroupPath() const override { return ""; }
 
+  std::string GetWorkersCgroupPath() const override { return ""; }
+
   StatusOr<std::string> GetSystemCgroupConstraintValue(
       const std::string &constraint_name) const override {
     return std::string{};

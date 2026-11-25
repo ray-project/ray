@@ -1260,7 +1260,8 @@ void WorkerPool::HandleJobStarted(const JobID &job_id, const rpc::JobConfig &job
             RAY_LOG(WARNING) << "[Eagerly] Couldn't create a runtime environment for job "
                              << job_id << ". Error message: " << setup_error_message;
           }
-        });
+        },
+        /*source_process=*/"raylet_eager_install");
   }
 }
 
@@ -1273,7 +1274,8 @@ void WorkerPool::HandleJobFinished(const JobID &job_id) {
   // Check eager install here because we only add URI reference when runtime
   // env install really happens.
   if (NeedToEagerInstallRuntimeEnv(*job_config)) {
-    DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env());
+    DeleteRuntimeEnvIfPossible(job_config->runtime_env_info().serialized_runtime_env(),
+                               /*source_process=*/"raylet_eager_install");
   }
   finished_jobs_.insert(job_id);
 }
@@ -2354,7 +2356,8 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                                        const rpc::RuntimeEnvConfig &runtime_env_config,
                                        const JobID &job_id,
-                                       const GetOrCreateRuntimeEnvCallback &callback) {
+                                       const GetOrCreateRuntimeEnvCallback &callback,
+                                       const std::string &source_process) {
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
   runtime_env_agent_client_->GetOrCreateRuntimeEnv(
@@ -2376,19 +2379,23 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                    /*serialized_runtime_env_context=*/"",
                    /*setup_error_message=*/setup_error_message);
         }
-      });
+      },
+      source_process);
 }
 
-void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
+void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                            const std::string &source_process) {
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
-        serialized_runtime_env, [serialized_runtime_env](bool successful) {
+        serialized_runtime_env,
+        [serialized_runtime_env](bool successful) {
           if (!successful) {
             RAY_LOG(ERROR) << "Delete runtime env failed";
             RAY_LOG(DEBUG) << "Runtime env: " << serialized_runtime_env;
           }
-        });
+        },
+        source_process);
   }
 }
 

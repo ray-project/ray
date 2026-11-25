@@ -124,6 +124,11 @@ class CgroupManager : public CgroupManagerInterface {
   std::string GetUserCgroupPath() const override;
 
   /**
+    @return the path to the workers leaf cgroup under the user cgroup.
+  */
+  std::string GetWorkersCgroupPath() const override;
+
+  /**
     Gets the constraint value within the system cgroup for a given constraint name.
 
     @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").

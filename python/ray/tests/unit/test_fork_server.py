@@ -439,5 +439,64 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
         sigterm_server.stop()
 
 
+def test_fork_server_stdio_plumbing_and_startup_warnings(tmp_path):
+    """Preload warnings go to setup_log_path; forked workers use worker_stdout/err FDs."""
+    probe_code = """
+import os, sys
+import ray._private.workers.default_worker as default_worker
+
+def _emit_and_exit():
+    print(f"OUT:{os.path.basename(sys.argv[0])}", flush=True)
+    print("ERR:worker_stderr", file=sys.stderr, flush=True)
+    os._exit(0)
+
+default_worker.initialize_default_worker = _emit_and_exit
+"""
+    (tmp_path / "stdio_probe.py").write_text(probe_code)
+    setup_log = tmp_path / "logs" / "fork_server_test.log"
+    out_file = tmp_path / "container.out"
+    err_file = tmp_path / "container.err"
+
+    out_fd = os.open(str(out_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    err_fd = os.open(str(err_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    ctx = RuntimeEnvContext(
+        env_vars={"PYTHONPATH": f"{tmp_path}{os.pathsep}${{PYTHONPATH}}"}
+    )
+    server = None
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="rfs_") as sock_dir:
+        sock_path = os.path.join(sock_dir, "fs_stdio")
+        try:
+            server = ForkServerProcess(
+                sock_path,
+                preload_modules=["stdio_probe", "nonexistent_preload_xyz_42"],
+                context=ctx,
+                logs_dir=str(tmp_path / "logs"),
+                setup_log_path=str(setup_log),
+                worker_stdout_fd=out_fd,
+                worker_stderr_fd=err_fd,
+            )
+            warnings = server.read_startup_warnings()
+            assert any("nonexistent_preload_xyz_42" in w for w in warnings)
+            assert server.read_startup_warnings() == []
+
+            msg, fds = _request(
+                sock_path, b'{"args":[],"env":{},"runtime_env_vars":{}}\n'
+            )
+            assert json.loads(msg)["pid"] > 0
+            assert len(fds) == 1
+            try:
+                assert _wait_pipe_eof(fds[0], timeout_s=5.0)
+            finally:
+                os.close(fds[0])
+
+            assert "OUT:default_worker.py" in out_file.read_text()
+            assert "ERR:worker_stderr" in err_file.read_text()
+        finally:
+            if server is not None:
+                server.stop()
+            os.close(out_fd)
+            os.close(err_fd)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

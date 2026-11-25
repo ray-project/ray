@@ -18,18 +18,26 @@
 #include <boost/bind/bind.hpp>
 #include <cctype>
 #include <cerrno>
+#include <chrono>
 #include <csignal>
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <iterator>
 #include <memory>
 #include <optional>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
+#ifdef __linux__
+#include <unistd.h>
+#endif
+
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_replace.h"
 #include "ray/asio/asio_util.h"
@@ -3073,6 +3081,71 @@ void NodeManager::HandleGetAgentPIDs(rpc::GetAgentPIDsRequest request,
   send_reply_callback(Status::OK(), /* success */ nullptr, /* failure */ nullptr);
 }
 
+#ifdef __linux__
+namespace {
+
+std::vector<pid_t> FindForkServerPidsInCgroup(const std::string &procs_path) {
+  std::ifstream procs_file(procs_path);
+  if (!procs_file.is_open()) {
+    return {};
+  }
+  std::vector<pid_t> fs_pids;
+  pid_t cgroup_pid = 0;
+  while (procs_file >> cgroup_pid) {
+    if (cgroup_pid <= 0) {
+      continue;
+    }
+    std::ifstream cmd_file(absl::StrCat("/proc/", cgroup_pid, "/cmdline"),
+                           std::ios::binary);
+    if (!cmd_file.is_open()) {
+      continue;
+    }
+    std::string cmdline((std::istreambuf_iterator<char>(cmd_file)),
+                        std::istreambuf_iterator<char>());
+    if (cmdline.find("fork_server.py") != std::string::npos) {
+      fs_pids.push_back(cgroup_pid);
+    }
+  }
+  return fs_pids;
+}
+
+// Wait briefly for fork_server.py processes in workers_cgroup to observe lifeline EOF
+// and exit so cgroup teardown never races with a shutting-down fork server.
+void DrainForkServersInCgroup(const std::string &workers_cgroup_path) {
+  if (workers_cgroup_path.empty()) {
+    return;
+  }
+  const std::string procs_path = absl::StrCat(workers_cgroup_path, "/cgroup.procs");
+  const auto grace_deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(200);
+  bool sent_sigkill = false;
+  auto kill_deadline = grace_deadline;
+  while (true) {
+    const std::vector<pid_t> fs_pids = FindForkServerPidsInCgroup(procs_path);
+    if (fs_pids.empty()) {
+      return;
+    }
+    const auto now = std::chrono::steady_clock::now();
+    if (!sent_sigkill && now >= grace_deadline) {
+      for (pid_t fs_pid : fs_pids) {
+        if (getpgid(fs_pid) == fs_pid) {
+          kill(-fs_pid, SIGKILL);
+        } else {
+          kill(fs_pid, SIGKILL);
+        }
+      }
+      sent_sigkill = true;
+      kill_deadline = now + std::chrono::milliseconds(50);
+    } else if (sent_sigkill && now >= kill_deadline) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+}
+
+}  // namespace
+#endif
+
 void NodeManager::Stop() {
   store_client_->Disconnect();
 #if !defined(_WIN32)
@@ -3097,6 +3170,11 @@ void NodeManager::Stop() {
   object_manager_.Stop();
   dashboard_agent_manager_.reset();
   runtime_env_agent_manager_.reset();
+#ifdef __linux__
+  if (RayConfig::instance().enable_worker_fork_server() && cgroup_manager_ != nullptr) {
+    DrainForkServersInCgroup(cgroup_manager_->GetWorkersCgroupPath());
+  }
+#endif
   acceptor_.close();
 }
 
@@ -3683,6 +3761,14 @@ std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
       arg.replace(node_manager_port_position,
                   strlen(kNodeManagerPortPlaceholder),
                   std::to_string(GetServerPort()));
+    }
+  }
+
+  if (config.enable_resource_isolation && cgroup_manager_ != nullptr) {
+    const std::string workers_cgroup_path = cgroup_manager_->GetWorkersCgroupPath();
+    if (!workers_cgroup_path.empty()) {
+      agent_command_line.push_back(
+          absl::StrCat("--workers-cgroup-path=", workers_cgroup_path));
     }
   }
 

@@ -672,10 +672,12 @@ class WorkerPool : public WorkerPoolInterface {
   void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const JobID &job_id,
-                             const GetOrCreateRuntimeEnvCallback &callback);
+                             const GetOrCreateRuntimeEnvCallback &callback,
+                             const std::string &source_process = "raylet");
 
   /// Delete runtime env asynchronously by runtime env agent.
-  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  const std::string &source_process = "raylet");
 
   const ProcessInterface &AddWorkerProcess(
       State &state,

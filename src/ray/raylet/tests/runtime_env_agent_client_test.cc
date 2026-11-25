@@ -239,6 +239,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
         ASSERT_EQ(req.job_id(), "7b000000");  // Hex 7B == Int 123
         ASSERT_EQ(req.runtime_env_config().setup_timeout_seconds(), 12);
         ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(req.source_process(), "raylet");
         ASSERT_EQ(request.find(http::field::authorization), request.end());
 
         rpc::GetOrCreateRuntimeEnvReply reply;
@@ -278,7 +279,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+      job_id, serialized_runtime_env, runtime_env_config, callback, "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -332,7 +333,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+      job_id, serialized_runtime_env, runtime_env_config, callback, "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -391,7 +392,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+      job_id, serialized_runtime_env, runtime_env_config, callback, "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -453,7 +454,7 @@ TEST(RuntimeEnvAgentClientTest, AttachesAuthHeaderWhenEnabled) {
   };
 
   client->GetOrCreateRuntimeEnv(
-      job_id, serialized_runtime_env, runtime_env_config, callback);
+      job_id, serialized_runtime_env, runtime_env_config, callback, "raylet");
 
   ioc.run();
 
@@ -502,7 +503,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -546,7 +547,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -595,7 +596,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
     called_times += 1;
   };
 
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -699,7 +700,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
   };
 
   for (int i = 0; i < 100; ++i) {
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback, "raylet");
   }
 
   ioc.run();
@@ -728,16 +729,18 @@ TEST(RuntimeEnvAgentClientTest, FailsRequestInsteadOfExitingRaylet) {
                                             /*agent_manager_retry_interval_ms=*/1);
 
   size_t called_times = 0;
-  client->GetOrCreateRuntimeEnv(JobID::FromInt(123),
-                                "serialized_runtime_env",
-                                ray::rpc::RuntimeEnvConfig(),
-                                [&](bool successful,
-                                    const std::string &serialized_runtime_env_context,
-                                    const std::string &setup_error_message) {
-                                  ASSERT_FALSE(successful);
-                                  ASSERT_FALSE(setup_error_message.empty());
-                                  called_times += 1;
-                                });
+  client->GetOrCreateRuntimeEnv(
+      JobID::FromInt(123),
+      "serialized_runtime_env",
+      ray::rpc::RuntimeEnvConfig(),
+      [&](bool successful,
+          const std::string &serialized_runtime_env_context,
+          const std::string &setup_error_message) {
+        ASSERT_FALSE(successful);
+        ASSERT_FALSE(setup_error_message.empty());
+        called_times += 1;
+      },
+      "raylet");
 
   ioc.run();
   ASSERT_EQ(called_times, 1);
@@ -783,13 +786,16 @@ TEST(RuntimeEnvAgentClientTest, ReusesConnectionForSequentialRequests) {
   int succeeded = 0;
   std::function<void()> issue_one;
   issue_one = [&]() {
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
-      ASSERT_TRUE(successful);
-      succeeded += 1;
-      if (succeeded < kRequests) {
-        issue_one();
-      }
-    });
+    client->DeleteRuntimeEnvIfPossible(
+        "serialized_runtime_env",
+        [&](bool successful) {
+          ASSERT_TRUE(successful);
+          succeeded += 1;
+          if (succeeded < kRequests) {
+            issue_one();
+          }
+        },
+        "raylet");
   };
   issue_one();
 
@@ -817,13 +823,16 @@ TEST(RuntimeEnvAgentClientTest, OpensNewConnectionWhenServerSaysClose) {
   int succeeded = 0;
   std::function<void()> issue_one;
   issue_one = [&]() {
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
-      ASSERT_TRUE(successful);
-      succeeded += 1;
-      if (succeeded < kRequests) {
-        issue_one();
-      }
-    });
+    client->DeleteRuntimeEnvIfPossible(
+        "serialized_runtime_env",
+        [&](bool successful) {
+          ASSERT_TRUE(successful);
+          succeeded += 1;
+          if (succeeded < kRequests) {
+            issue_one();
+          }
+        },
+        "raylet");
   };
   issue_one();
 
@@ -855,15 +864,21 @@ TEST(RuntimeEnvAgentClientTest, RetriesOnConnectionClosedWhileIdle) {
   auto client = MakeClient(ioc, port);
 
   int succeeded = 0;
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
-    ASSERT_TRUE(successful);
-    succeeded += 1;
-    first_connection_closed.get_future().wait();
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful2) {
-      ASSERT_TRUE(successful2);
-      succeeded += 1;
-    });
-  });
+  client->DeleteRuntimeEnvIfPossible(
+      "serialized_runtime_env",
+      [&](bool successful) {
+        ASSERT_TRUE(successful);
+        succeeded += 1;
+        first_connection_closed.get_future().wait();
+        client->DeleteRuntimeEnvIfPossible(
+            "serialized_runtime_env",
+            [&](bool successful2) {
+              ASSERT_TRUE(successful2);
+              succeeded += 1;
+            },
+            "raylet");
+      },
+      "raylet");
 
   ioc.run();
   EXPECT_EQ(succeeded, 2);
@@ -887,14 +902,20 @@ TEST(RuntimeEnvAgentClientTest, ReusesConnectionAfterNonOkStatus) {
   auto client = MakeClient(ioc, port);
 
   int failed = 0;
-  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
-    ASSERT_FALSE(successful);
-    failed += 1;
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful2) {
-      ASSERT_FALSE(successful2);
-      failed += 1;
-    });
-  });
+  client->DeleteRuntimeEnvIfPossible(
+      "serialized_runtime_env",
+      [&](bool successful) {
+        ASSERT_FALSE(successful);
+        failed += 1;
+        client->DeleteRuntimeEnvIfPossible(
+            "serialized_runtime_env",
+            [&](bool successful2) {
+              ASSERT_FALSE(successful2);
+              failed += 1;
+            },
+            "raylet");
+      },
+      "raylet");
 
   ioc.run();
   EXPECT_EQ(failed, 2);
@@ -913,10 +934,13 @@ TEST(RuntimeEnvAgentClientTest, BoundsConnectionsUnderLoad) {
   constexpr int kRequests = 100;
   std::atomic<int> succeeded = 0;
   for (int i = 0; i < kRequests; ++i) {
-    client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", [&](bool successful) {
-      ASSERT_TRUE(successful);
-      succeeded += 1;
-    });
+    client->DeleteRuntimeEnvIfPossible(
+        "serialized_runtime_env",
+        [&](bool successful) {
+          ASSERT_TRUE(successful);
+          succeeded += 1;
+        },
+        "raylet");
   }
 
   ioc.run();
