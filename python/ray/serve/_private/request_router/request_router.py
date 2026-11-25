@@ -768,6 +768,27 @@ class RequestRouter(ABC):
         """
         return len(self._pending_requests_to_fulfill)
 
+    def has_queue_pressure(self) -> bool:
+        """Whether requests are waiting on this router, not just being routed.
+
+        True if a routing task is in backoff (no replica had a free slot) or a
+        request is waiting for a routing task to pick it up. A request in the
+        moments of being assigned to a replica, with nothing behind it, is in
+        neither. Used by the busy clock behind the `queue_drain_rate`
+        Retry-After policy.
+
+        Cancelled or fulfilled requests can stay in
+        `_pending_requests_to_route` until a routing task pops them, so they
+        are popped from the front here the same way; each entry is popped at
+        most once.
+        """
+        if self.num_routing_tasks_in_backoff > 0:
+            return True
+        pending_requests_to_route = self._pending_requests_to_route
+        while pending_requests_to_route and pending_requests_to_route[0].future.done():
+            pending_requests_to_route.popleft()
+        return len(pending_requests_to_route) > 0
+
     @property
     def curr_num_routing_tasks(self) -> int:
         """Current number of routing tasks running."""

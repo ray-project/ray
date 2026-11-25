@@ -1,12 +1,11 @@
 import asyncio
 import concurrent.futures
 import json
-import logging
 import random
 import sys
 import threading
 from collections import defaultdict
-from contextlib import asynccontextmanager, contextmanager
+from contextlib import asynccontextmanager
 from dataclasses import replace
 from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
@@ -38,7 +37,6 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
-    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.replica import Replica as ServeReplica
 from ray.serve._private.replica_result import ReplicaResult, gRPCReplicaResult
@@ -56,7 +54,13 @@ from ray.serve._private.router import (
     RouterMetricsManager,
     SingletonThreadRouter,
 )
-from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
+from ray.serve._private.test_utils import (
+    FakeClock,
+    FakeCounter,
+    FakeGauge,
+    MockTimer,
+    capture_serve_log_records,
+)
 from ray.serve._private.utils import (
     Semaphore,
     decompress_metric_report,
@@ -276,6 +280,10 @@ class FakeRequestRouter(RequestRouter):
             Tuple[PendingRequest, ReplicaID, Optional[ReplicaResult]]
         ] = []
         self.completed_requests: List[Tuple[ReplicaID, str]] = []
+        self.queue_pressure = False
+
+    def has_queue_pressure(self) -> bool:
+        return self.queue_pressure
 
     def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
         return FakeReplica(replica_info)
@@ -389,7 +397,9 @@ async def setup_router(request) -> Tuple[AsyncioRouter, FakeRequestRouter]:
         deployment_id=DeploymentID(name="test-deployment"),
         handle_id="test-handle-id",
         self_actor_id="test-node-id",
-        handle_source=DeploymentHandleSource.UNKNOWN,
+        handle_source=request.param.get(
+            "handle_source", DeploymentHandleSource.UNKNOWN
+        ),
         event_loop=get_or_create_event_loop(),
         enable_strict_max_ongoing_requests=request.param.get(
             "enable_strict_max_ongoing_requests", False
@@ -3503,36 +3513,10 @@ class TestCustomRequestRouterAPIs:
         await r._backoff(0)
 
 
-@contextmanager
-def capture_serve_log_records():
-    """Collect records emitted on the Serve logger, whatever its config."""
-    records: List[logging.LogRecord] = []
-
-    class _Handler(logging.Handler):
-        def emit(self, record):
-            records.append(record)
-
-    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
-    handler = _Handler()
-    serve_logger.addHandler(handler)
-    try:
-        yield records
-    finally:
-        serve_logger.removeHandler(handler)
-
-
 def _fake_replica(name: str = "test-replica-1", **kwargs) -> FakeReplica:
     return FakeReplica(
         ReplicaID(unique_id=name, deployment_id=DeploymentID(name="test")), **kwargs
     )
-
-
-class _FakeClock:
-    def __init__(self):
-        self.now_s = 0.0
-
-    def __call__(self) -> float:
-        return self.now_s
 
 
 @pytest.mark.asyncio
@@ -3660,7 +3644,7 @@ class TestRouterDrainCounter:
             internal_request_id="rejected-internal-request-id",
         )
         with patch(
-            "ray.serve._private.router.log_backpressure_rejection"
+            "ray.serve._private.backpressure.log_backpressure_rejection"
         ) as log, patch(
             "ray.serve._private.backpressure.random.random", return_value=0.5
         ):
@@ -3744,7 +3728,7 @@ class TestRouterDrainCounter:
         )
         metrics_manager = router._metrics_manager
         # Drive the estimator with a fake clock: 2 assignments in 1s.
-        clock = _FakeClock()
+        clock = FakeClock()
         estimator = DrainRateEstimator(warmup_samples=1, clock=clock)
         metrics_manager._drain_rate_tracker._estimator = estimator
         estimator.sample(has_pending_work=True)
@@ -3771,7 +3755,7 @@ class TestRouterDrainCounter:
     ):
         """Queued work that never gets assigned is a real stall: the computed
         value grows with the busy time, and the static fallback isn't used."""
-        router, _ = setup_router
+        router, fake_request_router = setup_router
         router.update_deployment_config(
             DeploymentConfig(
                 max_queued_requests=1,
@@ -3781,12 +3765,14 @@ class TestRouterDrainCounter:
             )
         )
         metrics_manager = router._metrics_manager
-        clock = _FakeClock()
+        clock = FakeClock()
         estimator = DrainRateEstimator(warmup_samples=3, clock=clock)
         tracker = metrics_manager._drain_rate_tracker
         tracker._estimator = estimator
 
+        # A request waiting on the request router fills the queue.
         metrics_manager.inc_num_queued_requests()
+        fake_request_router.queue_pressure = True
         tracker._sample()
         for _ in range(3):
             clock.now_s += 1
@@ -3809,14 +3795,25 @@ class TestRouterDrainCounter:
         assert decision.pre_jitter_s == 4
         assert error.retry_after_s == 4
 
-    async def test_pending_work_is_the_router_queue_only(
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {"handle_source": DeploymentHandleSource.PROXY},
+            {"handle_source": DeploymentHandleSource.REPLICA},
+            {"handle_source": DeploymentHandleSource.UNKNOWN},
+        ],
+        indirect=True,
+    )
+    async def test_busy_signal_is_request_router_pressure(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
-        """The router counts an interval as busy only while its own queue has
-        requests: requests already running on replicas can't be drained by
-        it any further, and an assignment alone doesn't make it busy."""
+        """Proxy and handle routers alike count an interval as busy only while
+        requests wait on the request router (`has_queue_pressure`). A request
+        that is only being routed is in `num_queued_requests` but isn't
+        waiting, and an assignment alone doesn't make an interval busy."""
         router, fake_request_router = setup_router
-        fake_request_router.set_replica_to_return(_fake_replica())
+        fake_replica = _fake_replica()
+        fake_request_router.set_replica_to_return(fake_replica)
         router.update_deployment_config(
             DeploymentConfig(
                 backpressure_config=BackpressureConfig(
@@ -3825,31 +3822,64 @@ class TestRouterDrainCounter:
             )
         )
         metrics_manager = router._metrics_manager
-        clock = _FakeClock()
+        clock = FakeClock()
         estimator = DrainRateEstimator(warmup_samples=1, clock=clock)
         tracker = metrics_manager._drain_rate_tracker
         tracker._estimator = estimator
         tracker._sample()
 
-        # A request assigned and running on a replica, nothing queued: the
-        # assignment counts as a drain but the interval isn't busy.
-        await router.assign_request(dummy_request_metadata())
+        # A request in the middle of being routed: counted in
+        # `num_queued_requests`, but nothing waits behind it.
+        fake_request_router.set_should_block_requests(True)
+        assign = asyncio.create_task(router.assign_request(dummy_request_metadata()))
+        await async_wait_for_condition(
+            lambda: len(fake_request_router._blocked_requests) == 1
+        )
+        assert metrics_manager.num_queued_requests == 1
+        clock.now_s += 1
+        tracker._sample()
+        assert estimator.num_samples == 0
+
+        # The assignment counts as a drain, but the interval isn't busy.
+        fake_request_router.unblock_requests(1)
+        await assign
         clock.now_s += 1
         tracker._sample()
         assert metrics_manager._get_drain_counter() == 1
         assert estimator.num_samples == 0
         assert estimator.busy_clock_s == 0
-        clock.now_s += 1
-        tracker._sample()
-        assert estimator.num_samples == 0
 
-        # Something queued: busy, even with no assignment in the interval.
-        metrics_manager.inc_num_queued_requests()
+        # Requests waiting on the request router: busy, even with nothing
+        # in `num_queued_requests` and no assignment in the interval.
+        fake_request_router.queue_pressure = True
         clock.now_s += 1
         tracker._sample()
         assert estimator.num_samples == 1
         assert estimator.busy_clock_s == 1
         assert estimator.drains_in_window == 0
+
+    async def test_busy_signal_reads_the_current_request_router(
+        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
+    ):
+        """The signal reads whichever request router is current, and is
+        False without lazy-loading one before it exists."""
+        router, fake_request_router = setup_router
+        tracker = router._metrics_manager._drain_rate_tracker
+        assert not tracker._has_pending_work()
+
+        fake_request_router.queue_pressure = True
+        assert tracker._has_pending_work()
+
+        replacement = FakeRequestRouter(use_queue_len_cache=False)
+        router._request_router = replacement
+        assert not tracker._has_pending_work()
+        replacement.queue_pressure = True
+        assert tracker._has_pending_work()
+
+        router._request_router = None
+        router._request_router_class = None
+        assert not tracker._has_pending_work()
+        assert router._request_router is None
 
     async def test_ground_truth_reached_after_depth_assignments(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
@@ -3942,6 +3972,15 @@ class TestRouterDrainCounter:
         router.update_deployment_config(DeploymentConfig())
         assert not tracker.sampling
         assert pusher.stop_event.is_set()
+
+        # Restarted under the computed policy, then stopped by shutdown.
+        router.update_deployment_config(computed)
+        assert tracker.sampling
+        restarted_pusher = tracker._metrics_pusher
+        assert restarted_pusher is not pusher
+        await router.shutdown()
+        assert not tracker.sampling
+        assert restarted_pusher.stop_event.is_set()
 
 
 if __name__ == "__main__":

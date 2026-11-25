@@ -38,7 +38,7 @@ from ray.exceptions import (
 from ray.serve._private import autoscaling_metrics_codec
 from ray.serve._private.backpressure import (
     DrainRateTracker,
-    log_backpressure_rejection,
+    reject_for_backpressure,
 )
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -97,7 +97,6 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import (
-    BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
     ReplicaUnavailableError,
@@ -125,6 +124,7 @@ class RouterMetricsManager:
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
         event_loop: asyncio.AbstractEventLoop,
+        has_queue_pressure: Optional[Callable[[], bool]] = None,
     ):
         self._handle_id = handle_id
         self._deployment_id = deployment_id
@@ -196,11 +196,13 @@ class RouterMetricsManager:
 
         # Counts requests handed off to a replica (each one drains this
         # router's queue) and estimates the drain rate for the
-        # `queue_drain_rate` Retry-After policy. Only the queue counts as
-        # pending work: requests already running on replicas can't drain it
+        # `queue_drain_rate` Retry-After policy. Pending work is
+        # `has_queue_pressure`: requests waiting on the request router, not
+        # `num_queued_requests`, which also counts requests that are only
+        # being routed. Requests already running on replicas can't drain it
         # further. All accesses happen on the router's event loop.
         self._drain_rate_tracker = DrainRateTracker(
-            has_pending_work=lambda: self.num_queued_requests > 0
+            has_pending_work=has_queue_pressure or (lambda: False)
         )
 
         # Regularly aggregate and push autoscaling metrics to controller
@@ -267,20 +269,14 @@ class RouterMetricsManager:
             backpressure_config = deployment_config.backpressure_config
             # Use the depth observed here, not the configured cap: it can be
             # above the cap when replica-rejected requests re-enter the queue.
-            num_queued_requests = self.num_queued_requests
-            decision = self._drain_rate_tracker.decide(
+            _, error = reject_for_backpressure(
+                self._drain_rate_tracker,
                 backpressure_config,
-                observed_queue_depth=num_queued_requests,
+                num_queued_requests=self.num_queued_requests,
+                max_queued_requests=max_queued_requests,
                 request_id=request_meta.request_id,
             )
-            e = BackPressureError(
-                num_queued_requests=num_queued_requests,
-                max_queued_requests=max_queued_requests,
-                status_code=backpressure_config.status_code,
-                retry_after_s=decision.post_jitter_s,
-            )
-            log_backpressure_rejection(e.message, decision)
-            raise e
+            raise error
 
         self.inc_num_total_requests(request_meta.route)
         yield
@@ -738,6 +734,7 @@ class AsyncioRouter:
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
             event_loop,
+            has_queue_pressure=self._request_router_has_queue_pressure,
         )
 
         self._objref_resolution_latency_ms = metrics.Histogram(
@@ -794,6 +791,15 @@ class AsyncioRouter:
             controller_handle, self._event_loop
         )
         shared.register(self)
+
+    def _request_router_has_queue_pressure(self) -> bool:
+        """Busy-clock signal: requests are waiting on the request router.
+
+        Reads the current request router without lazy-loading it, so sampling
+        never constructs one.
+        """
+        request_router = self._request_router
+        return request_router is not None and request_router.has_queue_pressure()
 
     @property
     def _active_request_router(self) -> RequestRouter:

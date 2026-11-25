@@ -57,7 +57,7 @@ from ray.serve import metrics
 from ray.serve._private.backpressure import (
     DrainRateTracker,
     RetryAfterDecision,
-    log_backpressure_rejection,
+    reject_for_backpressure,
 )
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -2344,17 +2344,13 @@ class Replica:
     ) -> RetryAfterDecision:
         """Pick the Retry-After value for a rejected direct-ingress request
         and log the rejection."""
-        num_queued_requests = self._num_queued_requests
-        decision = self._drain_rate_tracker.decide(
+        decision, _ = reject_for_backpressure(
+            self._drain_rate_tracker,
             self.backpressure_config,
-            observed_queue_depth=num_queued_requests,
+            num_queued_requests=self._num_queued_requests,
+            max_queued_requests=self.max_queued_requests,
             request_id=request_metadata.request_id,
         )
-        message = BackPressureError(
-            num_queued_requests=num_queued_requests,
-            max_queued_requests=self.max_queued_requests,
-        ).message
-        log_backpressure_rejection(message, decision)
         return decision
 
     def _has_pending_drain_work(self) -> bool:

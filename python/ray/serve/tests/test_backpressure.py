@@ -13,7 +13,11 @@ from starlette.requests import Request
 import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.test_utils import get_application_url, skip_if_haproxy
+from ray.serve._private.test_utils import (
+    COLD_ESTIMATOR_RUNTIME_ENV,
+    get_application_url,
+    skip_if_haproxy,
+)
 from ray.serve.exceptions import BackPressureError
 
 # Every value `retry_after_s=7` can produce: jittered by +/-10%, rounded up.
@@ -29,15 +33,6 @@ STATIC_BACKPRESSURE_RESPONSE_CASES = [
         id="429_with_retry_after",
     ),
 ]
-
-# Runtime env for the process that rejects in the cold-fallback cases. The
-# blocked requests in these tests keep work pending, so after a few sampling
-# intervals the estimator would warm up at a drain rate of 0 and compute 60s.
-# Setting the warmup threshold out of reach keeps it cold however slow the test
-# runs. Must be set on the process whose router (or replica) does the rejecting.
-COLD_ESTIMATOR_RUNTIME_ENV = {
-    "env_vars": {"RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES": str(10**9)}
-}
 
 # The rejecting router must run in a deployment that can take
 # `COLD_ESTIMATOR_RUNTIME_ENV`, so these only apply to composition tests (the

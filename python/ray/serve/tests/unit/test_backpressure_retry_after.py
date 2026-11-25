@@ -1,13 +1,15 @@
 import asyncio
+import importlib.util
 import json
 import logging
 import random
 import sys
+import types
 from typing import List
 
 import pytest
 
-from ray.serve._private import backpressure
+from ray.serve._private import backpressure, constants as serve_constants
 from ray.serve._private.backpressure import (
     COMPUTED_RETRY_AFTER_MIN_S,
     FALLBACK_RUNG_COMPUTED,
@@ -27,19 +29,9 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.metrics_utils import MetricsPusher
+from ray.serve._private.test_utils import FakeClock
 from ray.serve.config import BackpressureConfig
 from ray.serve.schema import LoggingConfig
-
-
-class FakeClock:
-    def __init__(self):
-        self.now_s = 0.0
-
-    def __call__(self) -> float:
-        return self.now_s
-
-    def advance(self, seconds: float):
-        self.now_s += seconds
 
 
 class CountingRand:
@@ -60,8 +52,8 @@ def make_estimator(**kwargs) -> DrainRateEstimator:
     kwargs.setdefault("min_window_busy_s", 10.0)
     kwargs.setdefault("clock", FakeClock())
     estimator = DrainRateEstimator(**kwargs)
-    # Establish the sampling baseline.
-    estimator.sample(has_pending_work=True)
+    # Establish the sampling baseline, with an empty queue.
+    estimator.sample(has_pending_work=False)
     return estimator
 
 
@@ -152,19 +144,25 @@ class TestDrainRateEstimator:
         assert estimator.estimate_s(2) == 6
 
     def test_idle_interval_is_skipped(self):
-        """No pending work and no drains: the busy clock stops, and neither
-        the estimate nor the warmup count moves."""
+        """No queue at either end of an interval: the busy clock stops, and
+        neither the estimate nor the warmup count moves. The interval in which
+        the queue empties counts once, with its drains."""
         estimator = make_estimator(warmup_samples=3)
         observe_interval(estimator, 8, elapsed_s=32)
+        # The queue empties during the next interval.
+        observe_interval(estimator, 1, elapsed_s=4, has_pending_work=False)
+        assert estimator.num_samples == 2
+        assert estimator.busy_seconds == 36
+        assert estimator.drains_in_window == 9
         before = (estimator.estimate_s(8), estimator.num_samples)
         for _ in range(100):
             observe_interval(estimator, 0, has_pending_work=False)
         assert (estimator.estimate_s(8), estimator.num_samples) == before
-        assert estimator.busy_seconds == 32
+        assert estimator.busy_seconds == 36
 
         # The idle gap doesn't stretch the next busy interval.
         observe_interval(estimator, 0, has_pending_work=True)
-        assert estimator.busy_seconds == 33
+        assert estimator.busy_seconds == 37
 
     def test_drains_without_queued_work_are_skipped(self):
         """Drains in an interval that ends with an empty queue count in the
@@ -338,10 +336,12 @@ class TestBusyClock:
     def test_idle_time_does_not_advance_it(self):
         estimator = make_estimator()
         observe_interval(estimator, 1, elapsed_s=2)
+        # The interval in which the queue empties counts, once.
+        observe_interval(estimator, 1, elapsed_s=1, has_pending_work=False)
         for _ in range(10):
             observe_interval(estimator, 0, elapsed_s=3600, has_pending_work=False)
-        assert estimator.busy_clock_s == 2
-        assert estimator.num_samples == 1
+        assert estimator.busy_clock_s == 3
+        assert estimator.num_samples == 2
 
     def test_stall_advances_it(self):
         estimator = make_estimator()
@@ -449,9 +449,11 @@ class TestMatchesReference:
             32.0,
         ]
 
-        # Idle: 30 idle seconds leave the estimate unchanged.
+        # Idle: the queue empties with a last drain, then 30 idle seconds
+        # leave the estimate unchanged.
         estimator = make_estimator(warmup_samples=3)
         run_periodic_drains(estimator, seconds=20, every_s=1)
+        observe_interval(estimator, 1, has_pending_work=False)
         before = estimator.estimate_s(10)
         for _ in range(30):
             observe_interval(estimator, 0, has_pending_work=False)
@@ -475,6 +477,8 @@ class TestMatchesReference:
             full_history = [(0.0, 0)]
             busy_clock_s = 0.0
             busy_drains = 0
+            # `make_estimator` samples the baseline with an empty queue.
+            prev_pending = False
             for _ in range(2000):
                 drains = 0 if rng.random() < 0.6 else rng.choice([1, 1, 2, 8, 20])
                 pending = rng.random() < 0.7
@@ -483,15 +487,21 @@ class TestMatchesReference:
                     if variable_intervals
                     else 1.0
                 )
+                start_s = estimator._clock()
                 observe_interval(
                     estimator, drains, elapsed_s=elapsed_s, has_pending_work=pending
                 )
-                # Only intervals with queued work count, with their own
-                # drains; drains in skipped intervals are left out.
-                if pending:
+                # The interval as the estimator sees it: a difference of clock
+                # readings, so both sides round the same way at the window
+                # minimums.
+                elapsed_s = estimator._clock() - start_s
+                # Only intervals with queued work at either end count, with
+                # their own drains; drains in skipped intervals are left out.
+                if pending or prev_pending:
                     busy_clock_s += elapsed_s
                     busy_drains += drains
                     full_history.append((busy_clock_s, busy_drains))
+                prev_pending = pending
                 if len(full_history) > 1:
                     assert estimator.seconds_per_drain == pytest.approx(
                         reference_seconds_per_drain(full_history)
@@ -551,14 +561,127 @@ class TestQueuedWorkRule:
         assert decision.pre_jitter_s == pytest.approx(6.5)
         assert decision.post_jitter_s == 7
 
+    @pytest.mark.parametrize(
+        "queued_at_start,queued_at_end,counted",
+        [
+            (False, False, False),
+            (False, True, True),
+            (True, True, True),
+            (True, False, True),
+        ],
+    )
+    def test_queue_at_either_end_counts_time_and_drains(
+        self, queued_at_start: bool, queued_at_end: bool, counted: bool
+    ):
+        estimator = make_estimator()
+        estimator.reset()
+        estimator.sample(has_pending_work=queued_at_start)
+        observe_interval(estimator, 3, elapsed_s=2, has_pending_work=queued_at_end)
+        assert estimator.drain_counter == 3
+        assert estimator.num_samples == int(counted)
+        assert estimator.busy_clock_s == (2 if counted else 0)
+        assert estimator.drains_in_window == (3 if counted else 0)
+
+    def test_terminal_interval_counts_once(self):
+        """The interval in which the queue empties advances warmup once; the
+        idle intervals after it don't."""
+        estimator = make_estimator(warmup_samples=3)
+        observe_interval(estimator, 2)
+        observe_interval(estimator, 2)
+        assert not estimator.warm
+        observe_interval(estimator, 4, has_pending_work=False)
+        assert estimator.num_samples == 3
+        assert estimator.warm
+        for _ in range(5):
+            observe_interval(estimator, 0, has_pending_work=False)
+        assert estimator.num_samples == 3
+        assert estimator.drains_in_window == 8
+
+    def test_first_sample_sets_the_queue_state_for_the_next_interval(self):
+        estimator = DrainRateEstimator(warmup_samples=1, clock=FakeClock())
+        estimator.sample(has_pending_work=True)
+        assert estimator.num_samples == 0
+        observe_interval(estimator, 1, has_pending_work=False)
+        assert estimator.num_samples == 1
+
+    def test_reset_clears_the_previous_queue_state(self):
+        estimator = make_estimator()
+        observe_interval(estimator, 1, has_pending_work=True)
+        estimator.reset()
+        # The first sample after a reset is a new baseline, with its own
+        # queue state; the queue seen before the reset doesn't carry over.
+        estimator.sample(has_pending_work=False)
+        observe_interval(estimator, 2, has_pending_work=False)
+        assert estimator.num_samples == 0
+        assert estimator.drains_in_window == 0
+
+    def test_invalid_interval_keeps_the_previous_queue_state(self):
+        estimator = make_estimator()
+        observe_interval(estimator, 0, elapsed_s=0, has_pending_work=True)
+        observe_interval(estimator, 1, has_pending_work=False)
+        assert estimator.num_samples == 0
+        assert estimator.drain_counter == 1
+
+    @pytest.mark.parametrize("phase_s", [0.1, 0.5, 0.9])
+    def test_queue_emptying_drains_are_kept(self, phase_s: float):
+        """Direct ingress with 8 slots of 6 s each: a burst of 16 at t=0 runs
+        8 and queues 8. The first 8 finish at t=6, which empties the queue,
+        and the other 8 finish at t=12. Samples are once per second, at any
+        phase. Without the drains of the interval in which the queue emptied,
+        the window had 0 drains and 6 busy seconds, so a backlog of 8 got
+        about 48 s for a 6 s wait."""
+        clock = FakeClock()
+        clock.now_s = phase_s - 1
+        estimator = DrainRateEstimator(clock=clock)
+        completions_at_s = {6.0: 8, 12.0: 8}
+
+        def queued() -> bool:
+            return 0 <= clock.now_s < 6
+
+        estimator.sample(has_pending_work=queued())
+        for _ in range(30):
+            start_s = clock.now_s
+            clock.advance(1)
+            for at_s, num in completions_at_s.items():
+                if start_s < at_s <= clock.now_s:
+                    drain(estimator, num)
+            estimator.sample(has_pending_work=queued())
+
+        assert estimator.drain_counter == 16
+        # Seven intervals saw the line at one end, and the 8 completions that
+        # emptied it fall in the last of them.
+        assert estimator.num_samples == 7
+        assert estimator.busy_clock_s == pytest.approx(7)
+        assert estimator.drains_in_window == 8
+
+        # The next burst: a request rejected behind 8 queued waits about 6 s.
+        post_jitter = set()
+        for rand_value in (0.0, 0.5, 0.999):
+            decision = compute_retry_after_decision(
+                backpressure_config=BackpressureConfig(
+                    retry_after_policy="queue_drain_rate", retry_after_s=5
+                ),
+                observed_queue_depth=8,
+                estimator=estimator,
+                request_id="req-1",
+                rand=CountingRand(rand_value),
+            )
+            assert decision.fallback_rung == "computed"
+            assert decision.pre_jitter_s == pytest.approx(7.0)
+            post_jitter.add(decision.post_jitter_s)
+        assert post_jitter <= {7, 8}
+
     def test_skipped_interval_drains_dont_leak_between_busy_intervals(self):
         estimator = make_estimator()
         observe_interval(estimator, 2)
+        # The queue empties: this interval counts, with its drain.
+        observe_interval(estimator, 1, has_pending_work=False)
+        # No queue at either end: skipped with its drains.
         observe_interval(estimator, 5, has_pending_work=False)
         observe_interval(estimator, 1)
-        assert estimator.drain_counter == 8
-        assert estimator.busy_clock_s == 2
-        assert estimator.drains_in_window == 3
+        assert estimator.drain_counter == 9
+        assert estimator.busy_clock_s == 3
+        assert estimator.drains_in_window == 4
 
     def test_idle_traffic_drains_dont_leak_into_saturation(self):
         estimator = make_estimator(warmup_samples=3)
@@ -609,7 +732,33 @@ class TestGroundTruthInstrumentation:
         assert estimator.drain_counter == c0 + d
 
 
+def _load_constants_module() -> types.ModuleType:
+    """Execute `constants.py` into a new module object, so a test can check
+    import-time validation without reloading the shared module."""
+    spec = importlib.util.spec_from_file_location(
+        "_serve_constants_under_test", serve_constants.__file__
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class TestJitter:
+    @pytest.mark.parametrize("fraction", ["1", "1.5"])
+    def test_jitter_fraction_of_one_or_more_is_rejected(
+        self, monkeypatch, fraction: str
+    ):
+        monkeypatch.setenv(
+            "RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION", fraction
+        )
+        with pytest.raises(ValueError, match="must be less than 1"):
+            _load_constants_module()
+
+    def test_jitter_fraction_below_one_is_accepted(self, monkeypatch):
+        monkeypatch.setenv("RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION", "0.99")
+        module = _load_constants_module()
+        assert module.RAY_SERVE_BACKPRESSURE_RETRY_AFTER_JITTER_FRACTION == 0.99
+
     @pytest.mark.parametrize(
         "rand_value,expected",
         [(0.0, 9.0), (0.5, 10.0), (0.75, 10.5)],
@@ -780,6 +929,11 @@ class TestComputeRetryAfterDecision:
         assert decision.post_jitter_s == 10
 
     def test_estimator_failure_falls_back(self):
+        """A defensive contract, not a known failure: `estimate_s` can't raise
+        today, but `compute_retry_after_decision` catches anything it raises
+        so a rejection never fails because of the estimate (the RFC's
+        fail-safe requirement). This keeps that guarantee if the estimator
+        changes."""
         estimator = warm_estimator(drains_per_s=5)
 
         def fail(queue_depth):

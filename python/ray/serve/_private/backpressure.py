@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.metrics_utils import MetricsPusher
+from ray.serve.exceptions import BackPressureError
 
 if TYPE_CHECKING:
     from ray.serve.config import BackpressureConfig
@@ -60,12 +61,14 @@ class DrainRateEstimator:
     `record_drain` is called on the hot path for every drain event and only
     increments the monotonic drain counter. `sample` runs periodically; an
     interval counts as busy only if requests were waiting in the component's
-    queue at the sample. Busy intervals add their length to the busy clock and
-    their drains to a separate count of busy drains. Every other interval is
-    skipped along with its drains, so light traffic with no backlog doesn't
-    train the estimator: a drain that empties the queue right away says
-    nothing about how fast a backlog drains. An interval with queued requests
-    and no drains is still busy, so a stall keeps growing the estimate.
+    queue at its start or at its end (the previous sample or this one), so the
+    interval in which a backlog clears counts with the drains that cleared it.
+    Busy intervals add their length to the busy clock and their drains to a
+    separate count of busy drains: time and drains always enter together.
+    Every other interval is skipped along with its drains, so light traffic
+    that no sample sees as a backlog doesn't train the estimator. An interval
+    with queued requests and no drains is still busy, so a stall keeps growing
+    the estimate.
 
     After every busy sample the pair (busy clock B, busy drains N) is a
     checkpoint. The window runs from the most recent checkpoint that is at
@@ -131,6 +134,9 @@ class DrainRateEstimator:
         self._num_samples = 0
         self._last_sample_time: Optional[float] = None
         self._last_sample_counter = 0
+        # Whether requests were queued at the previous sample, i.e. at the
+        # start of the next interval.
+        self._prev_pending_work = False
 
     @property
     def drain_counter(self) -> int:
@@ -192,16 +198,18 @@ class DrainRateEstimator:
         self._num_samples = 0
         self._last_sample_time = None
         self._last_sample_counter = self._drain_counter
+        self._prev_pending_work = False
 
     def sample(self, has_pending_work: bool) -> None:
         """Add the interval since the previous call to the busy clock if busy.
 
         `has_pending_work` tells whether requests are waiting in the
-        component's queue right now. Only then is the interval busy: its length
-        goes to the busy clock and its drains to the busy drains, even if it
-        had no drains (a stall still adds busy time, so the estimate grows
-        with it). Otherwise the interval is skipped and its drains are
-        discarded for the estimate; they still count in `drain_counter`.
+        component's queue right now. The interval since the previous sample is
+        busy if requests were waiting at either end of it: its length goes to
+        the busy clock and its drains to the busy drains, even if it had no
+        drains (a stall still adds busy time, so the estimate grows with it).
+        Otherwise the interval is skipped and its drains are discarded for the
+        estimate; they still count in `drain_counter`.
         """
         now = self._clock()
         counter = self._drain_counter
@@ -209,6 +217,7 @@ class DrainRateEstimator:
             # First call only establishes the baseline.
             self._last_sample_time = now
             self._last_sample_counter = counter
+            self._prev_pending_work = has_pending_work
             self._checkpoints = deque([(self._busy_clock_s, self._busy_drains)])
             return
 
@@ -221,7 +230,9 @@ class DrainRateEstimator:
         # can't be counted in a later busy interval.
         self._last_sample_time = now
         self._last_sample_counter = counter
-        if not has_pending_work:
+        busy = has_pending_work or self._prev_pending_work
+        self._prev_pending_work = has_pending_work
+        if not busy:
             return
 
         self._busy_clock_s += elapsed_s
@@ -539,3 +550,33 @@ def compute_retry_after_decision(
 def log_backpressure_rejection(message: str, decision: RetryAfterDecision) -> None:
     """Emit the single structured warning for a backpressure rejection."""
     logger.warning(message, extra={SERVE_LOG_EXTRA_FIELDS: decision.to_log_fields()})
+
+
+def reject_for_backpressure(
+    tracker: DrainRateTracker,
+    backpressure_config: "BackpressureConfig",
+    *,
+    num_queued_requests: int,
+    max_queued_requests: int,
+    request_id: str,
+) -> Tuple[RetryAfterDecision, BackPressureError]:
+    """Decide a rejection's `Retry-After`, log it once and build the error.
+
+    Shared by the router, which raises the error, and direct ingress, which
+    turns the decision into an HTTP header or a gRPC status. It isn't a
+    `DrainRateTracker` method so the tracker stays an estimator; each caller
+    decides what to send.
+    """
+    decision = tracker.decide(
+        backpressure_config,
+        observed_queue_depth=num_queued_requests,
+        request_id=request_id,
+    )
+    error = BackPressureError(
+        num_queued_requests=num_queued_requests,
+        max_queued_requests=max_queued_requests,
+        status_code=backpressure_config.status_code,
+        retry_after_s=decision.post_jitter_s,
+    )
+    log_backpressure_rejection(error.message, decision)
+    return decision, error

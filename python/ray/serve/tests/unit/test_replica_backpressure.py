@@ -1,17 +1,17 @@
 import asyncio
 import json
-import logging
 import sys
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from ray._common.formatters import JSONFormatter
 from ray.serve._private.backpressure import DrainRateEstimator, DrainRateTracker
 from ray.serve._private.common import RequestMetadata
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica import Replica
+from ray.serve._private.test_utils import capture_serve_log_records
 from ray.serve._private.utils import Semaphore
+from ray.serve._private.config import DeploymentConfig
 from ray.serve.config import BackpressureConfig
 
 
@@ -199,9 +199,9 @@ async def _send_direct_ingress_http_request(fake, headers=()):
     async def send(msg):
         messages.append(msg)
 
-    with patch("ray.serve._private.replica.log_backpressure_rejection") as log, patch(
-        "ray.serve._private.backpressure.random.random", return_value=0.0
-    ):
+    with patch(
+        "ray.serve._private.backpressure.log_backpressure_rejection"
+    ) as log, patch("ray.serve._private.backpressure.random.random", return_value=0.0):
         await fake._direct_ingress_asgi(scope, MagicMock(), send)
 
     log.assert_called_once()
@@ -289,15 +289,6 @@ class TestDirectIngressRejection:
         fake = _make_rejecting_replica(
             BackpressureConfig(retry_after_s=10), num_queued_requests=2
         )
-        records = []
-
-        class _Handler(logging.Handler):
-            def emit(self, record):
-                records.append(record)
-
-        serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
-        handler = _Handler()
-        serve_logger.addHandler(handler)
         messages = []
 
         async def send(msg):
@@ -309,13 +300,10 @@ class TestDirectIngressRejection:
             "path": "/",
             "headers": [(b"x-request-id", b"json-request-id")],
         }
-        try:
-            with patch(
-                "ray.serve._private.backpressure.random.random", return_value=0.5
-            ):
-                await fake._direct_ingress_asgi(scope, MagicMock(), send)
-        finally:
-            serve_logger.removeHandler(handler)
+        with capture_serve_log_records() as records, patch(
+            "ray.serve._private.backpressure.random.random", return_value=0.5
+        ):
+            await fake._direct_ingress_asgi(scope, MagicMock(), send)
 
         [record] = [r for r in records if r.getMessage().startswith("Request dropped")]
         formatted = json.loads(JSONFormatter().format(record))
@@ -407,6 +395,79 @@ class TestDirectIngressRejection:
         assert estimator.drains_in_window == 0
 
 
+class _CapturingPusher:
+    """`MetricsPusher` stand-in that records the registered sampler instead
+    of running it on a timer, so a test can call it deterministically."""
+
+    def __init__(self):
+        self.tasks = {}
+        self.stop_event = asyncio.Event()
+
+    def register_or_update_task(self, name, task_func, interval_s):
+        self.tasks[name] = task_func
+
+    async def graceful_shutdown(self):
+        self.stop_event.set()
+
+
+class TestPolicyRedeploy:
+    @pytest.mark.asyncio
+    async def test_switching_to_computed_policy_on_the_same_replica(self):
+        """Deploy `static` with `retry_after_s=100`, then redeploy
+        `queue_drain_rate` on the same replica. `reconfigure` must start the
+        sampler: with one request running and another queued, the estimator
+        warms up and the header moves from the static value to a computed
+        one."""
+        static = BackpressureConfig(retry_after_s=100)
+        fake = _make_rejecting_replica(static, num_queued_requests=2)
+        type(fake).backpressure_config = property(
+            lambda self: self._deployment_config.backpressure_config
+        )
+        fake._deployment_config = DeploymentConfig(backpressure_config=static)
+        fake._user_callable_wrapper = AsyncMock()
+        pushers = []
+
+        def pusher_factory():
+            pushers.append(_CapturingPusher())
+            return pushers[-1]
+
+        now_s = [0.0]
+        estimator = DrainRateEstimator(clock=lambda: now_s[0])
+        fake._drain_rate_tracker = DrainRateTracker(
+            has_pending_work=fake._has_pending_drain_work,
+            estimator=estimator,
+            metrics_pusher_factory=pusher_factory,
+        )
+        reconfigure = Replica.reconfigure.__get__(fake, Replica)
+
+        _, retry_after, _, decision = await _send_direct_ingress_http_request(fake)
+        assert decision.fallback_rung == "static"
+        # 100 s with rand=0.0 is ceil(100 * 0.9).
+        assert retry_after == b"90"
+
+        computed = DeploymentConfig(
+            backpressure_config=BackpressureConfig(
+                retry_after_policy="queue_drain_rate", retry_after_s=100
+            )
+        )
+        with patch("ray.serve._private.replica.DeploymentVersion") as version:
+            version.from_deployment_version.return_value.route_prefix = "/"
+            await reconfigure(computed, rank=fake._rank)
+        assert fake._drain_rate_tracker.sampling
+        [sample] = pushers[-1].tasks.values()
+
+        # The sampler's first call is the baseline; three busy seconds follow.
+        sample()
+        for _ in range(3):
+            now_s[0] += 1
+            sample()
+        _, retry_after, _, decision = await _send_direct_ingress_http_request(fake)
+        assert decision.fallback_rung == "computed"
+        assert decision.drains_in_window == 0
+        # 2 queued * 3 busy seconds; rand=0.0 gives ceil(6 * 0.9).
+        assert retry_after == b"6"
+
+
 class TestDirectIngressRejectionRequestId:
     """Each rejection record names the rejected request explicitly, since the
     request context isn't installed yet when direct ingress rejects."""
@@ -435,7 +496,7 @@ class TestDirectIngressRejectionRequestId:
         context.invocation_metadata.return_value = [("request_id", "grpc-request-id")]
         context.peer.return_value = "ipv4:127.0.0.1:12345"
 
-        with patch("ray.serve._private.replica.log_backpressure_rejection") as log:
+        with patch("ray.serve._private.backpressure.log_backpressure_rejection") as log:
             prepared = fake._prepare_direct_ingress_grpc_request(
                 "/ray.serve.UserDefinedService/Method1",
                 context,
