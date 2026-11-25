@@ -98,8 +98,9 @@ TEST(ActorHandleTest, NamedLookupKeepsTensorTransportDisabledWhenNotRequested) {
   EXPECT_FALSE(ActorHandle(actor_table_data, task_spec).EnableTensorTransport());
 }
 
-// Also passes without the fix. The empty-handle branch is defensive: every writer whose
-// spec reaches the GCS sets serialized_actor_handle, for all languages.
+// Also passes without the fix. An empty string parses as a default handle, so this takes
+// the success path. Every production writer whose spec reaches the GCS sets
+// serialized_actor_handle.
 TEST(ActorHandleTest, NamedLookupToleratesMissingSerializedHandle) {
   auto created = CreatedHandle(/*enable_tensor_transport=*/true);
   auto [actor_table_data, task_spec] = NamedLookupResult(created);
@@ -110,6 +111,7 @@ TEST(ActorHandleTest, NamedLookupToleratesMissingSerializedHandle) {
   EXPECT_EQ(from_lookup.GetActorID(), kActorId);
 }
 
+// Also passes without the fix. Fails if the failure path stops clearing the message.
 TEST(ActorHandleTest, NamedLookupDiscardsUnparseableSerializedHandle) {
   auto created = CreatedHandle(/*enable_tensor_transport=*/true, /*max_pending_calls=*/7);
   auto [actor_table_data, task_spec] = NamedLookupResult(created);
