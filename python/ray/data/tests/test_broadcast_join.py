@@ -285,14 +285,34 @@ def test_timeout_demotes_to_shuffle(
     patch_submit_tasks,
     make_left_right,
 ):
-    # Left (~3 KiB) exceeds the threshold on its first bundle, which starts the
-    # timeout clock; the slow right side cannot finish before it fires.
+    # The first input bundle starts the timeout clock. Left (~3 KiB) exceeds
+    # the threshold, and the slow right side cannot finish before it fires.
     disk_shuffle_v2.broadcast_join_threshold_bytes = 1024
     disk_shuffle_v2.broadcast_join_decision_timeout_s = 0.1
 
     left, right = make_left_right()
     joined = left.join(_slow(right), "inner", on=("id",), num_partitions=4)
     _assert_join_result(joined, left, right, "inner")
+
+    broadcast, shuffle = patch_submit_tasks
+    # The join fell back to the shuffle path.
+    assert shuffle.call_count > 0 and broadcast.call_count == 0
+
+
+def test_timeout_when_disallowed_side_stays_under_threshold(
+    ray_start_regular_shared_2_cpus,
+    disk_shuffle_v2,
+    patch_submit_tasks,
+    make_left_right,
+):
+    # left_outer: only right can build. Left stays far under the default
+    # threshold, so it never crosses it; its first input bundle still starts
+    # the timeout clock, and the slow right side cannot finish before it fires.
+    disk_shuffle_v2.broadcast_join_decision_timeout_s = 0.1
+
+    left, right = make_left_right()
+    joined = left.join(_slow(right), "left_outer", on=("id",), num_partitions=4)
+    _assert_join_result(joined, left, right, "left_outer")
 
     broadcast, shuffle = patch_submit_tasks
     # The join fell back to the shuffle path.

@@ -679,27 +679,34 @@ class _BroadcastDecision:
         )
         self._timeout_s = timeout_s
         self._clock = clock
-        # Set by the first exceed_threshold call.
+        # Set by the first start_clock call.
         self._deadline: float = float("inf")
+
+    def start_clock(self) -> None:
+        """Start the timeout clock; later calls are no-ops.
+
+        Called by the map operators on every input bundle received while
+        ``UNDECIDED``, so the join waits at most ``timeout_s`` for a decision
+        after either side receives its first input bundle.
+        """
+        if self._deadline == float("inf"):
+            self._deadline = self._clock() + self._timeout_s
 
     def exceed_threshold(self, side: BuildSide) -> None:
         """Remove ``side`` from _can_build as it exceed the size threshold.
 
-        The first call starts the timeout clock. When no side is left, fall
-        back to the shuffle join.
+        When no side is left, fall back to the shuffle join.
         """
-        if self._deadline == float("inf"):
-            self._deadline = self._clock() + self._timeout_s
         self._can_build.discard(side)
         if not self._can_build and self.build_side is BuildSide.UNDECIDED:
             self.build_side = BuildSide.NONE
 
     def on_tick(self) -> None:
-        """Fall back to the shuffle join once a side has waited ``timeout_s``.
+        """Fall back to the shuffle join once the join has waited ``timeout_s``.
 
         Called by the map operators on every scheduling iteration. The clock
-        starts when the first side crosses the threshold and begins holding its
-        input for the other side.
+        starts when either side receives its first input bundle (see
+        ``start_clock``).
         """
         if self.build_side is BuildSide.UNDECIDED and self._clock() > self._deadline:
             self.demote()

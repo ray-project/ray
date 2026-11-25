@@ -77,12 +77,12 @@ class TestDemote:
 
 
 class TestOnTick:
-    """The timeout clock starts at the first exceed_threshold call."""
+    """The timeout clock starts at the first start_clock call."""
 
-    def _decision(self, now):
-        return _BroadcastDecision({LEFT, RIGHT}, timeout_s=10, clock=lambda: now[0])
+    def _decision(self, now, can_build=(LEFT, RIGHT)):
+        return _BroadcastDecision(set(can_build), timeout_s=10, clock=lambda: now[0])
 
-    def test_no_timeout_before_a_side_exceeds_threshold(self):
+    def test_no_timeout_before_first_input(self):
         now = [0.0]
         decision = self._decision(now)
         now[0] = 100.0
@@ -92,7 +92,7 @@ class TestOnTick:
     def test_keeps_waiting_within_timeout(self):
         now = [0.0]
         decision = self._decision(now)
-        decision.exceed_threshold(LEFT)
+        decision.start_clock()
         now[0] = 9.0
         decision.on_tick()
         assert decision.build_side is UNDECIDED
@@ -100,7 +100,18 @@ class TestOnTick:
     def test_falls_back_to_shuffle_after_timeout(self):
         now = [0.0]
         decision = self._decision(now)
-        decision.exceed_threshold(LEFT)
+        decision.start_clock()
+        now[0] = 11.0
+        decision.on_tick()
+        assert decision.build_side is NONE
+
+    def test_later_start_clock_calls_do_not_reset_the_clock(self):
+        # Every input bundle calls start_clock; only the first one counts.
+        now = [0.0]
+        decision = self._decision(now)
+        decision.start_clock()
+        now[0] = 9.0
+        decision.start_clock()
         now[0] = 11.0
         decision.on_tick()
         assert decision.build_side is NONE
@@ -108,12 +119,24 @@ class TestOnTick:
     def test_other_side_finishing_within_timeout_is_broadcast(self):
         now = [0.0]
         decision = self._decision(now)
+        decision.start_clock()
         decision.exceed_threshold(LEFT)
         now[0] = 9.0
         decision.choose_build(RIGHT)
         now[0] = 11.0
         decision.on_tick()
         assert decision.build_side is RIGHT
+
+    def test_times_out_when_disallowed_side_stays_under_threshold(self):
+        # left_outer: left cannot build. It starts the clock and finishes under
+        # the threshold without crossing it, then the slow right side times out.
+        now = [0.0]
+        decision = self._decision(now, can_build=(RIGHT,))
+        decision.start_clock()
+        decision.choose_build(LEFT)  # ignored: left cannot build
+        now[0] = 11.0
+        decision.on_tick()
+        assert decision.build_side is NONE
 
 
 if __name__ == "__main__":

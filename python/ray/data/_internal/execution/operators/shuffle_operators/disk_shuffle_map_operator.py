@@ -227,6 +227,9 @@ class DiskHashShuffleMapOp(InternalQueueOperatorMixin, PhysicalOperator):
                 )
             self._merge_buffer_bundles_by_node[node_id].append(refs)
 
+            if build_side is BuildSide.UNDECIDED:
+                # The join's first input bundle starts the timeout clock.
+                self._decision.start_clock()
             if (
                 build_side is BuildSide.UNDECIDED
                 and sum(self._merge_buffer_bytes_by_node.values())
