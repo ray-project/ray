@@ -717,8 +717,8 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryArgsReadyAfterStop) {
   ASSERT_EQ(n_accept, 0);
 }
 
-// Two retries wait for their args at once and become ready in reverse order. Each
-// callback must resolve its own task, not whichever retry is at the head of the list.
+// Three retries wait for their args at once and become ready out of order. Each
+// callback must resolve its own task, not another retry in the list.
 TEST(OrderedActorTaskExecutionQueueTest, TestConcurrentRetryArgsReadyOutOfOrder) {
   instrumented_io_context io_service;
   FakeWaiter waiter;
@@ -746,29 +746,34 @@ TEST(OrderedActorTaskExecutionQueueTest, TestConcurrentRetryArgsReadyOutOfOrder)
                                        cancel_task);
 
   // CreateActorTaskSpec leaves the task id nil, and the retries share an attempt
-  // number, so give them distinct ids to tell the two attempts apart.
+  // number, so give the three retries distinct ids, or all of them would register
+  // under one (task id, attempt) key.
   JobID job_id = JobID::FromInt(1);
-  for (int64_t seq_no : {0, 1}) {
+  for (int64_t seq_no : {0, 1, 2}) {
     auto spec = CreateActorTaskSpec(seq_no, /*is_retry=*/true, /*dependency=*/true);
     spec.GetMutableMessage().set_task_id(TaskID::FromRandom(job_id).Binary());
     EnqueueWithFetch(queue, waiter, seq_no, -1, MakeTaskToExecute(spec));
   }
   ASSERT_EQ(n_accept, 0);
 
+  // The middle entry first, so a lookup on the attempt number alone fails, from either
+  // end of the list.
   waiter.Complete(1);
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 1; }, 1000));
   waiter.Complete(0);
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
+  waiter.Complete(2);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 3; }, 1000));
 
   pool_manager->GetDefaultExecutor()->Join();
-  ASSERT_EQ(accept_seq_nos, (std::vector<int64_t>{1, 0}));
+  ASSERT_EQ(accept_seq_nos, (std::vector<int64_t>{1, 0, 2}));
 
   queue.Stop();
 }
 
 TEST(OrderedActorTaskExecutionQueueTest, TestRetryAttemptsOfOneTaskArgsReadyOutOfOrder) {
-  // Two attempts of one task waiting for args at once: the args-ready callback must
-  // pick its own attempt, not the first queued entry with the same task id.
+  // Three attempts of one task wait for args at once and become ready out of order: the
+  // callback must pick its own attempt, not another queued entry with the same task id.
   instrumented_io_context io_service;
   FakeWaiter waiter;
   FakeTaskEventBuffer task_event_buffer;
@@ -795,7 +800,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryAttemptsOfOneTaskArgsReadyOutO
                                        cancel_task);
 
   const TaskID task_id = TaskID::FromRandom(JobID::FromInt(1));
-  for (int32_t attempt : {1, 2}) {
+  for (int32_t attempt : {1, 2, 3}) {
     auto spec = CreateActorTaskSpec(attempt - 1, /*is_retry=*/true, /*dependency=*/true);
     spec.GetMutableMessage().set_task_id(task_id.Binary());
     spec.GetMutableMessage().set_attempt_number(attempt);
@@ -803,13 +808,17 @@ TEST(OrderedActorTaskExecutionQueueTest, TestRetryAttemptsOfOneTaskArgsReadyOutO
   }
   ASSERT_EQ(n_accept, 0);
 
+  // The middle attempt first, so a lookup on the task id alone fails, from either end of
+  // the list.
   waiter.Complete(1);
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 1; }, 1000));
   waiter.Complete(0);
   ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 2; }, 1000));
+  waiter.Complete(2);
+  ASSERT_TRUE(WaitForCondition([&n_accept]() { return n_accept == 3; }, 1000));
 
   pool_manager->GetDefaultExecutor()->Join();
-  ASSERT_EQ(accept_attempts, (std::vector<int32_t>{2, 1}));
+  ASSERT_EQ(accept_attempts, (std::vector<int32_t>{2, 1, 3}));
 
   queue.Stop();
 }
