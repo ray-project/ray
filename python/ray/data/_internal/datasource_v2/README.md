@@ -151,7 +151,9 @@ NumPy, audio, video) extends the `FileStream*` ladder in `common/` instead:
 `FileStreamScanner` (column, limit and partition pushdown) and
 `FileStreamReader` (`_read_stream(stream, path)` yields the data columns; the
 base opens, decompresses, retries, appends partition and `path` columns and
-projects; set `num_threads_per_task` to open several files at once).
+projects; set `num_threads_per_task` to open several files at once). Mix
+`FixedRowsPerFileMetadata` into the reader when every file is one row, so
+`count()` never opens a file.
 
 Wire it up in `read_api.py` under the `use_datasource_v2` branch of the
 matching `read_*` function, which calls `_read_datasource_v2(datasource, ...)`.

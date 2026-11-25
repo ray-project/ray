@@ -19,6 +19,10 @@ which turns one open stream into Arrow tables; the base class does the rest:
 - appends partition columns and synthesized columns such as ``path``, null-fills
   planned columns a file lacks, applies the projection, and refuses
   pickled-object columns.
+
+:class:`FixedRowsPerFileMetadata` is the matching ``SupportsMetadata`` for a
+format whose every file holds the same number of rows, such as one binary blob
+or one image per file: ``count()`` then needs no file opened.
 """
 
 import io
@@ -28,6 +32,7 @@ from typing import Any, Dict, Iterator, Optional, Sequence, Set, Tuple
 
 import pyarrow as pa
 from pyarrow.fs import FileSystem, HadoopFileSystem, LocalFileSystem
+from typing_extensions import override
 
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
@@ -36,6 +41,10 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnit
 from ray.data._internal.datasource_v2.interfaces.reader import Reader
+from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+    MetadataType,
+    SupportsMetadata,
+)
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     ReadUnitPosition,
     SynthesizedColumn,
@@ -49,6 +58,7 @@ from ray.data._internal.util import (
     iterate_with_retry,
     make_async_gen,
 )
+from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import (
     Partitioning,
     PathPartitionParser,
@@ -339,6 +349,37 @@ class FileStreamReader(Reader[FileManifest], ABC):
                 table = table.drop([column.name])
             table = table.append_column(column.name, column.compute(position, num_rows))
         return table
+
+
+@DeveloperAPI
+class FixedRowsPerFileMetadata(SupportsMetadata):
+    """``SupportsMetadata`` for a format whose every file holds the same number
+    of rows, so ``count()`` is answered from the listing without opening a file.
+
+    Mix it into a :class:`FileStreamReader` and have the scanner's
+    ``metadata_row_count_is_exact`` return ``True`` whenever no pushdown on it
+    reduces rows.
+    """
+
+    rows_per_file: int = 1
+
+    @override
+    def read_metadata(self, file_manifest: FileManifest) -> Iterator[BlockMetadata]:
+        for _ in range(len(file_manifest)):
+            yield BlockMetadata(
+                num_rows=self.rows_per_file,
+                size_bytes=None,
+                exec_stats=None,
+                input_files=None,
+            )
+
+    @override
+    def available_metadata(self) -> Set[MetadataType]:
+        return {MetadataType.NUM_ROWS}
+
+    @override
+    def get_target_metadata_batch_size(self) -> Optional[int]:
+        return None
 
 
 def _decompress_snappy(file: pa.NativeFile, filesystem: FileSystem) -> bytes:
