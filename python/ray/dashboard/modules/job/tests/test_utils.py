@@ -299,5 +299,184 @@ class TestFastTailLastNLines:
         assert "R" * 100 in out  # sampling check for last line content
 
 
+@pytest.mark.asyncio
+async def test_get_driver_jobs_retries_deadline_once():
+    """Regression test for https://github.com/ray-project/ray/issues/55998."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from ray._raylet import (
+        GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
+        GRPC_STATUS_CODE_UNAVAILABLE,
+    )
+    from ray.dashboard.modules.job.utils import (
+        DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S,
+        get_driver_jobs,
+    )
+    from ray.exceptions import RpcError
+
+    deadline_err = RpcError(
+        "Deadline Exceeded", rpc_code=GRPC_STATUS_CODE_DEADLINE_EXCEEDED
+    )
+
+    # 1. Single transient DEADLINE_EXCEEDED with timeout=None retries once and succeeds.
+    gcs_client = MagicMock()
+    gcs_client.async_get_all_job_info = AsyncMock(side_effect=[deadline_err, {}])
+    jobs, submission_drivers = await get_driver_jobs(
+        gcs_client, job_or_submission_id="raysubmit_123"
+    )
+    assert jobs == {}
+    assert submission_drivers == {}
+    assert gcs_client.async_get_all_job_info.await_count == 2
+    first_kw = gcs_client.async_get_all_job_info.await_args_list[0].kwargs
+    second_kw = gcs_client.async_get_all_job_info.await_args_list[1].kwargs
+    assert first_kw["job_or_submission_id"] == "raysubmit_123"
+    assert first_kw["timeout"] is None
+    assert second_kw["job_or_submission_id"] == "raysubmit_123"
+    assert second_kw["timeout"] == DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S
+
+    # 2. Consecutive DEADLINE_EXCEEDED propagates after the single bounded retry.
+    gcs_client.async_get_all_job_info = AsyncMock(
+        side_effect=[deadline_err, deadline_err]
+    )
+    with pytest.raises(RpcError, match="Deadline Exceeded"):
+        await get_driver_jobs(gcs_client, job_or_submission_id="raysubmit_123")
+    assert gcs_client.async_get_all_job_info.await_count == 2
+
+    # 3. Non-deadline RpcError is not retried.
+    unavailable_err = RpcError(
+        "Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
+    )
+    gcs_client.async_get_all_job_info = AsyncMock(side_effect=unavailable_err)
+    with pytest.raises(RpcError, match="Unavailable"):
+        await get_driver_jobs(gcs_client, job_or_submission_id="raysubmit_123")
+    assert gcs_client.async_get_all_job_info.await_count == 1
+
+    # 4. Explicit caller timeout is respected without retrying.
+    gcs_client.async_get_all_job_info = AsyncMock(side_effect=[deadline_err, {}])
+    with pytest.raises(RpcError, match="Deadline Exceeded"):
+        await get_driver_jobs(
+            gcs_client, job_or_submission_id="raysubmit_123", timeout=5
+        )
+    assert gcs_client.async_get_all_job_info.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_tail_job_logs_survives_transient_get_all_job_info_timeout():
+    """Verify WebSocket log tailing does not close early on a single GetAllJobInfo timeout."""
+    from unittest.mock import MagicMock
+
+    import aiohttp
+    from aiohttp import web
+
+    from ray._raylet import GRPC_STATUS_CODE_DEADLINE_EXCEEDED
+    from ray.dashboard.modules.job.common import (
+        JobInfo,
+        JobInfoStorageClient,
+        JobStatus,
+    )
+    from ray.dashboard.modules.job.job_head import JobHead
+    from ray.dashboard.modules.job.sdk import JobSubmissionClient
+    from ray.dashboard.subprocesses.handle import SubprocessModuleHandle
+    from ray.exceptions import RpcError
+
+    job_id = "raysubmit_tail_timeout_55998"
+    call_count = 0
+    gcs_client = MagicMock()
+
+    async def fake_get_all_job_info(**kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise RpcError(
+                "Deadline Exceeded",
+                rpc_code=GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
+            )
+        return {}
+
+    gcs_client.async_get_all_job_info = fake_get_all_job_info
+
+    info_calls = 0
+    job_info_client = MagicMock(spec=JobInfoStorageClient)
+
+    async def fake_get_info(jid, timeout=30):
+        nonlocal info_calls
+        info_calls += 1
+        if info_calls == 1:
+            return JobInfo(status=JobStatus.PENDING, entrypoint="echo hi")
+        return JobInfo(
+            status=JobStatus.RUNNING,
+            entrypoint="echo hi",
+            driver_agent_http_address="http://127.0.0.1:9999",
+            driver_node_id="node-1",
+        )
+
+    job_info_client.get_info = fake_get_info
+
+    job_head = JobHead.__new__(JobHead)
+    job_head._gcs_client = gcs_client
+    job_head._job_info_client = job_info_client
+    job_head.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S = 0.01
+
+    fake_agent = MagicMock()
+
+    async def fake_tail(sid):
+        yield "hello from job\n"
+
+    fake_agent.tail_job_logs = fake_tail
+    job_head.get_job_driver_agent_client = lambda job: fake_agent
+
+    backend_app = web.Application()
+    backend_app.router.add_get(
+        "/api/jobs/{job_or_submission_id}/logs/tail", job_head.tail_job_logs
+    )
+    backend_runner = web.AppRunner(backend_app)
+    await backend_runner.setup()
+    backend_site = web.TCPSite(backend_runner, "127.0.0.1", 0)
+    await backend_site.start()
+    backend_port = backend_site._server.sockets[0].getsockname()[1]
+
+    proxy_handle = SubprocessModuleHandle.__new__(SubprocessModuleHandle)
+    proxy_session = aiohttp.ClientSession()
+
+    async def proxy_handler(request):
+        orig_ws_connect = proxy_session.ws_connect
+
+        def patched_ws_connect(url, **kw):
+            url = url.replace("http://localhost", f"http://127.0.0.1:{backend_port}")
+            return orig_ws_connect(url, **kw)
+
+        proxy_handle.http_client_session = MagicMock(ws_connect=patched_ws_connect)
+        return await proxy_handle.proxy_websocket(request)
+
+    front_app = web.Application()
+    front_app.router.add_get(
+        "/api/jobs/{job_or_submission_id}/logs/tail", proxy_handler
+    )
+    front_runner = web.AppRunner(front_app)
+    await front_runner.setup()
+    front_site = web.TCPSite(front_runner, "127.0.0.1", 0)
+    await front_site.start()
+    front_port = front_site._server.sockets[0].getsockname()[1]
+
+    try:
+        client = JobSubmissionClient.__new__(JobSubmissionClient)
+        client._address = f"http://127.0.0.1:{front_port}"
+        client._cookies = None
+        client._headers = {}
+        client._ssl_context = None
+        client._server_ray_version = "3.0.0.dev0"
+
+        received = []
+        async for chunk in client.tail_job_logs(job_id):
+            received.append(chunk)
+
+        assert received == ["hello from job\n"]
+        assert call_count == 3
+    finally:
+        await proxy_session.close()
+        await front_runner.cleanup()
+        await backend_runner.cleanup()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

@@ -7,7 +7,11 @@ import traceback
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
-from ray._raylet import RAY_INTERNAL_NAMESPACE_PREFIX, GcsClient
+from ray._raylet import (
+    GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
+    RAY_INTERNAL_NAMESPACE_PREFIX,
+    GcsClient,
+)
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JobInfoStorageClient,
@@ -15,6 +19,7 @@ from ray.dashboard.modules.job.common import (
     validate_request_type,
 )
 from ray.dashboard.modules.job.pydantic_models import DriverInfo, JobDetails, JobType
+from ray.exceptions import RpcError
 from ray.runtime_env import RuntimeEnv
 
 try:
@@ -31,6 +36,7 @@ logger = logging.getLogger(__name__)
 
 MAX_CHUNK_LINE_LENGTH = 10
 MAX_CHUNK_CHAR_LENGTH = 20000
+DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S = 30
 
 
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
@@ -149,12 +155,31 @@ async def get_driver_jobs(
     An optional job_or_submission_id filter can be provided to only return
     jobs with the job id or submission id.
     """
-    job_infos = await gcs_client.async_get_all_job_info(
-        job_or_submission_id=job_or_submission_id,
-        skip_submission_job_info_field=True,
-        skip_is_running_tasks_field=True,
-        timeout=timeout,
-    )
+    try:
+        job_infos = await gcs_client.async_get_all_job_info(
+            job_or_submission_id=job_or_submission_id,
+            skip_submission_job_info_field=True,
+            skip_is_running_tasks_field=True,
+            timeout=timeout,
+        )
+    except RpcError as e:
+        if (
+            timeout is not None
+            or e.rpc_code != GRPC_STATUS_CODE_DEADLINE_EXCEEDED
+        ):
+            raise
+        logger.warning(
+            "GetAllJobInfo timed out for job_or_submission_id=%s; "
+            "retrying once with timeout=%ss.",
+            job_or_submission_id,
+            DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S,
+        )
+        job_infos = await gcs_client.async_get_all_job_info(
+            job_or_submission_id=job_or_submission_id,
+            skip_submission_job_info_field=True,
+            skip_is_running_tasks_field=True,
+            timeout=DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S,
+        )
     # Sort jobs from GCS to follow convention of returning only last driver
     # of submission job.
     sorted_job_infos = sorted(
