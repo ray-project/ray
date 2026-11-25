@@ -156,8 +156,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
 
     def after_worker_group_start(self, worker_group: WorkerGroup):
         """Register the worker group's placement group with the coordinator."""
-        if self._coordinator_client is None:
-            return
+        assert self._coordinator_client is not None
         placement_group = (
             worker_group.get_worker_group_state().placement_group_handle.placement_group
         )
