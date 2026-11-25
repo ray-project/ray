@@ -1304,6 +1304,7 @@ class HAProxyApi(ProxyApi):
                 if new_proc.returncode is None:
                     new_proc.kill()
                     await new_proc.wait()
+                self._retire_log_files(new_proc)
                 return
             self._proc = new_proc
 

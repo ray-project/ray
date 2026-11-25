@@ -3589,6 +3589,7 @@ async def test_haproxy_api_reload_kills_new_proc_if_stopped_concurrently():
     api._prune_old_procs = mock.Mock()
     api._is_our_haproxy = mock.Mock(return_value=True)
     api._soft_stop_old_procs = mock.Mock()
+    api._retire_log_files = mock.Mock()
 
     new_proc = mock.Mock(pid=200, returncode=None)
     new_proc.kill = mock.Mock()
@@ -3604,6 +3605,7 @@ async def test_haproxy_api_reload_kills_new_proc_if_stopped_concurrently():
 
     new_proc.kill.assert_called_once()
     new_proc.wait.assert_awaited_once()
+    api._retire_log_files.assert_called_once_with(new_proc)
     assert api._proc is old_proc
 
 
