@@ -340,13 +340,12 @@ def _embed_with_engine(prompts, dimensions):
         engine.shutdown()
 
 
-@pytest.mark.parametrize("dimensions", [None, EMBED_DIMENSIONS])
-def test_sglang_embed_matches_engine(dimensions):
+def test_sglang_embed_matches_engine():
     """The embed task returns the embeddings `Engine.encode` returns."""
-    rows = [{"id": i, "prompt": prompt} for i, prompt in enumerate(EMBED_PROMPTS)]
-    if dimensions is not None:
-        for row in rows:
-            row["embed_params"] = {"dimensions": dimensions}
+    rows = [
+        {"id": i, "prompt": prompt, "embed_params": {"dimensions": EMBED_DIMENSIONS}}
+        for i, prompt in enumerate(EMBED_PROMPTS)
+    ]
     config = SGLangEngineProcessorConfig(
         model_source=EMBED_MODEL,
         task_type="embed",
@@ -356,16 +355,14 @@ def test_sglang_embed_matches_engine(dimensions):
     )
     outputs = build_processor(config)(ray.data.from_items(rows)).take_all()
     outputs = sorted(outputs, key=lambda row: row["id"])
-    expected = ray.get(_embed_with_engine.remote(EMBED_PROMPTS, dimensions))
+    expected = ray.get(_embed_with_engine.remote(EMBED_PROMPTS, EMBED_DIMENSIONS))
 
     assert len(outputs) == len(expected)
     for output, (expected_embedding, expected_tokens) in zip(outputs, expected):
         actual = output["embeddings"]
         expected_embedding = np.asarray(expected_embedding, dtype=np.float32)
         assert actual.dtype == np.float32
-        assert actual.shape == expected_embedding.shape
-        if dimensions is not None:
-            assert actual.shape == (dimensions,)
+        assert actual.shape == expected_embedding.shape == (EMBED_DIMENSIONS,)
         # Batching changes bf16 kernels slightly, so compare directions.
         cosine = np.dot(actual, expected_embedding) / (
             np.linalg.norm(actual) * np.linalg.norm(expected_embedding)

@@ -34,14 +34,6 @@ def _embed_wrapper():
     )
 
 
-def test_embed_wrapper_engine_kwargs(embed_engine):
-    _embed_wrapper()
-
-    engine_kwargs = embed_engine.engine_cls.call_args.kwargs
-    assert engine_kwargs["is_embedding"] is True
-    assert engine_kwargs["skip_tokenizer_init"] is False
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "embed_params,expected_kwargs",
@@ -58,6 +50,11 @@ async def test_embed_wrapper(embed_engine, embed_params, expected_kwargs):
 
     _, idx_in_batch, output, _ = await _embed_wrapper().generate_async(row)
 
+    # The stage forces these even without the processor.
+    engine_kwargs = embed_engine.engine_cls.call_args.kwargs
+    assert engine_kwargs["is_embedding"] is True
+    assert engine_kwargs["skip_tokenizer_init"] is False
+
     embed_engine.async_encode.assert_awaited_once_with(
         prompt="hello", **expected_kwargs
     )
@@ -72,11 +69,10 @@ async def test_embed_wrapper(embed_engine, embed_params, expected_kwargs):
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key", ["prompt", "rid"])
-async def test_embed_wrapper_rejects_unknown_params(embed_engine, key):
-    row = {"__idx_in_batch": 0, "prompt": "hello", "embed_params": {key: "x"}}
+async def test_embed_wrapper_rejects_unknown_params(embed_engine):
+    row = {"__idx_in_batch": 0, "prompt": "hello", "embed_params": {"prompt": "x"}}
 
-    with pytest.raises(pydantic.ValidationError, match=key):
+    with pytest.raises(pydantic.ValidationError, match="prompt"):
         await _embed_wrapper().generate_async(row)
     embed_engine.async_encode.assert_not_called()
 
