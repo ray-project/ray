@@ -368,6 +368,20 @@ def _get_autoscaling_config_with_worker_group_priority() -> dict:
     return config
 
 
+def _get_ray_cr_originated_from(crd: str, state: Optional[str] = None) -> dict:
+    cr = get_basic_ray_cr()
+    cr["metadata"]["labels"]["ray.io/originated-from-crd"] = crd
+    if state is not None:
+        cr["status"] = {"state": state}
+    return cr
+
+
+def _get_autoscaling_config_with_pending_node_idle_termination_gated() -> dict:
+    config = _get_basic_autoscaling_config()
+    config["provider"]["pending_node_idle_termination_gated"] = True
+    return config
+
+
 def _get_tpu_group_with_no_node_selectors() -> dict[str, Any]:
     cr = get_basic_ray_cr()
     tpu_group = cr["spec"]["workerGroupSpecs"][2]
@@ -509,6 +523,30 @@ TEST_DATA = (
             None,
             None,
             id="worker-group-priority",
+        ),
+        pytest.param(
+            _get_ray_cr_originated_from("RayJob"),
+            _get_autoscaling_config_with_pending_node_idle_termination_gated(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-gated-rayjob-not-ready",
+        ),
+        pytest.param(
+            _get_ray_cr_originated_from("RayJob", state="ready"),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-not-gated-rayjob-ready",
+        ),
+        pytest.param(
+            _get_ray_cr_originated_from("RayService"),
+            _get_basic_autoscaling_config(),
+            None,
+            None,
+            None,
+            id="pending-node-idle-termination-not-gated-rayservice",
         ),
         pytest.param(
             _get_ray_cr_with_tpu_custom_resource(),

@@ -32,9 +32,16 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
         self._encoding_ratio = None
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
-        assert np.all(manifest.file_sizes >= 0)
+        """Return each row's estimated in-memory size.
 
-        for path, file_size in zip(manifest.paths, manifest.file_sizes):
+        A row whose file size is unknown (``NaN`` in ``file_sizes``) gets a
+        ``NaN`` estimate, which the partitioner treats as unknown.
+        """
+        file_sizes = manifest.file_sizes
+        known = ~np.isnan(file_sizes.astype(float))
+        assert np.all(file_sizes[known] >= 0)
+
+        for path, file_size in zip(manifest.paths[known], file_sizes[known]):
             if self._encoding_ratio is None:
                 # Estimating the encoding ratio can be expensive since it requires
                 # reading the file. So, we only estimate the encoding ratio if we don't
@@ -44,9 +51,9 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
 
         if self._encoding_ratio is None:
             # If we couldn't estimate the encoding ratio, assume a 1:1 encoding ratio.
-            return manifest.file_sizes
+            return file_sizes
         else:
-            return manifest.file_sizes * self._encoding_ratio
+            return file_sizes * self._encoding_ratio
 
     def _estimate_encoding_ratio(
         self,
@@ -103,3 +110,26 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
             in_memory_size = file_size
 
         return in_memory_size / file_size
+
+
+@DeveloperAPI
+class OnDiskSizeEstimator(InMemorySizeEstimator):
+    """Estimates each row's in-memory size as its bytes on disk.
+
+    A chunk row weighs its own ``size_bytes``, not its whole file's size.
+    V1 sizes CSV and JSON reads by on-disk bytes the same way, and nothing
+    is read to estimate. A row whose file size is unknown (``NaN`` in
+    ``file_sizes``) gets a ``NaN`` estimate, which the partitioner treats as
+    unknown.
+    """
+
+    def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
+        return np.array(
+            [
+                file_size if metadata is None else metadata["size_bytes"]
+                for file_size, metadata in zip(
+                    manifest.file_sizes, manifest.file_chunk_metadatas
+                )
+            ],
+            dtype=np.float64,
+        )

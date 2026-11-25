@@ -1,5 +1,8 @@
 from typing import Callable, Iterator, Optional, TypeVar
 
+import pyarrow as pa
+
+from ray.data._internal.arrow_ops.transform_pyarrow import numpy_copy_is_deep
 from ray.data._internal.block_batching.interfaces import ResolvedBlock
 from ray.data._internal.block_batching.util import (
     _MappingIterator,
@@ -44,6 +47,9 @@ def batch_blocks(
             shuffle_buffer_min_size=shuffle_buffer_min_size,
             shuffle_seed=shuffle_seed,
             ensure_copy=ensure_copy,
+            # format_batches copies NumPy batches when ensure_copy is set, so
+            # the block copy is redundant when that copy is already complete.
+            skip_copy=_numpy_copy_is_deep if batch_format == "numpy" else None,
         ),
         batch_format=batch_format,
         stats=stats,
@@ -56,6 +62,10 @@ def batch_blocks(
     return _UserTimingIterator(
         _MappingIterator(batch_iter, lambda batch: batch.data), stats
     )
+
+
+def _numpy_copy_is_deep(block: Block) -> bool:
+    return isinstance(block, pa.Table) and numpy_copy_is_deep(block)
 
 
 class _UserTimingIterator(Iterator[DataBatch]):
