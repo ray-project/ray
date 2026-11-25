@@ -4427,11 +4427,11 @@ def read_sql(
 
         if not datasource.supports_sharding(override_num_blocks):
             message = (
-                "SQL sharding is not available. " "Please set override_num_blocks to 1."
+                "SQL sharding is not available. Please set override_num_blocks to 1."
             )
             if datasource._last_probe_error is not None:
                 message += (
-                    " Last sharding probe error: " f"{datasource._last_probe_error!r}"
+                    f" Last sharding probe error: {datasource._last_probe_error!r}"
                 )
             raise ValueError(message)
 
