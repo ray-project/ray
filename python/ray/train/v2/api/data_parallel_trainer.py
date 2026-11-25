@@ -24,6 +24,7 @@ from ray.train.base_trainer import (
 )
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.context import _GET_METADATA_DEPRECATION_MESSAGE
+from ray.train.health.nccl_ras.check import nccl_hang_config
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
@@ -35,7 +36,6 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
-from ray.train.v2._internal.callbacks.nccl_ras import NCCLRASCallback
 from ray.train.v2._internal.callbacks.placement_group_callback import (
     PlacementGroupCleanerCallback,
 )
@@ -168,6 +168,11 @@ class DataParallelTrainer:
                 This returns a :class:`ray.train.WorkerGroupError` if one or more workers fail during
                 training and reaches the worker group failure limit configured in `FailureConfig(max_failures)`.
         """
+        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
+            # The controller runs the NCCL hang detector. Its env vars are
+            # read here too, so that an invalid one raises a ValueError.
+            nccl_hang_config()
+
         train_fn_ref = ObjectRefWrapper(self._get_train_func())
 
         result = self._initialize_and_run_controller(
@@ -217,10 +222,6 @@ class DataParallelTrainer:
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
             callbacks.append(ControllerMetricsCallback())
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
-
-        # TODO: NCCLRASCallback is experimental. Off by default for now
-        if env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
-            callbacks.append(NCCLRASCallback())
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
             callbacks.append(StateManagerCallback(datasets=self.datasets))

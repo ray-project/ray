@@ -10,8 +10,16 @@ import pandas as pd
 import ray
 import ray._private.ray_constants as ray_constants
 from ray.exceptions import AsyncioActorExit
-from ray.train.health import Diagnose, Evict, HealthDecision, Noop, Reattempt
+from ray.train.health import (
+    Diagnose,
+    Evict,
+    HealthDecision,
+    Noop,
+    PeriodicHealthCheck,
+    Reattempt,
+)
 from ray.train.health._internal.manager import HealthManager
+from ray.train.health.nccl_ras.check import nccl_hang_check
 from ray.train.v2._internal.callbacks.health_callback import HealthCallback
 from ray.train.v2._internal.constants import (
     DEFAULT_ENABLE_CONTROLLER_LOGGING,
@@ -19,6 +27,7 @@ from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     DEFAULT_PREEMPTION_DEADLINE_S,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
+    ENABLE_NCCL_HANG_DETECTOR_ENV_VAR,
     ENABLE_PREEMPTION_WATCHER_ENV_VAR,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
 )
@@ -228,10 +237,15 @@ class TrainController:
         self._health_manager = None
         self._health_callback = None
         health_config = self._run_config.health_config
-        if health_config is not None:
-            self._health_manager = HealthManager(health_config.inflight_checks)
+        builtin_health_checks = self._create_builtin_health_checks()
+        if health_config is not None or builtin_health_checks:
+            self._health_manager = HealthManager(
+                (list(health_config.inflight_checks) if health_config else [])
+                + builtin_health_checks
+            )
             self._health_callback = HealthCallback(
-                self._health_manager, health_config.preflight_checks
+                self._health_manager,
+                list(health_config.preflight_checks) if health_config else [],
             )
             self._worker_group_callbacks_to_propagate.append(self._health_callback)
 
@@ -246,6 +260,24 @@ class TrainController:
         # can reference it if a callback fails during `_start`.
         self._generate_run_attempt_id()
         self._start()
+
+    def _create_builtin_health_checks(self) -> List[PeriodicHealthCheck]:
+        """Create the in-flight checks that Ray Train adds to the run's own:
+        the NCCL hang detector's, with ``RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1``.
+
+        Returns:
+            The checks.
+        """
+        # TODO: The NCCL hang detector is experimental. Off by default for now.
+        # TODO: Let users add the NCCL hang detector through
+        #  `RunConfig(health_config=...)`, configured by arguments instead of
+        #  env vars. Users can't build the check itself, as it needs the
+        #  controller's run context and worker group, so they'd pass a spec of
+        #  it that the controller builds here. Skip the env var's check when
+        #  `health_config` already has one, so the detector doesn't run twice.
+        if not ray_constants.env_bool(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, False):
+            return []
+        return [nccl_hang_check(self._train_run_context, self.get_worker_group)]
 
     def _run_controller_hook(
         self,
@@ -794,6 +826,10 @@ class TrainController:
             logger.warning(
                 "Restarting the worker group to diagnose: %s", decision.reason
             )
+            # TODO: Carry only the checks that require idle workers. The others
+            # diagnose this attempt, so running them on the next one captures
+            # the new workers instead, such as the NCCL hang detector's
+            # diagnostics of a confirmed hang merged into this Diagnose.
             self._health_callback.run_at_next_start(decision.checks)
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
