@@ -63,7 +63,7 @@ class HealthEventBuilder(InternalEventBuilder):
             raise ValueError("HealthEvent has no body set.")
 
         super().__init__(
-            source_type=RayEventProto.SourceType.RAY_TRAIN,
+            source_type=RayEventProto.SourceType.RAY_LIBRARY,
             event_type=RayEventProto.EventType.HEALTH_EVENT,
             nested_event_field_number=RayEventProto.HEALTH_EVENT_FIELD_NUMBER,
             severity=severity,

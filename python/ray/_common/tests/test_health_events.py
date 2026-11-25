@@ -44,13 +44,7 @@ def _decision_event(action: int) -> HealthEvent:
     "event, entity_id, severity, message",
     [
         (
-            _finding_event(HealthFinding.State.NEW),
-            "finding-1",
-            Severity.WARNING,
-            "2 communicators stalled",
-        ),
-        (
-            _finding_event(HealthFinding.State.UPDATED),
+            _finding_event(HealthFinding.State.OPEN),
             "finding-1",
             Severity.WARNING,
             "2 communicators stalled",
@@ -99,13 +93,13 @@ def test_derived_fields(event, entity_id, severity, message):
     assert builder.get_entity_id() == entity_id
     assert builder._severity == severity
     assert builder._message == message
-    assert builder._source_type == RayEventProto.SourceType.RAY_TRAIN
+    assert builder._source_type == RayEventProto.SourceType.RAY_LIBRARY
     assert builder._event_type == RayEventProto.EventType.HEALTH_EVENT
     assert builder._nested_event_field_number == RayEventProto.HEALTH_EVENT_FIELD_NUMBER
 
 
 def test_serialized_data_round_trips_through_ray_event():
-    event = _finding_event(HealthFinding.State.NEW)
+    event = _finding_event(HealthFinding.State.OPEN)
     builder = HealthEventBuilder(event)
 
     # The C++ recorder parses the bytes into RayEvent.health_event.

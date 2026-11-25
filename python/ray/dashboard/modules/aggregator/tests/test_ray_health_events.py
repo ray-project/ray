@@ -67,6 +67,7 @@ def test_ray_health_events(ray_start_cluster, httpserver):
             "nccl_hang_detector",
             summary="1 NCCL communicator stalled",
             started_at=1000.0,
+            observed_at=1001.0,
             details=NcclHangFinding(
                 run_id="run-1",
                 attempt_id="attempt-1",
@@ -102,7 +103,8 @@ def test_ray_health_events(ray_start_cluster, httpserver):
 
     for event in events:
         assert event["eventType"] == "HEALTH_EVENT"
-        assert event["sourceType"] == "RAY_TRAIN"
+        assert event["sourceType"] == "RAY_LIBRARY"
+        assert event["healthEvent"]["library"] == "train"
         assert event["sessionName"]
         assert base64.b64decode(event["nodeId"]).hex() == head_node_id
 
@@ -123,10 +125,12 @@ def test_ray_health_events(ray_start_cluster, httpserver):
     }
 
     assert new["severity"] == "WARNING"
+    # The observation time is the RayEvent timestamp.
+    assert new["timestamp"] == "1970-01-01T00:16:41Z"
     assert new["message"] == "1 NCCL communicator stalled"
     finding = new["healthEvent"]["finding"]
     assert finding["findingId"] == finding_id
-    assert finding["state"] == "NEW"
+    assert finding["state"] == "OPEN"
     assert finding["artifacts"] == [{"name": "ras_text_report", "text": "report"}]
     assert finding["ncclHang"]["runId"] == "run-1"
     assert finding["ncclHang"]["attemptId"] == "attempt-1"

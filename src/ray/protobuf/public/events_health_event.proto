@@ -28,18 +28,22 @@ import "google/protobuf/timestamp.proto";
 // Every HealthEvent carries exactly one body:
 //   - HealthFinding: an issue a checker has found. It is a full snapshot, so
 //     the newest event for a `finding_id` (by `sequence`) is its current state.
+//     The first event for a `finding_id` is the one that opened it.
 //   - HealthCheckerDisabled: the checker gave up; no further events follow.
 //   - HealthDecision: the HealthManager decided to act on one or more findings.
+//
+// RayEvent.timestamp is when the observation behind the event was made (e.g.
+// when the poll's `ncclras` query returned), not when the event was built.
 
 message HealthEvent {
   // A stable name for the checker that emitted the event, e.g.
   // "nccl_hang_detector", a probe or evaluator `name`, or "health_manager".
   string checker_name = 1;
-  // Strictly increasing per checker instance; orders the events.
+  // Strictly increasing per checker instance; orders the events. Timestamps
+  // can't: events from one poll share a timestamp, and wall clocks can step back.
   uint64 sequence = 2;
-  // When the observation behind the event was made (e.g. when the poll's
-  // `ncclras` query returned). RayEvent.timestamp is when the event was built.
-  google.protobuf.Timestamp observed_at = 3;
+  // The Ray library whose health plane emitted the event, e.g. "train".
+  string library = 3;
 
   oneof body {
     HealthFinding finding = 10;
@@ -52,14 +56,13 @@ message HealthEvent {
 message HealthFinding {
   enum State {
     STATE_UNSPECIFIED = 0;
-    // First event for this finding.
-    NEW = 1;
-    // Still open, with changed details.
-    UPDATED = 2;
+    // The issue is ongoing.
+    OPEN = 1;
     // The issue cleared on its own. Final.
-    RESOLVED = 3;
-    // The issue is ended through an exception or stoppage. Final.
-    STOPPED = 4;
+    RESOLVED = 2;
+    // The issue ended through an exception or stoppage, e.g. the attempt ended
+    // or the checker was disabled while it was ongoing. Final.
+    STOPPED = 3;
   }
 
   // Evidence attached to a finding.
@@ -77,7 +80,8 @@ message HealthFinding {
   // Stable across the finding's events and globally unique.
   string finding_id = 1;
   State state = 2;
-  // When the underlying issue began (may be earlier than the NEW event).
+  // When the underlying issue began (may be earlier than the first event).
+  // Constant across the finding's events.
   google.protobuf.Timestamp started_at = 3;
   // Short human-readable summary, e.g. "2 NCCL communicators stalled".
   string summary = 4;

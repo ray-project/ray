@@ -47,7 +47,7 @@ message RayEvent {
     CLUSTER_LIFECYCLE = 4;
     AUTOSCALER = 5;
     JOBS = 6;
-    RAY_TRAIN = 7;
+    RAY_LIBRARY = 7;
   }
 
   // The potential types of events that can be generated.

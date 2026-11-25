@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 
 HEALTH_EVENT_TYPE = "HEALTH_EVENT"
 
+# The library these events are emitted for.
+HEALTH_EVENT_LIBRARY = "train"
+
 # The checker_name the HealthManager's own decisions are emitted under.
 HEALTH_MANAGER_CHECKER_NAME = "health_manager"
 
@@ -33,9 +36,10 @@ class HealthEventExporter:
     `events_health_event.proto` requires, so individual checkers can't break it:
 
     - `sequence` is strictly increasing per checker.
-    - A finding is NEW once, then UPDATED, and ends RESOLVED or STOPPED. Its
-      finding_id emits nothing after that; if the issue recurs, it's reported
-      as a new finding with a new finding_id.
+    - A finding is OPEN until it ends RESOLVED or STOPPED. Its finding_id
+      emits nothing after that; if the issue recurs, it's reported as a new
+      finding with a new finding_id.
+    - Each event's RayEvent timestamp is when its observation was made.
     - Every finding event is a full snapshot, with artifacts only on the event
       that produced them.
     - A checker emits nothing after it is disabled. Its open findings are
@@ -99,7 +103,7 @@ class HealthEventExporter:
         self._report(
             checker_name,
             finding,
-            HealthFinding.State.NEW,
+            HealthFinding.State.OPEN,
             details=details,
             artifacts=artifacts,
             observed_at=observed_at,
@@ -127,7 +131,7 @@ class HealthEventExporter:
         """
         self._report_open(
             finding_id,
-            HealthFinding.State.UPDATED,
+            HealthFinding.State.OPEN,
             summary=summary,
             details=details,
             artifacts=artifacts,
@@ -337,19 +341,22 @@ class HealthEventExporter:
         if not self._enabled:
             return
         event = HealthEvent(
-            checker_name=checker_name, sequence=self._sequences[checker_name], **body
+            checker_name=checker_name,
+            sequence=self._sequences[checker_name],
+            library=HEALTH_EVENT_LIBRARY,
+            **body,
         )
-        event.observed_at.FromNanoseconds(
-            int((observed_at if observed_at is not None else time.time()) * 1e9)
+        timestamp_ns = int(
+            (observed_at if observed_at is not None else time.time()) * 1e9
         )
         try:
-            self._emit_to_recorder(event)
+            self._emit_to_recorder(event, timestamp_ns)
         except Exception:
             logger.warning(
                 f"Failed to export health event from '{checker_name}'.", exc_info=True
             )
 
-    def _emit_to_recorder(self, event: HealthEvent) -> None:
+    def _emit_to_recorder(self, event: HealthEvent, timestamp_ns: int) -> None:
         import ray
         from ray._common.observability.health_events import HealthEventBuilder
         from ray._raylet import EventRecorder
@@ -369,5 +376,7 @@ class HealthEventExporter:
                 metric_source="health",
             )
         EventRecorder.emit(
-            HealthEventBuilder(event, session_name=node.session_name).build()
+            HealthEventBuilder(event, session_name=node.session_name).build(
+                timestamp_ns=timestamp_ns
+            )
         )

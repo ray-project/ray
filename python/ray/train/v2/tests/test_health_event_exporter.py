@@ -1,4 +1,5 @@
 import sys
+from types import SimpleNamespace
 from typing import List
 
 import pytest
@@ -22,14 +23,24 @@ Artifact = HealthFinding.HealthArtifact
 
 
 @pytest.fixture
-def emitted(monkeypatch) -> List[HealthEvent]:
-    """Enables export and captures the HealthEvents sent to the recorder."""
-    events = []
+def recorder(monkeypatch) -> SimpleNamespace:
+    """Enables export and captures what is sent to the recorder: the
+    HealthEvents and their RayEvent timestamps, in nanoseconds."""
+    sent = SimpleNamespace(events=[], timestamps_ns=[])
+
+    def record(self, event, timestamp_ns):
+        sent.events.append(event)
+        sent.timestamps_ns.append(timestamp_ns)
+
     monkeypatch.setattr(event_exporter, "is_python_ray_event_enabled", lambda _: True)
-    monkeypatch.setattr(
-        HealthEventExporter, "_emit_to_recorder", lambda self, e: events.append(e)
-    )
-    return events
+    monkeypatch.setattr(HealthEventExporter, "_emit_to_recorder", record)
+    return sent
+
+
+@pytest.fixture
+def emitted(recorder) -> List[HealthEvent]:
+    """The HealthEvents sent to the recorder."""
+    return recorder.events
 
 
 def _nccl_hang(*comm_ids: str) -> NcclHangFinding:
@@ -45,7 +56,7 @@ def _nccl_hang(*comm_ids: str) -> NcclHangFinding:
     )
 
 
-def test_finding_lifecycle(emitted):
+def test_finding_lifecycle(recorder, emitted):
     exporter = HealthEventExporter()
 
     finding_id = exporter.emit_new_finding(
@@ -63,15 +74,17 @@ def test_finding_lifecycle(emitted):
     exporter.emit_resolved_finding(finding_id, details=_nccl_hang())
 
     assert [e.finding.state for e in emitted] == [
-        State.NEW,
-        State.UPDATED,
-        State.UPDATED,
+        State.OPEN,
+        State.OPEN,
+        State.OPEN,
         State.RESOLVED,
     ]
     assert [e.sequence for e in emitted] == [1, 2, 3, 4]
     assert all(e.checker_name == "nccl_hang_detector" for e in emitted)
+    assert all(e.library == "train" for e in emitted)
     assert all(e.finding.finding_id == finding_id for e in emitted)
-    assert emitted[0].observed_at.ToNanoseconds() == 101 * 10**9
+    # The observation time is the RayEvent timestamp.
+    assert recorder.timestamps_ns[0] == 101 * 10**9
 
     new, updated, kept, resolved = (e.finding for e in emitted)
     assert new.nccl_hang.run_id == "run-1"
@@ -95,7 +108,7 @@ def test_closed_finding_id_is_final(emitted):
     exporter.emit_updated_finding(finding_id, summary="s2")
     exporter.emit_resolved_finding(finding_id)
 
-    assert [e.finding.state for e in emitted] == [State.NEW, State.STOPPED]
+    assert [e.finding.state for e in emitted] == [State.OPEN, State.STOPPED]
 
 
 def test_recurrence_is_a_new_finding(emitted):
@@ -110,11 +123,11 @@ def test_recurrence_is_a_new_finding(emitted):
 
     assert finding_ids[0] != finding_ids[1]
     assert [(e.finding.finding_id, e.finding.state) for e in emitted] == [
-        (finding_ids[0], State.NEW),
-        (finding_ids[0], State.UPDATED),
+        (finding_ids[0], State.OPEN),
+        (finding_ids[0], State.OPEN),
         (finding_ids[0], State.RESOLVED),
-        (finding_ids[1], State.NEW),
-        (finding_ids[1], State.UPDATED),
+        (finding_ids[1], State.OPEN),
+        (finding_ids[1], State.OPEN),
         (finding_ids[1], State.RESOLVED),
     ]
     assert [e.sequence for e in emitted] == [1, 2, 3, 4, 5, 6]
@@ -244,7 +257,7 @@ def test_invalid_input_raises_without_side_effects(emitted, call):
 
 
 def test_export_errors_are_swallowed(monkeypatch):
-    def failing_emit(self, event):
+    def failing_emit(self, event, timestamp_ns):
         raise RuntimeError("export pipeline down")
 
     monkeypatch.setattr(event_exporter, "is_python_ray_event_enabled", lambda _: True)
@@ -252,14 +265,14 @@ def test_export_errors_are_swallowed(monkeypatch):
     exporter = HealthEventExporter()
 
     finding_id = exporter.emit_new_finding("probe", summary="s", started_at=0.0)
-    # Bookkeeping still advances so the next event is UPDATED.
+    # Bookkeeping still advances so the finding stays open.
     assert exporter.open_finding_ids() == [finding_id]
 
 
 def test_disabled_by_default(monkeypatch):
     sent = []
     monkeypatch.setattr(
-        HealthEventExporter, "_emit_to_recorder", lambda self, e: sent.append(e)
+        HealthEventExporter, "_emit_to_recorder", lambda self, e, ts: sent.append(e)
     )
     exporter = HealthEventExporter()
 
