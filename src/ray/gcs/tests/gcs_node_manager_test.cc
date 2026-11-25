@@ -295,9 +295,10 @@ TEST_F(GcsNodeManagerTest, TestUnregisterNodePublishesDeathBeforePersist) {
 }
 
 TEST_F(GcsNodeManagerTest, TestUnregisterNodeAlwaysReplies) {
-  // The raylet gates its whole graceful shutdown on this reply, and the RPC has
-  // no client-side deadline: unregistering an already-removed node (e.g. the
-  // health check marked it dead mid-drain) must still send exactly one reply.
+  // The raylet gates its graceful shutdown on this reply, and the RPC has no
+  // client-side deadline: unregistering an already-removed node (e.g. the health
+  // check marked it dead before the raylet's unregister arrived) must still send
+  // exactly one reply.
   gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
                                    gcs_table_storage_.get(),
                                    *io_context_,
@@ -345,6 +346,26 @@ TEST_F(GcsNodeManagerTest, TestUnregisterNodeAlwaysReplies) {
   }
   ASSERT_EQ(second_replies, 1);
   ASSERT_EQ(second_reply.status().code(), static_cast<int>(StatusCode::OK));
+
+  // The health check removes a node first, then its unregister arrives.
+  auto failed_node = GenNodeInfo();
+  node_manager.AddNode(failed_node);
+  node_manager.OnNodeFailure(NodeID::FromBinary(failed_node->node_id()), nullptr);
+  while (io_context_->poll() > 0) {
+  }
+  unregister_request.set_node_id(failed_node->node_id());
+  int failed_node_replies = 0;
+  rpc::UnregisterNodeReply failed_node_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request,
+      &failed_node_reply,
+      [&failed_node_replies](ray::Status, std::function<void()>, std::function<void()>) {
+        failed_node_replies++;
+      },
+      "");
+  while (io_context_->poll() > 0) {
+  }
+  ASSERT_EQ(failed_node_replies, 1);
 }
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
