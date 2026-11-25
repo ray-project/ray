@@ -8,15 +8,20 @@ advanced_instance_config:
           Value: '24'
 
 head_node:
-    # 16 cpus, x86, 64G mem, 10Gb NIC, $0.768/hr on demand
-    instance_type: m5.4xlarge
+    # 16 cpus, x86, 64G mem, 12.5Gb NIC, $0.8064/hr on demand
+    instance_type: m7i.4xlarge
     resources:
       CPU: 0
       proxy: 1
 
+# Workers come from one logical pool of 8-CPU / 32 GiB x86 nodes. Anyscale
+# launches the first group in `group_order` and moves to the next group in
+# the same zone when a launch fails for lack of capacity. Every group has the
+# same `resources`, so Ray treats them as interchangeable.
 worker_nodes:
-    # 8 cpus, x86, 32G mem, 10Gb NIC, $0.384/hr on demand
-    - instance_type: m5.2xlarge
+    # 8 cpus, x86 (Intel Sapphire Rapids), 32G mem, 12.5Gb NIC, $0.4032/hr on demand. Preferred type.
+    - name: worker-m7i
+      instance_type: m7i.2xlarge
       # smaller min workers will make the head node cpu usage very high, and crash the head node.
       # issue: https://github.com/ray-project/ray/issues/18908
       min_nodes: 5
@@ -30,3 +35,42 @@ worker_nodes:
       resources:
         CPU: 8
         proxy: 1
+    # Fallbacks: same resources, min 0, used only when the groups above cannot launch.
+    # 8 cpus, x86 (Intel Ice Lake), 32G mem
+    - name: worker-m6i
+      instance_type: m6i.2xlarge
+      min_nodes: 0
+      max_nodes: 280
+      market_type: ON_DEMAND
+      resources:
+        CPU: 8
+        proxy: 1
+    # 8 cpus, x86 (Intel Skylake/Cascade Lake), 32G mem
+    - name: worker-m5
+      instance_type: m5.2xlarge
+      min_nodes: 0
+      max_nodes: 280
+      market_type: ON_DEMAND
+      resources:
+        CPU: 8
+        proxy: 1
+    # 8 cpus, x86 (AMD EPYC Milan), 32G mem
+    - name: worker-m6a
+      instance_type: m6a.2xlarge
+      min_nodes: 0
+      max_nodes: 280
+      market_type: ON_DEMAND
+      resources:
+        CPU: 8
+        proxy: 1
+
+# Keeps the whole pool at 280 workers (8 CPU each; the head has CPU 0),
+# however the workers split across the groups above.
+max_resources:
+  CPU: 2240
+
+flags:
+  instance_ranking_strategy:
+    - ranker_type: custom_group_order
+      ranker_config:
+        group_order: [worker-m7i, worker-m6i, worker-m5, worker-m6a]
