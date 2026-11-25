@@ -16,7 +16,8 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSION=$(python -c"from platform import python_version; print(python_version())")
 
-RAY_VERSIONS=("2.0.1")
+# 2.3.0 is the oldest Ray release with a Python 3.11 wheel.
+RAY_VERSIONS=("2.3.0")
 
 for RAY_VERSION in "${RAY_VERSIONS[@]}"
 do
@@ -38,8 +39,8 @@ do
     # bundling pip as a dep, and without it `conda activate` puts us in
     # an env with python but no pip, so subsequent `pip install` falls
     # back to the base miniforge env's pip. That clobbers the editable
-    # ray 3.0.0.dev0 in base with ray 2.0.1, and every subsequent
-    # dashboard test that imports `ray._common` fails because 2.0.1
+    # ray 3.0.0.dev0 in base with the old ray, and every subsequent
+    # dashboard test that imports `ray._common` fails because the old ray
     # predates that module.
     conda create -y -n "${env_name}" python="${PYTHON_VERSION}" pip=25.2
     conda activate "${env_name}"
