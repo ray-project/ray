@@ -10,6 +10,9 @@ genrule(
     outs = ["auth_token"],
     # No python3 here: Windows CI agents lack it on the genrule's PATH.
     cmd = "head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \\n' > $@",
+    # A remote cache hit leaves the output undownloaded, and on Windows with
+    # Bazel 8 the test's runfiles link then points at a missing file.
+    tags = ["no-remote"],
     visibility = [
         "//cpp:__pkg__",
         "//src/ray/core_worker/tests:__pkg__",

@@ -24,6 +24,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/time/clock.h"
 #include "ray/asio/fake_periodical_runner.h"
@@ -58,6 +59,31 @@
 
 namespace ray {
 namespace core {
+
+/// FakeRayletClient that captures PinObjectIDs callbacks for test control.
+class TestRayletClient : public rpc::FakeRayletClient {
+ public:
+  void PinObjectIDs(
+      const rpc::Address &caller_address,
+      const std::vector<ObjectID> &object_ids,
+      const ObjectID &generator_id,
+      const rpc::ClientCallback<rpc::PinObjectIDsReply> &callback) override {
+    pin_callbacks_.push_back(callback);
+  }
+
+  size_t FlushPinCallbacks(bool success = true) {
+    auto callbacks = std::move(pin_callbacks_);
+    pin_callbacks_.clear();
+    for (const auto &callback : callbacks) {
+      rpc::PinObjectIDsReply reply;
+      reply.add_successes(success);
+      callback(Status::OK(), std::move(reply));
+    }
+    return callbacks.size();
+  }
+
+  std::vector<rpc::ClientCallback<rpc::PinObjectIDsReply>> pin_callbacks_;
+};
 
 class CoreWorkerTest : public ::testing::Test {
  public:
@@ -106,8 +132,9 @@ class CoreWorkerTest : public ::testing::Test {
           return std::make_shared<rpc::FakeCoreWorkerClient>();
         });
 
+    test_raylet_client_ = std::make_shared<TestRayletClient>();
     auto raylet_client_pool = std::make_shared<rpc::RayletClientPool>(
-        [](const rpc::Address &) { return std::make_shared<rpc::FakeRayletClient>(); });
+        [this](const rpc::Address &) { return test_raylet_client_; });
 
     fake_gcs_client_ = std::make_shared<gcs::FakeGcsClient>();
 
@@ -152,7 +179,7 @@ class CoreWorkerTest : public ::testing::Test {
         rpc_address_,
         object_info_publisher.get(),
         fake_object_info_subscriber.get(),
-        [](const NodeID &) { return false; },
+        [this](const NodeID &node_id) { return dead_nodes_.contains(node_id); },
         [this](const ObjectID &object_id, const absl::flat_hash_set<NodeID> &locations) {
           core_worker_->FreeObjectOnNodesAsync(object_id, locations);
         },
@@ -209,13 +236,16 @@ class CoreWorkerTest : public ::testing::Test {
     auto object_recovery_manager = std::make_unique<ObjectRecoveryManager>(
         rpc_address_,
         raylet_client_pool,
-        [](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+        [this](const ObjectID &object_id, const ObjectLookupCallback &callback) {
+          object_lookup_callbacks_.push_back({object_id, callback});
           return Status::OK();
         },
         *task_manager_,
         *reference_counter_,
         *memory_store_,
-        [](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {},
+        [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
+          failed_recoveries_[object_id] = reason;
+        },
         fake_object_recovery_attempts_counter_);
 
     auto lease_policy = std::unique_ptr<LeasePolicyInterface>(
@@ -264,6 +294,7 @@ class CoreWorkerTest : public ::testing::Test {
         fake_gcs_client_, *actor_task_submitter, *reference_counter_);
 
     auto periodical_runner = std::make_unique<FakePeriodicalRunner>();
+    periodical_runner_ = periodical_runner.get();
 
     // TODO(joshlee): Dependency inject socket into plasma_store_provider_ so we can
     // create a real plasma_store_provider_ and mutable_object_provider_
@@ -344,6 +375,31 @@ class CoreWorkerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_owned_object_count_gauge_;
   ray::observability::FakeGauge fake_owned_object_size_gauge_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
+
+  // Recovery test infrastructure.
+  FakePeriodicalRunner *periodical_runner_ = nullptr;
+  std::shared_ptr<TestRayletClient> test_raylet_client_;
+  absl::flat_hash_set<NodeID> dead_nodes_;
+  std::vector<std::pair<ObjectID, ObjectLookupCallback>> object_lookup_callbacks_;
+  absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_recoveries_;
+
+  /// Simulates GCS responding to object location lookups. Delivers the given
+  /// locations to all pending object_lookup_ callbacks, triggering
+  /// PinOrReconstructObject inside the recovery manager.
+  size_t FlushObjectLookups(
+      const absl::flat_hash_map<ObjectID, std::vector<rpc::Address>> &locations) {
+    auto callbacks = std::move(object_lookup_callbacks_);
+    object_lookup_callbacks_.clear();
+    for (const auto &[object_id, callback] : callbacks) {
+      auto it = locations.find(object_id);
+      if (it != locations.end()) {
+        callback(object_id, it->second);
+      } else {
+        callback(object_id, {});
+      }
+    }
+    return callbacks.size();
+  }
 };
 
 std::shared_ptr<RayObject> MakeRayObject(const std::string &data_str,
@@ -1752,6 +1808,66 @@ TEST_F(CoreWorkerTest, AddObjectOutOfScopeCallback_FiresExactlyOnce) {
   EXPECT_EQ(fire_count, 1);
 }
 
+TEST_F(CoreWorkerTest, RecoveryRequeuesWhenNodeDiesBetweenPinAndCallback) {
+  // Integration test for the race where a node dies after the pin reply
+  // arrives but before the GetAsync callback runs.
+
+  ObjectID object_id = ObjectID::FromRandom();
+  NodeID node_b = NodeID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  // Object is owned and pinned at NodeB.
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::ELIGIBLE,
+                                     /*add_local_ref=*/true);
+  reference_counter_->UpdateObjectPinnedAtRaylet(object_id, node_b);
+
+  // NodeB dies
+  dead_nodes_.insert(node_b);
+  reference_counter_->ResetObjectsOnRemovedNode(node_b);
+
+  // Timer #1: starts recovery
+  periodical_runner_->Trigger("CoreWorker.RecoverObjects");
+  // RecoverObject posts GetAsync (object not in store) and object_lookup.
+  ASSERT_EQ(object_lookup_callbacks_.size(), 1);
+
+  // object_lookup returns NodeC as the new location.
+  NodeID node_c = NodeID::FromRandom();
+  rpc::Address node_c_address;
+  node_c_address.set_node_id(node_c.Binary());
+  ASSERT_EQ(FlushObjectLookups({{object_id, {node_c_address}}}), 1);
+
+  // PinObjectIDs RPC is sent to NodeC.
+  ASSERT_EQ(test_raylet_client_->pin_callbacks_.size(), 1);
+
+  // Pin succeeds, this calls Put(OBJECT_IN_PLASMA) which posts GetAsync callback.
+  ASSERT_EQ(test_raylet_client_->FlushPinCallbacks(/*success=*/true), 1);
+
+  // NodeC dies before the GetAsync callback runs
+  dead_nodes_.insert(node_c);
+  reference_counter_->ResetObjectsOnRemovedNode(node_c);
+
+  // Timer #2: recovery suppressed (still in objects_pending_recovery_)
+  periodical_runner_->Trigger("CoreWorker.RecoverObjects");
+  // No new object_lookup should be registered.
+  ASSERT_EQ(object_lookup_callbacks_.size(), 0);
+
+  // GetAsync callback fires
+  io_service_.poll();
+
+  // Timer #3: fresh recovery starts
+  // The callback should have requeued the object. The timer should now
+  // start a new recovery cycle.
+  periodical_runner_->Trigger("CoreWorker.RecoverObjects");
+  ASSERT_EQ(object_lookup_callbacks_.size(), 1);
+  EXPECT_EQ(object_lookup_callbacks_[0].first, object_id);
+}
+
 namespace {
 
 struct WaitAsyncCallbackResult {
@@ -2139,6 +2255,50 @@ TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
 
   report_location(object_id);
   EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
+}
+
+// Tests that a primary-moved report makes the consumer's node the primary copy, so
+// losing the producer's node neither unpins the object nor starts its recovery.
+TEST_F(CoreWorkerTest, PrimaryMovedReportMovesThePrimaryCopy) {
+  const NodeID producer_node_id = NodeID::FromRandom();
+  const NodeID consumer_node_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true,
+                                     /*pinned_at_node_id=*/producer_node_id);
+
+  rpc::UpdateObjectLocationBatchRequest request;
+  request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  request.set_node_id(consumer_node_id.Binary());
+  auto *update = request.add_object_location_updates();
+  update->set_object_id(object_id.Binary());
+  update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+  update->set_primary_moved_to_node_id(consumer_node_id.Binary());
+  rpc::UpdateObjectLocationBatchReply reply;
+  core_worker_->HandleUpdateObjectLocationBatch(
+      request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+
+  bool owned_by_us = false;
+  bool spilled = false;
+  NodeID pinned_at;
+  ASSERT_TRUE(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
+      object_id, &owned_by_us, &pinned_at, &spilled));
+  EXPECT_EQ(pinned_at, consumer_node_id);
+
+  reference_counter_->ResetObjectsOnRemovedNode(producer_node_id);
+  ASSERT_TRUE(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
+      object_id, &owned_by_us, &pinned_at, &spilled));
+  EXPECT_EQ(pinned_at, consumer_node_id);
+  EXPECT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
 }
 
 }  // namespace core

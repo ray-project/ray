@@ -15,13 +15,15 @@ NodeIdStr = str
 # labels must be set before creation, and the Core ID only exists afterwards.
 LogicalActorId = str
 
+# The ID of a physical operator (``PhysicalOperator.id``).
+OperatorId = str
+
+# The index of a data task within its operator.
+TaskIndex = int
+
 
 class ActorStatus(str, Enum):
-    """Lifecycle state of an actor in a Ray Data actor pool.
-
-    TODO(Justin): Lives here for now because I need to break up the PRs
-    into tiny ones and resource_bank references this.
-    """
+    """Lifecycle state of an actor in a Ray Data actor pool."""
 
     # Breakdown of alive states
     PENDING = "pending"
@@ -31,9 +33,9 @@ class ActorStatus(str, Enum):
     # Actor is restarting from some unexpected error
     RESTARTING = "restarting"
 
-    # The actor is marked for graceful termination. Will wait for all
-    # tasks to complete before dropping the ref handle.
-    TERMINATING = "terminating"
+    # The actor is draining: it takes no new tasks and is released once it has
+    # no in-flight tasks and no output blocks still counted against it.
+    DRAINING = "draining"
 
 
 # Used for time-based histograms (e.g. task completion time, block completion time)

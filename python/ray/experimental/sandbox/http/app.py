@@ -346,7 +346,6 @@ def create_app(
             "dns": request.dns,
             "shell": request.shell,
             "rootless": request.rootless,
-            "readonly": request.readonly,
             "capabilities": capabilities,
             "cpu_limit": cpu_limit,
             "memory_limit_mb": memory_limit_mb,

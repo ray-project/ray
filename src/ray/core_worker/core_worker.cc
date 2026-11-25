@@ -510,10 +510,11 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_9);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
         [this](const std::vector<rpc::ObjectReference> &args,
+               const std::vector<bool> &is_move,
                const TaskID &task_id,
                int32_t attempt_number) {
-          RAY_CHECK_OK(
-              raylet_ipc_client_->WaitForActorCallArgs(args, task_id, attempt_number))
+          RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(
+              args, is_move, task_id, attempt_number))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
@@ -2302,6 +2303,19 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   return returned_refs;
 }
 
+std::optional<MoveState> CoreWorker::GetMoveState(const ObjectID &object_id) const {
+  return reference_counter_->GetMoveState(object_id);
+}
+
+std::vector<std::optional<MoveState>> CoreWorker::GetMoveStates(
+    const std::vector<ObjectID> &object_ids) const {
+  return reference_counter_->GetMoveStates(object_ids);
+}
+
+bool CoreWorker::HasConsumeOnceObjects() const {
+  return reference_counter_->HasConsumeOnceObjects();
+}
+
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
@@ -2689,6 +2703,22 @@ Status CoreWorker::SubmitActorTask(
         actor_id.Hex()));
   }
 
+  // Nothing after this commit to MOVED fails the submit, so a committed move always has a
+  // consuming task. That task can still fail (for example, if the actor is dead), and the
+  // ref stays MOVED.
+  std::vector<ObjectID> arg_ids;
+  std::vector<size_t> arg_indices;
+  for (size_t i = 0; i < args.size(); i++) {
+    if (std::optional<ObjectID> arg_id = args[i]->GetReferenceId()) {
+      arg_ids.push_back(*arg_id);
+      arg_indices.push_back(i);
+    }
+  }
+  std::vector<bool> is_move;
+  if (!arg_ids.empty() && reference_counter_->HasConsumeOnceObjects()) {
+    RAY_ASSIGN_OR_RETURN(is_move, reference_counter_->TryCommitMoves(arg_ids));
+  }
+
   auto actor_handle = actor_manager_->GetActorHandle(actor_id);
   // Subscribe the actor state when we first submit the actor task. It is to reduce the
   // number of connections. The method is idempotent.
@@ -2739,6 +2769,11 @@ Status CoreWorker::SubmitActorTask(
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{},
                       task_options.num_objects_per_yield);
+  for (size_t i = 0; i < is_move.size(); i++) {
+    if (is_move[i]) {
+      builder.SetArgIsMove(arg_indices[i]);
+    }
+  }
   // NOTE: placement_group_capture_child_tasks and runtime_env will
   // be ignored in the actor because we should always follow the actor's option.
 
@@ -2753,7 +2788,7 @@ Status CoreWorker::SubmitActorTask(
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor task " << task_spec.DebugString();
   task_returns = task_manager_->AddPendingTask(
-      rpc_address_, task_spec, CurrentCallSite(), max_retries);
+      rpc_address_, task_spec, CurrentCallSite(), max_retries, task_options.consume_once);
   actor_task_submitter_->SubmitTask(task_spec);
   return Status::OK();
 }
@@ -3775,25 +3810,36 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       /*consumption_update_callback=*/
       [this, worker_addr, generator_id = consumption_generator_id](
           const Status &status, int64_t total_num_object_consumed) {
-        rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
-        update_request.set_generator_id(generator_id.Binary());
-        update_request.set_total_num_object_consumed(
-            status.ok() ? total_num_object_consumed : -1);
-        auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
-        client->UpdateGeneratorBackpressureConsumed(
-            std::move(update_request),
-            [generator_id](const Status &update_status,
-                           const rpc::UpdateGeneratorBackpressureConsumedReply &) {
-              if (!update_status.ok()) {
-                // The retryable RPC layer retries transient failures; a
-                // permanent failure usually means the executor is gone, in
-                // which case no one is blocked on the corresponding
-                // WaitUntilObjectConsumed. Still WARN so unexpected
-                // executor-side stalls (if any) are visible.
-                RAY_LOG(WARNING).WithField(generator_id)
-                    << "Failed to update generator consumed progress: " << update_status;
-              }
-            });
+        // This callback runs on every read from the stream, usually on the
+        // consumer's Python thread. Post the RPC to io_service_ so the gRPC send
+        // cost stays off that thread.
+        io_service_.post(
+            [this,
+             worker_addr,
+             generator_id,
+             total_num_object_consumed =
+                 status.ok() ? total_num_object_consumed : int64_t{-1}]() {
+              rpc::UpdateGeneratorBackpressureConsumedRequest update_request;
+              update_request.set_generator_id(generator_id.Binary());
+              update_request.set_total_num_object_consumed(total_num_object_consumed);
+              auto client = core_worker_client_pool_->GetOrConnect(worker_addr);
+              client->UpdateGeneratorBackpressureConsumed(
+                  std::move(update_request),
+                  [generator_id](const Status &update_status,
+                                 const rpc::UpdateGeneratorBackpressureConsumedReply &) {
+                    if (!update_status.ok()) {
+                      // The retryable RPC layer retries transient failures; a
+                      // permanent failure usually means the executor is gone, in
+                      // which case no one is blocked on the corresponding
+                      // WaitUntilObjectConsumed. Still WARN so unexpected
+                      // executor-side stalls (if any) are visible.
+                      RAY_LOG(WARNING).WithField(generator_id)
+                          << "Failed to update generator consumed progress: "
+                          << update_status;
+                    }
+                  });
+            },
+            "CoreWorker.UpdateGeneratorBackpressureConsumed");
       });
 }
 
@@ -4294,6 +4340,12 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << object_location_update.plasma_location_update()
                        << " has been received.";
       }
+    }
+
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      reference_counter_->UpdateObjectPinnedAtRaylet(
+          object_id,
+          NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
     }
   }
 

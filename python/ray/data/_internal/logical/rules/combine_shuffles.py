@@ -36,6 +36,20 @@ class CombineShuffles(Rule):
             context=plan.context,
         )
 
+    @staticmethod
+    def combines(op: LogicalOperator, input_op: LogicalOperator) -> bool:
+        return (
+            (
+                isinstance(input_op, Repartition)
+                and isinstance(op, (Repartition, Aggregate))
+            )
+            or (
+                isinstance(input_op, StreamingRepartition)
+                and isinstance(op, (StreamingRepartition, Repartition))
+            )
+            or (isinstance(input_op, Sort) and isinstance(op, Sort))
+        )
+
     @classmethod
     def _combine(self, op: LogicalOperator) -> LogicalOperator:
         # Repartitions should have exactly 1 input
@@ -43,6 +57,8 @@ class CombineShuffles(Rule):
             return op
 
         input_op = op.input_dependencies[0]
+        if not self.combines(op, input_op):
+            return op
 
         if isinstance(input_op, Repartition) and isinstance(op, Repartition):
             shuffle = input_op.shuffle or op.shuffle
