@@ -445,6 +445,27 @@ def test_split_files_preserve_quotes_in_unquoted_values(
     assert table.column("text").to_pylist() == values
 
 
+def test_split_file_preserves_three_quotes_when_double_quote_is_disabled(monkeypatch):
+    head = b'id,text\n1,"""\n'
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+    filesystem = pa.fs._MockFileSystem()
+    path = "quotes.csv"
+    with filesystem.open_output_stream(path) as stream:
+        stream.write(head + b"2,plain\n")
+
+    datasource = CsvDatasourceV2(
+        [path],
+        filesystem=filesystem,
+        arrow_csv_args={"parse_options": pcsv.ParseOptions(double_quote=False)},
+    )
+
+    # The first two quotes open and close the field. The third is literal.
+    assert _read_all(datasource, [path]).to_pylist() == [
+        {"id": 1, "text": '"'},
+        {"id": 2, "text": "plain"},
+    ]
+
+
 @pytest.mark.parametrize("delimiter", [",", ";"])
 def test_split_files_preserve_escaped_quotes(tmp_path, small_chunks, delimiter):
     path = _write(
