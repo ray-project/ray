@@ -78,8 +78,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_AWAITING_ON_START_REASON = "awaiting first input to run on_start"
-
 
 class OperatorSizer:
     """Owns how many actors every operator in the topology has, and where.
@@ -139,18 +137,20 @@ class OperatorSizer:
         # One clock for all three, so a faked clock in a test moves guard
         # expiry, tick cadence and rule deadlines together.
         self._guard = OpScalingGuard(clock)
-        # Ops whose ``on_start`` (e.g. ``on_write_start``) hasn't run. Their
-        # first actor would serialize the MapTransformer without the state
-        # ``on_start`` sets, so they stay at zero actors until it runs.
-        self._awaiting_on_start: Set[ExperimentalActorPoolMapOperator] = {
-            op for op in self._profiles.actor_pool_ops if op.awaiting_on_start()
+        # Ops that have not queued their first input bundle. They stay at zero
+        # actors until it arrives, with their warmup share held for them (see
+        # ``SizingTicker``): there is nothing for their actors to run yet, and
+        # an ``on_start`` (e.g. ``on_write_start``) must run on that bundle
+        # before the first actor serializes the MapTransformer.
+        self._awaiting_first_input: Set[ExperimentalActorPoolMapOperator] = {
+            op for op in self._profiles.actor_pool_ops if op.awaiting_first_input()
         }
-        for op in self._awaiting_on_start:
-            self._guard.block(op, _AWAITING_ON_START_REASON)
-        # Actors last held for each op awaiting on_start, and the one-time
-        # grant to that count queued when its on_start runs.
+        for op in self._awaiting_first_input:
+            self._guard.block(op, "awaiting first input")
+        # Actors held for each op awaiting its first input. Each tick refreshes
+        # the entries of ops still waiting; a released op keeps its entry until
+        # the WANT pass pops it as a one-time grant up to that count.
         self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
-        self._grow_to_held: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
         # submits an async RPC and serves the answer on a later call).
@@ -216,7 +216,7 @@ class OperatorSizer:
         t1 = time.perf_counter()
         if ctx is None:
             return
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._record_held_actors(ctx)
 
         self._cross_op_optimize(ctx, seconds_since_allocation_change)
         t2 = time.perf_counter()
@@ -238,15 +238,20 @@ class OperatorSizer:
             e2e_s=t5 - t0,
         )
 
+    def _record_held_actors(self, ctx: TickContext) -> None:
+        """Refresh the held count of each op still awaiting its first input.
+        An op released earlier this step keeps the count from the last tick."""
+        for op in self._awaiting_first_input:
+            self._held_actors_by_op[op] = ctx.capacity.held_actors_by_op.get(op, 0)
+
     def _release_started_ops(self) -> None:
-        """Let ops whose ``on_start`` has now run (on their first input) scale."""
-        started = {op for op in self._awaiting_on_start if not op.awaiting_on_start()}
+        """Let ops that have now received their first input scale."""
+        started = {
+            op for op in self._awaiting_first_input if not op.awaiting_first_input()
+        }
         for op in started:
             self._guard.release(op)
-            held = self._held_actors_by_op.pop(op, 0)
-            if held > 0:
-                self._grow_to_held[op] = held
-        self._awaiting_on_start -= started
+        self._awaiting_first_input -= started
 
     def _observe(self) -> None:
         """Sample the signals the optimizer decides on."""
@@ -339,7 +344,7 @@ class OperatorSizer:
                 continue
             if not self._guard.can_scale(op):
                 # An optimizer rule has claimed this op (e.g. mid-transfer),
-                # or its ``on_start`` hasn't run yet. Leave it alone so our
+                # or it hasn't received its first input. Leave it alone so our
                 # pendings aren't mistaken for a rule's claim.
                 continue
             want: Optional[ActorPoolScalingRequest] = None
@@ -351,13 +356,13 @@ class OperatorSizer:
                 want = self._policy.warm_delta(
                     op, self._topology[op], backpressured_with_demand
                 )
-            # Released from its on_start hold: grow straight into the room
-            # held for it while it waited (its warmup share), once.
-            held = self._grow_to_held.pop(op, 0)
+            # Released on its first input: grow straight into the room held
+            # for it while it waited (its warmup share), once.
+            held = self._held_actors_by_op.pop(op, 0)
             to_held = held - pool.serving_size()
             if to_held > 0 and (want is None or want.delta < to_held):
                 want = ActorPoolScalingRequest.upscale(
-                    delta=to_held, reason="held share (on_start ran)"
+                    delta=to_held, reason="held share (first input)"
                 )
             below_min = pool.min_size() - pool.serving_size()
             if below_min > 0 and (want is None or want.delta < below_min):
