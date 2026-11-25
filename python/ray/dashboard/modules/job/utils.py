@@ -155,11 +155,14 @@ async def get_driver_jobs(
     An optional job_or_submission_id filter can be provided to only return
     jobs with the job id or submission id.
     """
+    base_kwargs = {
+        "job_or_submission_id": job_or_submission_id,
+        "skip_submission_job_info_field": True,
+        "skip_is_running_tasks_field": True,
+    }
     try:
         job_infos = await gcs_client.async_get_all_job_info(
-            job_or_submission_id=job_or_submission_id,
-            skip_submission_job_info_field=True,
-            skip_is_running_tasks_field=True,
+            **base_kwargs,
             timeout=timeout,
         )
     except RpcError as e:
@@ -175,9 +178,7 @@ async def get_driver_jobs(
             DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S,
         )
         job_infos = await gcs_client.async_get_all_job_info(
-            job_or_submission_id=job_or_submission_id,
-            skip_submission_job_info_field=True,
-            skip_is_running_tasks_field=True,
+            **base_kwargs,
             timeout=DEFAULT_GET_ALL_JOB_INFO_RETRY_TIMEOUT_S,
         )
     # Sort jobs from GCS to follow convention of returning only last driver
