@@ -85,7 +85,6 @@ std::unique_ptr<ray::gcs::GlobalStateAccessor> ProcessHelper::CreateGlobalStateA
 void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) {
   std::string bootstrap_ip = ConfigInternal::Instance().bootstrap_ip;
   int bootstrap_port = ConfigInternal::Instance().bootstrap_port;
-  bool started_ray_node = false;
 
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER &&
       bootstrap_ip.empty()) {
@@ -97,116 +96,108 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
                  ConfigInternal::Instance().redis_username,
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
-    started_ray_node = true;
   }
 
-  try {
-    std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
-    std::string node_ip = ConfigInternal::Instance().node_ip_address;
-    if (node_ip.empty()) {
-      if (!bootstrap_ip.empty()) {
-        node_ip = ray::GetNodeIpAddressFromPerspective(bootstrap_address);
-      } else {
-        node_ip = ray::GetNodeIpAddressFromPerspective();
-      }
+  std::string bootstrap_address = BuildAddress(bootstrap_ip, bootstrap_port);
+  std::string node_ip = ConfigInternal::Instance().node_ip_address;
+  if (node_ip.empty()) {
+    if (!bootstrap_ip.empty()) {
+      node_ip = ray::GetNodeIpAddressFromPerspective(bootstrap_address);
+    } else {
+      node_ip = ray::GetNodeIpAddressFromPerspective();
     }
-
-    std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
-        CreateGlobalStateAccessor(bootstrap_ip, bootstrap_port);
-    if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
-      std::string node_to_connect;
-      auto status =
-          global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
-      if (!status.ok()) {
-        throw RayException(
-            "Failed to get node to connect for driver when starting the cluster: " +
-            status.ToString());
-      }
-      ray::rpc::GcsNodeInfo node_info;
-      if (!node_info.ParseFromString(node_to_connect)) {
-        throw RayException(
-            "Failed to parse GcsNodeInfo received from GCS when starting the cluster.");
-      }
-      ConfigInternal::Instance().raylet_socket_name = node_info.raylet_socket_name();
-      ConfigInternal::Instance().plasma_store_socket_name =
-          node_info.object_store_socket_name();
-      ConfigInternal::Instance().node_manager_port = node_info.node_manager_port();
-      ConfigInternal::Instance().UpdateSessionDir(node_info.session_dir());
-    }
-    if (ConfigInternal::Instance().raylet_socket_name.empty()) {
-      throw RayException(
-          "Failed to start ray cluster, raylet socket name could not be resolved.");
-    }
-    if (ConfigInternal::Instance().plasma_store_socket_name.empty()) {
-      throw RayException(
-          "Failed to start ray cluster, plasma store socket name could not be resolved.");
-    }
-    if (ConfigInternal::Instance().node_manager_port <= 0) {
-      throw RayException(
-          "Failed to start ray cluster, node manager port could not be resolved.");
-    }
-
-    gcs::GcsClientOptions gcs_options =
-        gcs::GcsClientOptions(bootstrap_ip,
-                              bootstrap_port,
-                              ClusterID::Nil(),
-                              /*allow_cluster_id_nil=*/true,
-                              /*fetch_cluster_id_if_nil=*/false);
-
-    CoreWorkerOptions options;
-    options.worker_type = ConfigInternal::Instance().worker_type;
-    options.language = Language::CPP;
-    options.store_socket = ConfigInternal::Instance().plasma_store_socket_name;
-    options.raylet_socket = ConfigInternal::Instance().raylet_socket_name;
-    if (options.worker_type == WorkerType::DRIVER) {
-      if (!ConfigInternal::Instance().job_id.empty()) {
-        options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
-      } else {
-        options.job_id = global_state_accessor->GetNextJobID();
-      }
-    }
-    options.gcs_options = gcs_options;
-    options.enable_logging = true;
-    options.log_dir = ConfigInternal::Instance().logs_dir;
-    options.install_failure_signal_handler = true;
-    options.node_ip_address = node_ip;
-    options.node_manager_port = ConfigInternal::Instance().node_manager_port;
-    options.driver_name = "cpp_worker";
-    options.metrics_agent_port = -1;
-    options.task_execution_callback = callback;
-    if (ConfigInternal::Instance().worker_type != WorkerType::DRIVER) {
-      options.worker_id = WorkerID::FromHex(ConfigInternal::Instance().worker_id);
-    }
-    options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
-    rpc::JobConfig job_config;
-    job_config.set_default_actor_lifetime(
-        ConfigInternal::Instance().default_actor_lifetime);
-
-    for (const auto &path : ConfigInternal::Instance().code_search_path) {
-      job_config.add_code_search_path(path);
-    }
-    job_config.set_ray_namespace(ConfigInternal::Instance().ray_namespace);
-    if (ConfigInternal::Instance().runtime_env) {
-      job_config.mutable_runtime_env_info()->set_serialized_runtime_env(
-          ConfigInternal::Instance().runtime_env->Serialize());
-    }
-    if (ConfigInternal::Instance().job_config_metadata.size()) {
-      auto metadata_ptr = job_config.mutable_metadata();
-      for (const auto &it : ConfigInternal::Instance().job_config_metadata) {
-        (*metadata_ptr)[it.first] = it.second;
-      }
-    }
-    std::string serialized_job_config;
-    RAY_CHECK(job_config.SerializeToString(&serialized_job_config))
-        << "Could not start ray cluster: failed to serialize job config";
-    options.serialized_job_config = serialized_job_config;
-    CoreWorkerProcess::Initialize(options);
-  } catch (...) {
-    if (started_ray_node) {
-      StopRayNode();
-    }
-    throw;
   }
+
+  std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
+      CreateGlobalStateAccessor(bootstrap_ip, bootstrap_port);
+  if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
+    std::string node_to_connect;
+    auto status =
+        global_state_accessor->GetNodeToConnectForDriver(node_ip, &node_to_connect);
+    if (!status.ok()) {
+      throw RayException(
+          "Failed to get node to connect for driver when starting the cluster: " +
+          status.ToString());
+    }
+    ray::rpc::GcsNodeInfo node_info;
+    if (!node_info.ParseFromString(node_to_connect)) {
+      throw RayException(
+          "Failed to parse GcsNodeInfo received from GCS when starting the cluster.");
+    }
+    ConfigInternal::Instance().raylet_socket_name = node_info.raylet_socket_name();
+    ConfigInternal::Instance().plasma_store_socket_name =
+        node_info.object_store_socket_name();
+    ConfigInternal::Instance().node_manager_port = node_info.node_manager_port();
+    ConfigInternal::Instance().UpdateSessionDir(node_info.session_dir());
+  }
+  if (ConfigInternal::Instance().raylet_socket_name.empty()) {
+    throw RayException(
+        "Failed to start ray cluster, raylet socket name could not be resolved.");
+  }
+  if (ConfigInternal::Instance().plasma_store_socket_name.empty()) {
+    throw RayException(
+        "Failed to start ray cluster, plasma store socket name could not be resolved.");
+  }
+  if (ConfigInternal::Instance().node_manager_port <= 0) {
+    throw RayException(
+        "Failed to start ray cluster, node manager port could not be resolved.");
+  }
+
+  gcs::GcsClientOptions gcs_options =
+      gcs::GcsClientOptions(bootstrap_ip,
+                            bootstrap_port,
+                            ClusterID::Nil(),
+                            /*allow_cluster_id_nil=*/true,
+                            /*fetch_cluster_id_if_nil=*/false);
+
+  CoreWorkerOptions options;
+  options.worker_type = ConfigInternal::Instance().worker_type;
+  options.language = Language::CPP;
+  options.store_socket = ConfigInternal::Instance().plasma_store_socket_name;
+  options.raylet_socket = ConfigInternal::Instance().raylet_socket_name;
+  if (options.worker_type == WorkerType::DRIVER) {
+    if (!ConfigInternal::Instance().job_id.empty()) {
+      options.job_id = JobID::FromHex(ConfigInternal::Instance().job_id);
+    } else {
+      options.job_id = global_state_accessor->GetNextJobID();
+    }
+  }
+  options.gcs_options = gcs_options;
+  options.enable_logging = true;
+  options.log_dir = ConfigInternal::Instance().logs_dir;
+  options.install_failure_signal_handler = true;
+  options.node_ip_address = node_ip;
+  options.node_manager_port = ConfigInternal::Instance().node_manager_port;
+  options.driver_name = "cpp_worker";
+  options.metrics_agent_port = -1;
+  options.task_execution_callback = callback;
+  if (ConfigInternal::Instance().worker_type != WorkerType::DRIVER) {
+    options.worker_id = WorkerID::FromHex(ConfigInternal::Instance().worker_id);
+  }
+  options.runtime_env_hash = ConfigInternal::Instance().runtime_env_hash;
+  rpc::JobConfig job_config;
+  job_config.set_default_actor_lifetime(
+      ConfigInternal::Instance().default_actor_lifetime);
+
+  for (const auto &path : ConfigInternal::Instance().code_search_path) {
+    job_config.add_code_search_path(path);
+  }
+  job_config.set_ray_namespace(ConfigInternal::Instance().ray_namespace);
+  if (ConfigInternal::Instance().runtime_env) {
+    job_config.mutable_runtime_env_info()->set_serialized_runtime_env(
+        ConfigInternal::Instance().runtime_env->Serialize());
+  }
+  if (ConfigInternal::Instance().job_config_metadata.size()) {
+    auto metadata_ptr = job_config.mutable_metadata();
+    for (const auto &it : ConfigInternal::Instance().job_config_metadata) {
+      (*metadata_ptr)[it.first] = it.second;
+    }
+  }
+  std::string serialized_job_config;
+  RAY_CHECK(job_config.SerializeToString(&serialized_job_config))
+      << "Could not start ray cluster: failed to serialize job config";
+  options.serialized_job_config = serialized_job_config;
+  CoreWorkerProcess::Initialize(options);
 }
 
 void ProcessHelper::RayStop() {
