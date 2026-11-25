@@ -29,7 +29,9 @@ class WeightedRoundRobinPartitioner(Generic[T]):
     """Partitions weighted items into round-robin buckets.
 
     Each item has an optional weight. If a weight is missing, the item is still
-    spread round-robin but doesn't contribute to bucket fullness.
+    spread round-robin but doesn't contribute to bucket fullness, unless
+    ``isolate_unknown_weights`` is set. In that mode each such item is emitted
+    immediately in its own partition.
     """
 
     def __init__(
@@ -39,11 +41,13 @@ class WeightedRoundRobinPartitioner(Generic[T]):
         max_bucket_size: int,
         num_buckets: int,
         emit_before_overflow: bool = False,
+        isolate_unknown_weights: bool = False,
     ):
         self._num_buckets = max(1, num_buckets)
         self._min_bucket_size = min_bucket_size
         self._max_bucket_size = max_bucket_size
         self._emit_before_overflow = emit_before_overflow
+        self._isolate_unknown_weights = isolate_unknown_weights
 
         self._buckets = [_WeightedBucket[T]() for _ in range(self._num_buckets)]
         self._current_bucket_index = 0
@@ -52,10 +56,15 @@ class WeightedRoundRobinPartitioner(Generic[T]):
     def add_item(self, item: T, weight: Optional[float]) -> None:
         current_bucket = self._current_bucket
 
-        # If a weight estimate isn't available, add the item to the current
-        # bucket and move on. This spreads unknown-size items evenly across
-        # buckets without pretending to know their size.
         if weight is None:
+            if self._isolate_unknown_weights:
+                # Emit preceding items first when a single bucket preserves order.
+                if self._num_buckets == 1 and current_bucket.items:
+                    self._emit_current_bucket()
+                self._output_queue.append([item])
+                return
+            # Otherwise, spread unknown-size items without counting them
+            # towards bucket fullness.
             current_bucket.add(item, 0)
             self._advance_bucket()
             return

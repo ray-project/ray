@@ -15,6 +15,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
+    FileChunk,
 )
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
@@ -119,11 +120,74 @@ def test_round_robin_partitioner_with_no_size_estimates(estimator):
     )
     partitions = [output[PATH_COLUMN_NAME].to_pylist() for output in outputs]
 
-    # If in-memory size estimates aren't available, the partitioner should round-robin
-    # the paths across the buckets, disregarding the bucket size limits.
-    assert len(partitions) == 2
-    assert partitions[0] == ["path0", "path2"]
-    assert partitions[1] == ["path1"]
+    # An unknown size can't be budgeted against other files in a read task.
+    assert partitions == [["path0"], ["path1"], ["path2"]]
+
+
+def test_unknown_size_partition_is_emitted_before_listing_finishes():
+    input_table = pa.table(
+        {
+            PATH_COLUMN_NAME: ["unknown"],
+            FILE_SIZE_COLUMN_NAME: pa.array([None], type=pa.int64()),
+            FILE_CHUNK_METADATA_COLUMN_NAME: [None],
+        }
+    )
+
+    def listing():
+        yield input_table
+        raise AssertionError("Read task was not emitted before listing continued")
+
+    outputs = iter(
+        partition_files(
+            listing(),
+            MagicMock(),
+            partitioner=RoundRobinPartitioner(
+                _FileSizeEstimator(),
+                hints=PartitionHints(
+                    min_bucket_size=1, max_bucket_size=10, num_buckets=2
+                ),
+            ),
+        )
+    )
+
+    assert next(outputs).to_pydict() == input_table.to_pydict()
+
+
+@pytest.mark.parametrize(
+    "num_buckets, expected_rows",
+    [
+        pytest.param(1, [[0], [1], [2], [3], [4]], id="single_bucket_keeps_order"),
+        pytest.param(2, [[1], [3], [0, 2], [4]], id="multi_bucket_groups_known"),
+    ],
+)
+def test_round_robin_partitioner_with_mixed_size_estimates(num_buckets, expected_rows):
+    input_table = pa.table(
+        {
+            PATH_COLUMN_NAME: ["a", "unknown", "b", "unknown", "c"],
+            FILE_SIZE_COLUMN_NAME: pa.array([1, None, 1, None, 1], type=pa.int64()),
+            FILE_CHUNK_METADATA_COLUMN_NAME: [
+                FileChunk(unit_ids=(0,), num_rows=1, size_bytes=1).to_metadata(),
+                None,
+                None,
+                None,
+                None,
+            ],
+        }
+    )
+    outputs = partition_files(
+        iter([input_table]),
+        MagicMock(),
+        partitioner=RoundRobinPartitioner(
+            _FileSizeEstimator(),
+            hints=PartitionHints(
+                min_bucket_size=2, max_bucket_size=10, num_buckets=num_buckets
+            ),
+        ),
+    )
+
+    assert [output.to_pydict() for output in outputs] == [
+        input_table.take(rows).to_pydict() for rows in expected_rows
+    ]
 
 
 def test_weighted_round_robin_partitioner_can_emit_before_overflow():
@@ -143,6 +207,23 @@ def test_weighted_round_robin_partitioner_can_emit_before_overflow():
     partitioner.finalize()
     assert partitioner.has_partition()
     assert partitioner.next_partition() == ["b"]
+
+
+def test_weighted_round_robin_keeps_default_unknown_weight_grouping():
+    partitioner = WeightedRoundRobinPartitioner(
+        num_buckets=2,
+        min_bucket_size=1,
+        max_bucket_size=3,
+        emit_before_overflow=True,
+    )
+    for item in range(5):
+        partitioner.add_item(item, None)
+    partitioner.finalize()
+
+    assert [partitioner.next_partition(), partitioner.next_partition()] == [
+        [0, 2, 4],
+        [1, 3],
+    ]
 
 
 if __name__ == "__main__":
