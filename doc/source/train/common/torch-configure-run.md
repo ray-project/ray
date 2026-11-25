@@ -68,10 +68,10 @@ result = trainer.fit()
 After training completes, `trainer.fit()` returns a {class}`~ray.train.Result` object with information about the training run, including the metrics and checkpoints reported during training.
 
 ```{testcode}
-result.latest_metrics     # The metrics reported during training.
-result.latest_checkpoint  # The latest checkpoint reported during training.
-result.path        # The path where logs are stored.
-result.error       # The exception that was raised, if training failed.
+result.latest_metrics     # The metrics reported with the latest checkpoint (None if no checkpoint was reported).
+result.latest_checkpoint  # The most recently reported checkpoint (None if no checkpoint was reported).
+result.path               # The path where logs are stored.
+result.error              # The exception that was raised, if training failed.
 ```
 
 For more usage examples, see {ref}`train-inspect-results`.
