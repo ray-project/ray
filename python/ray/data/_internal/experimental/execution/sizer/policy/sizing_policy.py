@@ -53,7 +53,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     Snapshot,
     blocked_share,
-    upscale_blocker,
+    why_should_not_upscale_blocker,
 )
 from ray.data._internal.experimental.execution.sizer.common import (
     CountByNode,
@@ -75,7 +75,7 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    STEP_RULES,
+    STEP_RULE_DIRECTION,
     OpDecision,
     OpRule,
     SizerPhase,
@@ -99,7 +99,7 @@ OpDecisions = Dict["ExperimentalActorPoolMapOperator", OpDecision]
 
 # With no bottleneck named, an op busy at least this share of its slot time
 # upscales: the stages are balanced, so each of them limits the pipeline.
-_BUSY_SHARE_MIN = 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
+_UPSCALE_BUSY_SHARE = 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
 
 # An op that wastes at least this share of its slot time downscales. Two
 # kinds of time count as waste: time its consumer blocks it (its actors hold
@@ -110,8 +110,6 @@ _WASTED_SHARE_MIN = SIZER_BOTTLENECK_ARROW_MARGIN
 
 # A blocked op does not downscale while an op it feeds starves at least this
 # share of its slot time: its actors' output budgets are that op's supply.
-# In video_object_detection, resize_frame (busy 0.04) kept the GPU op fed at
-# 8 actors (starved 0.01-0.05) and not at 4 (starved climbing past 0.1).
 _CONSUMER_STARVED_MAX = 0.05
 
 # The order upscales take free capacity in (lower first). Bottlenecks are
@@ -172,7 +170,17 @@ class SizingPolicy:
             else {}
         )
 
-        def priority(op: "ExperimentalActorPoolMapOperator") -> Tuple:
+        def priority(op: "ExperimentalActorPoolMapOperator") -> Tuple[int, float, int]:
+            """During each tick, an operator has to compete with other operators
+            for resources. But how do you rank across operators? This function returns
+            the priority rank for which operator gets higher scheduling priority. A lower
+            value is a higher priority. Here's the rank tuple:
+
+                1. Type of action (See `_UPSCALE_RANK`)
+                2. How severe of a bottleneck it is
+                3. Index in topological order.
+
+            """
             decision = wanted[op]
             rank = _UPSCALE_RANK.get(decision.rule, len(_UPSCALE_RANK))
             return (rank, -severity.get(op, 0.0), order[op])
@@ -186,7 +194,14 @@ class SizingPolicy:
             request = decision.request
             if decision.rule is OpRule.DOWNSCALE_BLOCKED and request is not None:
                 if room is None:
+                    # Lazily create until we have a downscale blocked rule. It basically
+                    # takes a snapshot of the free resources, and then delegates them out
+                    # similar to CapacityLedger, except the decisions are not set in stone,
+                    # and does more custom logic.
                     room = _RoomToMake(decisions=decisions, ctx=ctx)
+                assert (
+                    request.delta < 0
+                ), f"A {decision.rule} means we should downscale with <= -1, but got {request.delta}"
                 remove = room.make(op=op, most=-request.delta)
                 if remove == 0:
                     logger.debug(
@@ -203,7 +218,7 @@ class SizingPolicy:
                         ),
                     )
             decisions[op] = decision
-            if decision.rule in STEP_RULES and decision.request is not None:
+            if decision.rule in STEP_RULE_DIRECTION and decision.request is not None:
                 size = op.actor_pool.serving_size()
                 delta = decision.request.delta
                 if delta > 0:
@@ -277,6 +292,8 @@ class SizingPolicy:
         if pool.min_size() == pool.max_size():
             return OpDecision(OpRule.NONE)
         if ctx.phase is SizerPhase.WARMUP:
+            # We special case the warmup phase to go
+            # to the warmup target size.
             want = self.warmup.upscale(
                 op=op,
                 cluster_capacity=ctx.snapshot.get_global_limits(),
@@ -298,39 +315,39 @@ class SizingPolicy:
         next_ops = self._profiles.next_ops
         named = dict(bottleneck_snapshot.bottlenecks)
         if op in named:
-            blocker = upscale_blocker(
+            reason = why_should_not_upscale_blocker(
                 op=op,
                 snapshot=bottleneck_snapshot,
                 next_ops=next_ops,
                 margin=SIZER_BOTTLENECK_ARROW_MARGIN,
             )
-            if blocker is not None:
-                logger.debug("SizingPolicy: %s not upscaled: %s", op.name, blocker)
+            if reason is not None:
+                logger.debug("SizingPolicy: %s not upscaled: %s", op.name, reason)
                 return OpDecision(OpRule.NONE)
             return self._step(
                 op=op,
-                direction=Direction.UP,
                 rule=OpRule.UPSCALE_BOTTLENECK,
                 reason=f"bottleneck (severity {named[op]:.2f})",
                 ctx=ctx,
             )
-        if not named and shares.busy >= _BUSY_SHARE_MIN:
+        if not named and shares.busy >= _UPSCALE_BUSY_SHARE:
             return self._step(
                 op=op,
-                direction=Direction.UP,
                 rule=OpRule.UPSCALE_BUSY,
                 reason=f"busy {shares.busy:.2f} with no bottleneck named",
                 ctx=ctx,
             )
         blocked = blocked_share(
-            op, bottleneck_snapshot.shares, next_ops, bottleneck_snapshot.edge_shares
+            op=op,
+            shares=bottleneck_snapshot.shares,
+            next_ops=next_ops,
+            edge_shares=bottleneck_snapshot.edge_shares,
         )
         if blocked >= _WASTED_SHARE_MIN and not self._feeds_starving_op(
             op=op, bottleneck_snapshot=bottleneck_snapshot
         ):
             decision = self._step(
                 op=op,
-                direction=Direction.DOWN,
                 rule=OpRule.DOWNSCALE_BLOCKED,
                 reason=f"blocked by its consumer {blocked:.2f}",
                 ctx=ctx,
@@ -354,7 +371,6 @@ class SizingPolicy:
             return OpDecision(OpRule.NONE)
         return self._step(
             op=op,
-            direction=Direction.DOWN,
             rule=OpRule.DOWNSCALE_IDLE,
             reason=f"idle (starved {shares.starved:.2f})",
             ctx=ctx,
@@ -367,14 +383,18 @@ class SizingPolicy:
         self,
         *,
         op: "ExperimentalActorPoolMapOperator",
-        direction: Direction,
         rule: OpRule,
         reason: str,
         ctx: DecisionContext,
         floor: int = 0,
     ) -> OpDecision:
-        """One step of ``op`` in ``direction``, kept within [min size,
+        """One step of ``op`` in ``rule``'s direction, kept within [min size,
         upscale ceiling]. A downscale also keeps at least ``floor`` actors."""
+        assert rule in STEP_RULE_DIRECTION, (
+            "Invalid Rule passed into the step function: {rule}."
+            "Must be a one of {STEP_RULE_DIRECTION.keys()}"
+        )
+        direction = STEP_RULE_DIRECTION[rule]
         pool = op.actor_pool
         cur_size = pool.serving_size()
         delta = self.steps.delta(op=op, direction=direction, size=cur_size)
@@ -474,7 +494,7 @@ class _RoomToMake:
         }
         # Per node: free capacity, plus what blocked ops removed this tick,
         # minus what the short actors placed on it this tick take.
-        self._room: ExecutionResourcesByNode = {
+        self._free_by_node: ExecutionResourcesByNode = {
             node_id: res.copy() for node_id, res in ctx.snapshot.free_by_node.items()
         }
 
@@ -483,35 +503,42 @@ class _RoomToMake:
         room for the short actors still waiting. Short actors are placed in
         the plan one at a time, in the order their ops were granted."""
         per_actor = op.actor_pool.per_actor_resource_usage()
-        left = self._serving_by_node(op)
-        removed = 0
+        num_serving_actors_left_by_node = self._num_serving_actors_by_node(op)
+        num_to_remove = 0
         for short_op in self._needed:
             short_per_actor = short_op.actor_pool.per_actor_resource_usage()
             nodes = sorted(self._ctx.snapshot.schedulable_nodes_by_op.get(short_op, ()))
             for node_id in nodes:
                 while self._needed[short_op] > 0:
                     zero = ExecutionResources.zero()
-                    room = self._room.get(node_id, zero)
+                    room = self._free_by_node.get(node_id, zero)
                     cost = _actors_to_fit(
-                        room=room, per_actor=per_actor, short_per_actor=short_per_actor
+                        room=room,
+                        per_actor=per_actor,
+                        short_per_actor=short_per_actor,
                     )
-                    if cost is None or cost > left.get(node_id, 0):
+                    if cost is None or cost > num_serving_actors_left_by_node.get(
+                        node_id, 0
+                    ):
                         break
-                    if removed + cost > most:
-                        return removed
-                    removed += cost
-                    left[node_id] = left.get(node_id, 0) - cost
-                    self._room[node_id] = room.add(per_actor.scale(cost)).subtract(
-                        short_per_actor
+                    if num_to_remove + cost > most:
+                        return num_to_remove
+                    num_to_remove += cost
+                    num_serving_actors_left_by_node[node_id] = (
+                        num_serving_actors_left_by_node.get(node_id, 0) - cost
                     )
+                    self._free_by_node[node_id] = room.add(
+                        per_actor.scale(cost)
+                    ).subtract(short_per_actor)
                     self._needed[short_op] -= 1
-        return removed
+        return num_to_remove
 
     @staticmethod
-    def _serving_by_node(
+    def _num_serving_actors_by_node(
         op: "ExperimentalActorPoolMapOperator",
     ) -> CountByNode:
-        """``op``'s actors per node that a downscale can still remove."""
+        """Num actors per node that a downscale can still remove.
+        Basically excludes draining actors"""
         serving_by_node: CountByNode = {}
         for node_id, counts in op.actor_counts_by_node().items():
             serving = sum(
@@ -527,33 +554,44 @@ def _actors_to_fit(
     room: ExecutionResources,
     per_actor: ExecutionResources,
     short_per_actor: ExecutionResources,
-) -> Optional[int]:
+) -> int | None:
     """How many actors of shape ``per_actor`` to remove from a node with
     ``room`` left so that one actor of shape ``short_per_actor`` fits there,
     or None if removing them cannot make it fit (it lacks a resource they do
     not hold)."""
     count = 0
     for dim in PLACEMENT_RESOURCE_DIMS:
-        lacking = getattr(short_per_actor, dim) - getattr(room, dim)
+        room_left: float = getattr(room, dim)
+        need: float = getattr(short_per_actor, dim)
+        lacking = need - room_left
         if lacking <= FIT_EPS:
+            # Here, the short actor can already fit along resource `dim`
             continue
-        mine = getattr(per_actor, dim)
-        if mine <= 0:
+        to_remove = getattr(per_actor, dim)
+        if to_remove <= 0:
             return None
-        count = max(count, math.ceil(lacking / mine - FIT_EPS))
+        count = max(count, math.ceil(lacking / to_remove - FIT_EPS))
     return count
 
 
 def _downscale_floor(*, op: "ExperimentalActorPoolMapOperator", wasted: float) -> int:
-    """The fewest actors that can do ``op``'s work without crossing
-    ``_BUSY_SHARE_MIN``, given that ``wasted`` of its slot time did no work.
+    """The smallest size ``op`` can downscale to without becoming busy
+    enough to upscale again.
 
-    The work left after a downscale stays the same, so the remaining actors'
-    busy share grows by ``size / new size``. A downscale that pushed it past
-    ``_BUSY_SHARE_MIN`` would upscale the op again in the next window.
+    ``wasted`` is the share of slot time the op spent not doing useful work
+    (starved, or output-backpressured). The op's useful work is then
+    ``(1 - wasted) * size`` actors' worth. Spread over ``target`` actors, the
+    busy share becomes ``(1 - wasted) * size / target``. That share must stay
+    at or under ``_UPSCALE_BUSY_SHARE``, or the next full window upscales the
+    op back. Solving for ``target``:
+
+        target >= size * (1 - wasted) / _UPSCALE_BUSY_SHARE
+
+    For example, 10 actors with ``wasted = 0.5`` floor at 6 actors, each
+    about 83% busy. At 5, they would be fully busy and upscale again.
     """
     size = op.actor_pool.serving_size()
-    return math.ceil(size * (1.0 - wasted) / _BUSY_SHARE_MIN)
+    return math.ceil(size * (1.0 - wasted) / _UPSCALE_BUSY_SHARE)
 
 
 def _cap_at_ceiling(

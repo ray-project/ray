@@ -118,6 +118,8 @@ class Completed:
     kind: ClassVar[OpStatusKind] = OpStatusKind.COMPLETED
 
 
+# TODO(Justin): I would like to make this OpState, but
+# that name is already taken.
 OpStatus = Union[Held, Active, Cooling, Completed]
 
 _ACTIVE = Active()

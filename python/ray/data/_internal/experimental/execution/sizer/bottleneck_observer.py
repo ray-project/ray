@@ -318,7 +318,7 @@ def analyze(
     )
 
 
-def upscale_blocker(
+def why_should_not_upscale_blocker(
     *,
     op: K,
     snapshot: Snapshot[K],

@@ -21,7 +21,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     analyze,
     classify_edge,
     format_snapshot,
-    upscale_blocker,
+    why_should_not_upscale_blocker,
 )
 
 ARROW_MARGIN = 0.1
@@ -497,7 +497,7 @@ def test_short_tasks_between_samples_count_as_busy():
         "self-below-margin",
     ],
 )
-def test_upscale_blocker(named, self_limited, op, expected):
+def test_why_should_not_upscale_blocker(named, self_limited, op, expected):
     """A named bottleneck can use more actors only with no more severe named
     op feeding it and no self-limited producer feeding it."""
     _, next_ops = _chain("R", "C", "B", "W")
@@ -515,7 +515,7 @@ def test_upscale_blocker(named, self_limited, op, expected):
         bottlenecks=tuple((name, sev) for name, sev in named),
     )
     assert (
-        upscale_blocker(
+        why_should_not_upscale_blocker(
             op=op, snapshot=snapshot, next_ops=next_ops, margin=ARROW_MARGIN
         )
         == expected

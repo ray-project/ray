@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import enum
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Dict, Optional
+
+from ray.data._internal.experimental.execution.sizer.policy.steps import Direction
 
 if TYPE_CHECKING:
     from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
@@ -47,16 +49,14 @@ class OpRule(enum.Enum):
     NONE = "no change"
 
 
-# Rules that step an op from the bottleneck snapshot. The op's step sizes
-# adapt after each one, and the op cools down before its next one.
-STEP_RULES = frozenset(
-    {
-        OpRule.UPSCALE_BOTTLENECK,
-        OpRule.UPSCALE_BUSY,
-        OpRule.DOWNSCALE_BLOCKED,
-        OpRule.DOWNSCALE_IDLE,
-    }
-)
+# Rules that take one step in a fixed direction. The op's step sizes adapt
+# after each one, and the op cools down before its next one.
+STEP_RULE_DIRECTION: Dict[OpRule, Direction] = {
+    OpRule.UPSCALE_BOTTLENECK: Direction.UP,
+    OpRule.UPSCALE_BUSY: Direction.UP,
+    OpRule.DOWNSCALE_BLOCKED: Direction.DOWN,
+    OpRule.DOWNSCALE_IDLE: Direction.DOWN,
+}
 
 
 @dataclass(frozen=True)
