@@ -127,11 +127,6 @@ class TransferInFlight:
     last_progress_t: Optional[float] = None
     # Recipient actors still to place, per node.
     owed_by_node: Dict[NodeIdStr, int] = field(default_factory=dict)
-    # Donor actors drained for this transfer, per node and donor. A timeout
-    # gives back the ones still draining on nodes it never placed on.
-    victims_by_node: Dict[
-        NodeIdStr, Dict["ExperimentalActorPoolMapOperator", int]
-    ] = field(default_factory=dict)
     # Recipient actors to bring up this tick (their capacity is free and
     # held), per node; ``apply`` creates them.
     to_bring_up_by_node: Dict[NodeIdStr, int] = field(default_factory=dict)
@@ -716,40 +711,17 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                             reason="optimizer: transfer timed out",
                         )
                     )
-                reclaimed = self._reclaim_unused_victims(transfer)
                 logger.warning(
                     "PipelineOptimizer: transfer to %s made no progress for %.0fs "
-                    "with %d actor(s) never placed; claim cancelled, %d donor "
-                    "actor(s) still draining for it given back.",
+                    "with %d actor(s) never placed; claim cancelled.",
                     recipient.name,
                     SIZER_TRANSFER_TIMEOUT_S,
                     still_owed,
-                    reclaimed,
                 )
                 # Closing also drops its capacity hold: holds are re-taken
                 # each tick only for open transfers.
                 self._close_transfer(state, transfer, ctx.now)
                 self._metrics.record_outcome(self.name, recipient.name, "timeout")
-
-    @staticmethod
-    def _reclaim_unused_victims(transfer: TransferInFlight) -> int:
-        """Return a timed-out transfer's victims that are still draining on
-        nodes it never placed on to their donors. Returns how many.
-
-        A victim can stay draining for good: its outputs may only be consumed
-        through the recipient it was evicted for (a circular drain). Left
-        draining, each retry of the transfer would strand one more donor
-        actor. A victim that finished draining is gone and is not replaced.
-        """
-        reclaimed = 0
-        for node, victims in transfer.victims_by_node.items():
-            if transfer.owed_by_node.get(node, 0) <= 0:
-                continue
-            for donor, count in victims.items():
-                reclaimed += donor.actor_pool.reclaim_draining_actors(
-                    limit=count, node_id=node
-                )
-        return reclaimed
 
     def _release_cooled_donors(
         self, ctx: OptimizationContext, state: TransferState
@@ -981,9 +953,6 @@ class CapacityTransfer(OptimizationRule[TransferState]):
         recipient_per_actor = pool.per_actor_resource_usage()
         requests: List[PlacedSizingRequest] = []
         owed_by_node: Dict[NodeIdStr, int] = {}
-        victims_by_node: Dict[
-            NodeIdStr, Dict["ExperimentalActorPoolMapOperator", int]
-        ] = {}
         for node_plan in plan:
             # The recipient's actors are owed, not created: they are placed on
             # a later tick, once the victims' capacity is actually free. Hold
@@ -992,7 +961,6 @@ class CapacityTransfer(OptimizationRule[TransferState]):
                 node_plan.node, recipient_per_actor, node_plan.num_recipient_actors
             )
             owed_by_node[node_plan.node] = node_plan.num_recipient_actors
-            victims_by_node[node_plan.node] = node_plan.victims_by_donor()
             req: Dict["ExperimentalActorPoolMapOperator", PlacedScalingRequest] = {}
             for donor, count in node_plan.victims_by_donor().items():
                 req[donor] = ScaleDownRequest.on_nodes(
@@ -1011,7 +979,6 @@ class CapacityTransfer(OptimizationRule[TransferState]):
             started_t=ctx.now,
             last_progress_t=ctx.now,
             owed_by_node=owed_by_node,
-            victims_by_node=victims_by_node,
             preexisting_ids=frozenset(pool.get_logical_ids()),
             record=record,
         )

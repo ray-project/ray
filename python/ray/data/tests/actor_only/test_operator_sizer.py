@@ -283,11 +283,11 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         committed: Optional[Dict[str, ExecutionResources]] = None,
         # The part of ``committed`` held by draining actors.
         draining: Optional[Dict[str, ExecutionResources]] = None,
-        # An ``on_start`` (e.g. ``on_write_start``) registered but not yet run.
-        awaiting_on_start=False,
+        # No input bundle queued yet (the sizer starts no actors until one).
+        awaiting_first_input=False,
     ):
         self._fake_name = name
-        self.pending_on_start = awaiting_on_start
+        self.pending_first_input = awaiting_first_input
         self._name = name
         self._id = name
         self._user_set_ray_remote_args = dict(user_ray_remote_args or {})
@@ -377,8 +377,8 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
     def wait_for_min_actors(self):
         self.waited_for_min_actors = True
 
-    def awaiting_on_start(self):
-        return self.pending_on_start
+    def awaiting_first_input(self):
+        return self.pending_first_input
 
     def process_draining_actors(self):
         return 0
@@ -472,11 +472,11 @@ class _TestSizer(OperatorSizer):
         return self._ticker.next_tick(self.reporter.view)
 
     def how_many(self, *, force: bool = True) -> PerOpSizingRequest:
-        """One scale_how_many evaluation, after the step's on_start releases."""
+        """One scale_how_many evaluation, after the step's first-input releases."""
         self._release_started_ops()
         ctx = self.next_tick(force=force)
         assert ctx is not None
-        self._held_actors_by_op = dict(ctx.capacity.held_actors_by_op)
+        self._record_held_actors(ctx)
         return self._per_op_how_many(ctx)
 
     @property
@@ -625,17 +625,18 @@ def _linear_pipeline(running=1):
 # --- bootstrap and validation --------------------------------------------------
 
 
-def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
-    # Creating an actor serializes the MapTransformer, so an actor created
-    # before ``on_write_start`` ships a datasink without the state it sets
-    # (Iceberg: table metadata is None). Such an op stays at zero actors,
-    # through initial sizing and the warm loop, until its first input runs it.
+def test_op_awaiting_first_input_gets_no_actors_until_it_arrives():
+    # No op starts actors before its first input. For a write this is
+    # required: creating an actor serializes the MapTransformer, so an actor
+    # created before ``on_write_start`` ships a datasink without the state it
+    # sets (Iceberg: table metadata is None). The op stays at zero actors,
+    # through initial sizing and the warm loop, until that input arrives.
     read = _FakeOp("read", _FakePool(min_size=1, max_size=10, cpu=1))
     write = _write_op(
         "write",
         _FakePool(min_size=1, max_size=10, cpu=1),
         inputs=[read],
-        awaiting_on_start=True,
+        awaiting_first_input=True,
     )
     sizer, _ = _bootstrapped(read, write)
 
@@ -645,7 +646,7 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     assert not write.waited_for_min_actors
     assert write not in _tick(sizer).request
 
-    write.pending_on_start = False
+    write.pending_first_input = False
     assert _tick(sizer).request[write].delta >= 1
 
 
@@ -660,16 +661,15 @@ def test_op_awaiting_on_start_gets_no_actors_until_it_runs():
     ],
     ids=["share-fits", "share-clamped-to-what-fits"],
 )
-def test_op_awaiting_on_start_has_its_share_held_until_it_runs(
+def test_op_awaiting_first_input_has_its_share_held_until_it_arrives(
     memory, held, free_after
 ):
-    # An op held at zero actors until its on_start runs (an actor made earlier
-    # ships a transformer without that state) must still find room when it
-    # does. Upstream warmup would otherwise take every node's space, and the
-    # only way back is draining actors whose outputs clear through this op.
-    # Its warmup equal share stays out of the tick's free capacity, memory
-    # included, with no actor started; once on_start runs it grows straight
-    # to the held count.
+    # An op held at zero actors until its first input arrives must still find
+    # room when it does. Ops that started earlier would otherwise take every
+    # node's space, and the only way back is draining actors whose outputs
+    # clear through this op. Its warmup equal share stays out of the tick's
+    # free capacity, memory included, with no actor started; once its input
+    # arrives it grows straight to the held count.
     read = _FakeOp(
         "read", _FakePool(min_size=1, max_size=10, cpu=1, memory=2, running=1)
     )
@@ -677,7 +677,7 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs(
         "write",
         _FakePool(min_size=1, max_size=10, cpu=1, memory=3),
         inputs=[read],
-        awaiting_on_start=True,
+        awaiting_first_input=True,
     )
     view = DatasetAllocationView(
         reserved_by_node={"node0": ExecutionResources(cpu=8, memory=memory)},
@@ -691,14 +691,14 @@ def test_op_awaiting_on_start_has_its_share_held_until_it_runs(
     free = snapshot.free_by_node["node0"]
     assert (free.cpu, free.memory) == free_after
 
-    # Read's first output ends warmup and is what reaches write: on_start
-    # runs, the hold is gone, and write grows to the held count in one grant
+    # Read's first output ends warmup and is what reaches write: the hold is
+    # gone, and write grows to the held count in one grant
     # (warmup sizing is over by then), ahead of read (it is below min size).
     read.metrics.num_task_outputs_generated = 1
-    write.pending_on_start = False
+    write.pending_first_input = False
     request = _tick(sizer).request
     assert request[write].delta == held
-    assert request[write].reason == "held share (on_start ran)"
+    assert request[write].reason == "held share (first input)"
     # One-time: the next tick sizes write from its own signals again (the
     # fake pool applies nothing, so it is still below min size).
     assert _tick(sizer).request[write].reason == "below min size"
@@ -1334,6 +1334,31 @@ def test_latch_waits_for_every_branch_of_a_union():
     left.metrics.num_task_outputs_generated = 1
     assert in_warmup_after_tick()  # right is still cold
     right.metrics.num_task_outputs_generated = 1
+    assert not in_warmup_after_tick()
+
+
+@pytest.mark.parametrize("release", ["input_arrives", "op_completes"])
+def test_latch_waits_for_ops_awaiting_first_input(release):
+    """A write held at zero actors until its first input is not a critical
+    op, but warmup must not end before it can scale: otherwise the warm phase
+    sizes its upstream from feedback while the write has no actors at all. An
+    op that completes without ever getting input does not hold warmup open."""
+    read = _FakeOp("Read", _FakePool(min_size=1, max_size=4, cpu=1))
+    write = _write_op(
+        "Write",
+        _FakePool(min_size=1, max_size=4, cpu=1),
+        inputs=[read],
+        awaiting_first_input=True,
+    )
+    ticker, in_warmup_after_tick = _ticker(_topology(read, write))
+
+    assert ticker.critical_ops == (read,)
+    read.metrics.num_task_outputs_generated = 1
+    assert in_warmup_after_tick()  # write has no input yet
+    if release == "input_arrives":
+        write.pending_first_input = False
+    else:
+        write._completed = True
     assert not in_warmup_after_tick()
 
 
