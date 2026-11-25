@@ -17,7 +17,3 @@ def _worker_process_setup_hook():
     sizes its thread pool when it is first imported: every vLLM worker would then
     run as many threads as the host has cores.
     """
-    # TODO(kourosh): Remove with compile_cache_compat.
-    from ray.llm._internal.serve.engines.vllm.patches import compile_cache_compat
-
-    compile_cache_compat.install()

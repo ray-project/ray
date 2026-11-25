@@ -1,6 +1,10 @@
+import enum
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Tuple
 
+import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.types as pa_types
 
 from ray.data._internal.arrow_aggregation import ArrowAggSpec, arrow_agg_options
@@ -14,6 +18,35 @@ from ray.data.block import Block, BlockAccessor
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import TaskContext
     from ray.data.aggregate import AggregateFn, AggregateFnV2
+
+
+class PartialAggMode(str, enum.Enum):
+    """Whether the map side of a hash aggregation pre-aggregates its input."""
+
+    # Always pre-aggregate (the classic two-phase plan).
+    ALWAYS = "always"
+    # Never pre-aggregate: ship column-pruned rows, aggregate once on the reducer.
+    NEVER = "never"
+    # Decide per map task by estimating its distinct keys from a sample of rows.
+    ESTIMATE = "estimate"
+
+
+@dataclass(frozen=True)
+class PartialAggPolicy:
+    """Map-side partial aggregation policy, resolved at planning time.
+
+    Pre-aggregating pays off only when it collapses many rows per key (low cardinality). With
+    nearly unique keys it costs a full hash aggregation (and its memory) on the
+    mapper, shrinks nothing, and can even grow the shuffled bytes (e.g. Mean
+    ships a sum and a count per row). Under ``ESTIMATE`` a map task samples
+    ``sample_rows`` rows spread across its input, estimates the input's distinct
+    keys from the sample, and skips partial aggregation when estimated distinct
+    keys / input rows exceeds ``unique_ratio_threshold``.
+    """
+
+    mode: PartialAggMode = PartialAggMode.ESTIMATE
+    sample_rows: int = 100_000
+    unique_ratio_threshold: float = 0.8
 
 
 def _agg_specs(
@@ -77,6 +110,43 @@ def _aggregate_raw_rows(
     grouped = table.group_by(keys, use_threads=False).aggregate(agg_specs)
     grouped = grouped.rename_columns(keys + names)
     return grouped, comps
+
+
+def _raw_rows_to_partials(
+    table: pa.Table,
+    keys: List[str],
+    aggs: Tuple["AggregateFnV2", ...],
+    specs: List[ArrowAggSpec],
+) -> pa.Table:
+    """Turns raw rows into the partial-state layout ``_aggregate_raw_rows``
+    produces, treating every row as its own group, so they can be merged with
+    real partials in a single group_by. Uses each spec's ``raw_to_partial``
+    projection (no hashing). Every spec must have one: map tasks only ship raw
+    rows when they all do (see _make_vectorized_aggregating_transformer)."""
+
+    # Cast every column to the type the map-side group_by would produce
+    # (e.g. int32 values -> int64 sums), so it concatenates with real partials.
+    # Keys normally keep their type through a group_by, which makes their cast
+    # a no-op; it's there in case a pyarrow version re-encodes them.
+    target_schema = _aggregate_raw_rows(table.slice(0, 0), keys, aggs, specs)[0].schema
+
+    def _as_target(name: str, column):
+        target_type = target_schema.field(name).type
+        return column if column.type == target_type else pc.cast(column, target_type)
+
+    columns = {k: _as_target(k, table[k]) for k in keys}
+    for i, (agg, spec) in enumerate(zip(aggs, specs)):
+        col = agg.get_target_column()
+        opts = arrow_agg_options(agg._ignore_nulls)
+        if spec.prep is not None:
+            table = spec.prep(i, col, table)
+        raw_to_partial = spec.raw_to_partial
+        assert raw_to_partial is not None, "map tasks only skip with raw_to_partial"
+        states = raw_to_partial(table, i, col, opts)
+        for component, state in zip(spec.components, states):
+            name = f"__agg{i}_{component}"
+            columns[name] = _as_target(name, state)
+    return pa.table(columns)
 
 
 def _finalize_aggregates(
@@ -167,9 +237,18 @@ def _make_complete_aggregating_block_fn(
 def _make_aggregating_transformer(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
+    policy: Optional[PartialAggPolicy] = None,
 ) -> BlockTransformer:
+    """Map-side block transformer for a hash aggregation.
+
+    ``policy`` only applies to the vectorized engine; ``None`` means always
+    pre-aggregate. The Python fallback always pre-aggregates: its accumulators
+    have no per-row raw-to-partial projection, so a reducer would have to
+    accumulate raw rows and then combine them, which moves the work rather
+    than removing it.
+    """
     return _make_vectorized_aggregating_transformer(
-        key_columns, aggregation_fns
+        key_columns, aggregation_fns, policy
     ) or _fallback_aggregating_transformer(key_columns, aggregation_fns)
 
 
@@ -182,9 +261,84 @@ def _make_aggregating_reduce_fn(
     ) or _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
 
 
+def _should_skip_partial_aggregation(
+    block: pa.Table, keys: List[str], policy: Optional[PartialAggPolicy]
+) -> bool:
+    """Whether a map task should ship ``block``'s rows without pre-aggregating."""
+    if policy is None or policy.mode == PartialAggMode.ALWAYS:
+        return False
+    if policy.mode == PartialAggMode.NEVER:
+        return True
+    if block.num_rows < policy.sample_rows:
+        # Small inputs are cheap to aggregate and can't blow up memory.
+        return False
+    num_distinct = _estimate_distinct_keys(block, keys, policy.sample_rows)
+    return num_distinct > policy.unique_ratio_threshold * block.num_rows
+
+
+# Keys seen at least this many times in the sample count as one distinct key
+# each and are left out of the Duj1 scale-up (see _estimate_distinct_keys).
+_HEAVY_KEY_SAMPLE_COUNT = 3
+
+
+def _estimate_distinct_keys(
+    block: pa.Table, keys: List[str], sample_rows: int
+) -> float:
+    """Estimates the number of distinct keys in ``block`` from a sample.
+
+    Rows are sampled uniformly across the whole block, so a block whose key
+    cardinality changes partway through (e.g. unique keys first, then a few
+    repeated keys) is judged as a whole. The distinct count in the sample
+    alone overstates uniqueness: if every key appears twice in the block, a
+    small sample still sees each key about once. So it is scaled up with the
+    Haas-Stokes "Duj1" estimator, which Postgres ``ANALYZE`` uses for
+    ``n_distinct``::
+
+        D = n * d / (n - f1 + f1 * n / N)
+
+    where ``N`` is the block's rows, ``n`` the sampled rows, ``d`` the distinct
+    keys in the sample and ``f1`` the keys seen exactly once in it.
+
+    Duj1 runs low when a few heavy keys (e.g. null) sit next to many unique
+    ones: the heavy keys' rows inflate ``n - f1``. So keys seen at least
+    ``_HEAVY_KEY_SAMPLE_COUNT`` times in the sample count as one distinct key
+    each, and Duj1 is applied only to the remaining rows, with ``N`` scaled by
+    the same fraction.
+
+    Reference: P. J. Haas and L. Stokes, "Estimating the number of classes in a
+    finite population", Journal of the American Statistical Association 93(444),
+    1998.
+    """
+    total = block.num_rows
+    # Rename the keys so none can clash with the ``count_all`` output column.
+    sample = block.select(keys).rename_columns([f"__key{i}" for i in range(len(keys))])
+    if sample_rows < total:
+        # Fixed seed: the same block always gets the same decision.
+        rng = np.random.default_rng(0)
+        indices = rng.choice(total, size=sample_rows, replace=False, shuffle=False)
+        sample = sample.take(np.sort(indices))
+    counts = (
+        sample.group_by(sample.column_names, use_threads=False)
+        .aggregate([([], "count_all")])
+        .column("count_all")
+        .to_numpy()
+    )
+    heavy = counts >= _HEAVY_KEY_SAMPLE_COUNT
+    num_heavy = int(np.count_nonzero(heavy))
+    # Sampled rows and distinct keys left after setting the heavy keys aside.
+    n = sample.num_rows - int(counts[heavy].sum())
+    d = len(counts) - num_heavy
+    if n == 0:
+        return float(num_heavy)
+    f1 = int(np.count_nonzero(counts == 1))
+    rest_total = total * n / sample.num_rows
+    return num_heavy + n * d / (n - f1 + f1 * n / rest_total)
+
+
 def _make_vectorized_aggregating_transformer(
     key_columns: Tuple[str, ...],
     aggregation_fns: Tuple["AggregateFn", ...],
+    policy: Optional[PartialAggPolicy] = None,
 ) -> Optional[BlockTransformer]:
     """Arrow-vectorized map-side combiner, driven by each agg's own spec, or None
     if the query isn't vectorizable (caller falls back to the Python engine)."""
@@ -197,11 +351,11 @@ def _make_vectorized_aggregating_transformer(
     if not _is_vectorizable(keys, specs):
         return None
     has_collection = any(spec.collection for spec in specs)
+    keep = _key_and_target_columns(keys, aggs)
 
     if has_collection:
         # All-collection query: the map prunes to keys + source columns;
         # the reduce aggregates the raw rows directly.
-        keep = _key_and_target_columns(keys, aggs)
 
         def _prune_transform(block: pa.Table) -> pa.Table:
             block_schema = BlockAccessor.for_block(block).schema()
@@ -213,6 +367,11 @@ def _make_vectorized_aggregating_transformer(
 
         return _prune_transform
 
+    if any(spec.raw_to_partial is None for spec in specs):
+        # The reducer can only merge raw rows by projecting them with
+        # ``raw_to_partial``; without it, always pre-aggregate.
+        policy = None
+
     def _arrow_transform(block: pa.Table) -> pa.Table:
         block_schema = BlockAccessor.for_block(block).schema()
         for agg in aggs:
@@ -220,6 +379,11 @@ def _make_vectorized_aggregating_transformer(
 
         if block.num_rows == 0:
             return block
+
+        if _should_skip_partial_aggregation(block, keys, policy):
+            # Raw rows, pruned like a collection query's; the reducer detects
+            # them by the missing ``__agg0_*`` column (see _arrow_reduce).
+            return block.select(keep)
 
         partials, _ = _aggregate_raw_rows(block, keys, aggs, specs)
         return partials
@@ -244,6 +408,32 @@ def _make_vectorized_aggregating_reduce_fn(
     _fallback_reduce = _fallback_aggregating_reduce_fn(key_columns, aggregation_fns)
     src_cols = [a.get_target_column() for a in aggs] if has_collection else []
 
+    # Partial-state column layout (reduction queries only).
+    comps: List[Tuple[str, ...]] = (
+        []
+        if has_collection
+        else [
+            tuple(f"__agg{i}_{c}" for c in spec.components)
+            for i, spec in enumerate(specs)
+        ]
+    )
+    merged_names = keys + [c for agg_comps in comps for c in agg_comps]
+    # Every partial shard has this column; raw shards (from map tasks that
+    # skipped partial aggregation) never do.
+    partial_marker = comps[0][0] if comps else None
+
+    def _merge(partials: List[pa.Table]) -> pa.Table:
+        # Built per call: PyArrow aggregate options aren't picklable, so they
+        # can't be captured in this closure (it ships to reduce tasks).
+        merge_specs: List[tuple] = []
+        for agg, spec, out_cols in zip(aggs, specs, comps):
+            assert spec.merge_specs is not None  # reduction specs define it
+            opts = arrow_agg_options(agg._ignore_nulls)
+            merge_specs += spec.merge_specs(out_cols, opts)
+        combined = concat(partials, promote_types=True)
+        merged = combined.group_by(keys, use_threads=False).aggregate(merge_specs)
+        return merged.rename_columns(merged_names)
+
     def _arrow_reduce(
         partition_id: int, tables_by_input: List[List[pa.Table]]
     ) -> Iterable[Block]:
@@ -251,6 +441,26 @@ def _make_vectorized_aggregating_reduce_fn(
         tables = [t for t in shards if t.num_rows > 0]
         if not tables:
             return
+
+        if not has_collection:
+            partials = [t for t in tables if partial_marker in t.schema.names]
+            raws = [t for t in tables if partial_marker not in t.schema.names]
+            if not partials:
+                # Every map task skipped partial aggregation: one raw pass.
+                merged, _ = _aggregate_raw_rows(
+                    concat(raws, promote_types=True), keys, aggs, specs
+                )
+            else:
+                if raws:
+                    partials.append(
+                        _raw_rows_to_partials(
+                            concat(raws, promote_types=True), keys, aggs, specs
+                        )
+                    )
+                merged = _merge(partials)
+            yield _finalize_aggregates(merged, keys, aggs, specs, comps)
+            return
+
         combined = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
 
         # The distinct/count_distinct kernels have no impl for a nested source
@@ -262,25 +472,9 @@ def _make_vectorized_aggregating_reduce_fn(
             yield from _fallback_reduce(partition_id, [[_fallback_map(combined)]])
             return
 
-        if has_collection:
-            # Collection aggs: the map sent raw rows, so this gives final values.
-            merged, comps = _aggregate_raw_rows(combined, keys, aggs, specs)
-        else:
-            # Other aggs: merge the map's partial results.
-            agg_specs: List[tuple] = []
-            comps = []
-            names: List[str] = []
-            for i, (agg, spec) in enumerate(zip(aggs, specs)):
-                out_cols = tuple(f"__agg{i}_{c}" for c in spec.components)
-                comps.append(out_cols)
-                names.extend(out_cols)
-                assert spec.merge_specs is not None  # reduction specs define it
-                opts = arrow_agg_options(agg._ignore_nulls)
-                agg_specs += spec.merge_specs(out_cols, opts)
-            merged = combined.group_by(keys, use_threads=False).aggregate(agg_specs)
-            merged = merged.rename_columns(keys + names)
-
-        yield _finalize_aggregates(merged, keys, aggs, specs, comps)
+        # Collection aggs: the map sent raw rows, so this gives final values.
+        merged, collection_comps = _aggregate_raw_rows(combined, keys, aggs, specs)
+        yield _finalize_aggregates(merged, keys, aggs, specs, collection_comps)
 
     return _arrow_reduce
 

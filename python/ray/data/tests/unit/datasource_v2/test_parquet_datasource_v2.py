@@ -5,11 +5,14 @@ include-paths schema augmentation against a local tmpdir.
 """
 
 import os
+from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
+import pyarrow.fs as pafs
 import pyarrow.parquet as pq
 import pytest
 
+from ray.data._internal.datasource_v2.common import file_reader
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
@@ -29,6 +32,7 @@ from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
     ParquetDatasourceV2,
+    _read_parquet_schema,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
@@ -44,6 +48,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
 from ray.data._internal.util import unify_schemas_with_validation
+from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -96,6 +101,32 @@ def _manifest_of(paths):
     return FileManifest.construct_manifest(
         paths=paths, sizes=sizes, chunk_metadatas=[None] * len(paths)
     )
+
+
+@pytest.mark.parametrize("size", [None, 123])
+def test_parquet_schema_reader_uses_listed_size_and_retries(monkeypatch, size):
+    import pyarrow.dataset as pds
+
+    expected = pa.schema([("a", pa.int64())])
+    metadata = Mock()
+    metadata.schema.to_arrow_schema.return_value = expected
+    fragment = Mock()
+    metadata_property = PropertyMock(
+        side_effect=[OSError("retryable footer error"), metadata]
+    )
+    type(fragment).metadata = metadata_property
+    file_format = Mock()
+    file_format.make_fragment.return_value = fragment
+    monkeypatch.setattr(pds, "ParquetFileFormat", lambda: file_format)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+    filesystem = pafs.LocalFileSystem()
+
+    assert _read_parquet_schema("test.parquet", filesystem, size) == expected
+    file_format.make_fragment.assert_called_once_with(
+        "test.parquet", filesystem=filesystem, file_size=size
+    )
+    assert metadata_property.call_count == 2
 
 
 def test_infer_schema_unpartitioned(tmp_path):
@@ -449,6 +480,31 @@ def test_create_scanner_returns_parquet_scanner(tmp_path):
     assert scanner.schema == schema
 
 
+@pytest.mark.parametrize("cap,expected_workers", [(2, 2), (4, 3), (0, None)])
+def test_parquet_fragment_workers(tmp_path, monkeypatch, cap, expected_workers):
+    monkeypatch.setattr(file_reader, "_MAX_FRAGMENT_WORKERS", cap)
+    monkeypatch.setattr(
+        DataContext.get_current().execution_options, "preserve_order", False
+    )
+    paths = [str(tmp_path / f"{i}.parquet") for i in range(3)]
+    schema = pa.schema([("id", pa.int64())])
+    for i, path in enumerate(paths):
+        pq.write_table(pa.table({"id": [i]}, schema=schema), path)
+    pool = Mock(wraps=file_reader.make_async_gen)
+    monkeypatch.setattr(file_reader, "make_async_gen", pool)
+
+    scanner = ParquetDatasourceV2(paths).create_scanner(schema)
+    batches = scanner.create_reader().read(_manifest_of(paths))
+    ids = [value for batch in batches for value in batch["id"].to_pylist()]
+    assert sorted(ids) == [0, 1, 2]
+    if expected_workers is None:
+        pool.assert_not_called()
+    else:
+        pool.assert_called_once()
+        assert pool.call_args.kwargs["num_workers"] == expected_workers
+        assert pool.call_args.kwargs["preserve_ordering"]
+
+
 def test_get_file_partitioner_returns_bin_packer(tmp_path):
     """Parquet sizes read units from footer stats, so the hints are unused."""
     datasource = ParquetDatasourceV2([str(tmp_path)])
@@ -672,25 +728,19 @@ def test_footer_indexer_skip_paths_ignores_missing_named_path(tmp_path):
     assert [info.path for info in infos] == [datasource.paths[0]]
 
 
-class _RecordingFooterActor:
-    """Stands in for a ``FooterReaderActor`` handle, recording call kwargs.
+class _FakeFooterActor:
+    """Stands in for a ``FooterReaderActor`` handle.
 
     Lets the wiring be asserted without spinning up Ray: ``read_footers.remote``
-    returns the batch's chunks inline, shaped like the streaming generator the
-    driver expects (an iterable of refs, each resolving to a list of
-    ``ChunkedFile``).
+    returns the batch's chunks inline, in ``batch`` order like the real
+    ``read_footers``, shaped like the streaming generator the driver expects (an
+    iterable of refs, each resolving to a list of ``ChunkedFile``).
     """
 
-    def __init__(self, calls):
-        self._calls = calls
+    def __init__(self):
         self.read_footers = self
 
-    def remote(self, batch, *, result_batch_size, preserve_order):
-        self._calls.append(preserve_order)
-        # Mimic the real ``read_footers``: honoring the flag yields in ``batch``
-        # order, otherwise in completion order -- stubbed as reversed, standing in
-        # for any IO-timing permutation.
-        ordered = batch if preserve_order else list(reversed(batch))
+    def remote(self, batch, *, result_batch_size):
         return [
             [
                 ChunkedFile(
@@ -700,17 +750,15 @@ class _RecordingFooterActor:
                     ),
                 )
             ]
-            for file in ordered
+            for file in batch
         ]
 
 
 @pytest.fixture
-def recorded_preserve_order_flags(monkeypatch):
-    """Yield the ``preserve_order`` flags ``read_footers`` was invoked with."""
+def fake_footer_actors(monkeypatch):
+    """Replace the ``FooterReaderActor`` pool with in-process fakes."""
     import ray
     from ray.data._internal.datasource_v2.formats.parquet import footer_file_indexer
-
-    calls = []
 
     class _FakeActorClass:
         @staticmethod
@@ -718,7 +766,7 @@ def recorded_preserve_order_flags(monkeypatch):
             class _Builder:
                 @staticmethod
                 def remote(*_args, **_kwargs):
-                    return _RecordingFooterActor(calls)
+                    return _FakeFooterActor()
 
             return _Builder
 
@@ -726,47 +774,10 @@ def recorded_preserve_order_flags(monkeypatch):
     # The driver resolves refs and tears the pool down; neither needs a real Ray.
     monkeypatch.setattr(ray, "get", lambda ref: ref)
     monkeypatch.setattr(ray, "kill", lambda _actor: None)
-    return calls
-
-
-@pytest.mark.parametrize("preserve_order", [True, False])
-def test_footer_indexer_forwards_preserve_order_to_footer_reads(
-    tmp_path, monkeypatch, recorded_preserve_order_flags, preserve_order
-):
-    """``preserve_order`` must reach ``read_footers``, not just path discovery.
-
-    ``read_footers`` yields in completion order by default, so a dropped flag
-    leaves manifest order -- and therefore bin packing and downstream read-task
-    order -- dependent on footer IO timing.
-    """
-    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "2")
-    # More files than one footer batch holds, so several dispatches are recorded.
-    monkeypatch.setenv("RAY_DATA_PARQUET_FOOTER_BATCH_SIZE", "2")
-    paths = []
-    for i in range(5):
-        path = tmp_path / f"f{i}.parquet"
-        _write_parquet(str(path), pa.table({"a": [i]}))
-        paths.append(str(path))
-
-    datasource = ParquetDatasourceV2(paths)
-    indexer = datasource._get_file_indexer()
-    assert isinstance(indexer, FooterFileIndexer)
-
-    manifests = list(
-        indexer.list_files(
-            pa.array(datasource.paths),
-            filesystem=datasource.filesystem,
-            preserve_order=preserve_order,
-        )
-    )
-
-    assert manifests, "expected the footer path to emit manifests"
-    # 5 files at a batch size of 2 -> 3 dispatched batches.
-    assert recorded_preserve_order_flags == [preserve_order] * 3
 
 
 def test_footer_indexer_preserves_listing_order_across_batches(
-    tmp_path, monkeypatch, recorded_preserve_order_flags
+    tmp_path, monkeypatch, fake_footer_actors
 ):
     """Order must hold across footer batches, not only within one.
 
