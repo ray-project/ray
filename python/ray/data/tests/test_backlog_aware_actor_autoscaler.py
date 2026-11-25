@@ -316,7 +316,7 @@ class TestActorPoolAutoscaling:
         autoscaler.try_trigger_scaling()
 
         # One actor was released, and it was a pending one.
-        assert actor_pool.current_size() == 3
+        assert actor_pool.total_size() == 3
         assert actor_pool.num_pending_actors() == 1
         assert actor_pool.num_running_actors() == 2
 
@@ -354,7 +354,7 @@ class TestActorPoolAutoscaling:
 
         assert requests[-1].delta == 0
         assert requests[-1].reason == "no downscaling while pending actors are needed"
-        assert actor_pool.current_size() == 8
+        assert actor_pool.total_size() == 8
         assert actor_pool.num_pending_actors() == 6
 
         # At exactly the required size (delta == 0) the pending actors are
@@ -363,14 +363,14 @@ class TestActorPoolAutoscaling:
         autoscaler.try_trigger_scaling()
         assert requests[-1].delta == 0
         assert requests[-1].reason == "no downscaling while pending actors are needed"
-        assert actor_pool.current_size() == 8
+        assert actor_pool.total_size() == 8
 
         # Once the backlog drains, the visible work only needs 6 actors and the
         # pool scales down, releasing one of the pending actors.
         actor_pool._current_in_flight_tasks = 0
         autoscaler.try_trigger_scaling()
 
-        assert actor_pool.current_size() == 7
+        assert actor_pool.total_size() == 7
         assert actor_pool.num_pending_actors() == 5
         assert actor_pool.num_running_actors() == 2
 
@@ -406,7 +406,7 @@ class TestActorPoolAutoscaling:
 
         assert requests[-1].delta == 0
         assert requests[-1].reason == "no downscaling while pending actors are needed"
-        assert actor_pool.current_size() == 8
+        assert actor_pool.total_size() == 8
         assert actor_pool.num_pending_actors() == 6
 
     def test_pending_actors_released_when_backlog_shrinks(self):
@@ -441,7 +441,7 @@ class TestActorPoolAutoscaling:
 
         assert requests[-1].delta == -1
         assert requests[-1].reason == "utilization of 0.25 <= 0.5"
-        assert actor_pool.current_size() == 7
+        assert actor_pool.total_size() == 7
         assert actor_pool.num_pending_actors() == 5
         assert actor_pool.num_running_actors() == 2
 
@@ -471,7 +471,7 @@ class TestActorPoolAutoscaling:
 
         assert requests[-1].delta == 0
         assert requests[-1].reason == "no downscaling while all actors are starting"
-        assert actor_pool.current_size() == 3
+        assert actor_pool.total_size() == 3
         assert actor_pool.num_pending_actors() == 3
 
     @pytest.mark.parametrize(

@@ -121,8 +121,9 @@ class SizingTicker:
         ] = None,
     ):
         self._profiles = profiles
-        # Actors to hold for an op waiting on its on_start: its warmup equal
-        # share (``OpSizingPolicy.warmup_target``); its min size without one.
+        # Actors to hold for an op waiting on its first input: its warmup
+        # equal share (``OpSizingPolicy.warmup_target``); its min size without
+        # one.
         self._hold_target = hold_target
         self.cadence_s = cadence_s
         self.clock = clock
@@ -188,14 +189,20 @@ class SizingTicker:
         )
 
     def _update_warmup_latch(self, now: float) -> None:
-        """Warmup ends for good once every critical op has produced its first
-        output: the pipeline is flowing end to end, so feedback beats
-        feedforward from here on.
+        """Warmup ends for good once every actor-pool op has received its
+        first input and every critical op has produced its first output: the
+        pipeline is flowing end to end, so feedback beats feedforward from
+        here on.
 
-        A critical op that finished without producing (an empty branch of a union)
-        does not hold warmup open. Nor does one that never produces within the
-        warmup timeout: leaving warmup early only hands sizing to the warm
-        phase, which can still move capacity to it.
+        Every op starts no actors until its first input (see
+        ``OperatorSizer``), so waiting for all of them keeps an op that has
+        not started yet under the warmup equal share: the warm phase never
+        sizes its neighbors while it still has no actors.
+
+        An op that finished without input or output (an empty branch of a
+        union) does not hold warmup open. Nor does one that gets neither
+        within the warmup timeout: leaving warmup early only hands sizing to
+        the warm phase, which can still move capacity to it.
         """
         if not self.warmup:
             return
@@ -206,12 +213,19 @@ class SizingTicker:
             for op in self.critical_ops
             if op.metrics.num_task_outputs_generated == 0 and not op.has_completed()
         ]
+        waiting_on += [
+            op
+            for op in self._profiles.actor_pool_ops
+            if op.awaiting_first_input()
+            and not op.has_completed()
+            and op not in waiting_on
+        ]
         if waiting_on:
             if now - self._warmup_started_t < self._warmup_timeout_s:
                 return
             logger.warning(
-                "OperatorSizer: warmup timed out after %.0fs with no output yet "
-                "from %s; switching to the warm phase.",
+                "OperatorSizer: warmup timed out after %.0fs still waiting on "
+                "first input or output from %s; switching to the warm phase.",
                 now - self._warmup_started_t,
                 ", ".join(op.name for op in waiting_on),
             )
@@ -269,7 +283,7 @@ class SizingTicker:
         global_limits = ExecutionResources.zero()
         for resources in reserved.values():
             global_limits = global_limits.add(resources)
-        held_actors_by_op = self._hold_share_for_ops_awaiting_on_start(
+        held_actors_by_op = self._hold_share_for_ops_awaiting_first_input(
             free,
             schedulable_nodes_by_op,
             per_actor_resources_by_op,
@@ -290,7 +304,7 @@ class SizingTicker:
             held_actors_by_op=held_actors_by_op,
         )
 
-    def _hold_share_for_ops_awaiting_on_start(
+    def _hold_share_for_ops_awaiting_first_input(
         self,
         free: Dict[NodeIdStr, ExecutionResources],
         schedulable_nodes_by_op: Dict[
@@ -302,25 +316,18 @@ class SizingTicker:
         constrained_op_count_by_node: Dict[NodeIdStr, int],
         global_limits: ExecutionResources,
     ) -> Dict["ExperimentalActorPoolMapOperator", int]:
-        """Take each op still waiting on its ``on_start`` out of ``free``
-        (mutated) for its warmup equal share; return how many actors each
-        got held.
+        """Reserve each op's warmup share until its first input arrives,
+        without starting any actor for it (``free`` is mutated).
 
-        Such an op (e.g. a Write sink) gets no actor until its first input
-        arrives (an actor made earlier would ship a transformer without the
-        state ``on_start`` sets), so nothing else would hold room for it, and
-        by then upstream ops can have taken every node's space; getting it
-        back means draining actors whose outputs only clear through this op.
-        Holding its share here keeps that room out of every phase's free map
-        without starting an actor. Once released, the sizer grows it straight
-        to the held count, ahead of other ops (it is below min size). The
-        share is held whole per actor, every resource the actor needs, on the
-        least contended nodes, as the ledger would place it; what does not
-        fit is not held.
-        """
+        An op starts no actors before its first input: there is nothing for
+        them to run, and an ``on_start`` (e.g. an Iceberg write's, which needs
+        the schema of that input) must run before the first actor is created.
+        Without a hold, ops that started earlier could take every node's
+        space. Returns the actors held per op: what it grows to once released.
+        PG-managed ops are not held; their placement group is their room."""
         held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = {}
         for op in self._profiles.non_pg_ops:
-            if not op.awaiting_on_start() or op.has_completed():
+            if not op.awaiting_first_input() or op.has_completed():
                 continue
             pool = op.actor_pool
             target = (
@@ -341,7 +348,7 @@ class SizingTicker:
             held_actors_by_op[op] = len(held)
             logger.debug(
                 "OperatorSizer: holding %d/%d actor(s) (warmup share) for %s "
-                "until its on_start runs",
+                "until its first input arrives",
                 len(held),
                 num_to_hold,
                 op.name,

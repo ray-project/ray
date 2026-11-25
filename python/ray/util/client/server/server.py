@@ -48,6 +48,9 @@ from ray.util.client.server.proxier import serve_proxier
 from ray.util.client.server.server_pickler import dumps_from_server, loads_from_client
 from ray.util.client.server.server_stubs import current_server
 
+# Import psutil after ray so the packaged version is used.
+import psutil
+
 logger = logging.getLogger(__name__)
 
 TIMEOUT_FOR_SPECIFIC_SERVER_S = env_integer("TIMEOUT_FOR_SPECIFIC_SERVER_S", 30)
@@ -858,6 +861,23 @@ def try_create_gcs_client(address: Optional[str]) -> Optional[GcsClient]:
     return GcsClient(address=address)
 
 
+def _exit_when_proxier_exits(proxier_pid: int):
+    """Exits once the proxier that started this server has exited.
+
+    Exits immediately, since a graceful shutdown can hang when the rest of
+    the cluster is gone too.
+    """
+    try:
+        proxier = psutil.Process(proxier_pid)
+        # A zombie has exited, but is_running() still returns True for it.
+        while proxier.is_running() and proxier.status() != psutil.STATUS_ZOMBIE:
+            time.sleep(1)
+    except psutil.NoSuchProcess:
+        pass
+    logger.info(f"The proxier with pid {proxier_pid} is not running, exiting.")
+    os._exit(1)
+
+
 def main():
     import argparse
 
@@ -898,6 +918,14 @@ def main():
         default=None,
         help="The hex ID of this node.",
     )
+    parser.add_argument(
+        "--proxier-pid",
+        required=False,
+        type=int,
+        default=None,
+        help="The pid of the proxier that started this server. The server exits "
+        "when the proxier exits.",
+    )
     args, _ = parser.parse_known_args()
     redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -921,6 +949,13 @@ def main():
         )
     else:
         server = serve(args.host, args.port, ray_connect_handler)
+
+    if args.proxier_pid is not None:
+        # A separate thread, since the loop below can block on the health check
+        # when the cluster is gone.
+        threading.Thread(
+            target=_exit_when_proxier_exits, args=(args.proxier_pid,), daemon=True
+        ).start()
 
     try:
         idle_checks_remaining = TIMEOUT_FOR_SPECIFIC_SERVER_S

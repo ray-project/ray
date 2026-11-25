@@ -286,7 +286,10 @@ def test_executor_builds_phase_tags():
     shuffle_op.get_phase_metrics.return_value = som.runtime_metrics_by_phase()
 
     executor = StreamingExecutor.__new__(StreamingExecutor)
-    executor._topology = {plain: MagicMock(), shuffle_op: MagicMock()}
+    shuffle_op_mock = MagicMock()
+    shuffle_op_mock.op_tag.return_value = "Shuffle(k)_1"
+    executor._topology = {plain: MagicMock(), shuffle_op: shuffle_op_mock}
+
     assert executor._get_phase_metrics() == {
         "Shuffle(k)_1": som.runtime_metrics_by_phase()
     }

@@ -39,9 +39,10 @@ tick
     One sizing evaluation, performed every ``SIZER_CADENCE_S``.
 
 warmup
-    The initial phase of a run. Until every critical op has produced output,
-    there is no backpressure signal to react to, so each op is sized to an
-    equal share of the allocation.
+    The initial phase of a run. Until every op has received input and every
+    critical op has produced output, there is no backpressure signal to react
+    to, so each op is sized to an equal share of the allocation. An op starts
+    no actors before its first input; its share is held for it until then.
 
 has work
     The op has queued input or tasks in flight.

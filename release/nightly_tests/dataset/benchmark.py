@@ -27,7 +27,7 @@ PROMETHEUS_QUERY_TIMEOUT_S = 30
 
 
 def benchmark_job_config() -> Optional[JobConfig]:
-    """The job config every benchmark passes to ``ray.init``.
+    """The job config benchmarks pass to ``ray.init``.
 
     On the actor-only backend, it turns on Ray Data lineage reconstruction:
     actors are never restarted, so only that recovers a lost one (e.g. an

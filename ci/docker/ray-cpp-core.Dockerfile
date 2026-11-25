@@ -28,6 +28,7 @@ WORKDIR /home/forge/ray
 # Bazel's own Linux releases need glibc >= 2.25 since Bazel 8, and this image is
 # glibc 2.17. Run the copy built for it (ci/docker/bazel-glibc217.Dockerfile)
 # instead. The build calls bazelisk, and /usr/local/bin/bazel links to it.
+# TODO: remove after the move to manylinux_2_28 (see .buildkite/_forge.rayci.yml).
 COPY --from=bazel /bazel /opt/bazel-glibc217/bazel
 COPY --from=bazel /jdk21 /opt/bazel-glibc217/jdk21
 RUN sudo mv /usr/local/bin/bazelisk /usr/local/bin/bazelisk.real \
