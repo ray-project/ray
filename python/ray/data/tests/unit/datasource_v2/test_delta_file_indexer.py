@@ -1,8 +1,10 @@
 """Unit tests for the Delta Lake file listing (no Ray cluster).
 
 Listing through ``read_delta`` (the log at the pinned version, path decoding,
-shuffle, resume) is tested in ``tests/datasource/test_delta_v2.py``. These cover
-what ``read_delta`` can't reach.
+order, shuffle) is tested in ``tests/datasource/test_delta_v2.py``, and the row
+groups the footer reads yield (resume, pruning) in
+``tests/datasource_v2/test_delta_footer_listing.py``. These cover what needs no
+Ray cluster.
 """
 
 import datetime
@@ -83,6 +85,16 @@ def test_resolve_data_file_path(logged_path, expected):
 def test_resolve_data_file_path_rejects_absolute_paths(logged_path):
     with pytest.raises(ValueError, match="absolute path"):
         resolve_data_file_path(logged_path)
+
+
+def test_snapshot_repr_leaves_out_storage_options():
+    """The snapshot is pickled into listing tasks; credentials stay out of
+    anything that prints it."""
+    snapshot = DeltaTableSnapshot(
+        "s3://bucket/table", 3, {"AWS_SECRET_ACCESS_KEY": "example-secret"}
+    )
+
+    assert "example-secret" not in repr(snapshot)
 
 
 def test_partition_values_come_from_the_log(partitioned_table):

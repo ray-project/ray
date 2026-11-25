@@ -159,21 +159,42 @@ def test_delta_read_storage_options(tmp_path, storage_options):
     assert rows_same(ds.to_pandas(), df)
 
 
-def test_delta_read_empty_table(tmp_path, datasource_v2):
+def _write_empty_table(tmp_path) -> str:
     from deltalake import write_deltalake
 
     path = os.path.join(tmp_path, "tmp_test_delta_empty")
     write_deltalake(
         path, pa.schema([("x", pa.int64()), ("y", pa.string())]).empty_table()
     )
+    return path
 
-    ds = ray.data.read_delta(path)
+
+def test_delta_read_empty_table(tmp_path):
+    ds = ray.data.read_delta(_write_empty_table(tmp_path))
+
     assert ds.count() == 0
     assert ds.take_all() == []
-    if datasource_v2:
-        # The V2 reader takes the schema from the log. The V1 reader takes it
-        # from the data files, and an empty table has none.
-        assert ds.schema().names == ["x", "y"]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_delta_read_empty_table_takes_its_schema_from_the_log(tmp_path):
+    """The V1 reader takes the schema from the data files, and an empty table
+    has none."""
+    ds = ray.data.read_delta(_write_empty_table(tmp_path))
+
+    assert ds.schema().names == ["x", "y"]
+
+
+@_V1_ONLY
+def test_delta_read_uses_v1_without_datasource_v2(tmp_path):
+    from deltalake import write_deltalake
+
+    path = os.path.join(tmp_path, "tmp_test_delta_v1")
+    write_deltalake(path, pa.table({"x": [1]}))
+
+    ds = ray.data.read_delta(path).materialize()
+
+    assert "ReadFilesDeltaV2" not in ds.stats()
 
 
 def test_delta_read_does_not_unpickle_a_tampered_data_file(tmp_path):

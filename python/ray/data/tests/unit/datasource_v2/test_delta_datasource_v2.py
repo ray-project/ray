@@ -44,10 +44,12 @@ def _listed_paths(indexer, **kwargs) -> List[str]:
 
 def _log_paths(path: str, version: Optional[int] = None) -> List[str]:
     table = deltalake.DeltaTable(path, version=version)
-    # In the log's order, which the listing keeps.
+    # Sorted by the logged path, as the listing gives them.
     return [
         resolve_data_file_path(p)
-        for p in pa.table(table.get_add_actions(flatten=True))["path"].to_pylist()
+        for p in sorted(
+            pa.table(table.get_add_actions(flatten=True))["path"].to_pylist()
+        )
     ]
 
 

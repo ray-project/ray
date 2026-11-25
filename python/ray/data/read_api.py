@@ -6881,6 +6881,17 @@ def read_delta(
             )
         )
 
+    elif (
+        ctx.use_datasource_v2
+        and ctx._use_delta_datasource_v2
+        and partition_filters is not None
+    ):
+        logger.info(
+            "Reading Delta table %r with the V1 reader: the DataSourceV2 reader "
+            "doesn't apply `partition_filters` yet.",
+            path,
+        )
+
     if dt is None:
         dt = DeltaTable(path, version=version, storage_options=storage_options)
     # The data files of a column-mapped table name their columns with physical

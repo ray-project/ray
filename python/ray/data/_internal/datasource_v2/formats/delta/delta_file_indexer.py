@@ -14,6 +14,7 @@ carries them to the reader in a manifest column (``PARTITION_VALUES_COLUMN``).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import posixpath
 import urllib.parse
@@ -90,12 +91,15 @@ class DeltaTableSnapshot:
     Attributes:
         table_uri: The table URI, as ``DeltaTable.table_uri`` reports it.
         version: The table version to read.
-        storage_options: ``deltalake`` storage options, for credentials.
+        storage_options: ``deltalake`` storage options, for credentials. Left
+            out of the ``repr``.
     """
 
     table_uri: str
     version: int
-    storage_options: Optional[Dict[str, Any]] = None
+    storage_options: Optional[Dict[str, Any]] = dataclasses.field(
+        default=None, repr=False
+    )
 
     def open(self) -> "DeltaTable":
         """Open the table at the pinned version."""
@@ -108,10 +112,17 @@ class DeltaTableSnapshot:
         )
 
     def add_actions(self) -> pa.Table:
-        """The ``add`` actions of the pinned version, one row per data file."""
+        """The ``add`` actions of the pinned version, one row per data file.
+
+        Sorted by path. ``deltalake`` lists them in the order it replays the
+        log, which follows the layout of the latest checkpoint, so one version
+        could otherwise list its files in another order once a checkpoint is
+        written with its rows in another order.
+        """
         # ``deltalake`` returns an arro3-core table, not a PyArrow one;
         # ``pa.table`` converts it through the Arrow C stream interface.
-        return pa.table(self.open().get_add_actions(flatten=True))
+        add_actions = pa.table(self.open().get_add_actions(flatten=True))
+        return add_actions.sort_by(ADD_ACTION_PATH_COLUMN)
 
 
 def resolve_data_file_path(logged_path: str) -> str:
@@ -129,15 +140,14 @@ def resolve_data_file_path(logged_path: str) -> str:
 
     Raises:
         ValueError: If the path is absolute. The Delta protocol allows that
-            (for example for shallow clones), but the DataSourceV2 reader reads
-            through a filesystem rooted at the table.
+            (for example for shallow clones), but ``read_delta`` reads through a
+            filesystem rooted at the table, as the V1 reader does.
     """
     if posixpath.isabs(logged_path) or _has_scheme(logged_path):
         raise ValueError(
-            f"The Delta log names a data file by absolute path ({logged_path!r}). "
-            "The DataSourceV2 reader for `read_delta` only reads files under the "
-            "table directory. Set `DataContext.use_datasource_v2 = False` to "
-            "read this table with the V1 reader."
+            f"The Delta log names a data file by absolute path ({logged_path!r}), "
+            "as a shallow clone's log does. `ray.data.read_delta` only reads "
+            "data files under the table directory."
         )
     return urllib.parse.unquote(logged_path)
 
@@ -302,10 +312,10 @@ class _DeltaLogListing:
         """Yield the table's data files at the pinned version.
 
         ``paths`` holds the table label from ``DeltaDatasourceV2.paths`` and is
-        not read. Paths are relative to the table root, in the order
-        ``deltalake`` lists the ``add`` actions. ``to_pyarrow_dataset`` lists
-        them in that order too, so ``preserve_order=True`` returns rows in the
-        V1 reader's order. Empty files are skipped and ``pruners`` applied, as
+        not read. Paths are relative to the table root, in path order, so a
+        version lists its files in one order however its log is checkpointed
+        (``preserve_order=True`` reads them in that order). Empty files are
+        skipped and ``pruners`` applied, as
         the directory listing does; a ``DeltaPartitionPruner`` gets each
         file's partition values from the log.
         """

@@ -6,19 +6,17 @@ where the two could disagree.
 """
 
 import datetime
+import os
 import sys
 from typing import Any, Dict, List
 
 import pyarrow as pa
 import pyarrow.fs as pa_fs
+import pyarrow.parquet as pq
 import pytest
 
 import ray
 from ray.data import DataContext
-from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
-    _row_group_unit_id,
-)
-from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.datasource.file_based_datasource import FileShuffleConfig
 from ray.data.datasource.partitioning import HIVE_DEFAULT_PARTITION
 from ray.data.expressions import col
@@ -27,12 +25,14 @@ from ray.tests.conftest import *  # noqa
 
 deltalake = pytest.importorskip("deltalake")
 
+# The V2 reader only. ``_read(..., v2=False)`` reads with the V1 reader, for
+# comparison.
+pytestmark = pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+
 
 @pytest.fixture(autouse=True)
-def use_delta_datasource_v2(restore_data_context):
-    ctx = DataContext.get_current()
-    ctx.use_datasource_v2 = True
-    ctx._use_delta_datasource_v2 = True
+def use_delta_datasource_v2(ray_start_regular_shared, datasource_v2):
+    DataContext.get_current()._use_delta_datasource_v2 = True
 
 
 def _read(path: str, *, v2: bool = True, **kwargs) -> ray.data.Dataset:
@@ -44,8 +44,8 @@ def _read(path: str, *, v2: bool = True, **kwargs) -> ray.data.Dataset:
 
 
 def _uses_v2(ds: ray.data.Dataset) -> bool:
-    dag = ds._logical_plan.dag
-    return isinstance(dag, ReadFiles) and dag.datasource_name == "DeltaV2"
+    """Whether ``ds`` read with the V2 reader, by its read operator's name."""
+    return "ReadFilesDeltaV2" in ds.materialize().stats()
 
 
 def _rows(ds: ray.data.Dataset) -> List[Dict[str, Any]]:
@@ -54,10 +54,9 @@ def _rows(ds: ray.data.Dataset) -> List[Dict[str, Any]]:
 
 def _assert_matches_v1(path: str, transform=lambda ds: ds, **kwargs) -> None:
     v1 = transform(_read(path, v2=False, **kwargs))
-    v2_unread = _read(path, **kwargs)
-    assert _uses_v2(v2_unread)
-    v2 = transform(v2_unread)
+    v2 = transform(_read(path, **kwargs)).materialize()
 
+    assert _uses_v2(v2)
     assert v2.schema() == v1.schema()
     assert _rows(v2) == _rows(v1)
 
@@ -236,36 +235,48 @@ def test_s3_reads_send_no_head_requests(s3_server, aws_credentials, caller_files
     assert data_file_heads == []
 
 
-def test_preserve_order_matches_v1(tmp_path):
-    """Files are read in the log's order, as V1 reads them (not path order)."""
+def _reverse_checkpoint_rows(path: str, version: int) -> None:
+    """Write the version's checkpoint with its rows in reverse order. The
+    protocol leaves their order to the writer, and ``deltalake`` lists the
+    ``add`` actions in it."""
+    checkpoint = os.path.join(path, "_delta_log", f"{version:020d}.checkpoint.parquet")
+    table = pq.read_table(checkpoint)
+    pq.write_table(table.take(list(reversed(range(table.num_rows)))), checkpoint)
+
+
+def test_a_version_reads_its_files_in_one_order(tmp_path):
+    """Files are read in path order, however the log is checkpointed."""
     path = str(tmp_path / "table")
     for i in range(6):
         deltalake.write_deltalake(path, pa.table({"x": [i]}), mode="append")
     DataContext.get_current().execution_options.preserve_order = True
+    ds = _read(path, include_paths=True)
+    rows = ds.take_all()
+    assert [row["path"] for row in rows] == sorted(row["path"] for row in rows)
 
-    v1 = [row["x"] for row in _read(path, v2=False).take_all()]
-    v2 = [row["x"] for row in _read(path).take_all()]
+    deltalake.DeltaTable(path).create_checkpoint()
+    _reverse_checkpoint_rows(path, version=5)
 
-    assert v2 == v1
+    assert ds.take_all() == rows
+    assert _read(path, include_paths=True).take_all() == rows
 
 
 def test_seeded_shuffle_permutes_the_files(tmp_path):
     path = str(tmp_path / "table")
     for i in range(8):
         deltalake.write_deltalake(path, pa.table({"x": [i]}), mode="append")
+    DataContext.get_current().execution_options.preserve_order = True
 
-    def listed_paths(ds: ray.data.Dataset) -> List[str]:
-        # ``FooterReader.read_footers`` yields the footers in the listed order,
-        # whatever order they're read in.
-        return [row["__path"] for row in _list_files(ds)]
+    def read_order(**kwargs) -> List[int]:
+        return [row["x"] for row in _read(path, **kwargs).take_all()]
 
-    unshuffled = listed_paths(_read(path))
-    shuffled = listed_paths(_read(path, shuffle=FileShuffleConfig(seed=11)))
+    unshuffled = read_order()
+    shuffled = read_order(shuffle=FileShuffleConfig(seed=11))
 
     assert sorted(shuffled) == sorted(unshuffled)
     assert shuffled != unshuffled
     # The same seed, the same order.
-    assert listed_paths(_read(path, shuffle=FileShuffleConfig(seed=11))) == shuffled
+    assert read_order(shuffle=FileShuffleConfig(seed=11)) == shuffled
 
 
 @pytest.fixture
@@ -280,56 +291,15 @@ def row_group_table(tmp_path) -> str:
     return path
 
 
-def _list_files(ds: ray.data.Dataset, **kwargs) -> List[Dict[str, Any]]:
-    (list_files,) = ds._logical_plan.dag.input_dependencies
-    assert isinstance(list_files, ListFiles), list_files
-    rows = []
-    for manifest in list_files.file_indexer.list_files(
-        pa.array(list_files.paths), filesystem=None, **kwargs
-    ):
-        block = manifest.as_block()
-        # Listing manifests are always built as Arrow tables.
-        assert isinstance(block, pa.Table)
-        rows.extend(block.to_pylist())
-    return rows
-
-
-def _row_groups(rows: List[Dict[str, Any]]) -> List[int]:
-    """Indices of the row groups that listing rows cover."""
-    return [i for row in rows for i in row["__file_chunk_metadata"]["unit_ids"]]
-
-
-def test_listing_skips_finished_row_groups(row_group_table):
-    """What a resumed job's listing does with the read units it finished."""
-    ds = _read(row_group_table)
-    all_rows = _list_files(ds)
-    (path,) = {row["__path"] for row in all_rows}
-    assert sorted(_row_groups(all_rows)) == [0, 1, 2, 3, 4]
-
-    rows = _list_files(
-        ds,
-        excluded_read_unit_ids={
-            _row_group_unit_id(path, 0),
-            _row_group_unit_id(path, 3),
-        },
-    )
-
-    assert sorted(_row_groups(rows)) == [1, 2, 4]
-
-
 def test_row_groups_are_split_into_read_tasks(row_group_table, monkeypatch):
+    """Which row groups the listing yields is tested in
+    ``tests/datasource_v2/test_delta_footer_listing.py``."""
     monkeypatch.setenv("RAY_DATA_PARQUET_BIN_PACKING_BYTES", "1")
 
     ds = _read(row_group_table).materialize()
 
     assert ds.num_blocks() > 1
     assert sorted(row["x"] for row in ds.take_all()) == list(range(100))
-
-
-def test_filter_prunes_row_groups(row_group_table):
-    rows = _list_files(_read(row_group_table), predicate=col("x") >= 80)
-
-    assert _row_groups(rows) == [4]
 
 
 @pytest.mark.parametrize("deltalake_version", ["1.5.0", "1.6.6"])
@@ -429,12 +399,6 @@ def test_partition_values_come_from_the_log(tmp_path, write, transform):
 
 def test_falls_back_to_v1_when_the_flag_is_off(partitioned_table):
     assert not _uses_v2(_read(partitioned_table, v2=False))
-
-
-def test_falls_back_to_v1_without_datasource_v2(partitioned_table):
-    DataContext.get_current().use_datasource_v2 = False
-
-    assert not _uses_v2(_read(partitioned_table))
 
 
 if __name__ == "__main__":
