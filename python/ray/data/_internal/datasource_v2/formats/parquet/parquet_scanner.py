@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type
 
 import pyarrow as pa
 from typing_extensions import override
@@ -8,7 +8,14 @@ from ray.data._internal.datasource_v2.common.arrow_file_scanner import ArrowFile
 from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
-from ray.data._internal.datasource_v2.common.pushdown_utils import combine_predicates
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicate_chain,
+    combine_predicates,
+    flatten_predicate_chain,
+    float_column_names,
+    has_column_arithmetic,
+    is_statistics_safe,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
     ParquetFileReader,
 )
@@ -19,7 +26,7 @@ from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data.expressions import Expr
+from ray.data.expressions import Expr, Operation
 from ray.util.annotations import DeveloperAPI
 
 
@@ -45,6 +52,29 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+    # The reader ``create_reader`` builds; a format whose files are Parquet
+    # can substitute a subclass.
+    reader_class: ClassVar[Type[ParquetFileReader]] = ParquetFileReader
+
+    @override
+    def push_filters(self, predicate: Expr) -> Tuple[ArrowFileScanner, Optional[Expr]]:
+        # Filters PyArrow would evaluate differently from Ray run after the read.
+        safe: List[Expr] = []
+        unsafe: List[Expr] = []
+        float_columns = float_column_names(self.schema)
+        for conjunct in flatten_predicate_chain(predicate, Operation.AND):
+            if is_statistics_safe(
+                predicate=conjunct, float_columns=float_columns
+            ) and not has_column_arithmetic(expr=conjunct):
+                safe.append(conjunct)
+            else:
+                unsafe.append(conjunct)
+        safe_predicate = combine_predicate_chain(safe, Operation.AND)
+        unsafe_predicate = combine_predicate_chain(unsafe, Operation.AND)
+        if safe_predicate is None:
+            return self, unsafe_predicate
+        scanner, residual = super().push_filters(predicate=safe_predicate)
+        return scanner, combine_predicates(residual, unsafe_predicate)
 
     @override
     def prune_partitions(self, predicate: Expr) -> "ParquetScanner":
@@ -91,7 +121,7 @@ class ParquetScanner(ArrowFileScanner):
         Returns:
             ParquetFileReader with all pushdowns and adaptive batch sizing.
         """
-        return ParquetFileReader(
+        return self.reader_class(
             batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=combine_predicates(self.predicate, self.partition_predicate),

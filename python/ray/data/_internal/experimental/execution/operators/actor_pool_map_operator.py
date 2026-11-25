@@ -856,7 +856,9 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         return self._pick_next_actor() is not None
 
     @override
-    def _create_task_context(self, actor: ActorHandle) -> TaskContext:
+    def _create_task_context(
+        self, actor: ActorHandle, inputs: Optional[RefBundle] = None
+    ) -> TaskContext:
         """Build TaskContext, sizing blocks from this actor's output budget.
 
         Skips the bytes-based override when the map transformer sizes by row
@@ -890,7 +892,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
                 )
 
         return TaskContext(
-            task_idx=self._next_data_task_idx,
+            task_idx=self._context_task_idx(inputs),
             op_name=self.name,
             target_max_block_size_override=target_max_block_size,
             rerun_policy=self._actor_rerun_policy(),
@@ -920,7 +922,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         # _submit_data_task below assigns this task index, then increments.
         task_index = self._next_data_task_idx
 
-        ctx = self._create_task_context(actor)
+        ctx = self._create_task_context(actor, bundle)
         gen = self._submit_to_actor(actor, bundle, ctx)
 
         self._submit_data_task(

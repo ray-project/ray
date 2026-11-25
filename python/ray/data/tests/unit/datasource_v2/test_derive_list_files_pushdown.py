@@ -441,7 +441,9 @@ def test_block_udf_filter_keeps_listing_and_read_limit_unset(tmp_path, columns):
     ]
     assert remaining_filter.predicate_expr is not None
     assert remaining_filter.predicate_expr.structurally_equals(predicate)
-    assert "a" in read.infer_schema().names
+    schema = read.infer_schema()
+    assert schema is not None
+    assert "a" in schema.names
     scanner = _scanner_of(read)
     assert scanner.predicate is None
     assert scanner.partition_predicate is None
