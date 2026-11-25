@@ -1,6 +1,7 @@
 import logging
 import os
 import shutil
+import signal
 import sys
 import tempfile
 import unittest.mock
@@ -15,7 +16,11 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray._private.ray_constants import DEFAULT_RESOURCES, RAY_OVERRIDE_DASHBOARD_URL
+from ray._private.ray_constants import (
+    DEFAULT_RESOURCES,
+    PROCESS_TYPE_DASHBOARD,
+    RAY_OVERRIDE_DASHBOARD_URL,
+)
 from ray._private.services import get_node_ip_address
 from ray._private.test_utils import get_current_unused_port
 from ray.dashboard.utils import ray_address_to_api_server_url
@@ -546,6 +551,36 @@ def test_can_create_task_in_multiple_sessions(shutdown_only):
 
     ray.init()
     assert ray.get(run_task_in_task.remote()) == "the task"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no fork.")
+def test_ray_processes_start_without_fork_handlers(shutdown_only):
+    # Fork handlers, such as grpcio's, can crash a forked child before it execs.
+    # Python runs at-fork hooks only in a child forked for a preexec_fn, so this
+    # hook makes any Ray process started that way exit.
+    spawning = True
+    os.register_at_fork(after_in_child=lambda: spawning and os._exit(1))
+    try:
+        ray.init(num_cpus=1)
+    finally:
+        spawning = False
+    for infos in ray._private.worker._global_node.all_processes.values():
+        for info in infos:
+            assert info.process.poll() is None
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Reads the signal mask from /proc.")
+def test_ray_processes_start_with_sigint_blocked(shutdown_only):
+    ray.init(num_cpus=1)
+    all_processes = ray._private.worker._global_node.all_processes
+    for process_type, infos in all_processes.items():
+        # The dashboard's main thread does not keep SIGINT blocked once running.
+        if process_type == PROCESS_TYPE_DASHBOARD:
+            continue
+        for info in infos:
+            with open(f"/proc/{info.process.pid}/status") as f:
+                sig_blk = next(line for line in f if line.startswith("SigBlk:"))
+            assert int(sig_blk.split()[1], 16) & (1 << (signal.SIGINT - 1))
 
 
 if __name__ == "__main__":
