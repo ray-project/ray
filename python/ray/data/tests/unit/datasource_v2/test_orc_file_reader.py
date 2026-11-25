@@ -1580,8 +1580,9 @@ def test_orc_reader_initial_estimate_is_cached(
     original = orc_file_reader.estimate_batch_size
     estimate = Mock(wraps=original) if available else Mock(return_value=None)
     monkeypatch.setattr(orc_file_reader, "estimate_batch_size", estimate)
+    # Keep all batches empty so observed rows cannot replace the initial estimate.
     reader = OrcScanner(
-        schema=table.schema, target_block_size=65536, limit=0
+        schema=table.schema, target_block_size=65536, predicate=col("payload") == ""
     ).create_reader()
     for _ in range(2):
         assert list(reader.read(_manifest(path))) == []
