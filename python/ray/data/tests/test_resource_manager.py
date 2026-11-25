@@ -725,6 +725,7 @@ class TestResourceManager:
             lambda: cluster_resources,
             DataContext.get_current(),
             BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            has_external_consumer=False,
         )
 
         for op in [o1, o2, o3]:
@@ -950,6 +951,7 @@ class TestOutputBackpressureGuard:
             MagicMock(),
             DataContext.get_current(),
             BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            has_external_consumer=False,
         )
         guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -1237,6 +1239,7 @@ class TestOutputBackpressureGuard:
             MagicMock(),
             DataContext.get_current(),
             BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            has_external_consumer=False,
         )
         guard = OutputBackpressureGuard(
             topo, resource_manager, release_interval_s=release_interval_s
@@ -1287,6 +1290,7 @@ class TestOutputBackpressureGuard:
             MagicMock(),
             DataContext.get_current(),
             BlockRefCounter(add_object_out_of_scope_callback=lambda *_: True),
+            has_external_consumer=False,
         )
         guard = OutputBackpressureGuard(topo, resource_manager, release_interval_s=100)
 

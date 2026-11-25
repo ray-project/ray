@@ -95,6 +95,7 @@ class ResourceManager:
         get_total_resources: Callable[[], ExecutionResources],
         data_context: DataContext,
         block_ref_counter: BlockRefCounter,
+        has_external_consumer: bool = True,
     ):
         self._topology = topology
         self._options = options
@@ -120,7 +121,10 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
-        self._has_external_consumer: bool = False
+        # False only when the executor's caller drains every output bundle
+        # itself (`Dataset._execute`: materialize, write_datasink); known
+        # before execution starts so it holds from the first scheduling step.
+        self._has_external_consumer: bool = has_external_consumer
 
         # Executor sink (DAG root: unique op with no output_dependencies).
         # Iterator/streaming_split prefetch bytes are charged on this

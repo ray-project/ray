@@ -8591,7 +8591,9 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
-    def _create_executor(self) -> "StreamingExecutor":
+    def _create_executor(
+        self, has_external_consumer: bool = True
+    ) -> "StreamingExecutor":
         """Create a StreamingExecutor for this dataset.
 
         Increments _run_index and tags the executor with get_dataset_id().
@@ -8604,7 +8606,11 @@ class Dataset:
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         self._run_index += 1
-        return StreamingExecutor(self._context, self.get_dataset_id())
+        return StreamingExecutor(
+            self._context,
+            self.get_dataset_id(),
+            has_external_consumer=has_external_consumer,
+        )
 
     def _initial_stats(self) -> DatasetStats:
         """The initial stats to seed a fresh executor for this dataset.
@@ -8701,7 +8707,9 @@ class Dataset:
                     schema=schema,
                 )
             else:
-                with self._create_executor() as executor:
+                # Every output bundle is collected below, not pulled by a
+                # consumer outside the executor.
+                with self._create_executor(has_external_consumer=False) as executor:
                     bundles = self._execute_dag(executor, preserve_order=preserve_order)
                     bundle = RefBundle.merge_ref_bundles(list(bundles))
                     executor.get_stats().set_uuid_recursive(self._uuid)
