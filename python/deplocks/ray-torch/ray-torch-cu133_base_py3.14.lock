@@ -940,7 +940,7 @@ cuda-bindings==13.0.3 ; sys_platform == 'linux' \
     --hash=sha256:fb16a7f769c9c67469add7a1d9f6c14dd44637f6921cb6b9eb82cb5015b35c3d \
     --hash=sha256:fce6d6b162457475b35e1a259ab643e683d1d20a84459fea898782e2f1e10a3b
     # via torch
-cuda-pathfinder==1.8.3 ; sys_platform != 'darwin' \
+cuda-pathfinder==1.8.3 ; (python_full_version < '3.15' and sys_platform != 'darwin') or sys_platform == 'linux' \
     --hash=sha256:e29e59829c297a7a5233bd9cc71094fc5bddbd076951482670178f9eade39b1f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.14.txt
@@ -2368,7 +2368,7 @@ locust==2.46.7 \
     --hash=sha256:a737bcf8d6728d4f0efe9e460ef9c69d0084e1dd085734db6e4775ece453b7fe \
     --hash=sha256:cf112214068abe59615d36769db31ffd1430b67c6e5f693b9a23b8510224442b
     # via -r docker/ray-torch/torch-requirements.txt
-lz4==4.4.5 \
+lz4==4.4.5 ; python_full_version < '3.15' \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \

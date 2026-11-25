@@ -114,10 +114,6 @@ compile_pip_dependencies_for_python() {
     crcmod deepspeed fairscale feather-format gcs-oauth2-boto-plugin gsutil halo
     hyperopt promise pyspark pyu2f retry-decorator s3torchconnector
   )
-  if [[ "${python_version}" == "3.15" ]]; then
-    # In install_requires, but no release has a cp315 wheel yet.
-    sdist_only+=(pyyaml)
-  fi
   local no_binary_args=()
   for pkg in "${sdist_only[@]}"; do
     no_binary_args+=(--no-binary "${pkg}")

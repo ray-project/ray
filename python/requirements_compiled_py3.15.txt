@@ -448,7 +448,7 @@ fastjsonschema==2.21.2
     # via nbformat
 feather-format==0.4.1
     # via -r python/requirements/test-requirements.txt
-filelock==3.29.0
+filelock==4.2.12
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -591,10 +591,9 @@ graphviz==0.20.3
     # via -r python/requirements/test-requirements.txt
 greenlet==3.5.6
     # via sqlalchemy
-grpcio==1.84.0
+grpcio==1.85.0
     # via
     #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
@@ -693,7 +692,6 @@ importlib-metadata==6.11.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
-    #   opentelemetry-api
 importlib-resources==7.1.0
     # via prophet
 iniconfig==2.3.0
@@ -1119,7 +1117,7 @@ openlineage-python==1.46.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.39.0
+opentelemetry-api==1.45.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -1132,23 +1130,25 @@ opentelemetry-api==1.39.0
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.39.0
+opentelemetry-exporter-otlp-common==0.66b2
     # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.39.0
+opentelemetry-exporter-otlp-proto-common==1.45.2
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.45.2
     # via -r python/requirements/test-requirements.txt
-opentelemetry-exporter-prometheus==0.60b0
+opentelemetry-exporter-prometheus==0.66b2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
-opentelemetry-instrumentation==0.60b0
+opentelemetry-instrumentation==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.60b0
+opentelemetry-instrumentation-asgi==0.66b2
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.60b0
+opentelemetry-instrumentation-fastapi==0.66b2
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.39.0
+opentelemetry-proto==1.45.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
@@ -1156,22 +1156,23 @@ opentelemetry-proto==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.39.0
+opentelemetry-sdk==1.45.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
+    #   opentelemetry-exporter-otlp-common
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.60b0
+opentelemetry-semantic-conventions==0.66b2
     # via
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.60b0
+opentelemetry-util-http==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
@@ -1563,7 +1564,7 @@ pyu2f==0.1.5
     # via google-reauth
 pyvers==0.2.3
     # via tensordict
-pyyaml==6.0.3
+pyyaml==6.0.4
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/test-requirements.txt

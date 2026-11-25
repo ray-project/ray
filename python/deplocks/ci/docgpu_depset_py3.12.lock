@@ -2,7 +2,7 @@
 --extra-index-url https://wheels.astral.sh/simple/cu128/
 --find-links https://data.pyg.org/whl/torch-2.10.0+cu128.html
 
-about-time==4.2.1 \
+about-time==4.2.1 ; python_full_version < '3.15' \
     --hash=sha256:6a538862d33ce67d997429d14998310e1dbfda6cb7d9bbfbf799c4709847fece \
     --hash=sha256:8bbf4c75fe13cbd3d72f49a03b02c5c7dca32169b6d49117c257e7eb3eaee341
     # via
@@ -287,7 +287,7 @@ alembic==1.18.4 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
     #   optuna
-alive-progress==3.3.0 \
+alive-progress==3.3.0 ; python_full_version < '3.15' \
     --hash=sha256:457dd2428b48dacd49854022a46448d236a48f1b7277874071c39395307e830c \
     --hash=sha256:63dd33bb94cde15ad9e5b666dbba8fedf71b72a4935d6fb9a92931e69402c9ff
     # via
@@ -434,7 +434,7 @@ attrs==26.1.0 \
     #   jsonschema
     #   open-spiel
     #   referencing
-autograd==1.8.0 \
+autograd==1.8.0 ; python_full_version < '3.15' \
     --hash=sha256:107374ded5b09fc8643ac925348c0369e7b0e73bbed9565ffd61b8fd04425683 \
     --hash=sha256:4ab9084294f814cf56c280adbe19612546a35574d67c574b04933c7d2ecb7d78
     # via
@@ -452,7 +452,7 @@ aws-xray-sdk==2.15.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   moto
-ax-platform==1.2.1 \
+ax-platform==1.2.1 ; python_full_version < '3.15' \
     --hash=sha256:6c55801bcd0ea420917ed1842c1d6e29191261216ae507c9b27d2ddb7104d536 \
     --hash=sha256:8b4af64477008ffa5108312a024498cfde5e3d1f419afac45f5a9741a1e23543
     # via
@@ -601,13 +601,13 @@ botocore==1.32.7 \
     #   boto3
     #   moto
     #   s3transfer
-botorch==0.16.1 \
+botorch==0.16.1 ; python_full_version < '3.15' \
     --hash=sha256:1c06d4af942120be6cbface266e01422c33f27e8d44b565d0c7e308589a1937b \
     --hash=sha256:2a9ec7e43f1acddcf0c170ba084443e128696bc02f0ef9a48cc720f13f71713b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
-brotli==1.2.1 ; sys_platform != 'win32' \
+brotli==1.2.1 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:0023348c448140a6ea71615eba331835c971d38ae8acf8a89b4e963b1f38f131 \
     --hash=sha256:00a50d063aae2e69c2eb28818ccf6dc3e51f2ea5b74e3c2082a47943ee23f399 \
     --hash=sha256:00c9a4262dd81cdc32968f8bc2482c735ad238010d95b49698f1b788c359c7a4 \
@@ -780,7 +780,7 @@ certifi==2026.10.19 \
     #   msrest
     #   requests
     #   sentry-sdk
-cffi==1.17.1 \
+cffi==1.17.1 ; python_full_version < '3.15' or platform_python_implementation != 'PyPy' \
     --hash=sha256:045d61c734659cc045141be4bae381a41d89b741f795af1dd018bfb532fd0df8 \
     --hash=sha256:0984a4925a435b1da406122d4d7968dd861c1385afe3b45ba82b750f229811e2 \
     --hash=sha256:0e2b1fac190ae3ebfe37b979cc1ce69c81f4e4fe5746bb401dca63a9062cdaf1 \
@@ -1434,7 +1434,7 @@ cython==0.29.37 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-daft==0.7.26 \
+daft==0.7.26 ; python_full_version < '3.15' \
     --hash=sha256:57e08253601ebf5aa3da9931306dc059af2dc91de9dcccc279293a0fbf88ac64 \
     --hash=sha256:8b6e7b8d4e802f15e0f5facb9e019723837d970fa6271449537fe0d594c7aea7 \
     --hash=sha256:a57d2db079a9736acd65fdff8951ea31d9626f4cb0fa70caec5e298c63005f85 \
@@ -1517,7 +1517,7 @@ defusedxml==0.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   nbconvert
-deprecated==1.3.1 \
+deprecated==1.3.1 ; python_full_version < '3.15' \
     --hash=sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f \
     --hash=sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223
     # via
@@ -2194,26 +2194,26 @@ googleapis-common-protos==1.74.0 \
     #   google-api-core
     #   grpcio-status
     #   opentelemetry-exporter-otlp-proto-grpc
-gpytorch==1.15.2 \
+gpytorch==1.15.2 ; python_full_version < '3.15' \
     --hash=sha256:2112fdc7c0c0bf56a7f2444663cfc80fdfc3e19724399d6303a83d8efdd71e9e \
     --hash=sha256:380625e93f851b85f772b25c5fb0a6c6d2e3eb2ef667f1e566ab4f95b8775361
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botorch
-gradio==6.15.2 ; sys_platform != 'win32' \
+gradio==6.15.2 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:3492eee59cbe4afd21e8f458fc229f0d92c17bdaacaefaf9580dd63a6406c82d \
     --hash=sha256:67433b1889dc8526658196277ca9e34109f73aa65656635c0dc6afb542571f55
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-gradio-client==2.5.0 ; sys_platform != 'win32' \
+gradio-client==2.5.0 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:4cde99bad62149595c30c90876ca2e405e3a13687ecf895474f3412cb476673d \
     --hash=sha256:d43e2179c29076292a76485ad7ed2e6eaa19d14ac58283bd7f5beabfe4ca958c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
     #   hf-gradio
-graphemeu==0.7.2 \
+graphemeu==0.7.2 ; python_full_version < '3.15' \
     --hash=sha256:1444520f6899fd30114fc2a39f297d86d10fa0f23bf7579f772f8bc7efaa2542 \
     --hash=sha256:42bbe373d7c146160f286cd5f76b1a8ad29172d7333ce10705c5cc282462a4f8
     # via
@@ -2308,7 +2308,7 @@ greenlet==3.4.0 ; platform_machine == 'AMD64' or platform_machine == 'WIN32' or 
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   sqlalchemy
-groovy==0.1.2 ; sys_platform != 'win32' \
+groovy==0.1.2 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:25c1dc09b3f9d7e292458aa762c6beb96ea037071bf5e917fc81fb78d2231083 \
     --hash=sha256:7f7975bab18c729a257a8b1ae9dcd70b7cafb1720481beae47719af57c35fa64
     # via
@@ -2503,7 +2503,7 @@ h5py==3.12.1 \
     #   -r python/requirements/ml/rllib-test-requirements.txt
     #   keras
     #   tensorflow
-hf-gradio==0.4.1 ; sys_platform != 'win32' \
+hf-gradio==0.4.1 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:76b8cb8be6abe62d74c1ad2d35b42f0629db89aa9e1a8d033cecfe7c856eeab3 \
     --hash=sha256:a017d942618f0d495a58ee4563047fa04bef614c00e0cb789a9a6d0633cffa7b
     # via
@@ -3224,7 +3224,7 @@ lightning-utilities==0.15.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   lightning
     #   pytorch-lightning
-linear-operator==0.6.1 \
+linear-operator==0.6.1 ; python_full_version < '3.15' \
     --hash=sha256:3fba49a8080d16f822a5d870f462279cd6afbcf4ed670f4511b38fad96f61831 \
     --hash=sha256:a5981c1fcda08df3a210dffb6e8019b4751f4afaf3ffc822c24eaaf56b11eed9
     # via
@@ -3408,7 +3408,7 @@ lxml==6.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-lz4==4.4.5 \
+lz4==4.4.5 ; python_full_version < '3.15' \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \
@@ -3843,7 +3843,7 @@ mmh3==5.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ray
-modin==0.37.1 \
+modin==0.37.1 ; python_full_version < '3.15' \
     --hash=sha256:40edbeafc2b8e07fda622b38475ec0b4d580cb8f0cdf9907f1c58c1d84b9a796 \
     --hash=sha256:afb96c4b1fc4953c6895f5376b49af765575ad6f4d948a7726055614777e7b90
     # via
@@ -3855,7 +3855,7 @@ monotonic==1.6 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   segment-analytics-python
-moocore==0.2.0 \
+moocore==0.2.0 ; python_full_version < '3.15' \
     --hash=sha256:3dc601f85f9a4743ed50ddd027dca30e3bb55c899916a092c2ece495b1b2de08 \
     --hash=sha256:653449231f328d3c9e69693ec3d44e8c77f38ab7e9ef0c69dd9ded40449e980d \
     --hash=sha256:a7683feddfd2a47b4a0f89ee8d370cae72331792f68e67f083ccb37bb2f1c8cf \
@@ -3873,7 +3873,7 @@ moto==5.1.18 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-moviepy==2.2.1 \
+moviepy==2.2.1 ; python_full_version < '3.15' \
     --hash=sha256:6b56803fec2ac54b557404126ac1160e65448e03798fa282bd23e8fab3795060 \
     --hash=sha256:c80cb56815ece94e5e3e2d361aa40070eeb30a09d23a24c4e684d03e16deacb1
     # via
@@ -4191,7 +4191,7 @@ multidict==6.9.1 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aiohttp
     #   yarl
-multipledispatch==1.0.0 \
+multipledispatch==1.0.0 ; python_full_version < '3.15' \
     --hash=sha256:0c53cd8b077546da4e48869f49b13164bebafd0c2a5afceb6bb6a316e7fb46e4 \
     --hash=sha256:5c839915465c68206c3e9c473357908216c28383b425361e5d144594bf85a7e0
     # via
@@ -4396,7 +4396,7 @@ numba-cuda==0.28.2 ; sys_platform != 'darwin' \
     --hash=sha256:fab7c67fb263c461bcd7ec9be61bdb6b4142a6c376e85ab5e40e63e35b87aaf6 \
     --hash=sha256:ff94d4e8ee2576b900f3422895aed93e55b090939f9da2696d858cc85ea446b5
     # via cudf-cu12
-numexpr==2.14.1 \
+numexpr==2.14.1 ; python_full_version < '3.15' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
     --hash=sha256:06855053de7a3a8425429bd996e8ae3c50b57637ad3e757e0fa0602a7874be30 \
@@ -4768,7 +4768,7 @@ onnx-ir==0.2.1 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   onnxscript
-onnxruntime==1.24.4 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
+onnxruntime==1.24.4 ; (python_full_version < '3.15' and platform_machine != 'arm64') or (python_full_version < '3.15' and sys_platform != 'darwin') \
     --hash=sha256:046ff290045a387676941a02a8ae5c3ebec6b4f551ae228711968c4a69d8f6b7 \
     --hash=sha256:0bdfce8e9a6497cec584aab407b71bf697dac5e1b7b7974adc50bf7533bdb3a2 \
     --hash=sha256:0d640eb9f3782689b55cfa715094474cd5662f2f137be6a6f847a594b6e9705c \
@@ -5078,7 +5078,7 @@ optuna==4.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/tune-requirements.txt
-orjson==3.11.8 ; python_full_version < '3.13' or sys_platform != 'win32' \
+orjson==3.11.8 ; (python_full_version < '3.15' and sys_platform != 'win32') or (python_full_version < '3.13' and sys_platform == 'win32') \
     --hash=sha256:0022bb50f90da04b009ce32c512dc1885910daa7cb10b7b0cba4505b16db82a8 \
     --hash=sha256:003646067cc48b7fcab2ae0c562491c9b5d2cbd43f1e5f16d98fd118c5522d34 \
     --hash=sha256:01928d0476b216ad2201823b0a74000440360cef4fed1912d297b8d84718f277 \
@@ -5529,7 +5529,7 @@ platformdirs==4.9.6 \
     #   textual
     #   virtualenv
     #   wandb
-plotly==6.7.0 \
+plotly==6.7.0 ; python_full_version < '3.15' \
     --hash=sha256:45eea0ff27e2a23ccd62776f77eb43aa1ca03df4192b76036e380bb479b892c6 \
     --hash=sha256:ac8aca1c25c663a59b5b9140a549264a5badde2e057d79b8c772ae2920e32ff0
     # via
@@ -5572,7 +5572,7 @@ prettytable==3.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   skops
-proglog==0.1.12 \
+proglog==0.1.12 ; python_full_version < '3.15' \
     --hash=sha256:361ee074721c277b89b75c061336cb8c5f287c92b043efa562ccf7866cda931c \
     --hash=sha256:ccaafce51e80a81c65dc907a460c07ccb8ec1f78dc660cfd8f9ec3a22f01b84c
     # via
@@ -5919,7 +5919,7 @@ pyasn1-modules==0.4.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   google-auth
-pycparser==3.0 \
+pycparser==3.0 ; python_full_version < '3.15' or platform_python_implementation != 'PyPy' \
     --hash=sha256:600f49d217304a5902ac3c37e1281c9fe94e4d0489de643a9504c5cdfdfc6b29 \
     --hash=sha256:b727414169a36b7d524c1c3e31839a521725078d7b2ff038656844266160a992
     # via
@@ -6074,7 +6074,7 @@ pydot==1.4.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-pydub==0.25.1 ; sys_platform != 'win32' \
+pydub==0.25.1 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:65617e33033874b59d87db603aa1ed450633288aefead953b30bded59cb599a6 \
     --hash=sha256:980a33ce9949cab2a569606b65674d748ecbca4f0796887fd6f46173a7b0d30f
     # via
@@ -6248,7 +6248,7 @@ pymongo==4.3.2 ; python_full_version < '3.14' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-pymoo==0.6.1.6 \
+pymoo==0.6.1.6 ; python_full_version < '3.15' \
     --hash=sha256:007bdabe638d5cc1ff98d1df096e7cea42f266ecc7b84fc0aac695a20b6f02f6 \
     --hash=sha256:01e848762e04d183e8dcc12e1cfb1e2cdd2c5efeda47961dbcf6c86c09751e30 \
     --hash=sha256:2a2e9524b07baef135a7143700cc65a504c2123c717a6924fa939947b4fdba73 \
@@ -6359,7 +6359,7 @@ pyparsing==3.3.2 \
     #   moto
     #   pydot
     #   torch-geometric
-pyre-extensions==0.0.32 \
+pyre-extensions==0.0.32 ; python_full_version < '3.15' \
     --hash=sha256:5396715f14ea56c4d5fd0a88c57ca7e44faa468f905909edd7de4ad90ed85e55 \
     --hash=sha256:a63ba6883ab02f4b1a9f372ed4eb4a2f4c6f3d74879aa2725186fdfcfe3e5c68
     # via
@@ -6372,13 +6372,13 @@ pyright==1.1.408 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-pyro-api==0.1.2 \
+pyro-api==0.1.2 ; python_full_version < '3.15' \
     --hash=sha256:10e0e42e9e4401ce464dab79c870e50dfb4f413d326fa777f3582928ef9caf8f \
     --hash=sha256:a1b900d9580aa1c2fab3b123ab7ff33413744da7c5f440bd4aadc4d40d14d920
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pyro-ppl
-pyro-ppl==1.9.1 \
+pyro-ppl==1.9.1 ; python_full_version < '3.15' \
     --hash=sha256:5e1596de276c038a3f77d2580a90d0a97126e0104900444a088eee620bb0d65e \
     --hash=sha256:91fb2c8740d9d3bd548180ac5ecfa04552ed8c471a1ab66870180663b8f09852
     # via
@@ -7171,7 +7171,7 @@ s3transfer==0.8.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   boto3
-safehttpx==0.1.7 ; sys_platform != 'win32' \
+safehttpx==0.1.7 ; python_full_version < '3.15' and sys_platform != 'win32' \
     --hash=sha256:c4f4a162db6993464d7ca3d7cc4af0ffc6515a606dfd220b9f82c6945d869cde \
     --hash=sha256:db201c0978c41eddb8bb480f3eee59dd67304fdd91646035e9d9a720049a9d23
     # via
@@ -7346,7 +7346,7 @@ send2trash==2.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jupyter-server
-sentencepiece==0.2.1 \
+sentencepiece==0.2.1 ; python_full_version < '3.15' \
     --hash=sha256:010f025a544ef770bb395091d57cb94deb9652d8972e0d09f71d85d5a0816c8c \
     --hash=sha256:017f97b274d4b0baa84b2dc743bf4517be81156f413bb24f12aacacde378e5ab \
     --hash=sha256:01e6912125cb45d3792f530a4d38f8e21bf884d6b4d4ade1b2de5cf7a8d2a52b \
@@ -8228,7 +8228,7 @@ typing-extensions==4.16.0 \
     #   typing-inspect
     #   typing-inspection
     #   wandb
-typing-inspect==0.9.0 \
+typing-inspect==0.9.0 ; python_full_version < '3.15' \
     --hash=sha256:9ee6fc59062311ef8547596ab6b955e1b8aa46242d854bfc78f4f6b0eff35f9f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
