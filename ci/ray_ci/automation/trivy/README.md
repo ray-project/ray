@@ -36,7 +36,9 @@ Then read `/tmp/trivy-report/report.md`. The run also writes
 - **Disk space:**
   - about 1.1 GB for the DBs, kept in `--work-dir`;
   - temporary space there for the unpacked DBs and the pulled images,
-    several GB for a Ray image;
+    several GB for a Ray image. Without `--work-dir`, all of it goes in the
+    system temp directory (`$TMPDIR`, often `/tmp`), which is a small,
+    memory-backed filesystem on some distros;
   - room in Docker's data directory for the volumes the scan uses.
 
 A run takes about 2 minutes for small images. A Ray image takes about 12,
@@ -71,7 +73,9 @@ bazel run //ci/ray_ci/automation/trivy:scan_refs -- \
   multi-platform. A single-platform image must match it, or it fails with
   an error such as `… is arm64, expected amd64`.
 - **Digests:** each image is scanned by digest, so the report says exactly
-  what was scanned even if the tag moves later.
+  what was scanned even if the tag moves later. References are resolved
+  before the DBs are prepared, so if none resolves, such as a single
+  mistyped tag, the run stops without downloading anything.
 - **Relative paths** in options are relative to where you started
   `bazel run`, and `~` works.
 
@@ -94,13 +98,21 @@ them:
   INFO: Reusing the Trivy DBs in /home/me/.cache/ray-trivy (DB created 2026-01-01, 2 days ago); pass --refresh-db to download fresh ones.
   ```
 
-- **Refresh:** pass `--refresh-db`, with `--work-dir`, to replace them.
+- **Refresh:** pass `--refresh-db`, with `--work-dir`, to replace them. The
+  new DBs download beside the kept ones and replace them only once
+  complete, so a failed refresh keeps the old ones.
+- **Share:** several runs may use the same `--work-dir` at once. Runs
+  reusing the DBs scan side by side; a run downloading or refreshing them
+  waits for those, and they for it, logging
+  `Waiting for another scan_refs run using DIR`.
 
 A kept DB grows stale. The upstream DB gets new advisories often, so an
 old copy can miss vulnerabilities published since it was built. Refresh:
 
 - before you share results or base a release decision on them;
-- when the reuse message shows the DB is more than a day or so old;
+- when the reuse message shows the DB is more than a day or so old. Over
+  7 days old, the message becomes a `WARNING`, and the report notes the
+  DB's age;
 - when you're checking whether a newly announced CVE affects an image.
 
 Reuse it freely while you iterate, for example while you work out an
@@ -112,14 +124,16 @@ checked against.
 
 Each run also checks the kept DBs against the digests the upstream
 registry recorded for them. If that check fails, for instance because
-the old version isn't served any more, every image fails with the error.
-Run again with `--refresh-db`.
+the old version isn't served any more, every image fails with the error,
+and the report suggests running again with `--refresh-db`.
 
 ### Ignore lists
 
 An ignore list accepts specific findings, so the report shows them as
 suppressed instead of open. Pass one with `--ignorefile PATH`. It applies
-to every image in the run, and without one nothing is ignored.
+to every image in the run, and without one nothing is ignored. It must be
+Trivy's YAML format, in a `.yaml` or `.yml` file; the plain `.trivyignore`
+format (one ID per line) is refused.
 
 - **Reuse Ray's lists.** CI keeps one list per image family in
   [`ignore/`](ignore/):
@@ -181,8 +195,12 @@ crane pulls the images with the credentials in `~/.docker/config.json`.
   `docker login` stores the token, valid for 12 hours, unencrypted in
   `~/.docker/config.json`, as Docker warns. Run `docker logout <registry>`
   when you're done if you'd rather not keep it.
+- **If the login fails**, for example after your AWS session expired, the
+  run logs `Could not log in to <registry>: …` and carries on: that
+  registry's images fail to pull, each with crane's error, and the others
+  still scan.
 - **ECR in other regions** isn't supported yet: the login always gets its
-  token from `us-west-2`, so every image in the run fails to scan.
+  token from `us-west-2`, so it fails as above.
 - **Public ECR** (`public.ecr.aws`) needs no login.
 
 ## Read the results
@@ -208,7 +226,9 @@ crane pulls the images with the credentials in `~/.docker/config.json`.
 | `results/<name>.status.json` | The image's reference, digest, scan status and the DBs it was checked against. |
 
 `<name>` is the image reference with every character other than letters,
-digits, `.`, `_` and `-` turned into `_`.
+digits, `.`, `_` and `-` turned into `_`. A run first removes its own
+images' files from an earlier run in the same `--output-dir`, and leaves
+anything else there.
 
 ### The report
 
@@ -251,6 +271,9 @@ version.
   statement. It appears only when there are some.
 - **Per Image:** each image's digest, package count, and its fixable,
   no-fix and suppressed counts.
+- **The last line** names the architecture scanned, such as
+  `linux/amd64`, and where the raw results are. It also notes an image
+  with no OS packages, and a reused DB over 7 days old.
 
 ### summary.json and vulns.csv
 
@@ -278,10 +301,15 @@ above.
 | Message | Meaning and fix |
 |---|---|
 | `WARNING: Downloading the Trivy DBs … for this run only` | No `--work-dir`. Add one to keep the DBs. |
-| `Could not download the Trivy DBs: …` | `public.ecr.aws` wasn't reachable, or refused the request. |
-| Every image: `group failed before scanning: …` | Something every image needs failed: Docker isn't running or you can't use it, the ECR login failed (expired AWS session, or a registry outside `us-west-2`), or the kept DBs failed their upstream check (pass `--refresh-db`). The message names the cause. |
+| `WARNING: Reusing the Trivy DBs … CVEs published since then are missing` | The kept DB is over 7 days old. Pass `--refresh-db`. |
+| `Could not download the Trivy DBs: …` | `public.ecr.aws` wasn't reachable, or refused the request. The kept DBs, if any, are unchanged. |
+| `Could not log in to <registry>: …` | The ECR login failed: an expired AWS session, or a registry outside `us-west-2`. That registry's images fail; the others still scan. |
+| `No image could be resolved, so nothing was downloaded.` | Every reference failed to resolve; the report gives each one's error. |
+| `Waiting for another scan_refs run using DIR` | Another run is downloading DBs into the same `--work-dir`, or scanning with them while this one wants to download. It continues once that's done. |
+| Every image: `group failed before scanning: …` | Something every image needs failed: Docker isn't running or you can't use it, or the kept DBs failed their upstream check (the report then suggests `--refresh-db`). The message names the cause. |
 | `… is arm64, expected amd64` | A single-platform image of the other architecture. Pass `--architecture aarch64`. |
-| `no OS packages detected (OS: not detected)` | Trivy found no distro packages, e.g. in a `scratch` or distroless image. It counts as not scanned, so a scan that saw nothing never looks clean. |
+| `no OS packages detected (OS: not detected); checked its other packages` | Trivy found no distro packages, e.g. in an image built `FROM scratch`. Its other packages, such as a Go binary's modules, are still checked and reported, and the report notes it. An image with no packages at all counts as not scanned, so a scan that saw nothing never looks clean. |
+| `… isn't a Trivy YAML ignore file (.yaml or .yml)` | `--ignorefile` must use Trivy's YAML format. |
 | `'…' is not an image reference` | The reference has a character references don't use, or starts with `-`. |
 | `… is given twice` / `… would share the result file …` | Two references are the same, or map to the same `<name>`. |
 | `toomanyrequests` | Docker Hub's anonymous pull limit. Run `docker login`. |
