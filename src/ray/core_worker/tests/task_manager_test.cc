@@ -5126,8 +5126,10 @@ TEST_F(TaskManagerLineageTest, MarkGeneratorFailedAndResubmitKeepsPendingCount) 
     // flight before and after, so the count must not change.
     manager_.MarkGeneratorFailedAndResubmit(spec.TaskId());
     ASSERT_EQ(manager_.NumPendingTasks(), 1);
-    // The resubmit actually happened, so the count above is not right for the wrong
-    // reason (such as a fix that skipped SetupTaskEntryForResubmit entirely).
+    // The new attempt is pending but not yet submitted to a worker, and the retry
+    // callback fired.
+    ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+    ASSERT_FALSE(manager_.IsTaskWaitingForExecution(spec.TaskId()));
     ASSERT_EQ(num_retries_, cycle);
   }
 
