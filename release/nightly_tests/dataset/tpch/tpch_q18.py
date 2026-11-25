@@ -29,16 +29,10 @@ def main(args):
         # TPC-H parameter is in [312, 315]; this benchmark uses the fixed value 312.
         # It also materializes full sorted output (no LIMIT pushdown).
 
-        # Load all required tables with early projection.
-        customer = load_table("customer", args.sf).select_columns(
-            ["c_custkey", "c_name"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey", "o_orderdate", "o_totalprice"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_quantity"]
-        )
+        # Load tables. Projection pushdown derives the columns each read needs.
+        customer = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q18 parameters (spec: [312..315])
         quantity = 312
@@ -52,14 +46,11 @@ def main(args):
         large_orders = lineitem_quantity.filter(expr=col("total_quantity") > quantity)
 
         orders_customer = orders.join(
-            customer.select_columns(["c_custkey", "c_name"]),
+            customer,
             join_type="inner",
             num_partitions=200,
             on=("o_custkey",),
             right_on=("c_custkey",),
-        )
-        orders_customer = orders_customer.select_columns(
-            ["o_orderkey", "o_custkey", "o_orderdate", "o_totalprice", "c_name"]
         )
 
         # Join lineitem with large orders
@@ -68,9 +59,6 @@ def main(args):
             join_type="inner",
             num_partitions=200,
             on=("l_orderkey",),
-        )
-        lineitem_large = lineitem_large.select_columns(
-            ["l_orderkey", "l_quantity", "total_quantity"]
         )
 
         # Join lineitem_large with orders_customer

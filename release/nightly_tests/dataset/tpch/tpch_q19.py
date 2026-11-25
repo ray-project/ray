@@ -22,19 +22,8 @@ def main(args):
         #   OR (... 'Brand#23', MED containers, quantity 10..20, size 1..10 ...)
         #   OR (... 'Brand#34', LG containers, quantity 20..30, size 1..15 ...);
 
-        part = load_table("part", args.sf).select_columns(
-            ["p_partkey", "p_brand", "p_size", "p_container"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            [
-                "l_partkey",
-                "l_quantity",
-                "l_extendedprice",
-                "l_discount",
-                "l_shipinstruct",
-                "l_shipmode",
-            ]
-        )
+        part = load_table("part", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q19 parameters
         clauses = [

@@ -194,7 +194,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # Submit the task as a normal Ray task.
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         ctx = TaskContext(
-            task_idx=self._next_data_task_idx,
+            task_idx=self._context_task_idx(bundle),
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
             rerun_policy=_task_rerun_policy(dynamic_ray_remote_args),
