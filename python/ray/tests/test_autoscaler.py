@@ -995,16 +995,6 @@ class AutoscalingTest(unittest.TestCase):
                 "RW": False,
                 "Propagation": "rprivate",
             },
-            # The container already has the auth token `ray up` mounts. The mock
-            # runner's home directory is "command-output".
-            {
-                "Type": "bind",
-                "Source": "/tmp/ray_tmp_mount/default/~/.ray/auth_token",
-                "Destination": "command-output/.ray/auth_token",
-                "Mode": "ro",
-                "RW": False,
-                "Propagation": "rprivate",
-            },
         ]
         runner.respond_to_call("json .Mounts", [json.dumps(mounts)])
         # Three initial calls to rsync, one of them for the auth token, +1 more
@@ -1044,6 +1034,11 @@ class AutoscalingTest(unittest.TestCase):
         )
         runner.assert_has_call(
             "1.2.3.4", pattern=common_container_copy + "ray_bootstrap_config.yaml"
+        )
+        # The auth token is copied in like the bootstrap files, not bind mounted.
+        runner.assert_not_has_call("1.2.3.4", pattern=r"-v \S*/\.ray/auth_token")
+        runner.assert_has_call(
+            "1.2.3.4", pattern=common_container_copy + r"\.ray/auth_token"
         )
 
     def testRsyncCommandWithDocker(self):

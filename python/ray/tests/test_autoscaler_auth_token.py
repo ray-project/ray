@@ -1,6 +1,8 @@
 import copy
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Callable, Dict, Iterator, List, Optional, Tuple
@@ -11,6 +13,7 @@ import yaml
 
 from ray._private.authentication_test_utils import reset_auth_token_state
 from ray.autoscaler._private import commands
+from ray.autoscaler._private.command_runner import DockerCommandRunner
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -470,7 +473,33 @@ def script_running_container_without_token_mount(runner: MockProcessRunner):
     runner.respond_to_call(".State.Running", ["true"] * 10)
 
 
-def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeypatch):
+def script_running_container_with_token_mount(runner: MockProcessRunner):
+    # A container from an earlier `ray up`, which bind mounted the token. The
+    # mock runner answers the container's HOME with "command-output".
+    runner.respond_to_call(
+        "json .Mounts", ['[{"Destination": "/command-output/.ray/auth_token"}]']
+    )
+    runner.respond_to_call("json .Config.Env", ["[]"])
+    runner.respond_to_call(".State.Running", ["true"] * 10)
+
+
+def commands_run_by(result: RayUpResult) -> List[str]:
+    return [" ".join(map(str, c)) for c in result.runner.calls]
+
+
+def copies_token_into_container(command: str) -> bool:
+    # rsync run through `docker exec` into the container named "mock".
+    return (
+        re.search(
+            r"rsync -e \S*docker exec -i\S* -avz \S*/\.ray/auth_token "
+            r"mock:\S*/\.ray/auth_token",
+            command,
+        )
+        is not None
+    )
+
+
+def test_docker_mode_copies_token_into_running_container(clean_auth_env, monkeypatch):
     monkeypatch.setenv("RAY_AUTH_TOKEN", "env-token")
 
     result = ray_up(
@@ -479,17 +508,166 @@ def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeyp
 
     [(_, content, mode)] = result.token_uploads
     assert (content, mode) == ("env-token", 0o600)
-    commands_run = [" ".join(map(str, c)) for c in result.runner.calls]
+    commands_run = commands_run_by(result)
     assert any(
         re.search(r"rsync .*/tmp/ray_tmp_mount/default/~/\.ray/auth_token$", c)
         for c in commands_run
     )
-    result.runner.assert_has_call("1.2.3.4", pattern="docker stop")
-    result.runner.assert_has_call(
-        "1.2.3.4",
-        pattern=r"docker run.*-v /tmp/ray_tmp_mount/default/~/\.ray/auth_token:"
-        r"/root/\.ray/auth_token",
+    # A copy made in the container belongs to the container user, so the
+    # container needs no token mount and no restart.
+    assert any(copies_token_into_container(c) for c in commands_run), commands_run
+    assert not any("docker stop" in c for c in commands_run)
+
+
+def test_docker_mode_restarts_container_that_bind_mounts_token(
+    clean_auth_env, monkeypatch
+):
+    monkeypatch.setenv("RAY_AUTH_TOKEN", "env-token")
+
+    result = ray_up(
+        DOCKER_CONFIG, script_runner=script_running_container_with_token_mount
     )
+
+    # A bind-mounted file can't be replaced by the copy.
+    result.runner.assert_has_call("1.2.3.4", pattern="docker stop")
+    commands_run = commands_run_by(result)
+    [docker_run] = [c for c in commands_run if "docker run" in c]
+    assert "auth_token" not in docker_run
+    assert any(copies_token_into_container(c) for c in commands_run), commands_run
+
+
+def test_docker_mode_no_restart_keeps_running_container_with_token_mount(
+    clean_auth_env, monkeypatch
+):
+    monkeypatch.setenv("RAY_AUTH_TOKEN", "env-token")
+    provider = MockProvider()
+    ray_up(DOCKER_CONFIG, provider=provider, script_runner=script_new_container)
+
+    result = ray_up(
+        DOCKER_CONFIG,
+        provider=provider,
+        no_restart=True,
+        script_runner=script_running_container_with_token_mount,
+    )
+
+    commands_run = commands_run_by(result)
+    assert not any("docker stop" in c for c in commands_run)
+    assert not any("docker run" in c for c in commands_run)
+    assert not any(copies_token_into_container(c) for c in commands_run)
+
+
+def script_new_container(runner: MockProcessRunner):
+    runner.respond_to_call("json .Mounts", ["[]"])
+    runner.respond_to_call("json .Config.Env", ["[]"])
+    runner.respond_to_call(".State.Running", ["false"] * 4)
+
+
+@pytest.mark.parametrize("auth_mode", ["token", "disabled"])
+def test_docker_mode_copies_token_into_new_container(clean_auth_env, auth_mode):
+    config = copy.deepcopy(DOCKER_CONFIG)
+    config["auth_mode"] = auth_mode
+
+    result = ray_up(config, script_runner=script_new_container)
+
+    commands_run = commands_run_by(result)
+    [docker_run] = [c for c in commands_run if "docker run" in c]
+    # The token is never bind mounted, because a bind mount shows the host
+    # user's UID, which the container user may not have.
+    assert "auth_token" not in docker_run
+    copies = [c for c in commands_run if copies_token_into_container(c)]
+    if auth_mode == "token":
+        assert len(copies) == 1, commands_run
+        # After the container starts, into a ~/.ray that exists.
+        assert commands_run.index(docker_run) < commands_run.index(copies[0])
+        assert any(
+            "docker exec" in c and re.search(r"mkdir -p \S*/\.ray\b", c)
+            for c in commands_run
+        )
+    else:
+        assert copies == []
+
+
+@pytest.mark.parametrize("container_has_rsync", [True, False])
+def test_docker_mode_token_copy_works_without_rsync_in_container(
+    tmp_path, container_has_rsync
+):
+    # Worker images got no copied files before the token, so they may lack
+    # rsync. Runs the copy command with a fake `docker` that runs the command
+    # on this host, with a PATH that stands for the container's.
+    container_bin = tmp_path / "container_bin"
+    container_bin.mkdir()
+    tools = ["bash", "sh", "cat", "mkdir"] + (["rsync"] if container_has_rsync else [])
+    for tool in tools:
+        path = shutil.which(tool)
+        if path is None:
+            pytest.skip(f"{tool} isn't installed")
+        (container_bin / tool).symlink_to(path)
+    host_bin = tmp_path / "host_bin"
+    host_bin.mkdir()
+    fake_docker = host_bin / "docker"
+    fake_docker.write_text(
+        "#!/bin/bash\n"
+        "# docker exec [flags] <container> <command>...\n"
+        "shift\n"
+        'while [[ "$1" == -* ]]; do shift; done\n'
+        "shift\n"
+        f'exec env PATH={container_bin} "$@"\n'
+    )
+    fake_docker.chmod(0o755)
+    host_token = tmp_path / "host_mount" / "~" / ".ray" / "auth_token"
+    host_token.parent.mkdir(parents=True)
+    host_token.write_text("secret-token")
+    host_token.chmod(0o600)
+    container_home = tmp_path / "container_home"
+    container_home.mkdir()
+
+    runner = DockerCommandRunner(
+        log_prefix="",
+        node_id="0",
+        provider=MockProvider(),
+        auth_config={"ssh_user": "ray", "ssh_private_key": "key.pem"},
+        cluster_name="default",
+        process_runner=MockProcessRunner(),
+        use_internal_ip=False,
+        docker_config={"container_name": "mock"},
+    )
+    runner.home_dir = str(container_home)
+    cmd = runner._copy_into_container_cmd(str(host_token), REMOTE_TOKEN_PATH)
+
+    # Only the paths go on the command line.
+    assert "secret-token" not in cmd
+    subprocess.run(
+        ["bash", "-c", cmd],
+        check=True,
+        env={"PATH": f"{host_bin}:{os.environ['PATH']}", "HOME": str(tmp_path)},
+    )
+
+    copied = container_home / ".ray" / "auth_token"
+    assert copied.read_text() == "secret-token"
+    assert copied.stat().st_mode & 0o777 == 0o600
+
+
+def test_docker_mode_warns_that_unreadable_token_breaks_auth(
+    clean_auth_env, monkeypatch, capsys
+):
+    monkeypatch.setenv("RAY_AUTH_TOKEN", "env-token")
+
+    def script_container_without_sudo(runner: MockProcessRunner):
+        script_new_container(runner)
+        # The container user can't read the copied token, and has no sudo.
+        # The mock runner answers the container's HOME with "command-output".
+        runner.fail_cmds = ["sudo chown $(id -u):$(id -g) command-output/.ray/"]
+        runner.respond_to_call(
+            "ls -l", ["-rw------- 1 root root 9 Jan 1 00:00 auth_token"]
+        )
+        runner.respond_to_call("whoami", ["ray"])
+
+    ray_up(DOCKER_CONFIG, script_runner=script_container_without_sudo)
+
+    output = capsys.readouterr()
+    combined = output.out + output.err
+    assert "can't authenticate to the cluster" in combined
+    assert "may not be able to autoscale" not in combined
 
 
 def test_fake_docker_runner_skips_only_token_upload(clean_auth_env, monkeypatch):

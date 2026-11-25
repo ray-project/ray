@@ -1,11 +1,14 @@
 import copy
 import logging
 import os
+import shlex
+import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
 import urllib
-from typing import Any, Dict
+from typing import Any, Dict, List
 from unittest import mock
 from unittest.mock import MagicMock, Mock, patch
 
@@ -14,10 +17,12 @@ import pytest
 import yaml
 from click.exceptions import ClickException
 
+import ray
 from ray._private.test_utils import load_test_config, recursive_fnmatch
 from ray.autoscaler._private._azure.config import (
     _configure_key_pair as _azure_configure_key_pair,
 )
+from ray.autoscaler._private.command_runner import _with_interactive
 from ray.autoscaler._private.gcp import config as gcp_config
 from ray.autoscaler._private.providers import _NODE_PROVIDERS
 from ray.autoscaler._private.util import (
@@ -651,6 +656,131 @@ class AutoscalingConfigTest(unittest.TestCase):
         node_type["resources"] = {"CPU": "a string is not valid here"}
         with pytest.raises(jsonschema.exceptions.ValidationError):
             validate_config(config)
+
+
+NIGHTLY_INSTALL_PREFIX = 'which ray || pip install -U "ray[default] @ https://'
+RAY_INSTALL_ERROR = (
+    "Ray install error: pip could not install Ray 2.62.0, the version of the Ray "
+    "that runs ray up. If that version is not on the package index this node "
+    "uses (PyPI by default), install it with a Docker image or with "
+    "setup_commands in the cluster YAML."
+)
+RELEASED_INSTALL = (
+    'which ray || pip install -U "ray[default]==2.62.0" '
+    f"|| {{ echo '{RAY_INSTALL_ERROR}'; false; }}"
+)
+
+
+def default_ray_installs(config: Dict[str, Any]) -> List[str]:
+    return [cmd for cmd in config["setup_commands"] if cmd.startswith("which ray ||")]
+
+
+@pytest.mark.parametrize("provider", ["aws", "gcp", "azure"])
+def test_default_setup_commands_install_released_local_ray(monkeypatch, provider):
+    # `ray up` fails on a head node with another Ray minor version than its
+    # own, so the defaults can't install the nightly for a released Ray.
+    monkeypatch.setattr(ray, "__version__", "2.62.0")
+    config = {"cluster_name": "test", "provider": {"type": provider}}
+
+    prepared = prepare_config(config)
+
+    assert default_ray_installs(prepared) == [RELEASED_INSTALL]
+    assert RELEASED_INSTALL in prepared["head_setup_commands"]
+    assert RELEASED_INSTALL in prepared["worker_setup_commands"]
+    # The launcher config is also written out as YAML.
+    assert yaml.safe_load(yaml.dump(prepared)) == prepared
+
+
+@pytest.mark.parametrize("provider", ["aws", "gcp", "azure"])
+def test_default_setup_commands_install_nightly_for_dev_ray(monkeypatch, provider):
+    monkeypatch.setattr(ray, "__version__", "3.0.0.dev0")
+    config = {"cluster_name": "test", "provider": {"type": provider}}
+
+    installs = default_ray_installs(prepare_config(config))
+
+    assert len(installs) == 1
+    assert installs[0].startswith(NIGHTLY_INSTALL_PREFIX)
+    assert "Ray install error" not in installs[0]
+
+
+def test_default_setup_commands_ignore_invalid_ray_version(monkeypatch):
+    monkeypatch.setattr(ray, "__version__", "custom-build")
+    config = {"cluster_name": "test", "provider": {"type": "aws"}}
+
+    installs = default_ray_installs(prepare_config(config))
+
+    assert len(installs) == 1
+    assert installs[0].startswith(NIGHTLY_INSTALL_PREFIX)
+
+
+def test_setup_commands_from_cluster_yaml_are_not_changed(monkeypatch):
+    monkeypatch.setattr(ray, "__version__", "2.62.0")
+    nightly_install = (
+        NIGHTLY_INSTALL_PREFIX + "s3-us-west-2.amazonaws.com/ray-wheels/latest/"
+        'ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"'
+    )
+    config = {
+        "cluster_name": "test",
+        "provider": {"type": "aws"},
+        "setup_commands": [nightly_install],
+    }
+
+    assert prepare_config(config)["setup_commands"] == [nightly_install]
+
+
+def test_head_keeps_the_ray_install_of_ray_up(monkeypatch):
+    # Autoscaler v2 prepares the bootstrap config again on the head, whose Ray
+    # can differ, and must give workers the install that `ray up` chose.
+    monkeypatch.setattr(ray, "__version__", "2.62.0")
+    bootstrap_config = prepare_config(
+        {"cluster_name": "test", "provider": {"type": "aws"}}
+    )
+    monkeypatch.setattr(ray, "__version__", "3.0.0.dev0")
+
+    on_head = prepare_config(copy.deepcopy(bootstrap_config))
+
+    assert default_ray_installs(on_head) == [RELEASED_INSTALL]
+    assert RELEASED_INSTALL in on_head["worker_setup_commands"]
+
+
+@pytest.mark.skipif(sys.platform.startswith("win"), reason="Runs bash.")
+@pytest.mark.parametrize("pip_succeeds", [False, True])
+def test_default_ray_install_explains_failed_install(
+    monkeypatch, tmp_path, pip_succeeds
+):
+    monkeypatch.setattr(ray, "__version__", "2.62.0")
+    [install] = default_ray_installs(
+        prepare_config({"cluster_name": "test", "provider": {"type": "aws"}})
+    )
+    # A node without Ray, whose pip only prints its arguments.
+    system_path = "/usr/bin:/bin"
+    if shutil.which("ray", path=system_path):
+        pytest.skip(f"Ray is installed in {system_path}.")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    pip = bin_dir / "pip"
+    pip.write_text(f'#!/bin/sh\necho "pip $*"\nexit {0 if pip_succeeds else 1}\n')
+    pip.chmod(0o755)
+    # The quoting that `ray up` applies over SSH, and once more in Docker
+    # mode. Without `--login -i`, which source the developer's rc files.
+    over_ssh = "bash -c " + _with_interactive(install)[-1]
+    in_container = "bash -c " + shlex.quote(over_ssh)
+
+    result = subprocess.run(
+        [shutil.which("bash"), "-c", in_container],
+        env={"HOME": str(tmp_path), "PATH": f"{bin_dir}:{system_path}"},
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+
+    assert "pip install -U ray[default]==2.62.0" in result.stdout
+    if pip_succeeds:
+        assert result.returncode == 0, result.stdout
+        assert "Ray install error" not in result.stdout
+    else:
+        assert result.returncode != 0, result.stdout
+        assert RAY_INSTALL_ERROR in result.stdout
 
 
 if __name__ == "__main__":

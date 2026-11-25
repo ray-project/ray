@@ -281,6 +281,14 @@ def _setup_popen_mock(commands_mock, commands_verifier=None):
         assert commands_verifier(Popen.all_calls)
 
 
+def _is_ray_version_check(command) -> bool:
+    """Whether `command` is the `ray --version` that `ray up` runs on the
+    head node to compare its Ray version with the local one."""
+    if not isinstance(command, str):
+        command = " ".join(command)
+    return "ray --version" in command
+
+
 def _load_output_pattern(name):
     pattern_dir = Path(__file__).parent / "test_cli_patterns"
     with open(str(pattern_dir / name)) as f:
@@ -724,6 +732,8 @@ def test_ray_up(
             return PopenBehaviour(stdout=b"MOCKED uptime")
         if "rsync" in command:
             return PopenBehaviour(stdout=b"MOCKED rsync")
+        if _is_ray_version_check(command):
+            return PopenBehaviour(stdout=f"ray, version {ray.__version__}".encode())
         if "ray" in command:
             return PopenBehaviour(stdout=b"MOCKED ray")
         return PopenBehaviour(stdout=b"MOCKED GENERIC")
@@ -765,6 +775,8 @@ def test_ray_up_docker(
             return PopenBehaviour(stdout=b"MOCKED uptime")
         if "rsync" in command:
             return PopenBehaviour(stdout=b"MOCKED rsync")
+        if _is_ray_version_check(command):
+            return PopenBehaviour(stdout=f"ray, version {ray.__version__}".encode())
         if "ray" in command:
             return PopenBehaviour(stdout=b"MOCKED ray")
         return PopenBehaviour(stdout=b"MOCKED GENERIC")
@@ -804,6 +816,8 @@ def test_ray_up_record(
             return PopenBehaviour(stdout=b"MOCKED uptime")
         if "rsync" in command:
             return PopenBehaviour(stdout=b"MOCKED rsync")
+        if _is_ray_version_check(command):
+            return PopenBehaviour(stdout=f"ray, version {ray.__version__}".encode())
         if "ray" in command:
             return PopenBehaviour(stdout=b"MOCKED ray")
         return PopenBehaviour(stdout=b"MOCKED GENERIC")
@@ -827,7 +841,7 @@ def test_ray_attach(configure_lang, configure_aws, _unlink_test_ssh_key):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
         print("ubuntu@ip-.+:~$ exit")
-        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout=b"ubuntu@ip-.+:~$ exit")
 
     with _setup_popen_mock(commands_mock):
         runner = CliRunner()
@@ -871,11 +885,12 @@ def test_ray_attach_with_ip(configure_lang, configure_aws, _unlink_test_ssh_key)
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
         print("ubuntu@ip-.+:~$ exit")
-        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout=b"ubuntu@ip-.+:~$ exit")
 
     def commands_verifier(calls):
         for call in calls:
-            if len(call[1]) > 0:
+            # `check_output` also records a `communicate(None)` call.
+            if len(call[1]) > 0 and call[1][0] is not None:
                 cmd = (
                     " ".join(call[1][0]) if isinstance(call[1][0], list) else call[1][0]
                 )
@@ -945,7 +960,7 @@ def test_ray_dashboard(configure_lang, configure_aws, _unlink_test_ssh_key):
         # TODO(maximsmol): this is a hack since stdout=sys.stdout
         #                  doesn't work with the mock for some reason
         print("ubuntu@ip-.+:~$ exit")
-        return PopenBehaviour(stdout="ubuntu@ip-.+:~$ exit")
+        return PopenBehaviour(stdout=b"ubuntu@ip-.+:~$ exit")
 
     with _setup_popen_mock(commands_mock):
         runner = CliRunner()
@@ -981,7 +996,8 @@ def test_ray_exec(configure_lang, configure_aws, _unlink_test_ssh_key):
 
     def commands_verifier(calls):
         for call in calls:
-            if len(call[1]) > 0:
+            # `check_output` also records a `communicate(None)` call.
+            if len(call[1]) > 0 and call[1][0] is not None:
                 if any(" ray stop; " in token for token in call[1][0]):
                     return True
         return False
