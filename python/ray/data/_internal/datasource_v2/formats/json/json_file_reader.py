@@ -207,18 +207,16 @@ class JsonFileReader(LineChunkableFileReader):
         """Whether a whole-file unit is read as pieces of lines, not parsed whole.
 
         Parsing a file whole holds several times its size in memory. A JSON Lines
-        file that is compressed, of unknown size or larger than a chunk but can't
-        be split is read in pieces instead, each parsed like a split chunk. A
-        ``.json`` file may be one document, so it is parsed whole.
+        file that is compressed or of unknown size is read in pieces instead,
+        each parsed like a split chunk; a larger uncompressed one is split by
+        the indexer. A ``.json`` file may be one document, so it is parsed whole.
         """
-        size = self._file_sizes[path]
         return (
             not self._parse_options.newlines_in_values
             and _is_json_lines_path(path)
             and (
-                size is None
+                self._file_sizes[path] is None
                 or infer_json_compression(path) is not None
-                or size > self._chunk_size
             )
         )
 

@@ -432,6 +432,38 @@ def test_reads_only_the_included_columns(
     assert sorted(table.column(names[0]).to_pylist()) == list(range(100))
 
 
+@pytest.mark.parametrize("name", ["a.csv", "a.csv.gz"], ids=["plain", "gzip"])
+def test_projects_a_column_outside_include_columns(tmp_path, name):
+    path = str(tmp_path / name)
+    text = b"id,name\n1,a\n"
+    with open(path, "wb") as f:
+        f.write(gzip.compress(text) if name.endswith(".gz") else text)
+    datasource = CsvDatasourceV2(
+        [path],
+        arrow_csv_args={"convert_options": pcsv.ConvertOptions(include_columns=["id"])},
+    )
+
+    table = _read_all(datasource, [path], columns=("id", "name"))
+
+    assert table.to_pylist() == [{"id": 1, "name": "a"}]
+
+
+def test_checks_a_partition_column_outside_include_columns_in_a_gzip_file(tmp_path):
+    partition_dir = tmp_path / "country=US"
+    partition_dir.mkdir()
+    path = str(partition_dir / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b"id,country\n1,CA\n"))
+    datasource = CsvDatasourceV2(
+        [path],
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        arrow_csv_args={"convert_options": pcsv.ConvertOptions(include_columns=["id"])},
+    )
+
+    with pytest.raises(ValueError, match="Partition column country exists"):
+        _read_all(datasource, [path], columns=("country", "id"))
+
+
 def test_reads_compressed_files_whole(tmp_path, small_chunks):
     path = str(tmp_path / "a.csv.gz")
     with open(path, "wb") as f:

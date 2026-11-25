@@ -212,6 +212,17 @@ def test_falls_back_to_json_load_for_a_top_level_array(tmp_path):
     assert table.to_pylist() == [{"one": [1]}, {"one": [1, 2]}]
 
 
+def test_rejects_a_top_level_array_in_a_compressed_jsonl_file(tmp_path):
+    path = str(tmp_path / "a.jsonl.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b'[{"x": 1}, {"x": 2}]'))
+
+    with pytest.raises(ValueError, match="Failed to parse line-delimited JSON") as e:
+        _read_all(JsonDatasourceV2([path]), [path])
+
+    assert path in str(e.value)
+
+
 _ROWS_OVER_ONE_MIB = [{"s": "x" * 1000}] * 1100
 
 

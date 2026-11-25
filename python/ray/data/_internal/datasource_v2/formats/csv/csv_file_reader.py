@@ -106,7 +106,6 @@ class CsvFileReader(LineChunkableFileReader):
         # which duplicates a column named in both, so ``include_columns`` is
         # applied as the projection instead.
         self._include_columns = list(convert_options.include_columns)
-        self._streamed_convert_options = convert_options
         self._convert_options = copy.copy(convert_options)
         self._convert_options.include_columns = []
         self._column_names_by_path: Dict[str, List[str]] = {}
@@ -172,7 +171,7 @@ class CsvFileReader(LineChunkableFileReader):
                 file,
                 read_options=self._read_options,
                 parse_options=self._parse_options,
-                convert_options=self._streamed_convert_options,
+                convert_options=self._convert_options,
             )
             columns = scanner_kwargs.get("columns")
             if columns is not None:

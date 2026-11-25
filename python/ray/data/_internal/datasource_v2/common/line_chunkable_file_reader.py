@@ -19,8 +19,9 @@ a byte range of a text file. For each chunk the reader:
 
 A whole-file row of an uncompressed file of known size, at most ``chunk_size``
 bytes, is read with one request and scanned like a chunk. Larger, compressed
-and unknown-size files take the plain ``FileReader`` path, which streams them
-and lets pyarrow decompress them by extension.
+and unknown-size files are streamed by ``_iter_streamed_unit_tables``, which by
+default is the plain ``FileReader`` scan that lets pyarrow decompress them by
+extension.
 
 Design decisions:
 
@@ -211,7 +212,7 @@ class LineChunkableFileReader(FileReader):
         Runs inside the retry loop and the scan threads, so the range read is
         retried and chunks download in parallel. An uncompressed whole file that
         fits in one chunk is read the same way, in one request; other whole
-        files take the plain ``FileReader`` path.
+        files are streamed by ``_iter_streamed_unit_tables``.
 
         Args:
             fragment_to_read: The unit to read and its whole-file fragment.
@@ -247,7 +248,10 @@ class LineChunkableFileReader(FileReader):
 
         That is a compressed file, a file of unknown size, and a file larger than
         a chunk that can't be split. Override this when pyarrow's dataset scan of
-        the stream would read ahead of the consumer without bound.
+        the stream would read ahead of the consumer without bound. CSV does;
+        JSON handles its whole-file units in its own ``_iter_unit_tables``,
+        because a small ``.json`` file needs the ``json.load`` fallback that
+        ``_make_chunk_fragment`` lacks.
         """
         yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
 
@@ -259,7 +263,7 @@ class LineChunkableFileReader(FileReader):
         Runs once per whole-file unit, so a task with several files reads each
         file in its own scan thread. A compressed file, a file larger than
         ``chunk_size`` and a file of unknown size return ``None`` and are
-        streamed by the plain ``FileReader`` path instead.
+        streamed by ``_iter_streamed_unit_tables`` instead.
 
         The size comes from the listing, so a file of unknown size, such as an
         HTTP file without ``Content-Length``, is never opened for its size,

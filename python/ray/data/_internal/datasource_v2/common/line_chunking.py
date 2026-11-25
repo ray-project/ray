@@ -185,6 +185,7 @@ def iter_line_pieces(
         bytes: Each piece, ending in a newline except possibly the last.
     """
     buffer = bytearray()
+    searched = 0
     while True:
         part = file.read(min(_STREAM_READ_BYTES, piece_size))
         buffer += part
@@ -193,10 +194,11 @@ def iter_line_pieces(
                 yield bytes(buffer)
             return
         if len(buffer) >= piece_size:
-            cut = buffer.rfind(b"\n") + 1
+            cut = buffer.rfind(b"\n", searched) + 1
             if cut:
-                yield bytes(buffer[:cut])
+                yield bytes(memoryview(buffer)[:cut])
                 del buffer[:cut]
+            searched = len(buffer)
 
 
 def _read_through_newline(
