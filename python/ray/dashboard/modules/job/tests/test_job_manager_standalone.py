@@ -64,7 +64,15 @@ class TestRuntimeEnvStandalone:
                 #       the driver script: settings to JobConfig (other than the
                 #       runtime_env) passed in via ray.init(...) have to be respected
                 #       along with the runtime_env passed from submit_job API
-                runtime_env={"env_vars": {"TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED"}},
+                runtime_env={
+                    "env_vars": {
+                        "TEST_SUBPROCESS_RANDOM_VAR": "0xDEEDDEED",
+                        # Bazel sets PYTHONSAFEPATH=1, which Python 3.11+ honors.
+                        # Ray's handling of sys.path does not work with it, so
+                        # set it to an empty string to disable it for the driver.
+                        "PYTHONSAFEPATH": "",
+                    }
+                },
             )
 
             await async_wait_for_condition(

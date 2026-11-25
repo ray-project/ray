@@ -36,7 +36,7 @@ def _compatibility_script_path(file_name: str) -> str:
 class TestBackwardsCompatibility:
     @pytest.mark.skipif(
         sys.platform == "darwin",
-        reason="ray 2.0.1 runs differently on apple silicon than today's.",
+        reason="ray 2.3.0 runs differently on apple silicon than today's.",
     )
     def test_cli(self):
         """
@@ -83,31 +83,13 @@ def test_error_message():
     )
     wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
-    # `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_resources`, and
-    # `entrypoint_label_selector`
-    # are not supported in ray<2.2.0.
-    for unsupported_submit_kwargs in [
-        {"entrypoint_num_cpus": 1},
-        {"entrypoint_num_gpus": 1},
-        {"entrypoint_resources": {"custom": 1}},
-        {"entrypoint_label_selector": {"fragile_node": "!1"}},
-    ]:
-        with pytest.raises(
-            Exception,
-            match="Ray version 2.0.1 is running on the cluster. "
-            "`entrypoint_num_cpus`, `entrypoint_num_gpus`, "
-            "`entrypoint_resources`, and `entrypoint_label_selector` kwargs"
-            " are not supported on the Ray cluster. Please ensure the cluster is "
-            "running Ray 2.2 or higher.",
-        ):
-            client.submit_job(
-                entrypoint="echo hello",
-                **unsupported_submit_kwargs,
-            )
+    # The server runs Ray 2.3.0, so kwargs that need Ray 2.2 (`entrypoint_num_cpus`
+    # and friends) are accepted. `entrypoint_memory` needs Ray 2.8.
+    client.submit_job(entrypoint="echo hello", entrypoint_num_cpus=1)
 
     with pytest.raises(
         Exception,
-        match="Ray version 2.0.1 is running on the cluster. "
+        match="Ray version 2.3.0 is running on the cluster. "
         "`entrypoint_memory` kwarg"
         " is not supported on the Ray cluster. Please ensure the cluster is "
         "running Ray 2.8 or higher.",
