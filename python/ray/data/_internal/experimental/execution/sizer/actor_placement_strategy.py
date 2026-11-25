@@ -5,7 +5,18 @@ from __future__ import annotations
 import abc
 import math
 from dataclasses import dataclass, field
-from typing import AbstractSet, Dict, Hashable, Iterable, List, Optional, Tuple, TypeVar
+from typing import (
+    AbstractSet,
+    Dict,
+    FrozenSet,
+    Hashable,
+    Iterable,
+    List,
+    Mapping,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
 from ray.data._internal.execution.interfaces.common import ActorId
@@ -64,6 +75,30 @@ def pack_actors(
             free[slot] = free[slot].subtract(per_actor.scale(n))
             placed.extend([slot] * n)
     return placed
+
+
+def nodes_where_freeing_fits(
+    *,
+    per_actor: ExecutionResources,
+    nodes: Iterable[NodeIdStr],
+    free: Mapping[NodeIdStr, ExecutionResources],
+    freeable: Mapping[NodeIdStr, ExecutionResources],
+) -> FrozenSet[NodeIdStr]:
+    """The ``nodes`` where one actor of shape ``per_actor`` fits once
+    ``freeable`` is freed on top of ``free``.
+
+    An actor needing a GPU and a CPU, for example, fits nowhere that CPUs are
+    freed next to a GPU already taken.
+    """
+    zero = ExecutionResources.zero()
+    return frozenset(
+        node_id
+        for node_id in nodes
+        if max_placeable_actors(
+            free.get(node_id, zero).add(freeable.get(node_id, zero)), per_actor
+        )
+        >= 1
+    )
 
 
 @dataclass(frozen=True)

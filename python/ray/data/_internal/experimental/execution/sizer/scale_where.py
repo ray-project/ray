@@ -29,6 +29,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     ActorPlacementStrategy,
     OpPlacementView,
     max_placeable_actors,
+    nodes_where_freeing_fits,
 )
 from ray.data._internal.experimental.execution.sizer.models import ClusterStateSnapshot
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
@@ -218,16 +219,11 @@ def compute_favored_nodes(
             short += max(0, req.delta - int(min(fits, req.delta)))
         if short <= 0:
             continue
-        useful = frozenset(
-            node_id
-            for node_id in view.filter_schedulable_nodes(capacity.reserved_by_node)
-            if max_placeable_actors(
-                free.get(node_id, ExecutionResources.zero()).add(
-                    freeable.get(node_id, ExecutionResources.zero())
-                ),
-                view.per_actor_usage,
-            )
-            >= 1
+        useful = nodes_where_freeing_fits(
+            per_actor=view.per_actor_usage,
+            nodes=view.filter_schedulable_nodes(capacity.reserved_by_node),
+            free=free,
+            freeable=freeable,
         )
         if useful:
             capacity_short.append((replace(view, match_nodes=useful), short))

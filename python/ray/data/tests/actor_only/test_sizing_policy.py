@@ -4,6 +4,7 @@
 cluster."""
 
 import sys
+from collections import Counter
 from types import SimpleNamespace
 from typing import Any, Dict, Optional, Sequence, Tuple, cast
 
@@ -11,6 +12,7 @@ import pytest
 
 from ray.data._internal.actor_autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import ActorStatus
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     EdgeShares,
     OpShareBreakdown,
@@ -48,11 +50,11 @@ from ray.data._internal.experimental.execution.sizer.policy.steps import (
 
 
 class _Pool:
-    def __init__(self, *, current=4, min_size=1, max_size=100, cpu=1):
+    def __init__(self, *, current=4, min_size=1, max_size=100, cpu=1, gpu=0):
         self._current = current
         self._min_size = min_size
         self._max_size = max_size
-        self._per_actor = ExecutionResources(cpu=cpu)
+        self._per_actor = ExecutionResources(cpu=cpu, gpu=gpu)
         self.pending = 0
         self.draining = 0
 
@@ -87,6 +89,8 @@ class _Op:
         self.pending_first_input = False
         self.completed = False
         self.input_dependencies = []
+        # Actors per node, as ``actor_counts_by_node`` reports them.
+        self.actors_by_node: Dict[str, int] = {}
 
     @property
     def actor_pool(self):
@@ -97,6 +101,12 @@ class _Op:
 
     def has_completed(self):
         return self.completed
+
+    def actor_counts_by_node(self):
+        return {
+            node: Counter({ActorStatus.ACTIVE: n})
+            for node, n in self.actors_by_node.items()
+        }
 
 
 def _op(name, **pool) -> Any:
@@ -130,6 +140,7 @@ def _profiles(ops, next_ops=None):
         non_pg_ops=tuple(ops),
         next_ops=next_ops,
         prev_ops={op: () for op in ops},
+        is_pg_managed=lambda op: False,
     )
 
 
@@ -602,6 +613,78 @@ def test_decide_resets_every_step_when_the_allocation_changes():
         )
     )
     assert steps.delta(op=op, direction=Direction.DOWN, size=10) == -2
+
+
+@pytest.mark.parametrize(
+    "producer_nodes, gpu_free_cpus, downscales",
+    [
+        # The GPU op is short, and g1 has its GPU free but no CPU free: the
+        # producer's actors on g1 make room for it, so it downscales.
+        pytest.param({"g1": 2, "g2": 2}, 0, True, id="frees-room-for-bottleneck"),
+        # The producer holds actors only on g2, whose GPU the GPU op already
+        # uses: removing them frees CPUs it cannot use.
+        pytest.param({"g2": 4}, 0, False, id="frees-the-wrong-node"),
+        # g1 has a free CPU, so the GPU op gets its actor and nobody is
+        # short: the blocked actors keep their queued work.
+        pytest.param({"g1": 2, "g2": 2}, 1, False, id="nobody-short"),
+    ],
+)
+def test_decide_downscales_a_blocked_op_only_to_make_room(
+    producer_nodes, gpu_free_cpus, downscales
+):
+    producer = _op("producer", current=4, cpu=1)
+    producer.actors_by_node = producer_nodes
+    gpu_op = _op("gpu_op", current=1, cpu=1, gpu=1)
+    ops = [producer, gpu_op]
+    policy, _ = _policy(ops, next_ops={producer: [gpu_op]})
+    snapshot = ClusterStateSnapshot(
+        schedulable_nodes_by_op={op: frozenset({"g1", "g2"}) for op in ops},
+        reserved_by_node={
+            "g1": ExecutionResources(cpu=8, gpu=1),
+            "g2": ExecutionResources(cpu=8, gpu=1),
+        },
+        free_by_node={
+            "g1": ExecutionResources(cpu=gpu_free_cpus, gpu=1),
+            "g2": ExecutionResources(cpu=3, gpu=0),
+        },
+        ordered_ops=tuple(ops),
+    )
+    ctx = DecisionContext(
+        topology=cast(Any, {op: SimpleNamespace() for op in ops}),
+        phase=SizerPhase.STEADY,
+        capacity=ConstraintAwareCapacityLedger(snapshot),
+        apmo_profiles=cast(Any, _profiles(ops)),
+        snapshot=snapshot,
+        now=0.0,
+        bottleneck_snapshot=_bottleneck_snapshot(
+            {producer: (0.1, 0.9, 0.0), gpu_op: (1.0, 0.0, 0.0)},
+            bottlenecks=[(gpu_op, 0.9)],
+        ),
+    )
+    decisions = policy.decide(ctx=ctx)
+    assert decisions[gpu_op].rule is OpRule.UPSCALE_BOTTLENECK
+    assert (decisions[gpu_op].unmet > 0) is (gpu_free_cpus == 0)
+    expected = OpRule.DOWNSCALE_BLOCKED if downscales else OpRule.NONE
+    assert decisions[producer].rule is expected
+    assert (decisions[producer].request is not None) is downscales
+
+
+def test_decide_still_downscales_a_kept_blocked_op_that_is_idle():
+    """A blocked op the gate keeps can still downscale as idle: starved
+    actors have no queued work to lose."""
+    producer = _op("producer", current=10)
+    gpu_op = _op("gpu_op", current=1, cpu=1, gpu=1)
+    ops = [producer, gpu_op]
+    policy, _ = _policy(ops, next_ops={producer: [gpu_op]})
+    ctx = _ctx(
+        ops,
+        bottleneck_snapshot=_bottleneck_snapshot(
+            {producer: (0.1, 0.5, 0.4), gpu_op: (0.5, 0.0, 0.0)}
+        ),
+    )
+    decision = policy.decide(ctx=ctx)[producer]
+    assert decision.rule is OpRule.DOWNSCALE_IDLE
+    assert decision.request is not None and decision.request.delta < 0
 
 
 if __name__ == "__main__":

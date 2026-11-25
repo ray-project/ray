@@ -14,7 +14,8 @@ rule (``OpRule``):
     Active      warmup                                    UPSCALE_WARMUP
     Active      a named bottleneck that can use actors    UPSCALE_BOTTLENECK
     Active      no bottleneck named, nearly always busy   UPSCALE_BUSY
-    Active      blocked by its consumer some of the time  DOWNSCALE_BLOCKED
+    Active      blocked by its consumer some of the time,
+                and a short upscaler fits where it frees  DOWNSCALE_BLOCKED
     Active      idle some of the time                     DOWNSCALE_IDLE
     otherwise                                             NONE
 
@@ -42,6 +43,11 @@ from typing import TYPE_CHECKING, Dict, Mapping, Optional, Tuple
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
+)
+from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import ActorStatus, NodeIdStr
+from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
+    nodes_where_freeing_fits,
 )
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     Snapshot,
@@ -138,7 +144,14 @@ class SizingPolicy:
         1. ``decide_op`` picks each op's rule and request.
         2. Upscales take free capacity in priority order (see the module
            docstring), each cut to what the ledger still has.
-        3. Each op the policy stepped starts cooling. A downscale records
+        3. A blocked op downscales only if an upscaler is short and would
+           fit on a node where the blocked op frees actors. Its actors have
+           queued work, so removing them when no op needs the room only
+           costs drains, and they are needed again once the consumer speeds
+           up. Downscales sort last, so every upscale's ``unmet`` part is
+           known by then. A blocked op that is kept may still downscale as
+           idle.
+        4. Each op the policy stepped starts cooling. A downscale records
            its step now; an upscale records it once its actors land
            (``record_landed_upscales``).
         """
@@ -159,6 +172,22 @@ class SizingPolicy:
         decisions: OpDecisions = {}
         for op in sorted(wanted, key=priority):
             decision = _within_capacity(op=op, decision=wanted[op], ctx=ctx)
+            if (
+                decision.rule is OpRule.DOWNSCALE_BLOCKED
+                and decision.request is not None
+                and not _frees_room_for_short_op(
+                    op=op,
+                    delta=decision.request.delta,
+                    decisions=decisions,
+                    ctx=ctx,
+                )
+            ):
+                logger.debug(
+                    "SizingPolicy: %s not downscaled as blocked: no short "
+                    "upscaler would fit where it frees actors",
+                    op.name,
+                )
+                decision = self._downscale_idle(op=op, ctx=ctx)
             decisions[op] = decision
             if decision.rule in STEP_RULES and decision.request is not None:
                 size = op.actor_pool.serving_size()
@@ -290,16 +319,28 @@ class SizingPolicy:
             )
             if decision.rule is not OpRule.NONE:
                 return decision
-        if shares.starved >= _WASTED_SHARE_MIN:
-            return self._step(
-                op=op,
-                direction=Direction.DOWN,
-                rule=OpRule.DOWNSCALE_IDLE,
-                reason=f"idle (starved {shares.starved:.2f})",
-                ctx=ctx,
-                floor=_downscale_floor(op=op, wasted=shares.starved),
-            )
-        return OpDecision(OpRule.NONE)
+        return self._downscale_idle(op=op, ctx=ctx)
+
+    def _downscale_idle(
+        self,
+        *,
+        op: "ExperimentalActorPoolMapOperator",
+        ctx: DecisionContext,
+    ) -> OpDecision:
+        """A downscale of ``op`` if it is starved at least
+        ``_WASTED_SHARE_MIN`` of its slot time, else no change."""
+        snapshot = ctx.bottleneck_snapshot
+        shares = snapshot.shares.get(op) if snapshot is not None else None
+        if shares is None or shares.starved < _WASTED_SHARE_MIN:
+            return OpDecision(OpRule.NONE)
+        return self._step(
+            op=op,
+            direction=Direction.DOWN,
+            rule=OpRule.DOWNSCALE_IDLE,
+            reason=f"idle (starved {shares.starved:.2f})",
+            ctx=ctx,
+            floor=_downscale_floor(op=op, wasted=shares.starved),
+        )
 
     # --- requests ---------------------------------------------------------------
 
@@ -388,6 +429,44 @@ class SizingPolicy:
             logger.debug("SizingPolicy: allocation changed; step sizes reset")
             self.steps.reset()
         self._last_allocation_age_s = age
+
+
+def _frees_room_for_short_op(
+    *,
+    op: "ExperimentalActorPoolMapOperator",
+    delta: int,
+    decisions: OpDecisions,
+    ctx: DecisionContext,
+) -> bool:
+    """Whether removing ``-delta`` of ``op``'s actors could let an upscaler
+    that found no room this tick (``unmet``) place one actor: on some node it
+    may use, free capacity plus what ``op`` frees there fits one of its
+    actors. WHERE removes actors on those nodes first
+    (``scale_where.compute_favored_nodes``)."""
+    short = [
+        other
+        for other, decision in decisions.items()
+        if decision.unmet > 0 and not ctx.apmo_profiles.is_pg_managed(other)
+    ]
+    if not short:
+        return False
+    per_actor = op.actor_pool.per_actor_resource_usage()
+    freeable: Dict[NodeIdStr, ExecutionResources] = {}
+    for node_id, counts in op.actor_counts_by_node().items():
+        serving = sum(
+            n for status, n in counts.items() if status is not ActorStatus.DRAINING
+        )
+        if serving > 0:
+            freeable[node_id] = per_actor.scale(min(serving, -delta))
+    return any(
+        nodes_where_freeing_fits(
+            per_actor=other.actor_pool.per_actor_resource_usage(),
+            nodes=ctx.snapshot.schedulable_nodes_by_op.get(other, ()),
+            free=ctx.snapshot.free_by_node,
+            freeable=freeable,
+        )
+        for other in short
+    )
 
 
 def _downscale_floor(*, op: "ExperimentalActorPoolMapOperator", wasted: float) -> int:
