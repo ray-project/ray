@@ -944,8 +944,7 @@ TEST_F(CoreWorkerTest, HandleGetObjectStatusPlasmaFreedObjectStillAnswered) {
   ASSERT_TRUE(io_service_.poll_one());
   ASSERT_TRUE(future.get().ok());
   EXPECT_EQ(reply.status(), rpc::GetObjectStatusReply::CREATED);
-  // The borrower is pointed at plasma, which is what the owner dropping the copy without
-  // pinning it means.
+  // The borrower is pointed at plasma.
   EXPECT_TRUE(reply.object().data().empty());
   EXPECT_EQ(reply.object().metadata(),
             std::to_string(static_cast<int>(rpc::ErrorType::OBJECT_IN_PLASMA)));
