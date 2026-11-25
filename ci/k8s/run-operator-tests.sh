@@ -4,7 +4,7 @@ set -euo pipefail
 
 # TODO(aslonnie): refactor this test to be hermetic.
 
-PYTHON_VERSION=3.10
+PYTHON_VERSION=3.11
 
 echo "--- Build image"
 bazel run //ci/ray_ci:build_in_docker -- docker \

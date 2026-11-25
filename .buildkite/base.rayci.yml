@@ -84,7 +84,7 @@ steps:
     wanda: ci/docker/base.cu130.wanda.yaml
     array:
       python:
-        - "3.10"
+        - "3.11"
         - "3.12"
     env:
       PYTHON: "{{array.python}}"

@@ -36,16 +36,16 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker --
           //ci/ray_ci:test_privileged ci
           --cache-test-results
-          --build-name oss-ci-base_test-py3.10
+          --build-name oss-ci-base_test-py3.11
           --build-type cgroup
           --privileged
     instance_type: small
-    depends_on: oss-ci-base_test-multipy(python=3.10)
+    depends_on: oss-ci-base_test-multipy(python=3.11)
     tags: tools
   - label: ":coral: reef: iwyu tests"
     commands:
       - bazel test --config iwyu //bazel/tests/cpp:example_test
     instance_type: small
-    depends_on: oss-ci-base_build-multipy(python=3.10)
-    job_env: oss-ci-base_build-py3.10
+    depends_on: oss-ci-base_build-multipy(python=3.11)
+    job_env: oss-ci-base_build-py3.11
     tags: tools
