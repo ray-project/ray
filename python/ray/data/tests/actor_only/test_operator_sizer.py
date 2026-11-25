@@ -1893,6 +1893,58 @@ def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
     assert req[embed].delta == 8
 
 
+def test_warns_once_when_no_node_can_hold_an_op_with_queued_input(
+    caplog, propagate_logs
+):
+    """An op with queued input and no actors, whose label selector no node
+    matches, gets nothing from the sizer and stalls the pipeline. The sizer
+    warns about it once, and again only if it gets stuck a second time."""
+
+    def view(labels):
+        return DatasetReservationView(
+            reserved_by_node={"n1": ExecutionResources(cpu=8, memory=32 * GiB)},
+            labels_by_node={"n1": labels},
+        )
+
+    read = _FakeOp(
+        "read", _FakePool(min_size=1, max_size=4, cpu=1, running=1), node=None
+    )
+    gen = _FakeOp(
+        "gen_data",
+        _FakePool(min_size=1, max_size=4, cpu=1, running=0),
+        inputs=[read],
+        node=None,
+        ray_remote_args={"label_selector": {"node-pool": "cpu"}},
+    )
+    sizer, topo = _bootstrapped(read, gen, enqueued=177, view=view({}))
+
+    def warnings():
+        return [
+            r.getMessage()
+            for r in caplog.records
+            if r.levelno == logging.WARNING and "gen_data" in r.getMessage()
+        ]
+
+    with caplog.at_level(logging.WARNING):
+        assert gen not in _tick(sizer, topo)
+        _tick(sizer, topo)
+    (message,) = warnings()
+    assert "177 queued input block(s)" in message
+    assert "{'node-pool': 'cpu'}" in message
+    # read has an actor, so it is not warned about.
+    assert not any("read has" in r.getMessage() for r in caplog.records)
+
+    # The label appears: gen_data can be placed again, and is.
+    sizer.reporter.view = view({"node-pool": "cpu"})
+    assert _tick(sizer, topo)[gen].delta >= 1
+
+    # It disappears again: a second warning.
+    sizer.reporter.view = view({})
+    with caplog.at_level(logging.WARNING):
+        _tick(sizer, topo)
+    assert len(warnings()) == 2
+
+
 def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
     # A reclaim-heavy op processed first must not over-debit the per-node
     # ledger: only genuinely-new actors consume free capacity, so a later op

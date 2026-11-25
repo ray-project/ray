@@ -296,6 +296,7 @@ class OperatorSizer:
             bottleneck_snapshot=bottleneck_snapshot,
         )
         decisions = self._policy.decide(ctx=decision_ctx)
+        self._telemetry.warn_unplaceable_ops(topology=self._topology, snapshot=snapshot)
         self._telemetry.log_decisions(
             phase=self.phase,
             decisions=decisions,

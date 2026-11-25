@@ -6,7 +6,7 @@ import functools
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, TypeVar, cast
 
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import NodeIdStr
@@ -20,6 +20,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
 )
 from ray.data._internal.experimental.execution.sizer.metrics import SizerMetrics
 from ray.data._internal.experimental.execution.sizer.models import (
+    ClusterStateSnapshot,
     PlacedRequests,
 )
 
@@ -76,6 +77,9 @@ class SizerTelemetry:
         self._last_remote_bytes: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Wall time per phase since the last ``record_tick`` (see ``timed``).
         self._timings: Dict[str, float] = {}
+        # Ops warned about as unplaceable, so each is warned about once until
+        # it can be placed again (see ``warn_unplaceable_ops``).
+        self._unplaceable_ops: Set[ExperimentalActorPoolMapOperator] = set()
 
     def add_timing_phase(self, phase: str, seconds: float) -> None:
         """Add ``seconds`` to ``phase``'s total for the current tick."""
@@ -105,6 +109,55 @@ class SizerTelemetry:
                 f"{op.name}[{status}]: {rule} {request.delta:+d} ({request.reason})"
             )
         logger.debug("OperatorSizer tick: phase=%s | %s", phase.value, "; ".join(parts))
+
+    def warn_unplaceable_ops(
+        self,
+        *,
+        topology: "Topology",
+        snapshot: ClusterStateSnapshot,
+    ) -> None:
+        """Warn when an op has queued input and no actors, and no node in
+        this dataset's slice can hold one of its actors. Without this, the
+        pipeline stalls with no error: the sizer grants the op nothing, and
+        nothing else reports why.
+
+        No node can hold an actor when none matches the op's label selector,
+        or when every matching node's slice is smaller than one actor. Ops
+        placed through a placement group are skipped, since Ray core places
+        them. Each op is warned about once until it can be placed again.
+        """
+        if not snapshot.reserved_by_node:
+            # No slice yet (for example, at startup): every op looks
+            # unplaceable, and nothing is wrong.
+            return
+        for op, nodes in snapshot.schedulable_nodes_by_op.items():
+            constraint = op.placement_constraint()
+            stuck = (
+                not nodes
+                and not constraint.is_pg_managed
+                and not op.has_completed()
+                and op.actor_pool.serving_size() == 0
+                and topology[op].total_enqueued_input_blocks() > 0
+            )
+            if not stuck:
+                self._unplaceable_ops.discard(op)
+                continue
+            if op in self._unplaceable_ops:
+                continue
+            self._unplaceable_ops.add(op)
+            logger.warning(
+                "OperatorSizer: %s has %d queued input block(s) and no actors, "
+                "and none of the %d node(s) in this dataset's slice can hold "
+                "one of its actors (label_selector=%s, per actor: %s). Check "
+                "that the cluster's nodes carry the labels the op selects and "
+                "have room for one actor; until then, the pipeline cannot make "
+                "progress.",
+                op.name,
+                topology[op].total_enqueued_input_blocks(),
+                len(snapshot.reserved_by_node),
+                constraint.label_selector,
+                op.actor_pool.per_actor_resource_usage(),
+            )
 
     # --- scale_where ---------------------------------------------------------
 
