@@ -2142,6 +2142,43 @@ class SearchSpaceTest(unittest.TestCase):
             "**spec) -> bool``."
         )
 
+    def testHyperOptNanInfNoneMetric(self):
+        from ray.tune.search.hyperopt import HyperOptSearch
+        from ray.tune.search.hyperopt.hyperopt_search import hpo
+
+        if hpo is None:
+            self.skipTest("hyperopt not installed")
+
+        for mode in ("min", "max"):
+            searcher = HyperOptSearch(
+                space={"a": tune.uniform(0, 1)},
+                metric="loss",
+                mode=mode,
+                n_initial_points=2,
+                random_state_seed=42,
+            )
+
+            for i, bad_val in enumerate(
+                [float("nan"), float("inf"), float("-inf"), None]
+            ):
+                tid = f"bad_{i}"
+                self.assertIsNotNone(searcher.suggest(tid))
+                searcher.on_trial_complete(tid, result={"loss": bad_val})
+
+            for t in searcher._hpopt_trials.trials:
+                self.assertEqual(t["result"]["status"], hpo.STATUS_FAIL)
+                self.assertIsNone(t["result"]["loss"])
+
+            for i in range(4):
+                tid = f"good_{i}"
+                cfg = searcher.suggest(tid)
+                self.assertIsNotNone(cfg)
+                searcher.on_trial_complete(tid, result={"loss": float(i)})
+
+            next_cfg = searcher.suggest("after_tpe")
+            self.assertIsNotNone(next_cfg)
+            self.assertTrue(0.0 <= next_cfg["a"] <= 1.0)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

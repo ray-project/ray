@@ -27,6 +27,7 @@ from ray.tune.search.sample import (
 )
 from ray.tune.search.variant_generator import assign_value, parse_spec_vars
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import is_nan_or_inf
 
 try:
     hyperopt_logger = logging.getLogger("hyperopt")
@@ -407,7 +408,7 @@ class HyperOptSearch(Searcher):
 
     def _to_hyperopt_result(self, result: Dict) -> Dict:
         try:
-            return {"loss": self.metric_op * result[self.metric], "status": "ok"}
+            val = result[self.metric]
         except KeyError as e:
             raise RuntimeError(
                 f"Hyperopt expected to see the metric `{self.metric}` in the "
@@ -416,6 +417,9 @@ class HyperOptSearch(Searcher):
                 f"your trainable class `step()` contains the above metric "
                 f"as a key."
             ) from e
+        if val is None or is_nan_or_inf(val):
+            return {"loss": None, "status": hpo.STATUS_FAIL}
+        return {"loss": self.metric_op * val, "status": "ok"}
 
     def _get_hyperopt_trial(self, trial_id: str) -> Optional[Dict]:
         if trial_id not in self._live_trial_mapping:
