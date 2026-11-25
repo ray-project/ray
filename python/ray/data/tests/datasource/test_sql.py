@@ -15,6 +15,45 @@ def temp_database_fixture() -> Generator[str, None, None]:
         yield file.name
 
 
+def _sqlite_connection_factory(database: str, denied_functions=()):
+    def connect() -> sqlite3.Connection:
+        def stable_hash(value):
+            if value is None or value == "":
+                return None
+            return sum((index + 1) * ord(char) for index, char in enumerate(str(value)))
+
+        def authorize(action, arg1, arg2, db_name, trigger):
+            if action == sqlite3.SQLITE_FUNCTION:
+                name = arg2.decode() if isinstance(arg2, bytes) else (arg2 or "")
+                if name.lower() in denied_functions:
+                    return sqlite3.SQLITE_DENY
+            return sqlite3.SQLITE_OK
+
+        connection = sqlite3.connect(database)
+        # SQLite only enables MOD() when compiled with math functions, and CONCAT()
+        # was added in SQLite 3.44.0. Provide both so sharding tests exercise the
+        # datasource logic independently of the installed SQLite version.
+        connection.create_function(
+            "MOD", 2, lambda value, divisor: None if value is None else value % divisor
+        )
+        connection.create_function(
+            "CONCAT",
+            -1,
+            lambda *values: "".join(
+                "" if value is None else str(value) for value in values
+            ),
+        )
+        connection.create_function("stable_hash", 1, stable_hash)
+        connection.set_authorizer(authorize)
+        return connection
+
+    return connect
+
+
+def _sqlite_connection(database: str) -> sqlite3.Connection:
+    return _sqlite_connection_factory(database)()
+
+
 def test_read_sql(temp_database: str):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE movie(title, year, score)")
@@ -67,31 +106,77 @@ def test_read_sql_with_params(temp_database: str, sql: str, sql_params):
     )
 
 
-def test_read_sql_with_parallelism_fallback(temp_database: str):
-    connection = sqlite3.connect(temp_database)
-    connection.execute("CREATE TABLE grade(name, id, score)")
-    base_tuple = ("xiaoming", 1, 8.2)
-    # Generate 200 elements
-    expected_values = [
-        (f"{base_tuple[0]}{i}", i, base_tuple[2] + i + 1) for i in range(500)
-    ]
-    connection.executemany("INSERT INTO grade VALUES (?, ?, ?)", expected_values)
+@pytest.mark.parametrize(
+    "case", ["single_null", "single_empty_string", "multiple_null"]
+)
+def test_read_sql_with_parallelism_handles_null_hashes(case: str, temp_database: str):
+    connection = _sqlite_connection(temp_database)
+    connection.execute(
+        "CREATE TABLE events (id INTEGER, customer_id TEXT, region TEXT)"
+    )
+
+    expected_values = []
+    for i in range(200):
+        if case == "single_null":
+            customer_id = None if i < 80 else f"c{i}"
+            region = "r"
+        elif case == "single_empty_string":
+            customer_id = "" if i < 20 else f"c{i}"
+            region = "r"
+        else:
+            # Cover all four NULL combinations across the two shard keys.
+            customer_id = None if i % 4 in (0, 1) else f"c{i}"
+            region = None if i % 4 in (0, 2) else f"r{i}"
+        expected_values.append((i, customer_id, region))
+
+    shard_keys = ["customer_id"]
+    shard_hash_fn = "unicode"
+    if case == "multiple_null":
+        shard_keys.append("region")
+        shard_hash_fn = "stable_hash"
+
+    connection.executemany("INSERT INTO events VALUES (?, ?, ?)", expected_values)
     connection.commit()
     connection.close()
 
-    num_blocks = 2
+    num_blocks = 4
     dataset = ray.data.read_sql(
-        "SELECT * FROM grade",
-        lambda: sqlite3.connect(temp_database),
+        "SELECT * FROM events",
+        _sqlite_connection_factory(temp_database),
         override_num_blocks=num_blocks,
-        shard_hash_fn="unicode",
-        shard_keys=["id"],
+        shard_hash_fn=shard_hash_fn,
+        shard_keys=shard_keys,
     )
     dataset = dataset.materialize()
     assert dataset.num_blocks() == num_blocks
 
-    actual_values = [tuple(record.values()) for record in dataset.take_all()]
-    assert sorted(actual_values) == sorted(expected_values)
+    actual_values = [
+        (record["id"], record["customer_id"], record["region"])
+        for record in dataset.take_all()
+    ]
+    assert sorted(actual_values, key=lambda row: row[0]) == expected_values
+
+
+def test_read_sql_override_detects_unsupported_coalesce(temp_database: str):
+    connection = _sqlite_connection(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER, customer_id TEXT)")
+    connection.executemany(
+        "INSERT INTO events VALUES (?, ?)",
+        [(i, None if i % 10 == 0 else f"c{i}") for i in range(200)],
+    )
+    connection.commit()
+    connection.close()
+
+    # Probe the complete shard predicate so unsupported COALESCE is detected
+    # before the read tasks execute.
+    with pytest.raises(ValueError, match="sharding"):
+        ray.data.read_sql(
+            "SELECT * FROM events",
+            _sqlite_connection_factory(temp_database, denied_functions=("coalesce",)),
+            override_num_blocks=4,
+            shard_hash_fn="stable_hash",
+            shard_keys=["customer_id"],
+        )
 
 
 # for mysql test
@@ -171,136 +256,52 @@ def test_write_sql_nonexistant_table(temp_database: str):
         )
 
 
-@pytest.mark.parametrize("num_blocks", (2, 4))
-def test_read_sql_with_null_shard_keys(num_blocks: int, temp_database: str):
-    connection = sqlite3.connect(temp_database)
-    connection.execute("CREATE TABLE events (id INTEGER, customer_id TEXT)")
-
-    expected_values = [(i, None if i < 10 else str(i)) for i in range(200)]
-    connection.executemany("INSERT INTO events VALUES (?, ?)", expected_values)
-    connection.commit()
-    connection.close()
-
-    dataset = ray.data.read_sql(
-        "SELECT * FROM events",
-        lambda: sqlite3.connect(temp_database),
-        override_num_blocks=num_blocks,
-        shard_hash_fn="unicode",
-        shard_keys=["customer_id"],
-    )
-
-    actual_values = [
-        (record["id"], record["customer_id"]) for record in dataset.take_all()
-    ]
-
-    assert len(actual_values) == len(expected_values)
-    assert sorted(actual_values, key=lambda row: row[0]) == expected_values
-
-
-@pytest.mark.parametrize("num_blocks", (2, 4))
-def test_read_sql_with_multiple_null_shard_keys(num_blocks: int, temp_database: str):
-    connection = sqlite3.connect(temp_database)
+def test_sql_sharding_null_bucket_distribution(temp_database: str):
+    connection = _sqlite_connection(temp_database)
     connection.execute(
         "CREATE TABLE events (id INTEGER, customer_id TEXT, region TEXT)"
     )
-
-    # Cover every NULL combination across the two shard keys: both non-NULL,
-    # only customer_id NULL, only region NULL, and both NULL.
-    expected_values = []
-    for i in range(200):
-        customer_id = None if i % 4 in (0, 1) else f"c{i}"
-        region = None if i % 4 in (0, 2) else f"r{i}"
-        expected_values.append((i, customer_id, region))
+    expected_values = [(i, None, None if i % 5 == 0 else f"r{i}") for i in range(200)]
     connection.executemany("INSERT INTO events VALUES (?, ?, ?)", expected_values)
     connection.commit()
     connection.close()
 
-    dataset = ray.data.read_sql(
+    datasource = SQLDatasource(
         "SELECT * FROM events",
-        lambda: sqlite3.connect(temp_database),
-        override_num_blocks=num_blocks,
-        shard_hash_fn="unicode",
+        lambda: _sqlite_connection(temp_database),
+        "stable_hash",
         shard_keys=["customer_id", "region"],
     )
+    tasks = datasource.get_read_tasks(4)
+    assert len(tasks) == 4
 
-    actual_values = [
-        (record["id"], record["customer_id"], record["region"])
-        for record in dataset.take_all()
-    ]
+    rows_per_task = []
+    for task in tasks:
+        rows = []
+        for block in task():
+            rows.extend(
+                (row["id"], row["customer_id"], row["region"])
+                for row in block.to_pylist()
+            )
+        rows_per_task.append(rows)
 
-    # Every row must come back exactly once, including rows where one or both
-    # shard keys are NULL.
+    # Partially NULL keys with usable hashes keep their normal shard assignments.
+    assert all(rows_per_task)
+    actual_values = [row for rows in rows_per_task for row in rows]
     assert len(actual_values) == len(expected_values)
     assert sorted(actual_values, key=lambda row: row[0]) == expected_values
 
+    def expected_task_id(region):
+        if region is None:
+            return 0
+        value = sum((index + 1) * ord(char) for index, char in enumerate(region))
+        return value % 4
 
-class _QueryRecordingCursor:
-    """A DB-API2 cursor double that records executed SQL and returns no rows."""
-
-    def __init__(self, executed: list):
-        self._executed = executed
-        self.description = [("id",), ("customer_id",), ("region",)]
-
-    def execute(self, sql, params=None):
-        self._executed.append(sql)
-
-    def executemany(self, sql, *args):
-        pass
-
-    def fetchone(self):
-        return None
-
-    def fetchall(self):
-        return []
-
-
-class _QueryRecordingConnection:
-    """A DB-API2 connection double backed by ``_QueryRecordingCursor``."""
-
-    def __init__(self, executed: list):
-        self._executed = executed
-
-    def cursor(self):
-        return _QueryRecordingCursor(self._executed)
-
-    def commit(self):
-        pass
-
-    def close(self):
-        pass
-
-    def rollback(self):
-        pass
-
-
-def test_multi_key_null_shard_predicates():
-    """Multi-key sharding must build a NOT(non-null) / AND(non-null) predicate.
-
-    Whether an end-to-end ``read_sql`` builds these predicates depends on the
-    backend supporting the MOD/ABS/CONCAT sharding probe (SQLite only supports
-    MOD when compiled with math functions); otherwise it falls back to a single
-    read task. This test captures the SQL each read task generates directly, so
-    the multi-key predicate logic is covered regardless of the backend.
-    """
-    executed = []
-    datasource = SQLDatasource(
-        "SELECT * FROM events",
-        lambda: _QueryRecordingConnection(executed),
-        "unicode",
-        shard_keys=["customer_id", "region"],
-    )
-
-    # Task 0 absorbs every row the other tasks reject, via the exact boolean
-    # complement of the non-NULL guard (not an "any key IS NULL" test). This
-    # keeps rows whose row-valued key has mixed NULL fields -- FALSE for both
-    # IS NULL and IS NOT NULL in PostgreSQL -- from being dropped.
-    datasource._create_parallel_read_fn(task_id=0, parallelism=4)()
-    assert "NOT (customer_id IS NOT NULL AND region IS NOT NULL)" in executed[-1]
-
-    # Every other task only takes rows where *all* shard keys are non-NULL,
-    # AND-ed together.
-    datasource._create_parallel_read_fn(task_id=1, parallelism=4)()
-    assert "(customer_id IS NOT NULL AND region IS NOT NULL)" in executed[-1]
+    for task_id, rows in enumerate(rows_per_task):
+        expected_ids = {
+            i for i, _, region in expected_values if expected_task_id(region) == task_id
+        }
+        assert {row[0] for row in rows} == expected_ids
 
 
 if __name__ == "__main__":

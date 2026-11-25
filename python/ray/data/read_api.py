@@ -4317,15 +4317,18 @@ def read_sql(
     .. note::
 
         Parallelism is supported by databases that support sharding. This means
-        that the database needs to support all of the following operations:
-        ``MOD``, ``ABS``, and ``CONCAT``.
+        that the database needs to support ``MOD()``, ``ABS``, ``COALESCE``, the
+        configured hash function, and ``CONCAT`` for multi-column keys.
 
         You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
         The default is ``MD5``, but other common alternatives include ``hash``,
-        ``unicode``, and ``SHA``.
+        ``unicode``, and ``SHA``. Rows whose computed shard bucket is NULL,
+        including when the hash of a NULL key is NULL, are assigned to the first
+        shard.
 
         If the database does not support sharding, the read operation will be
-        executed in a single task.
+        executed in a single task unless ``override_num_blocks > 1`` is set, in
+        which case ``read_sql`` raises a ``ValueError``.
 
     Examples:
         For examples of reading from larger databases like MySQL and PostgreSQL, see

@@ -98,7 +98,6 @@ class SQLDatasource(Datasource):
         sql_params: Optional[Any] = None,
     ):
         self.sql = sql
-        self.shard_key_list = list(shard_keys) if shard_keys else None
         if shard_keys and len(shard_keys) > 1:
             self.shard_keys = f"CONCAT({','.join(shard_keys)})"
         elif shard_keys and len(shard_keys) == 1:
@@ -113,7 +112,7 @@ class SQLDatasource(Datasource):
         return None
 
     def supports_sharding(self, parallelism: int) -> bool:
-        """Check if database supports sharding with MOD/ABS/CONCAT operations.
+        """Check if database supports sharding with the required operations.
 
         Args:
             parallelism: The number of shards to split the read into.
@@ -124,12 +123,13 @@ class SQLDatasource(Datasource):
         if parallelism <= 1 or self.shard_keys is None:
             return False
 
-        # Test if database supports required operations (MOD, ABS, MD5, CONCAT)
-        # by executing a sample query
+        # Test the operations used by the shard predicate (MOD, ABS, the hash
+        # function, CONCAT for multiple keys, and COALESCE) against the database.
         hash_fn = self.shard_hash_fn
+        bucket = f"MOD(ABS({hash_fn}({self.shard_keys})), {parallelism})"
         query = (
             f"SELECT COUNT(1) FROM ({self.sql}) as T"
-            f" WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = 0"
+            f" WHERE COALESCE({bucket}, 0) = 0"
         )
         try:
             with _connect(self.connection_factory) as cursor:
@@ -146,7 +146,7 @@ class SQLDatasource(Datasource):
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
-            """Read all data in a single block when sharding is not supported."""
+            """Read all data in a single block without sharding."""
             with _connect(self.connection_factory) as cursor:
                 _execute(cursor, self.sql, self.sql_params)
                 return [_cursor_to_block(cursor)]
@@ -198,29 +198,11 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        hash_predicate = (
-            f"MOD(ABS({hash_fn}({self.shard_keys})), " f"{parallelism}) = {task_id}"
-        )
-
-        if self.shard_key_list:
-            non_null_conditions = [f"{key} IS NOT NULL" for key in self.shard_key_list]
-            non_null_predicate = "(" + " AND ".join(non_null_conditions) + ")"
-
-            if task_id == 0:
-                # Task 0 must catch every row the other tasks reject, so use the
-                # exact boolean complement of the non-NULL guard rather than an
-                # "any key IS NULL" test. In PostgreSQL a row-valued shard key
-                # with mixed NULL fields (e.g. (1, NULL)) is FALSE for BOTH
-                # "IS NULL" and "IS NOT NULL", so an OR-of-IS-NULL guard would
-                # drop such a row from every shard unless its hash bucket is 0.
-                # IS [NOT] NULL never yields UNKNOWN, so NOT(...) is the strict
-                # complement and routes those rows here (no silent data loss).
-                # For scalar keys this is identical to "any key IS NULL".
-                predicate = f"(NOT {non_null_predicate} OR {hash_predicate})"
-            else:
-                predicate = f"({non_null_predicate} AND {hash_predicate})"
-        else:
-            predicate = hash_predicate
+        bucket = f"MOD(ABS({hash_fn}({self.shard_keys})), {parallelism})"
+        # A NULL bucket can result from NULL shard keys or from the hash function
+        # itself (for example, SQLite's unicode('')). Route those rows to task 0;
+        # rows with a usable bucket keep their normal shard assignment.
+        predicate = f"COALESCE({bucket}, 0) = {task_id}"
 
         query = f"SELECT * FROM ({self.sql}) AS T WHERE {predicate}"
 
