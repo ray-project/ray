@@ -1,3 +1,4 @@
+import copy
 import inspect
 import logging
 import math
@@ -20,7 +21,7 @@ from ray.tune.search.sample import (
     Quantized,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_dict
 
 try:
     import nevergrad as ng
@@ -155,7 +156,7 @@ class NevergradSearch(Searcher):
                 "Please pass a list of points (dictionaries) instead."
             )
         else:
-            self._points_to_evaluate = list(points_to_evaluate)
+            self._points_to_evaluate = copy.deepcopy(list(points_to_evaluate))
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
@@ -243,7 +244,16 @@ class NevergradSearch(Searcher):
             # Nevergrad is LIFO, so we add the points to evaluate in reverse
             # order.
             for i in range(len(self._points_to_evaluate) - 1, -1, -1):
-                self._nevergrad_opt.suggest(self._points_to_evaluate[i])
+                point = self._points_to_evaluate[i]
+                if isinstance(point, dict) and any(
+                    isinstance(v, dict) for v in point.values()
+                ):
+                    if not (
+                        isinstance(self._nevergrad_opt.parametrization, ng.p.Dict)
+                        and all(k in self._nevergrad_opt.parametrization for k in point)
+                    ):
+                        point = flatten_dict(point)
+                self._nevergrad_opt.suggest(point)
 
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
@@ -298,14 +308,21 @@ class NevergradSearch(Searcher):
         so that Nevergrad Optimizers can "maximize" this value,
         as it minimizes on default.
         """
-        if result:
+        if result and not error:
             self._process_result(trial_id, result)
 
-        self._live_trial_mapping.pop(trial_id)
+        self._live_trial_mapping.pop(trial_id, None)
 
     def _process_result(self, trial_id: str, result: Dict):
+        if trial_id not in self._live_trial_mapping:
+            return
+        if self._metric not in result:
+            return
+        metric_val = result[self._metric]
+        if metric_val is None or is_nan_or_inf(metric_val):
+            return
         ng_trial_info = self._live_trial_mapping[trial_id]
-        self._nevergrad_opt.tell(ng_trial_info, self._metric_op * result[self._metric])
+        self._nevergrad_opt.tell(ng_trial_info, self._metric_op * metric_val)
 
     def save(self, checkpoint_path: str):
         save_object = self.__dict__
