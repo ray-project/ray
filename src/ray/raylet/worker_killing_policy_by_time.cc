@@ -40,9 +40,8 @@ TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(int64_t threshold_byt
 
 TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(
     MemoryThresholdBytesGetter memory_threshold_bytes_getter, int64_t kill_buffer_bytes)
-    : TimeBasedWorkerKillingPolicy(
-          std::move(memory_threshold_bytes_getter),
-          [kill_buffer_bytes](int64_t) { return kill_buffer_bytes; }) {}
+    : TimeBasedWorkerKillingPolicy(std::move(memory_threshold_bytes_getter),
+                                   [kill_buffer_bytes]() { return kill_buffer_bytes; }) {}
 
 TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(
     MemoryThresholdBytesGetter memory_threshold_bytes_getter,
@@ -107,8 +106,7 @@ TimeBasedWorkerKillingPolicy::Policy(
            "Skipping this worker killing decision.";
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
-  int64_t kill_buffer_bytes =
-      kill_buffer_bytes_getter_(memory_usage_snapshot.total_bytes);
+  int64_t kill_buffer_bytes = kill_buffer_bytes_getter_();
 
   std::vector<std::shared_ptr<WorkerInterface>> sorted_workers;
   std::copy_if(workers.begin(),

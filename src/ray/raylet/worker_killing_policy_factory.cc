@@ -51,7 +51,16 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
                                                             cgroup_manager);
       };
 
-  auto kill_buffer_bytes_getter = [](int64_t total_memory_bytes) {
+  // Size the kill buffer from the root cgroup snapshot (RAM only, respecting the
+  // container's memory.max) in both modes, re-read on every decision so in-place
+  // pod resizes are tracked. Don't use the total of the snapshot passed to the
+  // policy: under resource isolation that is the user-slice snapshot, whose total
+  // is host MemTotal rather than the pod limit, so the buffer would scale with
+  // the node size.
+  auto kill_buffer_bytes_getter = []() {
+    int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
+                                     MemoryMonitorInterface::kDefaultCgroupPath)
+                                     .total_bytes;
     int64_t kill_memory_buffer_bytes =
         RayConfig::instance().max_kill_memory_buffer_bytes();
     if (total_memory_bytes != MemoryMonitorInterface::kNull) {

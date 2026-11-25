@@ -51,7 +51,12 @@ namespace raylet {
 class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
   using MemoryThresholdBytesGetter = std::function<int64_t(int64_t total_memory_bytes)>;
-  using KillBufferBytesGetter = std::function<int64_t(int64_t total_memory_bytes)>;
+  /// Takes no argument on purpose: the kill buffer is sized from the root cgroup
+  /// view (respecting the container's memory.max), not from the snapshot handed
+  /// to SelectWorkersToKill. Under resource isolation that snapshot is the
+  /// user-slice snapshot, whose total_bytes is host MemTotal (plus root swap)
+  /// rather than the pod limit.
+  using KillBufferBytesGetter = std::function<int64_t()>;
 
   /**
    * @param threshold_bytes The maximum memory usage threshold in bytes.
@@ -77,9 +82,10 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   /**
    * @param memory_threshold_bytes_getter Computes the current maximum memory usage
    *        threshold in bytes from the latest total memory snapshot.
-   * @param kill_buffer_bytes_getter Computes the current kill buffer in bytes from
-   *        the latest total memory snapshot, so runtime cgroup limit changes are
-   *        reflected without restarting the raylet.
+   * @param kill_buffer_bytes_getter Computes the current kill buffer in bytes. It is
+   *        called for every policy decision so runtime cgroup limit changes are
+   *        reflected without restarting the raylet. It reads the total memory
+   *        itself instead of using the snapshot's total; see KillBufferBytesGetter.
    */
   TimeBasedWorkerKillingPolicy(MemoryThresholdBytesGetter memory_threshold_bytes_getter,
                                KillBufferBytesGetter kill_buffer_bytes_getter);
