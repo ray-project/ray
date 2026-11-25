@@ -1,18 +1,19 @@
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from ray.data._internal.logical.interfaces import (
     ClusteredDistribution,
     LogicalOperator,
     LogicalOperatorPreservesSchema,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.random_config import RandomSeedConfig
-from ray.data.aggregate import AggregateFn
+from ray.data.aggregate import AggregateFn, AggregateFnV2
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
@@ -65,6 +66,7 @@ class AbstractAllToAll(LogicalOperator):
 class RandomizeBlocks(
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for randomize_block_order."""
@@ -89,11 +91,17 @@ class RandomizeBlocks(
         # Randomizing block order doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class RandomShuffle(
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for random_shuffle."""
@@ -133,11 +141,17 @@ class RandomShuffle(
         # Random shuffle doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Repartition(
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for repartition."""
@@ -181,11 +195,19 @@ class Repartition(
         # Repartition doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if required_output_columns is None:
+            return [None]
+        return [required_output_columns | set(self.keys or [])]
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Sort(
     AbstractAllToAll,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for sort."""
@@ -216,10 +238,18 @@ class Sort(
         # Sort doesn't affect filtering correctness
         return PredicatePassThroughBehavior.PASSTHROUGH
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if required_output_columns is None:
+            return [None]
+        return [required_output_columns | set(self.sort_key.get_columns())]
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class TopN(
     AbstractAllToAll,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for selecting the first rows of a global sort."""
@@ -234,6 +264,13 @@ class TopN(
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         object.__setattr__(self, "_name", f"limit={self.limit}")
 
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        if required_output_columns is None:
+            return [None]
+        return [required_output_columns | set(self.sort_key.get_columns())]
+
     def infer_metadata(self) -> "BlockMetadata":
         input_metadata = self.input_dependencies[0].infer_metadata()
         input_rows = input_metadata.num_rows
@@ -246,7 +283,7 @@ class TopN(
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class Aggregate(AbstractAllToAll):
+class Aggregate(AbstractAllToAll, LogicalOperatorSupportsProjectionPassThrough):
     """Logical operator for aggregate."""
 
     key: Optional[str | List[str]]
@@ -275,6 +312,21 @@ class Aggregate(AbstractAllToAll):
         if not key_columns:
             return None
         return ClusteredDistribution(tuple(key_columns))
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        keys = self.key if isinstance(self.key, list) else [self.key]
+        required = {key for key in keys if key is not None}
+        for agg in self.aggs:
+            if not isinstance(agg, AggregateFnV2):
+                return None
+            target = agg.get_target_column()
+            if target is not None:
+                required.add(target)
+        if not required:
+            return None
+        return [required]
 
     def infer_schema(self) -> Optional["Schema"]:
         # Output = key field(s) from input schema + one field per aggregator.

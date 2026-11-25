@@ -132,6 +132,10 @@ async def setup_model_express(llm_config: LLMConfig) -> None:
 
     _set_default("MX_ARTIFACT_TRANSFER", "1")
     _set_default("MX_ARTIFACT_BACKEND", "nixl")
+    # A peer can load the transferred compile cache on a different GPU index than
+    # the one that compiled it, which crashes with "CUDA driver error: invalid
+    # argument" unless the cache is device-neutral.
+    _set_default("VLLM_COMPILE_ON_ONE_RANK", "1")
     ready_port = _start_ready_server(node_ip)
     os.environ["MX_ARTIFACT_READY_URL"] = f"http://{node_ip}:{ready_port}/ready"
 

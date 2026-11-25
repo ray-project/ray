@@ -127,7 +127,11 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
     assert isinstance(map_op, MapOperator)
     assert map_op.name == "DiskRandomShuffleMap(partitions=2)"
     assert map_op._get_dynamic_ray_remote_args()["resources"] == {"bar": 1}
-    assert not dag._preserve_partition_order
+    assert dag._preserve_partition_order
+    ds_unseeded = ray.data.range(10, override_num_blocks=2).random_shuffle()
+    unseeded_dag = get_execution_plan(ds_unseeded._logical_plan)[0].dag
+    assert isinstance(unseeded_dag, DiskHashShuffleReduceOp)
+    assert not unseeded_dag._preserve_partition_order
 
     # Ordering must survive fusion of a downstream map into the reduce.
     disk_shuffle_v2.execution_options.preserve_order = True
@@ -152,7 +156,8 @@ def test_random_shuffle_planner_routes_to_disk_shuffle_v2(
 def test_random_shuffle_v2_end_to_end(ray_start_regular_shared_2_cpus, disk_shuffle_v2):
     # One map task per input block, so reducers merge shards from several mappers.
     disk_shuffle_v2.shuffle_input_batch_bytes = 0
-    # Block order is only reproducible when partitions are emitted in order.
+    # Seeds derive from the writer task index, which follows upstream arrival
+    # order, so a repeatable run also needs the upstream kept in order.
     disk_shuffle_v2.execution_options.preserve_order = True
 
     ds = ray.data.range(1000, override_num_blocks=10)
