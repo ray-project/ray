@@ -1331,11 +1331,11 @@ class ActorReplicaWrapper:
         Args:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
+            tracing_config: Controller-resolved tracing settings for Python replicas.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
             target_node_id: If set, pin this replica to this node.
-            tracing_config: Controller-resolved tracing settings for Python replicas.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
@@ -2397,11 +2397,11 @@ class DeploymentReplica:
         Args:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
+            tracing_config: Controller-resolved tracing settings for Python replicas.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
             target_node_id: If set, pin this replica to this node.
-            tracing_config: Controller-resolved tracing settings for Python replicas.
 
         Returns:
             ReplicaSchedulingRequest: The scheduling request for the replica.
