@@ -150,9 +150,9 @@ class SQLDatasource(Datasource):
                 _execute(cursor, self.sql, self.sql_params)
                 return [_cursor_to_block(cursor)]
 
-        # Check if sharding is supported by the database first
-        # If not, fall back to reading all data in a single task without counting rows
-        if parallelism <= 1:
+        # A single task or a read without shard keys never needs a sharding probe.
+        # Fall back to reading all data in a single task without counting rows.
+        if parallelism <= 1 or self.shard_keys is None:
             metadata = BlockMetadata(None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 

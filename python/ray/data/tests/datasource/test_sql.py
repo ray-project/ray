@@ -1,11 +1,12 @@
-import logging
 import sqlite3
 import tempfile
 from typing import Generator
+from unittest.mock import Mock
 
 import pytest
 
 import ray
+from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.tests.conftest import *  # noqa  # noqa
 
 
@@ -94,39 +95,25 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
     assert sorted(actual_values) == sorted(expected_values)
 
 
-def test_read_sql_single_parallelism_does_not_log_sharding_fallback(
-    temp_database: str, caplog
+@pytest.mark.parametrize("parallelism, shard_keys", [(1, ["title"]), (4, None)])
+def test_get_read_tasks_skips_unnecessary_sharding_probe(
+    parallelism, shard_keys, caplog, monkeypatch, propagate_logs
 ):
-    logger = logging.getLogger("ray.data._internal.datasource.sql_datasource")
-    logger.addHandler(caplog.handler)
+    datasource = SQLDatasource(
+        "SELECT * FROM movie",
+        lambda: sqlite3.connect(":memory:"),
+        shard_hash_fn="unicode",
+        shard_keys=shard_keys,
+    )
+    supports_sharding = Mock(side_effect=AssertionError("Unexpected sharding probe"))
+    monkeypatch.setattr(datasource, "supports_sharding", supports_sharding)
 
-    try:
-        connection = sqlite3.connect(temp_database)
-        connection.execute("CREATE TABLE movie(title, year, score)")
-        connection.execute(
-            "INSERT INTO movie VALUES (?, ?, ?)",
-            ("Test Movie", 2024, 8.0),
-        )
-        connection.commit()
-        connection.close()
+    with caplog.at_level("INFO", logger=datasource.__module__):
+        tasks = datasource.get_read_tasks(parallelism)
 
-        with caplog.at_level("INFO", logger=logger.name):
-            dataset = ray.data.read_sql(
-                "SELECT * FROM movie",
-                lambda: sqlite3.connect(temp_database),
-                override_num_blocks=1,
-                shard_hash_fn="unicode",
-                shard_keys=["title"],
-            )
-            actual_values = dataset.take_all()
-
-        assert len(actual_values) == 1
-        assert not any(
-            "Sharding is not supported" in record.message
-            for record in caplog.records
-        )
-    finally:
-        logger.removeHandler(caplog.handler)
+    assert len(tasks) == 1
+    supports_sharding.assert_not_called()
+    assert not any("Sharding is not supported" in r.message for r in caplog.records)
 
 
 # for mysql test
