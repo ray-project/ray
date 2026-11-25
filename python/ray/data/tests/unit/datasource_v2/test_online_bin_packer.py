@@ -232,14 +232,21 @@ def test_oversize_coalesced_run_fills_shared_bin() -> None:
 def test_whole_file_rows_pack_by_file_size() -> None:
     # Rows with no chunk metadata (a plain listing) are indivisible items
     # sized by the file, and come out of the packer as whole-file rows again.
-    def whole(path: str, size: int) -> FileManifest:
+    # A file of unknown size (e.g. HTTP without ``Content-Length``) gets a bin
+    # of its own.
+    def whole(path: str, size: Optional[int]) -> FileManifest:
         return FileManifest.construct_manifest(
             paths=[path], sizes=[size], chunk_metadatas=[None]
         )
 
     packer = OnlineBinPacker(max_bin_bytes=100)
     bins = []
-    for manifest in [whole("big", 150), whole("a", 60), whole("b", 30)]:
+    for manifest in [
+        whole("big", 150),
+        whole("a", 60),
+        whole("unknown", None),
+        whole("b", 30),
+    ]:
         packer.add_input(manifest)
         while packer.has_partition():
             bins.append(packer.next_partition())
@@ -249,9 +256,11 @@ def test_whole_file_rows_pack_by_file_size() -> None:
 
     assert [_manifest_map(b) for b in bins] == [
         {"big": None},
+        {"unknown": None},
         {"a": None, "b": None},
     ]
-    assert dict(zip(bins[1].paths, bins[1].file_sizes)) == {"a": 60, "b": 30}
+    assert bins[1].known_file_sizes == [None]
+    assert dict(zip(bins[2].paths, bins[2].file_sizes)) == {"a": 60, "b": 30}
 
 
 def test_packed_run_rows_keep_on_disk_file_size() -> None:

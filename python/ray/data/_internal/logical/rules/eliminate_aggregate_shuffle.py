@@ -229,12 +229,15 @@ class EnsureLocalAggregateReadsWholePartitions(Rule):
         shuffle_ops = _shuffle_ops_before(reduce_op)
         assert shuffle_ops is not None
         for op in (*shuffle_ops, reduce_op):
-            op.set_logical_operators(aggregate)
+            # Like the planner: the disk writer tags itself (DiskShuffleMap) so
+            # later maps fuse into it; keep that tag.
+            if not op._logical_operators:
+                op.set_logical_operators(aggregate)
             if local_op.target_max_block_size_override is not None:
                 op.override_target_max_block_size(
                     local_op.target_max_block_size_override
                 )
-            self._op_map[op] = aggregate
+            self._op_map[op] = op._logical_operators[0]
 
         # The new map op already reads source; drop the aggregation.
         source._output_dependencies.remove(local_op)

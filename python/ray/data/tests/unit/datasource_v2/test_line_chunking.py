@@ -86,9 +86,12 @@ def test_indexer_splits_only_uncompressed_files(path, expected_rows):
         assert [c.size_bytes for c in chunks] == [10, 10, 10, 5]
 
 
-def test_indexer_keeps_a_file_that_fits_in_one_chunk_whole():
+@pytest.mark.parametrize("size", [10, None], ids=["fits", "unknown_size"])
+def test_indexer_keeps_a_file_that_fits_in_one_chunk_whole(size):
+    # A file of unknown size (e.g. HTTP without ``Content-Length``) can't be cut
+    # into byte ranges, so it's read whole too.
     indexer = LineChunkFileIndexer(chunk_size=10, ignore_missing_paths=False)
-    assert indexer._chunk_metadatas_of_file(FileInfo(path="a.csv", size=10)) == [None]
+    assert indexer._chunk_metadatas_of_file(FileInfo(path="a.csv", size=size)) == [None]
 
 
 @pytest.mark.parametrize(

@@ -67,6 +67,26 @@ if TYPE_CHECKING:
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
+# How far past the drain deadline the SIGTERM drain waits before killing local
+# processes when the node did not finish draining in time. The raylet only
+# records a preemption if the deadline is strictly in the past at millisecond
+# resolution, so a few milliseconds are enough; the margin also absorbs small
+# wall-clock adjustments between the two reads.
+_DRAIN_DEADLINE_MARGIN_MS = 10
+# Upper bound on that wait, so a large backwards wall-clock jump can't stall
+# teardown until whoever sent SIGTERM gives up and sends SIGKILL.
+_DRAIN_DEADLINE_MAX_WAIT_MS = 1000
+
+
+def _wait_until_past_drain_deadline(deadline_timestamp_ms: int) -> None:
+    """Sleep until wall-clock time is past ``deadline_timestamp_ms`` by a margin."""
+    remaining_ms = (
+        deadline_timestamp_ms + _DRAIN_DEADLINE_MARGIN_MS - time.time() * 1000
+    )
+    if remaining_ms > 0:
+        time.sleep(min(remaining_ms, _DRAIN_DEADLINE_MAX_WAIT_MS) / 1000)
+
+
 # Upper bound on how long to wait for a SIGKILLed Ray process to be reaped when
 # the caller asked to wait for it. Reaping is normally immediate; a process that
 # is still around after this long is parked in an uninterruptible syscall and
@@ -775,6 +795,16 @@ class Node:
             self._node_id,
             timeout_s,
         )
+        # The raylet records the node death as preempted only if, when it
+        # receives SIGTERM, the drain deadline is strictly in the past
+        # (`deadline_timestamp_ms < now`, at millisecond resolution). The poll
+        # above ends on the monotonic clock at about the same instant as the
+        # wall-clock deadline, so without this wait the SIGTERM sent by
+        # kill_all_processes() can land in the same millisecond and the node is
+        # recorded as EXPECTED_TERMINATION instead. Owners then count the
+        # failed tasks against max_retries even though the node was preempted.
+        # See https://github.com/ray-project/ray/issues/68304.
+        _wait_until_past_drain_deadline(deadline_timestamp_ms)
 
     def _init_temp(self, node_to_connect_info: Optional[GcsNodeInfo]):
         # Create a dictionary to store temp file index.

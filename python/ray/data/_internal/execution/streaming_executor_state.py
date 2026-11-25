@@ -740,7 +740,10 @@ def _reconstruct_lost_object(
     # A retry of a failed reconstruction attempt reuses the reconstruction plans it served; a fresh failure
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
-    traced_seed_ids: Set[str] = set()
+    # A plan's trace can stop at a task with a queued reconstruction task and return
+    # no seeds, while another plan of the same task reaches a seed. So each seed is
+    # re-executed only for the plans whose trace returned it.
+    seed_to_plan_ids: Dict[str, Set[str]] = defaultdict(set)
     reconstruction_plan_ids: Set[str] = set()
     try:
         if task.reconstruction_plan_ids:
@@ -748,13 +751,15 @@ def _reconstruct_lost_object(
                 seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
                     task.lineage_task_id, failed_plan_id
                 )
-                traced_seed_ids.update(seed_ids)
+                for seed_id in seed_ids:
+                    seed_to_plan_ids[seed_id].add(reconstruction_plan_id)
                 reconstruction_plan_ids.add(reconstruction_plan_id)
         else:
             seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
                 task.lineage_task_id
             )
-            traced_seed_ids.update(seed_ids)
+            for seed_id in seed_ids:
+                seed_to_plan_ids[seed_id].add(reconstruction_plan_id)
             reconstruction_plan_ids.add(reconstruction_plan_id)
     except ValueError as err:
         raise LineageReconstructionError(
@@ -763,7 +768,7 @@ def _reconstruct_lost_object(
             f"registered with the lineage graph ({err}).",
         ) from lost_error
 
-    seed_task_ids = sorted(traced_seed_ids)
+    seed_task_ids = sorted(seed_to_plan_ids)
     plans_str = ", ".join(sorted(reconstruction_plan_ids))
 
     # Get each seed's retained input from the tracker, and the operator that ran the
@@ -799,12 +804,14 @@ def _reconstruct_lost_object(
         # Clear the completion state of the seed op and everything downstream so a
         # re-injected seed input can flow through again.
         _clear_downstream_completion_state(topology, seed_op)
+        seed_plan_ids = seed_to_plan_ids[seed_id]
+        seed_plans_str = ", ".join(sorted(seed_plan_ids))
         # If a reconstruction task for this seed is already queued, these plans join it.
-        if seed_op.join_queued_reconstruction_task(seed_id, reconstruction_plan_ids):
+        if seed_op.join_queued_reconstruction_task(seed_id, seed_plan_ids):
             logger.info(
                 "[lineage-reconstruction] Plan(s) %s joined the queued reconstruction task "
                 "of seed task %s on operator %r.",
-                plans_str,
+                seed_plans_str,
                 seed_id,
                 seed_op.name,
             )
@@ -816,7 +823,7 @@ def _reconstruct_lost_object(
         # Without it the resubmitted bundle is minted a fresh id and the plan never
         # resolves.
         seed_input = seed_op.stamp_seed_reconstruction_task(
-            seed_id, reconstruction_plan_ids, seed_input
+            seed_id, seed_plan_ids, seed_input
         )
         source_op = seed_op.input_dependencies[0]
         topology[source_op].add_output(seed_input)
@@ -826,9 +833,17 @@ def _reconstruct_lost_object(
             seed_id,
             seed_op.name,
             seed_input.size_bytes(),
-            plans_str,
+            seed_plans_str,
         )
 
+    if not seed_task_ids:
+        logger.warning(
+            "Reconstructing lost object for task %s via plan(s) %s from pending "
+            "reconstruction tasks. No seed task is resubmitted.",
+            task.lineage_task_id,
+            plans_str,
+        )
+        return
     logger.warning(
         "Reconstructing lost object for task %s via plan(s) %s from seed task(s) %s.",
         task.lineage_task_id,

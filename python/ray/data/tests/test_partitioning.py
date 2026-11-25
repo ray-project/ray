@@ -896,19 +896,26 @@ def test_read_json_pandas_null_partition_is_in(ray_start_regular_shared, tmp_pat
         ([1], False),
     ],
 )
+@pytest.mark.parametrize("use_datasource_v2", [False, True])
 def test_read_json_pandas_null_partition_column_in_data(
-    ray_start_regular_shared, tmp_path, in_data, matches
+    ray_start_regular_shared,
+    tmp_path,
+    restore_data_context,
+    use_datasource_v2,
+    in_data,
+    matches,
 ):
     """A null partition value matches a file column only if it is all null.
 
-    Same rule as ``_add_partitions_to_table``, for pandas blocks.
+    Same rule as ``_add_partitions_to_table``, for the pandas blocks of
+    ``lines=True``.
     """
     path = os.path.join(tmp_path, f"grp={HIVE_DEFAULT_PARTITION}", "data.jsonl")
     os.makedirs(os.path.dirname(path))
     with open(path, "w") as f:
         f.write("\n".join(json.dumps({"grp": value, "number": 0}) for value in in_data))
 
-    # `lines=True` reads with pandas.
+    restore_data_context.use_datasource_v2 = use_datasource_v2
     ds = ray.data.read_json(
         tmp_path,
         lines=True,
