@@ -42,6 +42,7 @@ ray_cc_library(
     ],
     visibility = [
         "//src/ray/common/monitors:__pkg__",
+        "//src/ray/common/monitors/tests:__pkg__",
         "//src/ray/raylet:__pkg__",
     ],
     deps = [
