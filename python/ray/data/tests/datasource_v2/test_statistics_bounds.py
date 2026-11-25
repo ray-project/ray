@@ -10,6 +10,9 @@ transform over a large, structured input space, the suite is property-based
    claims ``fully_matched`` only where every row really matches;
 3. the rewrite is idempotent: re-entry on its own output changes nothing.
 
+Hypothesis runs here use the same derandomized CI profile as the schema
+unification property tests, so a failure is reproducible and never a flake.
+
 The prefix and overflow boundaries the ``@example`` cases pin are always
 tried, and the generator sweeps the space around them. The narrow-column
 case reads end to end through ``read_parquet`` on a local cluster.
@@ -24,7 +27,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
-from hypothesis import example, given, settings, strategies as st
+from hypothesis import HealthCheck, example, given, settings, strategies as st
 from pyarrow.fs import LocalFileSystem
 
 import ray
@@ -34,6 +37,15 @@ from ray.data._internal.datasource_v2.formats.parquet.statistics_bounds import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data.expressions import col
+
+settings.register_profile(
+    "ray_data_ci",
+    max_examples=200,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow],
+)
+settings.load_profile("ray_data_ci")
 
 if TYPE_CHECKING:
     from ray.data.expressions import Expr
@@ -291,7 +303,6 @@ def _pruning_cases(draw):
     )
 
 
-@settings(max_examples=500)
 @given(case=_semantics_cases())
 @example(
     case=_Case(
@@ -366,7 +377,6 @@ def test_rewrite_preserves_semantics(case):
         assert table.filter(derived.to_pyarrow()).equals(table.filter(e.to_pyarrow()))
 
 
-@settings(max_examples=30, deadline=None)
 @given(case=_pruning_cases())
 def test_derived_pruning_soundness_and_flag_exactness(case):
     """Pruning loses no group a matching row lives in, and over-claims nothing.
@@ -408,7 +418,6 @@ def test_derived_pruning_soundness_and_flag_exactness(case):
             assert group.filter(predicate).num_rows == group.num_rows
 
 
-@settings(max_examples=50, deadline=None)
 @given(case=_semantics_cases())
 def test_rewrite_is_idempotent(case):
     """Re-entry on the rewrite's own output is a fixed point.
