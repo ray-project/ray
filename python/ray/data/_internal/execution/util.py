@@ -55,12 +55,6 @@ def merge_runtime_envs(
     return merged
 
 
-def resource_override(ray_remote_args: Dict[str, Any], key: str, default: Any) -> Any:
-    """User value for a resource option; ``None`` means "use the default", as in Ray."""
-    value = ray_remote_args.get(key)
-    return default if value is None else value
-
-
 def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
     """Create ref bundles from a list of block data.
 

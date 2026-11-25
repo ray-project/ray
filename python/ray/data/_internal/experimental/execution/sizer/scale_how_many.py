@@ -168,7 +168,7 @@ class OpSizingPolicy:
     ) -> Optional[int]:
         """This op's warmup equal share in actors, clamped to
         [min_size, max_size] (see ``warmup_delta``). Also what an op held
-        until its ``on_start`` runs reserves (``SizingTicker``)."""
+        until its first input arrives reserves (``SizingTicker``)."""
         pool = op.actor_pool
         if op in self._unknown_pg_cap_by_op:
             share = self._unknown_pg_cap_by_op[op] * self.reservation_ratio
