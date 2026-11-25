@@ -86,7 +86,6 @@ class SandboxSpec(_SandboxSpecBase, total=False):
     cidr_allowlist: Optional[List[str]]
     shell: Optional[str]
     rootless: bool
-    readonly: bool
     capabilities: Optional[List[str]]
     cpu_limit: Optional[float]
     memory_limit_mb: Optional[int]
@@ -339,10 +338,6 @@ class SandboxHost:
                     disk=f"{disk_limit_mb}Mi" if disk_limit_mb is not None else 0,
                     env=dict(self._spec.get("env") or {}),
                     workdir=self._spec.get("workdir"),
-                    # Writability is the runtime's explicit contract: a scratch
-                    # dir exists only for an explicitly passed workdir on a
-                    # readonly rootfs; readonly=False sandboxes are fully
-                    # writable with image WORKDIR content visible.
                     # The API owns the TTL (see _ttl_watchdog); the upstream
                     # runtime stores but never enforces this, and the upstream
                     # actor's timer would reclaim only the sandbox, not the actor.
@@ -355,7 +350,6 @@ class SandboxHost:
                     dns=self._spec.get("dns"),
                     cidr_allowlist=self._spec.get("cidr_allowlist"),
                     capabilities=capabilities,
-                    readonly=bool(self._spec.get("readonly", True)),
                     **create_kwargs,
                 )
             finally:
@@ -839,8 +833,7 @@ class SandboxHost:
             )
         except SandboxError as exc:
             # A path the sandbox cannot write (a directory, a read-only
-            # rootfs outside the workdir) is the caller's error, not a
-            # server fault.
+            # mount) is the caller's error, not a server fault.
             return {"error_code": "write_failed", "message": str(exc)}
         return {"ok": True}
 

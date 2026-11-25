@@ -609,10 +609,11 @@ def test_read_kafka_datetime_partial_range(
     """Test that only messages within the datetime range are returned."""
     topic = "test-datetime-partial-range"
 
-    # First batch at Jan 1 2025, second batch at Feb 1 2025
-    batch1_ts = _datetime_to_ms(datetime(2025, 1, 1))
-    batch2_ts = _datetime_to_ms(datetime(2025, 2, 1))
-    boundary_time = datetime(2025, 1, 15)  # Between the two batches
+    # Kafka's default 7-day retention can delete older messages mid-test.
+    now = datetime.now(timezone.utc)
+    batch1_ts = _datetime_to_ms(now - timedelta(hours=2))
+    batch2_ts = _datetime_to_ms(now - timedelta(hours=1))
+    boundary_time = now - timedelta(minutes=90)
 
     kafka_producer.produce(
         topic,

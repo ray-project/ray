@@ -45,13 +45,8 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
-@pytest.fixture(params=[False, True], ids=["v1", "v2"])
-def use_datasource_v2(request, restore_data_context):
-    restore_data_context.use_datasource_v2 = request.param
-
-
 def test_read_parquet_allows_pickle_object_columns_with_env_var(
-    tmp_path, shutdown_only, use_datasource_v2, monkeypatch
+    tmp_path, shutdown_only, datasource_v2, monkeypatch
 ):
     # Set the environment variable on both the driver and the worker processes.
     monkeypatch.setenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", "1")
@@ -70,7 +65,7 @@ def test_read_parquet_allows_pickle_object_columns_with_env_var(
 
 
 def test_read_parquet_rejects_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, ray_start_regular_shared, datasource_v2
 ):
     marker = tmp_path / "exploit_marker"
 
@@ -93,7 +88,7 @@ def test_read_parquet_rejects_pickle_object_columns(
 
 
 def test_read_parquet_rejects_nested_pickle_object_columns(
-    tmp_path, ray_start_regular_shared, use_datasource_v2
+    tmp_path, ray_start_regular_shared, datasource_v2
 ):
     # A pickled-object column nested inside a `list<...>` must trip the guard
     # just like a top-level one; otherwise nesting bypasses the check.
@@ -302,7 +297,7 @@ def test_include_paths_with_column_projection(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    use_datasource_v2,
+    datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"], "id": [1, 2]})
@@ -406,7 +401,7 @@ def test_include_row_hash_with_column_projection(
     ray_start_regular_shared,
     tmp_path,
     target_max_block_size_infinite_or_default,
-    use_datasource_v2,
+    datasource_v2,
 ):
     path = os.path.join(tmp_path, "test.parquet")
     table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
@@ -1210,6 +1205,10 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         ("myfile-{i}.parquet", True),
         # Case 8: Templated filename with UUID already present - should not raise error
         ("myfile_{write_uuid}-{i}.parquet", False),
+        # Case 9: `parquet` in the stem is not a file extension
+        ("contains-parquet-{write_uuid}", False),
+        # Case 10: Same as above with an index template
+        ("contains-parquet-{write_uuid}-{i}", False),
     ],
     ids=[
         "no_uuid_no_ext",
@@ -1220,6 +1219,8 @@ def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
         "templated_no_uuid_no_ext",
         "templated_no_uuid_with_ext",
         "templated_has_uuid",
+        "contains_parquet_no_ext",
+        "templated_contains_parquet_no_ext",
     ],
 )
 def test_parquet_write_uuid_handling_with_custom_filename_provider(
@@ -1276,6 +1277,7 @@ def test_parquet_write_uuid_handling_with_custom_filename_provider(
         assert re.search(
             uuid_pattern, written_file
         ), f"File '{written_file}' should contain UUID"
+        assert pathlib.Path(written_file).suffix == ".parquet"
 
         # Verify the content is correct by reading back
         ds_read = ray.data.read_parquet(tmp_path)
@@ -1907,7 +1909,7 @@ def test_read_null_data_in_first_file(
 
 
 def test_read_parquet_does_not_call_infer_schema(
-    tmp_path, monkeypatch, ray_start_regular_shared, use_datasource_v2
+    tmp_path, monkeypatch, ray_start_regular_shared, datasource_v2
 ):
     """The V2 read path should not call _infer_schema, which can cause O(N)
     metadata reads. V1 still calls it to reconcile per-file schemas."""
@@ -3275,21 +3277,9 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
     tmp_path = tmp_path_factory.mktemp("nested_parquet")
 
     num_rows = 2500
+    rows_per_chunk = 250
     items_per_row = 10
-    payload_size = 50_000  # os.urandom bytes -> 100KB hex string per item
-
-    ids = list(range(num_rows))
-    nested_data = [
-        [
-            {
-                "key": f"item_{i}_{j}",
-                "payload": os.urandom(payload_size).hex(),
-                "value": j,
-            }
-            for j in range(items_per_row)
-        ]
-        for i in ids
-    ]
+    payload_size = 100_000  # bytes per item string
 
     schema = pa.schema(
         [
@@ -3309,7 +3299,23 @@ def nested_parquet_exceeding_2gb(tmp_path_factory):
         ]
     )
 
-    table = pa.table({"id": ids, "nested_col": nested_data}, schema=schema)
+    # Only the decoded size must exceed 2 GiB, so a compressible payload repeated by
+    # reference keeps the file and the memory to build and read it small.
+    payload = "x" * payload_size
+    nested_chunk = pa.array(
+        [
+            [
+                {"key": f"item_{i}_{j}", "payload": payload, "value": j}
+                for j in range(items_per_row)
+            ]
+            for i in range(rows_per_chunk)
+        ],
+        type=schema.field("nested_col").type,
+    )
+    nested_col = pa.chunked_array([nested_chunk] * (num_rows // rows_per_chunk))
+    table = pa.table(
+        {"id": list(range(num_rows)), "nested_col": nested_col}, schema=schema
+    )
     file_path = os.path.join(str(tmp_path), "data.parquet")
     pq.write_table(table, file_path, row_group_size=num_rows, use_dictionary=False)
     return str(tmp_path), file_path, num_rows, schema
@@ -3423,7 +3429,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
 
 
 def test_parquet_sampling_fails_on_permanent_error(
-    ray_start_regular_shared, tmp_path, use_datasource_v2
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """Test that parquet sampling does not hang on permanent OSError (e.g.,
     permission denied). Instead, it should fail with a clear error after
@@ -3460,7 +3466,7 @@ def test_parquet_sampling_fails_on_permanent_error(
 
 
 def test_parquet_sampling_retries_transient_error(
-    ray_start_regular_shared, tmp_path, use_datasource_v2
+    ray_start_regular_shared, tmp_path, datasource_v2
 ):
     """V2 schema sampling retries a footer read that fails with an error in
     ``DataContext.retried_io_errors``."""

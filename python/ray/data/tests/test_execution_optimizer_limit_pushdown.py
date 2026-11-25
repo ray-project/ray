@@ -11,10 +11,18 @@ from ray.data._internal.logical.operators import Download, Limit, MapBatches
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(autouse=True)
+def disable_top_n_rewrite(restore_data_context):
+    # Keep Sort + Limit as separate operators so the plans below exercise the
+    # limit pushdown rule rather than the Top-N rewrite.
+    DataContext.get_current().enable_top_n_rewrite = False
 
 
 def _check_valid_plan_and_result(

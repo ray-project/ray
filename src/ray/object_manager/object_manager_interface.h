@@ -32,6 +32,21 @@ class ObjectManagerInterface {
                         BundlePriority prio,
                         const TaskMetricsKey &task_key) = 0;
   virtual void CancelPull(uint64_t request_id) = 0;
+  /**
+   * @brief Record that the pull in flight for `object_id` consumes the object (the
+   * requesting actor task's TaskArg.is_move is set). Only call while a pull for the
+   * object exists; the record is dropped when no pull needs the object.
+   *
+   * @param object_id The object being pulled.
+   **/
+  virtual void MarkMovePull(const ObjectID &object_id) = 0;
+  /**
+   * @brief Whether the pull in flight for `object_id` consumes the object.
+   *
+   * @param object_id The object being pulled.
+   * @return True if MarkMovePull recorded the object and a pull still needs it.
+   **/
+  virtual bool IsMovePull(const ObjectID &object_id) const = 0;
   /// Mark the specified object as failed with the given error type.
   ///
   /// \param object_id The object id to store error message into.
