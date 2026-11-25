@@ -1214,8 +1214,8 @@ def test_replica_starts_with_supplied_tracing_config():
             DeploymentVersion("v1", deployment, {}),
             False,
             "/",
-            False,
             config,
+            False,
         )
         expected = ParentBasedTraceIdRatio(config.sampling_ratio).get_description()
         assert ray.get(replica.sampler_description.remote(), timeout=60) == expected

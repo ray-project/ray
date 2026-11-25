@@ -1090,8 +1090,8 @@ class Replica:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        tracing_config: TracingConfig,
         is_ingress_request_router: bool = False,
-        tracing_config: Optional[TracingConfig] = None,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -1206,9 +1206,7 @@ class Replica:
             component_type=ServeComponentType.REPLICA,
             component_name=self._component_name,
             component_id=self._component_id,
-            tracing_config=(
-                tracing_config if tracing_config is not None else TracingConfig()
-            ),
+            tracing_config=tracing_config,
         )
         if is_tracing_setup_successful:
             logger.info("Successfully set up tracing for replica")
@@ -3425,8 +3423,8 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        tracing_config: TracingConfig,
         is_ingress_request_router: bool = False,
-        tracing_config: Optional[TracingConfig] = None,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes

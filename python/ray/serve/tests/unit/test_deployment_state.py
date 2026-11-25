@@ -4931,7 +4931,7 @@ class TestActorReplicaWrapper:
         request = actor_replica_wrapper.start(
             info, assign_rank_callback=Mock(), tracing_config=config
         )
-        assert request.actor_init_args[-1] == config
+        assert request.actor_init_args[-2] == config
 
     def test_poll_shutdown_without_killing(self):
         wrapper = ActorReplicaWrapper(
@@ -4983,7 +4983,9 @@ class TestActorReplicaWrapper:
         max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
         replica_scheduling_request = actor_replica.start(
-            d_info, assign_rank_callback=lambda x: 0
+            d_info,
+            assign_rank_callback=lambda x: 0,
+            tracing_config=TracingConfig(enabled=False),
         )
         assert (
             "max_concurrency" in replica_scheduling_request.actor_options

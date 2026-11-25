@@ -17,6 +17,7 @@ from ray.serve._private.test_utils import (
     replica_rank_context,
     uninitialized_replicas_context,
 )
+from ray.serve.schema import TracingConfig
 
 
 @pytest.fixture(autouse=True)
@@ -83,6 +84,7 @@ def mock_deployment_state_manager(
                 placement_group_names,
                 cluster_node_info_cache,
                 autoscaling_state_manager,
+                tracing_config=TracingConfig(enabled=False),
                 head_node_id_override="fake-head-node-id",
                 create_placement_group_fn_override=create_placement_group_fn_override,
             )

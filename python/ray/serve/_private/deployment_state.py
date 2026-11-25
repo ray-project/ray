@@ -1317,11 +1317,11 @@ class ActorReplicaWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[str, str], ReplicaRank],
+        tracing_config: TracingConfig,
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
         target_node_id: Optional[str] = None,
-        tracing_config: Optional[TracingConfig] = None,
     ) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -1391,8 +1391,8 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
-                deployment_info.ingress_request_router,
                 tracing_config,
+                deployment_info.ingress_request_router,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -2386,11 +2386,11 @@ class DeploymentReplica:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[str, str], ReplicaRank],
+        tracing_config: TracingConfig,
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
         target_node_id: Optional[str] = None,
-        tracing_config: Optional[TracingConfig] = None,
     ) -> ReplicaSchedulingRequest:
         """Start a new actor for current DeploymentReplica instance.
 
@@ -3369,7 +3369,7 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
-        tracing_config: Optional[TracingConfig] = None,
+        tracing_config: TracingConfig,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
@@ -6877,9 +6877,9 @@ class DeploymentStateManager:
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
+        tracing_config: TracingConfig,
         head_node_id_override: Optional[str] = None,
         create_placement_group_fn_override: Optional[Callable] = None,
-        tracing_config: Optional[TracingConfig] = None,
     ):
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
