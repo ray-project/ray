@@ -118,10 +118,6 @@ class TurbopufferDatasink(Datasink):
         ... )
     """
 
-    @property
-    def on_write_start_requires_schema(self) -> bool:
-        return False
-
     def __init__(
         self,
         namespace: Optional[str] = None,

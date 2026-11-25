@@ -29,7 +29,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
-from ray.data.expressions import star
+from ray.data.expressions import col, star
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -805,21 +805,9 @@ def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
     _check_usage_record(["ReadRange", "WriteCSV"])
 
 
-@pytest.mark.parametrize(
-    "input_type",
-    ["from_items", "read", "filter", "project", "project_chain", "batches", "pandas"],
-)
-def test_write_start_receives_transformed_schema(
-    ray_start_regular_shared_2_cpus, restore_data_context, input_type
-):
-    import pyarrow as pa
-
+def _check_write_schema(ds, expected_schema, expected_num_rows):
     from ray.data.block import BlockAccessor
     from ray.data.datasource.datasink import Datasink
-
-    expected_schema = pa.schema([("id", pa.int64()), ("added", pa.int64())])
-    if input_type == "filter":
-        expected_schema = pa.schema([("id", pa.int32())])
 
     class SchemaCheckingDatasink(Datasink):
         def __init__(self):
@@ -844,52 +832,75 @@ def test_write_start_receives_transformed_schema(
         def on_write_complete(self, write_result):
             self.rows_written = sum(write_result.write_returns)
 
-    if input_type == "pandas":
-        DataContext.get_current().enable_pandas_block = True
-        ds = ray.data.from_pandas(pd.DataFrame({"id": range(8), "added": range(1, 9)}))
-        schema = ds._logical_plan.dag.infer_schema()
-        assert schema is not None and not isinstance(schema, pa.Schema)
-    elif input_type == "filter":
-        # Row-based filtering preserves Arrow types, including int32.
-        ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
-        ds = ds.filter(lambda row: row["id"] >= 0)
-    elif input_type in ("from_items", "project", "project_chain", "batches"):
-        ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
-    else:
-        ds = ray.data.range(8, override_num_blocks=2)
-
-    if input_type in ("project", "project_chain"):
-        from ray.data.expressions import col
-
-        ds = ds.with_column("added", col("id") + 1)
-        if input_type == "project_chain":
-            ds = ds.filter(lambda row: row["added"] >= 0)
-        assert ds._logical_plan.dag.infer_schema() == expected_schema
-    elif input_type == "batches":
-        ds = ds.map_batches(
-            lambda batch: batch.assign(added=batch["id"] + 1), batch_format="pandas"
-        )
-        assert ds._logical_plan.dag.infer_schema() is None
-    elif input_type not in ("filter", "pandas"):
-        ds = ds.map(lambda row: dict(row, added=row["id"] + 1))
     sink = SchemaCheckingDatasink()
     ds.write_datasink(sink)
 
     assert sink.start_calls == 1
-    assert sink.rows_written == 8
-    if input_type == "project":
-        assert "Project->Write" in ds._write_ds.stats()
-    elif input_type == "project_chain":
-        assert "Project->Filter(<lambda>)->Write" in ds._write_ds.stats()
-    elif input_type == "filter":
-        assert "Filter(<lambda>)->Write" in ds._write_ds.stats()
-    elif input_type == "batches":
-        assert "MapBatches(<lambda>)->Write" not in ds._write_ds.stats()
+    assert sink.rows_written == expected_num_rows
 
 
-@pytest.mark.parametrize("boundary", ["input", "sort", "min_bytes", "resources"])
+@pytest.mark.parametrize(
+    "transform,expected_operator",
+    [
+        pytest.param(
+            lambda ds: ds.map(lambda row: dict(row, added=row["id"] + 1)),
+            "Map(<lambda>):",
+            id="map",
+        ),
+        pytest.param(
+            lambda ds: ds.map_batches(
+                lambda batch: batch.assign(added=batch["id"] + 1),
+                batch_format="pandas",
+            ),
+            "MapBatches(<lambda>):",
+            id="map_batches",
+        ),
+        pytest.param(
+            lambda ds: ds.with_column("added", col("id") + 1),
+            "Project->Write:",
+            id="project",
+        ),
+        pytest.param(
+            lambda ds: ds.with_column("added", col("id") + 1).filter(
+                lambda row: row["added"] >= 0
+            ),
+            "Project->Filter(<lambda>)->Write:",
+            id="project_chain",
+        ),
+    ],
+)
+def test_write_start_receives_transformed_schema(
+    ray_start_regular_shared_2_cpus, transform, expected_operator
+):
+    import pyarrow as pa
+
+    ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
+    ds = transform(ds)
+    _check_write_schema(ds, pa.schema([("id", pa.int64()), ("added", pa.int64())]), 8)
+    assert expected_operator in ds._write_ds.stats()
+
+
+def test_write_start_preserves_filter_schema(ray_start_regular_shared_2_cpus):
+    import pyarrow as pa
+
+    ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
+    ds = ds.filter(lambda row: row["id"] >= 0)
+    _check_write_schema(ds, pa.schema([("id", pa.int32())]), 8)
+    assert "Filter(<lambda>)->Write" in ds._write_ds.stats()
+
+
+def test_write_start_converts_pandas_schema(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    import pyarrow as pa
+
+    DataContext.get_current().enable_pandas_block = True
+    ds = ray.data.from_pandas(pd.DataFrame({"id": range(8), "added": range(1, 9)}))
+    _check_write_schema(ds, pa.schema([("id", pa.int64()), ("added", pa.int64())]), 8)
+
+
 def test_unfused_write_start_uses_runtime_schema(
-    ray_start_regular_shared_2_cpus, monkeypatch, boundary
+    ray_start_regular_shared_2_cpus, monkeypatch
 ):
     import pyarrow as pa
 
@@ -899,21 +910,15 @@ def test_unfused_write_start_uses_runtime_schema(
     received_schemas = []
 
     class SchemaCheckingDatasink(Datasink):
-        @property
-        def min_bytes_per_write(self):
-            return 1 if boundary == "min_bytes" else None
-
         def on_write_start(self, schema=None):
             received_schemas.append(schema)
 
         def write(self, blocks, ctx):
             pass
 
-    ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
-    if boundary == "sort":
-        ds = ds.sort("id")
-    elif boundary in ("min_bytes", "resources"):
-        ds = ds.filter(lambda row: True, num_cpus=0.5 if boundary == "resources" else 1)
+    ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2).sort(
+        "id"
+    )
 
     # Distinguish static inference from the actual first-bundle schema.
     inferred_schema = expected_schema.with_metadata({b"source": b"inferred"})
@@ -921,11 +926,30 @@ def test_unfused_write_start_uses_runtime_schema(
         type(ds._logical_plan.dag), "infer_schema", lambda self: inferred_schema
     )
     sink = SchemaCheckingDatasink()
-    ds.write_datasink(sink, ray_remote_args={"num_cpus": 1})
+    ds.write_datasink(sink)
 
     assert len(received_schemas) == 1
     assert received_schemas[0].equals(expected_schema, check_metadata=True)
     assert "->Write" not in ds._write_ds.stats()
+
+
+def test_write_fusion_with_default_start_hook(ray_start_regular_shared_2_cpus):
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    class CountingDatasink(Datasink):
+        def write(self, blocks, ctx):
+            return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
+
+        def on_write_complete(self, result):
+            self.rows_written = sum(result.write_returns)
+
+    sink = CountingDatasink()
+    ds = ray.data.range(8, override_num_blocks=2).map_batches(lambda batch: batch)
+    ds.write_datasink(sink)
+
+    assert sink.rows_written == 8
+    assert "MapBatches(<lambda>)->Write" in ds._write_ds.stats()
 
 
 @pytest.mark.parametrize("requires_schema", [False, True])

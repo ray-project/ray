@@ -70,10 +70,6 @@ class KafkaDatasink(Datasink):
         without Kafka transactions or cross-task deduplication.
     """
 
-    @property
-    def on_write_start_requires_schema(self) -> bool:
-        return False
-
     def __init__(
         self,
         topic: str,
