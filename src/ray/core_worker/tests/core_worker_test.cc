@@ -17,9 +17,9 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
-#include <chrono>
 #include <future>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -913,8 +913,8 @@ class CoreWorkerLineagePinningTest : public CoreWorkerTest {
 };
 
 // A borrower asking about an object that is out of scope with its Reference still alive
-// has to get an answer: the value is gone, the borrower has no deadline, and only a retry
-// of a task that depends on the object would put a value back.
+// has to get an answer. Here the value is gone, the borrower has no deadline, and only a
+// retry of a task that depends on the object would put a value back.
 TEST_F(CoreWorkerLineagePinningTest, HandleGetObjectStatusOutOfScopeObject) {
   auto object_id = ObjectID::FromRandom();
   auto consumer_return_id = ObjectID::FromRandom();
@@ -946,6 +946,8 @@ TEST_F(CoreWorkerLineagePinningTest, HandleGetObjectStatusOutOfScopeObject) {
   // object is out of scope, so its value is deleted, but the Reference stays.
   reference_counter_->RemoveLocalReference(object_id, &deleted);
   memory_store_->Delete(deleted);
+  bool in_plasma = false;
+  ASSERT_FALSE(memory_store_->Contains(object_id, &in_plasma));
   ASSERT_TRUE(reference_counter_->HasReference(object_id));
   ASSERT_TRUE(reference_counter_->IsObjectOutOfScope(object_id));
 
@@ -953,22 +955,20 @@ TEST_F(CoreWorkerLineagePinningTest, HandleGetObjectStatusOutOfScopeObject) {
   request.set_object_id(object_id.Binary());
   request.set_owner_worker_id(core_worker_->GetWorkerID().Binary());
 
-  std::promise<Status> promise;
-  auto future = promise.get_future();
+  std::optional<Status> reply_status;
   rpc::GetObjectStatusReply reply;
 
   core_worker_->HandleGetObjectStatus(
       request,
       &reply,
-      [&promise](Status s, std::function<void()>, std::function<void()>) {
-        promise.set_value(s);
+      [&reply_status](Status s, std::function<void()>, std::function<void()>) {
+        reply_status = s;
       });
 
-  // A bounded wait rather than get(): without the check above the handler leaves the
-  // callback in the store and never replies, and that should fail here instead of
-  // hanging.
-  ASSERT_EQ(future.wait_for(std::chrono::seconds(5)), std::future_status::ready);
-  ASSERT_TRUE(future.get().ok());
+  // The reply is sent before the handler returns. Without the IsObjectOutOfScope check in
+  // the handler, it leaves the callback in the store and never replies.
+  ASSERT_TRUE(reply_status.has_value());
+  ASSERT_TRUE(reply_status->ok());
   EXPECT_EQ(reply.status(), rpc::GetObjectStatusReply::OUT_OF_SCOPE);
 }
 
