@@ -37,11 +37,11 @@ steps:
       - cibase
 
   - name: docgpubuild
-    label: "wanda: docgpubuild-py3.10"
+    label: "wanda: docgpubuild-py3.11"
     wanda: ci/docker/docgpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy(python=3.10)
+    depends_on: oss-ci-base_gpu-multipy(python=3.11)
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags:
       - oss
       - cibase
