@@ -40,9 +40,9 @@ def test_ray_dist_jar_uses_fixed_log4j_version():
     )
 
     assert {artifact: log4j_versions[artifact] for artifact in LOG4J_ARTIFACTS} == {
-        "log4j-api": "2.25.4",
-        "log4j-core": "2.25.4",
-        "log4j-slf4j-impl": "2.25.4",
+        "log4j-api": "2.25.5",
+        "log4j-core": "2.25.5",
+        "log4j-slf4j-impl": "2.25.5",
     }
 
 
@@ -55,3 +55,14 @@ def test_ray_dist_jar_uses_patched_httpcore5_version():
 
     assert match is not None
     assert match.group(1) == "5.4.3"
+
+
+def test_ray_dist_jar_uses_patched_jackson_databind_version():
+    java_deps = (REPO_ROOT / "java" / "dependencies.bzl").read_text()
+    match = re.search(
+        r"com\.fasterxml\.jackson\.core:jackson-databind:([0-9][^\"\s]*)",
+        java_deps,
+    )
+
+    assert match is not None
+    assert match.group(1) == "2.18.11"
