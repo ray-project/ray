@@ -29,6 +29,7 @@
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner.h"
 #include "ray/common/protobuf_utils.h"
+#include "ray/common/ray_config.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker_rpc_client/fake_core_worker_client.h"
 #include "ray/gcs/actor/fake_gcs_actor_manager.h"
@@ -1429,26 +1430,11 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
 }
 
-namespace {
-
-// Counts publications so tests can observe what the report-state success
-// callback did after the handler returned.
-class CountingPublisher : public pubsub::FakePublisher {
- public:
-  explicit CountingPublisher(int *count) : count_(count) {}
-  void Publish(rpc::PubMessage pub_message) override { ++(*count_); }
-
- private:
-  int *count_;
-};
-
-}  // namespace
-
 TEST_F(GcsAutoscalerStateManagerTest, ReportStateSuccessCallbackSurvivesHandlerReturn) {
   RayConfig::instance().initialize(R"({"enable_infeasible_task_early_exit": false})");
-  int publish_count = 0;
-  pubsub::ObservabilityPublisher observability_publisher(
-      std::make_unique<CountingPublisher>(&publish_count));
+  auto publisher = std::make_unique<pubsub::FakePublisher>();
+  const auto &publish_calls = publisher->publish_calls;
+  pubsub::ObservabilityPublisher observability_publisher(std::move(publisher));
   GcsAutoscalerStateManager manager("fake_cluster",
                                     *gcs_node_manager_,
                                     *gcs_actor_manager_,
@@ -1477,18 +1463,31 @@ TEST_F(GcsAutoscalerStateManagerTest, ReportStateSuccessCallbackSurvivesHandlerR
   ASSERT_TRUE(static_cast<bool>(success_callback));
   // No infeasible requests reported: nothing may be published.
   success_callback();
-  ASSERT_EQ(publish_count, 0);
+  ASSERT_EQ(publish_calls.size(), 0);
 
   // A later report that newly carries infeasible requests must publish once.
   rpc::autoscaler::ReportAutoscalingStateRequest request_with_infeasible;
   auto *state = request_with_infeasible.mutable_autoscaling_state();
   state->set_autoscaler_state_version(2);
   state->add_infeasible_resource_requests();
+  success_callback = nullptr;
   manager.HandleReportAutoscalingState(
       request_with_infeasible, &reply, send_reply_callback);
   ASSERT_TRUE(static_cast<bool>(success_callback));
   success_callback();
-  ASSERT_EQ(publish_count, 1);
+  ASSERT_EQ(publish_calls.size(), 1);
+
+  // An outdated report must not publish, even one with more infeasible requests.
+  rpc::autoscaler::ReportAutoscalingStateRequest outdated_request;
+  auto *outdated_state = outdated_request.mutable_autoscaling_state();
+  outdated_state->set_autoscaler_state_version(1);
+  outdated_state->add_infeasible_resource_requests();
+  outdated_state->add_infeasible_resource_requests();
+  success_callback = nullptr;
+  manager.HandleReportAutoscalingState(outdated_request, &reply, send_reply_callback);
+  ASSERT_TRUE(static_cast<bool>(success_callback));
+  success_callback();
+  ASSERT_EQ(publish_calls.size(), 1);
 }
 
 }  // namespace gcs
