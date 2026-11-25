@@ -1,7 +1,7 @@
 """Tests for the observation-only bottleneck model."""
 
 from types import SimpleNamespace
-from typing import Any, Dict, Tuple, cast
+from typing import Any, Dict, Optional, Tuple, cast
 
 import pytest
 
@@ -343,9 +343,16 @@ class _Op:
             num_tasks_finished=0,
         )
         self.actor_pool = _Pool()
+        # Set by ``_observer``: the op's queue, which says whether a bundle
+        # is ready to dispatch.
+        self.op_state: Optional[_OpState] = None
 
     def has_completed(self):
         return self.completed
+
+    def has_queued_bundle(self):
+        assert self.op_state is not None
+        return self.op_state.has_queued_bundle()
 
     def slot_usage(self):
         return SlotUsage(
@@ -362,9 +369,15 @@ class _Op:
 class _OpState:
     def __init__(self, queued):
         self.queued = queued
+        # Whether the queued blocks form only a partial bundle, which can't
+        # dispatch until more input arrives.
+        self.partial = False
 
     def total_enqueued_input_blocks(self):
         return self.queued
+
+    def has_queued_bundle(self):
+        return self.queued > 0 and not self.partial
 
 
 def _observer(*ops, queued, window_s=4.0):
@@ -380,6 +393,8 @@ def _observer(*ops, queued, window_s=4.0):
         is_pg_managed=lambda op: False,
     )
     topology = cast(Any, {op: _OpState(queued=q) for op, q in zip(ops, queued)})
+    for op in ops:
+        op.op_state = topology[op]
     clock = _Clock()
     observer = BottleneckObserver(cast(Any, profiles), clock=clock, window_s=window_s)
 
@@ -394,7 +409,7 @@ def _observer(*ops, queued, window_s=4.0):
     return observer, topology, step
 
 
-def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
+def test_observer_counts_idle_as_starved_only_without_a_ready_bundle():
     producer = _Op("P", serving=4, obp_actors=4)
     consumer = _Op("C", serving=2, busy_slots=1.0)
     observer, topology, step = _observer(producer, consumer, queued=(0, 3))
@@ -419,6 +434,17 @@ def test_observer_counts_idle_as_starved_only_with_an_empty_queue():
         cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)[consumer].starved
         == 0.5
     )
+
+    # Queued blocks that form only a partial bundle can't dispatch: the idle
+    # slot waits on the producer, so it is starved too.
+    topology[consumer].queued = 3
+    topology[consumer].partial = True
+    step(5)
+    assert (
+        cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)[consumer].starved
+        == 0.5
+    )
+    topology[consumer].partial = False
 
     # The consumer loses every actor with input queued: it stays in the
     # model as unstaffed, and is still the one named.

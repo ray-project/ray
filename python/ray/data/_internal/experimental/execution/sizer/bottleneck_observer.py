@@ -9,7 +9,8 @@ seats):
   sizer tick still count.
 - output-backpressured (obp): every slot of an actor whose pull budget is
   exhausted, so its outputs can't move (sampled each scheduling step)
-- starved: idle slots while the input queue is empty
+- starved: idle slots while the op has no bundle ready to dispatch (its
+  queue is empty or holds only a partial bundle), so it waits on its producer
 
 An op with queued input but no serving actor at all (e.g. a Write sink that
 could not place its first actor) counts that time as one fully busy actor:
@@ -392,9 +393,9 @@ class ShareWindow:
         unstaffed: bool = False,
     ) -> None:
         """One interval of ``dt`` seconds: ``slot_s`` slot-seconds of
-        capacity, split into busy / obp / starved (the rest was idle with work
-        queued). ``unstaffed``: no serving actor but input is queued; the
-        interval counts as one fully busy slot."""
+        capacity, split into busy / obp / starved (the rest was idle with a
+        bundle ready to dispatch). ``unstaffed``: no serving actor but input
+        is queued; the interval counts as one fully busy slot."""
         self._latest_actors = actors
         if dt <= 0:
             return
@@ -510,8 +511,11 @@ class BottleneckObserver:
         now = self._clock()
         dt = 0.0 if self._last_t is None else now - self._last_t
         self._last_t = now
+        # 1. Compute the metrics needed. This includes task slot
+        # breakdown and dispatchable queued inputs.
         usages: Dict["EAPMO", "SlotUsage"] = {}
         queued: Dict["EAPMO", int] = {}
+        dispatchable: Dict["EAPMO", bool] = {}
         for op in self._profiles.actor_pool_ops:
             if op.has_completed():
                 for per_op in (self._windows, self._last_integrals):
@@ -521,14 +525,17 @@ class BottleneckObserver:
                 continue
             usages[op] = op.slot_usage()
             queued[op] = topology[op].total_enqueued_input_blocks()
+            dispatchable[op] = op.has_queued_bundle()
+
+        # 2. Compute the slot-seconds for each op since last observation.
         slot_s = {
-            op: self._record_op(op, usage, queued[op], dt)
+            op: self._record_op(op, usage, queued[op], dispatchable[op], dt)
             for op, usage in usages.items()
         }
-        # Joint per-edge shares: at this moment, is the consumer saturated
+        # 3. Joint per-edge shares: at this moment, is the consumer saturated
         # (no idle slot, or input queued with no actor)? The producer's
-        # output-backpressured slots count as blocked by it if so, else as
-        # held back by the producer's own budget.
+        # output-backpressured slots count as blocked by it if so, otherwise
+        # the producer is held back by the their own budget.
         saturated = {
             op: usage.idle_slots <= 0 if usage.slots > 0 else queued[op] > 0
             for op, usage in usages.items()
@@ -556,9 +563,12 @@ class BottleneckObserver:
         op: "EAPMO",
         usage: "SlotUsage",
         queued: int,
+        dispatchable: bool,
         dt: float,
     ) -> float:
         """Record one op's interval; returns its slot-seconds of capacity."""
+
+        # 1. Compute the delta between the last slot-seconds.
         prev = self._last_integrals.get(op)
         self._last_integrals[op] = (usage.busy_slot_seconds, usage.slot_seconds)
         if prev is None:
@@ -566,21 +576,24 @@ class BottleneckObserver:
         else:
             busy_integral = max(0.0, usage.busy_slot_seconds - prev[0])
             slot_s = max(0.0, usage.slot_seconds - prev[1])
-        # Output backpressure is sampled, not integrated: cap it at the
-        # integrated capacity, which an actor that joined mid-interval
-        # undershoots.
+
+        # 2. This represents the obp slot-seconds
         obp_s = min(usage.obp_slots * dt, slot_s)
-        # The integral counts output-backpressured actors' held tasks; that
-        # time is obp, not busy.
+
+        # 3. This represents busy slot-seconds
         busy_s = min(
             max(0.0, busy_integral - usage.obp_busy_slots * dt),
             max(0.0, slot_s - obp_s),
         )
-        # Idle with work queued is a dispatch gap, not starvation.
-        starved_s = max(0.0, slot_s - obp_s - busy_s) if queued == 0 else 0.0
+
+        # 4. Compute the starved-seconds. Note that if the operator has a
+        # dispatchable bundle, it's not starved, it just means that the
+        # operator doesn't have free task slots.
+        starved_s = 0.0 if dispatchable else max(0.0, slot_s - obp_s - busy_s)
         window = self._windows.get(op)
         if window is None:
-            window = self._windows[op] = ShareWindow(self.window_s)
+            self._windows[op] = ShareWindow(self.window_s)
+            window = self._windows[op]
         window.record(
             dt=dt,
             actors=usage.serving_actors,
