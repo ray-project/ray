@@ -388,8 +388,7 @@ TEST(OrderedActorTaskExecutionQueueTest, ShutdownCancelsQueuedAndWaitsForRunning
 
 TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundCancelsRemainingAttempt) {
   // Two attempts of one task can be pending at the same time (e.g. a retry
-  // that arrives while an earlier attempt is still queued or running, as in
-  // UnorderedActorTaskExecutionQueueTest.TestSameTaskMultipleAttemptsCancellation).
+  // that arrives while an earlier attempt is still queued or running).
   // Discarding one attempt must not hide the other one from CancelTaskIfFound.
   instrumented_io_context io_service;
   FakeWaiter waiter;
@@ -518,6 +517,70 @@ TEST(OrderedActorTaskExecutionQueueTest, CancelTaskIfFoundMarksLaterAttempt) {
 
   ASSERT_EQ(n_executed.load(), 0);
   ASSERT_EQ(n_rejected.load(), 2);
+  ASSERT_FALSE(queue.CancelTaskIfFound(task_id));
+
+  queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest,
+     CancelTaskIfFoundAfterReorderTimeoutDropsAttempt) {
+  // Same as CancelTaskIfFoundCancelsRemainingAttempt, but the reorder timeout drops the
+  // first attempt instead of a stale seq no.
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_rejected(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_rejected](const TaskToExecute &task, const Status &status) {
+    if (status.IsSchedulingCancelled()) {
+      n_rejected.fetch_add(1);
+    }
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       /*reorder_wait_seconds=*/1,
+                                       execute_task,
+                                       cancel_task);
+  TaskID task_id = TaskID::FromRandom(JobID::FromInt(1));
+
+  // Attempt 0 has seq 1 and no args; seq 0 never arrives, so the reorder timer starts.
+  TaskSpecification task_spec_attempt_0;
+  task_spec_attempt_0.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_attempt_0.GetMutableMessage().set_task_id(task_id.Binary());
+  task_spec_attempt_0.GetMutableMessage().set_attempt_number(0);
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_attempt_0));
+
+  // Attempt 1 is a retry waiting for its dependencies.
+  TaskSpecification task_spec_attempt_1;
+  task_spec_attempt_1.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_attempt_1.GetMutableMessage().set_task_id(task_id.Binary());
+  task_spec_attempt_1.GetMutableMessage().set_attempt_number(1);
+  task_spec_attempt_1.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      ObjectID::FromRandom().Binary());
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_attempt_1));
+
+  // The timeout cancels attempt 0. The retry is not in the in-order queue, so it stays.
+  io_service.run();
+  ASSERT_TRUE(queue.CancelTaskIfFound(task_id));
+
+  // Attempt 1's dependencies arrive; it must be rejected as canceled, not run.
+  waiter.Complete(0);
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+
+  ASSERT_EQ(n_executed.load(), 0);
+  ASSERT_EQ(n_rejected.load(), 1);
   ASSERT_FALSE(queue.CancelTaskIfFound(task_id));
 
   queue.Stop();
