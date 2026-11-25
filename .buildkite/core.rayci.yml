@@ -60,6 +60,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env:
       PYTHON_VERSION: "{{array.python}}"
       EXTRA_DEPENDENCY: core
@@ -318,8 +319,9 @@ steps:
       - forge
       - ray-wheel-build(python=3.10)
 
-  # Premerge runs only the lowest and highest supported Python versions. The
-  # intermediate versions are covered by the postmerge-only step below.
+  # Premerge runs only the lowest and highest supported Python versions, plus
+  # 3.15 while support for it is being added. The intermediate versions are
+  # covered by the postmerge-only step below.
   - label: ":ray: core: minimal tests {{array.python}}"
     key: core_minimal_tests
     tags:
@@ -374,6 +376,7 @@ steps:
       python:
         - "3.10"
         - "3.14"
+        - "3.15"
 
   # Intermediate Python versions only run on postmerge (skipped on premerge).
   - label: ":ray: core: minimal tests {{array.python}}"
