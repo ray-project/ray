@@ -142,6 +142,14 @@ class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
             logger.info(f"Requesting resources: {resources_per_worker} * {num_workers}")
         self._send_resource_request()
 
+    async def before_controller_shutdown(self):
+        """Cancel the resource request when the controller shuts down."""
+        self._cancel_resource_request()
+
+    def before_controller_abort(self):
+        """Cancel the resource request when the controller is aborted."""
+        self._cancel_resource_request()
+
     # --------------------------
     # WorkerGroupCallback
     # --------------------------
@@ -156,11 +164,3 @@ class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
         self._coordinator_client.register_placement_group(
             placement_group_id=placement_group.id.hex()
         )
-
-    async def before_controller_shutdown(self):
-        """Cancel the resource request when the controller shuts down."""
-        self._cancel_resource_request()
-
-    def before_controller_abort(self):
-        """Cancel the resource request when the controller is aborted."""
-        self._cancel_resource_request()
