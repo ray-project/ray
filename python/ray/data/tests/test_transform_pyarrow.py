@@ -6,10 +6,14 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.arrow_ops.transform_pyarrow import (
+    numpy_copy_is_deep,
+)
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
 )
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.extensions import (
     ArrowConversionError,
@@ -275,6 +279,56 @@ def test_concat_different_schemas_uses_unification(monkeypatch):
     assert len(calls) == 1
     assert result.column("value").to_pylist() == [1, 2]
     assert result.schema.field("value").type == pa.int64()
+
+
+def _variable_shaped_tensor():
+    ragged = np.empty(2, dtype=object)
+    ragged[0], ragged[1] = np.zeros(1), np.zeros(2)
+    return ArrowTensorArray.from_numpy(ragged)
+
+
+def _tensor_with_null_row():
+    rows = np.empty(2, dtype=object)
+    rows[0], rows[1] = np.zeros((2, 2)), None
+    return BlockAccessor.batch_to_block({"col": rows})["col"]
+
+
+def _native_tensor(with_null_row):
+    tensor = pa.FixedShapeTensorArray.from_numpy_ndarray(np.zeros((2, 2, 2)))
+    mask = pa.array([False, with_null_row])
+    storage = pa.FixedSizeListArray.from_arrays(tensor.storage.values, 4, mask=mask)
+    return pa.ExtensionArray.from_storage(tensor.type, storage)
+
+
+@pytest.mark.parametrize(
+    "make_column,expected",
+    [
+        (lambda: pa.array([1, 2]), True),
+        (lambda: pa.array([1, None]), True),
+        (lambda: pa.array([1.0, 2.0]), True),
+        (lambda: pa.array([True, False]), True),
+        (lambda: pa.array([None, None]), True),
+        (lambda: pa.array([0, 1], type=pa.timestamp("us", tz="UTC")), True),
+        (lambda: pa.array([0, 1], type=pa.date32()), True),
+        (lambda: pa.array([0, 1], type=pa.duration("s")), True),
+        (lambda: ArrowTensorArray.from_numpy(np.zeros((2, 2, 2))), True),
+        (lambda: pa.array(["a", "b"]), False),
+        (lambda: pa.array([[1], [2]]), False),
+        (lambda: pa.array([{"x": 1}, {"x": 2}]), False),
+        (_variable_shaped_tensor, False),
+        # Null rows make the tensor column an object array of views.
+        (lambda: _tensor_with_null_row(), False),
+        (lambda: _native_tensor(with_null_row=False), True),
+        (lambda: _native_tensor(with_null_row=True), False),
+    ],
+)
+def test_numpy_copy_is_deep(make_column, expected):
+    table = pa.table({"col": make_column()})
+    assert numpy_copy_is_deep(table) == expected
+
+    # The result has to match what the NumPy conversion actually returns.
+    batch = BlockAccessor.for_block(table).to_batch_format("numpy")
+    assert (batch["col"].dtype != object) == expected
 
 
 if __name__ == "__main__":

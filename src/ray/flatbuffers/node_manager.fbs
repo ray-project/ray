@@ -165,6 +165,7 @@ table WaitForActorCallArgsRequest {
   // Sent back to the core worker to notify the wait has completed.
   task_id: string;
   attempt_number: int;
+  is_move: [bool];
 }
 
 // This struct is the same as ErrorTableData.
