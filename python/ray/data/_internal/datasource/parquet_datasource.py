@@ -26,6 +26,9 @@ from ray.data._internal.arrow_block import (
 )
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
+    float_column_names,
+    has_column_arithmetic,
+    is_statistics_safe,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     PARQUET_FILE_EXTENSIONS,
@@ -813,6 +816,14 @@ class ParquetDatasource(Datasource):
         2. Partition predicates → used for partition pruning (file-level filtering)
         3. Mixed predicates → both optimizations applied together
         """
+        # Filters PyArrow would evaluate differently from Ray must stay in the
+        # ``Filter`` above the read; returning ``self`` keeps it there.
+        if has_column_arithmetic(expr=predicate_expr) or not is_statistics_safe(
+            predicate=predicate_expr,
+            float_columns=float_column_names(self._file_schema),
+        ):
+            return self
+
         partition_cols = set(self._partition_columns)
 
         if not partition_cols:

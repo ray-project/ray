@@ -79,13 +79,25 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
         assert chunk_size > 0, f"chunk_size must be positive, got {chunk_size}"
         self._chunk_size = chunk_size
 
+    def _is_chunked(self, file_info: FileInfo) -> bool:
+        """Whether the file is listed as byte-range chunks, not read whole.
+
+        Byte ranges need the file's size, so a file of unknown size is read
+        whole, like a compressed one.
+        """
+        return (
+            file_info.size is not None
+            and file_info.size > self._chunk_size
+            and not _is_compressed(file_info.path)
+        )
+
     @override
     def _chunk_metadatas_of_file(
         self, file_info: FileInfo
     ) -> List[Optional[ChunkMetadata]]:
-        assert file_info.size is not None
-        if file_info.size <= self._chunk_size or _is_compressed(file_info.path):
+        if not self._is_chunked(file_info):
             return [None]
+        assert file_info.size is not None
         return [
             chunk.to_metadata()
             for chunk in split_into_line_chunks(

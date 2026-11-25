@@ -16,6 +16,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    PENDING_NODE_IDLE_TERMINATION_GATED_KEY,
     RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -411,6 +412,8 @@ class AutoscalingConfig:
         """Returns the idle timeout in seconds for the pending nodes not needed by any
         resource demands, or None if they should never be terminated for it.
         """
+        if self.get_provider_config().get(PENDING_NODE_IDLE_TERMINATION_GATED_KEY):
+            return None
         timeout_s = RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S
         return float(timeout_s) if timeout_s >= 0 else None
 
