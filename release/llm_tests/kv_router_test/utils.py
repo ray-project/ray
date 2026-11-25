@@ -36,7 +36,6 @@ def build_kv_config(
     request_router_class,
     kv_events_port_base,
     num_replicas=1,
-    decode_progress=False,
     request_router_kwargs=None,
 ):
     """Config for a direct-streaming KV-aware app with engine KV events enabled.
@@ -44,9 +43,6 @@ def build_kv_config(
     Build it outside ``patch_ingress``: serializing the router class clears this
     module from cloudpickle's pickle-by-value registry.
     """
-    runtime_env = {}
-    if decode_progress:
-        runtime_env = {"env_vars": {"RAY_SERVE_LLM_ENABLE_DECODE_BLOCK_PROGRESS": "1"}}
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id=MODEL_ID,
@@ -69,7 +65,6 @@ def build_kv_config(
         ),
         placement_group_config={"bundles": [{"GPU": 1}]},
         experimental_configs={"KV_EVENTS_PORT_BASE": kv_events_port_base},
-        runtime_env=runtime_env,
     )
     # Emit engine KV-cache events so each ingress tracker registers the
     # replica's worker (schedulable, required to book a reservation against it).
@@ -298,10 +293,6 @@ class LLMRouter(_LLMRouter):
     async def get_active_request_ids(self):
         """(Test only) Ids of the requests in the tracker's in-flight view."""
         return list(self._kv_token_tracker._requests)
-
-    def get_block_size(self):
-        """(Test only) The KV-cache block size the tracker pinned."""
-        return self._kv_token_tracker.get_block_size()
 
     async def select_worker(
         self,

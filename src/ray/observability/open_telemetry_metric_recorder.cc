@@ -26,9 +26,11 @@
 #include <opentelemetry/sdk/metrics/view/view.h>
 #include <opentelemetry/sdk/metrics/view/view_registry.h>
 
+#include <algorithm>
 #include <cassert>
 #include <utility>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -303,6 +305,25 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
     // Already registered.  Note that this is a common case for metrics defined
     // via Metric interface. See https://github.com/ray-project/ray/issues/54538
     // for more details.
+    auto it = histogram_boundaries_.find(name);
+    if (it != histogram_boundaries_.end() && it->second != buckets) {
+      const std::vector<double> &registered = it->second;
+      const size_t first_diff =
+          std::mismatch(
+              registered.begin(), registered.end(), buckets.begin(), buckets.end())
+              .first -
+          registered.begin();
+      RAY_LOG_ONCE_PER_PROCESS(WARNING) << absl::StrFormat(
+          "Histogram metric %s is already registered with different bucket boundaries "
+          "(%d registered vs %d requested, first difference at index %d). The new "
+          "boundaries are ignored and values are bucketed using the boundaries from the "
+          "first registration. Further boundary mismatches in this process are not "
+          "logged.",
+          name,
+          registered.size(),
+          buckets.size(),
+          first_diff);
+    }
     return;
   }
   // Create a histogram instrument with explicit buckets
@@ -332,6 +353,7 @@ void OpenTelemetryMetricRecorder::RegisterHistogramMetric(
       std::move(instrument_selector), std::move(meter_selector), std::move(view));
   auto instrument = GetMeter()->CreateDoubleHistogram(name, description, /*unit=*/"");
   registered_instruments_[name] = std::move(instrument);
+  histogram_boundaries_[name] = buckets;
 }
 
 void OpenTelemetryMetricRecorder::SetMetricValue(

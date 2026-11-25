@@ -500,25 +500,36 @@ def _create_meta(num_rows):
     )
 
 
-def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetadata]:
+def _create_block_and_metadata(
+    data: Any, unknown_num_rows: bool = False
+) -> Tuple[ObjectRef[Block], BlockMetadata]:
     block = pd.DataFrame({"id": data})
     metadata = BlockAccessor.for_block(block).get_metadata()
+    if unknown_num_rows:
+        from dataclasses import replace
+
+        metadata = replace(metadata, num_rows=None)
     return (ray.put(block), metadata)
 
 
-def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
+def _create_bundle(
+    blocks: List[List[Any]], unknown_num_rows: bool = False
+) -> RefBundle:
     schema = BlockAccessor.for_block(pd.DataFrame({"id": []})).schema()
     return RefBundle(
-        [BlockEntry(*_create_block_and_metadata(block)) for block in blocks],
+        [
+            BlockEntry(*_create_block_and_metadata(block, unknown_num_rows))
+            for block in blocks
+        ],
         owns_blocks=True,
         schema=schema,
     )
 
 
-def _create_blocks_with_metadata(blocks):
+def _create_blocks_with_metadata(blocks, unknown_num_rows: bool = False):
     # Returns the legacy 2-tuple shape (BlockPartition) consumed by the
     # split helpers in ``ray.data._internal.split``.
-    bundle = _create_bundle(blocks)
+    bundle = _create_bundle(blocks, unknown_num_rows=unknown_num_rows)
     return [(entry.ref, entry.metadata) for entry in bundle.blocks]
 
 
@@ -653,10 +664,19 @@ def test_private_split_at_indices(ray_start_regular_shared_2_cpus):
     splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
+    inputs = _create_blocks_with_metadata([[1], [2, 3], [4]], unknown_num_rows=True)
+    splits = list(zip(*_split_at_indices(inputs, [2])))
+    verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
-def equalize_helper(input_block_lists: List[List[List[Any]]]):
+
+def equalize_helper(
+    input_block_lists: List[List[List[Any]]], unknown_num_rows: bool = False
+):
     result = _equalize(
-        [_create_bundle(block_list) for block_list in input_block_lists],
+        [
+            _create_bundle(block_list, unknown_num_rows=unknown_num_rows)
+            for block_list in input_block_lists
+        ],
         owned_by_consumer=True,
     )
     result_block_lists = []
@@ -670,8 +690,12 @@ def equalize_helper(input_block_lists: List[List[List[Any]]]):
     return result_block_lists
 
 
-def verify_equalize_result(input_block_lists, expected_block_lists):
-    result_block_lists = equalize_helper(input_block_lists)
+def verify_equalize_result(
+    input_block_lists, expected_block_lists, unknown_num_rows: bool = False
+):
+    result_block_lists = equalize_helper(
+        input_block_lists, unknown_num_rows=unknown_num_rows
+    )
     assert result_block_lists == expected_block_lists
 
 
@@ -680,6 +704,9 @@ def test_equalize(ray_start_regular_shared_2_cpus):
     verify_equalize_result([[]], [[]])
     verify_equalize_result([[[1]], []], [[], []])
     verify_equalize_result([[[1], [2, 3]], [[4]]], [[[1], [2]], [[4], [3]]])
+    verify_equalize_result(
+        [[[1], [2, 3]], [[4]]], [[[1], [2]], [[4], [3]]], unknown_num_rows=True
+    )
     verify_equalize_result([[[1], [2, 3]], []], [[[1]], [[2]]])
     verify_equalize_result(
         [[[1], [2, 3], [4, 5]], [[6]], []], [[[1], [2]], [[6], [3]], [[4, 5]]]

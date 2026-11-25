@@ -11,12 +11,24 @@ data = b"\n".join([b"some test data"] * 1000)
 data_file = "http://localhost:%i/index/data_file" % port
 index = b'<a href="%s">Link</a>' % data_file.encode()
 
+json_num_rows = 1000
+json_data = b"\n".join(b'{"id": %d}' % i for i in range(json_num_rows))
+json_file = "http://localhost:%i/index/data.jsonl" % port
+
+# Served whole, with its size, whatever range a request asks for, as
+# ``python -m http.server`` does. Larger than fsspec's 5 MiB read block.
+no_ranges_num_lines = 450_000
+no_ranges_data = b"\n".join([b"some test data"] * no_ranges_num_lines)
+no_ranges_file = "http://localhost:%i/no_ranges/data_file" % port
+
 
 class HTTPTestHandler(BaseHTTPRequestHandler):
     files = {
         "/index/data_file": data,
         "/index": index,
+        "/index/data.jsonl": json_data,
     }
+    no_ranges_files = {"/no_ranges/data_file": no_ranges_data}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -33,6 +45,9 @@ class HTTPTestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         file_path = self.path.rstrip("/")
+        if file_path in self.no_ranges_files:
+            file_data = self.no_ranges_files[file_path]
+            return self._respond(200, {"Content-Length": len(file_data)}, file_data)
         file_data = self.files.get(file_path)
         if file_data is None:
             return self._respond(404)

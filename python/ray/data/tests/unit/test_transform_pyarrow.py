@@ -1,3 +1,4 @@
+import itertools
 import re
 import types
 from typing import Iterable
@@ -24,6 +25,7 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     create_arrow_fixed_shape_tensor_type,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,
@@ -383,6 +385,33 @@ def test_shuffle():
     assert shuffled == pa.Table.from_pydict(
         {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
     )
+
+
+@pytest.mark.parametrize(
+    "pa_type",
+    [
+        pa.int64(),
+        pa.string(),
+        pa.struct([("a", pa.int64())]),
+        ArrowTensorType((2, 2), pa.float32()),
+        ArrowTensorTypeV2((2, 2), pa.float32()),
+        ArrowVariableShapedTensorType(pa.float32(), 2),
+        ArrowPythonObjectType(),
+        # `from_numpy_ndarray` adds `permutation=[0, 1]`, which
+        # `Schema.empty_table()` rejects on pyarrow 25+.
+        pa.FixedShapeTensorArray.from_numpy_ndarray(np.zeros((1, 2, 2))).type,
+        # `Schema.empty_table()` rejects extension types nested in a struct.
+        pa.struct([("x", ArrowTensorTypeV2((2,), pa.int64()))]),
+    ],
+)
+def test_create_empty_table(pa_type):
+    schema = pa.schema([("c", pa_type), ("i", pa.int64())], metadata={b"k": b"v"})
+
+    table = _create_empty_table(schema)
+
+    assert table.num_rows == 0
+    assert table.schema.equals(schema, check_metadata=True)
+    assert [column.num_chunks for column in table.columns] == [1, 1]
 
 
 def test_arrow_concat_empty(simple_concat_data):
@@ -1977,9 +2006,17 @@ def test_align_struct_fields_non_struct_columns(
         )
 
 
-def test_align_struct_fields_empty_blocks(empty_block_blocks, empty_block_schema):
+@pytest.mark.parametrize("zero_chunks", [False, True])
+def test_align_struct_fields_empty_blocks(
+    empty_block_blocks, empty_block_schema, zero_chunks
+):
     """Test alignment with empty blocks."""
     t1, t2 = empty_block_blocks
+    if zero_chunks:
+        t1 = pa.table(
+            {"struct": pa.chunked_array([], type=t1.schema.field("struct").type)}
+        )
+        assert t1["struct"].num_chunks == 0
 
     aligned_blocks = _align_struct_fields([t1, t2], empty_block_schema)
 
@@ -2211,6 +2248,39 @@ def test_unify_schemas_null_with_list_null_and_list_int():
     unified = unify_schemas([s1, s2, s3])
 
     assert unified.field("col").type == pa.list_(pa.int64())
+
+
+def test_unify_schemas_null_list_arm_does_not_mask_conflicting_types():
+    """A ``list<null>`` arm must not turn a real conflict into a silent pick.
+
+    Null-list reconciliation returned the first type that was not a null-typed
+    list, without checking that the remaining arms agreed. One ``list<null>``
+    block (a block whose lists are all empty) therefore suppressed the conflict
+    between ``list<int32>`` and ``list<int64>`` and reconciled the column to
+    whichever arrived first, discarding the wider type.
+    """
+    l32 = pa.schema([("col", pa.list_(pa.int32()))])
+    l64 = pa.schema([("col", pa.list_(pa.int64()))])
+    lnull = pa.schema([("col", pa.list_(pa.null()))])
+
+    # Without the null-list arm this is an error; adding it must not change that.
+    with pytest.raises(pa.lib.ArrowTypeError):
+        unify_schemas([l32, l64])
+
+    for schemas in itertools.permutations([l32, l64, lnull]):
+        with pytest.raises(pa.lib.ArrowTypeError):
+            unify_schemas(list(schemas))
+
+
+def test_unify_schemas_null_list_arm_is_order_independent_when_promoting():
+    """With type promotion the result must be the same in any block order."""
+    l32 = pa.schema([("col", pa.list_(pa.int32()))])
+    l64 = pa.schema([("col", pa.list_(pa.int64()))])
+    lnull = pa.schema([("col", pa.list_(pa.null()))])
+
+    for schemas in itertools.permutations([l32, l64, lnull]):
+        unified = unify_schemas(list(schemas), promote_types=True)
+        assert unified.field("col").type == pa.list_(pa.int64())
 
 
 def test_unify_schemas_null_list_reconciled_when_pyarrow_cannot_unify():

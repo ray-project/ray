@@ -246,6 +246,44 @@ TEST_F(TestGrpcServerClientFixture, TestNotIdleWhileCallInFlight) {
   }
 }
 
+// gRPC >= 1.60 cancels a call that waits more than 30s (by default) for the server to
+// request it from the completion queue. Ray's servers apply backpressure by leaving
+// calls there, so `GrpcServer` must turn that limit off.
+TEST_F(TestGrpcServerClientFixture, TestQueuedCallNotCancelledByServer) {
+  // Freeze the server so the first call occupies the only `ServerCall`
+  // (max_active_rpcs is 1).
+  test_service_handler_.frozen = true;
+  PingRequest request;
+  std::atomic<int> num_ok(0);
+  std::atomic<int> num_failed(0);
+  auto callback = [&num_ok, &num_failed](const Status &status, const PingReply &reply) {
+    RAY_LOG(INFO) << "Replied, status=" << status;
+    if (status.ok()) {
+      num_ok++;
+    } else {
+      num_failed++;
+    }
+  };
+  Ping(request, callback);
+  while (test_service_handler_.request_count < 1) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  // The second call reaches the server but can't be requested until the first one is
+  // replied to. Leave it queued for longer than gRPC's default limit.
+  Ping(request, callback);
+  std::this_thread::sleep_for(std::chrono::seconds(32));
+  ASSERT_EQ(test_service_handler_.request_count, 1);
+  // Unfreeze. Replying to the first call makes the server request the next one, which
+  // is when gRPC drops calls that have been queued for too long.
+  test_service_handler_.frozen = false;
+  while (num_ok + num_failed < 2) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  ASSERT_EQ(num_ok, 2);
+  ASSERT_EQ(num_failed, 0);
+  ASSERT_EQ(test_service_handler_.request_count, 2);
+}
+
 TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
   // Make sure the timeout value in the macro works as expected.
   test_service_handler_.frozen = true;

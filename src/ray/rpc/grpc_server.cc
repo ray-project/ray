@@ -20,6 +20,7 @@
 
 #include <algorithm>
 #include <boost/asio/detail/socket_holder.hpp>
+#include <limits>
 #include <memory>
 #include <string>
 #include <utility>
@@ -71,6 +72,13 @@ void GrpcServer::Run() {
   // (default behavior in grpc), we may see multiple workers listen on the same port and
   // the requests sent to this port may be handled by any of the workers.
   builder.AddChannelArgument(GRPC_ARG_ALLOW_REUSEPORT, 0);
+  // gRPC >= 1.60 cancels an incoming call that waits more than 30s (the default) for
+  // the server to request it from the completion queue. Ray's servers apply
+  // backpressure by letting calls wait, and callers such as PinObjectIDs treat
+  // CANCELLED as final, so a busy raylet would silently drop them. Keep the old
+  // behavior of waiting indefinitely.
+  builder.AddChannelArgument(GRPC_ARG_SERVER_MAX_UNREQUESTED_TIME_IN_SERVER_SECONDS,
+                             std::numeric_limits<int>::max());
   builder.AddChannelArgument(GRPC_ARG_MAX_SEND_MESSAGE_LENGTH,
                              RayConfig::instance().max_grpc_message_size());
   builder.AddChannelArgument(GRPC_ARG_MAX_RECEIVE_MESSAGE_LENGTH,
