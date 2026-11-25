@@ -45,9 +45,11 @@ scaling_config = ScalingConfig(
 :sync: TPU
 To use TPUs, pass `use_tpu=True` to the {class}`~ray.train.ScalingConfig`. Also specify `topology` and `accelerator_type`.
 
-Each worker maps to one TPU VM host. The total number of workers must be a multiple of the number of hosts in a single slice. For example, a `v6e` TPU slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
+By default, each worker maps to one TPU VM host, which matches host-level trainers such as {class}`~ray.train.v2.jax.JaxTrainer`. Set `num_workers` to a multiple of the hosts in a single slice. For example, a TPU v6e slice with a `4x4` topology has 4 hosts, so valid values include `num_workers=4` for one slice or `num_workers=8` for two slices.
 
-For PyTorch workloads that use TorchTPU with {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device. Then set `num_workers` to the total number of logical TPU devices across your slices. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
+For PyTorch workloads that use TorchTPU with {class}`~ray.train.torch.TorchTrainer`, set `resources_per_worker={"TPU": 1}` to launch one worker per logical TPU device, and set `num_workers` to a multiple of the logical TPU devices per slice. On TPU v6e `4x4` slices with 16 devices per slice, set `num_workers` to 16 for one slice or 32 for two slices.
+
+For multi-slice TorchTPU runs, `TorchTrainer` reserves intact slices through {class}`~ray.util.tpu.SlicePlacementGroup` and configures inter-slice data center network (DCN) coordination automatically. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 
 For details on how TPU topologies map to the number of hosts, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
@@ -70,9 +72,18 @@ scaling_config = ScalingConfig(
     accelerator_type="TPU-V6E",
 )
 
-# Launch 16 per-device workers on a v6e 4x4 slice with TorchTPU.
+# Single slice with TorchTPU: 16 per-device workers on a v6e 4x4 slice
 scaling_config = ScalingConfig(
     num_workers=16,
+    use_tpu=True,
+    topology="4x4",
+    accelerator_type="TPU-V6E",
+    resources_per_worker={"TPU": 1},
+)
+
+# Multi-slice with TorchTPU: 32 per-device workers across two v6e 4x4 slices
+scaling_config = ScalingConfig(
+    num_workers=32,
     use_tpu=True,
     topology="4x4",
     accelerator_type="TPU-V6E",
@@ -87,7 +98,7 @@ scaling_config = ScalingConfig(
 
 ### Use accelerators in the training function
 
-::::{tab-set}
+:::::{tab-set}
 :::{tab-item} GPU
 :sync: GPU
 When you set `use_gpu=True`, Ray Train automatically sets up environment variables, such as `CUDA_VISIBLE_DEVICES`, in your training function so that your code can detect and use the GPUs.
@@ -117,7 +128,7 @@ trainer.fit()
 ```
 :::
 
-:::{tab-item} TPU
+::::{tab-item} TPU
 :sync: TPU
 When you set `use_tpu=True`, Ray Train configures the distributed environment for TPU execution on each worker. It assigns ranks by TPU slice, then by host in `TPU_WORKER_ID` order, then by lowest assigned TPU device ID, so each host's workers receive contiguous ranks. The specific initialization depends on the trainer you use, such as {class}`~ray.train.v2.jax.JaxTrainer`.
 
@@ -190,6 +201,12 @@ trainer = TorchTrainer(
 trainer.fit()
 ```
 
+:::{note}
+On TPU7x with `RAY_TPU_RESOURCE_PER_CHIP=2`, each physical chip exposes two logical TPU cores with 96 GB of HBM per core; see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`. An eight-chip `2x2x2` slice therefore runs 16 Ray Train workers with 96 GB of HBM each instead of eight workers with 192 GB.
+
+`prepare_model` defaults to PyTorch Distributed Data Parallel (DDP), which replicates parameters, gradients, and optimizer states on every logical core. Models larger than roughly 6B parameters can run out of HBM under DDP, so shard model state across workers with `parallel_strategy="simple_fsdp"` or PyTorch FSDP2.
+:::
+
 (tpu-pytorch-simple-fsdp)=
 
 The `parallel_strategy="fsdp"` option supports only CUDA GPUs. To shard a model across TPU workers, install [TorchTitan](https://github.com/pytorch/torchtitan) and pass `parallel_strategy="simple_fsdp"` to {func}`ray.train.torch.prepare_model`. Ray Train shards the model over a 1D `DeviceMesh` with TorchTitan's `simple_fsdp`, using `DTensor` placements that compile as a single graph with `torch.compile(..., backend="tpu")`. Create the optimizer after calling `prepare_model`, and divide the loss by the world size before `backward()` because `simple_fsdp` sums gradients across workers.
@@ -246,8 +263,8 @@ def train_func():
 
     ray.train.report({"loss": loss.item()})
 ```
-:::
 ::::
+:::::
 
 
 (assigning-multiple-accelerators-to-a-worker)=
