@@ -227,12 +227,9 @@ def _map_operator():
 
 
 def test_lineage_task_id_round_trips():
-    task_id = make_lineage_task_id("7691d4b1-7242-426b-8b17-a2ca4a1a811d", 51)
-    assert task_id == "7691d4b1-7242-426b-8b17-a2ca4a1a811d:51"
-    assert parse_lineage_task_id(task_id) == (
-        "7691d4b1-7242-426b-8b17-a2ca4a1a811d",
-        51,
-    )
+    task_id = make_lineage_task_id("op", 51)
+    assert task_id == "op:51"
+    assert parse_lineage_task_id(task_id) == ("op", 51)
 
 
 @pytest.mark.parametrize("task_id", ["op", "", ":3", "op:", "op:x", "op:-1", "op:1.5"])

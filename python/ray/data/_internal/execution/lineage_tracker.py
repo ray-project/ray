@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
 
+from ray.data._internal.execution.interfaces.common import OperatorId, TaskIndex
+
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
@@ -32,12 +34,16 @@ ReconstructionPlanId = LineageTaskId
 BlockId = str
 
 
-def make_lineage_task_id(operator_id: str, task_index: int) -> LineageTaskId:
+def make_lineage_task_id(
+    operator_id: OperatorId, task_index: TaskIndex
+) -> LineageTaskId:
     """The lineage task ID of ``operator_id``'s task first submitted as ``task_index``."""
     return f"{operator_id}:{task_index}"
 
 
-def parse_lineage_task_id(lineage_task_id: LineageTaskId) -> Tuple[str, int]:
+def parse_lineage_task_id(
+    lineage_task_id: LineageTaskId,
+) -> Tuple[OperatorId, TaskIndex]:
     """Split a lineage task ID into ``(operator_id, task_index)``.
 
     The inverse of ``make_lineage_task_id``.

@@ -6,6 +6,7 @@ from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set
 from typing_extensions import override
 
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.common import TaskIndex
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import (
     LineageTaskId,
@@ -89,11 +90,11 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
 
         return any(isinstance(op, Write) for op in self._logical_operators)
 
-    def _lineage_task_id_for(self, task_index: int) -> LineageTaskId:
+    def _lineage_task_id_for(self, task_index: TaskIndex) -> LineageTaskId:
         """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking."""
         return make_lineage_task_id(self.id, task_index)
 
-    def _task_index_of(self, lineage_task_id: LineageTaskId) -> int:
+    def _task_index_of(self, lineage_task_id: LineageTaskId) -> TaskIndex:
         """The task index in one of this operator's lineage task IDs. The inverse of
         ``_lineage_task_id_for``.
 
