@@ -1,12 +1,10 @@
 import sqlite3
 import tempfile
 from typing import Generator
-from unittest.mock import Mock
 
 import pytest
 
 import ray
-from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.tests.conftest import *  # noqa  # noqa
 
 
@@ -95,25 +93,81 @@ def test_read_sql_with_parallelism_fallback(temp_database: str):
     assert sorted(actual_values) == sorted(expected_values)
 
 
-@pytest.mark.parametrize("parallelism, shard_keys", [(1, ["title"]), (4, None)])
-def test_get_read_tasks_skips_unnecessary_sharding_probe(
-    parallelism, shard_keys, caplog, monkeypatch, propagate_logs
+@pytest.mark.parametrize(
+    "read_kwargs",
+    [
+        pytest.param(
+            {"override_num_blocks": 1, "shard_keys": ["title"]}, id="single_task"
+        ),
+        pytest.param({"parallelism": 4}, id="no_shard_keys"),
+    ],
+)
+def test_read_sql_skips_unnecessary_sharding_probe(
+    temp_database: str, read_kwargs, caplog, propagate_logs
 ):
-    datasource = SQLDatasource(
-        "SELECT * FROM movie",
-        lambda: sqlite3.connect(":memory:"),
-        shard_hash_fn="unicode",
-        shard_keys=shard_keys,
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE movie(title, year, score)")
+    expected_values = [
+        ("Monty Python and the Holy Grail", 1975, 8.2),
+        ("And Now for Something Completely Different", 1971, 7.5),
+    ]
+    connection.executemany("INSERT INTO movie VALUES (?, ?, ?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    def connection_factory():
+        connection = sqlite3.connect(temp_database)
+
+        def fail_if_probed(value):
+            raise sqlite3.OperationalError("unexpected sharding probe")
+
+        connection.create_function("fail_if_probed", 1, fail_if_probed)
+        return connection
+
+    with caplog.at_level("INFO", logger="ray.data._internal.datasource.sql_datasource"):
+        dataset = ray.data.read_sql(
+            "SELECT * FROM movie",
+            connection_factory,
+            shard_hash_fn="fail_if_probed",
+            **read_kwargs,
+        )
+        actual_values = [tuple(record.values()) for record in dataset.take_all()]
+
+    assert sorted(actual_values) == sorted(expected_values)
+    assert not any(
+        "Database does not support sharding" in r.message
+        or "Sharding probe failed" in r.message
+        or "Sharding is not supported" in r.message
+        for r in caplog.records
     )
-    supports_sharding = Mock(side_effect=AssertionError("Unexpected sharding probe"))
-    monkeypatch.setattr(datasource, "supports_sharding", supports_sharding)
 
-    with caplog.at_level("INFO", logger=datasource.__module__):
-        tasks = datasource.get_read_tasks(parallelism)
 
-    assert len(tasks) == 1
-    supports_sharding.assert_not_called()
-    assert not any("Sharding is not supported" in r.message for r in caplog.records)
+def test_read_sql_with_parallelism_supported(temp_database: str):
+    connection = sqlite3.connect(temp_database)
+    connection.execute("CREATE TABLE events (id INTEGER)")
+    expected_values = [(i,) for i in range(200)]
+    connection.executemany("INSERT INTO events VALUES (?)", expected_values)
+    connection.commit()
+    connection.close()
+
+    def connection_factory():
+        connection = sqlite3.connect(temp_database)
+        connection.create_function("MOD", 2, lambda value, divisor: value % divisor)
+        connection.create_function("stable_hash", 1, lambda value: value)
+        return connection
+
+    dataset = ray.data.read_sql(
+        "SELECT * FROM events",
+        connection_factory,
+        override_num_blocks=4,
+        shard_hash_fn="stable_hash",
+        shard_keys=["id"],
+    )
+    dataset = dataset.materialize()
+
+    assert dataset.num_blocks() == 4
+    actual_values = [(record["id"],) for record in dataset.take_all()]
+    assert sorted(actual_values) == expected_values
 
 
 # for mysql test
