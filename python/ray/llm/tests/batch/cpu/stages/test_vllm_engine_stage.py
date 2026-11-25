@@ -189,10 +189,9 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper):
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_semaphore():
+@pytest.mark.parametrize("max_pending_requests", [2, -1])
+async def test_vllm_wrapper_semaphore(max_pending_requests):
     from vllm.outputs import CompletionOutput, RequestOutput
-
-    max_pending_requests = 2
 
     with (
         patch("vllm.AsyncLLMEngine") as mock_engine,
@@ -205,15 +204,16 @@ async def test_vllm_wrapper_semaphore():
         mock_engine_config.return_value.scheduler_config.max_num_seqs = 128
         mock_engine_config.return_value.parallel_config.pipeline_parallel_size = 1
         num_running_requests = 0
+        max_running_requests = 0
         request_lock = asyncio.Lock()
 
         # Configure mock engine's generate behavior to simulate delay
         async def mock_generate(request):
-            nonlocal num_running_requests
+            nonlocal num_running_requests, max_running_requests
             async with request_lock:
                 num_running_requests += 1
+                max_running_requests = max(max_running_requests, num_running_requests)
 
-            assert num_running_requests <= max_pending_requests
             await asyncio.sleep(0.3)
 
             async with request_lock:
@@ -239,7 +239,7 @@ async def test_vllm_wrapper_semaphore():
 
         mock_generate_async.side_effect = mock_generate
 
-        # Create wrapper with max 2 pending requests
+        # A non-positive max_pending_requests disables the limit.
         wrapper = vLLMEngineWrapper(
             model="Qwen/Qwen3.5-0.8B",
             model_source="Qwen/Qwen3.5-0.8B",
@@ -259,6 +259,10 @@ async def test_vllm_wrapper_semaphore():
 
         # Verify all requests were processed
         assert mock_generate_async.call_count == 10
+        if max_pending_requests > 0:
+            assert max_running_requests == max_pending_requests
+        else:
+            assert max_running_requests == len(batch)
 
         # Clean up GPU memory
         wrapper.shutdown()
