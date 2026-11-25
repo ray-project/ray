@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.bundle_queue import EstimateSize
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -14,6 +15,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
+    DiskShuffleMap,
     Filter,
     FlatMap,
     InputData,
@@ -478,10 +480,20 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
         return {"id": [x + 1 for x in batch["id"]]}
 
     n = 10
+    ctx = DataContext.get_current()
     ds = ray.data.range(n)
     ds = ds.map_batches(fn, batch_size=None)
     ds = ds.random_shuffle()
     assert set(extract_values("id", ds.take_all())) == set(range(1, n + 1))
+    if (
+        ctx.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+        and ctx.use_disk_based_hash_shuffle
+    ):
+        # Disk shuffle v2 keeps the upstream map as its own operator.
+        assert "ReadRange->MapBatches(fn)" in ds.stats()
+        assert "DiskRandomShuffleMap(partitions=" in ds.stats()
+        _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
+        return
     assert "ReadRange->MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "MapBatches", "RandomShuffle"])
 
@@ -717,6 +729,159 @@ def test_non_file_datasink_write_not_fused_into_shuffle_reduce(
     assert reduce_op._fused_output_map_transformer is None
 
 
+def test_upstream_map_fuses_into_disk_shuffle_map(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """The disk-shuffle map is a plain task-pool map, so the generic map-fusion
+    rule fuses the upstream read and map into it: one task reads, maps and
+    writes its shuffle file. The writer sets no runtime env (its polars thread
+    cap is set in the task), so its remote args match the read's."""
+    from ray.data._internal.execution.operators.task_pool_map_operator import (
+        TaskPoolMapOperator,
+    )
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    ds = (
+        ray.data.range(100)
+        .map_batches(lambda b: {"id": [x + 1 for x in b["id"]]})
+        .repartition(4, keys=["id"])
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    regroup_op = dag.input_dependencies[0]
+    map_op = regroup_op.input_dependencies[0]
+    assert isinstance(map_op, TaskPoolMapOperator)
+    assert map_op.name == (
+        "ReadRange->MapBatches(<lambda>)->DiskHashShuffleMap(keys=('id',), partitions=4)"
+    )
+    assert isinstance(map_op.input_dependencies[0], InputDataBuffer)
+    assert "runtime_env" not in map_op._ray_remote_args
+
+    assert sorted(extract_values("id", ds.take_all())) == list(range(1, 101))
+
+
+def test_disk_shuffle_map_remote_args_mismatch_refuses_fusion(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """The writer carries the shuffle's remote args; a map with different ones
+    stays a separate operator, like any two maps with incompatible args."""
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    ds = (
+        ray.data.range(100)
+        .map_batches(lambda b: b, num_cpus=2)
+        .repartition(4, keys=["id"])
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    map_op = dag.input_dependencies[0].input_dependencies[0]
+    assert map_op.name == "DiskHashShuffleMap(keys=('id',), partitions=4)"
+    assert map_op.input_dependencies[0].name == "MapBatches(<lambda>)"
+    # The writer carries its own logical op, not the Repartition's.
+    assert isinstance(map_op._logical_operators[0], DiskShuffleMap)
+
+
+def test_map_between_disk_shuffles_fuses_into_first_reduce(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """Back-to-back disk shuffles with a map between collapse to two task
+    stages: map fusion folds the map into the second shuffle's writer, then
+    the first reduce absorbs that fused map and writes the second shuffle's
+    files itself."""
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+        DiskHashShuffleReduceOp,
+    )
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    ds = (
+        ray.data.range(100)
+        .repartition(4, keys=["id"], sort=True)
+        .map_batches(lambda b: {"id": [x + 1 for x in b["id"]]})
+        .repartition(3, keys=["id"])
+    )
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "DiskHashShuffleReduce(keys=('id',), partitions=3)"
+    fused = dag.input_dependencies[0].input_dependencies[0]
+    assert isinstance(fused, DiskHashShuffleReduceOp)
+    assert fused.name == (
+        "DiskHashShuffleReduce(keys=('id',), partitions=4)->MapBatches(<lambda>)"
+        "->DiskHashShuffleMap(keys=('id',), partitions=3)"
+    )
+    assert fused._fused_output_map_transformer is not None
+    # Reduce-side config survives: the sorted reduce's 3x memory multiplier.
+    assert fused._peak_memory_multiplier == 3
+    assert fused._num_partitions == 4
+    assert fused.input_dependencies[0].input_dependencies[0].name == (
+        "ReadRange->DiskHashShuffleMap(keys=('id',), partitions=4)"
+    )
+
+    assert sorted(extract_values("id", ds.take_all())) == list(range(1, 101))
+
+
+def test_fuse_disk_shuffle_map_into_reduce_without_map(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """A reduce feeding a shuffle map directly (join input) fuses with no map
+    in between."""
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
+        DiskHashShuffleReduceOp,
+    )
+
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    left = ray.data.range(50).repartition(4, keys=["id"])
+    right = ray.data.range(50).map_batches(
+        lambda b: {"id": b["id"], "r": [x * 2 for x in b["id"]]}
+    )
+    ds = left.join(right, join_type="inner", num_partitions=3, on=("id",))
+    dag = get_execution_plan(ds._logical_plan)[0].dag
+
+    assert dag.name == "DiskJoinShuffleReduce(num_partitions=3)"
+    fused_left, right_map = dag.input_dependencies[0].input_dependencies
+    assert isinstance(fused_left, DiskHashShuffleReduceOp)
+    assert fused_left.name == (
+        "DiskHashShuffleReduce(keys=('id',), partitions=4)"
+        "->DiskJoinShuffleMapLeft(keys=('id',), parts=3)"
+    )
+    assert fused_left._fused_output_map_transformer is not None
+    assert right_map.name == (
+        "ReadRange->MapBatches(<lambda>)->DiskJoinShuffleMapRight(keys=('id',), parts=3)"
+    )
+
+    rows = sorted((r["id"], r["r"]) for r in ds.take_all())
+    assert rows == [(i, 2 * i) for i in range(50)]
+
+
+def test_fused_disk_shuffle_reduce_map_empty_input(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    """An empty dataset through fused back-to-back shuffles keeps outer-join
+    semantics: the empty side yields no rows, the other side's survive."""
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+    ctx.use_disk_based_hash_shuffle = True
+
+    empty_left = ray.data.range(0).repartition(4, keys=["id"])
+    right = ray.data.range(10)
+    inner = empty_left.join(right, join_type="inner", num_partitions=3, on=("id",))
+    assert inner.take_all() == []
+    outer = empty_left.join(
+        right, join_type="right_outer", num_partitions=3, on=("id",)
+    )
+    assert sorted(extract_values("id", outer.take_all())) == list(range(10))
+
+
 def test_read_map_batches_operator_fusion_with_sort_operator(
     ray_start_regular_shared_2_cpus,
 ):
@@ -796,6 +961,49 @@ def test_read_map_chain_operator_fusion_e2e(
     )
     assert name in ds.stats()
     _check_usage_record(["ReadRange", "Filter", "MapRows", "MapBatches", "FlatMap"])
+
+
+@pytest.mark.skipif(
+    not actor_only_backend_enabled(),
+    reason="Actor->Actor fusion only happens under the actor-only backend.",
+)
+def test_fused_callable_class_actor_udfs_e2e(ray_start_regular_shared_2_cpus):
+    """Two callable-class actor UDFs fused together must each register their
+    instance in the shared ``_map_actor_context``.
+
+    Regression test: under the actor-only backend, Actor->Actor fusion merges
+    two callable-class UDFs into a single actor. Previously each operator's
+    ``init_fn`` bailed out if the actor context already existed, so only the
+    upstream UDF's instance got registered and the downstream UDF's lookup
+    raised ``KeyError`` at runtime.
+    """
+
+    class Decode:
+        def __init__(self, scale):
+            self.scale = scale
+
+        def __call__(self, batch):
+            batch["decoded"] = [x * self.scale for x in batch["id"]]
+            return batch
+
+    class Preprocess:
+        def __init__(self, offset):
+            self.offset = offset
+
+        def __call__(self, batch):
+            batch["out"] = [x + self.offset for x in batch["decoded"]]
+            return batch
+
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds = ds.map_batches(Decode, fn_constructor_args=(10,), concurrency=1)
+    ds = ds.map_batches(Preprocess, fn_constructor_args=(1,), concurrency=1)
+
+    # Both UDFs must have run, so the fused actor registered both instances.
+    out = sorted(ds.take_all(), key=lambda r: r["id"])
+    assert [r["out"] for r in out] == [i * 10 + 1 for i in range(10)], out
+
+    # Confirm the two ops were actually fused into a single operator.
+    assert "MapBatches(Decode)->MapBatches(Preprocess)" in ds.stats(), ds.stats()
 
 
 def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):

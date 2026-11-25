@@ -35,7 +35,7 @@ class StartTracebackWithWorkerRank(StartTraceback):
         return (self.__class__, (self.worker_rank,))
 
 
-def skip_exceptions(exc: Optional[Exception]) -> Exception:
+def skip_exceptions(exc: Optional[Exception]) -> Optional[Exception]:
     """Skip all contained `StartTracebacks` to reduce traceback output.
 
     Returns a shallow copy of the exception with all `StartTracebacks` removed.
@@ -45,7 +45,7 @@ def skip_exceptions(exc: Optional[Exception]) -> Exception:
     """
     should_not_shorten = bool(int(os.environ.get("RAY_AIR_FULL_TRACEBACKS", "0")))
 
-    if should_not_shorten:
+    if should_not_shorten or exc is None:
         return exc
 
     if isinstance(exc, StartTraceback):

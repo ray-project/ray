@@ -2,7 +2,16 @@ import copy
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields, replace
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+)
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
@@ -150,6 +159,33 @@ class LogicalOperatorSupportsProjectionPushdown(LogicalOperator):
         projection_map: Optional[Dict[str, str]],
     ) -> LogicalOperator:
         return self
+
+
+class LogicalOperatorSupportsProjectionPassThrough(ABC):
+    """Mixin for operators that let a required-column set pass through them.
+
+    ``ProjectionPushdown`` walks the plan top-down carrying the set of output
+    columns an operator's consumers reference and asks each operator on the
+    way which columns of its inputs that entails, so the pruning reaches the
+    reads instead of stopping at the first non-``Project`` operator.
+
+    This is distinct from ``LogicalOperatorSupportsProjectionPushdown``, which
+    is for operators that *accept* a projection (like a read).
+    """
+
+    @abstractmethod
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        """The columns each input has to provide for this operator to produce
+        ``required_output_columns`` (``None`` meaning every output column).
+
+        One entry per input, in ``input_dependencies`` order; a ``None`` entry
+        keeps every column of that input. Returning ``None`` declines pruning
+        below this operator altogether (e.g. when the output-to-input column
+        mapping is unknown).
+        """
+        ...
 
 
 class LogicalOperatorPreservesSchema(LogicalOperator):

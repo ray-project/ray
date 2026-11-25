@@ -98,7 +98,9 @@ def _mk_partitioned_read_files(tmp_path: Path) -> ReadFiles:
 
 def test_construction_stores_schema_and_infer_schema_returns_it(tmp_path):
     op = _mk_read_files(tmp_path)
-    assert op.infer_schema().names == ["a", "b"]
+    schema = op.infer_schema()
+    assert schema is not None
+    assert schema.names == ["a", "b"]
 
 
 def test_input_dependency_is_list_files(tmp_path):

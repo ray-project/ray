@@ -17,6 +17,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+from zlib import crc32
 
 import ray
 from ray._common.network_utils import get_localhost_ip
@@ -33,6 +34,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     DRAINING_MESSAGE,
+    HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT,
     HEALTHY_MESSAGE,
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
@@ -57,8 +59,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-    RAY_SERVE_HAPROXY_INGRESS_RETRIES,
-    RAY_SERVE_HAPROXY_INGRESS_RETRY_ON,
     RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S,
     RAY_SERVE_HAPROXY_LOG_TARGET,
     RAY_SERVE_HAPROXY_MAXCONN,
@@ -115,6 +115,7 @@ from ray.serve.schema import (
     LoggingConfig,
     Target,
     TargetGroup,
+    TracingConfig,
 )
 from ray.util import metrics
 
@@ -189,6 +190,23 @@ def _routers_and_targets_by_backend(
         routers[backend.name] = pool
         targets[backend.name] = entries
     return routers, targets
+
+
+def _assign_ingress_router_server_ids(servers: "List[ServerConfig]") -> Dict[str, int]:
+    """Assign deterministic server IDs for HAProxy's native hash ring."""
+    # HAProxy 2.8 uses numeric server IDs, not replica names, for ring positions.
+    # Its built-in hash functions hash request keys, not server names.
+    ids = {}
+    used = set()
+    # HAProxy 2.8 scales server IDs by 4096 in its 32-bit ring hash.
+    max_id = (1 << 20) - 1
+    for server in sorted(servers, key=lambda s: s.name):
+        server_id = (crc32(server.name.encode()) & max_id) or 1
+        while server_id in used:
+            server_id = server_id % max_id + 1
+        used.add(server_id)
+        ids[server.name] = server_id
+    return ids
 
 
 def _format_routers_lua(routers: "Dict[str, List[ServerConfig]]") -> str:
@@ -819,10 +837,8 @@ class HAProxyConfig:
     retry_on: str = RAY_SERVE_HAPROXY_RETRY_ON
     retries: Optional[int] = RAY_SERVE_HAPROXY_RETRIES
 
-    # Per-ingress-router overrides; when None the ingress backend inherits the
-    # global policy above.
-    ingress_retry_on: Optional[str] = RAY_SERVE_HAPROXY_INGRESS_RETRY_ON
-    ingress_retries: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_RETRIES
+    # Per-ingress-router override for the server timeout. The ingress backend
+    # inherits the global retry policy above.
     ingress_timeout_server_s: Optional[int] = RAY_SERVE_HAPROXY_INGRESS_TIMEOUT_SERVER_S
 
     is_head: bool = False
@@ -844,6 +860,11 @@ class HAProxyConfig:
             return "*"
 
         return self.http_options.host
+
+    @property
+    def ingress_router_socket_path(self) -> str:
+        # Lua sends routing consultations here for HAProxy's native router selection.
+        return str(Path(self.socket_path).with_suffix(".ir"))
 
     @property
     def frontend_port(self) -> int:
@@ -1368,6 +1389,7 @@ class HAProxyApi(ProxyApi):
             SESSION_HEADER=SERVE_SESSION_ID.lower(),
             REQUEST_PATH_HEADER=SERVE_INGRESS_ROUTER_REQUEST_PATH_HEADER,
             ROUTERS=_format_routers_lua(routers),
+            ROUTER_SOCKET=_lua_str(self.cfg.ingress_router_socket_path),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
             METRICS_PRE_CALL_ROUTER=metrics_pre,
             METRICS_POST_CALL_ROUTER=metrics_post,
@@ -1442,6 +1464,14 @@ class HAProxyApi(ProxyApi):
                 http_backends
             )
             has_ingress_request_router = ingress_request_router_lua_path is not None
+            ingress_router_server_ids = {
+                backend.name: _assign_ingress_router_server_ids(
+                    backend.ingress_request_router_servers
+                )
+                for backend in http_backends
+                if backend.ingress_request_router_servers
+                and any(s.replica_id is not None for s in backend.servers)
+            }
             router_application_lua_path = self._write_router_application_lua(
                 http_backends
             )
@@ -1516,6 +1546,8 @@ class HAProxyApi(ProxyApi):
                     "grpc_healthz_rules": grpc_healthz_rules,
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
+                    "ingress_router_server_ids": ingress_router_server_ids,
+                    "ingress_router_weight": HAPROXY_INGRESS_REQUEST_ROUTER_WEIGHT,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
                     "ingress_request_router_timeout_s": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
@@ -1917,13 +1949,14 @@ class HAProxyManager(ProxyActorInterface):
         node_id: NodeId,
         node_ip_address: str,
         logging_config: LoggingConfig,
-        tracing_config=None,
+        tracing_config: TracingConfig,
         long_poll_client: Optional[LongPollClient] = None,
     ):  # noqa: F821
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
             # HAProxyManager is not on the request path, so we can disable
             # the buffer to ensure logs are immediately flushed.
             log_buffer_size=1,
