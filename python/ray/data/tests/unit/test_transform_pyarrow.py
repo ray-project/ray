@@ -1,3 +1,4 @@
+import itertools
 import re
 import types
 from typing import Iterable
@@ -2239,6 +2240,39 @@ def test_unify_schemas_null_with_list_null_and_list_int():
     unified = unify_schemas([s1, s2, s3])
 
     assert unified.field("col").type == pa.list_(pa.int64())
+
+
+def test_unify_schemas_null_list_arm_does_not_mask_conflicting_types():
+    """A ``list<null>`` arm must not turn a real conflict into a silent pick.
+
+    Null-list reconciliation returned the first type that was not a null-typed
+    list, without checking that the remaining arms agreed. One ``list<null>``
+    block (a block whose lists are all empty) therefore suppressed the conflict
+    between ``list<int32>`` and ``list<int64>`` and reconciled the column to
+    whichever arrived first, discarding the wider type.
+    """
+    l32 = pa.schema([("col", pa.list_(pa.int32()))])
+    l64 = pa.schema([("col", pa.list_(pa.int64()))])
+    lnull = pa.schema([("col", pa.list_(pa.null()))])
+
+    # Without the null-list arm this is an error; adding it must not change that.
+    with pytest.raises(pa.lib.ArrowTypeError):
+        unify_schemas([l32, l64])
+
+    for schemas in itertools.permutations([l32, l64, lnull]):
+        with pytest.raises(pa.lib.ArrowTypeError):
+            unify_schemas(list(schemas))
+
+
+def test_unify_schemas_null_list_arm_is_order_independent_when_promoting():
+    """With type promotion the result must be the same in any block order."""
+    l32 = pa.schema([("col", pa.list_(pa.int32()))])
+    l64 = pa.schema([("col", pa.list_(pa.int64()))])
+    lnull = pa.schema([("col", pa.list_(pa.null()))])
+
+    for schemas in itertools.permutations([l32, l64, lnull]):
+        unified = unify_schemas(list(schemas), promote_types=True)
+        assert unified.field("col").type == pa.list_(pa.int64())
 
 
 def test_unify_schemas_null_list_reconciled_when_pyarrow_cannot_unify():

@@ -53,6 +53,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # A plan that traces back to a queued seed is batched here instead of
         # re-injecting the seed.
         self._batched_plans: Dict[LineageTaskId, Set[ReconstructionPlanId]] = {}
+        # Reconstruction tasks that finished successfully.
+        self._num_reconstruction_tasks_finished = 0
         # Mapping of child lineage task ID -> refs of the input bundle this
         # operator released for that child's reconstruction task. Plans that
         # share a parent re-run withhold the same ref, so when a later plan

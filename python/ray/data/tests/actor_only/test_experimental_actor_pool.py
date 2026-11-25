@@ -2202,6 +2202,22 @@ def test_input_queue_bytes_by_node_tracks_queued_bundles():
     assert op.input_queue_bytes_by_node() == {}
 
 
+@pytest.mark.parametrize("has_on_start", [False, True])
+def test_awaiting_first_input_until_a_bundle_is_queued(has_on_start):
+    """The sizer starts no actors for an op until it is no longer awaiting its
+    first input. That flips when the first bundle is queued for dispatch --
+    the same point ``on_start`` runs, so an op with one has run it by then."""
+    op = _make_actor_op({"num_cpus": 1})
+    calls = []
+    if has_on_start:
+        op._on_start = calls.append
+    assert op.awaiting_first_input()
+
+    op._add_input_inner(_make_bundle(100, node_id="node1"), 0)
+    assert not op.awaiting_first_input()
+    assert len(calls) == int(has_on_start)
+
+
 def test_backpressure_progress_str_reports_blocked_share():
     """The progress tag reports the share of the pool blocked on output
     budget (actionable), not just the tripped policy name (boolean)."""

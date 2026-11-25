@@ -87,7 +87,7 @@ class TickCapacitySnapshot:
         default_factory=dict
     )
     # Actors held out of ``free_by_node`` this tick for each op still waiting
-    # on its ``on_start`` (see ``SizingTicker``): what it grows to once
+    # on its first input (see ``SizingTicker``): what it grows to once
     # released.
     held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = field(
         default_factory=dict
