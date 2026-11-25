@@ -51,7 +51,12 @@ std::shared_ptr<AbstractRayRuntime> AbstractRayRuntime::DoInit() {
     runtime = std::make_shared<LocalModeRayRuntime>();
   } else {
     ProcessHelper::GetInstance().RayStart(TaskExecutor::ExecuteTask);
-    runtime = std::make_shared<NativeRayRuntime>();
+    try {
+      runtime = std::make_shared<NativeRayRuntime>();
+    } catch (...) {
+      ProcessHelper::GetInstance().RayStop();
+      throw;
+    }
     RAY_LOG(INFO) << "Native ray runtime started.";
   }
   RAY_CHECK(runtime);

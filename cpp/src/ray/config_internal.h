@@ -84,6 +84,8 @@ class ConfigInternal {
 
   void Init(RayConfig &config, int argc, char **argv);
 
+  void Reset();
+
   void SetBootstrapAddress(std::string_view address);
 
   void UpdateSessionDir(const std::string dir);
