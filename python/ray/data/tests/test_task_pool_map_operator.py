@@ -174,6 +174,24 @@ def test_isolated_operators_share_map_task(
     assert env_vars == expected
 
 
+@pytest.mark.parametrize("runtime_env", [None, {"env_vars": None}])
+def test_isolate_workers_handles_none_runtime_env(
+    ray_start_regular_shared, restore_data_context, runtime_env
+):
+    """`runtime_env` or `env_vars` set to `None` is treated as empty."""
+    data_context = ray.data.DataContext.get_current()
+    op = TaskPoolMapOperator(
+        map_transformer=MagicMock(),
+        input_op=InputDataBuffer(data_context, input_data=MagicMock()),
+        data_context=data_context,
+        ray_remote_args={"num_cpus": 1, "runtime_env": runtime_env},
+        isolate_workers=True,
+    )
+
+    env_vars = op._get_dynamic_ray_remote_args()["runtime_env"]["env_vars"]
+    assert env_vars == {"__RAY_DATA_OPERATOR_ID": op.id}
+
+
 @pytest.mark.parametrize("pipeline", ["map_batches", "take", "isolated_read"])
 def test_repeated_executions_do_not_grow_driver_caches(
     ray_start_regular_shared, restore_data_context, pipeline

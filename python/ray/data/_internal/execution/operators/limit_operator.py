@@ -15,7 +15,9 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
-def _slice_block(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
+def _slice_block(
+    block: Block, metadata: BlockMetadata, num_rows: int
+) -> Tuple[Block, BlockMetadata]:
     # Module-level so `cached_remote_fn` reuses one remote function across
     # executions.
     block = BlockAccessor.for_block(block).slice(0, num_rows, copy=False)

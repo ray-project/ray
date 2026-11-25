@@ -142,9 +142,9 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         """
         ray_remote_args = copy.deepcopy(ray_remote_args)
 
-        runtime_env = ray_remote_args.get("runtime_env", {})
+        runtime_env = ray_remote_args.get("runtime_env") or {}
         # Env vars live under `runtime_env`; keep the user's and add the operator id.
-        env_vars = runtime_env.get("env_vars", {})
+        env_vars = runtime_env.get("env_vars") or {}
         env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
         runtime_env["env_vars"] = env_vars
 
