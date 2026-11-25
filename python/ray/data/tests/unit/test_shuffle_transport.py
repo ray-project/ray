@@ -237,3 +237,11 @@ def test_reducer_reads_one_partition_out_of_a_shared_bundle():
     bundle_index, offset, length = placement
     table = _decode(bundles[bundle_index], offset, length)
     assert table.column("v").to_pylist() == [2, 2]
+
+
+if __name__ == "__main__":
+    import sys
+
+    import pytest
+
+    sys.exit(pytest.main(["-v", __file__]))
