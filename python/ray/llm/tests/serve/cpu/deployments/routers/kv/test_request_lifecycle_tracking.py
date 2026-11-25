@@ -14,6 +14,7 @@ import ray.cloudpickle
 from ray import serve
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    OUTSTANDING_EFFECTIVE_PREFILL_TOKENS,
     REQUEST_TRACKING_TTL_S,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
@@ -79,13 +80,13 @@ def delta_steps(num_tokens, prompt_len=5):
 
 class MockSelectionService:
     """Records the selection-service reservation calls the actor's lifecycle
-    hooks make, standing in for the Dynamo selection service. ``add_output_block``
-    is synchronous as in the real binding; the rest are async."""
+    hooks make, standing in for the Dynamo selection service."""
 
     def __init__(self):
         self.calls = []
         self.reservations = []
         self.selects = []
+        self.effective_prefill_tokens = None
 
     async def select_and_reserve(self, request):
         self.calls.append(
@@ -100,16 +101,17 @@ class MockSelectionService:
             "worker_id": request["allowed_worker_ids"][0],
             "dp_rank": 0,
             "overlap": {"longest_matched": 0},
-            "effective_prefill_tokens": len(request["token_ids"]),
+            "effective_prefill_tokens": (
+                self.effective_prefill_tokens
+                if self.effective_prefill_tokens is not None
+                else len(request["token_ids"])
+            ),
             "sequence_hashes": [0],
             "isl_tokens": len(request["token_ids"]),
         }
 
     async def prefill_complete(self, reservation_id):
         self.calls.append(("prefill_complete", reservation_id))
-
-    def add_output_block(self, reservation_id, *, decay_fraction=None):
-        self.calls.append(("add_output_block", reservation_id, decay_fraction))
 
     async def free_reservation(self, reservation_id):
         self.calls.append(("free_reservation", reservation_id))
@@ -126,6 +128,8 @@ class RecordingKVTokenTracker(KVTokenTracker):
         self._block_size = block_size
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
+        self._outstanding_effective_prefill_tokens = 0
+        self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -177,6 +181,8 @@ class LocalKVTokenTracker(KVTokenTracker):
         self._block_size = block_size
         self._replica_id_by_worker = {}
         self._requests = OrderedDict()
+        self._outstanding_effective_prefill_tokens = 0
+        self._autoscaling_metrics_callback = None
         self._request_ids_by_worker = {}
         self._completed_request_ids = OrderedDict()
         self._pending_tasks = set()
@@ -238,7 +244,7 @@ class _BroadcastHandle:
 
 @pytest.fixture
 def build_token_tracking_engine(monkeypatch):
-    def _build(script, *targets, report_decode_progress=False, **engine_kwargs):
+    def _build(script, *targets, **engine_kwargs):
         # These actors stand in for ready Serve replicas. Actor startup must
         # finish before the lifecycle delivery timeout starts.
         for target in targets:
@@ -256,9 +262,7 @@ def build_token_tracking_engine(monkeypatch):
                 replica_id=SimpleNamespace(unique_id=REPLICA_UNIQUE_ID)
             ),
         )
-        return enable_token_tracking(
-            MockAsyncLLM, report_decode_progress=report_decode_progress
-        )(script, **engine_kwargs)
+        return enable_token_tracking(MockAsyncLLM)(script, **engine_kwargs)
 
     return _build
 
@@ -276,10 +280,6 @@ async def consume(stream, limit=None):
 async def drain(engine):
     """Wait for the engine forwarder's queued lifecycle batches to land."""
     await engine._lifecycle_forwarder.flush()
-
-
-def decode_counts(events):
-    return [args[1] for name, args in events if name == "on_decode_progress"]
 
 
 def op_names(calls):
@@ -315,31 +315,6 @@ async def test_basic_lifecycle(build_token_tracking_engine):
     assert ray.get(actor.get_event_log.remote()) == [
         ("on_prefill_complete", ("req-1",)),
         ("on_request_completed", ("req-1",)),
-    ]
-    assert outputs == engine.script
-
-
-@pytest.mark.asyncio
-async def test_lifecycle_reports_prefill_and_completion_only(
-    build_token_tracking_engine,
-):
-    """Atomic reservation relies on select_and_reserve for admission and Dynamo
-    decay for decode load, so the engine should not send add/decode events."""
-    actor = RecordingKVTokenTracker.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(3, prompt_len=10), actor)
-
-    outputs = await consume(
-        engine.generate(
-            "already-routed",
-            SamplingParams(output_kind=RequestOutputKind.DELTA, max_tokens=MAX_TOKENS),
-            "req-reserve",
-        )
-    )
-    await drain(engine)
-
-    assert ray.get(actor.get_event_log.remote()) == [
-        ("on_prefill_complete", ("req-reserve",)),
-        ("on_request_completed", ("req-reserve",)),
     ]
     assert outputs == engine.script
 
@@ -388,96 +363,9 @@ async def test_in_order_reports(build_token_tracking_engine):
     )
     await drain(engine)
 
-    events = ray.get(actor.get_event_log.remote())
-    assert events[0][0] == "on_prefill_complete"
-    assert events[-1] == ("on_request_completed", ("r",))
-    assert decode_counts(events) == []
-
-
-@pytest.mark.asyncio
-async def test_streaming_accumulates_decode_progress(build_token_tracking_engine):
-    """A DELTA (streaming) request sums each step's new tokens into a running
-    total reported as decode progress when the optional hook is enabled."""
-    actor = RecordingKVTokenTracker.remote(block_size=16)
-    # Steps carry only new tokens: 1, then 2, then 1 -> cumulative 1, 3, 4.
-    script = [request_output([n]) for n in (1, 2, 1)]
-    engine = build_token_tracking_engine(script, actor, report_decode_progress=True)
-
-    await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
-        )
-    )
-    await drain(engine)
-
-    assert decode_counts(ray.get(actor.get_event_log.remote())) == [1, 3, 4]
-
-
-@pytest.mark.asyncio
-async def test_non_streaming_reports_full_output_once(build_token_tracking_engine):
-    """A FINAL_ONLY (non-streaming) request arrives as one finished chunk, with a
-    CompletionOutput per candidate, so progress is reported once at the summed
-    token count across candidates when the optional hook is enabled."""
-    actor = RecordingKVTokenTracker.remote(block_size=16)
-    # FINAL_ONLY n=3: a single finished chunk carrying every candidate's output.
-    script = [request_output([2, 3, 4], finished=True)]
-    engine = build_token_tracking_engine(script, actor, report_decode_progress=True)
-
-    await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.FINAL_ONLY), "r"
-        )
-    )
-    await drain(engine)
-
-    events = ray.get(actor.get_event_log.remote())
-    assert decode_counts(events) == [9]  # 2 + 3 + 4 summed across candidates
-    assert [name for name, _ in events] == [
-        "on_prefill_complete",
-        "on_decode_progress",
-        "on_request_completed",
-    ]
-
-
-@pytest.mark.asyncio
-async def test_cumulative_skips_tracking(build_token_tracking_engine):
-    """CUMULATIVE repeats output-so-far each chunk; tracking is skipped (not
-    summed) to avoid over-counting, so no lifecycle events are reported."""
-    actor = RecordingKVTokenTracker.remote(block_size=16)
-    engine = build_token_tracking_engine(delta_steps(3), actor)
-
-    outputs = await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.CUMULATIVE), "r"
-        )
-    )
-
-    assert len(outputs) == 3  # stream still passes through untouched
-    assert ray.get(actor.get_event_log.remote()) == []
-
-
-@pytest.mark.asyncio
-async def test_empty_steps_ignored(build_token_tracking_engine):
-    """Token-less outputs (e.g. a finish-only chunk) emit no progress hooks."""
-    actor = RecordingKVTokenTracker.remote(block_size=16)
-    script = [
-        request_output([1]),
-        request_output([0]),  # structural chunk: no new tokens
-        request_output([1], finished=True),
-    ]
-    engine = build_token_tracking_engine(script, actor, report_decode_progress=True)
-
-    await consume(
-        engine.generate(
-            PROMPT, SamplingParams(output_kind=RequestOutputKind.DELTA), "r"
-        )
-    )
-    await drain(engine)
-
-    events = ray.get(actor.get_event_log.remote())
-    assert decode_counts(events) == [1, 2]
-    assert [e for e in events if e[0] == "on_prefill_complete"] == [
-        ("on_prefill_complete", ("r",))
+    assert ray.get(actor.get_event_log.remote()) == [
+        ("on_prefill_complete", ("r",)),
+        ("on_request_completed", ("r",)),
     ]
 
 
@@ -690,25 +578,6 @@ def test_is_kv_aware(request_router_config, expected):
 
 
 @pytest.mark.asyncio
-async def test_block_boundary_crossings():
-    """Each ceil((prompt+output)/block_size) increase advances total_blocks."""
-    actor = LocalKVTokenTracker(block_size=16)
-    await reserve(actor, "r", 1, list(range(10)))
-    assert (await actor.get_request_lifecycle("r"))["total_blocks"] == 1  # ceil(10/16)
-
-    await actor.on_decode_progress("r", 6)  # 10+6=16 -> still 1 block
-    assert (await actor.get_request_lifecycle("r"))["total_blocks"] == 1
-
-    await actor.on_decode_progress("r", 7)  # 17 -> crosses into block 2
-    assert (await actor.get_request_lifecycle("r"))["total_blocks"] == 2
-
-    await actor.on_decode_progress("r", 39)  # 49 -> ceil=4, crosses two more at once
-    snapshot = await actor.get_request_lifecycle("r")
-    assert snapshot["total_blocks"] == 4
-    assert snapshot["output_tokens"] == 39
-
-
-@pytest.mark.asyncio
 async def test_active_load_tracking():
     """Active load is per-worker; completion evicts the request entirely."""
     actor = LocalKVTokenTracker(block_size=16)
@@ -719,15 +588,11 @@ async def test_active_load_tracking():
     assert await actor.get_worker_active_load(2) == 1
 
     await actor.on_prefill_complete("a")
-    await actor.on_decode_progress("a", 5)
     assert await actor.get_worker_active_load(1) == 2  # still active while decoding
     assert await actor.get_request_lifecycle("a") == {
         "worker_id": 1,
-        "prompt_tokens": 8,
-        "expected_output_tokens": None,
+        "effective_prefill_tokens": 8,
         "prefill_completed": True,
-        "output_tokens": 5,
-        "total_blocks": 1,
     }
 
     # Completion evicts (bounding memory to in-flight requests).
@@ -738,9 +603,65 @@ async def test_active_load_tracking():
 
     # Hooks for an unknown request id are ignored.
     await actor.on_prefill_complete("missing")
-    await actor.on_decode_progress("missing", 3)
     await actor.on_request_completed("missing")
     assert await actor.get_request_lifecycle("missing") is None
+
+
+@pytest.mark.asyncio
+async def test_autoscaling_snapshot_tracks_request_phases():
+    actor = LocalKVTokenTracker(block_size=16)
+    actor._svc.effective_prefill_tokens = 3
+    published = []
+    actor.set_autoscaling_metrics_callback(published.append)
+    assert published == []
+
+    await reserve(actor, "a", 1, list(range(20)))
+    await reserve(actor, "b", 1, list(range(20, 40)))
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 6}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
+
+    # Prefill completion drops the request's prefill tokens.
+    await actor.on_prefill_complete("a")
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 3}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
+
+    # Duplicate lifecycle events are idempotent.
+    await actor.on_prefill_complete("a")
+    assert await actor.get_autoscaling_snapshot() == expected
+
+    # Completing a decoding request leaves prefill tokens unchanged.
+    await actor.on_request_completed("a")
+    assert await actor.get_autoscaling_snapshot() == expected
+
+    # Completing a request still in prefill drops its prefill tokens.
+    await actor.on_request_completed("b")
+    expected = {OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: 0}
+    assert await actor.get_autoscaling_snapshot() == expected
+    assert published[-1] == expected
+
+
+@pytest.mark.asyncio
+async def test_raising_autoscaling_callback_does_not_skip_side_effects():
+    actor = LocalKVTokenTracker(block_size=16)
+    actor._svc.effective_prefill_tokens = 3
+
+    def raising_callback(snapshot):
+        raise RuntimeError("metrics not ready")
+
+    actor.set_autoscaling_metrics_callback(raising_callback)
+
+    await reserve(actor, "a", 1, list(range(20)))
+    await actor.on_prefill_complete("a")
+    await actor.on_request_completed("a")
+    actor.remove_worker(1)
+    await asyncio.gather(*actor._pending_tasks)
+
+    calls = [call[:2] for call in actor._svc.calls]
+    assert ("prefill_complete", "a") in calls
+    assert ("free_reservation", "a") in calls
+    assert ("delete_worker", 1) in calls
 
 
 @pytest.mark.asyncio
@@ -772,7 +693,6 @@ async def test_tracking_drains_under_churn():
             request_id = rng.choice(list(inflight))
             if rng.random() < 0.5:
                 await actor.on_prefill_complete(request_id)
-                await actor.on_decode_progress(request_id, rng.randint(1, 80))
             await actor.on_request_completed(request_id)
             inflight.discard(request_id)
         peak = max(peak, len(actor._requests))
@@ -842,24 +762,18 @@ async def test_select_worker_books_request_state():
     assert selection["effective_prefill_tokens"] == 8
     assert await actor.get_request_lifecycle("r") == {
         "worker_id": 1,
-        "prompt_tokens": 8,
-        "expected_output_tokens": 32,
+        "effective_prefill_tokens": 8,
         "prefill_completed": False,
-        "output_tokens": 0,
-        "total_blocks": 1,
     }
     assert actor._svc.calls == [("select_and_reserve", "r", 32)]
 
 
 @pytest.mark.asyncio
 async def test_tracks_streamed_request_state(build_token_tracking_engine):
-    """End-to-end: exact token counts land as actor block state over ``.remote``."""
+    """End-to-end: a streamed request's lifecycle lands in the actor's state
+    over ``.remote``."""
     actor = RecordingKVTokenTracker.remote(block_size=8)
-    # prompt 12, block_size 8: baseline ceil(12/8)=2; boundaries at cumulative
-    # output 5 and 13 -> 9 generated tokens cross only the first.
-    engine = build_token_tracking_engine(
-        delta_steps(9, prompt_len=12), actor, report_decode_progress=True
-    )
+    engine = build_token_tracking_engine(delta_steps(9, prompt_len=12), actor)
 
     prompt = {"prompt_token_ids": list(range(12))}
     await actor.select_worker.remote(
@@ -875,14 +789,11 @@ async def test_tracks_streamed_request_state(build_token_tracking_engine):
     await drain(engine)
 
     # All outputs consumed but the stream is still open: the request is
-    # tracked with its exact final counts.
+    # tracked as decoding.
     assert await actor.get_request_lifecycle.remote("req-e2e") == {
         "worker_id": WORKER_ID,
-        "prompt_tokens": 12,
-        "expected_output_tokens": MAX_TOKENS,
+        "effective_prefill_tokens": 12,
         "prefill_completed": True,
-        "output_tokens": 9,
-        "total_blocks": 3,
     }
     assert await actor.get_worker_active_load.remote(WORKER_ID) == 1
 
@@ -897,14 +808,10 @@ async def test_tracks_streamed_request_state(build_token_tracking_engine):
 
 @pytest.mark.asyncio
 async def test_lifecycle_books_selection_service_load(build_token_tracking_engine):
-    """A streamed request books select_and_reserve -> prefill_complete -> one
-    add_output_block per crossed decode block -> free_reservation, in order."""
+    """A streamed request books select_and_reserve -> prefill_complete ->
+    free_reservation, in order."""
     actor = RecordingKVTokenTracker.remote(block_size=8)
-    # prompt 12 (2 blocks); cumulative output crosses into block 3 at 5 tokens
-    # and block 4 at 13 tokens -> exactly two output blocks over 20 tokens.
-    engine = build_token_tracking_engine(
-        delta_steps(20, prompt_len=12), actor, report_decode_progress=True
-    )
+    engine = build_token_tracking_engine(delta_steps(20, prompt_len=12), actor)
 
     prompt = {"prompt_token_ids": list(range(12))}
     await actor.select_worker.remote(
@@ -920,48 +827,13 @@ async def test_lifecycle_books_selection_service_load(build_token_tracking_engin
     await drain(engine)
 
     calls = ray.get(actor.get_selection_service_calls.remote())
-    assert op_names(calls) == (
-        ["select_and_reserve", "prefill_complete"]
-        + ["add_output_block"] * 2
-        + ["free_reservation"]
-    )
+    assert op_names(calls) == [
+        "select_and_reserve",
+        "prefill_complete",
+        "free_reservation",
+    ]
     assert calls[0] == ("select_and_reserve", "req-1", MAX_TOKENS)
     assert calls[-1] == ("free_reservation", "req-1")
-
-
-@pytest.mark.asyncio
-async def test_decode_blocks_book_add_output_block():
-    """Each crossed decode block books one add_output_block in the service."""
-    actor = LocalKVTokenTracker(block_size=16)
-    await reserve(actor, "r", WORKER_ID, list(range(10)))  # 1 prompt block
-    await actor.on_decode_progress("r", 6)  # 16 -> still 1 block
-    await actor.on_decode_progress("r", 7)  # 17 -> crosses into block 2
-    await actor.on_decode_progress("r", 39)  # 49 -> ceil=4, crosses two more
-
-    assert (
-        op_names(actor._svc.calls) == ["select_and_reserve"] + ["add_output_block"] * 3
-    )
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "expected_output_tokens, expected_decay",
-    [
-        pytest.param(40, pytest.approx(1.0 - 8 / 40), id="with-estimate"),
-        pytest.param(None, None, id="no-estimate"),
-    ],
-)
-async def test_expected_output_tokens_sets_decay_fraction(
-    expected_output_tokens, expected_decay
-):
-    """With an output-length estimate each booked decode block decays by the
-    remaining fraction; without one the block carries no decay."""
-    actor = LocalKVTokenTracker(block_size=8)
-    await reserve(actor, "r", WORKER_ID, list(range(8)), expected_output_tokens)
-    await actor.on_decode_progress("r", 8)  # total 16 -> crosses into block 2
-
-    block_calls = [c for c in actor._svc.calls if c[0] == "add_output_block"]
-    assert block_calls == [("add_output_block", "r", expected_decay)]
 
 
 if __name__ == "__main__":

@@ -41,11 +41,16 @@ from ray.rllib.utils.typing import (
 )
 
 
+# NOT TESTED IN CI: The examples in this docstring don't run in premerge, postmerge,
+# or any other CI job. `+SKIP_EXAMPLE` below disables them because the first
+# example leaves Ray Data prefetch threads alive, and the next module's
+# `ray.shutdown()` then kills the //python/ray/rllib:doctest process.
+# See https://github.com/ray-project/ray/issues/68305.
 class MARWILConfig(AlgorithmConfig):
     """Defines a configuration class from which a MARWIL Algorithm can be built.
 
     Examples:
-        >>> import gymnasium as gym
+        >>> import gymnasium as gym  # doctest: +SKIP_EXAMPLE
         >>> import numpy as np
         >>> from pathlib import Path
         >>> from ray.rllib.algorithms.marwil import MARWILConfig

@@ -43,7 +43,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
     paths = ["example://iris.csv"] * SCALE_FACTOR
     ds = ray.data.read_csv(paths)
     # Row count should be unknown before execution.
-    assert "num_rows=?" in str(ds)
+    assert "shape: (?," in str(ds)
     # After iterating over bundles and completing execution, row count should be known.
     list(ds.iter_internal_ref_bundles())
     assert ds.count() == DS_ROW_COUNT

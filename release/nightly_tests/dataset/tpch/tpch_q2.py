@@ -39,30 +39,12 @@ def main(args):
         #   Branch B: partsupp join regional_suppliers -> groupby Min(supplycost)
         # The main pipeline joins part -> partsupp -> regional_suppliers -> min_cost.
 
-        # Load all required tables with early column pruning to reduce
-        # intermediate data size (projection pushes down to Parquet reader)
-        # TODO: Remove manual projection once we support proper projection derivation
-        region = load_table("region", args.sf).select_columns(["r_regionkey", "r_name"])
-        nation = load_table("nation", args.sf).select_columns(
-            ["n_nationkey", "n_name", "n_regionkey"]
-        )
-        supplier = load_table("supplier", args.sf).select_columns(
-            [
-                "s_suppkey",
-                "s_name",
-                "s_address",
-                "s_nationkey",
-                "s_phone",
-                "s_acctbal",
-                "s_comment",
-            ]
-        )
-        part = load_table("part", args.sf).select_columns(
-            ["p_partkey", "p_mfgr", "p_type", "p_size"]
-        )
-        partsupp = load_table("partsupp", args.sf).select_columns(
-            ["ps_partkey", "ps_suppkey", "ps_supplycost"]
-        )
+        # Load tables. Projection pushdown derives the columns each read needs.
+        region = load_table("region", args.sf)
+        nation = load_table("nation", args.sf)
+        supplier = load_table("supplier", args.sf)
+        part = load_table("part", args.sf)
+        partsupp = load_table("partsupp", args.sf)
 
         # Q2 parameters
         region_name = "EUROPE"
@@ -78,21 +60,36 @@ def main(args):
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
-        ).select_columns(["n_nationkey", "n_name"])
+        )
 
         # Materialize to avoid recomputing the region->nation->supplier chain
         # in both Branch B and the main pipeline (Ray Data has no CSE).
-        regional_suppliers = nation_region.join(
-            supplier,
-            num_partitions=200,
-            join_type="inner",
-            on=("n_nationkey",),
-            right_on=("s_nationkey",),
-        ).materialize()
+        # Projection pushdown stops at materialize(), so prune by hand first.
+        regional_suppliers = (
+            nation_region.join(
+                supplier,
+                num_partitions=200,
+                join_type="inner",
+                on=("n_nationkey",),
+                right_on=("s_nationkey",),
+            )
+            .select_columns(
+                [
+                    "s_suppkey",
+                    "s_name",
+                    "s_address",
+                    "s_phone",
+                    "s_acctbal",
+                    "s_comment",
+                    "n_name",
+                ]
+            )
+            .materialize()
+        )
 
         # ── Branch B: min supply cost per part from regional suppliers ──
         regional_partsupp = partsupp.join(
-            regional_suppliers.select_columns(["s_suppkey"]),
+            regional_suppliers,
             num_partitions=200,
             join_type="inner",
             on=("ps_suppkey",),
@@ -100,7 +97,7 @@ def main(args):
         )
         regional_partsupp = regional_partsupp.with_column(
             "ps_supplycost_f", to_f64(col("ps_supplycost"))
-        ).select_columns(["ps_partkey", "ps_supplycost_f"])
+        )
 
         min_cost = regional_partsupp.groupby("ps_partkey").aggregate(
             Min(on="ps_supplycost_f", alias_name="min_supplycost")
@@ -126,40 +123,20 @@ def main(args):
 
         part_partsupp = part_partsupp.with_column(
             "ps_supplycost_f", to_f64(col("ps_supplycost"))
-        ).select_columns(["p_partkey", "p_mfgr", "ps_suppkey", "ps_supplycost_f"])
+        )
 
         # Join with regional suppliers to enforce region constraint and get details
         part_regional = part_partsupp.join(
-            regional_suppliers.select_columns(
-                [
-                    "s_suppkey",
-                    "s_name",
-                    "s_address",
-                    "s_phone",
-                    "s_acctbal",
-                    "s_comment",
-                    "n_name",
-                ]
-            ),
+            regional_suppliers,
             num_partitions=200,
             join_type="inner",
             on=("ps_suppkey",),
             right_on=("s_suppkey",),
-        ).select_columns(
-            [
-                "p_partkey",
-                "p_mfgr",
-                "ps_supplycost_f",
-                "s_acctbal",
-                "s_name",
-                "s_address",
-                "s_phone",
-                "s_comment",
-                "n_name",
-            ]
         )
 
-        # Join with min cost and filter to keep only minimum-cost suppliers.
+        # Join with min cost, keeping only minimum-cost suppliers. The
+        # ``condition`` equality becomes a second hash key, so the hash
+        # partitioning enforces it instead of a filter after the join.
         # Float equality is safe: both sides are cast from the same Decimal
         # source via to_f64, and Min preserves the exact float64 value.
         ds = part_regional.join(
@@ -168,8 +145,8 @@ def main(args):
             join_type="inner",
             on=("p_partkey",),
             right_on=("ps_partkey",),
+            condition=col("ps_supplycost_f") == col("min_supplycost"),
         )
-        ds = ds.filter(expr=col("ps_supplycost_f") == col("min_supplycost"))
 
         # Cast Decimal s_acctbal to float64 for sort compatibility
         ds = ds.with_column("s_acctbal", to_f64(col("s_acctbal")))

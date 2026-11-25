@@ -5,17 +5,22 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Sequence, Set, Tupl
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.n_ary_operator import NAry
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
+from ray.data.expressions import BinaryExpr, ColumnExpr, Expr, Operation
 
 if TYPE_CHECKING:
+    from ray.data.block import Schema as BlockSchema
     from ray.data.dataset import Schema
 
 __all__ = [
     "Join",
     "JoinSide",
     "JoinType",
+    "ResolvedJoinCondition",
 ]
 
 
@@ -40,20 +45,79 @@ class JoinSide(Enum):
     RIGHT = 1
 
 
+@dataclass(frozen=True)
+class ResolvedJoinCondition:
+    """Condition keys plus the residual; see ``Join.resolve_condition``."""
+
+    left_condition_key_columns: Tuple[str, ...]
+    right_condition_key_columns: Tuple[str, ...]
+    residual: Optional[Expr]
+
+
+def _resolve_side(
+    name: str, left_columns: Set[str], right_columns: Set[str]
+) -> JoinSide:
+    on_left = name in left_columns
+    on_right = name in right_columns
+    if on_left and on_right:
+        raise ValueError(
+            f"Column '{name}' in the join `condition` exists on both sides of "
+            "the join, so it is ambiguous. Rename it on one side before joining."
+        )
+    if not on_left and not on_right:
+        raise ValueError(
+            f"Column '{name}' in the join `condition` is not a column of either "
+            f"join input (left has {sorted(left_columns)}, right has "
+            f"{sorted(right_columns)})."
+        )
+    return JoinSide.LEFT if on_left else JoinSide.RIGHT
+
+
+def _as_cross_side_equality(
+    conjunct: Expr, left_columns: Set[str], right_columns: Set[str]
+) -> Optional[Tuple[str, str]]:
+    """``(left_column, right_column)`` if ``conjunct`` is an equality between
+    a column of each side (in either operand order), else ``None``."""
+    if not (
+        isinstance(conjunct, BinaryExpr)
+        and conjunct.op is Operation.EQ
+        and isinstance(conjunct.left, ColumnExpr)
+        and isinstance(conjunct.right, ColumnExpr)
+    ):
+        return None
+    first, second = conjunct.left.name, conjunct.right.name
+    first_side = _resolve_side(first, left_columns, right_columns)
+    second_side = _resolve_side(second, left_columns, right_columns)
+    if first_side is second_side:
+        return None
+    return (first, second) if first_side is JoinSide.LEFT else (second, first)
+
+
 @dataclass(frozen=True, repr=False, eq=False)
-class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
+class Join(
+    NAry,
+    LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
+):
     """Logical operator for join."""
 
     left_input_op: InitVar[LogicalOperator]
     right_input_op: InitVar[LogicalOperator]
     join_type: Union[JoinType, str]
-    left_key_columns: Tuple[str]
-    right_key_columns: Tuple[str]
+    left_key_columns: Tuple[str, ...]
+    right_key_columns: Tuple[str, ...]
     num_partitions: int
     left_columns_suffix: Optional[str] = None
     right_columns_suffix: Optional[str] = None
     partition_size_hint: Optional[int] = None
     aggregator_ray_remote_args: Optional[Dict[str, Any]] = None
+    # Over *input* column names. ``ExtractEquiJoinKeys`` moves cross-side
+    # equalities into the condition keys below; the residual stays here
+    condition: Optional[Expr] = None
+    # Hashed on and matched like the key columns, but not coalesced: both
+    # columns of a pair stay in the output, as with a SQL ``ON``.
+    left_condition_key_columns: Tuple[str, ...] = ()
+    right_condition_key_columns: Tuple[str, ...] = ()
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
 
     def __post_init__(
@@ -70,6 +134,36 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
 
         object.__setattr__(self, "join_type", join_type_enum)
+        object.__setattr__(self, "left_key_columns", tuple(self.left_key_columns))
+        object.__setattr__(self, "right_key_columns", tuple(self.right_key_columns))
+        object.__setattr__(
+            self,
+            "left_condition_key_columns",
+            tuple(self.left_condition_key_columns),
+        )
+        object.__setattr__(
+            self,
+            "right_condition_key_columns",
+            tuple(self.right_condition_key_columns),
+        )
+        assert len(self.left_condition_key_columns) == len(
+            self.right_condition_key_columns
+        )
+        if len(self.left_key_columns) < 1:
+            raise ValueError(
+                "At least 1 column name to join on has to be provided via `on`"
+                + (
+                    "; a `condition` alone is not supported"
+                    if self.condition is not None
+                    else ""
+                )
+            )
+        if len(self.left_key_columns) != len(self.right_key_columns):
+            raise ValueError(
+                "Number of columns provided for left and right datasets has to "
+                f"match (got {list(self.left_key_columns)} and "
+                f"{list(self.right_key_columns)})"
+            )
         object.__setattr__(
             self,
             "_input_dependencies",
@@ -158,6 +252,111 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
                 f"left has {left_op_schema}, but right has {right_op_schema}"
             )
 
+    def resolve_condition(
+        self,
+        left_schema: Union["Schema", "BlockSchema", None] = None,
+        right_schema: Union["Schema", "BlockSchema", None] = None,
+    ) -> Optional[ResolvedJoinCondition]:
+        """Resolve ``condition`` against the input schemas.
+
+        Column references in ``condition`` name input columns (before any
+        suffix is applied), so each must belong to exactly one side; an
+        unknown or ambiguous column raises ``ValueError``. Returns ``None``
+        when either input schema is unknown and the condition therefore can't
+        be resolved. Without a condition, the result just repeats the
+        condition keys already on the operator.
+
+        Callers that already hold the input schemas pass them in; otherwise
+        they are inferred here, and that result is cached on the operator.
+        (``infer_schema`` passes its own, so a chain of joins doesn't infer
+        each input twice per level.)
+
+        Example: with ``on="k"``, ``right_on="k2"`` and the condition
+        ``(col("a") == col("b")) & (col("x") < col("y"))``, where ``a`` and
+        ``x`` are left columns and ``b`` and ``y`` right ones, the condition
+        keys are ``("a",)`` / ``("b",)`` and the residual is
+        ``col("x") < col("y")``.
+        """
+        if self.condition is None:
+            return ResolvedJoinCondition(
+                self.left_condition_key_columns,
+                self.right_condition_key_columns,
+                None,
+            )
+        if left_schema is None and right_schema is None:
+            cached = self.__dict__.get("_inferred_resolution")
+            if cached is None:
+                cached = self._resolve_condition(
+                    self.input_dependencies[0].infer_schema(),
+                    self.input_dependencies[1].infer_schema(),
+                )
+                if cached is not None:
+                    object.__setattr__(self, "_inferred_resolution", cached)
+            return cached
+        if left_schema is None:
+            left_schema = self.input_dependencies[0].infer_schema()
+        if right_schema is None:
+            right_schema = self.input_dependencies[1].infer_schema()
+        return self._resolve_condition(left_schema, right_schema)
+
+    def _resolve_condition(
+        self,
+        left_schema: Union["Schema", "BlockSchema", None],
+        right_schema: Union["Schema", "BlockSchema", None],
+    ) -> Optional[ResolvedJoinCondition]:
+        condition = self.condition
+        assert condition is not None
+        if left_schema is None or right_schema is None:
+            return None
+        left_columns = set(left_schema.names)
+        right_columns = set(right_schema.names)
+        from ray.data._internal.datasource_v2.common.pushdown_utils import (
+            combine_predicate_chain,
+            flatten_predicate_chain,
+        )
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        for name in get_column_references(condition):
+            _resolve_side(name, left_columns, right_columns)
+
+        left_keys = list(self.left_condition_key_columns)
+        right_keys = list(self.right_condition_key_columns)
+        # Everything already matched on, ``on``/``right_on`` included.
+        left_matched = set(self.left_key_columns) | set(left_keys)
+        right_matched = set(self.right_key_columns) | set(right_keys)
+        pairs = set(zip(self.left_key_columns, self.right_key_columns))
+        pairs.update(zip(left_keys, right_keys))
+        residual: List[Expr] = []
+        for conjunct in flatten_predicate_chain(condition, Operation.AND):
+            pair = _as_cross_side_equality(conjunct, left_columns, right_columns)
+            if pair is None:
+                residual.append(conjunct)
+            elif pair not in pairs:
+                # A column is hashed on only once per side.
+                for name, matched, side in (
+                    (pair[0], left_matched, "left"),
+                    (pair[1], right_matched, "right"),
+                ):
+                    if name in matched:
+                        raise ValueError(
+                            f"Column '{name}' of the {side} input is already a "
+                            f"join key, so the equality between '{pair[0]}' and "
+                            f"'{pair[1]}' in `condition` can't become another one. "
+                            "Apply it with `filter()` after the join instead."
+                        )
+                pairs.add(pair)
+                left_matched.add(pair[0])
+                right_matched.add(pair[1])
+                left_keys.append(pair[0])
+                right_keys.append(pair[1])
+        return ResolvedJoinCondition(
+            tuple(left_keys),
+            tuple(right_keys),
+            combine_predicate_chain(residual, Operation.AND),
+        )
+
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         return PredicatePassThroughBehavior.CONDITIONAL
 
@@ -167,6 +366,79 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
         join; neither side of a FULL_OUTER, since both can generate nulls.
         """
         return self._get_pushdown_rules()[side.value]
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        """Split the required output columns by the side that produces each one
+        (via :meth:`output_to_input_columns`) and add what the join itself
+        reads whether or not a consumer references it: the ``on`` keys, the
+        condition keys and the columns of ``condition``. Declines when a
+        required name is one the mirror could not place, so the consumer never
+        loses a column, and when the join's output schema can't be inferred:
+        an input schema is unknown or not Arrow, or the join is going to fail
+        (say, colliding columns and no suffixes) and has to keep failing the
+        same way whatever its consumer selects.
+
+        Both members of a colliding payload pair are kept whenever one is
+        required: pruning the other would make the physical join stop
+        suffixing the survivor, changing the output name the consumer uses.
+        """
+        output_schema = self.infer_schema()
+        side_columns = self.output_to_input_columns()
+        if output_schema is None or side_columns is None:
+            return None
+        left_map, right_map = side_columns
+        if required_output_columns is None:
+            required_output_columns = set(output_schema.names)
+
+        left_columns = set(self.input_dependencies[0].infer_schema().names)
+        right_columns = set(self.input_dependencies[1].infer_schema().names)
+        # What the join itself reads: the columns it hashes on, and those of a
+        # ``condition`` whose equalities ``ExtractEquiJoinKeys`` hasn't turned
+        # into condition keys yet, or which stays as the residual.
+        left_required = set(self.left_key_columns) | set(
+            self.left_condition_key_columns
+        )
+        right_required = set(self.right_key_columns) | set(
+            self.right_condition_key_columns
+        )
+        if self.condition is not None:
+            from ray.data._internal.planner.plan_expression.expression_visitors import (
+                get_column_references,
+            )
+
+            # The output schema was inferred, so the condition resolved: each
+            # of its columns belongs to exactly one side.
+            for name in get_column_references(self.condition):
+                if _resolve_side(name, left_columns, right_columns) is JoinSide.LEFT:
+                    left_required.add(name)
+                else:
+                    right_required.add(name)
+        for output_name in required_output_columns:
+            placed = False
+            if output_name in left_map:
+                left_required.add(left_map[output_name])
+                placed = True
+            if output_name in right_map:
+                right_required.add(right_map[output_name])
+                placed = True
+            if not placed:
+                return None
+
+        if self.join_type not in (
+            JoinType.LEFT_SEMI,
+            JoinType.LEFT_ANTI,
+            JoinType.RIGHT_SEMI,
+            JoinType.RIGHT_ANTI,
+        ):
+            collisions = (left_columns - set(self.left_key_columns)) & (
+                right_columns - set(self.right_key_columns)
+            )
+            kept_collisions = collisions & (left_required | right_required)
+            left_required |= kept_collisions
+            right_required |= kept_collisions
+        return [left_required, right_required]
 
     def _get_pushdown_rules(self) -> Tuple[bool, bool]:
         """Get pushdown rules for the current join type.
@@ -255,13 +527,25 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             if isinstance(self.join_type, JoinType)
             else JoinType(self.join_type)
         )
+        # Use the condition keys ExtractEquiJoinKeys will produce, so the schema
+        # is the same before and after the rewrite (a pair left in the condition
+        # collides when both sides name it alike; a condition key can't).
+        # Dataset.__repr__ calls this and expects None for "unknown".
+        try:
+            resolved = self.resolve_condition(left_schema, right_schema)
+        except ValueError:
+            return None
+        if resolved is None:
+            return None
         try:
             joined = join_tables(
-                left_schema.empty_table(),
-                right_schema.empty_table(),
+                _create_empty_table(left_schema),
+                _create_empty_table(right_schema),
                 join_type=join_type_enum,
-                left_key_col_names=tuple(self.left_key_columns),
-                right_key_col_names=tuple(self.right_key_columns),
+                left_key_col_names=self.left_key_columns,
+                right_key_col_names=self.right_key_columns,
+                left_condition_key_col_names=resolved.left_condition_key_columns,
+                right_condition_key_col_names=resolved.right_condition_key_columns,
                 left_columns_suffix=self.left_columns_suffix,
                 right_columns_suffix=self.right_columns_suffix,
             )
