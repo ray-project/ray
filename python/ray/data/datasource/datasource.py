@@ -222,32 +222,35 @@ class Datasource(
     def guarded_get_read_tasks(
         self, parallelism: int, **kwargs: Any
     ) -> List["ReadTask"]:
-        """Call :meth:`get_read_tasks` with unpickling of untrusted bytes refused.
+        """Call :meth:`~ray.data.Datasource.get_read_tasks` with unpickling refused.
 
         Ray Data plans reads through this method, never ``get_read_tasks``
         directly, so datasource code that parses external bytes can't unpickle
-        them. Implement :meth:`get_read_tasks`; don't override this method.
+        them. Implement :meth:`~ray.data.Datasource.get_read_tasks`; don't override
+        this method.
 
         Args:
             parallelism: The requested read parallelism.
-            **kwargs: Passed through to :meth:`get_read_tasks`.
+            **kwargs: Passed through to :meth:`~ray.data.Datasource.get_read_tasks`.
 
         Returns:
-            The read tasks returned by :meth:`get_read_tasks`.
+            The read tasks returned by :meth:`~ray.data.Datasource.get_read_tasks`.
         """
         with forbid_untrusted_unpickling():
             return self.get_read_tasks(parallelism, **kwargs)
 
     @final
     def guarded_estimate_inmemory_data_size(self) -> Optional[int]:
-        """Call :meth:`estimate_inmemory_data_size` with unpickling refused.
+        """Estimate the in-memory data size with unpickling refused.
 
         Ray Data calls this method, never ``estimate_inmemory_data_size``
-        directly. Implement :meth:`estimate_inmemory_data_size`; don't override
+        directly. Implement
+        :meth:`~ray.data.Datasource.estimate_inmemory_data_size`; don't override
         this method.
 
         Returns:
-            The estimate returned by :meth:`estimate_inmemory_data_size`.
+            The estimate returned by
+            :meth:`~ray.data.Datasource.estimate_inmemory_data_size`.
         """
         with forbid_untrusted_unpickling():
             return self.estimate_inmemory_data_size()
