@@ -107,7 +107,7 @@ ray.get(some_task.remote())
 ray.wait([some_task.remote()])
 ```
 
-you can await the object ref in Python 3.9 and 3.10:
+you can await the object ref:
 
 ```{testcode}
 import ray
@@ -119,12 +119,11 @@ def some_task():
 
 async def await_obj_ref():
     await some_task.remote()
-    await asyncio.wait([some_task.remote()])
 
 asyncio.run(await_obj_ref())
 ```
 
-or await the `Future` object directly in Python 3.11 and later:
+or convert the object ref to an `asyncio.Future`, which `asyncio` APIs such as `asyncio.wait` require:
 
 ```{testcode}
 import asyncio
