@@ -277,6 +277,11 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         self._update_busy_slots(state)
         return True
 
+    def slots_per_actor(self) -> int:
+        """Task slots per actor: its ``max_concurrency`` seats, at least 1.
+        Every slot count and slot integral uses this."""
+        return max(1, self.max_actor_concurrency())
+
     def _advance_busy_clock(self) -> None:
         now = time.monotonic()
         self._busy_slot_seconds += self._busy_slots_now * (now - self._busy_clock_t)
@@ -288,7 +293,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         and a DRAINING one is outside the slots ``slot_usage`` counts. Callers
         update the status before calling, so it matches the in-flight count."""
         new = (
-            min(self.max_actor_concurrency(), state.num_tasks_in_flight)
+            min(self.slots_per_actor(), state.num_tasks_in_flight)
             if state.status is ActorStatus.ACTIVE
             else 0
         )
@@ -304,7 +309,7 @@ class _ExperimentalActorPool(AutoscalingActorPool):
 
     def busy_slot_seconds(self) -> float:
         """Cumulative busy-slot seconds since the pool was created: the time
-        integral of each serving actor's min(max_concurrency, tasks in
+        integral of each ACTIVE actor's min(slots_per_actor, tasks in
         flight). Callers difference two reads to get a window's busy time."""
         self._advance_busy_clock()
         return self._busy_slot_seconds

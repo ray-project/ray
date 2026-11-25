@@ -528,11 +528,7 @@ class BottleneckObserver:
         # output-backpressured slots count as blocked by it if so, else as
         # held back by the producer's own budget.
         saturated = {
-            op: (
-                usage.busy_slots + usage.obp_slots >= usage.slots
-                if usage.slots > 0
-                else queued[op] > 0
-            )
+            op: usage.idle_slots <= 0 if usage.slots > 0 else queued[op] > 0
             for op, usage in usages.items()
         }
         for producer, usage in usages.items():

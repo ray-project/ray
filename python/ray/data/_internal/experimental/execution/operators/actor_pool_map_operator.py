@@ -262,21 +262,32 @@ def _redact_remote_args(ray_remote_args: Optional[Dict[str, Any]]) -> Any:
 @dataclass(frozen=True)
 class SlotUsage:
     """An operator's serving task slots right now, for the bottleneck
-    observer. A slot is one of an actor's ``max_concurrency`` task seats."""
+    observer. A slot is one of an actor's ``max_concurrency`` task seats.
+
+    Each field without a prefix covers all serving actors; its ``obp_``
+    counterpart covers the output-backpressured subset. ``*_slots`` counts
+    seats, ``busy_*`` counts the seats holding a task.
+    """
 
     # IDLE or ACTIVE actors; DRAINING / RESTARTING ones are not serving.
     serving_actors: int
-    # serving_actors x max_concurrency.
+    # serving_actors x slots per actor.
     slots: int
-    # Number of open/used slots of obp actors.
-    obp_slots: int
-    # Of ``obp_slots``, just those being used (running a task).
-    obp_busy_slots: int
-    # Slots holding a task right now on non-obp actors.
+    # Seats holding a task right now.
     busy_slots: int
-    # The pool's cumulative busy-slot seconds (see
+    # Time integral of ``busy_slots`` since the pool was created (see
     # ``_ExperimentalActorPool.busy_slot_seconds``).
     busy_slot_seconds: float
+    # Of ``slots``, those on output-backpressured actors.
+    obp_slots: int
+    # Of ``busy_slots``, those on output-backpressured actors.
+    obp_busy_slots: int
+
+    @property
+    def idle_slots(self) -> int:
+        """Seats free to start a task: on actors not output-backpressured,
+        and not holding one."""
+        return (self.slots - self.obp_slots) - (self.busy_slots - self.obp_busy_slots)
 
 
 class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
@@ -1765,7 +1776,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         or move to another actor.
         """
         zeros = TaskPullRequest.zero()
-        conc = max(1, self.actor_pool.max_actor_concurrency())
+        conc = self.actor_pool.slots_per_actor()
         slots = 0
         for states in self.actor_pool.alive_actor_states_by_node().values():
             for actor_id, state in states.items():
@@ -1783,25 +1794,25 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         here, since it changes on output pulls the pool does not see.
         """
         zeros = TaskPullRequest.zero()
-        conc = max(1, self.actor_pool.max_actor_concurrency())
-        serving = obp_actors = obp_busy = busy = 0
+        conc = self.actor_pool.slots_per_actor()
+        serving = busy = obp_actors = obp_busy = 0
         for states in self.actor_pool.alive_actor_states_by_node().values():
             for actor_id, state in states.items():
                 if state.status not in (ActorStatus.IDLE, ActorStatus.ACTIVE):
                     continue
                 serving += 1
+                held = min(conc, state.num_tasks_in_flight)
+                busy += held
                 if not self._actor_pull_budget(actor_id).all_fields_gt(zeros):
                     obp_actors += 1
-                    obp_busy += min(conc, state.num_tasks_in_flight)
-                else:
-                    busy += min(conc, state.num_tasks_in_flight)
+                    obp_busy += held
         return SlotUsage(
             serving_actors=serving,
             slots=serving * conc,
-            obp_slots=obp_actors * conc,
-            obp_busy_slots=obp_busy,
             busy_slots=busy,
             busy_slot_seconds=self.actor_pool.busy_slot_seconds(),
+            obp_slots=obp_actors * conc,
+            obp_busy_slots=obp_busy,
         )
 
     def output_backpressured_actors(self) -> Tuple[int, int]:
