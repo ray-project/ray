@@ -343,9 +343,7 @@ async def test_get_driver_jobs_retries_deadline_once():
     assert gcs_client.async_get_all_job_info.await_count == 2
 
     # 3. Non-deadline RpcError is not retried.
-    unavailable_err = RpcError(
-        "Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE
-    )
+    unavailable_err = RpcError("Unavailable", rpc_code=GRPC_STATUS_CODE_UNAVAILABLE)
     gcs_client.async_get_all_job_info = AsyncMock(side_effect=unavailable_err)
     with pytest.raises(RpcError, match="Unavailable"):
         await get_driver_jobs(gcs_client, job_or_submission_id="raysubmit_123")

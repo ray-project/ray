@@ -166,10 +166,7 @@ async def get_driver_jobs(
             timeout=timeout,
         )
     except RpcError as e:
-        if (
-            timeout is not None
-            or e.rpc_code != GRPC_STATUS_CODE_DEADLINE_EXCEEDED
-        ):
+        if timeout is not None or e.rpc_code != GRPC_STATUS_CODE_DEADLINE_EXCEEDED:
             raise
         logger.warning(
             "GetAllJobInfo timed out for job_or_submission_id=%s; "
