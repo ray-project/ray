@@ -6,14 +6,14 @@ This package scans Ray's container images for known vulnerabilities with
 - **In CI**, release-automation postmerge builds scan the images they
   publish. The steps are in `.buildkite/image-scan.rayci.yml` and are off
   until `RAYCI_IMAGE_SCAN=1` is set. See [How CI runs the scans](#how-ci-runs-the-scans).
-- **On your machine**, `scan_refs` scans any image you name, such as a
+- **On your machine**, `local_scan_images` scans any image you name, such as a
   published `rayproject/ray` tag or any other image, and writes the same
   report as CI. Most of this page is about this tool.
 
 ## Scan images locally
 
 ```bash
-bazel run //ci/ray_ci/automation/trivy:scan_refs -- \
+bazel run //ci/ray_ci/automation/trivy:local_scan_images -- \
     --image rayproject/ray:2.60.0-py312-cpu \
     --image ubuntu:22.04 \
     --work-dir ~/.cache/ray-trivy \
@@ -51,29 +51,32 @@ file with `--images-file`. You can use both; the file's images come after
 the `--image` ones.
 
 ```text
-# images.txt: one reference per line; "#" starts a comment.
+# images.txt: one image per line; "#" starts a comment.
 rayproject/ray:2.60.0-py312-cpu
 rayproject/ray:2.60.0-py312-cu128   # the CUDA variant
 ubuntu:22.04
 ```
 
 ```bash
-bazel run //ci/ray_ci/automation/trivy:scan_refs -- \
+bazel run //ci/ray_ci/automation/trivy:local_scan_images -- \
     --images-file images.txt --work-dir ~/.cache/ray-trivy --output-dir /tmp/trivy-report
 ```
 
-- **References:** a reference can name a tag (`repo:tag`), a digest
+- **Names:** name each image with a tag (`repo:tag`), a digest
   (`repo@sha256:…`) or both. Without either, it means `:latest`.
-  - Only the characters image references use are accepted: letters,
-    digits, `.`, `_`, `-`, `/`, `:` and `@`. It must start with a letter or
-    digit.
+  - Only the characters image names, tags and digests use are accepted:
+    letters, digits, `.`, `_`, `-`, `/`, `:` and `@`. It must start with a
+    letter or digit.
   - Each image may appear only once.
+- **From a registry:** images are pulled from their registry. To scan one
+  you built locally, push it to a registry first; see
+  [Scan an image you built](#scan-an-image-you-built).
 - **Architecture:** `--architecture` (default `x86_64`, or `aarch64`) picks
-  which image of a multi-platform reference to scan. Most public tags are
+  which architecture's image to scan from a multi-platform tag. Most public tags are
   multi-platform. A single-platform image must match it, or it fails with
   an error such as `… is arm64, expected amd64`.
 - **Digests:** each image is scanned by digest, so the report says exactly
-  what was scanned even if the tag moves later. References are resolved
+  what was scanned even if the tag moves later. Images are resolved
   before the DBs are prepared, so if none resolves, such as a single
   mistyped tag, the run stops without downloading anything.
 - **Relative paths** in options are relative to where you started
@@ -104,7 +107,7 @@ them:
 - **Share:** several runs may use the same `--work-dir` at once. Runs
   reusing the DBs scan side by side; a run downloading or refreshing them
   waits for those, and they for it, logging
-  `Waiting for another scan_refs run using DIR`.
+  `Waiting for another local_scan_images run using DIR`.
 
 A kept DB grows stale. The upstream DB gets new advisories often, so an
 old copy can miss vulnerabilities published since it was built. Refresh:
@@ -141,7 +144,7 @@ format (one ID per line) is refused.
   image as CI does, pass its family's list:
 
   ```bash
-  bazel run //ci/ray_ci/automation/trivy:scan_refs -- \
+  bazel run //ci/ray_ci/automation/trivy:local_scan_images -- \
       --image rayproject/ray:2.60.0-py312-cpu \
       --ignorefile ci/ray_ci/automation/trivy/ignore/ray.trivyignore.yaml \
       --work-dir ~/.cache/ray-trivy --output-dir /tmp/trivy-report
@@ -174,6 +177,32 @@ format (one ID per line) is refused.
 Keep a personal list outside the repo. The lists in `ignore/` are applied
 by CI, so a change to them goes through review like any code change.
 
+### Scan an image you built
+
+`local_scan_images` pulls images from a registry; it can't read the
+images in your local Docker. To scan one you built, push it to a registry
+first. A throwaway registry on `localhost` will do:
+
+```bash
+docker run -d --rm --name local-registry -p 127.0.0.1:5000:5000 registry:2
+docker build -t localhost:5000/my-image:dev .
+docker push localhost:5000/my-image:dev
+bazel run //ci/ray_ci/automation/trivy:local_scan_images -- \
+    --image localhost:5000/my-image:dev \
+    --work-dir ~/.cache/ray-trivy --output-dir /tmp/trivy-report
+docker stop local-registry   # with --rm, this also deletes what was pushed
+```
+
+- **No TLS needed on `localhost`:** crane uses plain HTTP for `localhost`,
+  loopback addresses and private-network IPs. A registry under any other
+  hostname needs HTTPS.
+- **Keep it private:** binding to `127.0.0.1` keeps the registry, which has
+  no authentication, off the network.
+- **Digests differ:** the report gives the pushed image's digest, not the
+  image ID `docker images` shows; it's the same content.
+- **Architecture:** `docker build` makes an image for your machine's
+  architecture, so keep `--architecture` at its default on x86_64.
+
 ### Private registries and ECR
 
 crane pulls the images with the credentials in `~/.docker/config.json`.
@@ -182,12 +211,12 @@ crane pulls the images with the credentials in `~/.docker/config.json`.
   images are private, or if you hit Docker Hub's limits on anonymous pulls
   (`toomanyrequests`).
 - **ECR in `us-west-2`** (`<account>.dkr.ecr.us-west-2.amazonaws.com`):
-  `scan_refs` logs in itself, with your AWS credentials, so you don't need
+  `local_scan_images` logs in itself, with your AWS credentials, so you don't need
   to run `aws ecr get-login-password`. Set your profile first:
 
   ```bash
   aws sso login --profile <profile>
-  AWS_PROFILE=<profile> bazel run //ci/ray_ci/automation/trivy:scan_refs -- \
+  AWS_PROFILE=<profile> bazel run //ci/ray_ci/automation/trivy:local_scan_images -- \
       --image <account>.dkr.ecr.us-west-2.amazonaws.com/<repo>:<tag> \
       --work-dir ~/.cache/ray-trivy --output-dir /tmp/trivy-report
   ```
@@ -223,9 +252,9 @@ crane pulls the images with the credentials in `~/.docker/config.json`.
 | `summary.json` | The verdict, the totals and each image's counts and findings, for scripts and comparing runs. |
 | `vulns.csv` | One row per image and CRITICAL or HIGH finding, suppressed ones included. |
 | `results/<name>.json.gz` | Trivy's raw JSON for the image: every severity and every package. |
-| `results/<name>.status.json` | The image's reference, digest, scan status and the DBs it was checked against. |
+| `results/<name>.status.json` | The image's name, digest, scan status and the DBs it was checked against. |
 
-`<name>` is the image reference with every character other than letters,
+`<name>` is the image's name and tag or digest, with every character other than letters,
 digits, `.`, `_` and `-` turned into `_`. A run first removes its own
 images' files from an earlier run in the same `--output-dir`, and leaves
 anything else there.
@@ -304,19 +333,19 @@ above.
 | `WARNING: Reusing the Trivy DBs … CVEs published since then are missing` | The kept DB is over 7 days old. Pass `--refresh-db`. |
 | `Could not download the Trivy DBs: …` | `public.ecr.aws` wasn't reachable, or refused the request. The kept DBs, if any, are unchanged. |
 | `Could not log in to <registry>: …` | The ECR login failed: an expired AWS session, or a registry outside `us-west-2`. That registry's images fail; the others still scan. |
-| `No image could be resolved, so nothing was downloaded.` | Every reference failed to resolve; the report gives each one's error. |
-| `Waiting for another scan_refs run using DIR` | Another run is downloading DBs into the same `--work-dir`, or scanning with them while this one wants to download. It continues once that's done. |
+| `No image could be resolved, so nothing was downloaded.` | Every image failed to resolve; the report gives each one's error. |
+| `Waiting for another local_scan_images run using DIR` | Another run is downloading DBs into the same `--work-dir`, or scanning with them while this one wants to download. It continues once that's done. |
 | Every image: `group failed before scanning: …` | Something every image needs failed: Docker isn't running or you can't use it, or the kept DBs failed their upstream check (the report then suggests `--refresh-db`). The message names the cause. |
 | `… is arm64, expected amd64` | A single-platform image of the other architecture. Pass `--architecture aarch64`. |
 | `no OS packages detected (OS: not detected); checked its other packages` | Trivy found no distro packages, e.g. in an image built `FROM scratch`. Its other packages, such as a Go binary's modules, are still checked and reported, and the report notes it. An image with no packages at all counts as not scanned, so a scan that saw nothing never looks clean. |
 | `… isn't a Trivy YAML ignore file (.yaml or .yml)` | `--ignorefile` must use Trivy's YAML format. |
-| `'…' is not an image reference` | The reference has a character references don't use, or starts with `-`. |
-| `… is given twice` / `… would share the result file …` | Two references are the same, or map to the same `<name>`. |
+| `'…' is not an image name` | The name has a character image names don't use, or starts with `-`. |
+| `… is given twice` / `… would share the result file …` | Two images are the same, or map to the same `<name>`. |
 | `toomanyrequests` | Docker Hub's anonymous pull limit. Run `docker login`. |
 
 ## Update the Trivy version pin
 
-Every scan, in CI and with `scan_refs`, runs the Trivy release pinned in
+Every scan, in CI and with `local_scan_images`, runs the Trivy release pinned in
 [`pin/trivy_versions.bzl`](pin/trivy_versions.bzl): `TRIVY_VERSION` and
 `TRIVY_SHA256`, the sha256 of `trivy_<version>_Linux-64bit.tar.gz`.
 `TRIVY_SIGNER_IDENTITY` follows from the version. `WORKSPACE` loads the
@@ -365,7 +394,7 @@ bump's PR description.
 6. **Test it, and compare scans.**
    - Run `bazel test //ci/ray_ci/automation/trivy:all`.
    - Compare a scan by the new binary with one by the old: for example,
-     scan the same images with `scan_refs` before and after the bump.
+     scan the same images with `local_scan_images` before and after the bump.
      Use the same `--work-dir` without `--refresh-db`, so only the binary
      differs.
    - Explain any change in the counts or the findings, from `summary.json`.
@@ -394,7 +423,7 @@ docstrings have the details:
 
 | Module | Role |
 |---|---|
-| [`scan_refs.py`](scan_refs.py) | The local scan. |
+| [`local_scan_images.py`](local_scan_images.py) | The local scan. |
 | [`scan_images.py`](scan_images.py) | Resolves the images, pulls them and runs the contained Trivy. |
 | [`trivy_db.py`](trivy_db.py) | Stages the pinned DBs. |
 | [`scan_store.py`](scan_store.py) | The build's S3 folder, or a local one. |
