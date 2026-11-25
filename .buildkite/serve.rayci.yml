@@ -11,7 +11,7 @@ steps:
     wanda: ci/docker/serve.build.wanda.yaml
     array:
       python:
-        - "3.10"
+        - "3.11"
         - "3.12"
     env:
       PYTHON: "{{array.python}}"
@@ -24,9 +24,9 @@ steps:
   - name: minbuild-serve
     label: "wanda: minbuild-{{array.extra}}-py{{array.python}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy(python=3.10)
+    depends_on: oss-ci-base_test-multipy(python=3.11)
     array:
-      python: ["3.10"]
+      python: ["3.11"]
       extra: ["serve", "default"]
     env:
       PYTHON_VERSION: "{{array.python}}"
@@ -43,8 +43,8 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress,haproxy
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
-    depends_on: servebuild-multipy(python=3.10)
+        --build-name servebuild-py3.11 --test-env=EXPECTED_PYTHON_VERSION=3.11 --python-version 3.11
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: gRPC tests"
     parallelism: 2
@@ -53,10 +53,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,haproxy
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.10 --python-version 3.10
+        --build-name servebuild-py3.11 --python-version 3.11
         --test-env=RAY_SERVE_USE_GRPC_BY_DEFAULT=1
         --test-env=RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
-    depends_on: servebuild-multipy(python=3.10)
+    depends_on: servebuild-multipy(python=3.11)
     tags:
       - serve
 
@@ -71,9 +71,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress,haproxy
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-        --python-version 3.10
-    depends_on: servebuild-multipy(python=3.10)
+        --build-name servebuild-py3.11 --test-env=EXPECTED_PYTHON_VERSION=3.11 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+        --python-version 3.11
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: python {{array.python}} tests ({{array.worker_id}})"
     key: serve_python_tests
@@ -99,9 +99,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //release/... serve --parallelism-per-worker 3
-        --build-name servebuild-py3.10
-        --python-version 3.10
-    depends_on: servebuild-multipy(python=3.10)
+        --build-name servebuild-py3.11
+        --python-version 3.11
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: wheel tests"
     tags:
@@ -114,13 +114,13 @@ steps:
         --parallelism-per-worker 3
         --only-tags post_wheel_build
         --test-env=RAY_CI_POST_WHEEL_TESTS=True
-        --build-name servebuild-py3.10
-        --python-version 3.10
+        --build-name servebuild-py3.11
+        --python-version 3.11
     depends_on:
       - manylinux-x86_64
-      - servebuild-multipy(python=3.10)
+      - servebuild-multipy(python=3.11)
       - forge
-      - ray-wheel-build(python=3.10)
+      - ray-wheel-build(python=3.11)
 
   - label: ":ray-serve: serve: docs example tests"
     tags:
@@ -132,16 +132,16 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... serve
         --only-tags doctest
         --parallelism-per-worker 3
-        --build-name servebuild-py3.10
-        --python-version 3.10
+        --build-name servebuild-py3.11
+        --python-version 3.11
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... serve
         --except-tags gpu,post_wheel_build,timeseries_libs,doctest
         --parallelism-per-worker 3
         --skip-ray-installation
-        --build-name servebuild-py3.10
-        --python-version 3.10
-    depends_on: servebuild-multipy(python=3.10)
+        --build-name servebuild-py3.11
+        --python-version 3.11
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: default minimal"
     tags:
@@ -151,11 +151,11 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dashboard/... serve
         --parallelism-per-worker 2
-        --build-name minbuild-default-py3.10
-        --python-version 3.10
+        --build-name minbuild-default-py3.11
+        --python-version 3.11
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-serve(python=3.10, extra=default)
+    depends_on: minbuild-serve(python=3.11, extra=default)
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
@@ -165,12 +165,12 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
         --parallelism-per-worker 2
-        --build-name minbuild-serve-py3.10
-        --python-version 3.10
-        --test-env=EXPECTED_PYTHON_VERSION=3.10
+        --build-name minbuild-serve-py3.11
+        --python-version 3.11
+        --test-env=EXPECTED_PYTHON_VERSION=3.11
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-serve(python=3.10, extra=serve)
+    depends_on: minbuild-serve(python=3.11, extra=serve)
 
   - label: ":ray-serve: serve: dashboard tests"
     tags:
@@ -180,23 +180,23 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve
         --parallelism-per-worker 3
-        --build-name servebuild-py3.10
-        --python-version 3.10
-    depends_on: servebuild-multipy(python=3.10)
+        --build-name servebuild-py3.11
+        --python-version 3.11
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: HA integration tests"
     tags:
       - serve
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration --python-version 3.10
+      - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration --python-version 3.11
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests/... serve
-        --only-tags ha_integration --python-version 3.10 --build-name servebuild-py3.10
+        --only-tags ha_integration --python-version 3.11 --build-name servebuild-py3.11
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase(python=3.10)
-      - servebuild-multipy(python=3.10)
+      - raycpubase(python=3.11)
+      - servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: tracing tests"
     tags:
@@ -205,7 +205,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --only-tags serve_tracing --build-name servetracingbuild
-        --python-version 3.10
+        --python-version 3.11
     depends_on: servetracingbuild
 
   - label: ":ray-serve: serve: HAProxy tests"
@@ -220,12 +220,12 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/... serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name servebuild-py3.10 --python-version 3.10
+        --build-name servebuild-py3.11 --python-version 3.11
         --test-env=RAY_SERVE_ENABLE_HA_PROXY=1
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=0
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=SERVE_SOCKET_REUSE_PORT_ENABLED=1 || exit 42
-    depends_on: servebuild-multipy(python=3.10)
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: direct ingress tests"
     tags:
@@ -234,10 +234,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_di_test_names.txt) serve
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.10 --python-version 3.10
+        --build-name servebuild-py3.11 --python-version 3.11
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
-    depends_on: servebuild-multipy(python=3.10)
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: direct ingress tests (same loop)"
     tags:
@@ -246,11 +246,11 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_di_test_names.txt) serve
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name servebuild-py3.10 --python-version 3.10
+        --build-name servebuild-py3.11 --python-version 3.11
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-    depends_on: servebuild-multipy(python=3.10)
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: docs example gpu tests"
     tags:
@@ -274,9 +274,9 @@ steps:
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
-        --python-version 3.10 --build-name servebuild-py3.10
+        --python-version 3.11 --build-name servebuild-py3.11
         --except-tags gpu
-    depends_on: servebuild-multipy(python=3.10)
+    depends_on: servebuild-multipy(python=3.11)
 
   - label: ":ray-serve: serve: flaky gpu tests"
     key: serve_flaky_gpu_tests
