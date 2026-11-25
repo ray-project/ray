@@ -78,7 +78,7 @@ done
 
 bazel run //ci/ray_ci:test_in_docker -- \
   //python/ray/data:test_hive_integration data \
-  --build-name datamongobuild-py3.10 --python-version 3.10 \
+  --build-name datamongobuild-py3.11 --python-version 3.11 \
   --exact-targets --network "${network}" \
   --test-env RAY_HIVE_TEST_HOST=hiveserver2 \
   --test-env RAY_HIVE_TEST_PORT=10000 \

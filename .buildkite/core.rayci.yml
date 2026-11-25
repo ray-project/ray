@@ -251,10 +251,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/tests/modin/... core
-        --python-version 3.10
-        --build-name datalbuild-py3.10
+        --python-version 3.11
+        --build-name datalbuild-py3.11
     depends_on:
-      - datalbuild-multipy(python=3.10)
+      - datalbuild-multipy(python=3.11)
       - forge
 
   - label: ":ray: core: dashboard tests"

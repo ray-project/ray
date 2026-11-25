@@ -1,11 +1,11 @@
 # syntax=docker/dockerfile:1.3-labs
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.11
 FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG RAY_CI_JAVA_BUILD=
 ARG IMAGE_TYPE=base
-ARG PYTHON=3.10
+ARG PYTHON=3.11
 ARG PYTHON_DEPSET=python/deplocks/ci/data-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
 
 COPY $PYTHON_DEPSET /home/ray/python_depset.lock
@@ -57,9 +57,9 @@ if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
 fi
 
 # daft caps pyarrow < 26, so the lock resolves at 25.x; force the actual
-# latest pyarrow on top for the latest-lane image. pyarrow 26 dropped
-# Python 3.10, so the 3.10 image keeps the locked version.
-if [[ "$IMAGE_TYPE" == "pyarrow-latest" && "$PYTHON" != "3.10" ]]; then
+# latest pyarrow on top for the latest-lane image. The 3.11 image keeps the
+# locked 25.x so that the "arrow v25" test lanes still cover pyarrow 25.
+if [[ "$IMAGE_TYPE" == "pyarrow-latest" && "$PYTHON" != "3.11" ]]; then
   uv pip install \
     --system \
     --upgrade-package pyarrow \

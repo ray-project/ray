@@ -11,7 +11,7 @@ steps:
     wanda: ci/docker/data23.build.wanda.yaml
     array:
       python:
-        - "3.10"
+        - "3.11"
     env:
       PYTHON: "{{array.python}}"
     tags: cibase
@@ -21,7 +21,7 @@ steps:
     wanda: ci/docker/datal.build.wanda.yaml
     array:
       python:
-        - "3.10"
+        - "3.11"
         - "3.12"
     env:
       PYTHON: "{{array.python}}"
@@ -30,14 +30,14 @@ steps:
   - name: datanbuild-multipy
     wanda: ci/docker/datan.build.wanda.yaml
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   - name: datamongobuild-multipy
-    label: "wanda: datamongobuild-py3.10"
+    label: "wanda: datamongobuild-py3.11"
     wanda: ci/docker/datamongo.build.wanda.yaml
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   - name: datatfdsbuild-multipy
@@ -64,8 +64,8 @@ steps:
     instance_type: small
     commands:
       - bash ci/lint/pyrefly-check.sh
-    depends_on: data23build-multipy(python=3.10)
-    job_env: data23build-py3.10
+    depends_on: data23build-multipy(python=3.11)
+    job_env: data23build-py3.11
 
   # tests
   - label: ":database: data: arrow v23 tests"
@@ -77,9 +77,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data23build-py3.10 --python-version 3.10
+        --build-name data23build-py3.11 --python-version 3.11
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
-    depends_on: data23build-multipy(python=3.10)
+    depends_on: data23build-multipy(python=3.11)
 
   - label: ":database: data: tensorflow-datasets tests"
     key: data_tensorflow_datasets_tests
@@ -102,10 +102,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name data23build-py3.10 --python-version 3.10
+        --build-name data23build-py3.11 --python-version 3.11
         --only-tags data_non_parallel
         --except-tags data_non_parallel_postmerge_only,cudf
-    depends_on: data23build-multipy(python=3.10)
+    depends_on: data23build-multipy(python=3.11)
 
   - label: ":database: data: arrow v25 tests"
     tags:
@@ -117,9 +117,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name datalbuild-py3.10 --python-version 3.10
+        --build-name datalbuild-py3.11 --python-version 3.11
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
 
   - label: ":database: data: arrow v25 tests (data_non_parallel)"
     tags:
@@ -132,10 +132,10 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --build-name datalbuild-py3.10 --python-version 3.10
+        --build-name datalbuild-py3.11 --python-version 3.11
         --only-tags data_non_parallel
         --except-tags data_non_parallel_postmerge_only,cudf
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
 
   - label: ":database: data: arrow v26 py{{array.python}} tests ({{array.worker_id}})"
     key: datal_python_tests
@@ -180,7 +180,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name datanbuild-py3.10 --python-version 3.10
+        --build-name datanbuild-py3.11 --python-version 3.11
         --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datanbuild-multipy
     soft_fail: true
@@ -194,7 +194,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --build-name datanbuild-py3.10 --python-version 3.10
+        --build-name datanbuild-py3.11 --python-version 3.11
         --only-tags data_non_parallel
         --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datanbuild-multipy
@@ -207,9 +207,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --build-name data23build-py3.10 --python-version 3.10
+        --build-name data23build-py3.11 --python-version 3.11
         --only-tags data_non_parallel_postmerge_only
-    depends_on: data23build-multipy(python=3.10)
+    depends_on: data23build-multipy(python=3.11)
 
   - label: ":database: data: postmerge arrow v25 tests"
     tags:
@@ -218,9 +218,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
-        --build-name datalbuild-py3.10 --python-version 3.10
+        --build-name datalbuild-py3.11 --python-version 3.11
         --only-tags data_non_parallel_postmerge_only
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
 
   - label: ":database: data: dask tests"
     tags:
@@ -241,19 +241,19 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
-        --build-name datalbuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.11
+        --python-version 3.11
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name datalbuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.11
+        --python-version 3.11
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
 
   - label: ":database: data: dask docs example tests"
     tags:
@@ -310,8 +310,8 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datamongobuild-py3.10
-        --python-version 3.10
+        --build-name datamongobuild-py3.11
+        --python-version 3.11
         --build-type java
         --only-tags data_integration
         --except-tags doctest,hive_integration
@@ -333,10 +333,10 @@ steps:
     instance_type: small
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... data
-        --build-name datalbuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.11
+        --python-version 3.11
         --parallelism-per-worker 3
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
 
   - label: ":database: data: flaky tests"
     key: data_flaky_tests
@@ -349,10 +349,10 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... data --run-flaky-tests
         --parallelism-per-worker 3
-        --build-name datalbuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.11
+        --python-version 3.11
         --except-tags gpu_only,gpu
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
 
   - label: ":database: data: flaky gpu tests"
     key: data_flaky_gpu_tests
@@ -378,10 +378,10 @@ steps:
     commands:
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datalbuild-py3.10
-        --python-version 3.10
+        --build-name datalbuild-py3.11
+        --python-version 3.11
         --only-tags needs_credentials
         --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT
         --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA
         --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
-    depends_on: datalbuild-multipy(python=3.10)
+    depends_on: datalbuild-multipy(python=3.11)
