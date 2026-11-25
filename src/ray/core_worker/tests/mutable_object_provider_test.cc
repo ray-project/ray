@@ -198,6 +198,78 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
   EXPECT_EQ(provider.ReadRelease(local_object_id).code(), StatusCode::OK);
 }
 
+namespace {
+
+rpc::PushMutableObjectRequest MakeChunk(const ObjectID &writer_object_id,
+                                        uint64_t total_data_size,
+                                        const std::string &metadata,
+                                        uint64_t offset,
+                                        const std::string &data) {
+  rpc::PushMutableObjectRequest request;
+  request.set_writer_object_id(writer_object_id.Binary());
+  request.set_total_data_size(total_data_size);
+  request.set_total_metadata_size(metadata.size());
+  request.set_offset(offset);
+  request.set_chunk_size(data.size());
+  request.set_data(data);
+  request.set_metadata(metadata);
+  return request;
+}
+
+}  // namespace
+
+TEST(MutableObjectProvider, HandlePushMutableObjectDropsChunkOutsideObject) {
+  ObjectID writer_object_id = ObjectID::FromRandom();
+  ObjectID local_object_id = ObjectID::FromRandom();
+  auto plasma = std::make_shared<TestPlasma>();
+  MutableObjectProvider provider(plasma, /*factory=*/nullptr, nullptr);
+  // TestPlasma allocates 128 bytes for each object.
+  provider.HandleRegisterMutableObject(
+      writer_object_id, /*num_readers=*/1, local_object_id);
+
+  const std::string chunk(64, 'x');
+  std::vector<rpc::PushMutableObjectRequest> bad_chunks = {
+      // Starts at the end of the data.
+      MakeChunk(writer_object_id, 128, "", 128, chunk),
+      // Runs past the end of the data.
+      MakeChunk(writer_object_id, 128, "", 100, chunk),
+      // offset + chunk_size wraps around.
+      MakeChunk(
+          writer_object_id, 128, "", std::numeric_limits<uint64_t>::max() - 8, chunk),
+      // Negative as int64, which would pass the allocation check.
+      MakeChunk(writer_object_id, uint64_t{1} << 63, "", 0, chunk),
+      // Data and metadata sizes overflow int64 together.
+      MakeChunk(writer_object_id, std::numeric_limits<int64_t>::max(), "m", 0, chunk),
+  };
+  // Claims more bytes than it carries.
+  bad_chunks.push_back(MakeChunk(writer_object_id, 128, "", 0, std::string(8, 'x')));
+  bad_chunks.back().set_chunk_size(64);
+  // Claims more metadata than it carries.
+  bad_chunks.push_back(MakeChunk(writer_object_id, 64, "", 0, chunk));
+  bad_chunks.back().set_total_metadata_size(32);
+
+  for (const rpc::PushMutableObjectRequest &request : bad_chunks) {
+    rpc::PushMutableObjectReply reply;
+    provider.HandlePushMutableObject(request, &reply);
+    EXPECT_FALSE(reply.done()) << request.DebugString();
+  }
+
+  // The dropped chunks left no write in progress, so a valid write still goes through.
+  const std::string data(120, 'd');
+  rpc::PushMutableObjectReply reply;
+  provider.HandlePushMutableObject(
+      MakeChunk(writer_object_id, data.size(), "metadata", 0, data), &reply);
+  EXPECT_TRUE(reply.done());
+  std::shared_ptr<RayObject> result;
+  ASSERT_EQ(provider.ReadAcquire(local_object_id, result).code(), StatusCode::OK);
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(result->GetData()->Data()),
+                        result->GetData()->Size()),
+            data);
+  EXPECT_EQ(std::string(reinterpret_cast<const char *>(result->GetMetadata()->Data()),
+                        result->GetMetadata()->Size()),
+            "metadata");
+}
+
 TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   ObjectID object_id = ObjectID::FromRandom();
   auto plasma = std::make_shared<TestPlasma>();

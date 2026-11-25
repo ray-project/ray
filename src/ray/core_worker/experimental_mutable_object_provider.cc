@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
+#include <limits>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -135,6 +136,21 @@ void MutableObjectProvider::HandlePushMutableObject(
 
   uint64_t offset = request.offset();
   uint64_t chunk_size = request.chunk_size();
+
+  // Drop a chunk that does not carry the bytes it claims or does not fit the data
+  // section. The totals must also fit the signed sizes checked against the allocation.
+  constexpr uint64_t kMaxSize = std::numeric_limits<int64_t>::max();
+  if (request.data().size() != chunk_size ||
+      request.metadata().size() != total_metadata_size || offset > total_data_size ||
+      chunk_size > total_data_size - offset || total_data_size > kMaxSize ||
+      total_metadata_size > kMaxSize - total_data_size) {
+    RAY_LOG(WARNING).WithField(writer_object_id)
+        << "Dropping an invalid mutable object chunk: offset " << offset
+        << ", chunk_size " << chunk_size << ", total_data_size " << total_data_size
+        << ", total_metadata_size " << total_metadata_size;
+    reply->set_done(false);
+    return;
+  }
 
   uint64_t tmp_written_so_far = 0;
   {
