@@ -1,7 +1,7 @@
 """Tests for the observation-only bottleneck model."""
 
 from types import SimpleNamespace
-from typing import Any, Dict, Sequence, Tuple, cast
+from typing import Any, Dict, Tuple, cast
 
 import pytest
 
@@ -12,6 +12,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 )
 from ray.data._internal.experimental.execution.sizer import bottleneck_observer
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    Adjacency,
     Arrow,
     BottleneckObserver,
     EdgeShares,
@@ -27,12 +28,12 @@ ARROW_MARGIN = 0.1
 MIN_SEVERITY = 0.1
 
 
-def _chain(*ops: str) -> Tuple[Dict[str, Sequence[str]], Dict[str, Sequence[str]]]:
+def _chain(*ops: str) -> Tuple[Adjacency[str], Adjacency[str]]:
     """(prev_ops, next_ops) for a linear pipeline."""
-    prev_ops: Dict[str, Sequence[str]] = {
+    prev_ops: Adjacency[str] = {
         op: (ops[i - 1],) if i > 0 else () for i, op in enumerate(ops)
     }
-    next_ops: Dict[str, Sequence[str]] = {
+    next_ops: Adjacency[str] = {
         op: (ops[i + 1],) if i < len(ops) - 1 else () for i, op in enumerate(ops)
     }
     return prev_ops, next_ops

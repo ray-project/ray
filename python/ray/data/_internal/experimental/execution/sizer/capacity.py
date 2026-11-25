@@ -17,6 +17,10 @@ from ray.data._internal.experimental.execution.operators.placement_constraints i
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     pack_actors,
 )
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    ExecutionResourcesByNode,
+)
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 
 if TYPE_CHECKING:
@@ -25,7 +29,7 @@ if TYPE_CHECKING:
     )
 
 
-def committed_by_node(profiles: OpProfiles) -> Dict[NodeIdStr, ExecutionResources]:
+def committed_by_node(profiles: OpProfiles) -> ExecutionResourcesByNode:
     """Resources the non-PG pools hold per node: running actors plus pendings
     at their target node.
 
@@ -33,7 +37,7 @@ def committed_by_node(profiles: OpProfiles) -> Dict[NodeIdStr, ExecutionResource
     whose bundles ``ClusterStateSnapshot.build`` takes out of the slice
     instead.
     """
-    committed: Dict[NodeIdStr, ExecutionResources] = {}
+    committed: ExecutionResourcesByNode = {}
     for op in profiles.non_pg_ops:
         for node_id, usage in op.actor_pool.committed_usage_by_node.items():
             committed[node_id] = committed.get(node_id, ExecutionResources.zero()).add(
@@ -42,10 +46,10 @@ def committed_by_node(profiles: OpProfiles) -> Dict[NodeIdStr, ExecutionResource
     return committed
 
 
-def draining_by_node(profiles: OpProfiles) -> Dict[NodeIdStr, ExecutionResources]:
+def draining_by_node(profiles: OpProfiles) -> ExecutionResourcesByNode:
     """The part of ``committed_by_node`` held by draining actors: already on
     its way out, and held only until each actor is fully drained."""
-    draining: Dict[NodeIdStr, ExecutionResources] = {}
+    draining: ExecutionResourcesByNode = {}
     for op in profiles.non_pg_ops:
         for node_id, usage in op.actor_pool.draining_usage_by_node().items():
             draining[node_id] = draining.get(node_id, ExecutionResources.zero()).add(
@@ -55,8 +59,8 @@ def draining_by_node(profiles: OpProfiles) -> Dict[NodeIdStr, ExecutionResources
 
 
 def nodes_to_reclaim(
-    reserved: Dict[NodeIdStr, ExecutionResources], profiles: OpProfiles
-) -> Dict[NodeIdStr, ExecutionResources]:
+    reserved: ExecutionResourcesByNode, profiles: OpProfiles
+) -> ExecutionResourcesByNode:
     """Per-node excess of committed usage over the coordinator's slice, net
     of draining actors.
 
@@ -66,7 +70,7 @@ def nodes_to_reclaim(
     """
     zero = ExecutionResources.zero()
     draining = draining_by_node(profiles)
-    reclaim: Dict[NodeIdStr, ExecutionResources] = {}
+    reclaim: ExecutionResourcesByNode = {}
     for node_id, used in committed_by_node(profiles).items():
         leaving = draining.get(node_id, zero)
         over = used.subtract(leaving).subtract(reserved.get(node_id, zero)).max(zero)
@@ -120,7 +124,7 @@ def constrained_op_count_by_node(
     schedulable_nodes_by_op: Dict[
         "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
     ],
-) -> Dict[NodeIdStr, int]:
+) -> CountByNode:
     """How many constrained non-PG ops can use each node.
 
     An unconstrained op can use every node, so counting it would add the
@@ -128,7 +132,7 @@ def constrained_op_count_by_node(
     tell nodes apart. The ledger fills the least contended nodes first,
     and placement breaks ties the same way.
     """
-    count: Dict[NodeIdStr, int] = {}
+    count: CountByNode = {}
     for op, nodes in schedulable_nodes_by_op.items():
         if profiles.is_pg_managed(op) or not is_constrained(op):
             continue

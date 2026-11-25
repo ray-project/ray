@@ -9,7 +9,6 @@ from collections import Counter
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, TypeVar, cast
 
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.util import locality_string, memory_string
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
@@ -17,6 +16,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.operators.actor_pool_models import (
     PlacedScalingRequest,
     ScaleUpRequest,
+)
+from ray.data._internal.experimental.execution.sizer.common import (
+    ExecutionResourcesByNode,
 )
 from ray.data._internal.experimental.execution.sizer.metrics import SizerMetrics
 from ray.data._internal.experimental.execution.sizer.models import (
@@ -171,7 +173,7 @@ class SizerTelemetry:
         num_placed: int,
         num_new: int,
         num_reclaimed: int,
-        free: Dict[NodeIdStr, ExecutionResources],
+        free: ExecutionResourcesByNode,
         per_actor: ExecutionResources,
     ) -> None:
         total_free = ExecutionResources.zero()
@@ -195,8 +197,8 @@ class SizerTelemetry:
 
     def log_placement(
         self,
-        alloc: Dict[NodeIdStr, ExecutionResources],
-        free: Dict[NodeIdStr, ExecutionResources],
+        alloc: ExecutionResourcesByNode,
+        free: ExecutionResourcesByNode,
         placed: Dict[ExperimentalActorPoolMapOperator, "PlacedScalingRequest"],
         placement: "ActorPlacementStrategy",
     ) -> None:
@@ -217,7 +219,9 @@ class SizerTelemetry:
             where = dict(Counter(req.nodes)) if req.nodes else "untargeted"
             if isinstance(req, ScaleUpRequest):
                 via = breakdown.get(op.id)
-                via_str = f" via={via[0]}collocate/{via[1]}spread" if via else ""
+                via_str = (
+                    f" via={via.collocated}collocate/{via.spread}spread" if via else ""
+                )
                 reclaim_str = (
                     f" reclaim={req.num_to_reclaim}" if req.num_to_reclaim else ""
                 )
@@ -241,8 +245,8 @@ class SizerTelemetry:
 
     @staticmethod
     def _capacity_map(
-        alloc: Dict[NodeIdStr, ExecutionResources],
-        free: Dict[NodeIdStr, ExecutionResources],
+        alloc: ExecutionResourcesByNode,
+        free: ExecutionResourcesByNode,
     ) -> str:
         """Per-node free/allocated, compact enough for one log line."""
         parts = []

@@ -31,12 +31,17 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     max_placeable_actors,
     nodes_where_freeing_fits,
 )
+from ray.data._internal.experimental.execution.sizer.common import (
+    DrainCost,
+    ExecutionResourcesByNode,
+    ScalingRequests,
+)
 from ray.data._internal.experimental.execution.sizer.models import ClusterStateSnapshot
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 from ray.data._internal.experimental.execution.sizer.telemetry import SizerTelemetry
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
+    pass
 
 # Sorts eviction candidates cheapest first: (cost class, tasks in flight,
 # unconsumed outputs, op index, rank in the op's victim list). Class 0 =
@@ -46,7 +51,7 @@ _EvictionCandidate = Tuple[int, int, int, int, int]
 
 def resolve_evictions(
     *,
-    nodes_to_reclaim: Dict[NodeIdStr, ExecutionResources],
+    nodes_to_reclaim: ExecutionResourcesByNode,
     profiles: OpProfiles,
 ) -> Dict[ExperimentalActorPoolMapOperator, List[NodeIdStr]]:
     """How many actors each op removes from each over-allocated node: enough
@@ -93,8 +98,10 @@ def _eviction_candidates(
             candidates.append((0, 0, 0, op_index, rank))
         costs = view.victim_drain_cost_by_node.get(node_id, [])
         for rank in range(len(view.victim_ids_by_node.get(node_id, []))):
-            in_flight, unconsumed = costs[rank] if rank < len(costs) else (0, 0)
-            candidates.append((1, in_flight, unconsumed, op_index, rank))
+            cost = costs[rank] if rank < len(costs) else DrainCost(0, 0)
+            candidates.append(
+                (1, cost.tasks_in_flight, cost.unconsumed_outputs, op_index, rank)
+            )
     return candidates
 
 
@@ -112,7 +119,7 @@ def _frees_over_budget_dim(
 def evict_from_reclaimed_nodes(
     *,
     placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest],
-    nodes_to_reclaim: Dict[NodeIdStr, ExecutionResources],
+    nodes_to_reclaim: ExecutionResourcesByNode,
     profiles: OpProfiles,
 ) -> Set[ExperimentalActorPoolMapOperator]:
     """Downscale actors off nodes we're losing (a smaller reservation, or a
@@ -141,7 +148,7 @@ def evict_from_reclaimed_nodes(
 
 def build_placement_views(
     *,
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     capacity: ClusterStateSnapshot,
 ) -> Dict[ExperimentalActorPoolMapOperator, OpPlacementView]:
     """A placement view per requested op, carrying its schedulable nodes and
@@ -160,11 +167,11 @@ def build_placement_views(
 
 def compute_favored_nodes(
     *,
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     unmet: Dict[ExperimentalActorPoolMapOperator, int],
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
     capacity: ClusterStateSnapshot,
-    free: Dict[NodeIdStr, ExecutionResources],
+    free: ExecutionResourcesByNode,
     placement: ActorPlacementStrategy,
     profiles: OpProfiles,
     ordered_ops: Sequence[ExperimentalActorPoolMapOperator],
@@ -241,12 +248,12 @@ def compute_favored_nodes(
 
 def _freeable_by_node(
     *,
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
-) -> Dict[NodeIdStr, ExecutionResources]:
+) -> ExecutionResourcesByNode:
     """What this tick's downscales could free on each node: per downscaling
     op, its actors there (pending or running), at most its whole delta."""
-    freeable: Dict[NodeIdStr, ExecutionResources] = {}
+    freeable: ExecutionResourcesByNode = {}
     for op, req in request.items():
         if req.delta >= 0:
             continue
@@ -279,10 +286,10 @@ def _upscale_view(
 def place_downscales(
     *,
     placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest],
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
     favored: Set[NodeIdStr],
-    free: Dict[NodeIdStr, ExecutionResources],
+    free: ExecutionResourcesByNode,
     placement: ActorPlacementStrategy,
     evicted_ops: Set[ExperimentalActorPoolMapOperator],
 ) -> None:
@@ -336,9 +343,9 @@ def place_downscales(
 def place_upscales(
     *,
     placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest],
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
-    free: Dict[NodeIdStr, ExecutionResources],
+    free: ExecutionResourcesByNode,
     placement: ActorPlacementStrategy,
     profiles: OpProfiles,
     ordered_ops: Sequence[ExperimentalActorPoolMapOperator],

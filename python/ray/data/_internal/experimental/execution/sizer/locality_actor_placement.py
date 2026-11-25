@@ -10,12 +10,17 @@ from typing import AbstractSet, Dict, List, Tuple
 
 from typing_extensions import override
 
-from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
+from ray.data._internal.execution.interfaces import NodeIdStr
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     _COLLOCATE_BYTES_PER_ACTOR,
     ActorPlacementStrategy,
     OpPlacementView,
     max_placeable_actors,
+)
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    ExecutionResourcesByNode,
+    UpscaleSplit,
 )
 
 logger = logging.getLogger(__name__)
@@ -28,19 +33,18 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
     on the nodes capacity-short upscalers want."""
 
     def __init__(self):
-        # Last upscale's phase breakdown per op_id: (collocate_count,
-        # spread_count). Read by the sizer's telemetry to log WHY each
-        # placement landed.
-        self.last_upscale_breakdown: Dict[str, Tuple[int, int]] = {}
+        # Last upscale's phase breakdown per op_id. Read by the sizer's
+        # telemetry to log WHY each placement landed.
+        self.last_upscale_breakdown: Dict[str, UpscaleSplit] = {}
 
     @override
-    def upscale_breakdown(self) -> Dict[str, Tuple[int, int]]:
+    def upscale_breakdown(self) -> Dict[str, UpscaleSplit]:
         return self.last_upscale_breakdown
 
     @staticmethod
     def _fits(
         view: OpPlacementView,
-        free: Dict[NodeIdStr, ExecutionResources],
+        free: ExecutionResourcesByNode,
         node_id: NodeIdStr,
     ) -> bool:
         return max_placeable_actors(free[node_id], view.per_actor_usage) >= 1
@@ -125,7 +129,7 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
         self,
         view: OpPlacementView,
         *,
-        free: Dict[NodeIdStr, ExecutionResources],
+        free: ExecutionResourcesByNode,
         count: int,
     ) -> List[NodeIdStr]:
         placed: List[NodeIdStr] = []
@@ -175,9 +179,9 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
                 placed_per_node=placed_per_node,
             )
 
-        self.last_upscale_breakdown[view.op_id] = (
-            collocate_count,
-            len(placed) - collocate_count,
+        self.last_upscale_breakdown[view.op_id] = UpscaleSplit(
+            collocated=collocate_count,
+            spread=len(placed) - collocate_count,
         )
         logger.debug(
             "place_upscale[%s]: source=%s requested=%d placed=%d "
@@ -196,7 +200,7 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
         self,
         *,
         view: OpPlacementView,
-        free: Dict[NodeIdStr, ExecutionResources],
+        free: ExecutionResourcesByNode,
         num_actors_to_place: int,
         placed: List[NodeIdStr],
         placed_per_node: Counter,
@@ -221,8 +225,8 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
         if total_actor_slots == 0:
             return
         num_actors_to_place = min(num_actors_to_place, total_actor_slots)
-        per_node_actor_share: Dict[NodeIdStr, int] = {}
-        frac: Dict[NodeIdStr, int] = {}
+        per_node_actor_share: CountByNode = {}
+        frac: CountByNode = {}
         for node_id, w in max_actors_per_node.items():
             per_node_actor_share[node_id], frac[node_id] = divmod(
                 num_actors_to_place * w, total_actor_slots
@@ -266,8 +270,8 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
 
         # Per node: cheap victims (pendings + idle actors, whose capacity
         # frees ~immediately) and busy ones (capacity frees after a drain).
-        cheap_by_node: Dict[NodeIdStr, int] = {}
-        busy_by_node: Dict[NodeIdStr, int] = {}
+        cheap_by_node: CountByNode = {}
+        busy_by_node: CountByNode = {}
         for node_id in nodes:
             num_pending = len(view.pending_ids_by_node.get(node_id, []))
             num_running = len(view.victim_ids_by_node.get(node_id, []))

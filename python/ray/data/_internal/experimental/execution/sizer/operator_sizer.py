@@ -22,7 +22,6 @@ import time
 from collections import Counter
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple
 
-from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
     SIZER_WARMUP_TIMEOUT_S,
@@ -42,6 +41,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     BottleneckObserver,
     Snapshot,
 )
+from ray.data._internal.experimental.execution.sizer.common import ScalingRequests
 from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
     LocalityBasedActorPlacement,
 )
@@ -65,10 +65,10 @@ from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
 from ray.data._internal.experimental.execution.sizer.policy.sizing_policy import (
+    OpDecisions,
     SizingPolicy,
 )
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    OpDecision,
     SizerPhase,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
@@ -253,7 +253,7 @@ class OperatorSizer:
     @timed("tick")
     def _run_tick(
         self, snapshot: ClusterStateSnapshot
-    ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PlacedRequests]:
+    ) -> Tuple[OpDecisions, PlacedRequests]:
         """Reserve room, take the bottleneck snapshot, advance the phase, then
         how many, where, apply."""
         bottleneck_snapshot = self._prepare_tick(snapshot=snapshot)
@@ -281,7 +281,7 @@ class OperatorSizer:
         *,
         snapshot: ClusterStateSnapshot,
         bottleneck_snapshot: Optional[Snapshot],
-    ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
+    ) -> OpDecisions:
         """Step 1: pick one rule and count per op. Upscales take capacity
         from the tick's ledger in priority order, which is also the order
         the decisions come back in and WHERE places them in, so step 2 can
@@ -308,7 +308,7 @@ class OperatorSizer:
     def _per_op_where(
         self,
         *,
-        decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
+        decisions: OpDecisions,
         snapshot: ClusterStateSnapshot,
     ) -> PlacedRequests:
         """Step 2: give every count its nodes, in the order of
@@ -322,7 +322,7 @@ class OperatorSizer:
         every time, so a failed placement or a slow drain retries when the
         policy asks for the delta again next tick.
         """
-        counts: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {
+        counts: ScalingRequests = {
             op: decision.request
             for op, decision in decisions.items()
             if decision.request is not None
@@ -334,7 +334,7 @@ class OperatorSizer:
 
     def _place_counts(
         self,
-        request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
+        request: ScalingRequests,
         *,
         snapshot: ClusterStateSnapshot,
         unmet: Optional[Dict[ExperimentalActorPoolMapOperator, int]] = None,

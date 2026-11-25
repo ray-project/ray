@@ -128,7 +128,7 @@ SIZER_BOTTLENECK_WINDOW_S: float = env_float("RAY_DATA_SIZER_BOTTLENECK_WINDOW_S
 SIZER_BOTTLENECK_ARROW_MARGIN: float = env_float(
     "RAY_DATA_SIZER_BOTTLENECK_ARROW_MARGIN", 0.1
 )
-# Least severity for an op to be named a bottleneck: below it, the arrows'
+# Min severity for an op to be named a bottleneck: below it, the arrows'
 # noise (e.g. a near-tie edge during ramp-up) rather than neighbours waiting.
 SIZER_BOTTLENECK_MIN_SEVERITY: float = env_float(
     "RAY_DATA_SIZER_BOTTLENECK_MIN_SEVERITY", 0.1

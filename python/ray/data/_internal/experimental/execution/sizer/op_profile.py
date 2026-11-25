@@ -14,6 +14,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
     next_actor_pool_ops,
     prev_actor_pool_ops,
 )
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    Adjacency,
+)
 from ray.data._internal.logical.operators.write_operator import Write
 
 if TYPE_CHECKING:
@@ -146,14 +149,12 @@ class OpProfiles:
             op for op in self.actor_pool_ops if self._profiles[op].pg_managed
         )
         # Nearest actor-pool neighbours of each op (see next_actor_pool_ops).
-        self.next_ops: Dict[
-            ExperimentalActorPoolMapOperator,
-            Tuple[ExperimentalActorPoolMapOperator, ...],
-        ] = {op: next_actor_pool_ops(op) for op in self.actor_pool_ops}
-        self.prev_ops: Dict[
-            ExperimentalActorPoolMapOperator,
-            Tuple[ExperimentalActorPoolMapOperator, ...],
-        ] = {op: prev_actor_pool_ops(op) for op in self.actor_pool_ops}
+        self.next_ops: Adjacency[ExperimentalActorPoolMapOperator] = {
+            op: next_actor_pool_ops(op) for op in self.actor_pool_ops
+        }
+        self.prev_ops: Adjacency[ExperimentalActorPoolMapOperator] = {
+            op: prev_actor_pool_ops(op) for op in self.actor_pool_ops
+        }
 
     def profile(self, op: ExperimentalActorPoolMapOperator) -> OpProfile:
         return self._profiles[op]

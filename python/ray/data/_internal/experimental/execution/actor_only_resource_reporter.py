@@ -64,7 +64,7 @@ class BundleKey(NamedTuple):
     """
 
     # ``PlacementGroup.id.hex()``, e.g. ``"a1b2c3d4e5f6..."``.
-    pg_id: str
+    pg_id: PlacementGroupIdStr
     # Position in the PG's bundle list (0-based), as
     # ``placement_group_bundle_index`` numbers it.
     bundle_index: int

@@ -38,14 +38,14 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, Mapping, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
 )
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.common import ActorStatus, NodeIdStr
+from ray.data._internal.execution.interfaces.common import ActorStatus
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     FIT_EPS,
     PLACEMENT_RESOURCE_DIMS,
@@ -54,6 +54,11 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     Snapshot,
     blocked_share,
     upscale_blocker,
+)
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    ExecutionResourcesByNode,
+    LandedUpscales,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 from ray.data._internal.experimental.execution.sizer.op_status import (
@@ -216,12 +221,17 @@ class SizingPolicy:
     def record_landed_upscales(
         self,
         *,
-        landed: Mapping["ExperimentalActorPoolMapOperator", Tuple[int, int]],
+        landed: LandedUpscales,
     ) -> None:
         """Adapt each op's upscale step to the actors that actually started,
-        as op -> (size before, size now) from ``OpStatusMachine.on_tick``."""
-        for op, (before, after) in landed.items():
-            self.steps.record(op=op, direction=Direction.UP, before=before, after=after)
+        as op -> ``SizeChange`` from ``OpStatusMachine.on_tick``."""
+        for op, change in landed.items():
+            self.steps.record(
+                op=op,
+                direction=Direction.UP,
+                before=change.before,
+                after=change.after,
+            )
 
     def decide_op(
         self,
@@ -464,7 +474,7 @@ class _RoomToMake:
         }
         # Per node: free capacity, plus what blocked ops removed this tick,
         # minus what the short actors placed on it this tick take.
-        self._room: Dict[NodeIdStr, ExecutionResources] = {
+        self._room: ExecutionResourcesByNode = {
             node_id: res.copy() for node_id, res in ctx.snapshot.free_by_node.items()
         }
 
@@ -500,9 +510,9 @@ class _RoomToMake:
     @staticmethod
     def _serving_by_node(
         op: "ExperimentalActorPoolMapOperator",
-    ) -> Dict[NodeIdStr, int]:
+    ) -> CountByNode:
         """``op``'s actors per node that a downscale can still remove."""
-        serving_by_node: Dict[NodeIdStr, int] = {}
+        serving_by_node: CountByNode = {}
         for node_id, counts in op.actor_counts_by_node().items():
             serving = sum(
                 n for status, n in counts.items() if status is not ActorStatus.DRAINING

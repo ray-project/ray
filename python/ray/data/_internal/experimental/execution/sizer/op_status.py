@@ -59,11 +59,14 @@ from typing import (
     Iterable,
     Optional,
     Set,
-    Tuple,
     Union,
 )
 
 from ray.data._internal.execution.execution_flags import SIZER_BOTTLENECK_WINDOW_S
+from ray.data._internal.experimental.execution.sizer.common import (
+    LandedUpscales,
+    SizeChange,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
@@ -172,9 +175,7 @@ class OpStatusMachine:
 
     # --- events -----------------------------------------------------------
 
-    def on_tick(
-        self, *, now: float
-    ) -> Dict["ExperimentalActorPoolMapOperator", Tuple[int, int]]:
+    def on_tick(self, *, now: float) -> LandedUpscales:
         """TICK, before held ops' room is reserved and before the policy
         decides:
 
@@ -182,13 +183,13 @@ class OpStatusMachine:
         - a cooling op whose upscale has landed (no actor pending) starts its
           cooldown, and one whose cooldown has passed becomes active.
 
-        Returns each upscale that landed this tick, as op -> (size before,
-        size now). Pending actors can expire without starting, so the size
-        now can be smaller than the upscale asked for.
+        Returns each upscale that landed this tick, as op -> ``SizeChange``.
+        Pending actors can expire without starting, so ``after`` can be
+        smaller than the upscale asked for.
 
         A completed op's stored status is dropped, so if lineage
         reconstruction reopens it, it resumes as active."""
-        landed: Dict["ExperimentalActorPoolMapOperator", Tuple[int, int]] = {}
+        landed: LandedUpscales = {}
         for op, status in list(self._status.items()):
             if op.has_completed():
                 del self._status[op]
@@ -199,7 +200,9 @@ class OpStatusMachine:
                     pool = op.actor_pool
                     if pool.num_pending_actors() == 0:
                         assert status.upscale_from is not None
-                        landed[op] = (status.upscale_from, pool.serving_size())
+                        landed[op] = SizeChange(
+                            before=status.upscale_from, after=pool.serving_size()
+                        )
                         self._transition(
                             op=op, to=Cooling(until=now + self._cooldown_s)
                         )

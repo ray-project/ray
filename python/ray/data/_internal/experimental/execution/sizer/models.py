@@ -23,6 +23,10 @@ from ray.data._internal.experimental.execution.sizer.capacity import (
     pg_free_by_bundle,
     unknown_pg_headroom,
 )
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    ExecutionResourcesByNode,
+)
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
     ordered_actor_pool_ops,
@@ -75,15 +79,15 @@ class ClusterStateSnapshot:
     ]
 
     # = slice - pg_reserved - draining nodes.
-    reserved_by_node: Dict[NodeIdStr, ExecutionResources]
+    reserved_by_node: ExecutionResourcesByNode
     # = `reserved_by_node` - committed, floored at 0, minus the nodes in
     # `nodes_to_reclaim` (dropped whole: an actor placed there would be evicted).
-    free_by_node: Dict[NodeIdStr, ExecutionResources]
+    free_by_node: ExecutionResourcesByNode
     # = committed - draining actors - reserved, where above 0.
     # How much more we currently commit on a node than our slice allows.
     # Draining actors are not counted: they are already leaving. Draining
     # nodes are not in reserved, so everything we hold on one counts as over.
-    nodes_to_reclaim: Dict[NodeIdStr, ExecutionResources] = field(default_factory=dict)
+    nodes_to_reclaim: ExecutionResourcesByNode = field(default_factory=dict)
 
     # = shape - pg_held, per bundle. The PG counterpart of free_by_node.
     pg_free_by_bundle: Dict[BundleKey, ExecutionResources] = field(default_factory=dict)
@@ -97,7 +101,7 @@ class ClusterStateSnapshot:
 
     # How many constrained non-PG ops can use each node (lower = less
     # contended). Used in granting order and placement tie-break.
-    constrained_op_count_by_node: Dict[NodeIdStr, int] = field(default_factory=dict)
+    constrained_op_count_by_node: CountByNode = field(default_factory=dict)
     # The bundles each static-PG op may use.
     schedulable_bundles_by_op: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]

@@ -21,6 +21,7 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
 from ray.data._internal.experimental.execution.sizer.capacity_ledger import (
     ConstraintAwareCapacityLedger,
 )
+from ray.data._internal.experimental.execution.sizer.common import SizeChange
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
 )
@@ -215,7 +216,7 @@ def test_status_an_upscale_cools_once_its_actors_land():
     # One pending actor expired without starting: 5 actors landed, not 6.
     op.actor_pool.pending = 0
     op.actor_pool._current = 5
-    assert statuses.on_tick(now=5.0) == {op: (4, 5)}
+    assert statuses.on_tick(now=5.0) == {op: SizeChange(before=4, after=5)}
     assert statuses.status(op) == Cooling(until=15.0)  # landed at 5s
 
     statuses.on_tick(now=14.0)

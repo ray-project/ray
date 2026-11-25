@@ -16,6 +16,9 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     max_placeable_actors,
     pack_actors,
 )
+from ray.data._internal.experimental.execution.sizer.common import (
+    ExecutionResourcesByNode,
+)
 from ray.data._internal.experimental.execution.sizer.models import ClusterStateSnapshot
 
 # Placeable count for an actor that requests no cpu/gpu/memory (fits anywhere).
@@ -35,7 +38,7 @@ class ConstraintAwareCapacityLedger:
 
     def __init__(self, capacity: ClusterStateSnapshot):
         self._capacity = capacity
-        self.free: Dict[NodeIdStr, ExecutionResources] = {
+        self.free: ExecutionResourcesByNode = {
             node_id: res.copy() for node_id, res in capacity.free_by_node.items()
         }
         self.pg_free: Dict[BundleKey, ExecutionResources] = {
