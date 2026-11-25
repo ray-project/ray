@@ -564,7 +564,7 @@ fastrlock==0.8.3 ; sys_platform != "darwin" and python_version < "3.14"
     #   cupy-cuda12x
 feather-format==0.4.1
     # via -r python/requirements/test-requirements.txt
-filelock==3.29.0
+filelock==3.29.0 ; python_version < "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -737,11 +737,10 @@ greenlet==3.4.0
     # via sqlalchemy
 groovy==0.1.2
     # via gradio
-grpcio==1.75.0 ; python_version < "3.14"
+grpcio==1.85.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
-    #   -r python/requirements/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   grpcio-reflection
@@ -840,6 +839,8 @@ humanize==4.15.0
     # via -r python/requirements/cloud-requirements.txt
 hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r python/requirements/ml/tune-requirements.txt
+hypothesis==6.170.15 ; python_version >= "3.11"
+    # via -r python/requirements/ml/data-test-requirements.txt
 identify==2.6.19
     # via pre-commit
 idna==3.18
@@ -865,7 +866,6 @@ importlib-metadata==6.11.0
     #   -r python/requirements/test-requirements.txt
     #   dask
     #   mlflow-skinny
-    #   opentelemetry-api
     #   pytest-virtualenv
     #   tensordict
 importlib-resources==7.1.0
@@ -1404,7 +1404,7 @@ openlineage-python==1.46.0
     # via -r python/requirements/cloud-requirements.txt
 openpyxl==3.0.10
     # via -r python/requirements/test-requirements.txt
-opentelemetry-api==1.39.0
+opentelemetry-api==1.45.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1417,23 +1417,25 @@ opentelemetry-api==1.39.0
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
-opentelemetry-exporter-otlp-proto-common==1.39.0
+opentelemetry-exporter-otlp-common==0.66b2
     # via opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-exporter-otlp-proto-grpc==1.39.0
+opentelemetry-exporter-otlp-proto-common==1.45.2
+    # via opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-exporter-otlp-proto-grpc==1.45.2
     # via -r python/requirements/test-requirements.txt
-opentelemetry-exporter-prometheus==0.60b0
+opentelemetry-exporter-prometheus==0.66b2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
-opentelemetry-instrumentation==0.60b0
+opentelemetry-instrumentation==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-asgi==0.60b0
+opentelemetry-instrumentation-asgi==0.66b2
     # via opentelemetry-instrumentation-fastapi
-opentelemetry-instrumentation-fastapi==0.60b0
+opentelemetry-instrumentation-fastapi==0.66b2
     # via -r python/requirements/test-requirements.txt
-opentelemetry-proto==1.39.0
+opentelemetry-proto==1.45.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
@@ -1441,22 +1443,23 @@ opentelemetry-proto==1.39.0
     #   mlflow-tracing
     #   opentelemetry-exporter-otlp-proto-common
     #   opentelemetry-exporter-otlp-proto-grpc
-opentelemetry-sdk==1.39.0
+opentelemetry-sdk==1.45.2
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   mlflow-skinny
     #   mlflow-tracing
+    #   opentelemetry-exporter-otlp-common
     #   opentelemetry-exporter-otlp-proto-grpc
     #   opentelemetry-exporter-prometheus
-opentelemetry-semantic-conventions==0.60b0
+opentelemetry-semantic-conventions==0.66b2
     # via
     #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
     #   opentelemetry-sdk
-opentelemetry-util-http==0.60b0
+opentelemetry-util-http==0.66b2
     # via
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
@@ -2227,6 +2230,7 @@ snowflake-connector-python==4.3.0
 sortedcontainers==2.4.0
     # via
     #   distributed
+    #   hypothesis
     #   snowflake-connector-python
 soundfile==0.13.1
     # via -r python/requirements/ml/data-test-requirements.txt

@@ -1,3 +1,4 @@
+import threading
 from typing import TYPE_CHECKING, List, Tuple
 
 from ray.data._internal.planner import create_planner
@@ -21,6 +22,7 @@ from ray.data._internal.logical.rules import (
     DeriveListFilesPushdown,
     EliminateAggregateShuffle,
     EnsureLocalAggregateReadsWholePartitions,
+    ExtractEquiJoinKeys,
     FuseOperators,
     InheritTargetMaxBlockSizeRule,
     LimitPushdownRule,
@@ -28,17 +30,22 @@ from ray.data._internal.logical.rules import (
     ProjectionPushdown,
     PushdownCountFiles,
     SetReadParallelismRule,
+    TopNRewriteRule,
 )
 from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULESET = Ruleset(
     [
+        # Idempotent and independent of the rules below: it only moves
+        # equalities from ``Join.condition`` into the join's condition keys.
+        ExtractEquiJoinKeys,
         LimitPushdownRule,
         ProjectionPushdown,
         PredicatePushdown,
         CombineShuffles,
         CombineDownloads,
         PushdownCountFiles,
+        TopNRewriteRule,
     ]
 )
 
@@ -54,6 +61,36 @@ _PHYSICAL_RULESET = Ruleset(
 )
 
 
+_actor_only_rules_lock = threading.Lock()
+
+
+def _sync_actor_only_rules() -> None:
+    """Match the physical ruleset to whether the actor-only backend is enabled.
+
+    This is the ruleset-swap wiring seam for the actor-only backend: when
+    ``actor_only_backend_enabled()`` is true, the experimental ``FuseOperators``
+    (which additionally allows Actor->Actor fusion) replaces the default rule in
+    the physical ruleset; when it is false, the default rule is put back. The
+    flag is read on every call, so turning the backend off restores the
+    default ruleset.
+    """
+    from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
+    from ray.data._internal.experimental.logical.rules.operator_fusion import (
+        FuseOperators as ExperimentalFuseOperators,
+    )
+
+    if actor_only_backend_enabled():
+        old, new = FuseOperators, ExperimentalFuseOperators
+    else:
+        old, new = ExperimentalFuseOperators, FuseOperators
+
+    # The check and the swap must run together: ``Ruleset.replace`` raises if
+    # another thread already swapped ``old`` out.
+    with _actor_only_rules_lock:
+        if old in list(_PHYSICAL_RULESET):
+            _PHYSICAL_RULESET.replace(old, new)
+
+
 @DeveloperAPI
 def get_logical_ruleset() -> Ruleset:
     return _LOGICAL_RULESET
@@ -61,6 +98,7 @@ def get_logical_ruleset() -> Ruleset:
 
 @DeveloperAPI
 def get_physical_ruleset() -> Ruleset:
+    _sync_actor_only_rules()
     return _PHYSICAL_RULESET
 
 

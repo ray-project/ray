@@ -72,6 +72,12 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         self.clear_internal_input_queue()
         self.clear_internal_output_queue()
 
+    def min_num_rows_needed_to_make_progress(self) -> int:
+        """Some operators, like ExperimentalActorPoolMapOperator and OutputSplitter(equal=True)
+        require a certain # of rows before it can launch a task/pass the input into
+        the output queue. This is used in idle detection"""
+        return 0
+
 
 class AllToAllOperator(
     InternalQueueOperatorMixin, SubProgressBarMixin, PhysicalOperator
@@ -213,6 +219,12 @@ class AllToAllOperator(
 
     def throttling_disabled(self) -> bool:
         # Disable resource allocation and throttling for the operator
+        return True
+
+    @property
+    def is_synchronization_barrier(self) -> bool:
+        # The bulk fn runs on the whole input; nothing downstream can start
+        # until it has.
         return True
 
 

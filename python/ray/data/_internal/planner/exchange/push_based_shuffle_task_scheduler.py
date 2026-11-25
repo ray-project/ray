@@ -1,6 +1,17 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, TypeVar, Union
+from collections import deque
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
@@ -240,7 +251,8 @@ class _PipelinedStageExecutor:
 
 class _MapStageIterator:
     def __init__(self, input_blocks_list, shuffle_map, map_args):
-        self._input_blocks_list = input_blocks_list
+        self._input_blocks_list = deque(input_blocks_list)
+        input_blocks_list.clear()
         self._shuffle_map = shuffle_map
         self._map_args = map_args
 
@@ -254,7 +266,7 @@ class _MapStageIterator:
         if not self._input_blocks_list:
             raise StopIteration
 
-        block = self._input_blocks_list.pop(0)
+        block = self._input_blocks_list.popleft()
         # NOTE(swang): Results are shuffled between map and merge tasks, so
         # there is no advantage to colocating specific map and merge tasks.
         # Therefore, we do not specify a node affinity policy for map tasks
@@ -302,13 +314,16 @@ class _MergeStageIterator:
     def __next__(self):
         if not self._map_result_buffer or not self._map_result_buffer[0]:
             assert self._merge_idx == 0
-            self._map_result_buffer = self._map_stage_iter.pop_map_results()
+            self._map_result_buffer = [
+                deque(map_result)
+                for map_result in self._map_stage_iter.pop_map_results()
+            ]
 
         if not self._map_result_buffer:
             raise StopIteration
 
         # Shuffle the map results for the merge tasks.
-        merge_args = [map_result.pop(0) for map_result in self._map_result_buffer]
+        merge_args = [map_result.popleft() for map_result in self._map_result_buffer]
         num_merge_returns = self._stage.merge_schedule.get_num_reducers_per_merge_idx(
             self._merge_idx
         )
@@ -350,28 +365,39 @@ class _ReduceStageIterator:
     ):
         self._shuffle_reduce = shuffle_reduce
         self._stage = stage
-        self._reduce_arg_blocks: List[Tuple[int, List[ObjectRef]]] = []
+        self._reduce_arg_blocks: Deque[Tuple[int, List[ObjectRef]]] = deque()
         self._ray_remote_args = ray_remote_args
         self._reduce_args = reduce_args
 
+        all_merge_results_deques = []
+        for merge_idx_results in all_merge_results:
+            deque_list = []
+            for merge_results in merge_idx_results:
+                deque_list.append(deque(merge_results))
+                merge_results.clear()
+            all_merge_results_deques.append(deque_list)
+        all_merge_results = all_merge_results_deques
+        reduce_arg_blocks_list: List[Tuple[int, List[ObjectRef]]] = []
         for reduce_idx in self._stage.merge_schedule.round_robin_reduce_idx_iterator():
             merge_idx = self._stage.merge_schedule.get_merge_idx_for_reducer_idx(
                 reduce_idx
             )
             reduce_arg_blocks = [
-                merge_results.pop(0) for merge_results in all_merge_results[merge_idx]
+                merge_results.popleft()
+                for merge_results in all_merge_results[merge_idx]
             ]
-            self._reduce_arg_blocks.append((reduce_idx, reduce_arg_blocks))
+            reduce_arg_blocks_list.append((reduce_idx, reduce_arg_blocks))
 
-        assert len(self._reduce_arg_blocks) == stage.merge_schedule.output_num_blocks
+        assert len(reduce_arg_blocks_list) == stage.merge_schedule.output_num_blocks
 
         if _debug_limit_execution_to_num_blocks is not None:
-            self._reduce_arg_blocks = self._reduce_arg_blocks[
+            reduce_arg_blocks_list = reduce_arg_blocks_list[
                 :_debug_limit_execution_to_num_blocks
             ]
             logger.debug(
-                f"Limiting execution to {len(self._reduce_arg_blocks)} reduce tasks"
+                f"Limiting execution to {len(reduce_arg_blocks_list)} reduce tasks"
             )
+        self._reduce_arg_blocks = deque(reduce_arg_blocks_list)
 
         for merge_idx, merge_results in enumerate(all_merge_results):
             assert all(len(merge_result) == 0 for merge_result in merge_results), (
@@ -388,7 +414,7 @@ class _ReduceStageIterator:
         if not self._reduce_arg_blocks:
             raise StopIteration
 
-        reduce_idx, reduce_arg_blocks = self._reduce_arg_blocks.pop(0)
+        reduce_idx, reduce_arg_blocks = self._reduce_arg_blocks.popleft()
         merge_idx = self._stage.merge_schedule.get_merge_idx_for_reducer_idx(reduce_idx)
         # Submit one partition of reduce tasks, one for each of the P
         # outputs produced by the corresponding merge task.
@@ -670,7 +696,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         schedule: _MergeTaskSchedule,
         *map_args: List[Any],
     ) -> List[Union[Block, "BlockMetadataWithSchema"]]:
-        mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
+        mapper_outputs = deque(map_fn(idx, block, output_num_blocks, *map_args))
 
         # A merge task may produce results for multiple downstream reducer
         # tasks. Therefore, each map task should give each merge task a
@@ -679,7 +705,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         partition = []
         merge_idx = 0
         while merge_idx < schedule.num_merge_tasks_per_round and mapper_outputs:
-            output = mapper_outputs.pop(0)
+            output = mapper_outputs.popleft()
             partition.append(output)
 
             if len(partition) == schedule.get_num_reducers_per_merge_idx(merge_idx):

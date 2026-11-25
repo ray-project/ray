@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/status_or.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/pubsub/publisher_interface.h"
 #include "ray/pubsub/subscriber_interface.h"
@@ -46,6 +47,21 @@ enum class LineageReconstructionEligibility {
   INELIGIBLE_LINEAGE_DISABLED,
   /// Object reference not found in table.
   INELIGIBLE_REF_NOT_FOUND,
+};
+
+/**
+ * Move state of an owned object.
+ * The state only moves forward. An object starts in either NOT_MOVABLE or MOVABLE state
+ * depending on consume_once flag. A consume-once object goes from MOVABLE to MOVED when
+ * it is passed to its one consuming actor task.
+ **/
+enum class MoveState {
+  /// Default. The object can be passed to any number of tasks and borrowed.
+  NOT_MOVABLE,
+  /// Created with `consume_once=True` and not yet passed to a consuming actor task.
+  MOVABLE,
+  /// After a MOVABLE ref is passed to its consuming actor task.
+  MOVED,
 };
 
 /**
@@ -212,6 +228,8 @@ class ReferenceCounterInterface {
    * @param[in] pinned_at_node_id The primary location for the object, if it
    * is already known. This is only used for ray.put calls.
    * @param[in] tensor_transport The transport used for the object.
+   * @param[in] move_state The initial move state. MOVABLE for the returns of an actor
+   * task submitted with `consume_once=True`, NOT_MOVABLE otherwise.
    */
   virtual void AddOwnedObject(
       const ObjectID &object_id,
@@ -222,7 +240,8 @@ class ReferenceCounterInterface {
       LineageReconstructionEligibility lineage_eligibility,
       bool add_local_ref,
       const std::optional<NodeID> &pinned_at_node_id = std::optional<NodeID>(),
-      const std::optional<std::string> &tensor_transport = std::nullopt) = 0;
+      const std::optional<std::string> &tensor_transport = std::nullopt,
+      MoveState move_state = MoveState::NOT_MOVABLE) = 0;
 
   /**
    * @brief Add an owned object that was dynamically created.
@@ -571,6 +590,13 @@ class ReferenceCounterInterface {
   virtual std::vector<ObjectID> FlushObjectsToRecover() = 0;
 
   /**
+   * @brief Re-queue an object for recovery if it is still in scope.
+   *
+   * @param[in] object_id The object to mark for recovery.
+   */
+  virtual void MarkObjectForRecovery(const ObjectID &object_id) = 0;
+
+  /**
    * @brief Whether we have a reference to a particular ObjectID.
    *
    * @param[in] object_id The object ID to check for.
@@ -735,6 +761,45 @@ class ReferenceCounterInterface {
    */
   virtual std::optional<std::string> GetTensorTransport(
       const ObjectID &object_id) const = 0;
+
+  /**
+   * @brief Get the move state of the given object.
+   *
+   * @return The object's move state, or std::nullopt if there is no reference to it.
+   * Upto the caller to see if std::nullopt is expected or not.
+   */
+  virtual std::optional<MoveState> GetMoveState(const ObjectID &object_id) const = 0;
+
+  /**
+   * @brief Whether this worker owns any consume-once object, i.e. one that is MOVABLE or
+   * MOVED. Doesn't take the lock, so callers can skip move-state lookups when it's false.
+   *
+   * @return True if at least one object owned by this worker is MOVABLE or MOVED.
+   */
+  virtual bool HasConsumeOnceObjects() const = 0;
+
+  /**
+   * @brief Get the move states of the given objects, under a single lock.
+   *
+   * @return One entry per input ID, in the same order, as for GetMoveState.
+   */
+  virtual std::vector<std::optional<MoveState>> GetMoveStates(
+      const std::vector<ObjectID> &object_ids) const = 0;
+
+  /**
+   * @brief Move the given objects to their consuming actor task: every MOVABLE
+   * object becomes MOVED. All-or-nothing: if any object is already MOVED, nothing
+   * changes. NOT_MOVABLE objects and IDs without a reference are left alone. An ID
+   * repeated in the list is moved once.
+   *
+   * @param object_ids The by-reference argument IDs of the consuming task.
+   * @return InvalidArgument naming the first object that is already MOVED.
+   * Otherwise, one entry per ID in object_ids: true if this call moved the object.
+   * Both entries of a repeated ID (for eg: f.remote(ref, ref), if ref is
+   * _consume_once) are true.
+   */
+  virtual StatusOr<std::vector<bool>> TryCommitMoves(
+      const std::vector<ObjectID> &object_ids) = 0;
 
   /**
    * @brief Set whether lineage pinning is enabled, i.e. whether objects owned by

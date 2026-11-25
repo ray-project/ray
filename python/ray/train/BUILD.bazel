@@ -432,7 +432,10 @@ py_test(
         "exclusive",
         "team:ml",
     ],
-    deps = [":train_lib"],
+    deps = [
+        ":conftest",
+        ":train_lib",
+    ],
 )
 
 py_test(
