@@ -8,7 +8,17 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.interfaces import (
+    LogicalOperatorSupportsProjectionPushdown,
+    LogicalPlan,
+)
+from ray.data._internal.logical.operators import (
+    Aggregate,
+    Join,
+    Repartition,
+    Sort,
+    StreamingRepartition,
+)
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
@@ -17,9 +27,10 @@ from ray.data._internal.logical.rules import (
     ProjectionPushdown,
 )
 from ray.data._internal.util import rows_same
-from ray.data.aggregate import Mean, Sum
+from ray.data.aggregate import Mean, Sum, Unique
 from ray.data.context import DataContext
-from ray.data.expressions import DataType, StarExpr, col, star, udf
+from ray.data.expressions import DataType, StarExpr, col, lit, star, udf
+from ray.exceptions import RayTaskError
 
 
 @dataclass
@@ -1477,6 +1488,720 @@ class TestAggregateInputPruning:
 
         # The wide unused column is always dropped from the read.
         assert "unused" not in set(_leaf_op(dag).infer_schema().names)
+
+
+def _optimize(ds):
+    """Optimize ``ds``'s plan and check that optimizing the result again changes
+    nothing: execution rewires the dataset's DAG to the optimized one, so every
+    rule must be idempotent on its own output."""
+    from ray.data.tests.test_util import assert_plans_structurally_equal
+
+    plan = LogicalOptimizer().optimize(ds._logical_plan)
+    replan = LogicalOptimizer().optimize(plan)
+    assert_plans_structurally_equal(replan, plan)
+    # Operator names don't show what a read scans, so compare that too:
+    # a second pass must not find anything more to prune.
+    assert [_column_names(op) for op in _scan_ops(replan.dag)] == [
+        _column_names(op) for op in _scan_ops(plan.dag)
+    ]
+    return plan
+
+
+def _column_names(op) -> Set[str]:
+    return set(op.infer_schema().names)
+
+
+def _scan_ops(dag):
+    """Every read of a logical DAG that can prune columns, in post order.
+
+    Not the leaves: a ``ReadFiles`` sits on top of a ``ListFiles``, whose
+    columns are the file paths and sizes rather than the data's."""
+    return [
+        op
+        for op in dag.post_order_iter()
+        if isinstance(op, LogicalOperatorSupportsProjectionPushdown)
+        and op.supports_projection_pushdown()
+    ]
+
+
+def _scan_op(dag):
+    (scan,) = _scan_ops(dag)
+    return scan
+
+
+def _has_stacked_projects(dag) -> bool:
+    """Whether a ``Project`` feeds another one, which fusion should have merged."""
+    return any(
+        isinstance(op, Project) and isinstance(op.input_dependencies[0], Project)
+        for op in dag.post_order_iter()
+    )
+
+
+def _write_parquet(path, columns: Dict[str, list]) -> str:
+    pq.write_table(pa.table(columns), path)
+    return path
+
+
+class TestProjectionDerivation:
+    """``ProjectionPushdown`` should derive the columns each operator needs from
+    what its consumers reference, carry that requirement through ``Join``,
+    ``Sort``, ``Filter``, ``Limit`` and ``Union``, and push the pruning into
+    the reads, so the user doesn't have to hand-write ``select_columns`` on
+    every table of a multi-table query."""
+
+    @pytest.fixture
+    def join_parquet(self, tmp_path):
+        """Left ids 0-9, right ids 5-14; each side carries a wide column nothing
+        consumes."""
+        left = _write_parquet(
+            str(tmp_path / "left.parquet"),
+            {
+                "id": list(range(10)),
+                "a": [i * 10 for i in range(10)],
+                "unused_left": ["x" * 32] * 10,
+            },
+        )
+        right = _write_parquet(
+            str(tmp_path / "right.parquet"),
+            {
+                "id": list(range(5, 15)),
+                "b": [i * 100 for i in range(5, 15)],
+                "unused_right": ["y" * 32] * 10,
+            },
+        )
+        return left, right
+
+    @pytest.fixture
+    def wide_parquet(self, tmp_path):
+        return _write_parquet(
+            str(tmp_path / "wide.parquet"),
+            {
+                "k": [i % 3 for i in range(60)],
+                "a": [float(i) for i in range(60)],
+                "b": [i - 30 for i in range(60)],
+                "unused": ["x" * 32] * 60,
+            },
+        )
+
+    @staticmethod
+    def _join(left, right, join_type, **kwargs):
+        return left.join(
+            right,
+            join_type=join_type,
+            num_partitions=2,
+            on=("id",),
+            aggregator_ray_remote_args={"num_cpus": 0.01},
+            **kwargs,
+        )
+
+    @staticmethod
+    def _assert_same_rows(actual, expected):
+        assert rows_same(actual.to_pandas(), expected.to_pandas())
+
+    @pytest.mark.parametrize(
+        "join_type", ["inner", "left_outer", "right_outer", "full_outer"]
+    )
+    def test_join_inputs_pruned_to_required_columns(
+        self, join_parquet, join_type, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        left = ray.data.read_parquet(left_path)
+        right = ray.data.read_parquet(right_path)
+        # The join keys are needed by the join itself, even though the
+        # consumer doesn't select them.
+        ds = self._join(left, right, join_type).select_columns(["a", "b"])
+
+        plan = _optimize(ds)
+        (join,) = [op for op in plan.dag.post_order_iter() if isinstance(op, Join)]
+        left_input, right_input = join.input_dependencies
+        assert _column_names(left_input) == {"id", "a"}
+        assert _column_names(right_input) == {"id", "b"}
+        # The pruning reached the parquet reads: nothing else is scanned.
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+
+        hand_pruned = self._join(
+            left.select_columns(["id", "a"]),
+            right.select_columns(["id", "b"]),
+            join_type,
+        ).select_columns(["a", "b"])
+        self._assert_same_rows(ds, hand_pruned)
+
+    def test_join_without_narrowing_consumer_is_untouched(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        ds = self._join(
+            ray.data.read_parquet(left_path), ray.data.read_parquet(right_path), "inner"
+        )
+        plan = _optimize(ds)
+        assert not any(isinstance(op, Project) for op in plan.dag.post_order_iter())
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a", "unused_left"},
+            {"id", "b", "unused_right"},
+        ]
+
+    @pytest.mark.parametrize("join_type", ["left_semi", "left_anti"])
+    def test_semi_join_prunes_right_input_to_its_keys(
+        self, join_parquet, join_type, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        left = ray.data.read_parquet(left_path)
+        right = ray.data.read_parquet(right_path)
+        # A semi/anti join emits only left columns, so the right side
+        # contributes nothing but its keys, whatever the consumer selects.
+        ds = self._join(left, right, join_type).select_columns(["a"])
+
+        plan = _optimize(ds)
+        (join,) = [op for op in plan.dag.post_order_iter() if isinstance(op, Join)]
+        left_input, right_input = join.input_dependencies
+        assert _column_names(left_input) == {"id", "a"}
+        assert _column_names(right_input) == {"id"}
+
+        hand_pruned = self._join(
+            left.select_columns(["id", "a"]), right.select_columns(["id"]), join_type
+        ).select_columns(["a"])
+        self._assert_same_rows(ds, hand_pruned)
+
+    def test_join_keeps_both_sides_of_a_colliding_column(
+        self, tmp_path, ray_start_regular_shared
+    ):
+        left = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "left.parquet"),
+                {"id": [1, 2, 3], "v": [10, 20, 30], "a": [1, 2, 3]},
+            )
+        )
+        right = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "right.parquet"),
+                {"id": [1, 2, 3], "v": [100, 200, 300], "b": [7, 8, 9]},
+            )
+        )
+        # ``v`` only comes out as ``v_l`` because the right side has a ``v``
+        # too, so pruning the right ``v`` would rename the surviving column
+        # and break the consumer.
+        ds = self._join(
+            left, right, "inner", left_suffix="_l", right_suffix="_r"
+        ).select_columns(["v_l", "a"])
+
+        plan = _optimize(ds)
+        (join,) = [op for op in plan.dag.post_order_iter() if isinstance(op, Join)]
+        left_input, right_input = join.input_dependencies
+        assert _column_names(left_input) == {"id", "v", "a"}
+        assert _column_names(right_input) == {"id", "v"}
+        assert sorted(ds.take_all(), key=lambda row: row["a"]) == [
+            {"v_l": 10, "a": 1},
+            {"v_l": 20, "a": 2},
+            {"v_l": 30, "a": 3},
+        ]
+
+    def test_requirements_chain_through_nested_joins(
+        self, tmp_path, ray_start_regular_shared
+    ):
+        orders = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "orders.parquet"),
+                {
+                    "o_id": [1, 2, 3],
+                    "c_id": [10, 20, 30],
+                    "amount": [5, 6, 7],
+                    "o_comment": ["x" * 32] * 3,
+                },
+            )
+        )
+        customers = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "customers.parquet"),
+                {"c_id": [10, 20, 30], "n_id": [100, 200, 300], "c_comment": ["y"] * 3},
+            )
+        )
+        nations = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "nations.parquet"),
+                {
+                    "n_id": [100, 200, 300],
+                    "n_name": ["A", "B", "C"],
+                    "n_comment": ["z"] * 3,
+                },
+            )
+        )
+        ds = (
+            orders.join(
+                customers,
+                join_type="inner",
+                num_partitions=2,
+                on=("c_id",),
+                aggregator_ray_remote_args={"num_cpus": 0.01},
+            )
+            .join(
+                nations,
+                join_type="inner",
+                num_partitions=2,
+                on=("n_id",),
+                aggregator_ray_remote_args={"num_cpus": 0.01},
+            )
+            .select_columns(["n_name", "amount"])
+        )
+
+        plan = _optimize(ds)
+        # Every scan reads only its share of the final selection plus the keys
+        # the joins need.
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"c_id", "amount"},
+            {"c_id", "n_id"},
+            {"n_id", "n_name"},
+        ]
+        # The inner join's key is not needed past it, so it is dropped before
+        # the outer join's shuffle.
+        outer_join = plan.dag.input_dependencies[0]
+        assert isinstance(outer_join, Join)
+        assert _column_names(outer_join.input_dependencies[0]) == {"n_id", "amount"}
+
+        assert sorted(ds.take_all(), key=lambda row: row["amount"]) == [
+            {"n_name": "A", "amount": 5},
+            {"n_name": "B", "amount": 6},
+            {"n_name": "C", "amount": 7},
+        ]
+
+    def test_requirements_pass_through_sort_filter_and_limit(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = (
+            ray.data.read_parquet(wide_parquet)
+            .filter(expr=col("b") > 0)
+            .sort("a", descending=True)
+            .limit(10)
+            .select_columns(["k"])
+        )
+
+        plan = _optimize(ds)
+        # The sort needs its key on top of what the consumer selects, and the
+        # filter's column is dropped before the sort shuffle.
+        (sort,) = [op for op in plan.dag.post_order_iter() if isinstance(op, Sort)]
+        assert _column_names(sort.input_dependencies[0]) == {"k", "a"}
+        assert "unused" not in _column_names(_scan_op(plan.dag))
+
+        expected = (
+            pq.read_table(wide_parquet)
+            .to_pandas()
+            .query("b > 0")
+            .sort_values("a", ascending=False)
+            .head(10)[["k"]]
+        )
+        assert rows_same(ds.to_pandas(), expected)
+
+    def test_udf_filter_blocks_derivation_below_it(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = (
+            ray.data.read_parquet(wide_parquet)
+            .filter(lambda row: row["b"] > 0)
+            .sort("k")
+            .select_columns(["a"])
+        )
+
+        plan = _optimize(ds)
+        # A UDF filter may read any column, so the read stays untouched, but
+        # the columns are still dropped before the sort shuffle.
+        (sort,) = [op for op in plan.dag.post_order_iter() if isinstance(op, Sort)]
+        assert _column_names(sort.input_dependencies[0]) == {"k", "a"}
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a", "b", "unused"}
+        assert sorted(row["a"] for row in ds.take_all()) == [
+            float(i) for i in range(31, 60)
+        ]
+
+    def test_requirements_reach_every_union_branch(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        ds = (
+            ray.data.read_parquet(left_path)
+            .select_columns(["id", "a", "unused_left"])
+            .union(ray.data.read_parquet(left_path))
+            .select_columns(["a"])
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [{"a"}, {"a"}]
+        assert sorted(row["a"] for row in ds.take_all()) == sorted(
+            [i * 10 for i in range(10)] * 2
+        )
+
+    def test_aggregate_after_join_prunes_both_scans(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        """The TPC-H shape: scans -> join -> computed column -> group-by, with
+        no hand-written ``select_columns`` anywhere."""
+        left_path, right_path = join_parquet
+        ds = (
+            self._join(
+                ray.data.read_parquet(left_path),
+                ray.data.read_parquet(right_path),
+                "inner",
+            )
+            .with_column("ab", col("a") * col("b"))
+            .groupby("id")
+            .sum("ab")
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+        assert sorted(ds.take_all(), key=lambda row: row["id"]) == [
+            {"id": i, "sum(ab)": i * 10 * i * 100} for i in range(5, 10)
+        ]
+
+    @pytest.mark.parametrize(
+        "build, expected_rows",
+        [
+            pytest.param(
+                lambda ds: ds.limit(4).select_columns(["k"]),
+                None,
+                id="limit",
+            ),
+            pytest.param(
+                lambda ds: ds.filter(expr=col("b") > 0).sort("a").select_columns(["k"]),
+                [{"k": 0}, {"k": 0}, {"k": 1}, {"k": 2}],
+                id="filter-sort",
+            ),
+        ],
+    )
+    def test_no_stacked_projects_above_a_source_that_cannot_prune(
+        self, build, expected_rows, ray_start_regular_shared
+    ):
+        # In-memory data can't absorb a projection. A pruning ``Project`` on
+        # top of it would trade places with the ``Limit`` / ``Filter`` on
+        # every optimizer iteration and pile up.
+        ds = build(
+            ray.data.from_items(
+                [
+                    {"k": i % 3, "a": float(i), "b": i - 5, "unused": "x" * 32}
+                    for i in range(10)
+                ]
+            )
+        )
+
+        plan = _optimize(ds)
+        assert not _has_stacked_projects(plan.dag)
+
+        rows = ds.take_all()
+        if expected_rows is None:
+            assert len(rows) == 4
+            assert all(set(row) == {"k"} for row in rows)
+        else:
+            assert sorted(rows, key=lambda row: row["k"]) == expected_rows
+
+    def test_pruning_keeps_repartitions_combinable(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = (
+            ray.data.read_parquet(wide_parquet)
+            .filter(lambda row: row["b"] > 0)
+            .repartition(target_num_rows_per_block=10)
+            .repartition(2)
+            .select_columns(["a"])
+        )
+
+        plan = _optimize(ds)
+        ops = list(plan.dag.post_order_iter())
+        # ``CombineShuffles`` folds the streaming repartition into the
+        # repartition above it, which a ``Project`` between the two would
+        # prevent; the columns are dropped below the combined one instead.
+        assert not any(isinstance(op, StreamingRepartition) for op in ops)
+        (repartition,) = [op for op in ops if isinstance(op, Repartition)]
+        assert _column_names(repartition.input_dependencies[0]) == {"a"}
+        assert sorted(row["a"] for row in ds.take_all()) == [
+            float(i) for i in range(31, 60)
+        ]
+
+    @pytest.mark.parametrize(
+        "condition, left_scan, right_scan, executes",
+        [
+            # ``ExtractEquiJoinKeys`` turns the equality into condition keys.
+            pytest.param(
+                col("a2") == col("b2"),
+                {"id", "a2", "payload"},
+                {"id", "b2"},
+                True,
+                id="condition-keys",
+            ),
+            # The inequality stays on the join as the residual, which can be
+            # planned but not executed yet.
+            pytest.param(
+                (col("a2") == col("b2")) & (col("x") < col("y")),
+                {"id", "a2", "x", "payload"},
+                {"id", "b2", "y"},
+                False,
+                id="residual",
+            ),
+        ],
+    )
+    def test_join_keeps_the_columns_of_its_condition(
+        self,
+        tmp_path,
+        condition,
+        left_scan,
+        right_scan,
+        executes,
+        ray_start_regular_shared,
+    ):
+        left = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "left.parquet"),
+                {
+                    "id": [1, 2, 3],
+                    "a2": [1, 2, 9],
+                    "x": [0, 0, 0],
+                    "payload": [10, 20, 30],
+                    "unused_left": ["x" * 32] * 3,
+                },
+            )
+        )
+        right = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "right.parquet"),
+                {
+                    "id": [1, 2, 3],
+                    "b2": [1, 2, 3],
+                    "y": [1, 1, 1],
+                    "unused_right": ["y" * 32] * 3,
+                },
+            )
+        )
+        # The join reads the condition's columns itself, though the consumer
+        # selects none of them.
+        ds = self._join(left, right, "inner", condition=condition).select_columns(
+            ["payload"]
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            left_scan,
+            right_scan,
+        ]
+        if executes:
+            # ``id`` 3 matches on the key but not on the condition.
+            assert sorted(row["payload"] for row in ds.take_all()) == [10, 20]
+
+    def test_join_with_unsuffixed_collision_is_left_alone(
+        self, tmp_path, ray_start_regular_shared
+    ):
+        left = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "left.parquet"),
+                {"id": [1, 2, 3], "v": [10, 20, 30], "a": [1, 2, 3]},
+            )
+        )
+        right = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "right.parquet"),
+                {"id": [1, 2, 3], "v": [100, 200, 300], "b": [7, 8, 9]},
+            )
+        )
+        # Both sides have a ``v`` and there is no suffix to tell them apart,
+        # so the join fails. Pruning the two ``v`` columns, which the
+        # consumer doesn't select, would make it pass.
+        ds = self._join(left, right, "inner").select_columns(["a", "b"])
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "v", "a"},
+            {"id", "v", "b"},
+        ]
+        with pytest.raises(RayTaskError) as exc_info:
+            ds.take_all()
+        assert "Left and right columns suffixes cannot be both None" in str(
+            exc_info.value.cause
+        )
+
+    @pytest.mark.parametrize(
+        "selected, right_scan, expected",
+        [
+            pytest.param(
+                ["a", "b"],
+                {"rid", "b"},
+                [{"a": 10, "b": 100}, {"a": 20, "b": 200}, {"a": 30, "b": 300}],
+                id="unused",
+            ),
+            pytest.param(
+                ["a", "k_r"],
+                {"rid", "k"},
+                [{"a": 10, "k_r": 7}, {"a": 20, "k_r": 8}, {"a": 30, "k_r": 9}],
+                id="selected",
+            ),
+        ],
+    )
+    def test_right_column_named_like_a_left_key(
+        self, tmp_path, selected, right_scan, expected, ray_start_regular_shared
+    ):
+        left = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "left.parquet"),
+                {"k": [1, 2, 3], "a": [10, 20, 30], "unused_left": ["x"] * 3},
+            )
+        )
+        right = ray.data.read_parquet(
+            _write_parquet(
+                str(tmp_path / "right.parquet"),
+                {"rid": [1, 2, 3], "k": [7, 8, 9], "b": [100, 200, 300]},
+            )
+        )
+        ds = left.join(
+            right,
+            join_type="inner",
+            num_partitions=2,
+            on=("k",),
+            right_on=("rid",),
+            right_suffix="_r",
+            aggregator_ray_remote_args={"num_cpus": 0.01},
+        ).select_columns(selected)
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"k", "a"},
+            right_scan,
+        ]
+        assert sorted(ds.take_all(), key=lambda row: row["a"]) == expected
+
+    def test_project_read_only_for_its_rows_keeps_its_inputs(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        ds = (
+            self._join(
+                ray.data.read_parquet(left_path),
+                ray.data.read_parquet(right_path),
+                "inner",
+            )
+            .select_columns(["a", "b"])
+            .with_column("ab", col("a") * col("b"))
+            .random_shuffle()
+            .with_column("one", lit(1))
+            .select_columns(["one"])
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+        assert ds.take_all() == [{"one": 1}] * 5
+
+    def test_aggregate_over_sort_prunes_below_the_aggregate(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = ray.data.read_parquet(wide_parquet).sort("b").groupby("k").sum("a")
+
+        plan = _optimize(ds)
+        (aggregate,) = [
+            op for op in plan.dag.post_order_iter() if isinstance(op, Aggregate)
+        ]
+        assert _column_names(aggregate.input_dependencies[0]) == {"k", "a"}
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a", "b"}
+        assert sorted(ds.take_all(), key=lambda row: row["k"]) == [
+            {"k": k, "sum(a)": float(sum(range(k, 60, 3)))} for k in range(3)
+        ]
+
+    def test_filter_between_two_sorts_keeps_them_combinable(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = (
+            ray.data.read_parquet(wide_parquet)
+            .sort("a")
+            .filter(expr=col("b") > 0)
+            .sort("k")
+            .select_columns(["a", "k"])
+        )
+
+        plan = _optimize(ds)
+        sorts = [op for op in plan.dag.post_order_iter() if isinstance(op, Sort)]
+        assert len(sorts) == 1
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a"}
+        expected = pq.read_table(wide_parquet).to_pandas().query("b > 0")[["a", "k"]]
+        assert rows_same(ds.to_pandas(), expected)
+
+    def test_aggregate_of_unknown_output_type_still_prunes_its_input(
+        self, wide_parquet, ray_start_regular_shared
+    ):
+        ds = ray.data.read_parquet(wide_parquet).groupby("k").aggregate(Unique("a"))
+
+        plan = _optimize(ds)
+        assert plan.dag.infer_schema() is None
+        assert _column_names(_scan_op(plan.dag)) == {"k", "a"}
+        assert {row["k"]: sorted(row["unique(a)"]) for row in ds.take_all()} == {
+            k: [float(i) for i in range(k, 60, 3)] for k in range(3)
+        }
+
+    def test_pruning_below_a_udf_map_survives_a_narrowing_consumer(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        left_path, right_path = join_parquet
+        ds = (
+            self._join(
+                ray.data.read_parquet(left_path),
+                ray.data.read_parquet(right_path),
+                "inner",
+            )
+            .select_columns(["a", "b"])
+            .map_batches(lambda batch: batch)
+            .select_columns(["a"])
+        )
+
+        plan = _optimize(ds)
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+        assert sorted(row["a"] for row in ds.take_all()) == [
+            i * 10 for i in range(5, 10)
+        ]
+
+    # The pool's actor holds its CPU share from the start, and the tasks that
+    # list and read the parquet files each need a whole CPU on top of it, so
+    # the default one-CPU cluster would never schedule them.
+    @pytest.mark.parametrize(
+        "ray_start_regular_shared", [{"num_cpus": 4}], indirect=True, ids=["4_cpus"]
+    )
+    def test_join_input_computed_by_actor_pool_udf(
+        self, join_parquet, ray_start_regular_shared
+    ):
+        @udf(return_dtype=DataType.int64())
+        class AddOffset:
+            def __init__(self, offset: int):
+                self.offset = offset
+
+            def __call__(self, x: pa.Array) -> pa.Array:
+                return pc.add(x, self.offset)
+
+        left_path, right_path = join_parquet
+        left = ray.data.read_parquet(left_path).with_column(
+            "a_plus", AddOffset(1)(col("a")), num_cpus=0.1
+        )
+        right = ray.data.read_parquet(right_path)
+        ds = self._join(left, right, "inner").select_columns(["a_plus", "b"])
+
+        plan = _optimize(ds)
+        # The UDF's input column is still read; ``a`` itself and the unused
+        # columns don't make it into the join.
+        assert [_column_names(op) for op in _scan_ops(plan.dag)] == [
+            {"id", "a"},
+            {"id", "b"},
+        ]
+        (udf_project,) = [
+            op
+            for op in plan.dag.post_order_iter()
+            if isinstance(op, Project)
+            and isinstance(op.compute, ray.data.ActorPoolStrategy)
+        ]
+        assert _column_names(udf_project) == {"id", "a_plus"}
+        assert sorted(ds.take_all(), key=lambda row: row["b"]) == [
+            {"a_plus": i * 10 + 1, "b": i * 100} for i in range(5, 10)
+        ]
 
 
 if __name__ == "__main__":
