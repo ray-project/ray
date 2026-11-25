@@ -51,6 +51,15 @@ class OpenTelemetryMetricRecorderTest : public ::testing::Test {
     return std::nullopt;
   }
 
+  std::optional<std::vector<double>> GetHistogramBoundaries(const std::string &name) {
+    std::lock_guard<std::mutex> lock(recorder_.mutex_);
+    auto it = recorder_.histogram_boundaries_.find(name);
+    if (it == recorder_.histogram_boundaries_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
  protected:
   OpenTelemetryMetricRecorder &recorder_;
 };
@@ -81,6 +90,22 @@ TEST_F(OpenTelemetryMetricRecorderTest, TestHistogramMetric) {
       "test_histogram", "Test histogram description", {0.0, 10.0, 20.0, 30.0});
   // Check that the histogram metric is registered
   ASSERT_TRUE(recorder_.IsMetricRegistered("test_histogram"));
+}
+
+TEST_F(OpenTelemetryMetricRecorderTest, TestHistogramReregistrationKeepsBoundaries) {
+  const std::vector<double> boundaries = {1.0, 2.0, 3.0};
+  recorder_.RegisterHistogramMetric(
+      "test_histogram_reregistered", "Test histogram description", boundaries);
+  ASSERT_EQ(GetHistogramBoundaries("test_histogram_reregistered"), boundaries);
+
+  // Re-registering with the same boundaries is a no-op.
+  recorder_.RegisterHistogramMetric(
+      "test_histogram_reregistered", "Test histogram description", boundaries);
+  // Re-registering with different boundaries logs a warning and keeps the original
+  // boundaries.
+  recorder_.RegisterHistogramMetric(
+      "test_histogram_reregistered", "Test histogram description", {1.0, 5.0});
+  ASSERT_EQ(GetHistogramBoundaries("test_histogram_reregistered"), boundaries);
 }
 
 }  // namespace observability

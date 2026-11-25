@@ -1,16 +1,19 @@
 import os
 from pathlib import Path
+from typing import Dict
 
 import pyarrow.fs
 import pytest
 
 import ray
+from ray._common.test_utils import wait_for_condition
+from ray.train import _checkpoint
 from ray.train._checkpoint import (
     _CHECKPOINT_TEMP_DIR_PREFIX,
     _METADATA_FILE_NAME,
+    _STAGING_SUFFIX,
     Checkpoint,
-    _get_del_lock_path,
-    _list_existing_del_locks,
+    _list_readers,
 )
 from ray.train._internal.storage import _exists_at_fs_path, _upload_to_fs_path
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
@@ -109,60 +112,65 @@ def test_as_directory(checkpoint: Checkpoint):
         assert not checkpoint_path.exists()
 
 
-def test_multiprocess_as_directory(checkpoint: Checkpoint, monkeypatch):
-    """Tests that deletion lock files are created and deleted correctly,
-    when multiple processes are accessing a checkpoint with `as_directory`"""
-    # If this is pointing to a local path, no lockfiles will be created.
-    is_local_checkpoint = isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
+def _skip_if_not_downloaded(checkpoint: Checkpoint):
+    if isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+        pytest.skip("Local checkpoints are not downloaded to a temp dir.")
 
-    monkeypatch.setattr(os, "getpid", lambda: 11111)
 
-    with checkpoint.as_directory() as checkpoint_dir_1:
-        lock_file_1 = Path(_get_del_lock_path(checkpoint_dir_1))
+def _skip_if_not_picklable(checkpoint: Checkpoint):
+    if checkpoint.filesystem.type_name == "mock":
+        pytest.skip("Mock filesystem cannot be pickled for use with Ray.")
 
-        # Pretend that the 2nd `as_directory` is called from a different process.
-        monkeypatch.setattr(os, "getpid", lambda: 22222)
 
-        with checkpoint.as_directory() as checkpoint_dir_2:
-            lock_file_2 = Path(_get_del_lock_path(checkpoint_dir_2))
+def _read_content(checkpoint_dir: str) -> str:
+    return (Path(checkpoint_dir) / _CHECKPOINT_CONTENT_FILE).read_text()
 
-            # Should point both processes to the same canonical temp directory.
-            assert checkpoint_dir_1 == checkpoint_dir_2
 
-            if is_local_checkpoint:
-                # Check that 2 different lock files were created.
-                assert not lock_file_1.exists()
-                assert not lock_file_2.exists()
-            else:
-                # Check that 2 different lock files were created.
-                assert lock_file_1.exists()
-                assert lock_file_2.exists()
+def _count_downloads(monkeypatch) -> Dict[str, int]:
+    """Count calls to `_download_from_fs_path` in `ray.train._checkpoint`."""
+    counter = {"downloads": 0}
+    original_download = _checkpoint._download_from_fs_path
 
-                assert len(_list_existing_del_locks(checkpoint_dir_1)) == 2
+    def counting_download(*args, **kwargs):
+        counter["downloads"] += 1
+        return original_download(*args, **kwargs)
 
-        if not is_local_checkpoint:
-            # Check that the 2nd lock file was deleted.
-            assert len(_list_existing_del_locks(checkpoint_dir_1)) == 1
-            assert not lock_file_2.exists()
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", counting_download)
+    return counter
 
-    if not is_local_checkpoint:
-        # Check that the 1st lock file was deleted.
-        assert len(_list_existing_del_locks(checkpoint_dir_1)) == 0
-        assert not lock_file_1.exists()
 
-        # Check that the temp checkpoint directory was deleted.
-        assert not Path(checkpoint_dir_1).exists()
+def test_as_directory_nested_in_one_process(checkpoint: Checkpoint, monkeypatch):
+    """Nested `as_directory()` calls in one process share one download, and
+    exiting the inner one doesn't delete the directory while the outer one still
+    uses it. Once the last reader exits, the next reader downloads again."""
+    _skip_if_not_downloaded(checkpoint)
+    counter = _count_downloads(monkeypatch)
+
+    with checkpoint.as_directory() as outer_dir:
+        with checkpoint.as_directory() as inner_dir:
+            assert inner_dir == outer_dir
+            assert len(_list_readers(outer_dir)) == 2
+        assert _read_content(outer_dir) == "dummy"
+        assert len(_list_readers(outer_dir)) == 1
+    assert counter["downloads"] == 1
+
+    assert not Path(outer_dir).exists()
+    assert not _list_readers(outer_dir)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert _read_content(checkpoint_dir) == "dummy"
+    assert counter["downloads"] == 2
 
 
 def test_as_directory_lock_cleanup(checkpoint: Checkpoint):
     """Errors when accessing a checkpoint with `as_directory`
-    shouldn't leave behind lock files.
+    shouldn't leave behind reader files.
     """
     with pytest.raises(RuntimeError):
         with checkpoint.as_directory() as checkpoint_dir:
             raise RuntimeError
 
-    assert not _list_existing_del_locks(checkpoint_dir)
+    assert not _list_readers(checkpoint_dir)
 
     is_local_checkpoint = isinstance(checkpoint.filesystem, pyarrow.fs.LocalFileSystem)
     if not is_local_checkpoint:
@@ -180,14 +188,179 @@ def test_as_directory_download_error(checkpoint: Checkpoint, monkeypatch):
 
     error_text = "original error"
 
-    def to_directory_error(*args, **kwargs):
+    def download_error(*args, **kwargs):
         raise RuntimeError(error_text)
 
-    monkeypatch.setattr(checkpoint, "to_directory", to_directory_error)
+    monkeypatch.setattr(_checkpoint, "_download_from_fs_path", download_error)
 
     with pytest.raises(RuntimeError, match=error_text):
         with checkpoint.as_directory() as _:
             pass
+
+
+def test_as_directory_waits_for_reader_in_other_process(
+    checkpoint: Checkpoint, tmp_path
+):
+    """A reader in another process holds the temporary directory until it exits
+    `as_directory()`, even after this process's reader exits."""
+    _skip_if_not_downloaded(checkpoint)
+    _skip_if_not_picklable(checkpoint)
+
+    entered = tmp_path / "entered"
+    release = tmp_path / "release"
+
+    @ray.remote
+    def hold_directory(checkpoint: Checkpoint) -> str:
+        import time
+
+        with checkpoint.as_directory() as checkpoint_dir:
+            entered.touch()
+            while not release.exists():
+                time.sleep(0.05)
+        return checkpoint_dir
+
+    ref = hold_directory.remote(checkpoint)
+    wait_for_condition(entered.exists, timeout=60)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        pass
+    assert _read_content(checkpoint_dir) == "dummy"
+
+    release.touch()
+    assert ray.get(ref) == checkpoint_dir
+    assert not Path(checkpoint_dir).exists()
+
+
+def test_as_directory_reader_arrives_during_cleanup(checkpoint: Checkpoint, tmp_path):
+    """A reader that arrives after the last reader has found no other readers, but
+    before it deletes the directory, waits for the deletion and downloads the
+    checkpoint again, instead of getting a directory that's deleted under it."""
+    _skip_if_not_downloaded(checkpoint)
+    _skip_if_not_picklable(checkpoint)
+
+    found_no_readers = tmp_path / "found_no_readers"
+
+    @ray.remote
+    def read_with_slow_cleanup(checkpoint: Checkpoint):
+        import time
+
+        from ray.train import _checkpoint
+
+        original_list_readers = _checkpoint._list_readers
+
+        def slow_list_readers(temp_dir):
+            readers = original_list_readers(temp_dir)
+            if not readers:
+                # Stall between the reader check and the deletion.
+                found_no_readers.touch()
+                time.sleep(2)
+            return readers
+
+        _checkpoint._list_readers = slow_list_readers
+        try:
+            with checkpoint.as_directory():
+                pass
+        finally:
+            _checkpoint._list_readers = original_list_readers
+
+    ref = read_with_slow_cleanup.remote(checkpoint)
+    wait_for_condition(found_no_readers.exists, timeout=60)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        # Let the other reader finish its cleanup before reading.
+        ray.get(ref)
+        assert _read_content(checkpoint_dir) == "dummy"
+
+
+def test_as_directory_reader_arrives_during_deletion(checkpoint: Checkpoint, tmp_path):
+    """Regression test for https://github.com/ray-project/ray/issues/41341.
+
+    Two Ray Train workers restore from the same checkpoint at different times.
+    The first worker exits `as_directory()` and deletes the shared temporary
+    directory, and the second worker arrives while the deletion is in progress.
+    The second worker previously failed with "Checkpoint directory ... does not
+    exist, even though it should have been created by another process". It must
+    wait for the deletion to finish and then download the checkpoint again.
+    """
+    _skip_if_not_downloaded(checkpoint)
+    _skip_if_not_picklable(checkpoint)
+
+    deleting = tmp_path / "deleting"
+
+    @ray.remote
+    def first_worker(checkpoint: Checkpoint):
+        import shutil
+        import time
+
+        original_rmtree = shutil.rmtree
+
+        def slow_rmtree(path, *args, **kwargs):
+            # Only patches `shutil.rmtree`, so that the test doesn't depend on
+            # how `as_directory()` deletes the directory.
+            if _CHECKPOINT_TEMP_DIR_PREFIX in str(path) and os.path.isdir(path):
+                deleting.touch()
+                time.sleep(2)
+            original_rmtree(path, *args, **kwargs)
+
+        shutil.rmtree = slow_rmtree
+        try:
+            with checkpoint.as_directory():
+                pass
+        finally:
+            shutil.rmtree = original_rmtree
+
+    ref = first_worker.remote(checkpoint)
+    wait_for_condition(deleting.exists, timeout=60)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert _read_content(checkpoint_dir) == "dummy"
+    ray.get(ref)
+
+
+def test_to_directory_survives_as_directory_cleanup(
+    checkpoint: Checkpoint, monkeypatch
+):
+    """`to_directory()` and `as_directory()` share one download, and the
+    `as_directory()` cleanup never deletes a directory that `to_directory()`
+    returned, whichever is called first."""
+    _skip_if_not_downloaded(checkpoint)
+    counter = _count_downloads(monkeypatch)
+
+    with checkpoint.as_directory() as checkpoint_dir:
+        assert checkpoint.to_directory() == checkpoint_dir
+    assert _read_content(checkpoint_dir) == "dummy"
+
+    with checkpoint.as_directory() as checkpoint_dir_2:
+        assert checkpoint_dir_2 == checkpoint_dir
+    assert _read_content(checkpoint_dir) == "dummy"
+    assert counter["downloads"] == 1
+
+
+def test_to_directory_crash_mid_download(checkpoint: Checkpoint):
+    """A process that crashes partway through a download never leaves a partial
+    checkpoint at the shared temporary directory, and the next caller downloads
+    the complete checkpoint."""
+    _skip_if_not_downloaded(checkpoint)
+    _skip_if_not_picklable(checkpoint)
+
+    @ray.remote(max_retries=0)
+    def crash_mid_download(checkpoint: Checkpoint):
+        from ray.train._internal import storage
+
+        def crashing_copy(fs_path, local_path, **kwargs):
+            (Path(local_path) / "partial_file").write_text("partial")
+            os._exit(1)
+
+        storage._pyarrow_fs_copy_files = crashing_copy
+        checkpoint.to_directory()
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(crash_mid_download.remote(checkpoint))
+
+    checkpoint_dir = checkpoint.to_directory()
+    assert _read_content(checkpoint_dir) == "dummy"
+    assert not (Path(checkpoint_dir) / "partial_file").exists()
+    assert not Path(checkpoint_dir + _STAGING_SUFFIX).exists()
 
 
 def test_metadata(checkpoint: Checkpoint):

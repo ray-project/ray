@@ -55,13 +55,13 @@ COPY python/requirements/llm/nccl_overrides.txt ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.33.0"
+ARG VLLM_SCRIPTS_REF="v0.34.0"
 
 # Keep in sync with DEEPEP_COMMIT_HASH in vllm's docker/Dockerfile. This is
 # DeepEP V2 ("NCCL Gin"), which needs NCCL >= 2.30.4 at build and run time;
 # python/requirements/llm/nccl_overrides.txt lifts nvidia-nccl-cu13 above the
 # version torch pins so the lock satisfies that.
-ARG DEEPEP_COMMIT_HASH="d4f41e4e93"
+ARG DEEPEP_COMMIT_HASH="a56d6156febcd9976e55adc85b5155bfac9f28f8"
 
 RUN <<EOF
 #!/bin/bash
@@ -96,7 +96,7 @@ uv pip install --system --no-cache-dir --no-deps ./mx-wheel/modelexpress-*.whl
 
 # Include the CUDA device index in vLLM's compile cache paths so a worker never
 # reloads a torch.compile artifact built for a different physical GPU.
-# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.33.0.
+# vllm-project/vllm#38962 was reverted by #53304; still needed in vLLM 0.34.0.
 VLLM_DEVICE_AWARE_COMPILE_CACHE_PATCH="$(pwd)/vllm-device-aware-compile-cache.patch"
 VLLM_PRESERVE_MODEL_EOS_TOKENS_PATCH="$(pwd)/vllm-preserve-model-eos-tokens.patch"
 VLLM_SITE_PACKAGES="$(python - <<'PY'
@@ -145,9 +145,16 @@ export UV_OVERRIDE="$(pwd)/nccl_overrides.txt"
 # EP kernels + DeepGEMM require Hopper+ features (matches vLLM Dockerfile)
 export TORCH_CUDA_ARCH_LIST="9.0a 10.0a"
 
+# The EP script patches DeepEP from a patches/ dir beside it, which piping it
+# into bash doesn't provide, so fetch the patch from the same ref.
+EP_PATCHES_DIR=/home/ray/llm_ep_support/patches
+mkdir -p "${EP_PATCHES_DIR}"
+curl -fsSL "${VLLM_RAW}/tools/ep_kernels/patches/deepep-gin-barrier-data-visibility.patch" \
+    -o "${EP_PATCHES_DIR}/deepep-gin-barrier-data-visibility.patch"
+
 # Install EP kernels (PPLX, DeepEP, and NVSHMEM)
 curl -fsSL "${VLLM_RAW}/tools/ep_kernels/install_python_libraries.sh" | \
-    bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
+    PATCHES_DIR="${EP_PATCHES_DIR}" bash -s -- --workspace /home/ray/llm_ep_support --nvshmem-ver ${NVSHMEM_VER} --deepep-ref ${DEEPEP_COMMIT_HASH}
 
 # DeepEP V2 links against NCCL's GIN API, so a downgrade slipped in by one of the
 # scripts above breaks it at runtime even when the build succeeded. Fail here

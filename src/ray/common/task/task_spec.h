@@ -185,6 +185,15 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// executor.
   std::optional<std::string> ArgTensorTransport(size_t arg_index) const;
 
+  /**
+   * @brief Whether this task consumes the argument at the given index, which was
+   * created with consume_once.
+   *
+   * @param arg_index The index of the argument.
+   * @return True if the argument is moved to this task.
+   **/
+  bool ArgIsMove(size_t arg_index) const;
+
   ObjectID ReturnId(size_t return_index) const;
 
   bool ReturnsDynamic() const;
@@ -281,6 +290,14 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   /// be used if the task spec is mutated.
   /// \return The recomputed dependencies for the task.
   std::vector<rpc::ObjectReference> GetDependencies() const;
+
+  /**
+   * @brief Whether this task consumes each of its dependencies.
+   *
+   * @return One entry per dependency, in GetDependencies() order: true if this task
+   * consumes it (TaskArg.is_move).
+   **/
+  std::vector<bool> GetDependencyIsMove() const;
 
   std::string GetDebuggerBreakpoint() const;
 

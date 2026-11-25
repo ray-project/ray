@@ -7,16 +7,30 @@ import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.logical.operators import ReadFiles
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.mock_http_server import (
+    data_file,
+    no_ranges_file,
+    no_ranges_num_lines,
+)
 from ray.tests.conftest import *  # noqa
+
+
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def text_reader_version(request, monkeypatch):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr(DataContext.get_current(), "use_datasource_v2", request.param)
+    return request.param
 
 
 def _to_lines(rows):
     return [row["text"] for row in rows]
 
 
-def test_empty_text_files(ray_start_regular_shared, tmp_path):
+def test_empty_text_files(ray_start_regular_shared, tmp_path, text_reader_version):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
     # 2 empty files.
@@ -28,7 +42,7 @@ def test_empty_text_files(ray_start_regular_shared, tmp_path):
     assert ds.count() == 0
 
 
-def test_read_text(ray_start_regular_shared, tmp_path):
+def test_read_text(ray_start_regular_shared, tmp_path, text_reader_version):
     path = os.path.join(tmp_path, "test_text")
     os.mkdir(path)
     with open(os.path.join(path, "file1.txt"), "w") as f:
@@ -40,11 +54,117 @@ def test_read_text(ray_start_regular_shared, tmp_path):
         f.write("ray\n")
     ds = ray.data.read_text(path)
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "ray", "world"]
+    assert ds.schema().names == ["text"]
     ds = ray.data.read_text(path, drop_empty_lines=False)
     assert ds.count() == 4
 
 
-def test_read_text_remote_args(ray_start_cluster, tmp_path):
+def test_read_text_partitioned_with_paths_and_pushdowns(
+    ray_start_regular_shared, tmp_path, text_reader_version
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.data.expressions import col
+
+    for year, content in (("2023", "one\n\n"), ("2024", "two\nthree\n")):
+        os.mkdir(os.path.join(tmp_path, f"year={year}"))
+        with open(os.path.join(tmp_path, f"year={year}", "data.txt"), "w") as f:
+            f.write(content)
+    partitioning = Partitioning(
+        PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
+    )
+
+    ds = ray.data.read_text(
+        str(tmp_path), partitioning=partitioning, include_paths=True
+    )
+    assert ds.schema().names == ["text", "year", "path"]
+    rows = sorted(ds.take_all(), key=lambda row: row["text"])
+    assert [(row["text"], row["year"]) for row in rows] == [
+        ("one", 2023),
+        ("three", 2024),
+        ("two", 2024),
+    ]
+    assert all(row["path"].endswith(f"year={row['year']}/data.txt") for row in rows)
+
+    pruned = ds.filter(expr=col("year") == 2024)
+    assert sorted(_to_lines(pruned.take_all())) == ["three", "two"]
+    assert sorted(_to_lines(ds.filter(expr=col("text") != "two").take_all())) == [
+        "one",
+        "three",
+    ]
+    assert ds.select_columns(["year"]).count() == 3
+    assert ds.limit(1).count() == 1
+    assert ds.count() == 3
+
+
+def test_read_text_root_files_next_to_partitions(
+    ray_start_regular_shared, tmp_path, text_reader_version
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.data.expressions import col
+
+    if not text_reader_version:
+        pytest.skip(
+            "V1 blocks from files outside partition directories lack the column"
+        )
+
+    with open(os.path.join(tmp_path, "root.txt"), "w") as f:
+        f.write("root\n")
+    os.mkdir(os.path.join(tmp_path, "year=2024"))
+    with open(os.path.join(tmp_path, "year=2024", "data.txt"), "w") as f:
+        f.write("nested\n")
+    partitioning = Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path))
+
+    ds = ray.data.read_text(
+        str(tmp_path), partitioning=partitioning, include_paths=True
+    )
+
+    rows = sorted(ds.take_all(), key=lambda row: row["text"])
+    assert [(row["text"], row["year"]) for row in rows] == [
+        ("nested", "2024"),
+        ("root", None),
+    ]
+    assert _to_lines(ds.filter(expr=col("year").is_null()).take_all()) == ["root"]
+    assert _to_lines(ds.filter(expr=col("year") != "2024").take_all()) == []
+    assert _to_lines(ds.filter(expr=col("year") == "2024").take_all()) == ["nested"]
+    root_path = os.path.join(tmp_path, "root.txt")
+    assert _to_lines(ds.filter(expr=col("path") == root_path).take_all()) == ["root"]
+
+
+def test_read_text_preserve_order_keeps_files_in_order(
+    ray_start_regular_shared, tmp_path, text_reader_version, monkeypatch
+):
+    from ray.data.context import DataContext
+
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx.execution_options, "preserve_order", True)
+    # Two read tasks for five files: round-robin would deal files 0, 2, 4 to
+    # the first task and 1, 3 to the second.
+    monkeypatch.setattr(ctx, "read_op_min_num_blocks", 2)
+    monkeypatch.setattr(ctx, "target_min_block_size", 1)
+    paths = []
+    for i in range(5):
+        path = os.path.join(tmp_path, f"{i}.txt")
+        with open(path, "w") as f:
+            f.write(f"{i}a\n{i}b\n")
+        paths.append(path)
+
+    ds = ray.data.read_text(paths)
+
+    assert _to_lines(ds.take_all()) == [f"{i}{s}" for i in range(5) for s in "ab"]
+
+
+def test_read_text_compressed(ray_start_regular_shared, tmp_path, text_reader_version):
+    import gzip
+
+    with gzip.open(os.path.join(tmp_path, "data.txt.gz"), "wt") as f:
+        f.write("hello\nworld\n")
+
+    ds = ray.data.read_text(str(tmp_path))
+
+    assert sorted(_to_lines(ds.take_all())) == ["hello", "world"]
+
+
+def test_read_text_remote_args(ray_start_cluster, tmp_path, text_reader_version):
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"foo": 100},
@@ -86,12 +206,30 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]
 
 
-def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
-    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
-    assert ds.count() > 0
-    # Test auto-resolve of HTTP file system when it is not provided.
-    ds = ray.data.read_text(http_file)
-    assert ds.count() > 0
+@pytest.mark.parametrize(
+    "url, num_lines",
+    [(data_file, 1000), (no_ranges_file, no_ranges_num_lines)],
+    ids=["no-size", "no-ranges"],
+)
+@pytest.mark.parametrize("filesystem", [HTTPFileSystem(), None], ids=["fsspec", "auto"])
+@pytest.mark.parametrize("num_paths", [1, 2])
+def test_fsspec_http_file_system(
+    ray_start_regular_shared,
+    http_server,
+    text_reader_version,
+    url,
+    num_lines,
+    filesystem,
+    num_paths,
+):
+    """``no-size``: the server sends no ``Content-Length``, so the filesystem
+    reports no size for the file; V2 must still read it, not skip it.
+    ``no-ranges``: the server sends the size but ignores range requests, and
+    the file is larger than fsspec's 5 MiB read block; V2 reads it in blocks of
+    ``streaming_read_buffer_size``, in one request, as V1 does."""
+    ds = ray.data.read_text([url] * num_paths, filesystem=filesystem)
+    assert isinstance(ds._logical_plan.dag, ReadFiles) == text_reader_version
+    assert _to_lines(ds.take_all()) == ["some test data"] * num_lines * num_paths
 
 
 if __name__ == "__main__":
