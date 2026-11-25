@@ -1399,6 +1399,35 @@ def test_invalid_topology_warning_logged_once(monkeypatch):
     assert max(len(k) for k in ray_debug._logged) < 100
 
 
+def test_resolve_gke_tpu_catches_infer_pod_type_value_error(monkeypatch):
+    from ray.util.debug import reset_log_once
+
+    reset_log_once()
+    warnings = []
+    monkeypatch.setattr(
+        tpu.logger, "warning", lambda msg, *a, **k: warnings.append(msg)
+    )
+    monkeypatch.setattr(
+        tpu,
+        "infer_tpu_pod_type_from_topology",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad topology")),
+    )
+    resources = {"CPU": 4, "TPU": 4}
+    selector = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x2",
+    }
+    assert (
+        TPUAcceleratorManager.get_node_group_accelerator_labels(resources, selector)
+        is None
+    )
+    assert (
+        TPUAcceleratorManager.get_node_group_additional_resources(resources, selector)
+        is None
+    )
+    assert len(warnings) == 1
+
+
 def test_base_accelerator_manager_hooks_are_none():
     from ray._private.accelerators import get_all_accelerator_managers
     from ray._private.accelerators.accelerator import AcceleratorManager

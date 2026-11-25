@@ -800,8 +800,19 @@ def _resolve_gke_tpu_node_group(
             )
         return None
 
-    pod_type = infer_tpu_pod_type_from_topology(topology, generation)
-    if not pod_type:
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, generation)
+    except ValueError:
+        if log_once(
+            _gke_tpu_log_once_key("invalid_topology", group_name, accelerator, topology)
+        ):
+            logger.warning(
+                f"Invalid GKE TPU topology '{_truncate_for_log(topology)}' for "
+                f"accelerator '{accelerator}'{group_ctx}; skipping default TPU "
+                "labels and head resource."
+            )
+        return None
+    if not pod_type or len(pod_type) > _MAX_GKE_TPU_TOPOLOGY_LEN:
         return None
     return generation, topology, pod_type
 
