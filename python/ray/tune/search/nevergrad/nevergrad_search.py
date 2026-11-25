@@ -245,15 +245,29 @@ class NevergradSearch(Searcher):
             # order.
             for i in range(len(self._points_to_evaluate) - 1, -1, -1):
                 point = self._points_to_evaluate[i]
+                parametrization = self._nevergrad_opt.parametrization
                 if isinstance(point, dict) and any(
                     isinstance(v, dict) for v in point.values()
                 ):
+                    param_dict = (
+                        parametrization.kwargs
+                        if isinstance(parametrization, ng.p.Instrumentation)
+                        else parametrization
+                    )
                     if not (
-                        isinstance(self._nevergrad_opt.parametrization, ng.p.Dict)
-                        and all(k in self._nevergrad_opt.parametrization for k in point)
+                        isinstance(param_dict, (ng.p.Dict, dict))
+                        and all(k in param_dict for k in point)
                     ):
                         point = flatten_dict(point)
-                self._nevergrad_opt.suggest(point)
+                if (
+                    isinstance(parametrization, ng.p.Instrumentation)
+                    and isinstance(point, dict)
+                    and parametrization.kwargs
+                    and not parametrization.args
+                ):
+                    self._nevergrad_opt.suggest(**point)
+                else:
+                    self._nevergrad_opt.suggest(point)
 
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec

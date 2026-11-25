@@ -256,6 +256,23 @@ class InvalidValuesTest(unittest.TestCase):
         suggested = searcher.suggest("trial_1")
         self.assertEqual(suggested, {"a": {"x": 2.5}, "b": "c1"})
 
+        # Instrumented optimizer with nested Dict kwargs must preserve nested dict points
+        instr_space = ng.p.Instrumentation(
+            a=ng.p.Dict(x=ng.p.Scalar(lower=0.0, upper=10.0)),
+            b=ng.p.Choice(["c1", "c2"]),
+        )
+        instr_searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne,
+            space=instr_space,
+            metric="loss",
+            mode="min",
+            points_to_evaluate=[{"a": {"x": 3.5}, "b": "c2"}],
+        )
+        self.assertEqual(
+            instr_searcher.suggest("instr_trial_1"),
+            {"a": {"x": 3.5}, "b": "c2"},
+        )
+
         # Errored trial with missing or partial result must not call tell() or raise KeyError
         searcher.on_trial_complete("trial_1", result={"other": 1.0}, error=True)
         self.assertEqual(searcher._nevergrad_opt.num_tell, 0)
