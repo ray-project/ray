@@ -1,9 +1,10 @@
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorPreservesSchema,
+    LogicalOperatorSupportsProjectionPassThrough,
 )
 from ray.data.block import BlockMetadata
 
@@ -86,6 +87,7 @@ class AbstractOneToOne(LogicalOperator):
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(
     AbstractOneToOne,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorPreservesSchema,
 ):
     """Logical operator for limit.
@@ -101,6 +103,11 @@ class Limit(
     def __post_init__(self):
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         object.__setattr__(self, "_name", f"limit={self.limit}")
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns]
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
