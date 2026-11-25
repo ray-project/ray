@@ -2006,9 +2006,17 @@ def test_align_struct_fields_non_struct_columns(
         )
 
 
-def test_align_struct_fields_empty_blocks(empty_block_blocks, empty_block_schema):
+@pytest.mark.parametrize("zero_chunks", [False, True])
+def test_align_struct_fields_empty_blocks(
+    empty_block_blocks, empty_block_schema, zero_chunks
+):
     """Test alignment with empty blocks."""
     t1, t2 = empty_block_blocks
+    if zero_chunks:
+        t1 = pa.table(
+            {"struct": pa.chunked_array([], type=t1.schema.field("struct").type)}
+        )
+        assert t1["struct"].num_chunks == 0
 
     aligned_blocks = _align_struct_fields([t1, t2], empty_block_schema)
 

@@ -96,6 +96,7 @@ class RayletIpcClient : public RayletIpcClientInterface {
   Status NotifyWorkerUnblocked() override;
 
   Status WaitForActorCallArgs(const std::vector<rpc::ObjectReference> &references,
+                              const std::vector<bool> &is_move,
                               const TaskID &task_id,
                               int32_t attempt_number) override;
 
