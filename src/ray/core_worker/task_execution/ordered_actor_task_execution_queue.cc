@@ -290,11 +290,10 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
       // hanging. This should happen only if the client crashes or misbehaves. After the
       // timeout, all tasks will be canceled and the client (if alive) must retry.
       //
-      // Later arrivals must not restart the deadline while the group is still waiting for
-      // the same seq_no. Re-arming it on every arrival would let a steady stream of later
-      // tasks, in this group or (via the enclosing loop over groups) in any other group
-      // of this client, push it out indefinitely, so the missing seq_no would never be
-      // skipped.
+      // Re-arm only if the timer is not already counting down for next_seq_no. Re-arming
+      // it on every arrival would let a steady stream of later tasks, in this group or
+      // (via the enclosing loop over groups) in any other group of this client, push it
+      // out indefinitely, so the missing seq_no would never be skipped.
       if (group_state.wait_timer_seq_no != group_state.next_seq_no) {
         group_state.wait_timer_seq_no = group_state.next_seq_no;
         group_state.wait_timer_.expires_from_now(
@@ -309,9 +308,8 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
           if (error == boost::asio::error::operation_aborted) {
             return;  // Timer deadline was adjusted.
           }
-          // An expiry that is already queued cannot be cancelled, so the group may
-          // have moved past this seq_no, or been disarmed, while this handler waited
-          // its turn. Cancelling everything then would be wrong.
+          // An expiry that is already queued cannot be cancelled, so return unless the
+          // timer is armed for this seq_no.
           auto it = group_states_.find(group_name_in);
           if (it == group_states_.end() || it->second.wait_timer_seq_no != next_seq_no) {
             return;

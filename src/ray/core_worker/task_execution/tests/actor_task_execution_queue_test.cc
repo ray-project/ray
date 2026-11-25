@@ -514,9 +514,12 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
 
   std::atomic<int> n_executed(0);
   std::atomic<int> n_canceled(0);
+  std::string cancel_message;
   auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
-  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+  auto cancel_task = [&n_canceled, &cancel_message](const TaskToExecute &task,
+                                                    const Status &status) {
     n_canceled++;
+    cancel_message = status.message();
   };
 
   OrderedActorTaskExecutionQueue queue(io_service,
@@ -537,6 +540,9 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeout) {
   io_service.run();
   ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
   ASSERT_TRUE(WaitForCondition([&n_canceled]() { return n_canceled == 2; }, 1000));
+  // The timer armed for seq_no 0 when 2 arrived was re-armed for 1 once next_seq_no
+  // moved to 1.
+  EXPECT_NE(cancel_message.find("seq_no 1 "), std::string::npos) << cancel_message;
   EnqueueWithFetch(queue, waiter, 4, -1, MakeTaskToExecute(task_spec));
   EnqueueWithFetch(queue, waiter, 5, -1, MakeTaskToExecute(task_spec));
 
@@ -587,9 +593,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTa
   ASSERT_EQ(n_canceled, 0);
 
   // Keep tasks arriving more often than the 1s deadline, for up to 3s. Each arrival used
-  // to re-arm the timer, so it never fired. restart() is defensive: run_for leaves the
-  // context stopped if the work queue ever drains, which this loop's exit condition
-  // otherwise hides.
+  // to re-arm the timer, so it never fired.
   int seq_no = 3;
   for (int i = 0; i < 30 && n_canceled == 0; ++i) {
     io_service.restart();
@@ -599,8 +603,7 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTa
 
   // The deadline expired despite the stream of arrivals, so the gap was skipped and the
   // queued tasks were cancelled rather than waiting on seq_no 1 forever. EXPECT rather
-  // than ASSERT: returning early here would skip the Join() below, and a joinable
-  // std::thread destructor terminates the process instead of reporting the failure.
+  // than ASSERT, so a failure still reaches Join() and Stop() below.
   EXPECT_GT(n_canceled, 0);
   // Skipping the gap is what lets the actor run again, which is the point of the
   // timeout. Without it n_executed stays at 1 forever.
@@ -609,6 +612,215 @@ TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutNotPushedOutByLaterTa
   auto default_executor = pool_manager->GetDefaultExecutor();
   default_executor->Join();
   queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimeoutRearmsAfterHeadArgsResolve) {
+  // A head task that is still fetching its args disarms the timer. Once its args
+  // arrive, the group waits on the same seq_no as before and must arm the timer again,
+  // or the gap is never skipped.
+  ObjectID obj = ObjectID::FromRandom();
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       /*reorder_wait_seconds=*/1,
+                                       execute_task,
+                                       cancel_task);
+  TaskSpecification task_spec_without_dependency;
+  task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  TaskSpecification task_spec_with_dependency;
+  task_spec_with_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_with_dependency.GetMutableMessage()
+      .add_args()
+      ->mutable_object_ref()
+      ->set_object_id(obj.Binary());
+
+  // seq_no 0 runs and 1 never arrives. 3 arms the timer for 1, then 2 becomes the head
+  // while its args are fetched, which disarms it.
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_with_dependency));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
+  waiter.Complete(0);
+
+  // run() returns once no wait is pending. Without a re-arm it returns at once and
+  // nothing is cancelled.
+  io_service.run();
+  EXPECT_EQ(n_canceled, 2);
+
+  auto default_executor = pool_manager->GetDefaultExecutor();
+  default_executor->Join();
+  queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimerDisarmedOnceGapFills) {
+  // Once the missing seq_no arrives and the group drains, the timer armed for it must
+  // not stay armed: its expiry would cancel the caller's tasks in every group, here one
+  // in another group waiting for its args.
+  ObjectID obj = ObjectID::FromRandom();
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       /*reorder_wait_seconds=*/1,
+                                       execute_task,
+                                       cancel_task);
+  TaskSpecification task_spec_without_dependency;
+  task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  TaskSpecification task_spec_with_dependency;
+  task_spec_with_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_with_dependency.GetMutableMessage().set_concurrency_group_name("io");
+  task_spec_with_dependency.GetMutableMessage()
+      .add_args()
+      ->mutable_object_ref()
+      ->set_object_id(obj.Binary());
+
+  // A task in group "io" waits for its args. In the default group 2 arrives before 1
+  // and arms the timer for 1, then 1 arrives and the group drains.
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_with_dependency));
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_without_dependency));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 3; }, 1000));
+
+  // run() returns once no wait is pending. A timer left armed for 1 would fire here and
+  // cancel the "io" task.
+  io_service.run();
+  EXPECT_EQ(n_canceled, 0);
+  waiter.Complete(0);
+  EXPECT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 4; }, 1000));
+
+  queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest, TestSeqWaitTimerDisarmedOnceGapFillsBeforeArgs) {
+  // Like the test above, but the group does not drain: the next head is still fetching
+  // its args when the gap fills, and it is the task a stale timer would cancel.
+  ObjectID obj = ObjectID::FromRandom();
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       /*reorder_wait_seconds=*/1,
+                                       execute_task,
+                                       cancel_task);
+  TaskSpecification task_spec_without_dependency;
+  task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  TaskSpecification task_spec_with_dependency;
+  task_spec_with_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_with_dependency.GetMutableMessage()
+      .add_args()
+      ->mutable_object_ref()
+      ->set_object_id(obj.Binary());
+
+  // 2 arms the timer for 1. 3 is queued with a dep, then 1 arrives, 1 and 2 run, and 3
+  // is the head.
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec_without_dependency));
+  EnqueueWithFetch(queue, waiter, 3, -1, MakeTaskToExecute(task_spec_with_dependency));
+  EnqueueWithFetch(queue, waiter, 1, -1, MakeTaskToExecute(task_spec_without_dependency));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 3; }, 1000));
+
+  io_service.run();
+  EXPECT_EQ(n_canceled, 0);
+  waiter.Complete(0);
+  EXPECT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 4; }, 1000));
+
+  queue.Stop();
+}
+
+TEST(OrderedActorTaskExecutionQueueTest, TestStopDisarmsSeqWaitTimer) {
+  // Stop() cancels everything queued, so the reorder deadline must not stay armed and
+  // later fire against the stopped queue.
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  std::vector<ConcurrencyGroup> concurrency_groups{ConcurrencyGroup{"io", 1, {}}};
+  auto pool_manager =
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(concurrency_groups);
+
+  std::atomic<int> n_executed(0);
+  std::atomic<int> n_canceled(0);
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    n_canceled++;
+  };
+
+  OrderedActorTaskExecutionQueue queue(io_service,
+                                       waiter,
+                                       task_event_buffer,
+                                       ray_task_event_recorder,
+                                       pool_manager,
+                                       /*reorder_wait_seconds=*/60,
+                                       execute_task,
+                                       cancel_task);
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+
+  // seq_no 0 runs, 1 never arrives, and 2 arms the timer.
+  EnqueueWithFetch(queue, waiter, 0, -1, MakeTaskToExecute(task_spec));
+  EnqueueWithFetch(queue, waiter, 2, -1, MakeTaskToExecute(task_spec));
+  ASSERT_TRUE(WaitForCondition([&n_executed]() { return n_executed == 1; }, 1000));
+
+  queue.Stop();
+  EXPECT_EQ(n_canceled, 1);
+  // poll() runs the aborted wait and finds no work left. A wait still pending would keep
+  // the context from stopping.
+  io_service.poll();
+  EXPECT_TRUE(io_service.stopped());
 }
 
 TEST(OrderedActorTaskExecutionQueueTest, TestSkipAlreadyProcessedByClient) {
