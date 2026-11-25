@@ -1,3 +1,5 @@
+import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,7 +23,13 @@ from ray.train.health import (
     WorkerProbe,
 )
 from ray.train.torch import TorchTrainer
-from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2._internal.constants import (
+    ENABLE_NCCL_HANG_DETECTOR_ENV_VAR,
+    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
+    NCCL_RAS_ACTION_ENV_VAR,
+    NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
+    NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
+)
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.exceptions import HealthCheckError
@@ -441,6 +449,171 @@ def test_preflight_all_reduce_then_a_diagnosis_that_reattempts(cluster):
         ("decision", "Diagnose"),
         ("decision", "Reattempt"),
     ]
+
+
+def _communicator(comm_hash, counts):
+    """A communicator in a `ncclras -f json` report, whose ranks launched
+    ``counts`` AllReduce."""
+    return {
+        "hash": comm_hash,
+        "ranks": [
+            {
+                "rank": rank,
+                "host": "10.255.255.255",
+                "pid": rank,
+                "status": {
+                    "init_state": 0,
+                    "async_error": 0,
+                    "finalize_called": False,
+                    "destroy_flag": False,
+                    "abort_flag": False,
+                },
+                "collective_counts": {"AllReduce": count},
+            }
+            for rank, count in enumerate(counts)
+        ],
+    }
+
+
+def _ras_report(*communicators):
+    return {"timestamp": "2026-06-19 00:00:00", "communicators": list(communicators)}
+
+
+# Its ranks launched different numbers of AllReduce, and never progress: a
+# hung communicator.
+_HUNG_COMM = _communicator("0x2b9ffd12ea17b069", (5, 4))
+# Its ranks agree on how many AllReduce they launched.
+_HEALTHY_COMM = _communicator("0x7c1f0e0d3a9b4c21", (5, 5))
+
+
+@pytest.fixture
+def fake_ncclras(request, tmp_path, monkeypatch):
+    """A local cluster whose `ncclras` reports a hung communicator, or the
+    report the test is parametrized with, with the NCCL hang detector on, in
+    fail mode, confirming a hang in 2 seconds."""
+    report = getattr(request, "param", _ras_report(_HUNG_COMM))
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ncclras = bin_dir / "ncclras"
+    ncclras.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if sys.argv[sys.argv.index('-f') + 1] == 'text':\n"
+        "    print('fake ncclras text report')\n"
+        "else:\n"
+        f"    print({json.dumps(json.dumps(report))})\n"
+    )
+    ncclras.chmod(0o755)
+
+    # Set on the driver, which propagates them to the controller.
+    monkeypatch.setenv(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, "1")
+    monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, "fail")
+    monkeypatch.setenv(NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR, "1")
+    monkeypatch.setenv(NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR, "2")
+    ray.init(
+        num_cpus=2,
+        runtime_env={
+            "env_vars": {
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                HEALTH_CHECK_INTERVAL_S_ENV_VAR: "0.5",
+            }
+        },
+    )
+    yield
+    ray.shutdown()
+
+
+def test_the_nccl_hang_detector_reattempts_a_hung_run(fake_ncclras, tmp_path):
+    """RAY_TRAIN_ENABLE_NCCL_HANG_DETECTOR=1 detects the hang that `ncclras`
+    reports, uploads its diagnostics, and reattempts; with max_failures=0 the
+    run fails."""
+    trainer = DataParallelTrainer(
+        lambda: time.sleep(300),
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            name="hung",
+            storage_path=str(tmp_path / "storage"),
+            failure_config=ray.train.FailureConfig(max_failures=0),
+        ),
+    )
+    with pytest.raises(HealthCheckError) as error:
+        trainer.fit()
+
+    assert isinstance(error.value.decision, Reattempt)
+    message = str(error.value)
+    assert "NCCL hang detected by the Ray Train NCCL hang detector!" in message
+    hang_dir = tmp_path / "storage" / "hung" / "hang_detector"
+    for tool in ("stack_traces", "nvidia_smi", "nccl_ras"):
+        assert str(hang_dir / tool) in message
+    assert sorted(os.listdir(hang_dir / "stack_traces")) == ["rank_0.log", "rank_1.log"]
+    assert len(os.listdir(hang_dir / "nvidia_smi")) == 1
+    ras_dir = hang_dir / "nccl_ras"
+    assert (ras_dir / "ncclras_report.txt").read_text() == "fake ncclras text report\n"
+    assert (ras_dir / "ncclras_2026-06-19-00-00-00.json").exists()
+    # Without TORCH_FR_BUFFER_SIZE, there is no Flight Recorder dump.
+    assert not (hang_dir / "flight_recorder").exists()
+
+
+@pytest.mark.parametrize("fake_ncclras", [_ras_report(_HEALTHY_COMM)], indirect=True)
+def test_the_nccl_hang_detector_lets_a_healthy_run_finish(fake_ncclras, tmp_path):
+    """Like test_nccl_ras_hang_detection.py's healthy run on GPUs: when the
+    ranks agree, nothing is suspected, so the run finishes and nothing is
+    uploaded. It trains for longer than a hang takes to confirm."""
+    trainer = DataParallelTrainer(
+        lambda: time.sleep(6),
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            name="healthy",
+            storage_path=str(tmp_path / "storage"),
+            failure_config=ray.train.FailureConfig(max_failures=0),
+        ),
+    )
+    trainer.fit()
+
+    assert not (tmp_path / "storage" / "healthy" / "hang_detector").exists()
+
+
+@pytest.mark.parametrize(
+    "fake_ncclras", [_ras_report(_HUNG_COMM, _HEALTHY_COMM)], indirect=True
+)
+def test_the_nccl_hang_detector_names_only_the_hung_communicator(
+    fake_ncclras, tmp_path
+):
+    """Like test_nccl_ras_hang_detection.py's two communicators on GPUs, of
+    which only one hangs: the hang is confirmed in that one alone."""
+    trainer = DataParallelTrainer(
+        lambda: time.sleep(300),
+        scaling_config=ray.train.ScalingConfig(num_workers=2),
+        run_config=ray.train.RunConfig(
+            name="one_hung",
+            storage_path=str(tmp_path / "storage"),
+            failure_config=ray.train.FailureConfig(max_failures=0),
+        ),
+    )
+    with pytest.raises(HealthCheckError) as error:
+        trainer.fit()
+
+    message = str(error.value)
+    assert "1 communicator(s) made no collective progress" in message
+    assert _HUNG_COMM["hash"] in message
+    assert _HEALTHY_COMM["hash"] not in message
+
+
+def test_an_invalid_nccl_hang_detector_env_var_raises_a_value_error(
+    monkeypatch, tmp_path
+):
+    """fit() validates the detector's env vars on the driver, before the
+    controller starts, rather than failing the controller."""
+    monkeypatch.setenv(ENABLE_NCCL_HANG_DETECTOR_ENV_VAR, "1")
+    monkeypatch.setenv(NCCL_RAS_ACTION_ENV_VAR, "raise")
+    trainer = DataParallelTrainer(
+        lambda: None,
+        scaling_config=ray.train.ScalingConfig(num_workers=1),
+        run_config=ray.train.RunConfig(storage_path=str(tmp_path / "storage")),
+    )
+    with pytest.raises(ValueError, match=NCCL_RAS_ACTION_ENV_VAR):
+        trainer.fit()
+    assert not ray.is_initialized()
 
 
 if __name__ == "__main__":
