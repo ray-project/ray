@@ -422,13 +422,14 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
 
     def slot_usage(self):
         # From the same knobs the other accessors read: blocked actors are
-        # output-backpressured; the fake keeps no busy-slot integral.
+        # output-backpressured; the fake keeps no slot integrals.
         serving = self._pool.num_running_actors()
         conc = self._pool.max_actor_concurrency()
         blocked = min(serving, self.out_backpressure[0])
         return SlotUsage(
             serving_actors=serving,
             slots=serving * conc,
+            slot_seconds=0.0,
             obp_slots=blocked * conc,
             obp_busy_slots=0,
             busy_slots=0,

@@ -273,6 +273,9 @@ class SlotUsage:
     serving_actors: int
     # serving_actors x slots per actor.
     slots: int
+    # Time integral of ``slots`` since the pool was created (see
+    # ``_ExperimentalActorPool.slot_seconds``).
+    slot_seconds: float
     # Seats holding a task right now.
     busy_slots: int
     # Time integral of ``busy_slots`` since the pool was created (see
@@ -1789,9 +1792,10 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
 
     def slot_usage(self) -> SlotUsage:
         """Serving task slots, split for the bottleneck observer, from one
-        scan. Busy time comes from the pool's event-driven integral, so tasks
-        shorter than a sizer tick still count; output backpressure is sampled
-        here, since it changes on output pulls the pool does not see.
+        scan. Busy time and capacity come from the pool's event-driven
+        integrals, so tasks shorter than a sizer tick and actors that join or
+        leave mid-tick still count; output backpressure is sampled here, since
+        it changes on output pulls the pool does not see.
         """
         zeros = TaskPullRequest.zero()
         conc = self.actor_pool.slots_per_actor()
@@ -1809,6 +1813,7 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
         return SlotUsage(
             serving_actors=serving,
             slots=serving * conc,
+            slot_seconds=self.actor_pool.slot_seconds(),
             busy_slots=busy,
             busy_slot_seconds=self.actor_pool.busy_slot_seconds(),
             obp_slots=obp_actors * conc,

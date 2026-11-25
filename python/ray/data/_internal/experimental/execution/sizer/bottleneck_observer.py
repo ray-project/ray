@@ -493,14 +493,14 @@ class BottleneckObserver:
         self._min_severity = min_severity
         self._windows: Dict["EAPMO", ShareWindow] = {}
         self._edge_windows: Dict[EdgeKey["EAPMO"], EdgeWindow] = {}
-        # Last read of each op's cumulative busy-slot seconds.
-        self._last_busy_s: Dict["EAPMO", float] = {}
+        # Last read of each op's cumulative (busy-slot, slot) seconds.
+        self._last_integrals: Dict["EAPMO", Tuple[float, float]] = {}
         self._last_t: Optional[float] = None
         self._names = _display_names(profiles.actor_pool_ops)
 
     def reset_windows(self) -> None:
         """Drop every window's samples, so each op needs a new full window
-        before the snapshot reports it. The cumulative busy readings stay, so
+        before the snapshot reports it. The cumulative slot readings stay, so
         the next sample still measures from the last one (Basically used in
         warmup)."""
         self._windows.clear()
@@ -514,15 +514,17 @@ class BottleneckObserver:
         queued: Dict["EAPMO", int] = {}
         for op in self._profiles.actor_pool_ops:
             if op.has_completed():
-                for per_op in (self._windows, self._last_busy_s):
+                for per_op in (self._windows, self._last_integrals):
                     per_op.pop(op, None)
                 for edge in [e for e in self._edge_windows if op in e]:
                     del self._edge_windows[edge]
                 continue
             usages[op] = op.slot_usage()
             queued[op] = topology[op].total_enqueued_input_blocks()
-        for op, usage in usages.items():
-            self._record_op(op, usage, queued[op], dt)
+        slot_s = {
+            op: self._record_op(op, usage, queued[op], dt)
+            for op, usage in usages.items()
+        }
         # Joint per-edge shares: at this moment, is the consumer saturated
         # (no idle slot, or input queued with no actor)? The producer's
         # output-backpressured slots count as blocked by it if so, else as
@@ -532,7 +534,7 @@ class BottleneckObserver:
             for op, usage in usages.items()
         }
         for producer, usage in usages.items():
-            obp_s = usage.obp_slots * dt
+            obp_s = min(usage.obp_slots * dt, slot_s[producer])
             for consumer in self._profiles.next_ops.get(producer, ()):
                 if consumer not in usages:
                     continue
@@ -544,7 +546,7 @@ class BottleneckObserver:
                 blocked_s = obp_s if saturated[consumer] else 0.0
                 window.record(
                     dt=dt,
-                    slot_s=usage.slots * dt,
+                    slot_s=slot_s[producer],
                     blocked_s=blocked_s,
                     self_limited_s=obp_s - blocked_s,
                 )
@@ -555,16 +557,19 @@ class BottleneckObserver:
         usage: "SlotUsage",
         queued: int,
         dt: float,
-    ) -> None:
-        prev_busy_s = self._last_busy_s.get(op)
-        self._last_busy_s[op] = usage.busy_slot_seconds
-        busy_integral = (
-            0.0
-            if prev_busy_s is None
-            else max(0.0, usage.busy_slot_seconds - prev_busy_s)
-        )
-        slot_s = usage.slots * dt
-        obp_s = usage.obp_slots * dt
+    ) -> float:
+        """Record one op's interval; returns its slot-seconds of capacity."""
+        prev = self._last_integrals.get(op)
+        self._last_integrals[op] = (usage.busy_slot_seconds, usage.slot_seconds)
+        if prev is None:
+            busy_integral = slot_s = 0.0
+        else:
+            busy_integral = max(0.0, usage.busy_slot_seconds - prev[0])
+            slot_s = max(0.0, usage.slot_seconds - prev[1])
+        # Output backpressure is sampled, not integrated: cap it at the
+        # integrated capacity, which an actor that joined mid-interval
+        # undershoots.
+        obp_s = min(usage.obp_slots * dt, slot_s)
         # The integral counts output-backpressured actors' held tasks; that
         # time is obp, not busy.
         busy_s = min(
@@ -585,6 +590,7 @@ class BottleneckObserver:
             starved_s=starved_s,
             unstaffed=usage.serving_actors == 0 and queued > 0,
         )
+        return slot_s
 
     def snapshot(self) -> Snapshot["EAPMO"]:
         shares: OpShares["EAPMO"] = {}

@@ -331,6 +331,7 @@ class _Op:
         self.busy_slots = busy_slots
         self.conc = conc
         self.busy_slot_seconds = 0.0
+        self.slot_seconds = 0.0
         # Slots busy right now, for the joint edge signal: by default every
         # slot not output-backpressured is busy while busy_slots > 0.
         self.busy_now = (serving - obp_actors) * conc if busy_slots > 0 else 0
@@ -350,6 +351,7 @@ class _Op:
         return SlotUsage(
             serving_actors=self.serving,
             slots=self.serving * self.conc,
+            slot_seconds=self.slot_seconds,
             obp_slots=self.obp_actors * self.conc,
             obp_busy_slots=0,
             busy_slots=self.busy_now,
@@ -367,7 +369,8 @@ class _OpState:
 
 def _observer(*ops, queued, window_s=4.0):
     """An observer over the chain ``ops`` and a stepper that advances the
-    fake clock by 1s, moves each op's busy-slot integral, and observes."""
+    fake clock by 1s, moves each op's slot and busy-slot integrals, and
+    observes."""
     prev_ops, next_ops = _chain(*ops)
     profiles = SimpleNamespace(
         actor_pool_ops=ops,
@@ -386,6 +389,7 @@ def _observer(*ops, queued, window_s=4.0):
             clock.now += 1.0
             for op in ops:
                 op.busy_slot_seconds += op.busy_slots
+                op.slot_seconds += op.serving * op.conc
 
     return observer, topology, step
 
@@ -460,6 +464,24 @@ def test_observer_attributes_output_backpressure_by_consumer_state(
         assert (edge.producer_blocked, edge.producer_self_limited) == (0.0, 1.0)
     names: Dict[Any, str] = {producer: "P", consumer: "C"}
     assert [names[op] for op, _ in snapshot.bottlenecks] == [expected]
+
+
+@pytest.mark.parametrize(
+    "serving_before, serving_after",
+    [(1, 2), (2, 1)],
+    ids=["actor-joins", "actor-leaves"],
+)
+def test_resize_at_sample_uses_integrated_slots(serving_before, serving_after):
+    # One busy slot throughout; the serving count changes just before a
+    # sample. The interval's capacity is what served during it, not the
+    # count at the sample: 1 slot (no starvation) or 2 (half starved).
+    op = _Op("C", serving=serving_before, busy_slots=1.0)
+    observer, _, step = _observer(op, queued=(0,), window_s=1.0)
+    step(3)
+    op.serving = serving_after
+    step()
+    shares = cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)
+    assert shares[op].starved == pytest.approx(1 - 1 / serving_before)
 
 
 def test_short_tasks_between_samples_count_as_busy():

@@ -1,7 +1,8 @@
 """Tests for _ExperimentalActorPool heap-based scheduling."""
 
+import time
 import unittest
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from unittest import mock
 
 import pyarrow as pa
@@ -256,6 +257,7 @@ class TestExperimentalActorPool(unittest.TestCase):
         max_num_output_bytes_per_actor: Optional[int] = 10_000_000,
         per_actor_resource_usage=None,
         node_resources=None,
+        slot_clock: Callable[[], float] = time.monotonic,
     ) -> _ExperimentalActorPool:
         config = AutoscalingActorConfig(
             min_size=min_size,
@@ -269,7 +271,9 @@ class TestExperimentalActorPool(unittest.TestCase):
             max_num_output_bytes_per_actor=max_num_output_bytes_per_actor,
         )
         pool = _ExperimentalActorPool(
-            create_actor_fn=self._create_actor_fn, config=config
+            create_actor_fn=self._create_actor_fn,
+            config=config,
+            slot_clock=slot_clock,
         )
         pool.set_resource_bank(_RecordingResourceBank(node_resources))
         return pool
@@ -746,26 +750,54 @@ class TestExperimentalActorPool(unittest.TestCase):
         submit, completion and status change, so a task shorter than a sizer
         tick still counts. A draining actor is not serving and adds nothing."""
         clock = [100.0]
-        with mock.patch.object(pool_mod.time, "monotonic", lambda: clock[0]):
-            pool = self._create_pool(max_tasks_in_flight=4, max_size=4)
-            a = self._add_ready_actor(pool, node_id="node1")
-            b = self._add_ready_actor(pool, node_id="node2")
-            start = pool.busy_slot_seconds()
+        pool = self._create_pool(
+            max_tasks_in_flight=4, max_size=4, slot_clock=lambda: clock[0]
+        )
+        a = self._add_ready_actor(pool, node_id="node1")
+        b = self._add_ready_actor(pool, node_id="node2")
+        start = pool.busy_slot_seconds()
 
-            # A 0.5s task on a: counted though it starts and ends between reads.
-            pool.on_task_submitted(a, _make_bundle(100))
-            clock[0] += 0.5
-            pool.on_task_completed(a, _make_bundle(100))
-            # Two tasks on b with max_concurrency=1: one slot, for 2s.
-            pool.on_task_submitted(b, _make_bundle(100))
-            pool.on_task_submitted(b, _make_bundle(100))
-            clock[0] += 2.0
-            assert pool.busy_slot_seconds() - start == 2.5
+        # A 0.5s task on a: counted though it starts and ends between reads.
+        pool.on_task_submitted(a, _make_bundle(100))
+        clock[0] += 0.5
+        pool.on_task_completed(a, _make_bundle(100))
+        # Two tasks on b with max_concurrency=1: one slot, for 2s.
+        pool.on_task_submitted(b, _make_bundle(100))
+        pool.on_task_submitted(b, _make_bundle(100))
+        clock[0] += 2.0
+        assert pool.busy_slot_seconds() - start == 2.5
 
-            # Draining b stops its contribution though its tasks still run.
-            pool.begin_draining(b, reason=DrainReason.RESIZE)
-            clock[0] += 3.0
-            assert pool.busy_slot_seconds() - start == 2.5
+        # Draining b stops its contribution though its tasks still run.
+        pool.begin_draining(b, reason=DrainReason.RESIZE)
+        clock[0] += 3.0
+        assert pool.busy_slot_seconds() - start == 2.5
+
+    def test_slot_seconds_integrates_serving_actors(self):
+        """The slot integral counts each serving (IDLE/ACTIVE) actor's slots
+        for the time it serves, so an actor that joins, drains, comes back or
+        leaves between two reads counts for only its part of the interval."""
+        clock = [100.0]
+        pool = self._create_pool(
+            max_tasks_in_flight=4, max_size=4, slot_clock=lambda: clock[0]
+        )
+        self._add_ready_actor(pool, node_id="node1")
+        start = pool.slot_seconds()
+
+        clock[0] += 1.0  # a alone: 1
+        b = self._add_ready_actor(pool, node_id="node2")
+        clock[0] += 2.0  # a and b: 4
+        pool.begin_draining(b, reason=DrainReason.RESIZE)
+        clock[0] += 1.0  # a alone; draining b adds nothing: 1
+        assert pool.slot_seconds() - start == 6.0
+
+        assert pool.reclaim_draining_actors(limit=1) == 1
+        clock[0] += 0.5  # a and b again: 1
+        pool.begin_draining(b, reason=DrainReason.RESIZE)
+        pool._release_running_actor(b)
+        clock[0] += 1.0  # a alone: 1
+        assert pool.slot_seconds() - start == 8.0
+        # Busy time never exceeds capacity: nothing ran.
+        assert pool.busy_slot_seconds() == 0.0
 
     def test_drained_actor_is_killed_even_with_stray_handle(self):
         """A fully drained actor is killed at teardown, not just dereferenced.
@@ -2245,6 +2277,7 @@ def test_slot_usage_counts_output_backpressured_actors_whole():
     pool.alive_actor_states_by_node = lambda: {"node1": states}
     pool.max_actor_concurrency = lambda: 2
     pool.busy_slot_seconds = lambda: 42.0
+    pool.slot_seconds = lambda: 50.0
     op._actor_pool = pool
     op._actor_pull_budget = lambda actor_id: (
         TaskPullRequest.zero()
@@ -2261,6 +2294,7 @@ def test_slot_usage_counts_output_backpressured_actors_whole():
     # Only idle's 2 slots can start a task.
     assert usage.idle_slots == 2
     assert usage.busy_slot_seconds == 42.0
+    assert usage.slot_seconds == 50.0
 
 
 def test_expired_pending_actor_is_released_and_killed(monkeypatch):
