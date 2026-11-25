@@ -2,6 +2,7 @@
 <!-- Keep under 50 lines. Multi-step procedures → skills. Code style → rules/. -->
 
 @../AGENTS.md
+@../REVIEW.md
 
 # Ray Data
 

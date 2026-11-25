@@ -65,14 +65,6 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
-def _create_empty_table(schema: "pyarrow.Schema"):
-    import pyarrow as pa
-
-    arrays = [pa.array([], type=t) for t in schema.types]
-
-    return pa.table(arrays, schema=schema)
-
-
 def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     """Check if any column type becomes unhashable after to_pandas() conversion.
 
@@ -594,10 +586,23 @@ def _reconcile_field(
         if pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)
     ]
     if null_lists:
-        # Find first non-null list type
-        for t in non_null_types:
-            if not (pyarrow.types.is_list(t) and pyarrow.types.is_null(t.value_type)):
-                return t
+        remaining = [t for t in non_null_types if t not in null_lists]
+        if not remaining:
+            return None
+        if len(remaining) == 1:
+            return remaining[0]
+        # More than one concrete type remains. Returning the first one makes the
+        # result depend on the order the schemas happen to arrive in and silently
+        # drops the others (e.g. `list<int64>` next to `list<int32>`), so unify
+        # them instead and let PyArrow report a genuine conflict.
+        try:
+            unified = _unify_schemas_pyarrow(
+                [pyarrow.schema([pyarrow.field("item", t)]) for t in remaining],
+                promote_types,
+            )
+        except (pyarrow.lib.ArrowTypeError, pyarrow.lib.ArrowInvalid):
+            return None
+        return unified.field("item").type
     # At this phase, we have no special types to reconcile, so return None. Arrow will fail to unify.
     return None
 
@@ -807,7 +812,7 @@ def _backfill_missing_fields(
 
     # Flatten chunked arrays into a single array if necessary
     if isinstance(column, pa.ChunkedArray):
-        column = pa.concat_arrays(column.chunks)
+        column = column.combine_chunks()
 
     # Extract the current struct field names and their corresponding data
     current_fields = {
@@ -1506,6 +1511,40 @@ def to_numpy(
         raise ValueError(
             f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
         )
+
+
+def numpy_copy_is_deep(table: "pyarrow.Table") -> bool:
+    """Whether copying each column's NumPy array copies all of its data.
+
+    True when every column converts to a non-object NumPy array. Nullable
+    boolean columns are the one exception: they convert to object arrays, but
+    the elements are immutable ``bool``/``None``, so the copy is still complete.
+    Other types (lists, structs, strings, variable-shaped tensors, etc.) convert
+    to object arrays, and copying those only copies references to the original
+    elements. Fixed-shape tensor columns with null rows do too: each non-null
+    row becomes a view into the original buffer.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
+    fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+
+    def is_non_object(column: "pyarrow.ChunkedArray") -> bool:
+        t = column.type
+        if isinstance(t, fixed_shape_tensor_types) or _is_native_tensor_type(t):
+            return column.null_count == 0
+        return (
+            pa.types.is_integer(t)
+            or pa.types.is_floating(t)
+            or pa.types.is_boolean(t)
+            or pa.types.is_null(t)
+            or pa.types.is_timestamp(t)
+            or pa.types.is_date(t)
+            or pa.types.is_duration(t)
+        )
+
+    return all(is_non_object(column) for column in table.columns)
 
 
 def try_combine_chunked_columns(

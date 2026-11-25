@@ -140,6 +140,18 @@ def test_power_transformer_serialization():
     assert "B" in result.columns
 
 
+def test_power_transformer_empty_batch():
+    """Tests PowerTransformer (yeo-johnson) on an empty batch."""
+    transformer = PowerTransformer(columns=["A", "B"], power=2.0, method="yeo-johnson")
+
+    empty_df = pd.DataFrame(
+        {"A": pd.Series([], dtype="float64"), "B": pd.Series([], dtype="float64")}
+    )
+    empty_out = transformer.transform_batch(empty_df)
+    assert len(empty_out) == 0
+    assert list(empty_out.columns) == ["A", "B"]
+
+
 if __name__ == "__main__":
     import sys
 

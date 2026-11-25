@@ -17,6 +17,7 @@ from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
     OrcDatasourceV2,
+    _read_orc_schema,
 )
 from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
@@ -58,6 +59,21 @@ def _manifest_of(paths):
         sizes=[os.path.getsize(path) for path in paths],
         chunk_metadatas=[None] * len(paths),
     )
+
+
+def test_orc_schema_reader_retries_schema_read(monkeypatch):
+    import pyarrow.orc as orc
+
+    expected = pa.schema([("a", pa.int64())])
+    reader = Mock(
+        side_effect=[OSError("retryable footer error"), Mock(schema=expected)]
+    )
+    monkeypatch.setattr(orc, "ORCFile", reader)
+    monkeypatch.setattr(DataContext.get_current(), "retried_io_errors", ["retryable"])
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+
+    assert _read_orc_schema("test.orc", None, None) == expected
+    assert reader.call_count == 2
 
 
 def test_infer_schema_unifies_files_and_hive_partitions(tmp_path):
