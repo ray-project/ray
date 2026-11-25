@@ -8,10 +8,10 @@ import pytest
 from ray._common.formatters import JSONFormatter
 from ray.serve._private.backpressure import DrainRateEstimator, DrainRateTracker
 from ray.serve._private.common import RequestMetadata
+from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.replica import Replica
 from ray.serve._private.test_utils import capture_serve_log_records
 from ray.serve._private.utils import Semaphore
-from ray.serve._private.config import DeploymentConfig
 from ray.serve.config import BackpressureConfig
 
 
