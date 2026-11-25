@@ -323,12 +323,14 @@ class LineChunkableFileReader(FileReader):
         ``columns`` leaves out partition keys, so a file column named like one is
         read for ``_apply_partition_values`` to check against the path value.
         """
+        file_names_set = set(file_names)
+        columns_set = set(columns)
         return columns + [
             name
             for name in self._columns or []
             if name in self._partition_keys
-            and name in file_names
-            and name not in columns
+            and name in file_names_set
+            and name not in columns_set
         ]
 
     @override

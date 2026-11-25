@@ -192,9 +192,11 @@ class CsvFileReader(LineChunkableFileReader):
         added as ``null``, so it null-fills instead of failing.
         """
         planned = (self._file_dataset_schema or pa.schema([])).names
+        existing_columns = set(table.column_names)
         for name in planned + list(columns or []):
-            if name not in table.column_names:
+            if name not in existing_columns:
                 table = table.append_column(name, pa.nulls(len(table)))
+                existing_columns.add(name)
         if predicate is not None:
             table = table.filter(predicate)
         return table if columns is None else table.select(columns)
