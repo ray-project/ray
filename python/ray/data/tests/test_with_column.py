@@ -870,8 +870,11 @@ def test_with_column_multiple_async_callable_class_udfs(ray_start_regular_shared
     times_two = AsyncMultiplier(2)
     plus_ten = AsyncAdder(10)
 
-    result = ds.with_column("doubled", times_two(col("id"))).with_column(
-        "plus_ten", plus_ten(col("id"))
+    # NOTE: forcing num_cpus=0 here because we only have 1 CPU
+    # available in the test, and range also uses 1 CPU, so in total
+    # we must use at most 1 CPU.
+    result = ds.with_column("doubled", times_two(col("id")), num_cpus=0).with_column(
+        "plus_ten", plus_ten(col("id")), num_cpus=0
     )
 
     result_df = result.to_pandas()

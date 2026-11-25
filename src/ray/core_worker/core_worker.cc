@@ -510,10 +510,11 @@ CoreWorker::CoreWorker(
                                   std::placeholders::_9);
     actor_task_execution_arg_waiter_ = std::make_unique<ActorTaskExecutionArgWaiter>(
         [this](const std::vector<rpc::ObjectReference> &args,
+               const std::vector<bool> &is_move,
                const TaskID &task_id,
                int32_t attempt_number) {
-          RAY_CHECK_OK(
-              raylet_ipc_client_->WaitForActorCallArgs(args, task_id, attempt_number))
+          RAY_CHECK_OK(raylet_ipc_client_->WaitForActorCallArgs(
+              args, is_move, task_id, attempt_number))
               << "WaitForActorCallArgs IPC failed unexpectedly";
         });
     task_receiver_ = std::make_unique<TaskReceiver>(task_execution_service_,
@@ -4339,6 +4340,12 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
                        << object_location_update.plasma_location_update()
                        << " has been received.";
       }
+    }
+
+    if (object_location_update.has_primary_moved_to_node_id()) {
+      reference_counter_->UpdateObjectPinnedAtRaylet(
+          object_id,
+          NodeID::FromBinary(object_location_update.primary_moved_to_node_id()));
     }
   }
 

@@ -29,17 +29,6 @@ def main(args):
         )
 
         # Drop original DECIMALs
-        ds = ds.select_columns(
-            [
-                "l_returnflag",
-                "l_linestatus",
-                "l_quantity_f",
-                "l_extendedprice_f",
-                "l_discount_f",
-                "disc_price",
-                "charge",
-            ]
-        )
 
         _ = (
             ds.groupby(["l_returnflag", "l_linestatus"])

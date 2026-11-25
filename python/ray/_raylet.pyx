@@ -2514,8 +2514,8 @@ cdef execute_task_with_cancellation_handler(
     # Once actor is created, users can change the visible accelerator ids within
     # an actor task and we don't want to reset it.
     if (<int>task_type != <int>TASK_TYPE_ACTOR_TASK):
-        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
         num_threads_env_vars_set = ray._private.utils.set_num_threads_env_vars_if_unset()
+        original_visible_accelerator_env_vars = ray._private.utils.set_visible_accelerator_ids()
     else:
         original_visible_accelerator_env_vars = None
         num_threads_env_vars_set = []
@@ -2631,12 +2631,7 @@ cdef execute_task_with_cancellation_handler(
             if "OMP_NUM_THREADS" in num_threads_env_vars_set:
                 # Restore default single-thread fallback (set_num_threads_env_vars_if_unset()
                 # sets OMP_NUM_THREADS when unset) if modules were imported pre-fork.
-                for module_name in ray_constants.THREAD_POOL_MODULES:
-                    if module_name in sys.modules:
-                        try:
-                            sys.modules[module_name].set_num_threads(1)
-                        except Exception:
-                            pass
+                ray._private.utils.set_thread_pool_module_threads(1)
 
 
     if execution_info.max_calls != 0:
