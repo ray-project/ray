@@ -161,7 +161,7 @@ INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,
 
 // HandleInternalKVExists must reply exactly once for an invalid key: the
 // KeyError reply must not fall through into the lookup, whose callback would
-// send a second reply on an already-finished server call.
+// send a second reply.
 TEST(GcsInternalKVManagerInvalidKeyTest, InvalidKeyRepliesExactlyOnce) {
   instrumented_io_context io_context;
   ray::gcs::GcsInternalKVManager manager(
