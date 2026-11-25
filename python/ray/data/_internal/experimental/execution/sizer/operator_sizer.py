@@ -2,7 +2,7 @@
 
 The sizer owns every actor-pool sizing decision under the actor-only backend:
 initial pool sizes, per-tick up/downscale deltas, and placement-resolved
-requests (which nodes gain actors, which nodes shed them -- see
+requests (which nodes gain actors, which nodes lose them -- see
 ``ScaleUpRequest`` / ``ScaleDownRequest``). Operators never size themselves:
 ``ExperimentalActorPoolMapOperator._scale_to_initial_size`` is a no-op for
 exactly this reason.
@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
@@ -40,13 +40,10 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
 )
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     BottleneckObserver,
-    BottleneckTick,
+    Snapshot,
 )
 from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
     LocalityBasedActorPlacement,
-)
-from ray.data._internal.experimental.execution.sizer.metrics import (
-    OptimizerMetrics,
 )
 from ray.data._internal.experimental.execution.sizer.models import (
     ClusterStateSnapshot,
@@ -100,33 +97,29 @@ class OperatorSizer:
 
     A state machine, evaluated once per sizing tick:
 
-    - ``SizerPhase`` (``_advance_phase``): WARMUP until every op has received
-      input and every critical op has produced output, MODEL_WARMING until
-      the bottleneck model has seen a full window of every unfinished op,
+    - ``SizerPhase`` (``_maybe_transition_to_new_phase``): WARMUP until the pipeline flows
+      (every op has received input and every critical op has produced
+      output) and the bottleneck observer has then measured one full window,
       then STEADY.
     - ``OpStatus`` per op (``op_status``): what the sizer may do to it now.
     - ``OpRule`` per op: the one action that sized it this tick.
 
     Each tick runs in three steps:
 
-    1. HOW MANY  ``SizingPolicy.decide`` picks one action per op (``OpRule``).
-                 It acts on the bottleneck model first: grow a bottleneck or
-                 balanced stages into free capacity, fund the recipient from
-                 donors, or shed blocked surplus. Those requests already name
-                 their nodes and take their room from the snapshot. Every
-                 other op gets a per-op action: release a completed pool,
-                 grow to held room, grow toward the warmup share, shed idle
-                 actors, or refill to min size. Every action checks and
-                 spends capacity in one ledger
-                 (``ConstraintAwareCapacityLedger``), so each per-op upscale
-                 is already cut to what the cluster can still place.
-    2. WHERE     The ``ActorPlacementStrategy`` picks nodes for each per-op
-                 delta; the pool picks the actors.
+    1. HOW MANY  ``SizingPolicy.decide`` picks one rule per op (``OpRule``)
+                 from its status and signals, and a count to upscale or
+                 downscale it by. Upscales take free capacity from one
+                 ledger (``ConstraintAwareCapacityLedger``) in priority
+                 order, so each is already cut to what the cluster can
+                 still place.
+    2. WHERE     The ``ActorPlacementStrategy`` picks nodes for each count;
+                 the pool picks the actors.
     3. APPLY     We hand every placed request to the pools.
 
-    Alongside, it gives back capacity when the coordinator shrinks this
+    Alongside, it gives back capacity when the coordinator downscales this
     dataset's slice: the tick reports where we now hold more than we are
-    allowed, and WHERE sheds off those nodes before it places anything new.
+    allowed, and WHERE downscales off those nodes before it places anything
+    new.
     """
 
     def __init__(
@@ -151,15 +144,13 @@ class OperatorSizer:
 
         self._warmup_timeout_s = warmup_timeout_s
         self._warmup_started_t: Optional[float] = None
+        # When the pipeline first flowed end to end, or None until then.
+        self._flowing_since_t: Optional[float] = None
 
         self._seen_nonempty_reservation = False
         self._consecutive_empty_reservations = 0
         self._placement: ActorPlacementStrategy = LocalityBasedActorPlacement()
 
-        # these are the ops that are currently modeled by the bottleneck observer
-        # eventually all ops are, but in the beginning the observer needs
-        # to gather data before classifying as bottleneck or not
-        self._modeled_ops: Set[ExperimentalActorPoolMapOperator] = set()
         self._telemetry = SizerTelemetry(dataset_id)
 
     # --- bootstrap ------------------------------------------------------------
@@ -170,14 +161,9 @@ class OperatorSizer:
         self._validate_topology(topology)
         self._topology = topology
         self._profiles = OpProfiles(topology)
-        self._statuses = OpStatusMachine(self._profiles.actor_pool_ops)
+        self._statuses = OpStatusMachine(ops=self._profiles.actor_pool_ops)
 
-        self._policy = SizingPolicy(
-            metrics=OptimizerMetrics(self._dataset_id),
-            placement=self._placement,
-            statuses=self._statuses,
-            profiles=self._profiles,
-        )
+        self._policy = SizingPolicy(statuses=self._statuses, profiles=self._profiles)
         self._bottleneck_observer = BottleneckObserver(
             profiles=self._profiles, clock=self._clock
         )
@@ -188,7 +174,7 @@ class OperatorSizer:
         """Bring every pool up to its initial (min) size, untargeted, in
         scarcity order."""
         for op in ordered_actor_pool_ops(self._topology, self._profiles.actor_pool_ops):
-            if not self._statuses.can_size_per_op(op):
+            if self._statuses.kind(op) is OpStatusKind.HELD:
                 continue  # held until its first input: no actors yet
             pool = op.actor_pool
             delta = pool.initial_size() - pool.serving_size()
@@ -236,15 +222,12 @@ class OperatorSizer:
         cluster_view: "DatasetReservationView",
         seconds_since_allocation_change: float,
     ) -> Optional[ClusterStateSnapshot]:
-        """Called every scheduling-loop step. Runs the per-step status
-        transitions (counted in steps, so they must not wait for the
-        cadence), then builds this tick's snapshot, or returns None while
-        inside the cadence window.
+        """Called every scheduling-loop step. Builds this tick's snapshot, or
+        returns None while inside the cadence window.
 
         The cluster view is read once per step by the scheduling loop and
         handed in, so the bank and every step of a tick agree on it.
         """
-        self._statuses.on_step()
         now = self._clock()
         if now - self._last_tick_t < self._cadence_s:
             return None
@@ -263,107 +246,95 @@ class OperatorSizer:
         """One sizing tick against the snapshot, then its telemetry. The
         snapshot's free maps are debited along the way."""
         decisions, where = self._run_tick(cluster_state_snapshot)
-        self._telemetry.record_tick(self._topology, decisions, where)
+        self._telemetry.record_tick(
+            topology=self._topology, decisions=decisions, where=where
+        )
 
     @timed("tick")
     def _run_tick(
         self, snapshot: ClusterStateSnapshot
     ) -> Tuple[Dict[ExperimentalActorPoolMapOperator, OpDecision], PlacedRequests]:
-        """Reserve room, run the bottleneck model, advance the phase, then
+        """Reserve room, take the bottleneck snapshot, advance the phase, then
         how many, where, apply."""
-        bottleneck_tick = self._prepare_tick(snapshot)
+        bottleneck_snapshot = self._prepare_tick(snapshot=snapshot)
         decisions = self._per_op_how_many(
-            snapshot=snapshot, bottleneck_tick=bottleneck_tick
+            snapshot=snapshot, bottleneck_snapshot=bottleneck_snapshot
         )
-        where = self._per_op_where(decisions, snapshot)
-        self._apply(where)
+        where = self._per_op_where(decisions=decisions, snapshot=snapshot)
+        self._apply(where=where)
         return decisions, where
 
     @timed("prepare")
-    def _prepare_tick(self, snapshot: ClusterStateSnapshot) -> BottleneckTick | None:
-        """Advance the op statuses and the open transfers, reserve room for
-        actors that don't exist yet, run the bottleneck model on the room
-        that is left, and move the phase forward."""
-        self._statuses.on_tick()
-        # Record each transfer's new pending actors, and close the transfers
-        # that finished or timed out.
-        self._policy.transfers.advance(now=self._clock())
-        self._reserve_capacity(snapshot)
-        bottleneck_tick = self._bottleneck_observer.tick(capacity=snapshot)
-        self._bottleneck_observer.log_tick(bottleneck_tick)
-        self._advance_phase(bottleneck_tick=bottleneck_tick)
-        return bottleneck_tick
+    def _prepare_tick(self, *, snapshot: ClusterStateSnapshot) -> Snapshot:
+        """Advance the op statuses, reserve room for held ops, move the phase
+        forward, and take the bottleneck snapshot.
+        """
+        landed = self._statuses.on_tick(now=self._clock())
+        self._policy.record_landed_upscales(landed=landed)
+        self._reserve_for_held_ops(snapshot=snapshot)
+        self._maybe_transition_to_new_phase()
+        return self._bottleneck_observer.tick()
 
     @timed("how_many")
     def _per_op_how_many(
         self,
         *,
         snapshot: ClusterStateSnapshot,
-        bottleneck_tick: Optional[BottleneckTick],
+        bottleneck_snapshot: Optional[Snapshot],
     ) -> Dict[ExperimentalActorPoolMapOperator, OpDecision]:
-        """Step 1: pick one action/decision per op.
-
-        Each decision is either a count (``request``) or requests that
-        already name their nodes (``placed``): a decision whose outcome
-        depends on the node, like a transfer, picks the nodes itself. Every
-        action checks and spends capacity in the tick's ledger, in the tick's
-        op order. That is also WHERE's placement order, so step 2 can place
-        every count.
+        """Step 1: pick one rule and count per op. Upscales take capacity
+        from the tick's ledger in priority order, which is also the order
+        the decisions come back in and WHERE places them in, so step 2 can
+        place every count.
         """
         decision_ctx = DecisionContext.from_snapshot(
-            snapshot,
+            snapshot=snapshot,
             topology=self._topology,
             phase=self.phase,
             apmo_profiles=self._profiles,
             now=self._clock(),
-            bottleneck=bottleneck_tick,
-            modeled_ops=frozenset(self._modeled_ops),
+            bottleneck_snapshot=bottleneck_snapshot,
         )
-        decisions = self._policy.decide(decision_ctx)
+        decisions = self._policy.decide(ctx=decision_ctx)
         self._telemetry.log_decisions(
-            self.phase,
-            self._policy.last_move,
-            decisions,
-            {op: self._statuses.status(op) for op in decisions},
+            phase=self.phase,
+            decisions=decisions,
+            statuses={op: self._statuses.status(op) for op in decisions},
         )
         return decisions
 
     @timed("per_op_where")
     def _per_op_where(
         self,
+        *,
         decisions: Dict[ExperimentalActorPoolMapOperator, OpDecision],
         snapshot: ClusterStateSnapshot,
     ) -> PlacedRequests:
-        """Step 2: give every decision its nodes. Decisions that already
-        name theirs pass through; each count is placed here:
+        """Step 2: give every count its nodes, in the order of
+        ``decisions``:
 
-        1. shed off nodes being removed from the dataset's allocation
-        2. resolve downscales to the nodes they shed from
+        1. downscale off nodes being removed from the dataset's allocation
+        2. resolve downscales to the nodes they remove actors from
         3. resolve upscales to the nodes new actors land on
 
         Stateless across ticks: placement is re-derived from current state
         every time, so a failed placement or a slow drain retries when the
-        per-op rules ask for the delta again next tick.
+        policy asks for the delta again next tick.
         """
-        counts: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {}
-        for op in snapshot.ordered_ops:
-            want = decisions[op].request if op in decisions else None
-            if want is not None:
-                counts[op] = want
-        placed = self._place_counts(counts, snapshot)
-        by_op = {
-            op: decision.placed for op, decision in decisions.items() if decision.placed
+        counts: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest] = {
+            op: decision.request
+            for op, decision in decisions.items()
+            if decision.request is not None
         }
-        for op, req in placed.items():
-            by_op[op] = (*by_op.get(op, ()), req)
-        return PlacedRequests(by_op=by_op)
+        return PlacedRequests(by_op=self._place_counts(counts, snapshot))
 
     def _place_counts(
         self,
         request: Dict[ExperimentalActorPoolMapOperator, ActorPoolScalingRequest],
         snapshot: ClusterStateSnapshot,
     ) -> Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest]:
-        """Nodes for each count, plus the sheds off nodes being reclaimed."""
+        """Nodes for each count, in its order, plus the downscales off nodes
+        being reclaimed."""
         if not request and not snapshot.nodes_to_reclaim:
             return {}
 
@@ -380,8 +351,8 @@ class OperatorSizer:
             profiles=self._profiles,
         )
         views = build_placement_views(request=request, capacity=snapshot)
-        # Nodes the capacity-short upscalers want freed, so downscales shed
-        # where the freed capacity actually helps.
+        # Nodes the capacity-short upscalers want freed, so downscales remove
+        # actors where the freed capacity actually helps.
         favored = compute_favored_nodes(
             request=request,
             views=views,
@@ -389,7 +360,7 @@ class OperatorSizer:
             free=free,
             placement=self._placement,
             profiles=self._profiles,
-            ordered_ops=snapshot.ordered_ops,
+            ordered_ops=list(request),
         )
         # Downscales first: cancelling a pending refunds capacity this tick's
         # upscales can immediately reuse.
@@ -409,7 +380,7 @@ class OperatorSizer:
             free=free,
             placement=self._placement,
             profiles=self._profiles,
-            ordered_ops=snapshot.ordered_ops,
+            ordered_ops=list(request),
             evicted_ops=evicted_ops,
             telemetry=self._telemetry,
         )
@@ -418,12 +389,10 @@ class OperatorSizer:
         return placed
 
     @timed("apply")
-    def _apply(self, where: PlacedRequests) -> None:
+    def _apply(self, *, where: PlacedRequests) -> None:
         """Step 3: hand every placed request to the pools."""
-        requests = [(op, req) for op, reqs in where.by_op.items() for req in reqs]
-        # Downscales before upscales. The sort is stable, so an op's own
-        # requests keep their order.
-        for op, req in sorted(requests, key=lambda entry: entry[1].delta):
+        # Downscales before upscales.
+        for op, req in sorted(where.by_op.items(), key=lambda entry: entry[1].delta):
             logger.debug(
                 "scale: %s delta=%d nodes=%s",
                 op.name,
@@ -434,37 +403,39 @@ class OperatorSizer:
 
     # --- phase ------------------------------------------------------------------
 
-    def _advance_phase(self, bottleneck_tick: BottleneckTick | None):
-        """Fold this tick's model into the ops it has seen, and move the
-        phase forward. WARMUP is left for good once ``_warmup_complete``."""
-        if bottleneck_tick is not None:
-            self._modeled_ops.update(bottleneck_tick.snapshot.shares)
-        unmodeled = {
-            op
-            for op in self._profiles.actor_pool_ops
-            if op not in self._modeled_ops and not op.has_completed()
-        }
-        in_warmup = self.phase is SizerPhase.WARMUP and not self._warmup_complete()
-        if in_warmup:
-            phase = SizerPhase.WARMUP
-        elif unmodeled:
-            phase = SizerPhase.MODEL_WARMING
-        else:
-            phase = SizerPhase.STEADY
-
-        if phase is not self.phase:
-            logger.info("OperatorSizer: phase %s -> %s", self.phase.value, phase.value)
-            self.phase = phase
+    def _maybe_transition_to_new_phase(self) -> None:
+        if self.phase is SizerPhase.WARMUP and self._warmup_complete():
+            logger.info("OperatorSizer: phase warmup -> steady")
+            self.phase = SizerPhase.STEADY
 
     def _warmup_complete(self) -> bool:
-        """Whether WARMUP ends this tick: every actor-pool op has received its
-        first input and every critical op has produced its first output, so
-        the pipeline is flowing end to end and feedback beats feedforward
-        from here on.
+        """Whether the bottleneck observer has measured one full window since
+        the pipeline started to flow. A "window" just means a range of values
+        observed over a period of time.
+
+        When the pipeline first flows, the observer drops what it measured
+        before then. Until the first output, downstream ops sit starved, and
+        a window holding that time would downscale them as idle the moment
+        warmup ends.
+        """
+        now = self._clock()
+        if self._flowing_since_t is None:
+            if not self._pipeline_flowing():
+                return False
+            # Here, the critical op has finally produced an output. Record the
+            # timestamp that it is flowing, and then wait for a window of observations
+            self._flowing_since_t = now
+            self._bottleneck_observer.reset_windows()
+        return now - self._flowing_since_t >= self._bottleneck_observer.window_s
+
+    def _pipeline_flowing(self) -> bool:
+        """Whether every actor-pool op has received its first input and every
+        critical op has produced its first output, so the pipeline flows end
+        to end.
 
         An op that finished without input or output (an empty branch of a
-        union) does get stuck in warmup, because we enforce a timeout. After
-        leaving warmup, more flexible op scaling decisions can be made.
+        union) does not keep the sizer in warmup forever, because warmup has
+        a timeout.
         """
         now = self._clock()
         if self._warmup_started_t is None:
@@ -479,7 +450,8 @@ class OperatorSizer:
         ]
         if not waiting_on:
             logger.info(
-                "OperatorSizer: warmup complete (%s produced first output)",
+                "OperatorSizer: pipeline flowing (%s produced first output); "
+                "warmup ends after one bottleneck window",
                 ", ".join(op.name for op in self._critical_ops)
                 or "no actor-pool operators",
             )
@@ -488,24 +460,13 @@ class OperatorSizer:
             return False
         logger.warning(
             "OperatorSizer: warmup timed out after %.0fs still waiting on "
-            "first input or output from %s; leaving warmup.",
+            "first input or output from %s; treating the pipeline as flowing.",
             now - self._warmup_started_t,
             ", ".join(op.name for op in waiting_on),
         )
         return True
 
-    def _reserve_capacity(self, snapshot: ClusterStateSnapshot) -> None:
-        """Take room out of ``snapshot.free_by_node`` for actors that don't
-        exist yet, so the bottleneck model, the ledger and WHERE all see the
-        same free room. Open transfers reserve first, because their donors
-        already gave up actors; held ops reserve from what is left."""
-        # On the nodes each transfer planned. Each transfer also notes how
-        # many of its owed actors fit now; decide brings those up (FUND).
-        self._policy.transfers.reserve_owed(snapshot.free_by_node, self._clock())
-        # On the least contended nodes.
-        self._reserve_for_held_ops(snapshot)
-
-    def _reserve_for_held_ops(self, snapshot: ClusterStateSnapshot) -> None:
+    def _reserve_for_held_ops(self, *, snapshot: ClusterStateSnapshot) -> None:
         """Take each held op's room out of ``snapshot.free_by_node``, and
         record it on its ``Held`` state.
 
@@ -518,20 +479,20 @@ class OperatorSizer:
         """
         free = snapshot.free_by_node
         global_limits = snapshot.get_global_limits()
-        held_ops = self._statuses.ops_in(OpStatusKind.HELD)
+        held_ops = self._statuses.ops_in(kind=OpStatusKind.HELD)
         for op in self._profiles.non_pg_ops:
             if op not in held_ops or op.has_completed():
                 continue
             pool = op.actor_pool
-            target = self._policy.per_op.warmup_target(
-                op, global_limits, snapshot.pg_slots
+            target = self._policy.warmup.warmup_target(
+                op=op, cluster_capacity=global_limits, pg_slots=snapshot.pg_slots
             )
             if target is None:
                 target = pool.min_size()
             floor = pool.serving_size()
             num_to_hold = target - floor
             if num_to_hold <= 0:
-                self._statuses.set_reserved(op, floor)
+                self._statuses.set_reserved(op=op, n=floor)
                 continue
             pressure = snapshot.constrained_op_count_by_node
             nodes = sorted(
@@ -541,7 +502,7 @@ class OperatorSizer:
             held = pack_actors(
                 free, nodes, op.actor_pool.per_actor_resource_usage(), num_to_hold
             )
-            self._statuses.set_reserved(op, floor + len(held))
+            self._statuses.set_reserved(op=op, n=floor + len(held))
             logger.debug(
                 "OperatorSizer: holding %d/%d actor(s) for %s until its first "
                 "input arrives",

@@ -1,4 +1,4 @@
-"""Metrics the sizer (and its bottleneck policy) emit at run time."""
+"""Metrics the sizer emits at run time."""
 
 from ray.util.metrics import Counter, Histogram
 
@@ -32,7 +32,7 @@ class SizerMetrics:
         "data_sizer_actor_delta",
         description=(
             "Actors the sizer added (direction=up) or removed (direction=down),"
-            " by phase (per_op_how_many = what per-op how_many asked for;"
+            " by phase (per_op_how_many = what how_many asked for;"
             " per_op_where = what placement resolved)."
         ),
         tag_keys=("dataset", "operator", "phase", "direction"),
@@ -41,12 +41,13 @@ class SizerMetrics:
         "data_sizer_tick_duration_s",
         description=(
             "OperatorSizer per-phase wall time in seconds, per tick. build:"
-            " per-step status transitions plus the tick's cluster snapshot,"
-            " summed over the steps since the last tick | prepare: holds, the"
-            " bottleneck model and the phase | how_many: one action per op, and"
-            " the ledger's clamp on per-op upscales | per_op_where: placement |"
-            " apply: every hand-off to the pools this tick |"
-            " tick: one whole sizing decision (everything but build)."
+            " the tick's cluster snapshot, summed over the steps since the"
+            " last tick | prepare: status updates, room held for ops awaiting"
+            " input, the bottleneck snapshot and the phase | how_many: one rule"
+            " and count per op, and the ledger's cut on upscales |"
+            " per_op_where: placement | apply: every hand-off to the pools"
+            " this tick | tick: one whole sizing decision (everything but"
+            " build)."
         ),
         boundaries=SIZER_TICK_DURATION_BUCKETS_S,
         tag_keys=("dataset", "phase"),
@@ -72,70 +73,4 @@ class SizerMetrics:
     def record_tick_duration(self, phase: str, seconds: float) -> None:
         self.tick_duration_s.observe(
             seconds, tags={"dataset": self._dataset_id, "phase": phase}
-        )
-
-
-class OptimizerMetrics:
-    actions = Counter(
-        "data_pipeline_optimizer_actions",
-        description=(
-            "Bottleneck policy actions by stage. bottleneck_transfer: fired"
-            " -> landed | lost | timeout."
-        ),
-        tag_keys=("dataset", "optimization", "recipient", "result"),
-    )
-    capacity_transfers = Counter(
-        "data_pipeline_optimizer_capacity_transfers",
-        description=(
-            "Actors moved by capacity transfers, as donor -> recipient"
-            " edges (incremented by the actor count of each transfer)."
-        ),
-        tag_keys=("dataset", "donor", "recipient"),
-    )
-    refusals = Counter(
-        "data_pipeline_optimizer_refusals",
-        description=(
-            "Why the bottleneck policy refused to move capacity:"
-            " cluster_settling | no_donor | capacity_already_free |"
-            " victims_insufficient | thrashing."
-        ),
-        tag_keys=("dataset", "optimization", "reason"),
-    )
-
-    def __init__(self, dataset_id: str):
-        self._dataset_id = dataset_id
-
-    def record_outcome(self, optimization: str, operator: str, outcome: str) -> None:
-        """One step of an optimization acting on ``operator`` (the op that
-        grows). ``outcome`` is fired / landed / lost / timeout."""
-        self.actions.inc(
-            1,
-            tags={
-                "dataset": self._dataset_id,
-                "optimization": optimization,
-                "recipient": operator,
-                "result": outcome,
-            },
-        )
-
-    def record_capacity_transfer(
-        self, donor: str, recipient: str, num_actors: int
-    ) -> None:
-        self.capacity_transfers.inc(
-            num_actors,
-            tags={
-                "dataset": self._dataset_id,
-                "donor": donor,
-                "recipient": recipient,
-            },
-        )
-
-    def record_refusal(self, optimization: str, reason: str) -> None:
-        self.refusals.inc(
-            1,
-            tags={
-                "dataset": self._dataset_id,
-                "optimization": optimization,
-                "reason": reason,
-            },
         )

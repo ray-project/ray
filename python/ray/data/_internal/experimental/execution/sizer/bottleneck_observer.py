@@ -1,4 +1,4 @@
-"""The bottleneck model the actor-only sizer decides on.
+"""The bottleneck snapshot the actor-only sizer decides on.
 
 Per operator, tracks what fraction of its serving task slots' time over a
 window went to each of (a slot is one of an actor's ``max_concurrency`` task
@@ -14,7 +14,7 @@ seats):
 An op with queued input but no serving actor at all (e.g. a Write sink that
 could not place its first actor) counts that time as one fully busy actor:
 it has work and no capacity, which is the tightest a stage can be. Without
-this it would have no actor time, drop out of the model, and its producer --
+this it would have no actor time, drop out of the snapshot, and its producer --
 fully output-backpressured on it -- would be named instead.
 
 From those, each edge ``producer -> consumer`` between actor-pool operators
@@ -24,43 +24,29 @@ more than a margin, the limit is at or past the consumer; if it falls short by
 more than the margin, the limit is at or before the producer; otherwise the
 edge is a tie. Operators with no outgoing arrow are bottlenecks, except one
 that is itself output-backpressured nearly all the time (whatever limits it is
-downstream, outside the model, e.g. a non-actor-pool consumer), or one whose
+downstream, outside the snapshot, e.g. a non-actor-pool consumer), or one whose
 severity is below a floor (nothing waits on it much more than it waits itself,
 e.g. a near-tie edge during ramp-up, or the last op working through its tail
 after every upstream op has completed).
 
-A bottleneck is *stable* once it has been named for a full window, and stays
-stable until it has gone a full window unnamed, so one noisy window neither
-makes nor unmakes it. Only a stable bottleneck is considered as a recipient.
-
-Each logged tick also says whether each bottleneck could use capacity
-(eligibility: free room on a node it may use, or room other ops' actors there
-would free), and, for the most severe bottleneck that can grow, how long each
-donor's candidate victims on its nodes would take to drain (time-to-free:
-outstanding output blocks over the rate the donor's consumer finishes them),
-flagging circular drains whose outputs only clear through the recipient.
-
 Nothing here scales a pool: the sizer samples on every scheduling-loop step,
-logs one line per tick, and its bottleneck policy (``policy``) decides from
-the model.
+logs one line per tick, and its sizing policy (``policy``) decides from the
+snapshot.
 """
 
 from __future__ import annotations
 
 import enum
 import logging
-import math
 import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
-    AbstractSet,
     Any,
     Callable,
     Deque,
     Dict,
-    FrozenSet,
     Generic,
     Hashable,
     List,
@@ -73,37 +59,21 @@ from typing import (
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_BOTTLENECK_ARROW_MARGIN,
-    SIZER_BOTTLENECK_MAX_STEP_RATIO,
     SIZER_BOTTLENECK_MIN_SEVERITY,
-    SIZER_BOTTLENECK_SLACK_MARGIN,
     SIZER_BOTTLENECK_WINDOW_S,
-)
-from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.common import ActorStatus, NodeIdStr
-from ray.data._internal.experimental.execution.sizer import placement_view
-from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
-    FIT_EPS,
-    PLACEMENT_RESOURCE_DIMS,
-    max_placeable_actors,
 )
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor_state import Topology
-    from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501  # noqa: E501
+    from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator as EAPMO,
         SlotUsage,
-    )
-    from ray.data._internal.experimental.execution.sizer.models import (
-        ClusterStateSnapshot,
     )
     from ray.data._internal.experimental.execution.sizer.op_profile import (
         OpProfiles,
     )
 
 logger = logging.getLogger(__name__)
-
-# Eligibility of a PG-managed bottleneck with room in its placement group.
-PG_ELIGIBLE = "yes: placement group"
 
 K = TypeVar("K", bound=Hashable)
 
@@ -158,72 +128,12 @@ class Snapshot(Generic[K]):
     edges: Tuple[Edge[K], ...]
     # Bottlenecks, most severe first, with their severity.
     bottlenecks: Tuple[Tuple[K, float], ...]
-    # Non-bottleneck ops' slack (actors they could give up) toward the most
-    # severe bottleneck growing by one actor.
-    slack: Mapping[K, int]
     # Joint shares per (producer, consumer); an edge missing here falls back
     # to the producer's whole output backpressure as ``blocked``.
     edge_shares: Mapping[Tuple[K, K], EdgeShares] = field(default_factory=dict)
 
 
-@dataclass(frozen=True)
-class DonorVictims:
-    """One donor's candidate victims on the recipient's allowed nodes."""
-
-    count: int
-    # Estimated seconds until a victim frees its slot; inf when the donor's
-    # outputs are not being consumed at all.
-    ttf_min_s: float
-    ttf_p50_s: float
-    # The recipient is downstream and every op between them is
-    # output-backpressured: the victims' outputs only clear as fast as the
-    # recipient itself runs.
-    circular: bool
-
-
-@dataclass(frozen=True)
-class Assessment(Generic[K]):
-    """What a tick's bottlenecks could do with capacity (logged only)."""
-
-    # Stable bottlenecks (see the module docstring), most severe first, with
-    # their severity this tick.
-    stable: Tuple[Tuple[K, float], ...]
-    # Per bottleneck or stable bottleneck: "yes: free" / "yes: victims (...)"
-    # (the node victims would free most easily, and what they must free
-    # there) / "no: <reason>".
-    eligibility: Mapping[K, str]
-    # The most severe stable bottleneck able to grow, whose victims are listed.
-    recipient: Optional[K]
-    victims: Mapping[K, DonorVictims]
-    # Actors each op could give up and keep up after the recipient grows by
-    # one actor (factor 1 for ops off its path, and for every op when there
-    # is no recipient).
-    slack: Mapping[K, int] = field(default_factory=dict)
-
-
-@dataclass(frozen=True)
-class BottleneckTick(Generic[K]):
-    """One sizer tick's model, computed once and shared by the bottleneck policy and
-    the log line."""
-
-    snapshot: Snapshot[K]
-    stable: AbstractSet[K]
-    assessment: Assessment[K]
-    # One donor actor's estimated time-to-free: (donor, tasks in flight,
-    # unconsumed outputs) -> seconds.
-    victim_ttf: Callable[[K, int, int], float] = field(
-        default=lambda donor, tasks_in_flight, unconsumed: 0.0, compare=False
-    )
-    # Every other op's slack if the recipient grows to b': (recipient, b').
-    slack_for: Callable[[K, int], Mapping[K, int]] = field(
-        default=lambda recipient, b_prime: {}, compare=False
-    )
-    # How big a bottleneck should get this step (``growth_target``): op ->
-    # b'.
-    growth_target: Callable[[K], int] = field(default=lambda op: 0, compare=False)
-
-
-# --- pure model ------------------------------------------------------------
+# --- pure analysis ---------------------------------------------------------
 
 
 def classify_edge(
@@ -268,8 +178,8 @@ def blocked_share(
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
 ) -> float:
     """Share of ``op``'s slot time a consumer held it back: the largest over
-    its modeled out-edges, or its whole output backpressure when no consumer
-    is modeled (e.g. a non-actor-pool sink)."""
+    its out-edges to consumers with shares, or its whole output backpressure
+    when no consumer has shares (e.g. a non-actor-pool sink)."""
     consumers = [c for c in next_ops.get(op, ()) if c in shares]
     if not consumers:
         return shares[op].obp
@@ -316,7 +226,7 @@ def find_bottlenecks(
 
     An op a consumer holds back more than ``1 - margin`` of the time is never
     one: it is waiting on something downstream. Normally that shows as an
-    outgoing arrow; this covers a consumer the model has no shares for.
+    outgoing arrow; this covers a consumer the snapshot has no shares for.
     Output backpressure from the op's own budget does not count here.
     """
     has_outgoing = set()
@@ -331,44 +241,6 @@ def find_bottlenecks(
         if op not in has_outgoing
         and blocked_share(op, shares, next_ops, edge_shares) <= 1 - margin
     ]
-
-
-def growth_target(
-    op: K,
-    shares: Mapping[K, OpShareBreakdown],
-    prev_ops: Mapping[K, Sequence[K]],
-    next_ops: Mapping[K, Sequence[K]],
-    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]],
-    max_ratio: float,
-    max_size: int,
-) -> int:
-    """How big a bottleneck should get: b' = ceil(b / (1 - w)), where w is
-    the largest share of time a neighbour waits on it (a producer blocked by
-    it, or a consumer starved). A producer blocked w of the time could make
-    1 / (1 - w) times as much, so the bottleneck needs that much more
-    throughput. At least b + 1, at most b x ``max_ratio`` and ``max_size``.
-
-    A producer's wait counts only for the share of time ``op`` is not
-    output-backpressured itself. While ``op``'s slots hold finished output
-    they take no input, so a producer blocked then waits on what holds
-    ``op`` back, not on ``op``'s throughput: in video_object_detection,
-    resize_frame (obp 0.96 behind the GPU op) had ReadVideo blocked 0.95 on
-    it, which asked for 20x its actors when the GPU op starving 0.13 asked
-    for one more.
-    """
-    b = shares[op].actors if op in shares else 0
-    not_obp = 1.0 - shares[op].obp if op in shares else 1.0
-    waits = [
-        edge_shares_of(p, op, shares, edge_shares).blocked * not_obp
-        for p in prev_ops.get(op, ())
-        if p in shares
-    ]
-    waits += [shares[c].starved for c in next_ops.get(op, ()) if c in shares]
-    w = min(max(waits, default=0.0), 1.0)
-    base = max(b, 1)
-    cap = max(b + 1, min(max_size, math.floor(base * max_ratio)))
-    wanted = cap if w >= 1.0 else math.ceil(base / (1.0 - w))
-    return max(b + 1, min(cap, wanted))
 
 
 def severity(
@@ -391,115 +263,6 @@ def severity(
     return waiting_on - own
 
 
-def slack(actors: int, busy: float, growth: float, margin: float) -> int:
-    """Actors an op could give up and still keep up after the bottleneck grows
-    by ``growth`` (its new size over its current size). Negative means it is
-    already short for that growth."""
-    needed = math.ceil(actors * busy * growth * (1 + margin))
-    return actors - needed
-
-
-def on_path(op: K, recipient: K, next_ops: Mapping[K, Sequence[K]]) -> bool:
-    """Whether ``op`` carries the recipient's flow: it is upstream or
-    downstream of it."""
-    return (
-        path_between(op, recipient, next_ops) is not None
-        or path_between(recipient, op, next_ops) is not None
-    )
-
-
-def upstream_limiters(edges: Sequence[Edge[K]]) -> Dict[K, FrozenSet[K]]:
-    """Per op whose input is limited by its producer, the op(s) actually
-    limiting it: follow input edges whose arrow points upstream (the producer
-    limits the flow) until an op whose own input does not. An op with no
-    such input edge is absent."""
-    upstream_producers: Dict[K, List[K]] = {}
-    for edge in edges:
-        if edge.arrow == Arrow.UPSTREAM:
-            upstream_producers.setdefault(edge.consumer, []).append(edge.producer)
-
-    def tops(op: K, seen: FrozenSet[K]) -> FrozenSet[K]:
-        producers = upstream_producers.get(op)
-        if not producers or op in seen:
-            return frozenset((op,))
-        return frozenset().union(*(tops(p, seen | {op}) for p in producers))
-
-    return {
-        op: frozenset().union(*(tops(p, frozenset((op,))) for p in producers))
-        for op, producers in upstream_producers.items()
-    }
-
-
-def self_limited_by_op(edges: Sequence[Edge[K]]) -> Dict[K, float]:
-    """Per producer, its largest self-limited share over its output edges:
-    time its own output budget was full while a consumer had an idle slot."""
-    shares: Dict[K, float] = {}
-    for edge in edges:
-        shares[edge.producer] = max(
-            shares.get(edge.producer, 0.0), edge.producer_self_limited
-        )
-    return shares
-
-
-def needed_busy(
-    op: K,
-    op_shares: OpShareBreakdown,
-    recipient: Optional[K],
-    limiters: Mapping[K, FrozenSet[K]],
-    self_limited: Mapping[K, float],
-) -> float:
-    """The share of ``op``'s slot time it must keep for ``recipient``'s
-    growth: its busy time, plus time held back by its own output budget
-    (that is its limit, not spare: fewer actors means fewer budgets).
-    Starved time is spare only when nothing upstream is starving it, or
-    toward the op that is: idle time caused by an upstream limit is needed
-    back once that limit is grown."""
-    needed = op_shares.busy + self_limited.get(op, 0.0)
-    limited_by = limiters.get(op)
-    if limited_by and recipient not in limited_by:
-        needed += op_shares.starved
-    return min(needed, 1.0)
-
-
-def slack_toward(
-    shares: Mapping[K, OpShareBreakdown],
-    recipient: Optional[K],
-    b_prime: int,
-    next_ops: Mapping[K, Sequence[K]],
-    margin: float,
-    edges: Sequence[Edge[K]] = (),
-) -> Dict[K, int]:
-    """Each other op's slack if ``recipient`` grows from its current size b
-    to ``b_prime``: ops on its path carry b'/b more work; ops off it (another
-    union branch) carry the same. With no recipient, every factor is 1.
-
-    An op keeps its self-limited time (see ``self_limited_by_op``), and an
-    op starved by an upstream limit (see ``upstream_limiters``) keeps its
-    starved time as reserve toward every recipient but that limit."""
-    growth = 1.0
-    if recipient is not None and recipient in shares:
-        b = max(1, shares[recipient].actors)
-        growth = max(b_prime, b) / b
-    limiters = upstream_limiters(edges)
-    self_limited = self_limited_by_op(edges)
-    slack_by_op: Dict[K, int] = {}
-    for op, op_shares in shares.items():
-        if op == recipient:
-            continue
-        factor = (
-            growth
-            if recipient is not None and on_path(op, recipient, next_ops)
-            else 1.0
-        )
-        slack_by_op[op] = slack(
-            op_shares.actors,
-            needed_busy(op, op_shares, recipient, limiters, self_limited),
-            factor,
-            margin,
-        )
-    return slack_by_op
-
-
 def path_between(
     src: K, dst: K, next_ops: Mapping[K, Sequence[K]]
 ) -> Optional[List[K]]:
@@ -518,47 +281,18 @@ def path_between(
     return None
 
 
-def is_circular(
-    donor: K,
-    recipient: K,
-    shares: Mapping[K, OpShareBreakdown],
-    next_ops: Mapping[K, Sequence[K]],
-    margin: float,
-    edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
-) -> bool:
-    """Whether ``donor``'s outputs clear only through ``recipient``: it is
-    downstream and every op between them is held back by its consumer."""
-    between = path_between(donor, recipient, next_ops)
-    if between is None:
-        return False
-    return all(
-        op in shares and blocked_share(op, shares, next_ops, edge_shares) >= 1 - margin
-        for op in between
-    )
-
-
-def time_to_free(work_blocks: float, consume_rate: float) -> float:
-    """Seconds to drain ``work_blocks`` at ``consume_rate`` blocks/s."""
-    if work_blocks <= 0:
-        return 0.0
-    if consume_rate <= 0:
-        return math.inf
-    return work_blocks / consume_rate
-
-
 def analyze(
     shares: Mapping[K, OpShareBreakdown],
     prev_ops: Mapping[K, Sequence[K]],
     next_ops: Mapping[K, Sequence[K]],
     *,
     arrow_margin: float,
-    slack_margin: float,
     min_severity: float = 0.0,
     edge_shares: Optional[Mapping[Tuple[K, K], EdgeShares]] = None,
 ) -> Snapshot[K]:
     edges = build_edges(shares, next_ops, arrow_margin, edge_shares)
     # Severity <= 0: no neighbour waits on the op more than it idles itself,
-    # so growing it would not speed anything up. Below ``min_severity``, too
+    # so upscaling it would not speed anything up. Below ``min_severity``, too
     # little waits on it to tell from noise.
     scored = (
         (op, severity(op, shares, prev_ops, next_ops, edge_shares))
@@ -569,29 +303,37 @@ def analyze(
         key=lambda entry: entry[1],
         reverse=True,
     )
-    slack_by_op: Dict[K, int] = {}
-    if ranked:
-        top = ranked[0][0]
-        top_actors = max(1, shares[top].actors)
-        growth = (top_actors + 1) / top_actors
-        bottleneck_ops = {op for op, _ in ranked}
-        limiters = upstream_limiters(edges)
-        self_limited = self_limited_by_op(edges)
-        for op, op_shares in shares.items():
-            if op not in bottleneck_ops:
-                slack_by_op[op] = slack(
-                    op_shares.actors,
-                    needed_busy(op, op_shares, top, limiters, self_limited),
-                    growth,
-                    slack_margin,
-                )
     return Snapshot(
         shares=dict(shares.items()),
         edges=edges,
         bottlenecks=tuple(ranked),
-        slack=slack_by_op,
         edge_shares=dict((edge_shares or {}).items()),
     )
+
+
+def upscale_blocker(
+    *,
+    op: K,
+    snapshot: Snapshot[K],
+    next_ops: Mapping[K, Sequence[K]],
+    margin: float,
+) -> Optional[str]:
+    """Why upscaling the named bottleneck ``op`` would not help this tick,
+    or None if it would: a more severe bottleneck upstream limits its input,
+    or a producer feeding it is held back by its own output budget while
+    ``op`` has idle slots. Either way new actors would wait for input."""
+    named = dict(snapshot.bottlenecks)
+    for other, sev in named.items():
+        if (
+            other is not op
+            and sev > named[op]
+            and path_between(other, op, next_ops) is not None
+        ):
+            return "a more severe bottleneck is upstream"
+    for edge in snapshot.edges:
+        if edge.consumer is op and edge.producer_self_limited >= margin:
+            return f"input self-limited ({edge.producer_self_limited:.2f})"
+    return None
 
 
 # --- sampling --------------------------------------------------------------
@@ -614,8 +356,8 @@ class ShareWindow:
 
     def record(
         self,
-        dt: float,
         *,
+        dt: float,
         actors: int,
         slot_s: float,
         busy_s: float,
@@ -676,7 +418,7 @@ class EdgeWindow:
         self._span_s = 0.0
 
     def record(
-        self, dt: float, *, slot_s: float, blocked_s: float, self_limited_s: float
+        self, *, dt: float, slot_s: float, blocked_s: float, self_limited_s: float
     ) -> None:
         if dt <= 0:
             return
@@ -699,64 +441,9 @@ class EdgeWindow:
         )
 
 
-class StableBottlenecks(Generic[K]):
-    """Bottlenecks that have persisted: named continuously for ``hold_s``
-    to become stable, unnamed continuously for ``hold_s`` to stop being."""
-
-    def __init__(self, hold_s: float):
-        self._hold_s = hold_s
-        self._named_since: Dict[K, float] = {}
-        self._unnamed_since: Dict[K, float] = {}
-        self._stable: set = set()
-
-    def update(
-        self, named: AbstractSet[K], present: AbstractSet[K], now: float
-    ) -> AbstractSet[K]:
-        """Fold in one tick's named bottlenecks; ops no longer ``present``
-        in the model (e.g. completed) drop out at once. Returns the stable
-        set."""
-        for op in list(self._named_since):
-            if op not in named:
-                del self._named_since[op]
-        for op in named:
-            self._named_since.setdefault(op, now)
-            self._unnamed_since.pop(op, None)
-            if now - self._named_since[op] >= self._hold_s:
-                self._stable.add(op)
-        for op in list(self._stable):
-            if op not in present:
-                self._stable.discard(op)
-                self._unnamed_since.pop(op, None)
-            elif op not in named:
-                since = self._unnamed_since.setdefault(op, now)
-                if now - since >= self._hold_s:
-                    self._stable.discard(op)
-                    del self._unnamed_since[op]
-        return frozenset(self._stable)
-
-
-class _CounterRate:
-    """Rate of a cumulative counter over the last ``window_s`` seconds."""
-
-    def __init__(self, window_s: float):
-        self._window_s = window_s
-        self._points: Deque[Tuple[float, float]] = deque()
-
-    def record(self, now: float, value: float) -> None:
-        self._points.append((now, value))
-        while len(self._points) > 2 and now - self._points[1][0] >= self._window_s:
-            self._points.popleft()
-
-    def rate(self) -> float:
-        if len(self._points) < 2:
-            return 0.0
-        (t0, v0), (t1, v1) = self._points[0], self._points[-1]
-        return (v1 - v0) / (t1 - t0) if t1 > t0 else 0.0
-
-
 class BottleneckObserver:
     """Samples every actor-pool op each scheduling-loop step and reports the
-    bottleneck model once per sizer tick. Read-only: it never scales a pool."""
+    bottleneck snapshot once per sizer tick. Read-only: it never scales a pool."""
 
     def __init__(
         self,
@@ -765,16 +452,13 @@ class BottleneckObserver:
         clock: Callable[[], float] = time.monotonic,
         window_s: float = SIZER_BOTTLENECK_WINDOW_S,
         arrow_margin: float = SIZER_BOTTLENECK_ARROW_MARGIN,
-        slack_margin: float = SIZER_BOTTLENECK_SLACK_MARGIN,
         min_severity: float = SIZER_BOTTLENECK_MIN_SEVERITY,
     ):
         self._profiles = profiles
         self._clock = clock
         self._window_s = window_s
         self._arrow_margin = arrow_margin
-        self._slack_margin = slack_margin
         self._min_severity = min_severity
-        self._stability: StableBottlenecks["EAPMO"] = StableBottlenecks(window_s)
         self._windows: Dict["EAPMO", ShareWindow] = {}
         self._edge_windows: Dict[
             Tuple["EAPMO", "EAPMO"],
@@ -782,12 +466,19 @@ class BottleneckObserver:
         ] = {}
         # Last read of each op's cumulative busy-slot seconds.
         self._last_busy_s: Dict["EAPMO", float] = {}
-        # Input blocks each op's tasks finished, and output blocks taken from
-        # each op: what clears a producer's outputs, for time-to-free.
-        self._processed: Dict["EAPMO", _CounterRate] = {}
-        self._taken: Dict["EAPMO", _CounterRate] = {}
         self._last_t: Optional[float] = None
         self._names = _display_names(profiles.actor_pool_ops)
+
+    @property
+    def window_s(self) -> float:
+        return self._window_s
+
+    def reset_windows(self) -> None:
+        """Drop every window's samples, so each op needs a new full window
+        before the snapshot reports it. The cumulative busy readings stay, so
+        the next sample still measures from the last one."""
+        self._windows.clear()
+        self._edge_windows.clear()
 
     def observe(self, topology: "Topology") -> None:
         now = self._clock()
@@ -805,7 +496,7 @@ class BottleneckObserver:
             usages[op] = op.slot_usage()
             queued[op] = topology[op].total_enqueued_input_blocks()
         for op, usage in usages.items():
-            self._record_op(op, usage, queued[op], dt, now)
+            self._record_op(op, usage, queued[op], dt)
         # Joint per-edge shares: at this moment, is the consumer saturated
         # (no idle slot, or input queued with no actor)? The producer's
         # output-backpressured slots count as blocked by it if so, else as
@@ -830,7 +521,7 @@ class BottleneckObserver:
                     )
                 blocked_s = obp_s if saturated[consumer] else 0.0
                 window.record(
-                    dt,
+                    dt=dt,
                     slot_s=usage.slots * dt,
                     blocked_s=blocked_s,
                     self_limited_s=obp_s - blocked_s,
@@ -842,7 +533,6 @@ class BottleneckObserver:
         usage: "SlotUsage",
         queued: int,
         dt: float,
-        now: float,
     ) -> None:
         prev_busy_s = self._last_busy_s.get(op)
         self._last_busy_s[op] = usage.busy_slot_seconds
@@ -865,7 +555,7 @@ class BottleneckObserver:
         if window is None:
             window = self._windows[op] = ShareWindow(self._window_s)
         window.record(
-            dt,
+            dt=dt,
             actors=usage.serving_actors,
             slot_s=slot_s,
             busy_s=busy_s,
@@ -873,11 +563,6 @@ class BottleneckObserver:
             starved_s=starved_s,
             unstaffed=usage.serving_actors == 0 and queued > 0,
         )
-        for rates, value in (
-            (self._processed, op.metrics.num_task_inputs_processed),
-            (self._taken, op.metrics.num_outputs_taken),
-        ):
-            rates.setdefault(op, _CounterRate(self._window_s)).record(now, value)
 
     def snapshot(self) -> Snapshot["EAPMO"]:
         shares: Dict["EAPMO", OpShareBreakdown] = {}
@@ -895,332 +580,18 @@ class BottleneckObserver:
             self._profiles.prev_ops,
             self._profiles.next_ops,
             arrow_margin=self._arrow_margin,
-            slack_margin=self._slack_margin,
             min_severity=self._min_severity,
             edge_shares=edge_shares,
         )
 
-    def assess(
-        self,
-        snapshot: Snapshot["EAPMO"],
-        capacity: "ClusterStateSnapshot",
-        stable: AbstractSet["EAPMO"],
-    ) -> Assessment["EAPMO"]:
-        """Eligibility of each bottleneck and stable bottleneck, and the
-        victims a transfer to the most severe stable one that can grow would
-        draw from.
-
-        An op can use more actors only if it is named this tick, no more
-        severe named op feeds it, and no producer feeding it is self-limited
-        (held back by its own output budget while the op had idle slots):
-        otherwise new actors would wait for input."""
-        ranked_stable = tuple(
-            sorted(
-                (
-                    (
-                        op,
-                        severity(
-                            op,
-                            snapshot.shares,
-                            self._profiles.prev_ops,
-                            self._profiles.next_ops,
-                            snapshot.edge_shares,
-                        ),
-                    )
-                    for op in stable
-                    if op in snapshot.shares
-                ),
-                key=lambda entry: entry[1],
-                reverse=True,
-            )
-        )
-        bottlenecks = [op for op, _ in snapshot.bottlenecks]
-        bottlenecks += [op for op, _ in ranked_stable if op not in bottlenecks]
-        freeable = self._freeable_by_node(capacity, exclude=set(bottlenecks))
-        eligibility = {
-            op: self._growth_blocker(op, snapshot)
-            or self._eligibility(op, capacity, freeable)
-            for op in bottlenecks
-        }
-        # Stability keeps one noisy window from making or unmaking a
-        # bottleneck, but an op whose severity has since fallen below the
-        # floor is not waited on: it is no recipient while it stays stable.
-        recipient = next(
-            (
-                op
-                for op, sev in ranked_stable
-                if sev >= self._min_severity and not eligibility[op].startswith("no:")
-                # A PG op grows into its own bundles; donors cannot fund it.
-                and not self._profiles.is_pg_managed(op)
-            ),
-            None,
-        )
-        victims: Dict["EAPMO", DonorVictims] = {}
-        if recipient is not None and recipient in capacity.schedulable_nodes_by_op:
-            nodes = capacity.schedulable_nodes_by_op[recipient]
-            for donor in self._profiles.non_pg_ops:
-                if donor in eligibility or donor not in snapshot.shares:
-                    continue
-                summary = self._donor_victims(donor, recipient, nodes, snapshot)
-                if summary is not None:
-                    victims[donor] = summary
-        slack_by_op = slack_toward(
-            snapshot.shares,
-            recipient,
-            (snapshot.shares[recipient].actors + 1) if recipient is not None else 0,
-            self._profiles.next_ops,
-            self._slack_margin,
-            snapshot.edges,
-        )
-        return Assessment(ranked_stable, eligibility, recipient, victims, slack_by_op)
-
-    def _freeable_by_node(
-        self,
-        capacity: "ClusterStateSnapshot",
-        *,
-        exclude: AbstractSet["EAPMO"],
-    ) -> Dict[NodeIdStr, ExecutionResources]:
-        """Per node, what every serving actor of a non-PG op outside
-        ``exclude`` holds: the most victims there could free."""
-        freeable: Dict[NodeIdStr, ExecutionResources] = {}
-        for op in self._profiles.non_pg_ops:
-            if op in exclude or op.has_completed():
-                continue
-            per_actor = op.actor_pool.per_actor_resource_usage()
-            for node, states in op.actor_pool.alive_actor_states_by_node().items():
-                serving = sum(
-                    1
-                    for state in states.values()
-                    if state.status in (ActorStatus.IDLE, ActorStatus.ACTIVE)
-                )
-                if serving:
-                    freeable[node] = freeable.get(node, ExecutionResources.zero()).add(
-                        per_actor.scale(serving)
-                    )
-        return freeable
-
-    def _growth_blocker(
-        self,
-        op: "EAPMO",
-        snapshot: Snapshot["EAPMO"],
-    ) -> Optional[str]:
-        """Why ``op`` could not use more actors this tick, or None."""
-        named = dict(snapshot.bottlenecks)
-        if op not in named:
-            return "no: not named this tick"
-        for other, sev in named.items():
-            if (
-                other is not op
-                and sev > named[op]
-                and path_between(other, op, self._profiles.next_ops) is not None
-            ):
-                return f"no: {self._name(other)} upstream is more severe"
-        for edge in snapshot.edges:
-            if edge.consumer is op and edge.producer_self_limited >= self._arrow_margin:
-                return (
-                    f"no: input from {self._name(edge.producer)} self-limited "
-                    f"({edge.producer_self_limited:.2f})"
-                )
-        return None
-
-    def _name(self, op: "EAPMO") -> str:
-        return self._names.get(op, getattr(op, "name", str(op)))
-
-    def _eligibility(
-        self,
-        op: "EAPMO",
-        capacity: "ClusterStateSnapshot",
-        freeable: Mapping[NodeIdStr, ExecutionResources],
-    ) -> str:
-        pool = op.actor_pool
-        if pool.serving_size() >= pool.bounded_max_size():
-            return "no: at max size"
-        if self._profiles.is_pg_managed(op):
-            return self._pg_eligibility(op, capacity)
-        per_actor = pool.per_actor_resource_usage()
-        free_by_node = capacity.free_by_node
-        nodes = [n for n in free_by_node if n in capacity.schedulable_nodes_by_op[op]]
-        if not nodes:
-            return "no: no allowed node"
-        if any(max_placeable_actors(free_by_node[n], per_actor) >= 1 for n in nodes):
-            return "yes: free"
-        best: Optional[Dict[str, float]] = None
-        # Among nodes victims could make room on: the one needing the fewest
-        # resource kinds freed, then the least of them.
-        fit: Optional[Tuple[Tuple[int, float], NodeIdStr, Dict[str, float]]] = None
-        for node in nodes:
-            room = free_by_node[node].add(freeable.get(node, ExecutionResources.zero()))
-            if max_placeable_actors(room, per_actor) >= 1:
-                to_free = _shortfall(per_actor, free_by_node[node])
-                rank = (len(to_free), sum(to_free.values()))
-                if fit is None or rank < fit[0]:
-                    fit = (rank, node, to_free)
-                continue
-            short = _shortfall(per_actor, room)
-            if best is None or len(short) < len(best):
-                best = short
-        if fit is not None:
-            _, node, to_free = fit
-            return (
-                f"yes: victims (on {node[:8]}: free "
-                f"{_format_resources(to_free)} more)"
-            )
-        return f"no: short {_format_resources(best or {})} after all victims"
-
-    @staticmethod
-    def _pg_eligibility(op: "EAPMO", capacity: "ClusterStateSnapshot") -> str:
-        """A PG-managed op grows only into its own placement group: other
-        ops' actors hold none of its bundles, so it never takes victims."""
-        bundles = capacity.schedulable_bundles_by_op.get(op)
-        if bundles is None:
-            room = capacity.unknown_pg_headroom_by_op.get(op, 0) >= 1
-        else:
-            per_actor = op.actor_pool.per_actor_resource_usage()
-            room = any(
-                max_placeable_actors(capacity.pg_free_by_bundle[key], per_actor) >= 1
-                for key in bundles
-                if key in capacity.pg_free_by_bundle
-            )
-        return PG_ELIGIBLE if room else "no: placement group full"
-
-    def _consume_rate(self, donor: "EAPMO") -> float:
-        """Blocks/s that clear ``donor``'s outputs: its actor-pool consumers'
-        finished input blocks, or, with none, the blocks taken from it."""
-        consumers = self._profiles.next_ops.get(donor, ())
-        if consumers:
-            return sum(
-                self._processed[c].rate() for c in consumers if c in self._processed
-            )
-        rates = self._taken.get(donor)
-        return rates.rate() if rates is not None else 0.0
-
-    def _donor_victims(
-        self,
-        donor: "EAPMO",
-        recipient: "EAPMO",
-        nodes: AbstractSet[NodeIdStr],
-        snapshot: Snapshot["EAPMO"],
-    ) -> Optional[DonorVictims]:
-        """Time-to-free of ``donor``'s non-draining actors on ``nodes``.
-
-        Work per victim = its unconsumed output blocks + its tasks in flight x
-        the donor's outputs per task. A lower bound when the consumer has a
-        backlog queued ahead of the victim's outputs.
-        """
-        view = placement_view.build_op_placement_view(donor, rank_victims=True)
-        ttfs = sorted(
-            self.victim_ttf(donor, in_flight, unconsumed)
-            for node in nodes
-            for in_flight, unconsumed in view.victim_drain_cost_by_node.get(node, [])
-        )
-        if not ttfs:
-            return None
-        return DonorVictims(
-            count=len(ttfs),
-            ttf_min_s=ttfs[0],
-            ttf_p50_s=ttfs[len(ttfs) // 2],
-            circular=is_circular(
-                donor,
-                recipient,
-                snapshot.shares,
-                self._profiles.next_ops,
-                self._arrow_margin,
-                snapshot.edge_shares,
-            ),
-        )
-
-    def victim_ttf(
-        self,
-        donor: "EAPMO",
-        tasks_in_flight: int,
-        unconsumed_outputs: int,
-    ) -> float:
-        """Estimated seconds until one of ``donor``'s actors drains: its tasks
-        in flight finishing (rounds of max_concurrency, each the donor's
-        average task duration: an upper estimate, as the running ones have
-        already started), then its unconsumed outputs plus those tasks'
-        outputs consumed at the rate its consumer finishes blocks (a lower
-        bound when the consumer has a backlog queued ahead of them)."""
-        metrics = donor.metrics
-        outputs_per_task = metrics.num_task_outputs_generated / max(
-            1, metrics.num_tasks_finished
-        )
-        task_s = 0.0
-        if tasks_in_flight > 0:
-            concurrency = max(1, donor.actor_pool.max_actor_concurrency())
-            task_s = math.ceil(tasks_in_flight / concurrency) * (
-                getattr(metrics, "average_total_task_completion_time_s", None) or 0.0
-            )
-        return task_s + time_to_free(
-            unconsumed_outputs + tasks_in_flight * outputs_per_task,
-            self._consume_rate(donor),
-        )
-
-    def tick(
-        self,
-        *,
-        capacity: "ClusterStateSnapshot",
-    ) -> BottleneckTick["EAPMO"]:
-        """This tick's model: snapshot, stable bottlenecks (advancing their
-        persistence) and assessment. Call once per sizer tick, after the
-        sizer reserves room in ``capacity`` for actors that don't exist yet."""
+    def tick(self) -> Snapshot["EAPMO"]:
+        """This tick's snapshot, logged once. Call once per sizer tick."""
         snapshot = self.snapshot()
-        stable = self._stability.update(
-            {op for op, _ in snapshot.bottlenecks},
-            set(snapshot.shares),
-            self._clock(),
-        )
-        return BottleneckTick(
-            snapshot=snapshot,
-            stable=stable,
-            assessment=self.assess(snapshot, capacity, stable),
-            victim_ttf=self.victim_ttf,
-            slack_for=lambda recipient, b_prime: slack_toward(
-                snapshot.shares,
-                recipient,
-                b_prime,
-                self._profiles.next_ops,
-                self._slack_margin,
-                snapshot.edges,
-            ),
-            growth_target=lambda op: growth_target(
-                op,
-                snapshot.shares,
-                self._profiles.prev_ops,
-                self._profiles.next_ops,
-                snapshot.edge_shares,
-                SIZER_BOTTLENECK_MAX_STEP_RATIO,
-                op.actor_pool.bounded_max_size(),
-            ),
-        )
-
-    def log_tick(self, tick: BottleneckTick["EAPMO"]) -> None:
         logger.debug(
             "BottleneckObserver: %s",
-            format_snapshot(tick.snapshot, self._names, tick.assessment),
+            format_snapshot(snapshot=snapshot, names=self._names),
         )
-
-
-def _shortfall(needs: ExecutionResources, has: ExecutionResources) -> Dict[str, float]:
-    """Per placement dimension, how much ``needs`` exceeds ``has``."""
-    return {
-        dim: getattr(needs, dim) - getattr(has, dim)
-        for dim in PLACEMENT_RESOURCE_DIMS
-        if getattr(needs, dim) > getattr(has, dim) + FIT_EPS
-    }
-
-
-def _format_resources(resources: Mapping[str, float]) -> str:
-    parts = []
-    for dim, value in resources.items():
-        parts.append(
-            f"{dim}={value / 2**30:.1f}GiB" if dim == "memory" else f"{dim}={value:g}"
-        )
-    return "{" + ", ".join(parts) + "}"
-
-
-def _format_seconds(seconds: float) -> str:
-    return "inf" if math.isinf(seconds) else f"{seconds:.0f}s"
+        return snapshot
 
 
 def _display_names(
@@ -1235,21 +606,12 @@ def _display_names(
     }
 
 
-def format_snapshot(
-    snapshot: Snapshot[Any],
-    names: Mapping[Any, str],
-    assessment: Optional[Assessment[Any]] = None,
-) -> str:
+def format_snapshot(*, snapshot: Snapshot[Any], names: Mapping[Any, str]) -> str:
     def name(op: Any) -> str:
         return names.get(op, str(op))
 
     if not snapshot.shares:
         return "warming up (no op has a full window yet)"
-    slack_by_op = (
-        assessment.slack
-        if assessment is not None and assessment.slack
-        else snapshot.slack
-    )
     bottlenecks = ", ".join(
         f"{name(op)}(sev={sev:.2f}, n={snapshot.shares[op].actors})"
         for op, sev in snapshot.bottlenecks
@@ -1262,27 +624,7 @@ def format_snapshot(
     )
     ops = ", ".join(
         f"{name(op)} busy={s.busy:.2f} obp={s.obp:.2f} starved={s.starved:.2f} "
-        f"n={s.actors}"
-        + (f" unstaffed={s.unstaffed:.2f}" if s.unstaffed > 0 else "")
-        + (f" slack={slack_by_op[op]}" if op in slack_by_op else "")
+        f"n={s.actors}" + (f" unstaffed={s.unstaffed:.2f}" if s.unstaffed > 0 else "")
         for op, s in snapshot.shares.items()
     )
-    line = f"bottlenecks=[{bottlenecks}] | edges=[{edges}] | ops=[{ops}]"
-    if assessment is None:
-        return line
-    stable = ", ".join(f"{name(op)}(sev={sev:.2f})" for op, sev in assessment.stable)
-    line += f" | stable=[{stable}]"
-    if not assessment.eligibility:
-        return line
-    eligible = ", ".join(
-        f"{name(op)}: {verdict}" for op, verdict in assessment.eligibility.items()
-    )
-    line += f" | eligible=[{eligible}]"
-    if assessment.recipient is not None:
-        victims = ", ".join(
-            f"{name(op)} n={v.count} ttf min={_format_seconds(v.ttf_min_s)} "
-            f"p50={_format_seconds(v.ttf_p50_s)}" + (" circular" if v.circular else "")
-            for op, v in assessment.victims.items()
-        )
-        line += f" | victims for {name(assessment.recipient)}=[{victims}]"
-    return line
+    return f"bottlenecks=[{bottlenecks}] | edges=[{edges}] | ops=[{ops}]"

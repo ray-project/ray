@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     )
     from ray.data._internal.experimental.execution.sizer.op_status import OpStatus
     from ray.data._internal.experimental.execution.sizer.policy.states import (
-        BottleneckMove,
         OpDecision,
         SizerPhase,
     )
@@ -86,34 +85,26 @@ class SizerTelemetry:
 
     def log_decisions(
         self,
+        *,
         phase: "SizerPhase",
-        move: Optional["BottleneckMove"],
         decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
         statuses: Dict[ExperimentalActorPoolMapOperator, "OpStatus"],
     ) -> None:
         """Log, once per tick, why each op is sized the way it is: the
-        phase, the bottleneck move, and each op's status, rule, delta and
-        reason. The delta is what fits after the ledger."""
+        phase, and each op's status, rule, delta and reason. The delta is
+        what fits after the ledger."""
         parts = []
         for op, op_decision in decisions.items():
             status = statuses[op].kind.name.lower()
             rule = op_decision.rule.name.lower()
-            if op_decision.request is not None:
-                delta = op_decision.request.delta
-                reason = op_decision.request.reason
-            elif op_decision.placed:
-                delta = sum(req.delta for req in op_decision.placed)
-                reason = op_decision.placed[0].reason
-            else:
+            request = op_decision.request
+            if request is None:
                 parts.append(f"{op.name}[{status}]: {rule}")
                 continue
-            parts.append(f"{op.name}[{status}]: {rule} {delta:+d} ({reason})")
-        logger.debug(
-            "OperatorSizer tick: phase=%s move=%s | %s",
-            phase.value,
-            f"{move.name} ({move.reason})" if move else "none",
-            "; ".join(parts),
-        )
+            parts.append(
+                f"{op.name}[{status}]: {rule} {request.delta:+d} ({request.reason})"
+            )
+        logger.debug("OperatorSizer tick: phase=%s | %s", phase.value, "; ".join(parts))
 
     # --- scale_where ---------------------------------------------------------
 
@@ -220,6 +211,7 @@ class SizerTelemetry:
 
     def record_tick(
         self,
+        *,
         topology: "Topology",
         decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
         where: PlacedRequests,
@@ -236,15 +228,9 @@ class SizerTelemetry:
             self._metrics.record_tick_duration(phase, seconds)
 
         decided = {
-            op: (
-                d.request.delta
-                if d.request is not None
-                else sum(r.delta for r in d.placed)
-            )
-            for op, d in decisions.items()
-            if d.request is not None or d.placed
+            op: d.request.delta for op, d in decisions.items() if d.request is not None
         }
-        placed = {op: sum(r.delta for r in reqs) for op, reqs in where.by_op.items()}
+        placed = {op: req.delta for op, req in where.by_op.items()}
         if not decided and not placed:
             return
 
@@ -268,11 +254,7 @@ class SizerTelemetry:
             else:
                 down -= delta
         nodes = {
-            node
-            for reqs in where.by_op.values()
-            for r in reqs
-            if r.delta > 0
-            for node in r.nodes
+            node for req in where.by_op.values() if req.delta > 0 for node in req.nodes
         }
         logger.debug(
             "OperatorSizer tick: (%s ms) | "

@@ -169,17 +169,17 @@ class ActorPlacementStrategy(abc.ABC):
         count: int,
         favored_nodes: AbstractSet[NodeIdStr],
     ) -> List[NodeIdStr]:
-        """Pick where a downscale sheds ``count`` actors.
+        """Pick where a downscale removes ``count`` actors.
 
         Args:
             view: The operator's placement snapshot.
-            count: Number of actors to shed.
+            count: Number of actors to remove.
             favored_nodes: Nodes that capacity-short upscaling operators
-                want freed -- shedding there is preferred so the freed
+                want freed -- removing actors there is preferred so the freed
                 capacity benefits the upscaler.
 
         Returns:
-            One node id per actor to shed (a node repeats when several leave
+            One node id per actor to remove (a node repeats when several leave
             it), cheapest-to-free first. May be shorter than ``count``.
         """
         ...
@@ -196,7 +196,7 @@ class ActorPlacementStrategy(abc.ABC):
         does not fit in free capacity) want freed.
 
         Fed into ``pick_downscale_nodes`` as ``favored_nodes`` so downscales
-        shed where the freed capacity benefits the upscalers.
+        remove actors where the freed capacity benefits the upscalers.
 
         Args:
             capacity_short_views: (view, unmet delta) per capacity-short

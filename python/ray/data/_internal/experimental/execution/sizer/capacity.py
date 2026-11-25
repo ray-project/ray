@@ -61,9 +61,8 @@ def nodes_to_reclaim(
     of draining actors.
 
     Draining actors already leave without further help, and they are never
-    eviction victims, so counting them would shed replacements for them on
-    every tick until they finish draining. It would also cancel the actors
-    a capacity transfer targets into the slots its donors are vacating.
+    eviction victims, so counting them would remove replacements for them
+    on every tick until they finish draining.
     """
     zero = ExecutionResources.zero()
     draining = draining_by_node(profiles)

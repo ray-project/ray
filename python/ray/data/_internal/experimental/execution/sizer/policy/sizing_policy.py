@@ -1,205 +1,436 @@
-"""The sizer's one policy: each tick, one action per op.
+"""The sizer's one policy: each tick, one rule per op.
 
-``SizingPolicy.decide`` returns an ``OpDecision`` for every op. It first acts
-on the bottleneck model, then sizes every op the model left alone with the
-per-op rules (``PerOpRules``: release a completed pool, grow to held room,
-grow toward the warmup share, shed idle actors, refill to min size).
+``SizingPolicy.decide_op`` is the one place that decides how an op is
+resized. It matches on the op's status (``op_status``), then reads the op's
+own signals (the sizer's phase, the bottleneck snapshot's window) and picks one
+rule (``OpRule``):
 
-The bottleneck model (``bottleneck_observer``) names, each tick, the
-bottlenecks and the most severe stable one that can use capacity (the
-recipient). ``decision.choose_bottleneck_move`` turns that into one
-``BottleneckMove``, and the policy makes it (``_make_move``):
+    status      signals                                   rule
+    Completed   actors left                               RELEASE_POOL
+    Held        -                                         NONE (room reserved)
+    Cooling     below min size                            UPSCALE_TO_MIN
+    Active      below min size                            UPSCALE_TO_MIN
+    Active      fixed-size pool                           NONE
+    Active      warmup                                    UPSCALE_WARMUP
+    Active      a named bottleneck that can use actors    UPSCALE_BOTTLENECK
+    Active      no bottleneck named, nearly always busy   UPSCALE_BUSY
+    Active      blocked by its consumer some of the time  DOWNSCALE_BLOCKED
+    Active      idle some of the time                     DOWNSCALE_IDLE
+    otherwise                                             NONE
 
-- ``GrowFree``: the bottleneck grows into free capacity toward its growth
-  target b' = ceil(b / (1 - w)), w the largest share of time a neighbour
-  waits on it. New actors are capped at a share of free placeable capacity
-  among unfinished, growable operators competing for the same resource
-  class and placement domain (at least one actor when any fits). A
-  PG-managed op grows into its own placement group.
-- ``GrowBalanced``: with no bottleneck named, every op that is nearly always
-  busy grows by ``growth.balanced_step`` into free capacity.
-- ``FundRecipient``: with no transfer in flight, pick b', the largest size up
-  to the growth target that donors can fund, every non-bottleneck op giving
-  at most its slack at b' (b'/b more work on the recipient's path, the same
-  off it). Victims are only pending or idle actors, fastest to free first;
-  busy surplus drains passively instead (``_shrink_toward_keep``) and
-  reaches the recipient through ``GrowFree`` on a later tick.
-- ``ShrinkSurplus``: with no recipient, drain ops mostly blocked behind their
-  consumer down toward what they need.
+After warmup, the policy does not predict an op's right size. It steps the
+op toward it (``steps.StepSizes``) and lets the bottleneck snapshot say, a
+window later, whether to keep going. An op the policy stepped cools down
+until its window
+describes its new size (``Cooling``). A downscale keeps enough actors that
+the op stays below the busy share that upscales it, so it does not turn
+straight back into an upscale.
 
-Every growth stays within the op's growth ceiling (its pool's max size, or
-the actors its remaining work can use once upstream is done). The
-mechanics of a transfer (owed capacity held for the recipient, bring-up,
-timeout, giving stranded victims back, thrash guard) are ``TransferBook``'s.
+``SizingPolicy.decide`` runs ``decide_op`` for every op, then grants upscales
+free capacity in priority order: min sizes first, then bottlenecks, most
+severe first, then busy ops, then warmup shares. So the op that limits the
+pipeline gets free capacity before any other op, including the room a
+downscale frees.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import logging
 import math
-from typing import (
-    TYPE_CHECKING,
-    AbstractSet,
-    Dict,
-    List,
-    Mapping,
-    Optional,
-    Tuple,
-)
+from typing import TYPE_CHECKING, Dict, Mapping, Optional, Tuple
 
 from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
 from ray.data._internal.execution.execution_flags import (
-    SIZER_BOTTLENECK_MAX_STEP_RATIO,
-    SIZER_BOTTLENECK_MAX_TIMEOUT_S,
-    SIZER_BOTTLENECK_SLACK_MARGIN,
-    SIZER_TRANSFER_TIMEOUT_S,
+    SIZER_BOTTLENECK_ARROW_MARGIN,
 )
-from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.common import NodeIdStr
-from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-    ScaleDownRequest,
-)
-from ray.data._internal.experimental.execution.sizer import placement_view
-from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
-    max_placeable_actors,
-)
-from ray.data._internal.experimental.execution.sizer.metrics import (
-    OptimizerMetrics,
-)
-from ray.data._internal.experimental.execution.sizer.models import (
-    PlacedSizingRequest,
+from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
+    Snapshot,
+    blocked_share,
+    upscale_blocker,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
-from ray.data._internal.experimental.execution.sizer.op_status import OpStatusMachine
+from ray.data._internal.experimental.execution.sizer.op_status import (
+    Active,
+    Completed,
+    Cooling,
+    Held,
+    OpStatusMachine,
+)
+from ray.data._internal.experimental.execution.sizer.policy.ceiling import (
+    upscale_ceiling,
+)
 from ray.data._internal.experimental.execution.sizer.policy.context import (
     DecisionContext,
 )
-from ray.data._internal.experimental.execution.sizer.policy.decision import (
-    HOLD_CLUSTER_SETTLING,
-    choose_bottleneck_move,
-    why_cannot_grow,
-)
-from ray.data._internal.experimental.execution.sizer.policy.growth import (
-    apply_free_growth,
-    growth_ceiling,
-    plan_free_growth,
-)
-from ray.data._internal.experimental.execution.sizer.policy.per_op import PerOpRules
 from ray.data._internal.experimental.execution.sizer.policy.states import (
-    BottleneckMove,
-    FundRecipient,
-    GrowBalanced,
-    GrowFree,
-    Hold,
+    STEP_RULES,
     OpDecision,
     OpRule,
-    ShrinkSurplus,
-    TransferPhase,
+    SizerPhase,
 )
-from ray.data._internal.experimental.execution.sizer.policy.transfer import (
-    DonorCapacity,
-    NodePlan,
-    TransferBook,
-    VictimCandidate,
+from ray.data._internal.experimental.execution.sizer.policy.steps import (
+    Direction,
+    StepSizes,
+)
+from ray.data._internal.experimental.execution.sizer.policy.warmup import (
+    WarmupShares,
 )
 
 if TYPE_CHECKING:
     from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
         ExperimentalActorPoolMapOperator,
     )
-    from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
-        ActorPlacementStrategy,
-    )
-    from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
-        BottleneckTick,
-    )
 
 logger = logging.getLogger(__name__)
 
-# A transfer's timeout is this many times its slowest victim's estimated
-# time-to-free: the estimate is a lower bound.
-_TIMEOUT_PER_TTF = 1.5
-
-
-def transfer_timeout_s(victim_ttfs: List[float]) -> float:
-    """Seconds a transfer may go without progress: 1.5x its slowest victim's
-    estimated time-to-free, within [SIZER_TRANSFER_TIMEOUT_S,
-    SIZER_BOTTLENECK_MAX_TIMEOUT_S]."""
-    slowest = max(victim_ttfs, default=0.0)
-    if math.isinf(slowest):
-        return SIZER_BOTTLENECK_MAX_TIMEOUT_S
-    return min(
-        max(slowest * _TIMEOUT_PER_TTF, SIZER_TRANSFER_TIMEOUT_S),
-        SIZER_BOTTLENECK_MAX_TIMEOUT_S,
-    )
-
-
-# Ticks a donor's surplus must persist before one of its actors is drained,
-# so one noisy window does not shrink an op.
-_SURPLUS_STREAK_TICKS = 3
-
-# With no recipient, an op whose output is blocked (its budget full while the
-# consumer has no idle slot) at least this share of its slot time is shrunk
-# toward its keep size, but never below the floor: its actors pin full
-# output budgets in the object store and add no throughput.
-_BLOCKED_SHARE_MIN = 0.8
-_BLOCKED_KEEP_FLOOR = 2
-
-# Neither shrink drains an op while an op it feeds starves at least this
-# share of its slot time. An op mostly blocked behind its consumer does
-# little work, but its actors' output budgets are the consumer's supply:
-# in video_object_detection, resize_frame (busy 0.04) kept the GPU op fed
-# at 8 actors (starved 0.01-0.05) and not at 4 (starved climbing past 0.1),
-# while its keep from busy and self-limited time was 2.
-_CONSUMER_STARVED_MAX = 0.05
-
-
-def max_step_size(b: int, max_size: int) -> int:
-    """The largest b' one step may grow a recipient of size b to."""
-    return max(
-        b + 1, min(max_size, math.floor(max(b, 1) * SIZER_BOTTLENECK_MAX_STEP_RATIO))
-    )
-
-
 OpDecisions = Dict["ExperimentalActorPoolMapOperator", OpDecision]
 
+# With no bottleneck named, an op busy at least this share of its slot time
+# upscales: the stages are balanced, so each of them limits the pipeline.
+_BUSY_SHARE_MIN = 1.0 - SIZER_BOTTLENECK_ARROW_MARGIN
 
-def _build_op_decisions(
-    *, rule: OpRule, requests: List[PlacedSizingRequest]
-) -> OpDecisions:
-    """Return one decision under ``rule`` for each op in ``requests``, with
-    that op's requests in order. An op can get several requests: a donor
-    that sheds on several nodes gets one per node."""
-    op_decisions: OpDecisions = {}
-    for request in requests:
-        for op, req in request.request.items():
-            prev = op_decisions.get(op)
-            placed = (req,) if prev is None else (*prev.placed, req)
-            op_decisions[op] = OpDecision(rule, placed=placed)
-    return op_decisions
+# An op that wastes at least this share of its slot time downscales. Two
+# kinds of time count as waste: time its consumer blocks it (its actors hold
+# full output budgets and add no throughput) and time it is starved (idle
+# with nothing queued). The margin is the same noise margin as for busy.
+# ``_downscale_floor`` keeps a downscale from overshooting into a busy op.
+_WASTED_SHARE_MIN = SIZER_BOTTLENECK_ARROW_MARGIN
+
+# A blocked op does not downscale while an op it feeds starves at least this
+# share of its slot time: its actors' output budgets are that op's supply.
+# In video_object_detection, resize_frame (busy 0.04) kept the GPU op fed at
+# 8 actors (starved 0.01-0.05) and not at 4 (starved climbing past 0.1).
+_CONSUMER_STARVED_MAX = 0.05
+
+# The order upscales take free capacity in (lower first). Bottlenecks are
+# further ordered by severity, and every rank by the tick's op order.
+_UPSCALE_RANK = {
+    OpRule.UPSCALE_TO_MIN: 0,
+    OpRule.UPSCALE_BOTTLENECK: 1,
+    OpRule.UPSCALE_BUSY: 2,
+    OpRule.UPSCALE_WARMUP: 3,
+}
 
 
-def _move_targets(move: BottleneckMove) -> str:
-    """The ops ``move`` names and their sizes, for the log."""
-    match move:
-        case GrowFree(op=op, target=target):
-            return f" {op.name}->{target}"
-        case GrowBalanced(targets=targets):
-            return "".join(f" {op.name}->{target}" for op, target in targets.items())
-        case FundRecipient(recipient=recipient):
-            return f" {recipient.name}"
-    return ""
+class SizingPolicy:
+    """Decides one rule per op each tick. Owns what carries across ticks:
+    each op's step sizes, and the allocation change it last saw."""
+
+    def __init__(
+        self,
+        *,
+        statuses: OpStatusMachine,
+        profiles: OpProfiles,
+        steps: Optional[StepSizes] = None,
+    ):
+        self._statuses = statuses
+        self._profiles = profiles
+        self.warmup = WarmupShares(profiles=profiles)
+        self.steps = steps if steps is not None else StepSizes()
+        # ``seconds_since_allocation_change`` at the last tick: when it goes
+        # down, the allocation changed in between.
+        self._last_allocation_age_s: Optional[float] = None
+
+    def decide(self, *, ctx: DecisionContext) -> OpDecisions:
+        """One tick: one ``OpDecision`` per op, in the order WHERE should
+        place them.
+
+        1. ``decide_op`` picks each op's rule and request.
+        2. Upscales take free capacity in priority order (see the module
+           docstring), each cut to what the ledger still has.
+        3. Each op the policy stepped starts cooling. A downscale records
+           its step now; an upscale records it once its actors land
+           (``record_landed_upscales``).
+        """
+        self._reset_steps_on_allocation_change(ctx=ctx)
+        order = {op: i for i, op in enumerate(ctx.snapshot.ordered_ops)}
+        wanted = {op: self.decide_op(op=op, ctx=ctx) for op in ctx.snapshot.ordered_ops}
+        severity = (
+            dict(ctx.bottleneck_snapshot.bottlenecks)
+            if ctx.bottleneck_snapshot is not None
+            else {}
+        )
+
+        def priority(op: "ExperimentalActorPoolMapOperator") -> Tuple:
+            decision = wanted[op]
+            rank = _UPSCALE_RANK.get(decision.rule, len(_UPSCALE_RANK))
+            return (rank, -severity.get(op, 0.0), order[op])
+
+        decisions: OpDecisions = {}
+        for op in sorted(wanted, key=priority):
+            decision = _within_capacity(op=op, decision=wanted[op], ctx=ctx)
+            decisions[op] = decision
+            if decision.rule in STEP_RULES and decision.request is not None:
+                size = op.actor_pool.serving_size()
+                delta = decision.request.delta
+                if delta > 0:
+                    self._statuses.start_cooling(op=op, now=ctx.now, upscale_from=size)
+                else:
+                    self.steps.record(
+                        op=op,
+                        direction=Direction.DOWN,
+                        before=size,
+                        after=size + delta,
+                    )
+                    self._statuses.start_cooling(op=op, now=ctx.now)
+        return decisions
+
+    def record_landed_upscales(
+        self,
+        *,
+        landed: Mapping["ExperimentalActorPoolMapOperator", Tuple[int, int]],
+    ) -> None:
+        """Adapt each op's upscale step to the actors that actually started,
+        as op -> (size before, size now) from ``OpStatusMachine.on_tick``."""
+        for op, (before, after) in landed.items():
+            self.steps.record(op=op, direction=Direction.UP, before=before, after=after)
+
+    def decide_op(
+        self,
+        *,
+        op: "ExperimentalActorPoolMapOperator",
+        ctx: DecisionContext,
+    ) -> OpDecision:
+        """The rule for ``op`` this tick and its request, before capacity
+        (see the module docstring)."""
+        pool = op.actor_pool
+        match self._statuses.status(op):
+            case Completed():
+                if pool.serving_size() == 0:
+                    return OpDecision(OpRule.NONE)
+                return OpDecision(
+                    OpRule.RELEASE_POOL,
+                    ActorPoolScalingRequest.downscale(
+                        delta=-pool.serving_size(),
+                        # Release pending and running actors alike. Running
+                        # actors drain first, so in-flight work still finishes.
+                        force=True,
+                        reason="operator completed",
+                    ),
+                )
+            case Held():
+                return OpDecision(OpRule.NONE)
+            case Cooling():
+                return self._upscale_to_min(op) or OpDecision(OpRule.NONE)
+            case Active():
+                return self._decide_active(op=op, ctx=ctx)
+        raise AssertionError(f"unknown status for {op.name}")
+
+    def _decide_active(
+        self,
+        *,
+        op: "ExperimentalActorPoolMapOperator",
+        ctx: DecisionContext,
+    ) -> OpDecision:
+        pool = op.actor_pool
+        to_min = self._upscale_to_min(op)
+        if to_min is not None:
+            return to_min
+        if pool.min_size() == pool.max_size():
+            return OpDecision(OpRule.NONE)
+        if ctx.phase is SizerPhase.WARMUP:
+            want = self.warmup.upscale(
+                op=op,
+                cluster_capacity=ctx.snapshot.get_global_limits(),
+                pg_slots=ctx.snapshot.pg_slots,
+            )
+            want = _cap_at_ceiling(op=op, want=want, ctx=ctx)
+            if want is None:
+                return OpDecision(OpRule.NONE)
+            return OpDecision(OpRule.UPSCALE_WARMUP, want)
+
+        bottleneck_snapshot = ctx.bottleneck_snapshot
+        shares = (
+            bottleneck_snapshot.shares.get(op)
+            if bottleneck_snapshot is not None
+            else None
+        )
+        if bottleneck_snapshot is None or shares is None:
+            return OpDecision(OpRule.NONE)
+        next_ops = self._profiles.next_ops
+        named = dict(bottleneck_snapshot.bottlenecks)
+        if op in named:
+            blocker = upscale_blocker(
+                op=op,
+                snapshot=bottleneck_snapshot,
+                next_ops=next_ops,
+                margin=SIZER_BOTTLENECK_ARROW_MARGIN,
+            )
+            if blocker is not None:
+                logger.debug("SizingPolicy: %s not upscaled: %s", op.name, blocker)
+                return OpDecision(OpRule.NONE)
+            return self._step(
+                op=op,
+                direction=Direction.UP,
+                rule=OpRule.UPSCALE_BOTTLENECK,
+                reason=f"bottleneck (severity {named[op]:.2f})",
+                ctx=ctx,
+            )
+        if not named and shares.busy >= _BUSY_SHARE_MIN:
+            return self._step(
+                op=op,
+                direction=Direction.UP,
+                rule=OpRule.UPSCALE_BUSY,
+                reason=f"busy {shares.busy:.2f} with no bottleneck named",
+                ctx=ctx,
+            )
+        blocked = blocked_share(
+            op, bottleneck_snapshot.shares, next_ops, bottleneck_snapshot.edge_shares
+        )
+        if blocked >= _WASTED_SHARE_MIN and not self._feeds_starving_op(
+            op=op, bottleneck_snapshot=bottleneck_snapshot
+        ):
+            decision = self._step(
+                op=op,
+                direction=Direction.DOWN,
+                rule=OpRule.DOWNSCALE_BLOCKED,
+                reason=f"blocked by its consumer {blocked:.2f}",
+                ctx=ctx,
+                floor=_downscale_floor(op=op, wasted=blocked),
+            )
+            if decision.rule is not OpRule.NONE:
+                return decision
+        if shares.starved >= _WASTED_SHARE_MIN:
+            return self._step(
+                op=op,
+                direction=Direction.DOWN,
+                rule=OpRule.DOWNSCALE_IDLE,
+                reason=f"idle (starved {shares.starved:.2f})",
+                ctx=ctx,
+                floor=_downscale_floor(op=op, wasted=shares.starved),
+            )
+        return OpDecision(OpRule.NONE)
+
+    # --- requests ---------------------------------------------------------------
+
+    def _step(
+        self,
+        *,
+        op: "ExperimentalActorPoolMapOperator",
+        direction: Direction,
+        rule: OpRule,
+        reason: str,
+        ctx: DecisionContext,
+        floor: int = 0,
+    ) -> OpDecision:
+        """One step of ``op`` in ``direction``, kept within [min size,
+        upscale ceiling]. A downscale also keeps at least ``floor`` actors."""
+        pool = op.actor_pool
+        cur_size = pool.serving_size()
+        delta = self.steps.delta(op=op, direction=direction, size=cur_size)
+        match direction:
+            case Direction.UP:
+                target = cur_size + delta
+                delta = target - op.actor_pool.serving_size()
+                if delta <= 0:
+                    return OpDecision(OpRule.NONE)
+                want = _cap_at_ceiling(
+                    op=op,
+                    want=ActorPoolScalingRequest.upscale(delta=delta, reason=reason),
+                    ctx=ctx,
+                )
+                return (
+                    OpDecision(rule, want)
+                    if want is not None
+                    else OpDecision(OpRule.NONE)
+                )
+            case Direction.DOWN:
+                delta = max(delta, pool.min_size() - cur_size, floor - cur_size)
+                if delta >= 0:
+                    return OpDecision(OpRule.NONE)
+                return OpDecision(
+                    rule,
+                    ActorPoolScalingRequest.downscale(
+                        delta=delta, force=True, reason=reason
+                    ),
+                )
+        raise AssertionError(f"unknown direction for {direction} to scale")
+
+    @staticmethod
+    def _upscale_to_min(
+        op: "ExperimentalActorPoolMapOperator",
+    ) -> Optional[OpDecision]:
+        """An upscale to min size when ``op`` is below it (min size is a floor
+        the user set, so the upscale ceiling does not cut it)."""
+        pool = op.actor_pool
+        below_min = pool.min_size() - pool.serving_size()
+        if below_min <= 0:
+            return None
+        return OpDecision(
+            OpRule.UPSCALE_TO_MIN,
+            ActorPoolScalingRequest.upscale(delta=below_min, reason="below min size"),
+        )
+
+    # --- signals ----------------------------------------------------------------
+
+    def _feeds_starving_op(
+        self,
+        *,
+        op: "ExperimentalActorPoolMapOperator",
+        bottleneck_snapshot: Snapshot["ExperimentalActorPoolMapOperator"],
+    ) -> bool:
+        """Whether an op that ``op`` feeds starves at least
+        ``_CONSUMER_STARVED_MAX`` of its slot time."""
+        return any(
+            bottleneck_snapshot.shares[consumer].starved >= _CONSUMER_STARVED_MAX
+            for consumer in self._profiles.next_ops.get(op, ())
+            if consumer in bottleneck_snapshot.shares
+        )
+
+    def _reset_steps_on_allocation_change(self, *, ctx: DecisionContext) -> None:
+        """Start every op's steps over when the dataset's allocation changed
+        since the last tick: the steps learned before it no longer fit."""
+        age = ctx.snapshot.seconds_since_allocation_change
+        if (
+            self._last_allocation_age_s is not None
+            and age < self._last_allocation_age_s
+        ):
+            logger.debug("SizingPolicy: allocation changed; step sizes reset")
+            self.steps.reset()
+        self._last_allocation_age_s = age
+
+
+def _downscale_floor(*, op: "ExperimentalActorPoolMapOperator", wasted: float) -> int:
+    """The fewest actors that can do ``op``'s work without crossing
+    ``_BUSY_SHARE_MIN``, given that ``wasted`` of its slot time did no work.
+
+    The work left after a downscale stays the same, so the remaining actors'
+    busy share grows by ``size / new size``. A downscale that pushed it past
+    ``_BUSY_SHARE_MIN`` would upscale the op again in the next window.
+    """
+    size = op.actor_pool.serving_size()
+    return math.ceil(size * (1.0 - wasted) / _BUSY_SHARE_MIN)
+
+
+def _cap_at_ceiling(
+    *,
+    op: "ExperimentalActorPoolMapOperator",
+    want: Optional[ActorPoolScalingRequest],
+    ctx: DecisionContext,
+) -> Optional[ActorPoolScalingRequest]:
+    """Cut an upscale to ``op``'s upscale ceiling, or None if it is there."""
+    if want is None or want.delta <= 0:
+        return want
+    allowed = (
+        upscale_ceiling(op=op, op_state=ctx.topology.get(op))
+        - op.actor_pool.serving_size()
+    )
+    if allowed <= 0:
+        return None
+    if allowed >= want.delta:
+        return want
+    return ActorPoolScalingRequest.upscale(delta=allowed, reason=want.reason)
 
 
 def _within_capacity(
-    op: "ExperimentalActorPoolMapOperator", decision: OpDecision, ctx: DecisionContext
+    *,
+    op: "ExperimentalActorPoolMapOperator",
+    decision: OpDecision,
+    ctx: DecisionContext,
 ) -> OpDecision:
     """``decision`` with its upscale cut to what still fits, granted in the
-    ledger. Downscales pass through. Warmup shares are already bounded, but
-    cutting them too keeps a constrained op from getting an all-cluster share
-    it cannot place. An upscale with no room left keeps its rule but drops
-    its request."""
+    ledger. Downscales pass through. An upscale with no room left keeps its
+    rule but drops its request."""
     want = decision.request
     if want is None or want.delta <= 0:
         return decision
@@ -213,599 +444,3 @@ def _within_capacity(
         decision.rule,
         request=ActorPoolScalingRequest.upscale(delta=delta, reason=want.reason),
     )
-
-
-class SizingPolicy:
-    """Decides one action per op each tick. Owns what persists across ticks:
-    open transfers (``TransferBook``), the surplus streaks, and the per-op
-    rules' idle streaks."""
-
-    # The metrics label for this policy's actions and refusals.
-    name = "bottleneck_transfer"
-
-    def __init__(
-        self,
-        metrics: OptimizerMetrics,
-        placement: "ActorPlacementStrategy",
-        statuses: OpStatusMachine,
-        profiles: OpProfiles,
-    ):
-        self._metrics = metrics
-        self.per_op = PerOpRules(profiles=profiles)
-        # The bottleneck decision of the last tick, for logs and tests.
-        self.last_move: Optional[BottleneckMove] = None
-        self._placement = placement
-        self._statuses = statuses
-        self._transfer_book = TransferBook(self.name, metrics, placement, statuses)
-        # Per donor: consecutive ticks it has had surplus toward the recipient.
-        self._surplus_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
-        # Per op: consecutive ticks it has been blocked with surplus while
-        # there was no recipient.
-        self._blocked_streak: Dict["ExperimentalActorPoolMapOperator", int] = {}
-
-    @property
-    def transfers(self) -> TransferBook:
-        return self._transfer_book
-
-    @property
-    def transfer_phase(self) -> TransferPhase:
-        return self._transfer_book.phase
-
-    def decide(self, ctx: DecisionContext) -> OpDecisions:
-        """One tick: one ``OpDecision`` per op.
-
-        1. Bring up the recipient actors that the open transfers found room
-           for this tick (FUND). The sizer advanced the transfers and
-           reserved their room before the tick's bottleneck model ran.
-        2. Choose one bottleneck move and make it (``_make_move``), over
-           the Active ops only, read once from the op statuses. The move
-           names the rule for each op it resizes (GROW_FREE, GROW_BALANCED,
-           DONATE, SHRINK_SURPLUS), and its requests already name their
-           nodes. Steps 1 and 2 never share an op: step 1's ops are never
-           Active, and step 2's always are; ``decide`` asserts both.
-        3. Run the per-op rules for every op that steps 1 and 2 did not
-           touch, in the tick's op order, and grant each upscale only what
-           is still free. A completed op always gets its per-op action.
-
-        Every step checks and spends capacity in ``ctx.capacity``, so a
-        later step never hands out capacity an earlier one took.
-        """
-        # 1. Bring up the recipient actors that the open transfers found room
-        # for (FUND).
-        op_decisions = _build_op_decisions(
-            rule=OpRule.FUND,
-            requests=self._transfer_book.bring_up_held_actors(),
-        )
-
-        # Step 1 funds only the recipients of open transfers. Each recipient is
-        # Receiving, or Completed if it finished during its transfer, so none
-        # is Active. Step 1 issues nothing for the donors, which stay Donating
-        # until their transfer closes.
-        active_ops = self._statuses.active_ops(ctx.apmo_profiles.actor_pool_ops)
-        funded_active = op_decisions.keys() & active_ops
-        assert (
-            not funded_active
-        ), f"transfers cannot fund Active ops, but got: {funded_active}"
-
-        # 2. Choose this tick's bottleneck move and make it on the Active ops.
-        move = choose_bottleneck_move(ctx, active_ops)
-        self.last_move = move
-        logger.debug(
-            "SizingPolicy: phase=%s transfer=%s move=%s%s (%s)",
-            ctx.phase.value,
-            self._transfer_book.phase.value,
-            move.name,
-            _move_targets(move),
-            move.reason,
-        )
-        # The move resizes only Active ops, so it never resizes an op that
-        # step 1 funded.
-        moved = self._make_move(move, ctx, active_ops)
-        not_active = moved.keys() - active_ops
-        assert not not_active, f"{move.name} resized ops not Active: {not_active}"
-        op_decisions.update(moved)
-
-        # 3. Size every op that steps 1 and 2 left alone with the per-op rules.
-        # A completed op always gets its per-op action.
-        if ctx.snapshot is not None:
-            for op in ctx.snapshot.ordered_ops:
-                if op in op_decisions and not op.has_completed():
-                    continue
-                wanted = self.per_op.decide(
-                    op,
-                    status=self._statuses.status(op),
-                    phase=ctx.phase,
-                    modeled=op in ctx.modeled_ops,
-                    snapshot=ctx.snapshot,
-                    op_state=ctx.topology[op],
-                )
-                op_decisions[op] = _within_capacity(op, wanted, ctx)
-        return op_decisions
-
-    # --- the bottleneck move ---------------------------------------------------
-
-    def _make_move(
-        self,
-        move: BottleneckMove,
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> OpDecisions:
-        """Resize the ops ``move`` names, each under its ``OpRule``."""
-        match move:
-            case GrowFree(op=op, target=target):
-                return _build_op_decisions(
-                    rule=OpRule.GROW_FREE,
-                    requests=self._grow_each({op: target}, move.reason, ctx),
-                )
-            case GrowBalanced(targets=targets):
-                return _build_op_decisions(
-                    rule=OpRule.GROW_BALANCED,
-                    requests=self._grow_each(targets, move.reason, ctx),
-                )
-            case FundRecipient(recipient=recipient):
-                return _build_op_decisions(
-                    rule=OpRule.DONATE,
-                    requests=self._fund_recipient(recipient, ctx, active),
-                )
-            case ShrinkSurplus():
-                return _build_op_decisions(
-                    rule=OpRule.SHRINK_SURPLUS,
-                    requests=self._shrink_surplus(ctx, active),
-                )
-            case Hold(reason=reason):
-                if reason == HOLD_CLUSTER_SETTLING:
-                    self._metrics.record_refusal(self.name, reason)
-                return {}
-        raise AssertionError(f"unknown bottleneck move: {move}")
-
-    def _grow_each(
-        self,
-        targets: Mapping["ExperimentalActorPoolMapOperator", int],
-        reason: str,
-        ctx: DecisionContext,
-    ) -> List[PlacedSizingRequest]:
-        """Grow every op in ``targets`` toward its size, in order, each
-        planned against the free capacity the ones before it left."""
-        requests: List[PlacedSizingRequest] = []
-        for op, target in targets.items():
-            growth = plan_free_growth(op, target, ctx)
-            if growth is None:
-                continue
-            grown = apply_free_growth(op, growth, ctx, self._placement, reason=reason)
-            if grown is not None:
-                requests.append(grown)
-        return requests
-
-    def _fund_recipient(
-        self,
-        recipient: "ExperimentalActorPoolMapOperator",
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> List[PlacedSizingRequest]:
-        """Return the donors' downscales that fund ``recipient``: a new
-        transfer when none is open, and drains of donors' surplus. The
-        recipient's actors come up on later ticks, as the donors' actors go
-        (FUND, in ``bring_up_held_actors``)."""
-        tick = ctx.bottleneck
-        assert tick is not None
-        self._blocked_streak.clear()
-        requests: List[PlacedSizingRequest] = []
-        can_begin_transfer: bool = (
-            # 1) Must not have multiple transfers in flight
-            self._transfer_book.phase is TransferPhase.IDLE
-            # 2) Must be able to grow
-            and why_cannot_grow(recipient, active) is None
-        )
-        if can_begin_transfer:
-            # One transfer at a time: let the window refill before the next.
-            requests.extend(self._transfer_to(recipient, tick, ctx, active))
-        requests.extend(self._shrink_toward_keep(recipient, tick, ctx, active))
-        return requests
-
-    def _shrink_surplus(
-        self,
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> List[PlacedSizingRequest]:
-        tick = ctx.bottleneck
-        assert tick is not None
-        self._surplus_streak.clear()
-        return self._shrink_blocked_surplus(tick, ctx, active)
-
-    def _transfer_to(
-        self,
-        recipient: "ExperimentalActorPoolMapOperator",
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> List[PlacedSizingRequest]:
-        nodes = ctx.capacity.free_nodes(recipient)
-        if not nodes:
-            return []
-        pool = recipient.actor_pool
-        b = pool.serving_size()
-        ceiling = growth_ceiling(recipient, ctx.topology.get(recipient))
-        if b >= ceiling:
-            logger.debug(
-                "SizingPolicy: bottleneck %s (b=%d) not funded: at its "
-                "growth ceiling",
-                recipient.name,
-                b,
-            )
-            return []
-        views = self._donor_views(recipient, tick, ctx, active)
-        if not views:
-            self._metrics.record_refusal(self.name, "no_donor")
-            return []
-
-        def victim_key(candidate: VictimCandidate) -> Optional[Tuple]:
-            # Only victims that free right away: pending, or idle with every
-            # output consumed. Anything else drains through
-            # ``_shrink_toward_keep``, outside a transfer, so a slow drain
-            # never blocks the next transfer.
-            pending = candidate.eviction_rank % 3 == 0
-            idle = candidate.tasks_in_flight == 0 and candidate.unconsumed_outputs == 0
-            if not (pending or idle):
-                return None
-            ttf = tick.victim_ttf(
-                candidate.donor.op,
-                candidate.tasks_in_flight,
-                candidate.unconsumed_outputs,
-            )
-            return (not pending, ttf, candidate.eviction_rank)
-
-        best: Optional[Tuple[int, List[NodePlan], Dict]] = None
-        top = min(
-            max_step_size(b, pool.bounded_max_size()),
-            tick.growth_target(recipient),
-            ceiling,
-        )
-        for b_prime in range(b + 1, max(top, b + 1) + 1):
-            slack_by_op = tick.slack_for(recipient, b_prime)
-            donors: List[DonorCapacity] = []
-            for donor in views:
-                donor_pool = donor.op.actor_pool
-                removable = min(
-                    slack_by_op.get(donor.op, 0),
-                    donor_pool.serving_size() - donor_pool.min_size(),
-                )
-                if removable > 0:
-                    donors.append(dataclasses.replace(donor, removable=removable))
-            if not donors:
-                break
-            plan, _ = self._transfer_book.plan(
-                recipient, b_prime - b, nodes, donors, ctx, victim_key=victim_key
-            )
-            placed = sum(p.num_recipient_actors for p in plan or ())
-            if plan is None or placed < b_prime - b:
-                # Feasibility is monotone in b': a larger step needs more
-                # victims from donors with less slack.
-                break
-            best = (b_prime, plan, {donor.op: donor for donor in donors})
-        if best is None:
-            self._metrics.record_refusal(self.name, "victims_insufficient")
-            logger.debug(
-                "SizingPolicy: bottleneck %s (b=%d) cannot be funded now: "
-                "no idle or pending donor actor frees a node it may use",
-                recipient.name,
-                b,
-            )
-            return []
-        b_prime, plan, donors_by_op = best
-        ttfs = [
-            tick.victim_ttf(v.donor.op, v.tasks_in_flight, v.unconsumed_outputs)
-            for node_plan in plan
-            for v in node_plan.victims
-        ]
-        timeout_s = transfer_timeout_s(ttfs)
-        # Before firing: ``_fire`` consumes the donors' removable counts.
-        donors_summary = ", ".join(
-            f"{op.name} x{count} (slack {donors_by_op[op].removable})"
-            for op, count in _victims_by_donor(plan).items()
-        )
-        fired = self._transfer_book.fire(
-            recipient, plan, donors_by_op, ctx, timeout_s=timeout_s
-        )
-        if not fired:
-            logger.debug(
-                "SizingPolicy: bottleneck %s %d -> %d not fired: it would "
-                "reverse a recent transfer (thrash guard)",
-                recipient.name,
-                b,
-                b_prime,
-            )
-            return fired
-        severity = dict(tick.assessment.stable).get(recipient, float("nan"))
-        logger.debug(
-            "SizingPolicy: bottleneck %s (sev=%.2f) %d -> %d from %s; "
-            "victim ttf max=%.0fs, timeout=%.0fs",
-            recipient.name,
-            severity,
-            b,
-            b_prime,
-            donors_summary,
-            max(ttfs, default=0.0),
-            timeout_s,
-        )
-        return fired
-
-    def _shrink_toward_keep(
-        self,
-        recipient: "ExperimentalActorPoolMapOperator",
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> List[PlacedSizingRequest]:
-        """Drain one actor from each donor that has had surplus toward the
-        recipient for a streak of ticks: its keep size is its actors less its
-        slack at the recipient's next step.
-
-        No transfer is opened and nothing is held: the actor drains normally
-        (until its tasks finish and its outputs are consumed), and the freed
-        capacity reaches the recipient through growth into free capacity.
-        If the donor is needed again first, growing it reclaims its draining
-        actor, which cancels the drain. One drain at a time per donor, so
-        surplus measured over a lagging window is not over-taken. A donor
-        feeding an op that starves (``_CONSUMER_STARVED_MAX``) is not drained.
-        """
-        pool = recipient.actor_pool
-        b = pool.serving_size()
-        b_prime = max(
-            b + 1,
-            min(
-                max_step_size(b, pool.bounded_max_size()),
-                tick.growth_target(recipient),
-            ),
-        )
-        slack_by_op = tick.slack_for(recipient, b_prime)
-        recipient_per_actor = pool.per_actor_resource_usage()
-        recipient_nodes = ctx.schedulable_nodes.get(recipient, frozenset())
-        requests: List[PlacedSizingRequest] = []
-        seen = set()
-        for donor in self._donor_views(recipient, tick, ctx, active):
-            op = donor.op
-            seen.add(op)
-            donor_pool = op.actor_pool
-            surplus = min(
-                slack_by_op.get(op, 0),
-                donor_pool.serving_size() - donor_pool.min_size(),
-            )
-            if surplus < 1 or self._keeps_consumer_fed(op, tick, ctx):
-                self._surplus_streak.pop(op, None)
-                continue
-            streak = self._surplus_streak.get(op, 0) + 1
-            self._surplus_streak[op] = streak
-            if (
-                streak < _SURPLUS_STREAK_TICKS
-                or donor_pool.num_draining_actors() > 0
-                or donor_pool.num_pending_actors() > 0
-            ):
-                continue
-            node, ttf = self._surplus_victim_node(
-                donor, recipient_per_actor, recipient_nodes, tick, ctx
-            )
-            if node is None:
-                continue
-            self._surplus_streak[op] = 0
-            logger.debug(
-                "SizingPolicy: surplus %s -1 on %s (slack %d toward %s at "
-                "%d -> %d; victim ttf %.0fs)",
-                op.name,
-                node,
-                surplus,
-                recipient.name,
-                b,
-                b_prime,
-                ttf,
-            )
-            requests.append(
-                PlacedSizingRequest(
-                    request={
-                        op: ScaleDownRequest.on_nodes(
-                            (node,),
-                            force=True,
-                            reason=f"optimizer: surplus for {recipient.name}",
-                        )
-                    }
-                )
-            )
-        for op in [op for op in self._surplus_streak if op not in seen]:
-            del self._surplus_streak[op]
-        return requests
-
-    def _shrink_blocked_surplus(
-        self,
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> List[PlacedSizingRequest]:
-        """With no recipient: drain one actor from each op whose output edge
-        is blocked (budget full while the consumer had no idle slot) at least
-        ``_BLOCKED_SHARE_MIN`` of the time, down toward its keep size (actors
-        needed for its busy and self-limited time, at least
-        ``_BLOCKED_KEEP_FLOOR``). Such actors hold full output budgets in the
-        object store and add no throughput while the consumer is the limit.
-        Same streak, one-drain-at-a-time and starving-consumer check as
-        ``_shrink_toward_keep``."""
-        blocked_by_op: Dict["ExperimentalActorPoolMapOperator", float] = {}
-        self_by_op: Dict["ExperimentalActorPoolMapOperator", float] = {}
-        for edge in tick.snapshot.edges:
-            blocked_by_op[edge.producer] = max(
-                blocked_by_op.get(edge.producer, 0.0), edge.producer_blocked
-            )
-            self_by_op[edge.producer] = max(
-                self_by_op.get(edge.producer, 0.0), edge.producer_self_limited
-            )
-        named = {op for op, _ in tick.snapshot.bottlenecks} | set(tick.stable)
-        requests: List[PlacedSizingRequest] = []
-        seen = set()
-        for op in ctx.apmo_profiles.non_pg_ops:
-            shares = tick.snapshot.shares.get(op)
-            if (
-                shares is None
-                or op in named
-                or op.has_completed()
-                or op not in active
-                or blocked_by_op.get(op, 0.0) < _BLOCKED_SHARE_MIN
-            ):
-                continue
-            pool = op.actor_pool
-            needed = min(1.0, shares.busy + self_by_op.get(op, 0.0))
-            keep = max(
-                _BLOCKED_KEEP_FLOOR,
-                pool.min_size(),
-                math.ceil(
-                    pool.serving_size() * needed * (1 + SIZER_BOTTLENECK_SLACK_MARGIN)
-                ),
-            )
-            if pool.serving_size() <= keep or self._keeps_consumer_fed(op, tick, ctx):
-                continue
-            seen.add(op)
-            streak = self._blocked_streak.get(op, 0) + 1
-            self._blocked_streak[op] = streak
-            if (
-                streak < _SURPLUS_STREAK_TICKS
-                or pool.num_draining_actors() > 0
-                or pool.num_pending_actors() > 0
-            ):
-                continue
-            donor = DonorCapacity(
-                op=op,
-                view=placement_view.build_op_placement_view(op, rank_victims=True),
-                per_actor=pool.per_actor_resource_usage(),
-                removable=0,
-            )
-            node, ttf = self._surplus_victim_node(donor, None, None, tick, ctx)
-            if node is None:
-                continue
-            self._blocked_streak[op] = 0
-            logger.debug(
-                "SizingPolicy: blocked surplus %s -1 on %s (blocked %.2f, "
-                "keep %d of %d; victim ttf %.0fs)",
-                op.name,
-                node,
-                blocked_by_op[op],
-                keep,
-                pool.serving_size(),
-                ttf,
-            )
-            requests.append(
-                PlacedSizingRequest(
-                    request={
-                        op: ScaleDownRequest.on_nodes(
-                            (node,),
-                            force=True,
-                            reason="optimizer: blocked surplus",
-                        )
-                    }
-                )
-            )
-        for op in [op for op in self._blocked_streak if op not in seen]:
-            del self._blocked_streak[op]
-        return requests
-
-    @staticmethod
-    def _starved_consumer(
-        op: "ExperimentalActorPoolMapOperator",
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-    ) -> Optional[Tuple["ExperimentalActorPoolMapOperator", float]]:
-        """An op ``op`` feeds that starves at least ``_CONSUMER_STARVED_MAX``
-        of the time, with its starved share, or None."""
-        for consumer in ctx.apmo_profiles.next_ops.get(op, ()):
-            shares = tick.snapshot.shares.get(consumer)
-            if shares is not None and shares.starved >= _CONSUMER_STARVED_MAX:
-                return consumer, shares.starved
-        return None
-
-    def _keeps_consumer_fed(
-        self,
-        op: "ExperimentalActorPoolMapOperator",
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-    ) -> bool:
-        """Whether ``op`` must not shrink because an op it feeds is starving.
-        Logs the skip."""
-        starved = self._starved_consumer(op, tick, ctx)
-        if starved is None:
-            return False
-        consumer, share = starved
-        logger.debug(
-            "SizingPolicy: %s not shrunk: %s it feeds is starved %.2f",
-            op.name,
-            consumer.name,
-            share,
-        )
-        return True
-
-    @staticmethod
-    def _surplus_victim_node(
-        donor: DonorCapacity,
-        recipient_per_actor: Optional[ExecutionResources],
-        recipient_nodes: Optional[AbstractSet[NodeIdStr]],
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-    ) -> Tuple[Optional[NodeIdStr], float]:
-        """The node to drain a donor actor on: the one whose cheapest victim
-        frees soonest, and, given a recipient, one where it may run and one of
-        its actors fits once that victim frees. (None, 0) if none."""
-        best: Optional[Tuple[NodeIdStr, float]] = None
-        for node, costs in donor.view.victim_drain_cost_by_node.items():
-            if not costs:
-                continue
-            if recipient_per_actor is not None:
-                if recipient_nodes is None or node not in recipient_nodes:
-                    continue
-                room = ctx.capacity.free.get(node, ExecutionResources.zero()).add(
-                    donor.per_actor
-                )
-                if max_placeable_actors(room, recipient_per_actor) < 1:
-                    continue
-            ttf = min(
-                tick.victim_ttf(donor.op, in_flight, unconsumed)
-                for in_flight, unconsumed in costs
-            )
-            if best is None or ttf < best[1]:
-                best = (node, ttf)
-        return best if best is not None else (None, 0.0)
-
-    def _donor_views(
-        self,
-        recipient: "ExperimentalActorPoolMapOperator",
-        tick: "BottleneckTick",
-        ctx: DecisionContext,
-        active: AbstractSet["ExperimentalActorPoolMapOperator"],
-    ) -> List[DonorCapacity]:
-        """Candidate donors: non-PG ops the model has shares for, other than
-        the recipient and every stable bottleneck (never take from an op that
-        was a bottleneck within the last window), and in ``active``. Their
-        removable count is set per b' from slack."""
-        donors: List[DonorCapacity] = []
-        for op in ctx.apmo_profiles.non_pg_ops:
-            if (
-                op is recipient
-                or op in tick.stable
-                or op not in tick.snapshot.shares
-                or op.has_completed()
-                or op not in active
-            ):
-                continue
-            donors.append(
-                DonorCapacity(
-                    op=op,
-                    view=placement_view.build_op_placement_view(op, rank_victims=True),
-                    per_actor=op.actor_pool.per_actor_resource_usage(),
-                    removable=0,
-                )
-            )
-        return donors
-
-
-def _victims_by_donor(
-    plan: List[NodePlan],
-) -> Dict["ExperimentalActorPoolMapOperator", int]:
-    counts: Dict["ExperimentalActorPoolMapOperator", int] = {}
-    for node_plan in plan:
-        for op, count in node_plan.victims_by_donor().items():
-            counts[op] = counts.get(op, 0) + count
-    return counts

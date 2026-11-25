@@ -1,7 +1,6 @@
 """What the sizer's phases hand each other.
 
-The placed requests one tick hands the pools (``PlacedRequests``), a
-batch of placed requests the policy builds (``PlacedSizingRequest``), and the
+The placed requests one tick hands the pools (``PlacedRequests``), and the
 capacity one tick decides against (``ClusterStateSnapshot``).
 """
 
@@ -40,21 +39,10 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class PlacedRequests:
-    """What WHERE hands APPLY: every request of the tick, each naming its
-    nodes.
+    """What WHERE hands APPLY: each op's request of the tick, naming its
+    nodes."""
 
-    ``by_op``: per op, its requests in the order to apply them. Usually one;
-    a donor that sheds on several nodes has one per node.
-    """
-
-    by_op: Dict["ExperimentalActorPoolMapOperator", Tuple["PlacedScalingRequest", ...]]
-
-
-@dataclass(frozen=True)
-class PlacedSizingRequest:
-    """A batch of placed requests the policy builds, one per op."""
-
-    request: Dict["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"]
+    by_op: Dict["ExperimentalActorPoolMapOperator", "PlacedScalingRequest"]
 
 
 @dataclass
@@ -134,7 +122,7 @@ class ClusterStateSnapshot:
         for how each field is derived.
 
         So sometimes the autoscaling coordinator can give empty reservations.
-        (Either on cold start cache, or possibly reserveation shrink). This flag
+        (Either on cold start cache, or possibly a smaller reservation). This flag
         `trust_empty_reservation` tells us if the empty reservation is safe to trust.
         """
         zero = ExecutionResources.zero()
