@@ -14,7 +14,7 @@ from ray.data._internal.actor_autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.execution.interfaces.common import ActorStatus
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
-    EdgeShares,
+    EdgeShareBreakdown,
     OpShareBreakdown,
     Snapshot,
 )
@@ -120,7 +120,7 @@ def _bottleneck_snapshot(
     shares: Dict[Any, Tuple[float, float, float]],
     *,
     bottlenecks: Sequence[Tuple[Any, float]] = (),
-    edge_shares: Optional[Dict[Tuple[Any, Any], EdgeShares]] = None,
+    edge_shares: Optional[Dict[Tuple[Any, Any], EdgeShareBreakdown]] = None,
 ) -> Snapshot:
     """A bottleneck snapshot over ``shares``: op -> (busy, obp, starved)."""
     return Snapshot(
@@ -462,7 +462,7 @@ def test_decide_op_keeps_a_blocked_op_that_feeds_a_starving_op(
     bottleneck_snapshot = _bottleneck_snapshot(
         {producer: (0.1, 0.85, 0.05), consumer: (0.5, 0, consumer_starved)},
         edge_shares={
-            (producer, consumer): EdgeShares(
+            (producer, consumer): EdgeShareBreakdown(
                 producer_blocked=0.85, producer_self_limited=0
             )
         },

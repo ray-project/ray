@@ -101,7 +101,7 @@ class Arrow(enum.Enum):
 
 
 @dataclass(frozen=True)
-class EdgeShares:
+class EdgeShareBreakdown:
     """One edge's joint shares over the window, as fractions of the
     producer's slot time: its output-backpressured time, split by what the
     consumer was doing at that moment."""
@@ -119,7 +119,7 @@ Adjacency = Dict[K, Tuple[K, ...]]
 OpShares = Dict[K, OpShareBreakdown]
 # (producer, consumer)
 EdgeKey = Tuple[K, K]
-EdgeSharesByEdge = Dict[EdgeKey[K], EdgeShares]
+EdgeSharesByEdge = Dict[EdgeKey[K], EdgeShareBreakdown]
 
 
 @dataclass(frozen=True)
@@ -127,7 +127,7 @@ class Edge(Generic[K]):
     producer: K
     consumer: K
     # The edge's joint shares, as fractions of the producer's slot time.
-    shares: EdgeShares
+    shares: EdgeShareBreakdown
     consumer_starved: float
     arrow: Arrow
 
@@ -146,7 +146,8 @@ class Snapshot(Generic[K]):
 # --- pure analysis ---------------------------------------------------------
 
 
-def classify_edge(
+def classify_edge_direction(
+    *,
     producer_blocked: float,
     producer_self_limited: float,
     consumer_starved: float,
@@ -167,38 +168,51 @@ def classify_edge(
     return Arrow.TIE
 
 
-def edge_shares_of(
+def get_edge_share_breakdown_or_default(
+    *,
     producer: K,
     consumer: K,
     shares: OpShares[K],
     edge_shares: Optional[EdgeSharesByEdge[K]],
-) -> EdgeShares:
+) -> EdgeShareBreakdown:
     """The edge's joint shares, or, without them, all of the producer's
     output backpressure counted as blocked by the consumer."""
     joint = (edge_shares or {}).get((producer, consumer))
     if joint is not None:
         return joint
-    return EdgeShares(producer_blocked=shares[producer].obp, producer_self_limited=0.0)
+    return EdgeShareBreakdown(
+        producer_blocked=shares[producer].obp,
+        producer_self_limited=0.0,
+    )
 
 
 def blocked_share(
+    *,
     op: K,
     shares: OpShares[K],
     next_ops: Adjacency[K],
     edge_shares: Optional[EdgeSharesByEdge[K]],
 ) -> float:
-    """Share of ``op``'s slot time a consumer held it back: the largest over
-    its out-edges to consumers with shares, or its whole output backpressure
-    when no consumer has shares (e.g. a non-actor-pool sink)."""
-    consumers = [c for c in next_ops.get(op, ()) if c in shares]
+    """Share of ``op``'s slot time a consumer held it back."""
+    consumers = next_ops[op]
+    # 1. If no consumers, then just measure the raw OBP
     if not consumers:
         return shares[op].obp
+    # 2. Otherwise, get the more accurate producer_blocked. Note
+    # that OBP = producer_blocked + self-limited.
     return max(
-        edge_shares_of(op, c, shares, edge_shares).producer_blocked for c in consumers
+        get_edge_share_breakdown_or_default(
+            producer=op,
+            consumer=c,
+            shares=shares,
+            edge_shares=edge_shares,
+        ).producer_blocked
+        for c in consumers
     )
 
 
 def build_edges(
+    *,
     shares: OpShares[K],
     next_ops: Adjacency[K],
     margin: float,
@@ -212,7 +226,12 @@ def build_edges(
         for consumer in consumers:
             if consumer not in shares:
                 continue
-            joint = edge_shares_of(producer, consumer, shares, edge_shares)
+            joint = get_edge_share_breakdown_or_default(
+                producer=producer,
+                consumer=consumer,
+                shares=shares,
+                edge_shares=edge_shares,
+            )
             c_starved = shares[consumer].starved
             edges.append(
                 Edge(
@@ -220,11 +239,11 @@ def build_edges(
                     consumer=consumer,
                     shares=joint,
                     consumer_starved=c_starved,
-                    arrow=classify_edge(
-                        joint.producer_blocked,
-                        joint.producer_self_limited,
-                        c_starved,
-                        margin,
+                    arrow=classify_edge_direction(
+                        producer_blocked=joint.producer_blocked,
+                        producer_self_limited=joint.producer_self_limited,
+                        consumer_starved=c_starved,
+                        margin=margin,
                     ),
                 )
             )
@@ -232,6 +251,7 @@ def build_edges(
 
 
 def find_bottlenecks(
+    *,
     shares: OpShares[K],
     edges: Sequence[Edge[K]],
     margin: float,
@@ -255,11 +275,18 @@ def find_bottlenecks(
         op
         for op in shares
         if op not in has_outgoing
-        and blocked_share(op, shares, next_ops, edge_shares) <= 1 - margin
+        and blocked_share(
+            op=op,
+            shares=shares,
+            next_ops=next_ops,
+            edge_shares=edge_shares,
+        )
+        <= 1 - margin
     ]
 
 
 def severity(
+    *,
     op: K,
     shares: OpShares[K],
     prev_ops: Adjacency[K],
@@ -270,23 +297,28 @@ def severity(
     held it back: blocked(producers -> op) + starved(consumers) -
     (blocked(op) + starved(op))."""
     waiting_on = sum(
-        edge_shares_of(p, op, shares, edge_shares).producer_blocked
-        for p in prev_ops.get(op, ())
+        get_edge_share_breakdown_or_default(
+            producer=p, consumer=op, shares=shares, edge_shares=edge_shares
+        ).producer_blocked
+        for p in prev_ops[op]
         if p in shares
     )
-    waiting_on += sum(shares[c].starved for c in next_ops.get(op, ()) if c in shares)
-    own = blocked_share(op, shares, next_ops, edge_shares) + shares[op].starved
+    waiting_on += sum(shares[c].starved for c in next_ops[op] if c in shares)
+    own = (
+        blocked_share(op=op, shares=shares, next_ops=next_ops, edge_shares=edge_shares)
+        + shares[op].starved
+    )
     return waiting_on - own
 
 
-def path_between(src: K, dst: K, next_ops: Adjacency[K]) -> Optional[List[K]]:
+def path_between(*, src: K, dst: K, next_ops: Adjacency[K]) -> Optional[List[K]]:
     """Ops strictly between ``src`` and a downstream ``dst``, or None if
     ``dst`` is not downstream of ``src``."""
     stack: List[Tuple[K, List[K]]] = [(src, [])]
     seen = set()
     while stack:
         op, between = stack.pop()
-        for nxt in next_ops.get(op, ()):
+        for nxt in next_ops[op]:
             if nxt == dst:
                 return between
             if nxt not in seen:
@@ -296,21 +328,39 @@ def path_between(src: K, dst: K, next_ops: Adjacency[K]) -> Optional[List[K]]:
 
 
 def analyze(
+    *,
     shares: OpShares[K],
     prev_ops: Adjacency[K],
     next_ops: Adjacency[K],
-    *,
     arrow_margin: float,
     min_severity: float = 0.0,
     edge_shares: Optional[EdgeSharesByEdge[K]] = None,
 ) -> Snapshot[K]:
-    edges = build_edges(shares, next_ops, arrow_margin, edge_shares)
+    edges = build_edges(
+        shares=shares, next_ops=next_ops, margin=arrow_margin, edge_shares=edge_shares
+    )
     # Severity <= 0: no neighbour waits on the op more than it idles itself,
     # so upscaling it would not speed anything up. Below ``min_severity``, too
     # little waits on it to tell from noise.
+    bottlenecks = find_bottlenecks(
+        shares=shares,
+        edges=edges,
+        margin=arrow_margin,
+        next_ops=next_ops,
+        edge_shares=edge_shares,
+    )
     scored = (
-        (op, severity(op, shares, prev_ops, next_ops, edge_shares))
-        for op in find_bottlenecks(shares, edges, arrow_margin, next_ops, edge_shares)
+        (
+            op,
+            severity(
+                op=op,
+                shares=shares,
+                prev_ops=prev_ops,
+                next_ops=next_ops,
+                edge_shares=edge_shares,
+            ),
+        )
+        for op in bottlenecks
     )
     ranked = sorted(
         ((op, sev) for op, sev in scored if sev > 0 and sev >= min_severity),
@@ -341,7 +391,7 @@ def why_should_not_upscale_blocker(
         if (
             other is not op
             and sev > named[op]
-            and path_between(other, op, next_ops) is not None
+            and path_between(src=other, dst=op, next_ops=next_ops) is not None
         ):
             return "a more severe bottleneck is upstream"
     for edge in snapshot.edges:
@@ -355,18 +405,21 @@ def why_should_not_upscale_blocker(
 
 
 class _OpSample(NamedTuple):
-    """One op's slot time over one interval of ``dt`` seconds."""
+    """One op's slot time over one interval of ``dt`` seconds. See
+    ``bottleneck_observer.md`` for how each field relates to ``SlotUsage``.
+    """
 
     dt: float
     slot_s: float
-    busy_s: float
+    non_obp_busy_s: float
     obp_s: float
     starved_s: float
     unstaffed_s: float
 
 
 class _EdgeSample(NamedTuple):
-    """One edge's producer slot time over one interval of ``dt`` seconds."""
+    """One edge's producer slot time over one interval of ``dt`` seconds. See
+    ``EdgeShareWindow.record`` for the fields."""
 
     dt: float
     slot_s: float
@@ -374,7 +427,7 @@ class _EdgeSample(NamedTuple):
     self_limited_s: float
 
 
-class ShareWindow:
+class OpShareWindow:
     """Slot-time totals over the last ``window_s`` seconds.
 
     Each sample covers the interval since the previous one, in slot-seconds,
@@ -394,15 +447,34 @@ class ShareWindow:
         dt: float,
         actors: int,
         slot_s: float,
-        busy_s: float,
+        non_obp_busy_s: float,
         obp_s: float,
         starved_s: float,
         unstaffed: bool = False,
     ) -> None:
-        """One interval of ``dt`` seconds: ``slot_s`` slot-seconds of
-        capacity, split into busy / obp / starved (the rest was idle with a
-        bundle ready to dispatch). ``unstaffed``: no serving actor but input
-        is queued; the interval counts as one fully busy slot."""
+        """Record one interval.
+
+        non_obp_busy_s + obp_s + starved_s <= slot_s. The rest was idle with
+        a bundle ready to dispatch (a dispatch gap): the op's idle time in an
+        interval is either all starved or all dispatch gap, by whether a
+        bundle was ready at the sample.
+
+        Args:
+            dt: The interval's length, in seconds.
+            actors: Serving actors at the sample.
+            slot_s: Slot-seconds of capacity over the interval.
+            non_obp_busy_s: Slot-seconds holding a task on an actor not
+                output-backpressured.
+            obp_s: Slot-seconds on output-backpressured actors.
+            starved_s: Slot-seconds idle with no bundle ready to dispatch.
+            unstaffed: Whether the op had no serving actor but had queued
+                input at the sample. Without actors its slot time is 0, which
+                would drop it from the snapshot and leave its producer,
+                output-backpressured on it, named instead. So an interval
+                with no slot time at all counts as one fully busy slot
+                (``dt`` is added to both ``slot_s`` and ``non_obp_busy_s``);
+                one in which any actor served (``slot_s > 0``) gets no credit.
+        """
         self._latest_actors = actors
         if dt <= 0:
             return
@@ -411,12 +483,14 @@ class ShareWindow:
             _OpSample(
                 dt=dt,
                 slot_s=slot_s + unstaffed_s,
-                busy_s=busy_s + unstaffed_s,
+                non_obp_busy_s=non_obp_busy_s + unstaffed_s,
                 obp_s=obp_s,
                 starved_s=starved_s,
                 unstaffed_s=unstaffed_s,
             )
         )
+
+        # Here we move the sliding window.
         self._span_s += dt
         while self._samples and self._span_s - self._samples[0].dt >= self.window_s:
             self._span_s -= self._samples.popleft().dt
@@ -430,7 +504,7 @@ class ShareWindow:
         if slot_s <= 0:
             return None
         return OpShareBreakdown(
-            busy=sum(sample.busy_s for sample in self._samples) / slot_s,
+            busy=sum(sample.non_obp_busy_s for sample in self._samples) / slot_s,
             obp=sum(sample.obp_s for sample in self._samples) / slot_s,
             starved=sum(sample.starved_s for sample in self._samples) / slot_s,
             actors=self._latest_actors,
@@ -438,7 +512,7 @@ class ShareWindow:
         )
 
 
-class EdgeWindow:
+class EdgeShareWindow:
     """One edge's producer slot time over the last ``window_s`` seconds,
     with the parts output-backpressured while the consumer was saturated
     (``producer_blocked``) or had an idle slot (``producer_self_limited``)."""
@@ -452,6 +526,23 @@ class EdgeWindow:
     def record(
         self, *, dt: float, slot_s: float, blocked_s: float, self_limited_s: float
     ) -> None:
+        """Record one interval.
+
+        blocked_s + self_limited_s <= slot_s. Together they are the
+        producer's output-backpressured slot-seconds; the rest of ``slot_s``
+        it spent busy, starved or in a dispatch gap. The output-backpressured
+        time in an interval is either all blocked or all self-limited, by
+        whether the consumer was saturated at the sample.
+
+        Args:
+            dt: The interval's length, in seconds.
+            slot_s: The producer's slot-seconds of capacity over the interval.
+            blocked_s: Output-backpressured slot-seconds while the consumer
+                was saturated (no idle slot, or input queued with no actor).
+            self_limited_s: Output-backpressured slot-seconds while the
+                consumer had an idle slot, so the producer's own output budget
+                held it back.
+        """
         if dt <= 0:
             return
         self._samples.append(
@@ -466,7 +557,7 @@ class EdgeWindow:
         while self._samples and self._span_s - self._samples[0].dt >= self.window_s:
             self._span_s -= self._samples.popleft().dt
 
-    def shares(self) -> Optional[EdgeShares]:
+    def shares(self) -> Optional[EdgeShareBreakdown]:
         """None until a full window has been seen, or if the producer had no
         slot time in it."""
         if self._span_s < self.window_s:
@@ -474,7 +565,7 @@ class EdgeWindow:
         slot_s = sum(sample.slot_s for sample in self._samples)
         if slot_s <= 0:
             return None
-        return EdgeShares(
+        return EdgeShareBreakdown(
             producer_blocked=sum(sample.blocked_s for sample in self._samples) / slot_s,
             producer_self_limited=sum(sample.self_limited_s for sample in self._samples)
             / slot_s,
@@ -499,8 +590,8 @@ class BottleneckObserver:
         self._clock = clock
         self._arrow_margin = arrow_margin
         self._min_severity = min_severity
-        self._windows: Dict["EAPMO", ShareWindow] = {}
-        self._edge_windows: Dict[EdgeKey["EAPMO"], EdgeWindow] = {}
+        self._windows: Dict["EAPMO", OpShareWindow] = {}
+        self._edge_windows: Dict[EdgeKey["EAPMO"], EdgeShareWindow] = {}
         # Last read of each op's cumulative (busy-slot, slot) seconds.
         self._last_integrals: Dict["EAPMO", Tuple[float, float]] = {}
         self._last_t: Optional[float] = None
@@ -549,12 +640,12 @@ class BottleneckObserver:
         }
         for producer, usage in usages.items():
             obp_s = min(usage.obp_slots * dt, slot_s[producer])
-            for consumer in self._profiles.next_ops.get(producer, ()):
+            for consumer in self._profiles.next_ops[producer]:
                 if consumer not in usages:
                     continue
                 window = self._edge_windows.get((producer, consumer))
                 if window is None:
-                    window = self._edge_windows[(producer, consumer)] = EdgeWindow(
+                    window = self._edge_windows[(producer, consumer)] = EdgeShareWindow(
                         self.window_s
                     )
                 blocked_s = obp_s if saturated[consumer] else 0.0
@@ -587,8 +678,9 @@ class BottleneckObserver:
         # 2. This represents the obp slot-seconds
         obp_s = min(usage.obp_slots * dt, slot_s)
 
-        # 3. This represents busy slot-seconds
-        busy_s = min(
+        # 3. This represents non-obp busy slot-seconds: the busy integral
+        # less the output-backpressured actors' held slots.
+        non_obp_busy_s = min(
             max(0.0, busy_integral - usage.obp_busy_slots * dt),
             max(0.0, slot_s - obp_s),
         )
@@ -596,16 +688,16 @@ class BottleneckObserver:
         # 4. Compute the starved-seconds. Note that if the operator has a
         # dispatchable bundle, it's not starved, it just means that the
         # operator doesn't have free task slots.
-        starved_s = 0.0 if dispatchable else max(0.0, slot_s - obp_s - busy_s)
+        starved_s = 0.0 if dispatchable else max(0.0, slot_s - obp_s - non_obp_busy_s)
         window = self._windows.get(op)
         if window is None:
-            self._windows[op] = ShareWindow(self.window_s)
+            self._windows[op] = OpShareWindow(self.window_s)
             window = self._windows[op]
         window.record(
             dt=dt,
             actors=usage.serving_actors,
             slot_s=slot_s,
-            busy_s=busy_s,
+            non_obp_busy_s=non_obp_busy_s,
             obp_s=obp_s,
             starved_s=starved_s,
             unstaffed=usage.serving_actors == 0 and queued > 0,
@@ -624,9 +716,9 @@ class BottleneckObserver:
             if joint is not None:
                 edge_shares[edge] = joint
         return analyze(
-            shares,
-            self._profiles.prev_ops,
-            self._profiles.next_ops,
+            shares=shares,
+            prev_ops=self._profiles.prev_ops,
+            next_ops=self._profiles.next_ops,
             arrow_margin=self._arrow_margin,
             min_severity=self._min_severity,
             edge_shares=edge_shares,

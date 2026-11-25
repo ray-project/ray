@@ -15,11 +15,11 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     Adjacency,
     Arrow,
     BottleneckObserver,
-    EdgeShares,
+    EdgeShareBreakdown,
     OpShareBreakdown,
-    ShareWindow,
+    OpShareWindow,
     analyze,
-    classify_edge,
+    classify_edge_direction,
     format_snapshot,
     why_should_not_upscale_blocker,
 )
@@ -42,9 +42,9 @@ def _chain(*ops: str) -> Tuple[Adjacency[str], Adjacency[str]]:
 def _analyze(shares, *ops):
     prev_ops, next_ops = _chain(*ops)
     return analyze(
-        shares,
-        prev_ops,
-        next_ops,
+        shares=shares,
+        prev_ops=prev_ops,
+        next_ops=next_ops,
         arrow_margin=ARROW_MARGIN,
         min_severity=MIN_SEVERITY,
     )
@@ -62,9 +62,15 @@ def _analyze(shares, *ops):
         (0.0, 0.8, 0.57, Arrow.UPSTREAM),
     ],
 )
-def test_classify_edge(blocked, self_limited, consumer_starved, expected):
+def test_classify_edge_direction(blocked, self_limited, consumer_starved, expected):
     assert (
-        classify_edge(blocked, self_limited, consumer_starved, ARROW_MARGIN) is expected
+        classify_edge_direction(
+            producer_blocked=blocked,
+            producer_self_limited=self_limited,
+            consumer_starved=consumer_starved,
+            margin=ARROW_MARGIN,
+        )
+        is expected
     )
 
 
@@ -229,19 +235,19 @@ def test_output_backpressure_is_attributed_by_what_the_consumer_was_doing(
         ),
     }
     b_out = (
-        EdgeShares(producer_blocked=0.8, producer_self_limited=0.0)
+        EdgeShareBreakdown(producer_blocked=0.8, producer_self_limited=0.0)
         if consumer_saturated
-        else EdgeShares(producer_blocked=0.0, producer_self_limited=0.8)
+        else EdgeShareBreakdown(producer_blocked=0.0, producer_self_limited=0.8)
     )
     edge_shares = {
-        ("A", "B"): EdgeShares(producer_blocked=1.0, producer_self_limited=0.0),
+        ("A", "B"): EdgeShareBreakdown(producer_blocked=1.0, producer_self_limited=0.0),
         ("B", "W"): b_out,
     }
     prev_ops, next_ops = _chain("A", "B", "W")
     snapshot = analyze(
-        shares,
-        prev_ops,
-        next_ops,
+        shares=shares,
+        prev_ops=prev_ops,
+        next_ops=next_ops,
         arrow_margin=ARROW_MARGIN,
         min_severity=MIN_SEVERITY,
         edge_shares=edge_shares,
@@ -251,19 +257,19 @@ def test_output_backpressure_is_attributed_by_what_the_consumer_was_doing(
 
 
 def test_share_window_is_slot_time_weighted_and_slides():
-    window = ShareWindow(window_s=10.0)
-    window.record(dt=0.0, actors=4, slot_s=0, busy_s=0, obp_s=0, starved_s=0)
-    window.record(dt=5.0, actors=4, slot_s=20, busy_s=20, obp_s=0, starved_s=0)
+    window = OpShareWindow(window_s=10.0)
+    window.record(dt=0.0, actors=4, slot_s=0, non_obp_busy_s=0, obp_s=0, starved_s=0)
+    window.record(dt=5.0, actors=4, slot_s=20, non_obp_busy_s=20, obp_s=0, starved_s=0)
     assert window.shares() is None  # half a window
 
-    window.record(dt=5.0, actors=4, slot_s=20, busy_s=0, obp_s=20, starved_s=0)
+    window.record(dt=5.0, actors=4, slot_s=20, non_obp_busy_s=0, obp_s=20, starved_s=0)
     shares = window.shares()
     assert shares is not None
     assert (shares.busy, shares.obp, shares.starved) == (0.5, 0.5, 0.0)
     assert shares.actors == 4
 
     # Another 10s of starvation pushes the earlier samples out.
-    window.record(dt=10.0, actors=2, slot_s=20, busy_s=0, obp_s=0, starved_s=20)
+    window.record(dt=10.0, actors=2, slot_s=20, non_obp_busy_s=0, obp_s=0, starved_s=20)
     shares = window.shares()
     assert shares is not None
     assert (shares.busy, shares.obp, shares.starved) == (0.0, 0.0, 1.0)
@@ -271,19 +277,25 @@ def test_share_window_is_slot_time_weighted_and_slides():
 
 
 def test_share_window_counts_unstaffed_time_as_one_busy_slot():
-    window = ShareWindow(window_s=10.0)
+    window = OpShareWindow(window_s=10.0)
     window.record(
-        dt=5.0, actors=0, slot_s=0, busy_s=0, obp_s=0, starved_s=0, unstaffed=True
+        dt=5.0,
+        actors=0,
+        slot_s=0,
+        non_obp_busy_s=0,
+        obp_s=0,
+        starved_s=0,
+        unstaffed=True,
     )
-    window.record(dt=5.0, actors=1, slot_s=5, busy_s=0, obp_s=5, starved_s=0)
+    window.record(dt=5.0, actors=1, slot_s=5, non_obp_busy_s=0, obp_s=5, starved_s=0)
     shares = window.shares()
     assert shares is not None
     assert (shares.busy, shares.obp, shares.unstaffed) == (0.5, 0.5, 0.5)
     assert shares.actors == 1
 
     # No actors and nothing queued is no data, not a busy stage.
-    idle = ShareWindow(window_s=10.0)
-    idle.record(dt=10.0, actors=0, slot_s=0, busy_s=0, obp_s=0, starved_s=0)
+    idle = OpShareWindow(window_s=10.0)
+    idle.record(dt=10.0, actors=0, slot_s=0, non_obp_busy_s=0, obp_s=0, starved_s=0)
     assert idle.shares() is None
 
 
@@ -485,11 +497,11 @@ def test_observer_attributes_output_backpressure_by_consumer_state(
 
     (edge,) = snapshot.edges
     if expected == "C":
-        assert edge.shares == EdgeShares(
+        assert edge.shares == EdgeShareBreakdown(
             producer_blocked=1.0, producer_self_limited=0.0
         )
     else:
-        assert edge.shares == EdgeShares(
+        assert edge.shares == EdgeShareBreakdown(
             producer_blocked=0.0, producer_self_limited=1.0
         )
     names: Dict[Any, str] = {producer: "P", consumer: "C"}
@@ -556,7 +568,7 @@ def test_why_should_not_upscale_blocker(named, self_limited, op, expected):
     edge = bottleneck_observer.Edge(
         producer="R",
         consumer="C",
-        shares=EdgeShares(
+        shares=EdgeShareBreakdown(
             producer_blocked=1.0 - self_limited, producer_self_limited=self_limited
         ),
         consumer_starved=0.0,

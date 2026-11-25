@@ -51,7 +51,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     OpPlacementView,
 )
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
-    ShareWindow,
+    OpShareWindow,
 )
 from ray.data._internal.experimental.execution.sizer.capacity import (
     committed_by_node,
@@ -1011,7 +1011,7 @@ def test_warmup_lasts_one_window_after_the_pipeline_flows():
     assert sizer.phase is SizerPhase.WARMUP
     assert sizer._flowing_since_t is None
 
-    observer._windows[ops["infer"]] = ShareWindow(observer.window_s)
+    observer._windows[ops["infer"]] = OpShareWindow(observer.window_s)
     ops["infer"].metrics.num_task_outputs_generated = 1
     _tick(sizer)
     assert sizer._flowing_since_t is not None

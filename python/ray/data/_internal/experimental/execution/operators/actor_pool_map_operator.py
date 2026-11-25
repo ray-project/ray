@@ -266,7 +266,13 @@ class SlotUsage:
 
     Each field without a prefix covers all serving actors; its ``obp_``
     counterpart covers the output-backpressured subset. ``*_slots`` counts
-    seats, ``busy_*`` counts the seats holding a task.
+    seats, ``busy_*`` counts the seats holding a task. At the sample, the
+    seats split into three disjoint groups::
+
+        slots = obp_slots + non_obp_busy_slots + idle_slots
+
+    The bottleneck observer integrates each group over an interval; see
+    ``sizer/bottleneck_observer.md``.
     """
 
     # IDLE or ACTIVE actors; DRAINING / RESTARTING ones are not serving.
@@ -287,10 +293,15 @@ class SlotUsage:
     obp_busy_slots: int
 
     @property
+    def non_obp_busy_slots(self) -> int:
+        """Seats holding a task on actors not output-backpressured."""
+        return self.busy_slots - self.obp_busy_slots
+
+    @property
     def idle_slots(self) -> int:
         """Seats free to start a task: on actors not output-backpressured,
         and not holding one."""
-        return (self.slots - self.obp_slots) - (self.busy_slots - self.obp_busy_slots)
+        return self.slots - self.obp_slots - self.non_obp_busy_slots
 
 
 class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
