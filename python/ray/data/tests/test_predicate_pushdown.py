@@ -217,6 +217,56 @@ def test_arithmetic_filter_matches_in_memory_filter(
     assert keeps_filter == (not use_datasource_v2)
 
 
+@pytest.mark.parametrize(
+    "table,predicate,error",
+    [
+        # 5 // 0 raises.
+        (
+            pa.table({"n": [-6, 5], "m": [2, 0]}),
+            (col("n") // col("m")) == -3,
+            "divide by zero",
+        ),
+        # 2**53 + 4 has no exact float64.
+        (
+            pa.table({"n": [2**53 + 4, 2**53 + 5, 7]}),
+            (col("n") // 3) == (2**53 + 4) // 3,
+            None,
+        ),
+        # The pushed read keeps float32, as the in-memory filter does.
+        (
+            pa.table(
+                {
+                    "n": pa.array([-0.3, 0.25], pa.float32()),
+                    "m": pa.array([0.1, 0.1], pa.float32()),
+                }
+            ),
+            (col("n") % col("m")) > 0.05,
+            None,
+        ),
+    ],
+    ids=["zero_divisor", "beyond_float64", "float32_mod"],
+)
+def test_floordiv_mod_filter_matches_in_memory_filter(
+    ray_start_regular_shared, tmp_path, monkeypatch, table, predicate, error
+):
+    """An ORC read takes ``//`` and ``%`` filters and keeps Ray's rows or error."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    path = str(tmp_path / "data.orc")
+    orc.write_table(table, path)
+    pushed = ray.data.read_orc(path).filter(expr=predicate)
+    in_memory = ray.data.from_arrow(table).filter(expr=predicate)
+
+    assert "Filter" not in _get_optimized_plan(pushed)
+    if error:
+        for ds in (pushed, in_memory):
+            with pytest.raises(Exception, match=error):
+                ds.take_all()
+    else:
+        assert sorted(row["n"] for row in pushed.take_all()) == sorted(
+            row["n"] for row in in_memory.take_all()
+        )
+
+
 @settings(
     max_examples=15,
     derandomize=True,
