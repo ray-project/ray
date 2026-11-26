@@ -203,7 +203,7 @@ def test_reference_table_releases_env_dereferenced_during_creation():
     assert unused_runtime_envs == []
 
 
-def test_reference_table_releases_uris_bound_before_delete(caplog):
+def test_reference_table_releases_uris_bound_before_delete(caplog, monkeypatch):
     unused_uris = []
     unused_runtime_envs = []
     reference_table = ReferenceTable(
@@ -228,14 +228,19 @@ def test_reference_table_releases_uris_bound_before_delete(caplog):
     reference_table.decrease_reference(runtime_env, serialized_env, "raylet")
     unused_uris.clear()
     unused_runtime_envs.clear()
-    with caplog.at_level(logging.INFO):
-        reference_table.release_dynamic_uris_if_unreferenced(
-            serialized_env, "raylet", [dynamic_uri]
-        )
+    # The agent logger can bypass the root logger that pytest 7 captures.
+    agent_logger = logging.getLogger(ReferenceTable.__module__)
+    with monkeypatch.context() as log_config:
+        log_config.setattr(agent_logger, "propagate", False)
+        log_config.setattr(agent_logger, "handlers", [caplog.handler])
+        with caplog.at_level(logging.INFO, logger=agent_logger.name):
+            reference_table.release_dynamic_uris_if_unreferenced(
+                serialized_env, "raylet", [dynamic_uri]
+            )
     assert unused_uris == [dynamic_uri]
     assert unused_runtime_envs == [serialized_env]
     assert "lost all references during creation" in caplog.text
-    assert "API_KEY" in caplog.text
+    assert '"API_KEY":"<redacted>"' in caplog.text
     assert "secret-value" not in caplog.text
 
 
