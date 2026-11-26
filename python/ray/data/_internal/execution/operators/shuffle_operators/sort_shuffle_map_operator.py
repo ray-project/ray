@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 import pyarrow as pa
 
@@ -118,7 +118,6 @@ class SortShuffleMapOp(ShuffleMapOp):
         *,
         num_partitions: int,
         sort_key: SortKey,
-        map_runtime_env: Optional[Dict[str, Any]] = None,
         map_cpus: float = ShuffleMapOp._DEFAULT_SHUFFLE_MAP_TASK_NUM_CPUS,
         name: str = "SortShuffleMap",
     ):
@@ -130,7 +129,6 @@ class SortShuffleMapOp(ShuffleMapOp):
             data_context,
             num_partitions=num_partitions,
             partition_fn=_uninitialized_partition_fn,
-            map_runtime_env=map_runtime_env,
             map_cpus=map_cpus,
             name=name,
         )

@@ -191,8 +191,9 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
 
     def close_extras(self, **kwargs):
         """Close all environments."""
-        if hasattr(self, "envs"):
-            [env.close() for env in self.envs]
+        if hasattr(self, "envs") and self.envs is not None:
+            for env in self.envs:
+                env.close()
 
     @property
     def np_random_seed(self) -> Tuple[int, ...]:

@@ -308,6 +308,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool GetObjectsFromPlasma(const std::vector<ObjectID> &object_ids,
                             std::vector<std::unique_ptr<RayObject>> *results);
 
+  /// Pin a received moved object as its primary copy and report the new primary
+  /// to the owner. Called from HandleObjectLocal for an object with a move record.
+  ///
+  /// \param object_id The moved object, sealed in the local store.
+  /// \param owner_address The address of the object's owner.
+  /// \return False if the object is not in the store, is pending deletion, or its
+  /// owner is known to be dead; the object is then left unpinned.
+  bool PinAndReportMovedObject(const ObjectID &object_id,
+                               const rpc::Address &owner_address);
+
   /// Get the local drain request.
   std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_.GetLocalResourceManager().GetLocalDrainRequest();
@@ -448,8 +458,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   ///
   /// \param client The client that is requesting the objects.
   /// \param object_refs The objects that are requested.
+  /// \param is_move Parallel to `object_refs`, or empty: whether the requesting
+  /// actor task consumes the object (TaskArg.is_move).
   void AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                 const std::vector<rpc::ObjectReference> &object_refs);
+                 const std::vector<rpc::ObjectReference> &object_refs,
+                 const std::vector<bool> &is_move);
 
   /// Start a get request for the requested objects.
   ///
@@ -992,12 +1005,24 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The number of workers killed not by memory above threshold since last report.
   uint64_t number_workers_killed_ = 0;
 
+  /// Received moves pinned as the primary copy, and received moves that were not
+  /// pinned: the owner is missing or dead, the copy left the store, or it is pending
+  /// deletion.
+  uint64_t num_moved_objects_pinned_ = 0;
+  uint64_t num_moved_objects_pin_failed_ = 0;
+
   /// Managers all bundle-related operations.
   PlacementGroupResourceManager &placement_group_resource_manager_;
 
   /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
   /// we issue a GC command so that none of the messages are dropped.
   int64_t gc_command_sync_version_ = 0;
+
+  // Controls the lifecycle of the CgroupManager. Declared before
+  // `worker_killing_policy_`, `add_process_to_system_cgroup_hook_`, and
+  // `memory_monitors_` so all objects that hold/call references to the manager
+  // are destroyed before the manager itself is torn down.
+  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
@@ -1009,14 +1034,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
       false;
 
-  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
-  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
-
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;
 
-  // Controls the lifecycle of the CgroupManager.
-  std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   std::atomic_bool &shutting_down_;
 
