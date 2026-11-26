@@ -6651,6 +6651,9 @@ def read_delta(
     - Column statistics from the Delta log for row-group pruning
     - Authentication via ``storage_options``
 
+    It needs ``deltalake`` 1.5.0 or later, and raises ``ImportError`` for an
+    older release.
+
     .. note::
 
         Tables with column mapping (``delta.columnMapping.mode`` set to
@@ -6795,7 +6798,7 @@ def read_delta(
 
     package = "deltalake"
     try:
-        importlib.import_module(package)
+        deltalake_module = importlib.import_module(package)
     except ImportError:
         raise ImportError(
             f"`ray.data.read_delta` depends on '{package}', but '{package}' "
@@ -6804,6 +6807,12 @@ def read_delta(
         )
 
     from deltalake import DeltaTable
+
+    from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
+        check_deltalake_version,
+    )
+
+    check_deltalake_version(deltalake_module.__version__)
 
     # This seems reasonable to keep it at one table, even Spark doesn't really support
     # multi-table reads, it's usually up to the developer to keep it in one table.

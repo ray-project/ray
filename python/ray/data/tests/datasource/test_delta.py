@@ -242,6 +242,28 @@ def test_delta_read_rejects_multiple_paths():
         ray.data.read_delta(["path1", "path2"])
 
 
+@_V1_ONLY
+@pytest.mark.parametrize(
+    "installed, supported",
+    [("0.25.5", False), ("1.4.2", False), ("1.5.0", True), ("1.6.0rc1", True)],
+)
+def test_delta_read_checks_the_deltalake_version(
+    tmp_path, monkeypatch, installed, supported
+):
+    """Only the release numbers count, so a pre-release of a supported one reads."""
+    import deltalake
+
+    path = os.path.join(tmp_path, "table")
+    deltalake.write_deltalake(path, pa.table({"x": [1]}))
+    monkeypatch.setattr(deltalake, "__version__", installed)
+
+    if supported:
+        assert ray.data.read_delta(path).count() == 1
+    else:
+        with pytest.raises(ImportError, match="needs deltalake 1.5.0 or later"):
+            ray.data.read_delta(path)
+
+
 def test_delta_read_deletion_vectors_message_is_actionable(tmp_path, datasource_v2):
     """A deletion-vector table must fail with advice that actually works.
 
