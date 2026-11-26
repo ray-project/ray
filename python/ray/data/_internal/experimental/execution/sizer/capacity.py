@@ -18,7 +18,7 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     pack_actors,
 )
 from ray.data._internal.experimental.execution.sizer.common import (
-    CountByNode,
+    ContentionByNode,
     ExecutionResourcesByNode,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
@@ -119,23 +119,31 @@ def unknown_pg_headroom(
     }
 
 
-def constrained_op_count_by_node(
+def contention_by_node(
     profiles: OpProfiles,
     schedulable_nodes_by_op: Dict[
         "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
     ],
-) -> CountByNode:
-    """How many constrained non-PG ops can use each node.
+) -> ContentionByNode:
+    """How contended each node is: the sum, over the constrained non-PG ops
+    that can use it, of ``1 / (number of nodes the op can use)``.
 
-    An unconstrained op can use every node, so counting it would add the
-    same +1 everywhere and never change an ordering; only constrained ops
-    tell nodes apart. The ledger fills the least contended nodes first,
-    and placement breaks ties the same way.
+    An op with few nodes to choose from weighs more on each of them. With 10
+    CPU nodes that two label-selected ops can use and 2 GPU nodes only a GPU
+    op can use, each CPU node scores 2/10 and each GPU node 1/2, so the GPU
+    nodes are the scarcer ones. A count of ops would score them 2 and 1, and
+    send unconstrained claims to the GPU nodes first.
+
+    An unconstrained op can use every node, so it would add the same amount
+    everywhere and never change an ordering; only constrained ops tell nodes
+    apart. The ledger fills the least contended nodes first, held room packs
+    the same way, and placement breaks ties with it.
     """
-    count: CountByNode = {}
+    contention: ContentionByNode = {}
     for op, nodes in schedulable_nodes_by_op.items():
-        if profiles.is_pg_managed(op) or not is_constrained(op):
+        if profiles.is_pg_managed(op) or not is_constrained(op) or not nodes:
             continue
+        weight = 1.0 / len(nodes)
         for node_id in nodes:
-            count[node_id] = count.get(node_id, 0) + 1
-    return count
+            contention[node_id] = contention.get(node_id, 0.0) + weight
+    return contention

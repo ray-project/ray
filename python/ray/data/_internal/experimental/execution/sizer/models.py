@@ -18,14 +18,14 @@ from ray.data._internal.experimental.execution.actor_only_resource_reporter impo
 )
 from ray.data._internal.experimental.execution.sizer.capacity import (
     committed_by_node,
-    constrained_op_count_by_node,
+    contention_by_node,
     draining_by_node,
     nodes_to_reclaim,
     pg_free_by_bundle,
     unknown_pg_headroom,
 )
 from ray.data._internal.experimental.execution.sizer.common import (
-    CountByNode,
+    ContentionByNode,
     ExecutionResourcesByNode,
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
@@ -104,9 +104,10 @@ class ClusterStateSnapshot:
         default_factory=dict
     )
 
-    # How many constrained non-PG ops can use each node (lower = less
-    # contended). Used in granting order and placement tie-break.
-    constrained_op_count_by_node: CountByNode = field(default_factory=dict)
+    # How contended each node is (lower = less contended; see
+    # ``capacity.contention_by_node``). Used in granting order, held-room
+    # packing and placement tie-break.
+    contention_by_node: ContentionByNode = field(default_factory=dict)
     # The bundles each static-PG op may use.
     schedulable_bundles_by_op: Dict[
         "ExperimentalActorPoolMapOperator", Tuple[BundleKey, ...]
@@ -192,9 +193,7 @@ class ClusterStateSnapshot:
             reserved_by_node=reserved,
             nodes_to_reclaim=reclaim,
             schedulable_nodes_by_op=schedulable_nodes_by_op,
-            constrained_op_count_by_node=constrained_op_count_by_node(
-                profiles, schedulable_nodes_by_op
-            ),
+            contention_by_node=contention_by_node(profiles, schedulable_nodes_by_op),
             pg_slots=pg_slots,
             pg_free_by_bundle=pg_free_by_bundle(pg_slots),
             schedulable_bundles_by_op=dict(pg_slots.static_bundles_by_op),

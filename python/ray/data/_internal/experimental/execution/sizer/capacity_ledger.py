@@ -65,7 +65,7 @@ class ConstraintAwareCapacityLedger:
             return self.pg_free, [b for b in bundles if b in self.pg_free]
         # Least contended nodes first, so consuming them leaves contended
         # nodes for ops that need them.
-        pressure = self._capacity.constrained_op_count_by_node
+        pressure = self._capacity.contention_by_node
         return self.free, sorted(
             self.free_nodes(op),
             key=lambda node_id: (pressure.get(node_id, 0), node_id),

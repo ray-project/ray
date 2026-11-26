@@ -233,13 +233,13 @@ class LocalityBasedActorPlacement(ActorPlacementStrategy):
             )
         leftover = num_actors_to_place - sum(per_node_actor_share.values())
         # Leftovers go to the largest fractional remainders; ties broken toward
-        # the least-contended node (fewer constrained ops can use it), then
+        # the least-contended node (``capacity.contention_by_node``), then
         # toward nodes with fewest of our actors.
         for node_id in sorted(
             max_actors_per_node,
             key=lambda node_id: (
                 -frac[node_id],
-                view.constrained_op_count_by_node.get(node_id, 0),
+                view.contention_by_node.get(node_id, 0.0),
                 view.actors_by_node.get(node_id, 0) + placed_per_node[node_id],
                 node_id,
             ),

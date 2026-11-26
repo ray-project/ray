@@ -20,12 +20,14 @@ from __future__ import annotations
 import logging
 import time
 from collections import Counter
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.execution_flags import (
     SIZER_CADENCE_S,
     SIZER_WARMUP_TIMEOUT_S,
 )
+from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
 )
@@ -41,7 +43,10 @@ from ray.data._internal.experimental.execution.sizer.bottleneck_observer import 
     BottleneckObserver,
     Snapshot,
 )
-from ray.data._internal.experimental.execution.sizer.common import ScalingRequests
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    ScalingRequests,
+)
 from ray.data._internal.experimental.execution.sizer.locality_actor_placement import (
     LocalityBasedActorPlacement,
 )
@@ -55,6 +60,7 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
     has_produced_output,
 )
 from ray.data._internal.experimental.execution.sizer.op_status import (
+    Held,
     OpStatusKind,
     OpStatusMachine,
 )
@@ -485,40 +491,120 @@ class OperatorSizer:
         whose outputs only clear through the held op. Holding its room here
         keeps it out of every step's free map without starting an actor.
         PG-managed ops hold nothing here: their placement group is their room.
+
+        1. Room an op held until it left ``Held`` this tick is kept out of the
+           free map until the ops still held have packed theirs, then given
+           back, so the policy grants it to that op first
+           (``OpRule.UPSCALE_TO_HELD_ROOM``). Otherwise a held op could take it
+           the moment it frees: in backpressure_heterogeneous_memory_nodes, a
+           held Write took the CPUs of the GPU nodes the GPU op had held, and
+           the GPU op never placed an actor.
+        2. Each held op keeps the room it held last tick, on the same nodes,
+           where it still fits, so held ops do not trade nodes every tick.
+        3. Each tops up what it still lacks on the least contended nodes
+           (``ClusterStateSnapshot.contention_by_node``).
+
+        Example: CPU nodes c0, c1 with 1 free CPU each; GPU nodes g1, g2 with
+        4 CPU / 4 GPU each. Last tick, GPU (fixed 8) held {g1: 4, g2: 4} and
+        Write (wants 10) held {c0: 1, c1: 1}. GPU's first input arrived.
+        ``free`` shows free CPUs; each actor of either op takes one.
+
+            start:     free = {c0: 1, c1: 1, g1: 4, g2: 4}
+                       released = {GPU: {g1: 4, g2: 4}}
+            1. shield: free = {c0: 1, c1: 1, g1: 0, g2: 0}
+            2. keep:   Write holds {c0: 1, c1: 1}
+                       free = {c0: 0, c1: 0, g1: 0, g2: 0}
+            3. top up: Write lacks 8, nothing free; holds 2 of 10
+            1. return: free = {c0: 0, c1: 0, g1: 4, g2: 4}
+            policy:    GPU UPSCALE_TO_HELD_ROOM +8 -> g1, g2
+
+        Without step 1, Write's top-up takes g1's and g2's 8 CPUs, and GPU,
+        needing 1 CPU per actor, never places one.
         """
         free = snapshot.free_by_node
+        contention = snapshot.contention_by_node
+
+        # 1. Keep room released this tick out of the free map for now.
+        shielded: List[Tuple[NodeIdStr, ExecutionResources]] = []
+        for op, by_node in self._statuses.released_holds().items():
+            per_actor = op.actor_pool.per_actor_resource_usage()
+            for node_id in sorted(by_node):
+                if node_id not in free:
+                    continue
+                kept = pack_actors(free, [node_id], per_actor, by_node[node_id])
+                if kept:
+                    shielded.append((node_id, per_actor.scale(len(kept))))
+
+        # How many actors' worth each held op holds this tick, scarcest op
+        # first: the steps below pack in this order, so an op with few nodes
+        # to choose from claims them before an op that could go anywhere.
         global_limits = snapshot.get_global_limits()
         held_ops = self._statuses.ops_in(kind=OpStatusKind.HELD)
-        for op in self._profiles.non_pg_ops:
-            if op not in held_ops or op.has_completed():
+        non_pg_ops = set(self._profiles.non_pg_ops)
+        to_hold: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        for op in snapshot.ordered_ops:
+            if op not in held_ops or op not in non_pg_ops or op.has_completed():
                 continue
             pool = op.actor_pool
             target = self._policy.warmup.warmup_target(
-                op=op, cluster_capacity=global_limits, pg_slots=snapshot.pg_slots
+                op=op,
+                cluster_capacity=global_limits,
+                pg_slots=snapshot.pg_slots,
             )
             if target is None:
                 target = pool.min_size()
-            floor = pool.serving_size()
-            num_to_hold = target - floor
+            num_to_hold = target - pool.serving_size()
             if num_to_hold <= 0:
-                self._statuses.set_reserved(op=op, n=floor)
+                self._statuses.set_reserved(op=op, n=pool.serving_size())
                 continue
-            pressure = snapshot.constrained_op_count_by_node
-            nodes = sorted(
-                (n for n in free if n in snapshot.schedulable_nodes_by_op[op]),
-                key=lambda n: (pressure.get(n, 0), n),
+            to_hold[op] = num_to_hold
+
+        # 2. Keep last tick's room where it still fits.
+        held_by_op: Dict[ExperimentalActorPoolMapOperator, CountByNode] = {}
+        for op, num_to_hold in to_hold.items():
+            per_actor = op.actor_pool.per_actor_resource_usage()
+            schedulable = snapshot.schedulable_nodes_by_op[op]
+            status = self._statuses.status(op)
+            previous = status.by_node if isinstance(status, Held) else {}
+            held: CountByNode = {}
+            for node_id in sorted(previous):
+                wanted = min(previous[node_id], num_to_hold - sum(held.values()))
+                if wanted <= 0:
+                    break
+                if node_id not in free or node_id not in schedulable:
+                    continue
+                kept = pack_actors(free, [node_id], per_actor, wanted)
+                if kept:
+                    held[node_id] = len(kept)
+            held_by_op[op] = held
+
+        # 3. Top up on the least contended nodes.
+        for op, num_to_hold in to_hold.items():
+            held = held_by_op[op]
+            lacking = num_to_hold - sum(held.values())
+            if lacking > 0:
+                nodes = sorted(
+                    (n for n in free if n in snapshot.schedulable_nodes_by_op[op]),
+                    key=lambda n: (contention.get(n, 0.0), n),
+                )
+                per_actor = op.actor_pool.per_actor_resource_usage()
+                for node_id in pack_actors(free, nodes, per_actor, lacking):
+                    held[node_id] = held.get(node_id, 0) + 1
+            num_held = sum(held.values())
+            self._statuses.set_reserved(
+                op=op, n=op.actor_pool.serving_size() + num_held, by_node=held
             )
-            held = pack_actors(
-                free, nodes, op.actor_pool.per_actor_resource_usage(), num_to_hold
-            )
-            self._statuses.set_reserved(op=op, n=floor + len(held))
             logger.debug(
                 "OperatorSizer: holding %d/%d actor(s) for %s until its first "
                 "input arrives",
-                len(held),
+                num_held,
                 num_to_hold,
                 op.name,
             )
+
+        # 1. (cont.) Give the released room back for the policy to grant.
+        for node_id, room in shielded:
+            free[node_id] = free[node_id].add(room)
 
     def observe_after_launch(self) -> None:
         """Sample the bottleneck observer's slot shares. Called by the

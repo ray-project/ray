@@ -734,17 +734,16 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
     assert (free.cpu, free.memory) == (16 - 1 - target, 20 - 1 - target)
 
     # Write's first input arrives, so read has produced output. Write
-    # becomes active: min size first, then its warmup share.
+    # becomes active and grows into the room held for it, in one step.
     read.metrics.num_task_outputs_generated = 1
     write.pending_first_input = False
     request = _tick(sizer)
-    assert (request[write].delta, request[write].reason) == (1, "below min size")
-    write._pool.pending = 1
-    request = _tick(sizer)
     assert (request[write].delta, request[write].reason) == (
-        target - 1,
-        "warmup equal-share",
+        target,
+        "room held until its first input",
     )
+    write._pool.pending = target
+    assert write not in _tick(sizer)
 
 
 def _video_pipeline(write_awaiting_first_input=False):
@@ -829,8 +828,8 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
 
 def test_held_ops_reserve_their_share_and_grow_to_it_once_active():
     # Write waits on its first input: no actor yet, but its memory-aware share
-    # (4) is held, memory included. Once the input arrives, it upscales to
-    # min size, then to that share.
+    # (4) is held, memory included. Once the input arrives, it upscales into
+    # that share in one step.
     ops, view = _video_pipeline(write_awaiting_first_input=True)
     write = ops["write"]
     sizer, _ = _bootstrapped(*ops.values(), view=view)
@@ -848,13 +847,12 @@ def test_held_ops_reserve_their_share_and_grow_to_it_once_active():
 
     write.pending_first_input = False
     request = _tick(sizer)
-    assert (request[write].delta, request[write].reason) == (1, "below min size")
-    write._pool.pending = 1
-    request = _tick(sizer)
     assert (request[write].delta, request[write].reason) == (
-        3,
-        "warmup equal-share",
+        4,
+        "room held until its first input",
     )
+    write._pool.pending = 4
+    assert write not in _tick(sizer)
 
 
 def _reserved(sizer: _TestSizer, op) -> int:
@@ -883,10 +881,10 @@ def test_ops_awaiting_first_input_each_reserve_their_share():
     ops["read"].metrics.num_task_outputs_generated = 1
     ops["resize"].pending_first_input = False
     request = _tick(sizer)
-    # resize becomes active and upscales to its warmup share (it already has
-    # 1 actor); the others stay held.
+    # resize becomes active and upscales into the room held for it (it
+    # already has 1 actor); the others stay held.
     assert request[ops["resize"]].delta == resize_reserved - 1
-    assert request[ops["resize"]].reason == "warmup equal-share"
+    assert request[ops["resize"]].reason == "room held until its first input"
     assert sizer._statuses.kind(ops["features"]) is OpStatusKind.HELD
 
 
@@ -2303,6 +2301,107 @@ def test_ordered_ops_use_snapshot_eligibility_for_specificity():
     ]
 
 
+def _heterogeneous_memory_cluster(num_cpu_nodes):
+    """backpressure_heterogeneous_memory_nodes' shape: 8-CPU nodes labelled
+    ``node-pool: cpu``, where a label-selected op holds 7 of 8 CPUs, and two
+    4-CPU / 4-GPU nodes. Returns (view, ops dict) with a GPU op (fixed 8) and
+    a Write, both still awaiting their first input."""
+    cpu_nodes = [f"c{i}" for i in range(num_cpu_nodes)]
+    reserved = {n: ExecutionResources(cpu=8) for n in cpu_nodes}
+    reserved.update({g: ExecutionResources(cpu=4, gpu=4) for g in ("g1", "g2")})
+    labels = {n: {"node-pool": "cpu"} for n in cpu_nodes}
+    labels.update({"g1": {}, "g2": {}})
+    view = DatasetReservationView(reserved_by_node=reserved, labels_by_node=labels)
+    gen = _FakeOp(
+        "gen_data",
+        _FakePool(min_size=1, max_size=100, cpu=1, running=7 * num_cpu_nodes),
+        committed={n: ExecutionResources(cpu=7) for n in cpu_nodes},
+        ray_remote_args={"label_selector": {"node-pool": "cpu"}},
+    )
+    gpu = _FakeOp(
+        "FakeGPUInference",
+        _FakePool(min_size=8, max_size=8, cpu=1, gpu=1),
+        inputs=[gen],
+        node=None,
+        awaiting_first_input=True,
+    )
+    write = _write_op(
+        "Write",
+        _FakePool(min_size=1, max_size=100, cpu=1),
+        inputs=[gpu],
+        node=None,
+        awaiting_first_input=True,
+    )
+    return view, {"gen": gen, "gpu": gpu, "write": write}
+
+
+def test_contention_weighs_ops_by_how_few_nodes_they_can_use():
+    """Two label-selected ops share 10 CPU nodes (2/10 each); only the GPU op
+    can use the 2 GPU nodes (1/2 each). The GPU nodes are the scarce ones,
+    though fewer ops can use them."""
+    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=10)
+    cpu_process = _FakeOp(
+        "cpu_process",
+        _FakePool(min_size=1, max_size=100, cpu=1),
+        inputs=[ops["gen"]],
+        node=None,
+        ray_remote_args={"label_selector": {"node-pool": "cpu"}},
+    )
+    ops["gpu"]._input_dependencies = [cpu_process]
+    sizer, _ = _bootstrapped(ops["gen"], cpu_process, ops["gpu"], view=view)
+    contention = _snapshot_of(sizer).contention_by_node
+    assert contention["c0"] == pytest.approx(0.2)
+    assert contention["g1"] == pytest.approx(0.5)
+
+
+def _held_by_node(sizer: _TestSizer, op) -> Dict[str, int]:
+    """The room held for ``op`` on each node this tick (it must be held)."""
+    state = sizer._statuses.status(op)
+    assert isinstance(state, Held), state
+    return dict(state.by_node)
+
+
+def test_room_held_until_first_input_goes_to_its_op():
+    """backpressure_heterogeneous_memory_nodes hung: the GPU op held the GPU
+    nodes until its first input, and on the tick it arrived the held Write
+    topped up its hold with those nodes' CPUs, so the GPU op never placed an
+    actor. The room the GPU op held now goes to it, and Write keeps the nodes
+    it held."""
+    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=4)
+    gpu, write = ops["gpu"], ops["write"]
+    sizer, _ = _bootstrapped(*ops.values(), view=view)
+
+    request = _tick(sizer)
+    assert gpu not in request and write not in request
+    assert _held_by_node(sizer, gpu) == {"g1": 4, "g2": 4}
+    write_held = _held_by_node(sizer, write)
+    # Only the CPU nodes' free CPU is left for Write.
+    assert set(write_held) <= {"c0", "c1", "c2", "c3"}
+
+    ops["gen"].metrics.num_task_outputs_generated = 1
+    gpu.pending_first_input = False
+    request = _tick(sizer)
+    assert (request[gpu].delta, request[gpu].reason) == (
+        8,
+        "room held until its first input",
+    )
+    assert _held_by_node(sizer, write) == write_held
+
+
+def test_held_ops_pack_scarcest_first():
+    """Two held ops, the unconstrained one earlier in the topology. Packing in
+    topology order let it spill onto the GPU nodes, leaving the GPU op no room
+    to hold; packing scarcest first lets the GPU op claim them."""
+    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=4)
+    gen, gpu, write = ops["gen"], ops["gpu"], ops["write"]
+    write._input_dependencies = [gen]
+    sizer, _ = _bootstrapped(gen, write, gpu, view=view)
+
+    _tick(sizer)
+    assert _held_by_node(sizer, gpu) == {"g1": 4, "g2": 4}
+    assert set(_held_by_node(sizer, write)) <= {"c0", "c1", "c2", "c3"}
+
+
 def test_gpu_nodes_are_scarce_in_node_pressure():
     # A GPU op with NO label_selector still marks GPU nodes as scarce, so a
     # plain CPU op deprioritizes them; a CPU-only node stays unpressured.
@@ -2324,8 +2423,8 @@ def test_gpu_nodes_are_scarce_in_node_pressure():
     )
     sizer, topo = _bootstrapped(cpu_op, gpu_op, view=view)
     snap = _snapshot_of(sizer)
-    assert snap.constrained_op_count_by_node.get("g1", 0) == 1
-    assert snap.constrained_op_count_by_node.get("n1", 0) == 0
+    assert snap.contention_by_node.get("g1", 0) == 1
+    assert snap.contention_by_node.get("n1", 0) == 0
 
 
 # --- reclaiming a shrunk allocation ------------------------------------------
