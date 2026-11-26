@@ -1,4 +1,4 @@
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -68,15 +68,23 @@ def _from_columns(**columns: np.ndarray) -> Dataset:
     return ray.data.from_arrow([table.take(idx) for idx in chunks])
 
 
-def _left() -> Dataset:
+def _left_columns() -> Dict[str, np.ndarray]:
     ids = np.arange(NUM_ROWS)
-    return _from_columns(id=ids, grp=ids % 4, lval=ids * 2)
+    return {"id": ids, "grp": ids % 4, "lval": ids * 2}
+
+
+def _right_columns() -> Dict[str, np.ndarray]:
+    # Two rows per key, so every group has several rows to aggregate.
+    ids = np.arange(2 * NUM_ROWS)
+    return {"rid": ids % NUM_ROWS, "rval": ids * 3}
+
+
+def _left() -> Dataset:
+    return _from_columns(**_left_columns())
 
 
 def _right() -> Dataset:
-    # Two rows per key, so every group has several rows to aggregate.
-    ids = np.arange(2 * NUM_ROWS)
-    return _from_columns(rid=ids % NUM_ROWS, rval=ids * 3)
+    return _from_columns(**_right_columns())
 
 
 def _join(right: Optional[Dataset] = None, join_type: str = "inner") -> Dataset:
@@ -88,6 +96,23 @@ def _join(right: Optional[Dataset] = None, join_type: str = "inner") -> Dataset:
         join_type=join_type,
         num_partitions=NUM_PARTITIONS,
     )
+
+
+_PANDAS_HOW = {"inner": "inner", "left_outer": "left", "right_outer": "right"}
+
+
+def _join_pd(
+    right: Optional[pd.DataFrame] = None, join_type: str = "inner"
+) -> pd.DataFrame:
+    """The rows ``_join`` should produce, built in pandas so that checking a
+    result doesn't run the join a second time."""
+    right = pd.DataFrame(_right_columns()) if right is None else right
+    joined = pd.DataFrame(_left_columns()).merge(
+        right, left_on="id", right_on="rid", how=_PANDAS_HOW[join_type]
+    )
+    # Ray merges the key pair into one column: the right key for a right
+    # outer join, the left key otherwise.
+    return joined.drop(columns="id" if join_type == "right_outer" else "rid")
 
 
 def _planned_dag(ds: Dataset) -> PhysicalOperator:
@@ -110,16 +135,19 @@ def _skips_aggregate_shuffle(ds: Dataset) -> bool:
 
 def _sum_every_column(
     ds: Dataset, keys: List[str], num_partitions: Optional[int] = None
-) -> Tuple[Dataset, pd.DataFrame]:
-    """Groups ``ds`` by ``keys``, sums every other column, and returns the
-    expected rows too. Reading every column keeps projection pushdown from
-    adding a Project."""
+) -> Dataset:
+    """Groups ``ds`` by ``keys`` and sums every other column. Reading every
+    column keeps projection pushdown from adding a Project."""
     values = [c for c in ds.schema().names if c not in keys]
-    out = ds.groupby(keys, num_partitions=num_partitions).aggregate(
+    return ds.groupby(keys, num_partitions=num_partitions).aggregate(
         *[Sum(on=c, alias_name=c) for c in values]
     )
-    expected = ds.to_pandas().groupby(keys, dropna=False)[values].sum().reset_index()
-    return out, expected
+
+
+def _expected_sums(rows: pd.DataFrame, keys: List[str]) -> pd.DataFrame:
+    """``_sum_every_column(ds, keys)``'s rows, for ``rows`` holding ``ds``'s rows."""
+    values = [c for c in rows.columns if c not in keys]
+    return rows.groupby(keys, dropna=False)[values].sum().reset_index()
 
 
 def _assert_same_rows(ds: Dataset, expected: pd.DataFrame, keys: List[str]) -> None:
@@ -294,18 +322,29 @@ def test_project_preserves_columns_without_schema(
 
 
 @pytest.mark.parametrize(
-    "before_agg,keys,num_partitions,skips_shuffle",
+    # before_agg_pd builds before_agg's rows in pandas.
+    "before_agg,before_agg_pd,keys,num_partitions,skips_shuffle",
     [
-        pytest.param(_join, ["id"], None, True, id="join_key"),
-        pytest.param(_join, ["id", "grp"], None, True, id="superset_of_join_key"),
-        pytest.param(_join, ["id"], NUM_PARTITIONS, True, id="same_num_partitions"),
-        pytest.param(_join, ["grp"], None, False, id="other_key"),
+        pytest.param(_join, _join_pd, ["id"], None, True, id="join_key"),
         pytest.param(
-            _join, ["id"], NUM_PARTITIONS + 1, False, id="different_num_partitions"
+            _join, _join_pd, ["id", "grp"], None, True, id="superset_of_join_key"
+        ),
+        pytest.param(
+            _join, _join_pd, ["id"], NUM_PARTITIONS, True, id="same_num_partitions"
+        ),
+        pytest.param(_join, _join_pd, ["grp"], None, False, id="other_key"),
+        pytest.param(
+            _join,
+            _join_pd,
+            ["id"],
+            NUM_PARTITIONS + 1,
+            False,
+            id="different_num_partitions",
         ),
         # Keeps the right key, rid, which isn't tracked.
         pytest.param(
             lambda: _join(join_type="right_outer"),
+            lambda: _join_pd(join_type="right_outer"),
             ["rid"],
             None,
             False,
@@ -313,6 +352,7 @@ def test_project_preserves_columns_without_schema(
         ),
         pytest.param(
             lambda: _join().with_column("id", col("id") % 3),
+            lambda: _join_pd().assign(id=lambda df: df["id"] % 3),
             ["id"],
             None,
             False,
@@ -320,6 +360,7 @@ def test_project_preserves_columns_without_schema(
         ),
         pytest.param(
             lambda: _join().rename_columns({"id": "key"}),
+            lambda: _join_pd().rename(columns={"id": "key"}),
             ["key"],
             None,
             False,
@@ -329,6 +370,7 @@ def test_project_preserves_columns_without_schema(
         # reduce, which then sends whole partitions to the aggregation.
         pytest.param(
             lambda: _join().with_column("x", col("lval") * col("rval")),
+            lambda: _join_pd().assign(x=lambda df: df["lval"] * df["rval"]),
             ["id"],
             None,
             True,
@@ -336,6 +378,7 @@ def test_project_preserves_columns_without_schema(
         ),
         pytest.param(
             lambda: _join().select_columns(["id", "lval"]),
+            lambda: _join_pd()[["id", "lval"]],
             ["id"],
             None,
             True,
@@ -343,6 +386,7 @@ def test_project_preserves_columns_without_schema(
         ),
         pytest.param(
             lambda: _join().filter(expr=TWO_SIDED_PREDICATE),
+            lambda: _join_pd().query("lval + rval > 100"),
             ["id"],
             None,
             True,
@@ -354,16 +398,17 @@ def test_aggregate_shuffle_elimination(
     ray_start_regular_shared_2_cpus,
     configure_shuffle_method,
     before_agg: Callable[[], Dataset],
+    before_agg_pd: Callable[[], pd.DataFrame],
     keys: List[str],
     num_partitions: Optional[int],
     skips_shuffle: bool,
 ):
     """Only SHUFFLE_V2 skips the shuffle, and every strategy gives the same rows."""
-    ds, expected = _sum_every_column(before_agg(), keys, num_partitions)
+    ds = _sum_every_column(before_agg(), keys, num_partitions)
     assert _skips_aggregate_shuffle(ds) == (
         skips_shuffle and configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2
     )
-    _assert_same_rows(ds, expected, keys)
+    _assert_same_rows(ds, _expected_sums(before_agg_pd(), keys), keys)
 
 
 def test_unsupported_aggregation_keeps_shuffle(
@@ -378,7 +423,7 @@ def test_unsupported_aggregation_keeps_shuffle(
     )
     assert not _skips_aggregate_shuffle(ds)
     expected = (
-        joined.to_pandas()
+        _join_pd()
         .groupby(keys)
         .agg(lval=("lval", "nunique"), rval=("rval", "nunique"))
         .reset_index()
@@ -394,9 +439,8 @@ def test_partition_spread_over_many_blocks(
     joined = _join()
     assert joined.materialize().num_blocks() > 4 * NUM_PARTITIONS
 
-    ds, expected = _sum_every_column(joined, ["id"])
-    ds = ds.materialize()
-    _assert_same_rows(ds, expected, ["id"])
+    ds = _sum_every_column(joined, ["id"]).materialize()
+    _assert_same_rows(ds, _expected_sums(_join_pd(), ["id"]), ["id"])
     if configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2:
         # One aggregation task per join partition.
         (aggregate_stats,) = [
@@ -412,6 +456,7 @@ def test_left_outer_join_then_count(
 ):
     """TPC-H q13 shape: keys without a match on the right count as 0."""
     joined = _join(join_type="left_outer", right=_right().filter(expr=col("rid") < 60))
+    right_pd = pd.DataFrame(_right_columns()).query("rid < 60")
     # Reads every column, so no Project to drop columns sits before the group-by.
     ds = joined.groupby("id").aggregate(
         Count(on="rval", ignore_nulls=True, alias_name="c"),
@@ -422,7 +467,7 @@ def test_left_outer_join_then_count(
         configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2
     )
     expected = (
-        joined.to_pandas()
+        _join_pd(right=right_pd, join_type="left_outer")
         .groupby("id")
         .agg(c=("rval", "count"), grp=("grp", "max"), lval=("lval", "sum"))
         .reset_index()
@@ -445,7 +490,12 @@ def test_groupby_after_groupby_skips_second_shuffle(
             "HashAggregate(key_columns=('grp', 's'), mode=complete)"
         )
 
-    expected = _left().to_pandas().groupby("grp").agg(s=("lval", "sum")).reset_index()
+    expected = (
+        pd.DataFrame(_left_columns())
+        .groupby("grp")
+        .agg(s=("lval", "sum"))
+        .reset_index()
+    )
     expected["c"] = 1
     _assert_same_rows(ds, expected, ["grp"])
 
@@ -457,7 +507,7 @@ def test_groupby_after_skipped_shuffle_keeps_its_shuffle(
     keeps its shuffle."""
     if configure_shuffle_method == ShuffleStrategy.HASH_SHUFFLE:
         pytest.skip("Three pools of shuffle aggregator actors don't fit in 2 CPUs.")
-    first, first_expected = _sum_every_column(_join(), ["id"])
+    first = _sum_every_column(_join(), ["id"])
     ds = first.groupby(["id", "grp", "lval", "rval"]).aggregate(Count(alias_name="c"))
     complete_ops = [
         op for op in _physical_dag(ds).post_order_iter() if "mode=complete" in op.name
@@ -468,6 +518,7 @@ def test_groupby_after_skipped_shuffle_keeps_its_shuffle(
     else:
         assert complete_ops == []
 
+    first_expected = _expected_sums(_join_pd(), ["id"])
     first_expected["c"] = 1
     _assert_same_rows(ds, first_expected, ["id"])
 
@@ -477,14 +528,14 @@ def test_map_after_one_phase_aggregation(
 ):
     """The one-phase aggregation doesn't fuse, so a map after it runs in its
     own tasks."""
-    agg, expected = _sum_every_column(_join(), ["id"])
-    ds = agg.with_column("lval2", col("lval") * 2)
+    ds = _sum_every_column(_join(), ["id"]).with_column("lval2", col("lval") * 2)
     if configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2:
         dag = _physical_dag(ds)
         assert dag.name == "Project"
         (aggregate,) = dag.input_dependencies
         assert aggregate.name == "HashAggregate(key_columns=('id',), mode=complete)"
 
+    expected = _expected_sums(_join_pd(), ["id"])
     expected["lval2"] = expected["lval"] * 2
     _assert_same_rows(ds, expected, ["id"])
 
@@ -502,7 +553,7 @@ def test_one_phase_aggregation_memory_request(
     """The request scales with a task's whole output; no estimate until a task
     finishes."""
     restore_data_context.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
-    ds, _ = _sum_every_column(_join(), ["id"])
+    ds = _sum_every_column(_join(), ["id"])
     aggregate = _physical_dag(ds)
     assert isinstance(aggregate, MapOperator)
     assert aggregate.name == "HashAggregate(key_columns=('id',), mode=complete)"
@@ -516,8 +567,7 @@ def test_one_phase_aggregation_memory_request(
 
 def _filter_join_sum_add_column() -> Dataset:
     joined = _join().filter(expr=TWO_SIDED_PREDICATE, concurrency=1)
-    ds, _ = _sum_every_column(joined, ["id"])
-    return ds.with_column("lval2", col("lval") * 2)
+    return _sum_every_column(joined, ["id"]).with_column("lval2", col("lval") * 2)
 
 
 @pytest.mark.parametrize(
@@ -568,7 +618,7 @@ def test_restored_shuffle_is_planned_as_without_elimination(
 
 def test_empty_join_output(ray_start_regular_shared_2_cpus, configure_shuffle_method):
     joined = _join(right=_right().filter(expr=col("rid") > 10_000))
-    ds, _ = _sum_every_column(joined, ["id"])
+    ds = _sum_every_column(joined, ["id"])
     assert _skips_aggregate_shuffle(ds) == (
         configure_shuffle_method == ShuffleStrategy.SHUFFLE_V2
     )
@@ -598,16 +648,15 @@ def test_elimination_can_be_disabled(
 ):
     restore_data_context.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
     restore_data_context.enable_aggregate_shuffle_elimination = False
-    ds, expected = _sum_every_column(_join(), ["id"])
+    ds = _sum_every_column(_join(), ["id"])
     assert not _skips_aggregate_shuffle(ds)
-    _assert_same_rows(ds, expected, ["id"])
+    _assert_same_rows(ds, _expected_sums(_join_pd(), ["id"]), ["id"])
 
 
 def test_global_aggregation_keeps_shuffle(ray_start_regular_shared_2_cpus):
-    joined = _join()
-    ds = joined.groupby(None).aggregate(Sum(on="rval", alias_name="s"))
+    ds = _join().groupby(None).aggregate(Sum(on="rval", alias_name="s"))
     assert not _skips_aggregate_shuffle(ds)
-    assert ds.take_all() == [{"s": joined.to_pandas()["rval"].sum()}]
+    assert ds.take_all() == [{"s": _join_pd()["rval"].sum()}]
 
 
 @pytest.mark.parametrize(
