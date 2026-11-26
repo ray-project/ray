@@ -15,6 +15,7 @@ from ray._private.runtime_env import dependency_utils, virtualenv_utils
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.redaction import redact_runtime_env
+from ray._private.runtime_env.uri_cache import URIDeletionResult, URIDeletionStatus
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
@@ -344,7 +345,7 @@ class PipPlugin(RuntimeEnvPlugin):
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
+    ) -> URIDeletionResult:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pip URI %s", uri)
         protocol, hash_val = parse_uri(uri)
@@ -359,18 +360,20 @@ class PipPlugin(RuntimeEnvPlugin):
         if task is not None:
             task.cancel()
 
-        del self._created_hash_bytes[hash_val]
+        self._created_hash_bytes.pop(hash_val, None)
 
         pip_env_path = self._get_path_from_hash(hash_val)
         local_dir_size = get_directory_size_bytes(pip_env_path)
-        del self._create_locks[uri]
+        self._create_locks.pop(uri, None)
         try:
             shutil.rmtree(pip_env_path)
         except OSError as e:
+            if isinstance(e, FileNotFoundError) and not os.path.lexists(pip_env_path):
+                return URIDeletionStatus.REMOVED
             logger.warning(f"Error when deleting pip env {pip_env_path}: {str(e)}")
             return 0
 
-        return local_dir_size
+        return local_dir_size or URIDeletionStatus.REMOVED
 
     async def create(
         self,

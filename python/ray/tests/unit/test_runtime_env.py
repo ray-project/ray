@@ -12,7 +12,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.uri_cache import URICache, URIDeletionStatus
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
     check_output_cmd,
@@ -153,7 +153,7 @@ def test_container_option_serialize(runtime_env_class):
 
 class TestURICache:
     def test_refresh_size_and_external_deletion(self):
-        cache = URICache(lambda uri, logger: 0, debug_mode=True)
+        cache = URICache(lambda uri, logger: URIDeletionStatus.REMOVED, debug_mode=True)
         cache.add("a", 4)
         cache.mark_unused("a")
         cache.add("a", 7)
@@ -169,6 +169,32 @@ class TestURICache:
         cache = URICache(on_uri_unused=unused.append, debug_mode=True)
         cache.mark_unused("creating")
         assert unused == ["creating"]
+
+    def test_failed_eviction_still_counts_disk_usage(self):
+        on_disk = {"a": 8, "b": 8}
+        blocked = True
+
+        def delete_fn(uri, logger):
+            if uri == "a" and blocked:
+                return 0
+            return on_disk.pop(uri)
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 8)
+        cache.mark_unused("a")
+        cache.add("b", 8)
+        assert cache.get_total_size_bytes() == 16
+        assert "a" not in cache
+
+        cache.mark_unused("b")
+        assert on_disk == {"a": 8}
+        assert cache.get_total_size_bytes() == 8
+
+        blocked = False
+        cache.max_total_size_bytes = 0
+        cache.mark_unused("a")
+        assert not on_disk
+        assert cache.get_total_size_bytes() == 0
 
     def test_add_existing_uri_is_idempotent(self):
         cache = URICache(debug_mode=True)

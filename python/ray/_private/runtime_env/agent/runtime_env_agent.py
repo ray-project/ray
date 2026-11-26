@@ -4,6 +4,7 @@ import logging.handlers
 import os
 import time
 import traceback
+import weakref
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -11,7 +12,6 @@ from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
-from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
@@ -439,9 +439,11 @@ class RuntimeEnvAgent:
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
         self._env_cache: Dict[str, CreatedEnvResult] = dict()
-        # Maps a serialized runtime env to a lock that is used
-        # to prevent multiple concurrent installs of the same env.
-        self._env_locks: Dict[str, asyncio.Lock] = dict()
+        # Running and waiting requests hold the lock for an environment.
+        # Drop the serialized key when the last request releases the lock.
+        self._env_locks: weakref.WeakValueDictionary[
+            str, asyncio.Lock
+        ] = weakref.WeakValueDictionary()
         self._gcs_client = gcs_client
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
@@ -513,24 +515,17 @@ class RuntimeEnvAgent:
         for uri, uri_type in unused_uris:
             self._plugin_manager.plugins[str(uri_type)].uri_cache.mark_unused(uri)
 
-    def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
-        def delete_runtime_env():
-            del self._env_cache[unused_runtime_env]
-            self._logger.info(
-                "Runtime env %s removed from env-level cache.",
-                redact_serialized_runtime_env(unused_runtime_env),
-            )
+    def _delete_cached_runtime_env(self, serialized_env: str) -> None:
+        del self._env_cache[serialized_env]
+        self._logger.info(
+            "Runtime env %s removed from env-level cache.",
+            redact_serialized_runtime_env(serialized_env),
+        )
 
-        if unused_runtime_env in self._env_cache:
-            if not self._env_cache[unused_runtime_env].success:
-                loop = get_or_create_event_loop()
-                # Cache the bad runtime env result by ttl seconds.
-                loop.call_later(
-                    runtime_env_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
-                    delete_runtime_env,
-                )
-            else:
-                delete_runtime_env()
+    def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
+        result = self._env_cache.get(unused_runtime_env)
+        if result is not None and result.success:
+            self._delete_cached_runtime_env(unused_runtime_env)
 
     async def GetOrCreateRuntimeEnv(self, request):
         # Log only this copy: the serialized env carries `env_vars` values.
@@ -736,11 +731,12 @@ class RuntimeEnvAgent:
             runtime_env, serialized_env, request.source_process
         )
 
-        if serialized_env not in self._env_locks:
-            # async lock to prevent the same env being concurrently installed
-            self._env_locks[serialized_env] = asyncio.Lock()
+        env_lock = self._env_locks.get(serialized_env)
+        if env_lock is None:
+            env_lock = asyncio.Lock()
+            self._env_locks[serialized_env] = env_lock
 
-        async with self._env_locks[serialized_env]:
+        async with env_lock:
             if serialized_env in self._env_cache:
                 serialized_context = self._env_cache[serialized_env]
                 result = self._env_cache[serialized_env]
@@ -796,11 +792,6 @@ class RuntimeEnvAgent:
                 runtime_env_config,
             )
             creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
-            if not successful:
-                # Recover the reference.
-                self._reference_table.decrease_reference(
-                    runtime_env, serialized_env, request.source_process
-                )
             # Add the result to env cache.
             self._env_cache[serialized_env] = CreatedEnvResult(
                 successful,
@@ -813,6 +804,16 @@ class RuntimeEnvAgent:
                 # the creation just cached in that case.
                 self._reference_table.release_dynamic_uris_if_unreferenced(
                     serialized_env, request.source_process, created_dynamic_uris
+                )
+            else:
+                # Expire failures even when no further requests arrive.
+                asyncio.get_running_loop().call_later(
+                    runtime_env_consts.BAD_RUNTIME_ENV_CACHE_TTL_SECONDS,
+                    self._delete_cached_runtime_env,
+                    serialized_env,
+                )
+                self._reference_table.decrease_reference(
+                    runtime_env, serialized_env, request.source_process
                 )
             # Reply the RPC
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(

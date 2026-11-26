@@ -137,6 +137,10 @@ The cache identity includes the immutable image identity, operating system and a
 
 Ray sets the variables in `env_vars` during the installation too, so they can configure pip, for example with `PIP_INDEX_URL`, or a package build. Installation values pass literally through a temporary JSON file, preserving line breaks and quotes within the operating system's environment size limits. Ray removes the file when installation ends and doesn't apply these values to the host container launcher. In the worker container, Ray sets `VIRTUAL_ENV` to the cached environment and puts its `bin` directory first on `PATH`, ahead of the `PATH` from `env_vars` or, if `env_vars` doesn't set one, from the image.
 
+Pip must install into the cached virtual environment. Remove settings that
+redirect installation, such as `--target`, `--prefix`, `--user`, or
+`PIP_TARGET`, and disable `--dry-run` if it's set.
+
 Ray keys the cache on the immutable image that the tag resolves to on each node
 when the environment is created, and workers run that exact image so the cached
 environment always matches it. Pull an updated tag onto the nodes and recreate the

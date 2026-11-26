@@ -18,8 +18,10 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private import ray_constants
+from ray._private.runtime_env.agent import runtime_env_consts
 from ray._private.runtime_env.agent.runtime_env_agent import (
     ReferenceTable,
+    RuntimeEnvAgent,
     SetupLoggerFactory,
     UriType,
 )
@@ -27,6 +29,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.image_uri import (
     _CACHE_SCHEMA_VERSION,
     _INSTALL_ENV_PATH,
+    _PIP_INSTALL,
     ImageMetadata,
     ImageURIPlugin,
     _canonical_pip_config,
@@ -35,13 +38,13 @@ from ray._private.runtime_env.image_uri import (
     _write_install_env,
 )
 from ray._private.runtime_env.plugin import create_for_plugin_if_needed
-from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.uri_cache import URICache, URIDeletionStatus
 from ray._private.test_utils import (
     get_error_message,
     init_error_pubsub,
 )
-from ray.core.generated import common_pb2
-from ray.runtime_env import RuntimeEnv
+from ray.core.generated import common_pb2, runtime_env_agent_pb2
+from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 import psutil
 
@@ -469,6 +472,42 @@ def test_image_uri_install_env_rejects_invalid_os_entries(tmp_path, name, value)
     assert "secret" not in str(error.value)
 
 
+@pytest.mark.parametrize(
+    "options, env_vars, config",
+    [
+        (["--target=/tmp/outside"], {}, ""),
+        (["-t/tmp/outside"], {}, ""),
+        (["--prefix", "/tmp/outside"], {}, ""),
+        (["--root", "/tmp/outside"], {}, ""),
+        (["--user"], {}, ""),
+        (["--dry-run"], {}, ""),
+        ([], {"PIP_TARGET": "/tmp/outside"}, ""),
+        ([], {"PIP_USER": "1"}, ""),
+        ([], {}, "[install]\ntarget = /tmp/outside\n"),
+    ],
+)
+def test_image_uri_pip_rejects_destination_overrides(
+    tmp_path, options, env_vars, config
+):
+    config_file = tmp_path / "pip.conf"
+    config_file.write_text(config, encoding="utf-8")
+    env = {
+        name: value for name, value in os.environ.items() if not name.startswith("PIP_")
+    }
+    env.update(env_vars, PIP_CONFIG_FILE=str(config_file))
+    result = subprocess.run(
+        [sys.executable, "-c", _PIP_INSTALL, "--no-index", *options],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "image_uri requires pip to install into the cached virtual environment" in (
+        result.stderr
+    )
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
 @pytest.mark.asyncio
 async def test_image_uri_cache_publishes_once(tmp_path, monkeypatch):
@@ -551,7 +590,7 @@ async def test_image_uri_cache_shared_between_plugin_instances(tmp_path, monkeyp
     plugins[0].on_uri_unused(uri)
     assert plugins[0].delete_uri(uri) is None
     plugins[1].on_uri_unused(uri)
-    assert plugins[0].delete_uri(uri) == sizes[0]
+    assert plugins[0].delete_uri(uri) == (sizes[0] or URIDeletionStatus.REMOVED)
 
 
 def _evict_image_uri_in_subprocess(resources_dir, uri):
@@ -560,7 +599,7 @@ import json, sys
 from ray._private.runtime_env.image_uri import ImageURIPlugin
 plugin = ImageURIPlugin('/tmp/ray')
 plugin.set_resources_dir(sys.argv[1])
-print(json.dumps(plugin.delete_uri(sys.argv[2])))
+print(json.dumps(plugin.delete_uri(sys.argv[2]), default=lambda status: status.value))
 """
     return json.loads(
         subprocess.check_output(
@@ -595,7 +634,10 @@ async def test_image_uri_cache_hit_holds_lease_through_use(tmp_path, monkeypatch
     assert _evict_image_uri_in_subprocess(resources, uri) is None
     assert os.path.exists(plugin._get_cache_path(uri))
     plugin.on_uri_unused(uri)
-    assert _evict_image_uri_in_subprocess(resources, uri) == 0
+    assert (
+        _evict_image_uri_in_subprocess(resources, uri)
+        == URIDeletionStatus.REMOVED.value
+    )
     assert not os.path.exists(plugin._get_cache_path(uri))
 
 
@@ -700,7 +742,7 @@ async def test_image_uri_reference_handoff_during_setup(
         assert sibling.delete_uri(uri) is None
         refs.decrease_reference(env, serialized, "raylet")
     assert serialized not in contexts
-    assert sibling.delete_uri(uri) == 0
+    assert sibling.delete_uri(uri) is URIDeletionStatus.REMOVED
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -741,7 +783,7 @@ sys.stdin.read()
         finally:
             process.kill()
             process.wait(timeout=30)
-    assert plugin.delete_uri(uri) == 0
+    assert plugin.delete_uri(uri) is URIDeletionStatus.REMOVED
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -781,7 +823,7 @@ async def test_image_uri_cancelled_setup_keeps_waiter_state(tmp_path, monkeypatc
     assert entry.use_lock is not None
     assert entry.setups == 0
     plugin.on_uri_unused(uri)
-    assert plugin.delete_uri(uri) == 0
+    assert plugin.delete_uri(uri) is URIDeletionStatus.REMOVED
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink test is POSIX-only.")
@@ -822,22 +864,102 @@ async def test_image_uri_cache_cleans_failed_staging(tmp_path, monkeypatch):
     plugin.set_resources_dir(str(tmp_path / "resources"))
     uri = "image-pip://failed-key"
     plugin._metadata_by_uri[uri] = _image_metadata_for_test()
-    plugin._install_env_by_uri[uri] = {}
+    install_env = {"BUILD_TOKEN": "secret"}
+    plugin._install_env_by_uri[uri] = install_env
+    first_started = asyncio.Event()
+    fail_first = asyncio.Event()
 
     async def fail_prepare(*args, **kwargs):
+        assert plugin._install_env_by_uri[uri] == install_env
+        first_started.set()
+        await fail_first.wait()
         raise RuntimeError("installation failed")
 
     monkeypatch.setattr(plugin, "_prepare_pip_environment", fail_prepare)
     runtime_env = RuntimeEnv(image_uri="example/image", pip=["package==1"])
-    with pytest.raises(RuntimeError, match="installation failed"):
-        await plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
+    first = asyncio.create_task(
+        plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
+    )
+    await first_started.wait()
+    second = asyncio.create_task(
+        plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
+    )
+    await asyncio.sleep(0)
+    assert plugin._cache_entries[uri].setups == 2
+    fail_first.set()
+    for setup in (first, second):
+        with pytest.raises(RuntimeError, match="installation failed"):
+            await setup
 
+    assert uri not in plugin._install_env_by_uri
+    assert uri not in plugin._metadata_by_uri
+    assert uri not in plugin._cache_entries
     assert not os.path.exists(plugin._get_cache_path(uri))
     assert not [
         path
         for path in (tmp_path / "resources" / "image_uri").glob("*.staging-*")
         if ".deleting-" not in path.name
     ]
+
+
+@pytest.mark.asyncio
+async def test_image_uri_failed_runtime_env_expires(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime_env_consts, "RUNTIME_ENV_RETRY_TIMES", 1)
+    monkeypatch.setattr(runtime_env_consts, "BAD_RUNTIME_ENV_CACHE_TTL_SECONDS", 0)
+    monkeypatch.setattr(ray.util, "get_node_ip_address", lambda: "127.0.0.1")
+    monkeypatch.setattr(
+        "ray._private.runtime_env.agent.runtime_env_agent.setup_component_logger",
+        lambda **kwargs: logging.getLogger("test_image_uri_failed_runtime_env_expires"),
+    )
+    agent = RuntimeEnvAgent(
+        runtime_env_dir=str(tmp_path / "resources"),
+        logging_params={
+            "logging_level": logging.INFO,
+            "logging_format": ray_constants.LOGGER_FORMAT,
+            "log_dir": None,
+            "max_bytes": 0,
+            "backup_count": 0,
+        },
+        gcs_client=None,
+        temp_dir=str(tmp_path),
+        address="127.0.0.1",
+        runtime_env_agent_port=0,
+    )
+    expired = asyncio.Event()
+    delete_cached_env = agent._delete_cached_runtime_env
+
+    def expire(serialized_env):
+        delete_cached_env(serialized_env)
+        expired.set()
+
+    attempts = 0
+
+    async def fail_resolve(*args):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("image inspection failed")
+
+    monkeypatch.setattr(agent, "_delete_cached_runtime_env", expire)
+    monkeypatch.setattr(agent._image_uri_plugin, "resolve_uris", fail_resolve)
+    env = RuntimeEnv(image_uri="example/image", env_vars={"BUILD_TOKEN": "secret"})
+    serialized_env = env.serialize()
+    request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest(
+        serialized_runtime_env=serialized_env,
+        runtime_env_config=RuntimeEnvConfig().build_proto_runtime_env_config(),
+        job_id=b"01000000",
+        source_process="raylet",
+    )
+
+    reply = await agent.GetOrCreateRuntimeEnv(request)
+    assert reply.status == runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED
+    assert serialized_env in agent._env_cache
+    assert serialized_env not in agent._env_locks
+    assert await agent.GetOrCreateRuntimeEnv(request) == reply
+    assert attempts == 1
+
+    await asyncio.wait_for(expired.wait(), timeout=5)
+    assert serialized_env not in agent._env_cache
+    assert serialized_env not in agent._reference_table.runtime_env_refs
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="fcntl is Linux-only.")
@@ -923,6 +1045,8 @@ async def test_image_uri_cancelled_cleanup_cannot_remove_retry(tmp_path, monkeyp
         with pytest.raises(asyncio.CancelledError):
             await first
         block_prepare = False
+        plugin._metadata_by_uri[uri] = _image_metadata_for_test()
+        plugin._install_env_by_uri[uri] = {}
         await plugin.create(uri, runtime_env, RuntimeEnvContext(), logger)
     finally:
         resume_delete.set()

@@ -1,9 +1,19 @@
 import logging
-from typing import Callable, Dict, Optional, Set
+from enum import Enum
+from typing import Callable, Dict, Optional, Set, Union
 
 default_logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_URI_CACHE_SIZE_BYTES = (1024**3) * 10  # 10 GB
+
+
+class URIDeletionStatus(Enum):
+    """The plugin confirmed the URI no longer occupies space on disk."""
+
+    REMOVED = "removed"
+
+
+URIDeletionResult = Optional[Union[float, URIDeletionStatus]]
 
 
 class URICache:
@@ -27,7 +37,7 @@ class URICache:
 
     def __init__(
         self,
-        delete_fn: Optional[Callable[[str, logging.Logger], Optional[int]]] = None,
+        delete_fn: Optional[Callable[[str, logging.Logger], URIDeletionResult]] = None,
         max_total_size_bytes: int = DEFAULT_MAX_URI_CACHE_SIZE_BYTES,
         debug_mode: bool = False,
         on_uri_unused: Optional[Callable[[str], None]] = None,
@@ -35,6 +45,7 @@ class URICache:
         # Maps URIs to the size in bytes of their corresponding disk contents.
         self._used_uris: Set[str] = set()
         self._unused_uris: Set[str] = set()
+        self._failed_evictions: Set[str] = set()
         self._uri_sizes: Dict[str, int] = {}
         self._on_uri_unused = on_uri_unused
 
@@ -67,7 +78,7 @@ class URICache:
         """Mark a URI as in use. URIs in use will not be deleted."""
         if uri in self._used_uris:
             return
-        elif uri in self._unused_uris:
+        elif uri in self._unused_uris and uri not in self._failed_evictions:
             self._used_uris.add(uri)
             self._unused_uris.remove(uri)
         else:
@@ -85,6 +96,7 @@ class URICache:
         self._total_size_bytes += size_bytes - self._uri_sizes.get(uri, 0)
         self._uri_sizes[uri] = size_bytes
         self._unused_uris.discard(uri)
+        self._failed_evictions.discard(uri)
         self._used_uris.add(uri)
 
         self._evict_if_needed(logger)
@@ -96,37 +108,44 @@ class URICache:
 
     def _evict_if_needed(self, logger: logging.Logger = default_logger):
         """Evict unused URIs (if they exist) until total size <= max size."""
-        deferred_uris = set()
-        while (
-            self._unused_uris - deferred_uris
-            and self.get_total_size_bytes() > self.max_total_size_bytes
-        ):
-            # TODO(architkulkarni): Evict least recently used URI instead
-            arbitrary_unused_uri = next(iter(self._unused_uris - deferred_uris))
+        if self.get_total_size_bytes() <= self.max_total_size_bytes:
+            return
+        # TODO(architkulkarni): Evict least recently used URI instead
+        for arbitrary_unused_uri in self._unused_uris.copy():
             num_bytes_deleted = self._delete_fn(arbitrary_unused_uri, logger)
-            if num_bytes_deleted is None:
-                # None means the deletion could not complete and can be retried
-                # on a future eviction pass.
-                deferred_uris.add(arbitrary_unused_uri)
+            failed = (
+                num_bytes_deleted == 0 and self._uri_sizes[arbitrary_unused_uri] > 0
+            )
+            if failed:
+                # A legacy callback may have partially deleted the entry.
+                # Keep accounting for it, but require setup before using it.
+                self._failed_evictions.add(arbitrary_unused_uri)
+            if failed or num_bytes_deleted is None:
                 logger.info("Deferred deletion of URI %s.", arbitrary_unused_uri)
                 continue
             self._unused_uris.remove(arbitrary_unused_uri)
+            self._failed_evictions.discard(arbitrary_unused_uri)
             # The directory may already have been removed by another agent.
             # Drop the size this cache recorded, regardless of physical reclaim.
             self._total_size_bytes -= self._uri_sizes.pop(arbitrary_unused_uri)
-            logger.info(
-                f"Deleted URI {arbitrary_unused_uri} with size " f"{num_bytes_deleted}."
-            )
+            logger.info("Removed URI %s from the cache.", arbitrary_unused_uri)
+            if self.get_total_size_bytes() <= self.max_total_size_bytes:
+                break
 
     def _check_valid(self):
         """(Debug mode only) Check "used" and "unused" sets are disjoint."""
         if self._debug_mode:
             assert self._used_uris & self._unused_uris == set()
+            assert self._failed_evictions <= self._unused_uris
             assert self._uri_sizes.keys() == self._used_uris | self._unused_uris
             assert self._total_size_bytes == sum(self._uri_sizes.values())
 
     def __contains__(self, uri):
-        return uri in self._used_uris or uri in self._unused_uris
+        return (
+            uri in self._used_uris
+            or uri in self._unused_uris
+            and uri not in self._failed_evictions
+        )
 
     def __repr__(self):
         return str(self.__dict__)

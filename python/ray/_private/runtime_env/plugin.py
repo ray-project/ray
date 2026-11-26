@@ -14,7 +14,7 @@ from ray._private.runtime_env.constants import (
     RAY_RUNTIME_ENV_PRIORITY_FIELD_NAME,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.uri_cache import URICache, URIDeletionResult
 from ray.util.annotations import DeveloperAPI
 
 default_logger = logging.getLogger(__name__)
@@ -115,7 +115,7 @@ class RuntimeEnvPlugin(ABC):
         """
         return
 
-    def delete_uri(self, uri: str, logger: logging.Logger) -> Optional[float]:
+    def delete_uri(self, uri: str, logger: logging.Logger) -> URIDeletionResult:
         """Delete the runtime environment given uri.
 
         Args:
@@ -123,8 +123,11 @@ class RuntimeEnvPlugin(ABC):
             logger: The logger used to log messages during the deletion.
 
         Returns:
-            Optional[float]: The amount of space reclaimed by the deletion, or
-                None if deletion was deferred and should be retried later.
+            The amount of space reclaimed, `URIDeletionStatus.REMOVED` if the
+            URI is known to be gone but no bytes were reclaimed, or None if
+            deletion should be retried later. Zero is treated as a deferred
+            deletion that invalidates the entry when the cache has a positive
+            recorded size for the URI.
         """
         return 0
 

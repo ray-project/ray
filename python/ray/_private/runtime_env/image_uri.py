@@ -22,6 +22,7 @@ from ray._private.runtime_env.context import (
     expand_run_option,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URIDeletionResult, URIDeletionStatus
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes
 
@@ -32,8 +33,8 @@ try:
 except ImportError:  # pragma: no cover - image_uri is only supported on Linux.
     fcntl = None
 
-# Earlier agents do not hold usage leases, so they must use different entries.
-_CACHE_SCHEMA_VERSION = 3
+# Rebuild entries that could have been published without installing into the venv.
+_CACHE_SCHEMA_VERSION = 4
 _CACHE_URI_PREFIX = "image-pip://"
 _DEFAULT_PIP_INSTALL_OPTIONS = [
     "--disable-pip-version-check",
@@ -160,6 +161,23 @@ with open(sys.argv[1], encoding="utf-8") as file:
 env = os.environ.copy()
 env.update(install_env)
 os.execve(sys.argv[2], sys.argv[2:], env)
+"""
+_PIP_INSTALL = """
+import sys
+from pip._internal.commands import create_command
+
+args = sys.argv[1:]
+command = create_command("install", isolated="--isolated" in args)
+# Check pip's effective destination, including settings from the image.
+options, _ = command.parse_args(args)
+if any(getattr(options, name, None) for name in (
+    "target_dir", "prefix_path", "root_path", "use_user_site", "python", "dry_run",
+)):
+    sys.exit(
+        "image_uri requires pip to install into the cached virtual environment. "
+        "Remove pip options that redirect or skip installation."
+    )
+sys.exit(command.main(["--no-user", *args]))
 """
 
 
@@ -793,9 +811,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
                 await run(
                     virtualenv_python,
                     [
-                        "-m",
-                        "pip",
-                        "install",
+                        "-c",
+                        _PIP_INSTALL,
                         "--disable-pip-version-check",
                         f"pip{pip_version}",
                     ],
@@ -803,9 +820,8 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             await run(
                 virtualenv_python,
                 [
-                    "-m",
-                    "pip",
-                    "install",
+                    "-c",
+                    _PIP_INSTALL,
                     "-r",
                     os.path.join(final_path, "requirements.txt"),
                     *pip_config["pip_install_options"],
@@ -861,6 +877,11 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         finally:
             entry.setups -= 1
             entry.release_if_unused()
+            if not entry.setups:
+                self._install_env_by_uri.pop(uri, None)
+                if not entry.used:
+                    self._cache_entries.pop(uri)
+                    self._metadata_by_uri.pop(uri)
 
     def on_uri_unused(self, uri: str) -> None:
         entry = self._cache_entries.get(uri)
@@ -973,7 +994,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> Optional[int]:
+    ) -> URIDeletionResult:
         entry = self._cache_entries.get(uri)
         if entry is not None and (entry.used or entry.setups):
             return None
@@ -995,12 +1016,11 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             manifest_size = self._read_manifest_size(cache_path)
             size_bytes = manifest_size or 0
             try:
-                if os.path.exists(cache_path):
-                    if manifest_size is None:
-                        size_bytes = get_directory_size_bytes(cache_path)
-                    # Renaming is fast; the tree removal happens on a thread
-                    # so eviction never blocks the agent's event loop.
-                    _detach_cache_tree(cache_path)
+                if manifest_size is None:
+                    size_bytes = get_directory_size_bytes(cache_path)
+                # Renaming is fast; the tree removal happens on a thread so
+                # eviction never blocks the agent's event loop.
+                _detach_cache_tree(cache_path)
             except OSError as error:
                 logger.warning(f"Failed to delete {cache_path}: {error}")
                 return None
@@ -1011,7 +1031,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
         self._cache_entries.pop(uri, None)
         self._metadata_by_uri.pop(uri, None)
         self._install_env_by_uri.pop(uri, None)
-        return size_bytes
+        return size_bytes or URIDeletionStatus.REMOVED
 
     def modify_context(
         self,
