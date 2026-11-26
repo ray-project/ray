@@ -263,7 +263,10 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         super()._do_shutdown(force)
         self._output_queue.clear()
 
-    def teardown(self) -> None:
+    def teardown(
+        self,
+        completion_refs: Tuple[ObjectRef, ...] = (),
+    ) -> None:
         """Kill the owned file servers and remove the mappers' shuffle files."""
         # ``no_restart=True`` goes through GCS DestroyActor, overriding
         # ``max_restarts=-1``.
@@ -284,7 +287,10 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
                     for shuffle_id in self._planned_shuffle_ids:
                         shuffle_nodes.add((shuffle_id, node_id))
 
-        teardown_disk_shuffle(shuffle_nodes)
+        teardown_disk_shuffle(
+            shuffle_nodes,
+            completion_refs=completion_refs,
+        )
 
         self._file_servers.clear()
         self._planned_shuffle_ids.clear()
@@ -628,6 +634,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         if self._preserve_partition_order and partition_complete:
             self._output_queue.finalize(key=partition_id)
 
+    def _should_capture_shutdown_completion_refs(self) -> bool:
+        return True
+
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or len(self._output_queue) > 0:
             return False
@@ -642,9 +651,20 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             self._shuffle_reduce_tasks.clear()
             self._output_queue.clear()
             self._held_partition_outputs.clear()
+
             regroup_op = self.input_dependencies[0]
             assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
-            regroup_op.teardown()
+
+            # The upstream writers have already been shut down, but their
+            # streaming tasks may still be completing cancellation.
+            completion_refs = set(self.get_shutdown_completion_refs())
+
+            for writer in regroup_op.input_dependencies:
+                completion_refs.update(writer.get_shutdown_completion_refs())
+
+            regroup_op.teardown(
+                completion_refs=tuple(completion_refs),
+            )
 
     def _extra_metrics(self) -> Dict[str, Any]:
         return self._phase_metrics.extra_metrics()

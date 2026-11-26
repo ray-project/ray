@@ -735,6 +735,7 @@ class PhysicalOperator(Operator):
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
+        self._shutdown_completion_refs: Tuple[ray.ObjectRef, ...] = ()
         self._output_partitioning: Optional[HashPartitioning] = None
         self._data_context = data_context
         self._id = str(uuid.uuid4())
@@ -1410,8 +1411,30 @@ class PhysicalOperator(Operator):
             tasks_in_flight=0,
         )
 
+    def _should_capture_shutdown_completion_refs(self) -> bool:
+        from ray.data._internal.logical.operators import DiskShuffleMap
+
+        return any(isinstance(op, DiskShuffleMap) for op in self._logical_operators)
+
+    def get_shutdown_completion_refs(self) -> Tuple[ray.ObjectRef, ...]:
+        """Return completion refs captured before task cancellation.
+        Multiple shuffle cleanups may depend on the same fused operator.
+        """
+        return self._shutdown_completion_refs
+
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()
+
+        # Preserve completion refs for operators whose external resources
+        # must not be released while streaming tasks are still running.
+        if self._should_capture_shutdown_completion_refs():
+            completion_refs = set()
+            for task in tasks:
+                waitable = task.get_waitable()
+                if isinstance(waitable, ObjectRefGenerator):
+                    completion_refs.add(waitable.completed())
+
+            self._shutdown_completion_refs = tuple(completion_refs)
 
         # Interrupt all (still) running tasks immediately
         for task in tasks:
