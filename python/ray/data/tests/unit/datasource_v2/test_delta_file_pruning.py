@@ -102,15 +102,22 @@ def test_string_statistics_use_only_the_minimum():
     assert _kept(actions, col("s") == "b") == ["f0"]
 
 
-def test_timestamp_statistics_are_not_used():
-    """Delta stores timestamp statistics in milliseconds."""
-    t = [datetime.datetime(2024, 1, d) for d in (1, 2, 3)]
-    actions = _actions(
-        min__ts=pa.array(t, pa.timestamp("us")),
-        max__ts=pa.array(t, pa.timestamp("us")),
-    )
+@pytest.mark.parametrize("tz", [None, "UTC"], ids=["timestamp_ntz", "timestamp"])
+def test_timestamp_statistics_get_a_millisecond_margin(tz):
+    """Spark and Databricks log timestamps cut to milliseconds: f0 holds a row
+    at 12:00:00.000500, logged as 12:00:00.000."""
+    tzinfo = datetime.timezone.utc if tz else None
 
-    assert _kept(actions, col("ts") > t[1]) == ["f0", "f1", "f2"]
+    def at(hour: int, micros: int = 0) -> datetime.datetime:
+        return datetime.datetime(2024, 1, 1, hour, 0, 0, micros, tzinfo=tzinfo)
+
+    logged = pa.array([at(12), at(13), at(14)], pa.timestamp("us", tz=tz))
+    actions = _actions(min__ts=logged, max__ts=logged)
+
+    # The logged maximum alone would rule out f0.
+    assert _kept(actions, col("ts") > at(12, 100)) == ["f0", "f1", "f2"]
+    assert _kept(actions, col("ts") > at(12, 2000)) == ["f1", "f2"]
+    assert _kept(actions, col("ts") < at(12, 500)) == ["f0"]
 
 
 def _date(day: int) -> datetime.date:

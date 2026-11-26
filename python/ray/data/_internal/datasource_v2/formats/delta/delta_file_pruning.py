@@ -13,11 +13,11 @@ anyway. Keeping a file costs a read; dropping a matching one would lose rows.
 
 Not every statistic is a true bound. Writers truncate long strings, which can
 leave ``max`` below the real maximum (a truncated ``min`` is still a lower
-bound), and Delta stores timestamps in milliseconds, so either bound can be
-off. Floating-point bounds may be NaN when the file holds NaN. ``deltalake``
-writes decimal statistics through float64, so a decimal with more than 15
-digits is rounded, and one beyond the int64 range is clamped to it. Only the
-bounds that are exact for their type are used.
+bound). Delta stores timestamps in milliseconds, so timestamp bounds are
+widened by 1 ms. Floating-point bounds may be NaN when the file holds NaN.
+``deltalake`` writes decimal statistics through float64, so a decimal with
+more than 15 digits is rounded, and one beyond the int64 range is clamped to
+it. Only the bounds that are exact for their type, or made so, are used.
 """
 
 import logging
@@ -42,6 +42,10 @@ MAX_STAT_PREFIX = "max."
 # The most decimal digits whose statistics survive ``deltalake``'s float64
 # round trip exactly.
 _MAX_EXACT_DECIMAL_DIGITS = 15
+
+# One millisecond in each sub-second timestamp unit: the most a logged
+# timestamp bound can be off by.
+_ONE_MILLISECOND = {"ms": 1, "us": 1_000, "ns": 1_000_000}
 
 # ``lit <op> col`` asks the same question of a file as ``col <flipped> lit``.
 _FLIPPED_OPERATION = {
@@ -197,6 +201,8 @@ def _bound(add_actions: pa.Table, prefix: str, column: str) -> Mask:
         return values if value_type.precision <= _MAX_EXACT_DECIMAL_DIGITS else None
     if pa.types.is_floating(value_type):
         return pc.if_else(pc.is_nan(values), pa.scalar(None, value_type), values)
+    if pa.types.is_timestamp(value_type):
+        return _widened_timestamps(values, prefix)
     if prefix == MIN_STAT_PREFIX and (
         pa.types.is_string(value_type) or pa.types.is_large_string(value_type)
     ):
@@ -204,6 +210,28 @@ def _bound(add_actions: pa.Table, prefix: str, column: str) -> Mask:
         # lower bound. A truncated maximum isn't an upper bound.
         return values
     return None
+
+
+def _widened_timestamps(values: pa.ChunkedArray, prefix: str) -> Mask:
+    """Timestamp bounds widened by 1 ms, which makes them true bounds.
+
+    Delta writes timestamp statistics in milliseconds. Spark and Databricks
+    cut off the rest, so a row at ``12:00:00.000500`` can be logged with a
+    maximum of ``12:00:00.000``. A maximum 1 ms later is always at or above
+    the real one; the minimum gets the same margin, in case a writer rounds
+    instead. The V1 reader (``DeltaTable.to_pyarrow_dataset``) also adds 1 ms
+    to the maximum.
+    """
+    unit = values.type.unit
+    if unit not in _ONE_MILLISECOND:
+        return None
+    margin = pa.scalar(_ONE_MILLISECOND[unit], pa.duration(unit))
+    widen = pc.subtract_checked if prefix == MIN_STAT_PREFIX else pc.add_checked
+    try:
+        return widen(values, margin)
+    except pa.ArrowInvalid:
+        # A bound within 1 ms of the end of the timestamp range.
+        return None
 
 
 def _keep_where(compare: Callable[..., Any], bound: Mask, value: Any) -> Mask:

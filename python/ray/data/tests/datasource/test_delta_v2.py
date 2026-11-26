@@ -7,6 +7,7 @@ where the two could disagree.
 
 import datetime
 import os
+import re
 import sys
 from decimal import Decimal
 from typing import Any, Dict, List
@@ -336,6 +337,32 @@ def test_log_statistics_pruning_keeps_every_matching_row(clustered_table, predic
     expected = _rows(_read(clustered_table).materialize().filter(expr=predicate))
 
     assert _rows(_read(clustered_table).filter(expr=predicate)) == expected
+
+
+def test_millisecond_timestamp_statistics_keep_matching_rows(tmp_path):
+    """Spark and Databricks log timestamp statistics cut to milliseconds, so the
+    log says 12:00:00.000 for a file whose only row is at 12:00:00.000500."""
+    path = str(tmp_path / "table")
+    at = datetime.datetime(2024, 1, 1, 12, 0, 0, 500, tzinfo=datetime.timezone.utc)
+    for ts in (at, at.replace(hour=14)):
+        deltalake.write_deltalake(
+            path,
+            pa.table({"ts": pa.array([ts], pa.timestamp("us", tz="UTC"))}),
+            mode="append",
+        )
+    for name in os.listdir(os.path.join(path, "_delta_log")):
+        if name.endswith(".json"):
+            log = os.path.join(path, "_delta_log", name)
+            with open(log) as f:
+                text = f.read()
+            with open(log, "w") as f:
+                # ``...:00.000500Z`` -> ``...:00.000Z``, inside the stats JSON.
+                f.write(re.sub(r"(\.\d{3})\d+Z", r"\1Z", text))
+    predicate = col("ts") > at.replace(microsecond=100)
+
+    rows = _rows(_read(path).filter(expr=predicate))
+
+    assert [row["ts"] for row in rows] == [at, at.replace(hour=14)]
 
 
 @pytest.fixture
