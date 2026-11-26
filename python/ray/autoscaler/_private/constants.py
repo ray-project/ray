@@ -22,6 +22,10 @@ def env_integer(key, default):
     return default
 
 
+# Set this environment variable to 1 to let `ray up` start Ray on a head node
+# whose Ray major or minor version differs from the local Ray's.
+SKIP_RAY_VERSION_CHECK_ENV = "RAY_UP_SKIP_RAY_VERSION_CHECK"
+
 # Whether autoscaler cluster status logging is enabled. Set to 0 disable.
 AUTOSCALER_STATUS_LOG = env_integer("RAY_ENABLE_CLUSTER_STATUS_LOG", 1)
 

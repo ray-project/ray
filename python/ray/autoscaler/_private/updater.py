@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import subprocess
 import time
 import traceback
@@ -7,6 +8,7 @@ from threading import Thread
 from typing import Any, Dict, List, Optional
 
 import click
+from packaging.version import InvalidVersion, Version
 
 from ray._common.usage import usage_constants, usage_lib
 from ray.autoscaler._private import subprocess_output_util as cmd_output_util
@@ -18,6 +20,7 @@ from ray.autoscaler._private.command_runner import (
 from ray.autoscaler._private.constants import (
     LABELS_ENVIRONMENT_VARIABLE,
     RESOURCES_ENVIRONMENT_VARIABLE,
+    SKIP_RAY_VERSION_CHECK_ENV,
 )
 from ray.autoscaler._private.event_system import CreateClusterEvent, global_event_system
 from ray.autoscaler._private.log_timer import LogTimer
@@ -37,6 +40,27 @@ logger = logging.getLogger(__name__)
 
 NUM_SETUP_STEPS = 7
 READY_CHECK_INTERVAL = 5
+
+
+def parse_ray_version_output(output: str) -> Optional[str]:
+    """Return the Ray version in the output of `ray --version`, or None.
+
+    `ray --version` prints click's default `ray, version <version>`, which
+    older Ray releases print too. A node can run an older Ray than this one,
+    so the check asks the node's own `ray` CLI rather than a newer command.
+    """
+    match = re.search(r"ray, version (\S+)", output)
+    return match.group(1) if match else None
+
+
+def is_same_minor_version(version: str, other: str) -> bool:
+    """Whether two Ray versions share their major and minor version, like
+    2.61.0 and 2.61.1. False if either isn't a valid version."""
+    try:
+        v1, v2 = Version(version), Version(other)
+        return (v1.major, v1.minor) == (v2.major, v2.minor)
+    except InvalidVersion:
+        return False
 
 
 class NodeUpdater:
@@ -71,6 +95,10 @@ class NodeUpdater:
             metric tracking.
         auth_mode: The cluster YAML's `auth_mode`. When given, the start
             commands run with RAY_AUTH_MODE set to it.
+        expected_ray_version: When given, the node's Ray version must have
+            its major and minor version, or the update fails before the start
+            commands run. A patch difference only warns. Setting
+            RAY_UP_SKIP_RAY_VERSION_CHECK=1 skips the check.
     """
 
     def __init__(
@@ -97,6 +125,7 @@ class NodeUpdater:
         restart_only: bool = False,
         for_recovery: bool = False,
         auth_mode: Optional[str] = None,
+        expected_ray_version: Optional[str] = None,
     ):
         self.log_prefix = "NodeUpdater: {}: ".format(node_id)
         # Three cases:
@@ -155,6 +184,7 @@ class NodeUpdater:
         self.is_head_node = is_head_node
         self.docker_config = docker_config
         self.restart_only = restart_only
+        self.expected_ray_version = expected_ray_version
         self.update_time = None
         self.for_recovery = for_recovery
 
@@ -514,6 +544,9 @@ class NodeUpdater:
                         _numbered=("[]", 6, NUM_SETUP_STEPS),
                     )
 
+        if self.expected_ray_version:
+            self._check_ray_version()
+
         with cli_logger.group(
             "Starting the Ray runtime", _numbered=("[]", 7, NUM_SETUP_STEPS)
         ):
@@ -555,6 +588,79 @@ class NodeUpdater:
             global_event_system.execute_callback(
                 CreateClusterEvent.start_ray_runtime_completed
             )
+
+    def _check_ray_version(self) -> None:
+        """Fail the update if the node runs another Ray version than expected.
+
+        Runs after the setup commands, which can install Ray, and before the
+        start commands. A difference in the patch version only warns, since
+        patch releases don't change the cluster config.
+
+        Raises:
+            click.ClickException: The node's Ray major or minor version
+                differs from `expected_ray_version`.
+        """
+        if os.environ.get(SKIP_RAY_VERSION_CHECK_ENV) == "1":
+            cli_logger.warning(
+                "Not checking the node's Ray version against this Ray {}, "
+                "because {}=1.",
+                self.expected_ray_version,
+                SKIP_RAY_VERSION_CHECK_ENV,
+            )
+            return
+        try:
+            output = self.cmd_runner.run(
+                "ray --version", with_output=True, run_env="auto"
+            )
+        except (
+            ProcessRunnerError,
+            click.ClickException,
+            subprocess.CalledProcessError,
+        ):
+            # A failed command raises ClickException with login shells, the
+            # default, ProcessRunnerError without them, and CalledProcessError
+            # in runners that invoke subprocess directly.
+            output = ""
+        text = (
+            output.decode(errors="replace")
+            if isinstance(output, bytes)
+            else (output or "")
+        )
+        node_ray_version = parse_ray_version_output(text)
+        if node_ray_version is None:
+            cli_logger.warning(
+                "Couldn't determine the Ray version on the node from "
+                "`ray --version`, so it isn't checked against this Ray {}.",
+                self.expected_ray_version,
+            )
+            return
+        if node_ray_version == self.expected_ray_version:
+            return
+        if is_same_minor_version(node_ray_version, self.expected_ray_version):
+            cli_logger.warning(
+                "This command runs Ray {}, and the node runs Ray {}. Use the "
+                "same Ray version on the nodes as on this machine.",
+                self.expected_ray_version,
+                node_ray_version,
+            )
+            return
+        # `ray up` doesn't restart a running container whose image differs
+        # from the YAML's. `ray down` stops the container, which removes it.
+        docker_hint = (
+            " A running container keeps its image, so after you change the "
+            "image, run `ray down` and then `ray up` to replace the container."
+            if self.docker_config and self.docker_config.get("container_name")
+            else ""
+        )
+        raise click.ClickException(
+            f"Ray version mismatch: this command runs Ray "
+            f"{self.expected_ray_version}, but the node runs Ray "
+            f"{node_ray_version}. Ray doesn't support clusters managed by "
+            "another Ray version. Install the node's Ray version locally, "
+            "or use a Docker image or setup commands that install this "
+            f"Ray version on the nodes.{docker_hint} To start Ray on the node "
+            f"anyway, set {SKIP_RAY_VERSION_CHECK_ENV}=1."
+        )
 
     def rsync_up(self, source, target, docker_mount_if_possible=False):
         options = {}

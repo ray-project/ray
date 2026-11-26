@@ -618,16 +618,28 @@ A list of commands to run to set up nodes. These commands will always run on the
 * **Type:** List of String
 * **Default:**
 
+On AWS, Azure, and GCP, the last default setup command installs Ray on a node that doesn't have it. It installs the Ray version of the machine that runs `ray up`. If that Ray is a development build, it installs the nightly wheel instead. If pip can't install the version, the command prints why it asked for that version and fails. The following defaults show the commands for a released Ray, where `<ray-version>` is that version:
+
 ::::{tab-set}
 :::{tab-item} AWS
 ```yaml
 # Default setup_commands:
 setup_commands:
-  - echo 'export PATH="$HOME/anaconda3/envs/tensorflow_p36/bin:$PATH"' >> ~/.bashrc
-  - pip install -U https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_x86_64.whl
+  - (stat $HOME/anaconda3/envs/tensorflow2_p310/ &> /dev/null && echo 'export PATH="$HOME/anaconda3/envs/tensorflow2_p310/bin:$PATH"' >> ~/.bashrc) || true
+  - which ray || pip install -U "ray[default]==<ray-version>" || { echo '...'; false; }
+```
+:::
+:::{tab-item} GCP
+```yaml
+# Default setup_commands:
+setup_commands:
+  - (stat /opt/conda/bin/ &> /dev/null && echo 'export PATH="/opt/conda/bin:$PATH"' >> ~/.bashrc) || true
+  - which ray || pip install -U "ray[default]==<ray-version>" || { echo '...'; false; }
 ```
 :::
 ::::
+
+If the cluster YAML sets `setup_commands`, its commands replace the defaults, and `ray up` doesn't change them.
 
 - Setup commands should ideally be *idempotent* (i.e., can be run multiple times without changing the result); this allows Ray to safely update nodes after they have been created. You can usually make commands idempotent with small modifications, e.g. `git clone foo` can be rewritten as `test -e foo || git clone foo` which checks if the repo is already cloned first.
 
@@ -718,7 +730,7 @@ The default Docker image to pull in the head and worker nodes. This can be overr
 * **Importance:** High
 * **Type:** String
 
-The Ray project publishes Docker images to the `rayproject/ray` [Docker Hub repository](https://hub.docker.com/r/rayproject/ray). Pin an explicit Ray version rather than a floating tag such as `latest`, so that the image your cluster starts doesn't change underneath you when a new Ray release ships:
+The Ray project publishes Docker images to the `rayproject/ray` [Docker Hub repository](https://hub.docker.com/r/rayproject/ray). Pin the Ray version you have installed rather than a floating tag such as `latest`. `ray up` fails if the head node runs a different Ray major or minor version than the machine you run it on, and a pinned image doesn't change underneath you when a new Ray release ships:
 
 * `rayproject/ray:2.56.1`: No CUDA support.
 * `rayproject/ray:2.56.1-gpu`: CUDA support.
