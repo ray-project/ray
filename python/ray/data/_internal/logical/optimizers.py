@@ -110,6 +110,10 @@ class LogicalOptimizer(Optimizer):
         return [rule_cls() for rule_cls in get_logical_ruleset()]
 
     def _post_optimize(self, plan: LogicalPlan) -> LogicalPlan:
+        # The rewrite moves a single predicate directly to a source. Run it
+        # once before deriving listing constraints to avoid another rule loop.
+        if plan.context.enable_outer_join_simplification:
+            plan = PredicatePushdown.simplify_outer_joins(plan)
         # CommonSubExprElimination is only supposed to run once
         # isolated from the optimizer rule loop as it applies to
         # a single Projection operator not a chain of operators.

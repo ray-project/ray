@@ -1,7 +1,8 @@
 import copy
 from dataclasses import dataclass, is_dataclass, replace
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
+from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     append_unique_predicate,
     combine_predicate_chain,
@@ -17,13 +18,16 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
+    AbstractFrom,
     AbstractMap,
     Filter,
     Join,
     JoinSide,
+    JoinType,
     Limit,
     Project,
     RandomShuffle,
+    ReadFiles,
     Repartition,
     Union,
 )
@@ -31,7 +35,18 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
     get_column_references,
 )
-from ray.data.expressions import BinaryExpr, Expr, Operation, col
+from ray.data.context import ShuffleStrategy
+from ray.data.expressions import (
+    BinaryExpr,
+    ColumnExpr,
+    Expr,
+    LiteralExpr,
+    Operation,
+    col,
+)
+
+if TYPE_CHECKING:
+    import pyarrow as pa
 
 __all__ = [
     "PredicatePushdown",
@@ -442,6 +457,164 @@ class PredicatePushdown(Rule):
             input_dependencies=[new_op],
             processed_join_conjuncts=tuple(residual),
         )
+
+    @classmethod
+    def simplify_outer_joins(cls, plan: LogicalPlan) -> LogicalPlan:
+        def transform(op: LogicalOperator) -> LogicalOperator:
+            if not cls._is_valid_filter_operator(op):
+                return op
+            join = op.input_dependencies[0]
+            if not isinstance(join, Join):
+                return op
+            return cls._simplify_left_outer_join(
+                op, join, plan.context.shuffle_strategy
+            )
+
+        dag = plan.dag._apply_transform(transform)
+        return plan if dag is plan.dag else LogicalPlan(dag, plan.context)
+
+    @classmethod
+    def _simplify_left_outer_join(
+        cls,
+        filter_op: Filter,
+        join: Join,
+        shuffle_strategy: ShuffleStrategy,
+    ) -> LogicalOperator:
+        """An integer comparison on a right payload rejects every null-extended row.
+
+        Keep the predicate: the ordinary inner-join pushdown will rebind its
+        column name and evaluate it on the right input.
+        """
+        if (
+            join.join_type is not JoinType.LEFT_OUTER
+            or join.condition is not None
+            or filter_op.per_block_limit is not None
+        ):
+            return filter_op
+
+        pred = filter_op.predicate_expr
+        if not isinstance(pred, BinaryExpr) or pred.op not in (
+            Operation.EQ,
+            Operation.LT,
+            Operation.LE,
+            Operation.GT,
+            Operation.GE,
+        ):
+            return filter_op
+        column, literal = pred.left, pred.right
+        if isinstance(column, LiteralExpr):
+            column, literal = literal, column
+        if not (
+            isinstance(column, ColumnExpr)
+            and isinstance(literal, LiteralExpr)
+            and type(literal.value) is int
+        ):
+            return filter_op
+
+        import pyarrow as pa
+
+        left, right = join.input_dependencies
+        # Suffixes depend on the fields actually present in both inputs.
+        if cls._uniform_arrow_source_schema(left) is None:
+            return filter_op
+        if isinstance(right, ReadFiles):
+            # V1 needs an input block to learn each side's schema. In V2,
+            # keep a left input even when Parquet prunes every right block.
+            # A filter absorbed by the scanner uses the read's scheduling.
+            if (
+                shuffle_strategy != ShuffleStrategy.SHUFFLE_V2
+                or not left.infer_metadata().num_rows
+                or filter_op.ray_remote_args
+                or filter_op.ray_remote_args_fn is not None
+                or filter_op.compute != TaskPoolStrategy()
+            ):
+                return filter_op
+            right_schema = cls._parquet_join_input_schema(right)
+        else:
+            right_schema = cls._uniform_arrow_source_schema(right)
+        if right_schema is None:
+            return filter_op
+
+        side_columns = join.output_to_input_columns()
+        if side_columns is None:
+            return filter_op
+        left_map, right_map = side_columns
+        right_name = right_map.get(column.name)
+        if (
+            right_name is None
+            or column.name in left_map
+            or right_name in join.right_key_columns
+            or right_name in join.right_condition_key_columns
+        ):
+            return filter_op
+        if right_schema.get_field_index(right_name) < 0:
+            return filter_op
+        dtype = right_schema.field(right_name).type
+        if not pa.types.is_signed_integer(dtype):
+            return filter_op
+        bound = 1 << (dtype.bit_width - 1)
+        if not -bound <= literal.value < bound:
+            return filter_op
+
+        schema = join.infer_schema()
+        if (
+            schema is None
+            or len(set(schema.names)) != len(schema)
+            or column.get_type(schema) != dtype
+        ):
+            return filter_op
+        inner = replace(
+            join, left_input_op=left, right_input_op=right, join_type=JoinType.INNER
+        )
+        inner_schema = inner.infer_schema()
+        if inner_schema is None or not schema.equals(inner_schema, check_metadata=True):
+            return filter_op
+        return cls._push_filter_through_conditionally(filter_op, inner)
+
+    @staticmethod
+    def _parquet_join_input_schema(op: ReadFiles) -> Optional["pa.Schema"]:
+        import pyarrow as pa
+
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+            ParquetScanner,
+        )
+
+        scanner = op.scanner
+        # The standard Parquet reader pins the schema across files. Path-derived
+        # partition columns can change that layout, and row-position columns
+        # depend on which rows survive the scan.
+        if (
+            type(scanner) is not ParquetScanner
+            or op.block_udf is not None
+            or scanner.partitioning is not None
+            or scanner.pushed_limit() is not None
+            or any(
+                column.requires_read_unit_boundaries
+                for column in scanner.synthesized_columns
+            )
+            or any(isinstance(f.type, pa.ExtensionType) for f in scanner.schema)
+        ):
+            return None
+        return scanner.read_schema()
+
+    @staticmethod
+    def _uniform_arrow_source_schema(op: LogicalOperator) -> Optional["pa.Schema"]:
+        import pyarrow as pa
+
+        # AbstractFrom records each block's schema. Materialize and split can
+        # stamp every bundle with the dataset schema instead.
+        bundles = op.output_data() if isinstance(op, AbstractFrom) else None
+        if not bundles or not isinstance(bundles[0].schema, pa.Schema):
+            return None
+        schema = bundles[0].schema
+        for bundle in bundles:
+            if (
+                len(bundle.blocks) != 1
+                or not isinstance(bundle.schema, pa.Schema)
+                or not schema.equals(bundle.schema, check_metadata=True)
+            ):
+                return None
+        return schema
 
     @classmethod
     def _can_push_to_side(

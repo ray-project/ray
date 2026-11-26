@@ -144,7 +144,11 @@ def _make_join_reduce_fn(
         tables: List[Block], schema: Optional[Schema]
     ) -> Optional["pa.Table"]:
         if tables:
-            return _combine(tables)
+            table = _combine(tables)
+            if table.num_columns or table.num_rows:
+                return table
+            # A read task can emit a zero-column sentinel when its scanner
+            # returns no batches. Recover the same schema as for absent shards.
         if isinstance(schema, pa.Schema):
             return _create_empty_table(schema)
         return None
