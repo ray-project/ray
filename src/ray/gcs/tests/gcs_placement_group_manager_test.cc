@@ -1032,6 +1032,67 @@ TEST_F(GcsPlacementGroupManagerTest,
 }
 
 TEST_F(GcsPlacementGroupManagerTest,
+       TestDelayedCreationCallbackDoesNotAnswerWaitersDuringNewerCommit) {
+  ///
+  /// A newer attempt gives every bundle a node when its prepare phase succeeds, before
+  /// it commits. A creation success's storage callback that runs during that commit
+  /// must still not answer `WaitPlacementGroup` callers, because the commit can fail
+  /// and send the group back to the queue.
+  ///
+  /// pg scheduled (attempt A) -> A succeeds, storage callback delayed -> node dead
+  /// -> attempt B starts -> B prepared -> A's storage callback runs -> B's commit
+  /// fails -> attempt C -> C succeeds.
+  ///
+  auto request = GenCreatePlacementGroupRequest(
+      "", rpc::PlacementStrategy::STRICT_SPREAD, /*bundles_count=*/2);
+  RegisterPlacementGroup(request, [](Status status) {});
+  auto placement_group = fake_placement_group_scheduler_->placement_groups_.back();
+  const auto placement_group_id = placement_group->GetPlacementGroupID();
+  fake_placement_group_scheduler_->group_on_dead_node_ = placement_group_id;
+
+  // Attempt A succeeds. The io service is not run, so its storage callback waits.
+  PrepareBundleResources(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+
+  // The node holding bundle 0 dies, and attempt B starts.
+  fake_placement_group_scheduler_->bundles_on_dead_node_ = {0};
+  gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 2);
+  int wait_callback_count = 0;
+  gcs_placement_group_manager_->WaitPlacementGroup(placement_group_id,
+                                                   [&wait_callback_count](Status status) {
+                                                     RAY_CHECK_OK(status);
+                                                     ++wait_callback_count;
+                                                   });
+
+  // B prepares bundle 0, so every bundle has a node. A's callback runs while B
+  // commits.
+  PrepareBundleResourcesWithIndex(placement_group, {0});
+  RunIOService();
+  EXPECT_EQ(wait_callback_count, 0);
+
+  // B's commit fails. The scheduler takes the node back and reports a failure,
+  // which queues the group for attempt C.
+  placement_group->GetMutableBundle(0)->clear_node_id();
+  placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+  gcs_placement_group_manager_->OnPlacementGroupCreationFailed(
+      placement_group, GetExpBackOff(), /*is_feasible=*/true);
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 3);
+  EXPECT_EQ(wait_callback_count, 0);
+
+  // C succeeds, which answers the waiter.
+  PrepareBundleResourcesWithIndex(placement_group, {0});
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  RunIOService();
+  EXPECT_EQ(wait_callback_count, 1);
+  EXPECT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  EXPECT_THAT(fake_placement_group_scheduler_->unplaced_bundle_counts_,
+              ElementsAre(2, 1, 1));
+}
+
+TEST_F(GcsPlacementGroupManagerTest,
        TestDelayedCreationCallbackKeepsPreparedStateOfNewerAttempt) {
   ///
   /// A creation success's storage callback can run after a newer attempt for the

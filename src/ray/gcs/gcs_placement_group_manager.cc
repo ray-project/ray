@@ -1099,30 +1099,32 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
   auto iter = registered_placement_groups_.find(placement_group_id);
   if (iter != registered_placement_groups_.end()) {
     auto &placement_group = iter->second;
+    // This runs from the storage callback of a creation success, so a newer
+    // scheduling attempt for the same group may already be in flight: a node died
+    // after the success, the group was queued, and the queue entry was taken before
+    // this callback ran. Leave the group to the in-flight attempt, whether or not
+    // its bundles look placed:
+    // - Before the prepare phase ends, that attempt's bundles have no node yet and
+    //   count as unplaced. Queueing the group again would add a duplicate entry
+    //   that later runs with nothing to place, and setting RESCHEDULING would break
+    //   the PREPARED -> CREATED transition of that attempt.
+    // - After the prepare phase, every bundle has a node, but the commit can still
+    //   fail and send the group back to the queue. Answering the waiters now would
+    //   tell them the group is ready before it is.
+    //
+    // Return true so the caller does not answer `WaitPlacementGroup` callers yet.
+    // The in-flight attempt answers them. Its success path runs this check again,
+    // which answers the waiters once nothing is left to place or queues the group
+    // again. Its failure path keeps the group for a retry, in the pending queue or
+    // in the infeasible list, and the retry's success answers them. Removing the
+    // group answers them with an error.
+    if (IsSchedulingInProgress(placement_group->GetPlacementGroupID())) {
+      RAY_LOG(INFO) << "The placement group's scheduling is in progress, leave it "
+                       "to that attempt, id:"
+                    << placement_group->GetPlacementGroupID();
+      return true;
+    }
     if (placement_group->HasUnplacedBundles()) {
-      // This runs from the storage callback of a creation success, so a newer
-      // scheduling attempt for the same group may already be in flight: a node
-      // died after the success, the group was queued, and the queue entry was
-      // taken before this callback ran. That attempt's bundles get their nodes
-      // only after the prepare phase, so they still count as unplaced here.
-      // Queueing the group again would add a duplicate entry that later runs with
-      // nothing to place, and setting RESCHEDULING would break the PREPARED ->
-      // CREATED transition of that attempt. Leave the group to the in-flight
-      // attempt instead.
-      //
-      // Return true so the caller does not answer `WaitPlacementGroup` callers
-      // yet, because the group still has unplaced bundles. The in-flight attempt
-      // answers them. Its success path runs this check again, which answers the
-      // waiters once nothing is left to place or queues the group again. Its
-      // failure path keeps the group for a retry, in the pending queue or in the
-      // infeasible list, and the retry's success answers them. Removing the group
-      // answers them with an error.
-      if (IsSchedulingInProgress(placement_group->GetPlacementGroupID())) {
-        RAY_LOG(INFO) << "The placement group still has unplaced bundles and its "
-                         "scheduling is in progress, leave it to that attempt, id:"
-                      << placement_group->GetPlacementGroupID();
-        return true;
-      }
       if ((!IsInPendingQueue(placement_group->GetPlacementGroupID())) &&
           placement_group->GetState() != rpc::PlacementGroupTableData::REMOVED) {
         RAY_LOG(INFO) << "The placement group still has unplaced bundles, so put "
