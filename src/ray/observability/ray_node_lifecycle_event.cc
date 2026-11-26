@@ -26,9 +26,9 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
           "",
           session_name) {
   ray::rpc::events::NodeLifecycleEvent::StateTransition state_transition;
-  state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
-      absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
   if (data.state() == rpc::GcsNodeInfo::ALIVE) {
+    state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
+        absl::ToInt64Nanoseconds(absl::Now() - absl::UnixEpoch())));
     state_transition.set_state(rpc::events::NodeLifecycleEvent::ALIVE);
     if (data.has_state_snapshot() &&
         data.state_snapshot().state() == rpc::NodeSnapshot::DRAINING) {
@@ -39,6 +39,10 @@ RayNodeLifecycleEvent::RayNodeLifecycleEvent(const rpc::GcsNodeInfo &data,
     state_transition.mutable_resources()->insert(data.resources_total().begin(),
                                                  data.resources_total().end());
   } else {
+    // DEAD transitions carry the recorded death time, so a DEAD event a restarted GCS
+    // re-sends keeps the real death time.
+    state_transition.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
+        absl::ToInt64Nanoseconds(absl::Milliseconds(data.end_time_ms()))));
     state_transition.set_state(rpc::events::NodeLifecycleEvent::DEAD);
     auto death_info = state_transition.mutable_death_info();
     death_info->set_reason_message(data.death_info().reason_message());
