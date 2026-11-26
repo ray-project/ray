@@ -478,7 +478,8 @@ class FileReader(Reader[FileManifest]):
     ) -> List[ReadUnitFragment]:
         """Return the read units for a manifest row that carries chunk metadata.
 
-        Default impl ignores the metadata and reads the whole file.
+        Raises by default: reading the whole file for each chunk row would
+        return the file's rows once per row.
 
         Args:
             fragment: The file's pyarrow fragment.
@@ -488,8 +489,14 @@ class FileReader(Reader[FileManifest]):
 
         Returns:
             The units to scan for this row, in order.
+
+        Raises:
+            NotImplementedError: If the reader doesn't read chunked files.
         """
-        return [self._get_whole_file_fragment(fragment)]
+        raise NotImplementedError(
+            f"{type(self).__name__} can't read a manifest row that carries "
+            f"chunk metadata, which {fragment.path} has."
+        )
 
     def _read_fragment_batches(
         self,

@@ -1,6 +1,7 @@
 """Unit tests for byte-range line chunking of CSV and JSONL on DataSourceV2."""
 
 import json
+import pickle
 import random
 from unittest import mock
 
@@ -31,6 +32,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FileChunk,
     FileManifest,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 
 
 def _read_chunks(data: bytes, chunk_size: int):
@@ -64,6 +66,15 @@ def test_chunks_join_back_into_the_file(monkeypatch, probe_bytes):
             # Every non-empty chunk ends a line, except the file's last line.
             non_empty = [c for c in chunks if c]
             assert all(c.endswith(b"\n") for c in non_empty[:-1])
+
+
+def test_a_file_that_shrinks_between_a_chunks_reads_fails(monkeypatch):
+    monkeypatch.setattr(line_chunking, "_LINE_PROBE_BYTES", 1)
+    # The first read returns "aaaa" and no newline; the follow-up finds the
+    # file gone from byte 4 on, though it was listed with 10 bytes.
+    file = pa.BufferReader(b"aaaa")
+    with pytest.raises(OSError, match="shorter than when it was listed"):
+        read_line_aligned(file, start=0, end=3, file_size=10)
 
 
 @pytest.mark.parametrize(
@@ -122,7 +133,7 @@ def _write_jsonl(path, rows):
     return str(path)
 
 
-def _read(paths, *, chunk_size, schema, columns=None, filesystem=None):
+def _list(paths, *, chunk_size):
     indexer = LineChunkFileIndexer(chunk_size=chunk_size, ignore_missing_paths=False)
     rows_paths, sizes, metadatas = [], [], []
     for path in paths:
@@ -131,17 +142,35 @@ def _read(paths, *, chunk_size, schema, columns=None, filesystem=None):
             rows_paths.append(path)
             sizes.append(size)
             metadatas.append(metadata)
-    manifest = FileManifest.construct_manifest(
+    return FileManifest.construct_manifest(
         paths=rows_paths, sizes=sizes, chunk_metadatas=metadatas
     )
-    reader = _JsonlReader(
+
+
+def _read_manifest(
+    manifest,
+    *,
+    chunk_size,
+    schema,
+    columns=None,
+    filesystem=None,
+    reader_cls=_JsonlReader,
+):
+    reader = reader_cls(
         FileFormat.JSON,
         chunk_size=chunk_size,
         filesystem=filesystem or LocalFileSystem(),
         schema=schema,
         columns=columns,
     )
-    return manifest, list(reader.read(manifest))
+    return list(reader.read(manifest))
+
+
+def _read(paths, *, chunk_size, schema, **read_kwargs):
+    manifest = _list(paths, chunk_size=chunk_size)
+    return manifest, _read_manifest(
+        manifest, chunk_size=chunk_size, schema=schema, **read_kwargs
+    )
 
 
 def _assert_sorted_column(tables, name, expected, **concat_kwargs):
@@ -158,6 +187,73 @@ def test_reader_reads_every_row_exactly_once(tmp_path, chunk_size):
     _assert_sorted_column(tables, "id", pa.array(range(200), pa.int64()))
     if chunk_size < 10_000:
         assert len(manifest) > 1
+
+
+def test_reader_reads_an_unsplit_file_larger_than_a_chunk_whole(tmp_path):
+    # A whole-file row must not take the chunk path, which would read only the
+    # file's first ``chunk_size`` bytes.
+    path = _write_jsonl(tmp_path / "a.jsonl", [{"id": i} for i in range(200)])
+    manifest = FileManifest.construct_manifest(
+        paths=[path],
+        sizes=[LocalFileSystem().get_file_info(path).size],
+        chunk_metadatas=[None],
+    )
+    reader = _JsonlReader(
+        FileFormat.JSON,
+        chunk_size=20,
+        filesystem=LocalFileSystem(),
+        schema=pa.schema([("id", pa.int64())]),
+    )
+    _assert_sorted_column(
+        list(reader.read(manifest)), "id", pa.array(range(200), pa.int64())
+    )
+
+
+def test_reader_reads_the_listed_bytes_of_a_file_that_grew(tmp_path):
+    path = tmp_path / "a.jsonl"
+    _write_jsonl(path, [{"id": i} for i in range(50)])
+    manifest = _list([str(path)], chunk_size=40)
+    with open(path, "a") as f:
+        f.write("".join(json.dumps({"id": i}) + "\n" for i in range(50, 90)))
+
+    tables = _read_manifest(
+        manifest, chunk_size=40, schema=pa.schema([("id", pa.int64())])
+    )
+
+    _assert_sorted_column(tables, "id", pa.array(range(50), pa.int64()))
+
+
+def test_reader_fails_on_a_file_that_shrank_after_listing(tmp_path):
+    path = tmp_path / "a.jsonl"
+    _write_jsonl(path, [{"id": i} for i in range(50)])
+    manifest = _list([str(path)], chunk_size=40)
+    path.write_text('{"id": 0}\n')
+
+    with pytest.raises(OSError, match="shorter than when it was listed"):
+        _read_manifest(manifest, chunk_size=40, schema=pa.schema([("id", pa.int64())]))
+
+
+def test_reader_rejects_a_pickled_object_column_without_unpickling(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("RAY_DATA_AUTOLOAD_PICKLE_OBJECT_SCALAR", raising=False)
+    marker = tmp_path / "unpickled"
+
+    class Payload:
+        def __reduce__(self):
+            return type(marker).touch, (marker,)
+
+    class PickleReader(_JsonlReader):
+        def _make_chunk_fragment(self, lines, *, starts_at_file_start, path):
+            storage = pa.array([pickle.dumps(Payload())], type=pa.large_binary())
+            values = pa.ExtensionArray.from_storage(ArrowPythonObjectType(), storage)
+            table = pa.table({"x": values})
+            return next(iter(pds.dataset(table).get_fragments()))
+
+    path = _write_jsonl(tmp_path / "a.jsonl", [{"id": 1}])
+    with pytest.raises(ValueError, match="arrow_pickled_object"):
+        _read([path], chunk_size=1, schema=None, reader_cls=PickleReader)
+    assert not marker.exists()
 
 
 @pytest.mark.parametrize("trailing", ["\n", "\n\n\n\n", "\r\n"])

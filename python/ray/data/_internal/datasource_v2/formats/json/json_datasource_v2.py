@@ -28,7 +28,6 @@ from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
 from ray.data._internal.datasource_v2.formats.json.json_file_reader import (
     JsonFileReader,
     PandasJsonLinesFileReader,
-    infer_json_compression,
     open_json_stream,
     parse_json,
 )
@@ -40,7 +39,7 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import ChunkMetad
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
-from ray.data._internal.util import MiB
+from ray.data._internal.util import MiB, infer_compression
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
@@ -221,7 +220,7 @@ class JsonDatasourceV2(LineChunkableDatasourceV2):
     @override
     def _read_file_schema(self, path: str) -> pa.Schema:
         # Sampling a Snappy file would decompress all of it on the driver.
-        if self._lines or infer_json_compression(path) == "snappy":
+        if self._lines or infer_compression(path) == "snappy":
             return pa.schema([])
         sample, is_whole_file = _read_json_sample(path, self._filesystem)
         try:

@@ -2337,7 +2337,9 @@ def read_json(
 
         With ``lines=False`` it parses with ``pyarrow.json``, inferring column
         types per piece, so a column of whole numbers early in a file and
-        decimals later is int64 in some blocks and double in others. Pass
+        decimals later is int64 in some blocks and double in others. Pieces
+        parse in parallel and each infers its own types, as V1 infers per file,
+        so no piece waits on another to agree on a type. Pass
         ``parse_options=pyarrow.json.ParseOptions(explicit_schema=...)`` to pin
         the types. A ``.jsonl`` file is expected to hold newline-delimited JSON
         objects, one per line. A top-level JSON array, where the whole file is
@@ -2350,6 +2352,13 @@ def read_json(
         integer columns with nulls become floats. Nested objects stay Python
         objects, and a line that is an array becomes a row with columns ``"0"``,
         ``"1"``, and so on.
+
+        Files are listed once, before the read, and a large file is split by
+        the sizes from that listing. Don't update or replace files while the
+        dataset executes: a split file that grows is read only up to its listed
+        size, so its last row can be cut mid-line without an error, a split
+        file that shrinks fails the read, and a replacement of the same size
+        goes unnoticed.
 
         ``arrow_open_stream_args``, and JSON options other than
         ``read_options`` and ``parse_options``, use the V1 reader. To use the
@@ -2603,10 +2612,20 @@ def read_csv(
         Column types are inferred per piece, so :meth:`Dataset.schema` before
         execution is a guess from the first about 1 MiB of up to 16 sampled
         files, and one file's pieces can produce different types for the same
-        column. A newline inside a quoted or escaped value isn't supported in
+        column. Pieces parse in parallel and each infers its own types, as V1
+        infers per file, so no piece waits on another to agree on a type. A
+        newline inside a quoted or escaped value isn't supported in
         split reads: a piece cut at one fails to parse (pass
         ``parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True)`` to
         read such files whole) or can return wrong rows.
+
+        Files are listed once, before the read, and a large file is split by
+        the sizes from that listing. Don't update or replace files while the
+        dataset executes: a split file that grows is read only up to its listed
+        size, so its last row can be cut mid-line without an error, a split
+        file that shrinks fails the read, and a replacement of the same size
+        goes unnoticed.
+
         ``arrow_open_stream_args``, and CSV options other than
         ``read_options``, ``parse_options`` and ``convert_options``, use the V1
         reader. To use the V1 reader everywhere, set

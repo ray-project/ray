@@ -136,6 +136,13 @@ def read_line_aligned(
     fetch_start = max(start - 1, 0)
     fetch_end = min(end + _LINE_PROBE_BYTES, file_size)
     data = file.read_at(nbytes=fetch_end - fetch_start, offset=fetch_start)
+    if len(data) != fetch_end - fetch_start:
+        # Rows would be dropped silently, so a file that shrank after listing
+        # fails instead.
+        raise OSError(
+            f"Read {len(data)} of {fetch_end - fetch_start} bytes at offset "
+            f"{fetch_start}: the file is shorter than when it was listed."
+        )
 
     # Index in ``data`` where the range's first whole line begins. With no
     # ``\n`` after byte ``start - 1`` in ``data``, that line runs past
@@ -215,7 +222,11 @@ def _read_through_newline(
             nbytes=min(_LINE_PROBE_BYTES, file_size - offset), offset=offset
         )
         if not piece:
-            break
+            # The file shrank after listing; ending here would cut the line.
+            raise OSError(
+                f"Read 0 bytes at offset {offset} of {file_size}: the file is "
+                "shorter than when it was listed."
+            )
         newline = piece.find(b"\n")
         if newline != -1:
             pieces.append(piece[: newline + 1])

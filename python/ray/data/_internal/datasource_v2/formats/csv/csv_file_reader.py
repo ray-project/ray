@@ -139,7 +139,10 @@ class CsvFileReader(LineChunkableFileReader):
         if self._include_columns and scanner_kwargs.get("columns") is None:
             scanner_kwargs = {**scanner_kwargs, "columns": self._include_columns}
         try:
-            if unit.id == unit.source and infer_compression(unit.source) == "snappy":
+            if (
+                self._is_whole_file_unit(unit)
+                and infer_compression(unit.source) == "snappy"
+            ):
                 buffer = read_snappy_buffer(unit.source, self._filesystem)
                 yield from self._iter_fragment_tables(
                     self._make_format().make_fragment(buffer), scanner_kwargs
@@ -147,7 +150,7 @@ class CsvFileReader(LineChunkableFileReader):
             else:
                 yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
         except pa.ArrowInvalid as e:
-            if unit.id == unit.source:
+            if self._is_whole_file_unit(unit):
                 raise invalid_csv_error(unit.source, e) from e
             raise invalid_csv_chunk_error(unit.source, e) from e
 
@@ -183,7 +186,9 @@ class CsvFileReader(LineChunkableFileReader):
 
     def _open_stream(self, path: str) -> pa.NativeFile:
         assert self._filesystem is not None
-        return self._filesystem.open_input_stream(path)
+        return self._filesystem.open_input_stream(
+            path, compression=infer_compression(path)
+        )
 
     def _streamed_convert_options(
         self, path: str, columns: Optional[List[str]]

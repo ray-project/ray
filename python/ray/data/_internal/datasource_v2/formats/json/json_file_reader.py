@@ -39,21 +39,10 @@ logger = logging.getLogger(__name__)
 _STRADDLING_ERROR = "straddling object straddles two block boundaries"
 
 
-def infer_json_compression(path: str) -> Optional[str]:
-    """Return the codec named by ``path``'s extension, ignoring case.
-
-    ``infer_compression`` misses upper-case extensions and ``.br``.
-    """
-    lowered = path.lower()
-    if lowered.endswith(".br"):
-        return "brotli"
-    return infer_compression(lowered)
-
-
 def _is_json_lines_path(path: str) -> bool:
     """Whether ``path`` names a ``.jsonl`` file, compressed or not."""
     lowered = path.lower()
-    if infer_json_compression(lowered) is not None:
+    if infer_compression(lowered) is not None:
         lowered = lowered.rsplit(".", 1)[0]
     return lowered.endswith(".jsonl")
 
@@ -64,7 +53,7 @@ def open_json_stream(path: str, filesystem: "FileSystem") -> pa.NativeFile:
     A Snappy file is decompressed whole into memory, since pyarrow can't
     stream it.
     """
-    compression = infer_json_compression(path)
+    compression = infer_compression(path)
     if compression == "snappy":
         return pa.BufferReader(read_snappy_buffer(path, filesystem))
     return filesystem.open_input_stream(path, compression=compression)
@@ -179,7 +168,7 @@ class JsonFileReader(LineChunkableFileReader):
         scanner_kwargs: dict,
     ) -> Iterator[pa.Table]:
         unit = fragment_to_read.unit
-        if unit.id != unit.source:
+        if not self._is_whole_file_unit(unit):
             yield from super()._iter_unit_tables(fragment_to_read, scanner_kwargs)
             return
         if self._streams_in_pieces(unit.source):
@@ -214,10 +203,7 @@ class JsonFileReader(LineChunkableFileReader):
         return (
             not self._parse_options.newlines_in_values
             and _is_json_lines_path(path)
-            and (
-                self._file_sizes[path] is None
-                or infer_json_compression(path) is not None
-            )
+            and (self._file_sizes[path] is None or infer_compression(path) is not None)
         )
 
     @override
@@ -313,7 +299,7 @@ class PandasJsonLinesFileReader(LineChunkableFileReader):
     ) -> Iterator[pd.DataFrame]:
         unit = fragment_to_read.unit
         target = DataContext.get_current().target_max_block_size
-        if unit.id != unit.source:
+        if not self._is_whole_file_unit(unit):
             lines = self._read_chunk_lines(fragment_to_read)
             if lines is not None:
                 with pa.BufferReader(pa.py_buffer(lines)) as file:

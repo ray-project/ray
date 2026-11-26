@@ -314,9 +314,22 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
         file_format = csv_file_format(
             self._read_options, self._parse_options, self._convert_options
         )
+        compression = infer_compression(path)
         try:
-            if infer_compression(path) == "snappy":
+            if compression == "snappy":
                 return file_format.inspect(read_snappy_buffer(path, self._filesystem))
+            if compression is not None:
+                # The dataset format decodes by its own extension table, which
+                # lacks ".zst", ".br" and upper-case names.
+                with self._filesystem.open_input_stream(
+                    path, compression=compression
+                ) as file:
+                    return pcsv.open_csv(
+                        file,
+                        read_options=self._read_options,
+                        parse_options=self._parse_options,
+                        convert_options=self._convert_options,
+                    ).schema
             return file_format.inspect(path, filesystem=self._filesystem)
         except pa.ArrowInvalid as e:
             raise invalid_csv_error(path, e) from e

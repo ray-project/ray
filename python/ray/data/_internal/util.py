@@ -2113,8 +2113,24 @@ def merge_resources_to_ray_remote_args(
 
 @DeveloperAPI
 def infer_compression(path: str) -> Optional[str]:
+    """Return the compression codec named by the path's extension, or None.
+
+    The match is case-insensitive and covers ``.br`` and ``.snappy``, which
+    pyarrow doesn't detect. Every file reader uses it, so a ``.br`` file is
+    decompressed on read, including by ``read_binary_files``.
+
+    Args:
+        path: The file path; a ``str``, not a ``pathlib.Path``.
+
+    Returns:
+        The pyarrow codec name, such as ``"gzip"``, or None if uncompressed.
+    """
     import pyarrow as pa
 
+    # pyarrow's detection is case-sensitive and doesn't know ".br".
+    path = path.lower()
+    if path.endswith(".br"):
+        return "brotli"
     compression = None
     try:
         # Try to detect compression codec from path.
