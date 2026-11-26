@@ -70,7 +70,7 @@ import sys
 import threading
 import warnings
 import weakref
-from typing import Any, Callable, Coroutine, Dict, Optional, Type
+from typing import Any, Callable, Coroutine, Dict, Optional, Tuple, Type
 
 import ray
 from ray.experimental.sandbox.modal.exception import AsyncUsageWarning, InvalidError
@@ -158,8 +158,14 @@ class _EventLoopThread:
         it at the moment of the fork, it would stay held in the child for
         good.
         """
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
-        self._thread: Optional[threading.Thread] = None
+        # The loop and the thread running it, published and cleared as one
+        # pair, so a reader without the lock sees both or neither. Read as two
+        # attributes, a call racing close() could pair the loop with no thread,
+        # or -- with a restart in between -- the stopped old loop with the new
+        # thread, and then wait on it forever.
+        self._running: Optional[
+            Tuple[asyncio.AbstractEventLoop, threading.Thread]
+        ] = None
         self._died_of: Optional[BaseException] = None
         self._lock = threading.Lock()
         # The process that started the loop: the exit hook stops it only
@@ -167,20 +173,32 @@ class _EventLoopThread:
         self._owner_pid: Optional[int] = None
 
     @property
+    def running(
+        self,
+    ) -> Optional[Tuple[asyncio.AbstractEventLoop, threading.Thread]]:
+        """The loop and its thread, or None while there is no loop."""
+        return self._running
+
+    @property
     def thread(self) -> Optional[threading.Thread]:
         """The loop's thread, or None while the loop has never been needed."""
-        return self._thread
+        running = self._running
+        return running[1] if running is not None else None
 
     def get_loop(self) -> asyncio.AbstractEventLoop:
-        # Double-checked so the common case costs no lock. _thread is always
-        # set before _loop, so a loop seen here has its thread.
-        loop, thread = self._loop, self._thread
-        if loop is not None and thread.is_alive():
-            return loop
+        return self._ensure_running()[0]
+
+    def _ensure_running(self) -> Tuple[asyncio.AbstractEventLoop, threading.Thread]:
+        """The loop and its thread, starting them on first use."""
+        # Double-checked so the common case costs no lock.
+        running = self._running
+        if running is not None and running[1].is_alive():
+            return running
         with self._lock:
-            if self._loop is not None:
-                if self._thread.is_alive():
-                    return self._loop
+            running = self._running
+            if running is not None:
+                if running[1].is_alive():
+                    return running
                 raise self._dead()
             loop = asyncio.new_event_loop()
             ready = threading.Event()
@@ -201,10 +219,9 @@ class _EventLoopThread:
             )
             thread.start()
             ready.wait()
-            self._thread = thread
-            self._loop = loop
+            self._running = (loop, thread)
             self._owner_pid = os.getpid()
-            return loop
+            return self._running
 
     def close(self, timeout: float = _SHUTDOWN_TIMEOUT_SECONDS) -> None:
         """Stop the loop, letting what runs on it unwind first. Never raises.
@@ -222,11 +239,11 @@ class _EventLoopThread:
             timeout: Seconds to wait for the tasks, and then for the thread.
         """
         with self._lock:
-            loop, thread = self._loop, self._thread
-            if loop is None or thread is None or self._owner_pid != os.getpid():
+            running = self._running
+            if running is None or self._owner_pid != os.getpid():
                 return
-            self._loop = None
-            self._thread = None
+            self._running = None
+        loop, thread = running
         if not thread.is_alive() or loop.is_closed():
             return
 
@@ -280,11 +297,10 @@ class _EventLoopThread:
         if not asyncio.iscoroutine(coro):
             raise TypeError(f"A coroutine object is required, not {coro!r}")
         try:
-            loop = self.get_loop()
+            loop, thread = self._ensure_running()
         except BaseException:
             coro.close()
             raise
-        thread = self._thread
         if threading.current_thread() is thread:
             # Blocking on our own loop would deadlock it.
             coro.close()
@@ -365,11 +381,10 @@ class _EventLoopThread:
         if not asyncio.iscoroutine(coro):
             raise TypeError(f"A coroutine object is required, not {coro!r}")
         try:
-            loop = self.get_loop()
+            loop, thread = self._ensure_running()
         except BaseException:
             coro.close()
             raise
-        thread = self._thread
         if threading.current_thread() is thread:
             return await coro
 
@@ -796,9 +811,10 @@ def _close_soon(agen, state: _Lookahead) -> None:
     """
     if state.exhausted or sys.is_finalizing():
         return
-    loop = _loop_thread._loop
-    if loop is None or loop.is_closed():
+    running = _loop_thread.running
+    if running is None or running[0].is_closed():
         return
+    loop = running[0]
 
     def _spawn():
         task = loop.create_task(_close_quietly(agen, state))
@@ -824,10 +840,12 @@ def _close_on_release(agen, state: _Lookahead) -> None:
     """
     if state.exhausted or sys.is_finalizing():
         return
-    loop = _loop_thread._loop
-    if loop is None or loop.is_closed():
+    # One read, so the loop and the thread compared against are the same pair.
+    running = _loop_thread.running
+    if running is None or running[0].is_closed():
         return
-    if threading.current_thread() is _loop_thread.thread:
+    loop, thread = running
+    if threading.current_thread() is thread:
         _close_soon(agen, state)
         return
     try:

@@ -822,6 +822,60 @@ def test_a_loop_thread_that_dies_mid_aio_call_fails_that_call(
         asyncio.run(main())
 
 
+def test_calls_racing_close_never_see_a_torn_loop_thread(monkeypatch):
+    """close() while other threads are mid-call: each call returns or fails.
+
+    The loop and its thread used to be read one attribute at a time, so a call
+    racing close() could pair the loop with no thread -- AttributeError on
+    ``thread.is_alive()`` -- or, with a restart in between, the stopped old
+    loop with the new thread, and wait on it forever.
+    """
+    monkeypatch.setattr(_sync, "_LIVENESS_POLL_SECONDS", 0.01)
+    # Its own instance: closing the shared loop would disturb other tests.
+    loop_thread = _sync._EventLoopThread()
+    stop = threading.Event()
+    torn = []
+
+    async def one():
+        return 1
+
+    def call():
+        while not stop.is_set():
+            try:
+                loop_thread.run(one())
+            except (
+                RuntimeError,
+                concurrent.futures.CancelledError,
+                asyncio.CancelledError,
+            ):
+                # What a call meets when the loop is closed under it.
+                pass
+            except BaseException as exc:
+                torn.append(exc)
+                return
+
+    switch_interval = sys.getswitchinterval()
+    # Switch threads as often as possible, to land inside the window.
+    sys.setswitchinterval(1e-6)
+    callers = [threading.Thread(target=call, daemon=True) for _ in range(4)]
+    try:
+        for caller in callers:
+            caller.start()
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not torn:
+            loop_thread.get_loop()
+            loop_thread.close(timeout=1)
+    finally:
+        sys.setswitchinterval(switch_interval)
+        stop.set()
+        for caller in callers:
+            caller.join(10)
+        loop_thread.close(timeout=1)
+
+    assert not torn, torn
+    assert not any(caller.is_alive() for caller in callers), "a call hung"
+
+
 class _Exiter:
     async def raise_it(self, exc):
         raise exc

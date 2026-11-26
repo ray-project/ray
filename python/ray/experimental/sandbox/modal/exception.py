@@ -6,7 +6,6 @@ ports without touching its ``except`` clauses. Every error also derives from
 only knows about Ray's own hierarchy can still catch everything raised here.
 """
 
-import builtins
 import contextlib
 
 import ray.exceptions
@@ -95,15 +94,17 @@ class NotSupportedError(Error, NotImplementedError):
 
 
 @PublicAPI(stability="alpha")
-class TimeoutError(Error, builtins.TimeoutError):
+class TimeoutError(Error):
     """Raised when a Modal timeout occurs.
 
     The base of every timeout in this module, matching
     ``modal.exception.TimeoutError``. Raised directly by
     ``Sandbox.wait_until_ready()`` when a readiness probe does not pass in time.
 
-    Shadows the builtin within this module, as upstream's does; reach the
-    builtin through :mod:`builtins` here.
+    Shadows the builtin's name within this module, as upstream's does, but like
+    upstream's is not a subclass of the builtin ``TimeoutError``: an ``except
+    TimeoutError`` that means the builtin, as an ``asyncio`` timeout is since
+    Python 3.11, does not catch it.
     """
 
 
@@ -123,9 +124,9 @@ class ExecTimeoutError(TimeoutError):
 class SandboxTimeoutError(TimeoutError, _ray_exceptions.SandboxTimeoutError):
     """Raised when a Sandbox exceeds its ``timeout``.
 
-    Inherits from this module's :class:`TimeoutError` -- and so from the builtin
-    ``TimeoutError`` too -- and from Ray's own ``SandboxTimeoutError``, so that
-    ``except`` clauses written against either library catch it.
+    Inherits from this module's :class:`TimeoutError` and from Ray's own
+    ``SandboxTimeoutError``, so that ``except`` clauses written against either
+    library catch it.
     """
 
 
@@ -181,8 +182,9 @@ class ServiceError(Error):
 class ConnectionError(Error):
     """Raised when a connection to the backend cannot be established.
 
-    Shadows the builtin within this module, as upstream's does; reach the
-    builtin through :mod:`builtins` here.
+    Shadows the builtin's name within this module, as upstream's does, but like
+    upstream's is not a subclass of the builtin ``ConnectionError`` (nor of
+    ``OSError``).
     """
 
 
