@@ -36,7 +36,7 @@ def _compatibility_script_path(file_name: str) -> str:
 class TestBackwardsCompatibility:
     @pytest.mark.skipif(
         sys.platform == "darwin",
-        reason="ray 2.3.0 runs differently on apple silicon than today's.",
+        reason="ray 2.8.1 runs differently on apple silicon than today's.",
     )
     def test_cli(self):
         """
@@ -67,9 +67,9 @@ class TestBackwardsCompatibility:
     reason="This test is only meant to be run from the "
     "test_backwards_compatibility.sh shell script.",
 )
-def test_error_message():
+def test_submit_job_kwargs():
     """
-    Check that we get a good error message when running against an old server version.
+    Check that the current SDK can submit jobs to an old server version.
     """
     # Import lazily so the module still loads when the compatibility script
     # installs an older Ray that does not expose `ray._common`.
@@ -83,23 +83,14 @@ def test_error_message():
     )
     wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
-    # The server runs Ray 2.3.0, so kwargs that need Ray 2.2 (`entrypoint_num_cpus`
-    # and friends) are accepted. `entrypoint_memory` needs Ray 2.8.
-    client.submit_job(entrypoint="echo hello", entrypoint_num_cpus=1)
-
-    with pytest.raises(
-        Exception,
-        match="Ray version 2.3.0 is running on the cluster. "
-        "`entrypoint_memory` kwarg"
-        " is not supported on the Ray cluster. Please ensure the cluster is "
-        "running Ray 2.8 or higher.",
-    ):
-        client.submit_job(
-            entrypoint="echo hello",
-            entrypoint_memory=4,
-        )
-
-    assert True
+    # The server runs Ray 2.8.1, which supports every version-gated kwarg:
+    # `entrypoint_num_cpus` needs Ray 2.2 and `entrypoint_memory` needs Ray 2.8.
+    job_id = client.submit_job(
+        entrypoint="echo hello",
+        entrypoint_num_cpus=1,
+        entrypoint_memory=4,
+    )
+    wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
 
 if __name__ == "__main__":
