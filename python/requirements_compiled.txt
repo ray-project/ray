@@ -95,8 +95,9 @@ annotated-types==0.7.0
     # via pydantic
 antlr4-python3-runtime==4.13.2
     # via moto
-anyio==4.13.0
+anyio==4.16.0
     # via
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   gradio
     #   httpx
@@ -166,7 +167,7 @@ aws-xray-sdk==2.15.0
     # via moto
 ax-platform==1.2.1
     # via -r python/requirements/ml/tune-requirements.txt
-azure-cli-core==2.77.0
+azure-cli-core==2.93.0
     # via -r python/requirements/test-requirements.txt
 azure-cli-telemetry==1.1.0
     # via azure-cli-core
@@ -176,8 +177,9 @@ azure-common==1.1.28
     #   azure-mgmt-network
     #   azure-mgmt-resource
     #   smart-open
-azure-core==1.35.1
+azure-core==1.39.0
     # via
+    #   -r python/requirements/security-requirements.txt
     #   adlfs
     #   azure-cli-core
     #   azure-identity
@@ -237,6 +239,8 @@ black==22.10.0
     # via -r python/requirements/lint-requirements.txt
 bleach==6.3.0
     # via nbconvert
+blinker==1.9.0
+    # via flask
 bokeh==3.1.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
@@ -300,7 +304,7 @@ certifi==2026.10.19
     #   requests
     #   sentry-sdk
     #   snowflake-connector-python
-cffi==1.17.1 ; python_version < "3.14"
+cffi==2.1.1
     # via
     #   -r python/requirements/test-requirements.txt
     #   argon2-cffi-bindings
@@ -406,8 +410,9 @@ crc32c==2.3 ; python_version < "3.14"
     # via -r python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==44.0.3
+cryptography==50.0.2
     # via
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   adal
     #   aim
@@ -576,7 +581,7 @@ filelock==3.29.0 ; python_version < "3.12"
     #   snowflake-connector-python
     #   torch
     #   virtualenv
-flask==2.1.3
+flask==3.1.3
     # via
     #   -r python/requirements/test-requirements.txt
     #   flask-cors
@@ -634,9 +639,10 @@ gcs-oauth2-boto-plugin==3.3
     # via gsutil
 gitdb==4.0.11
     # via gitpython
-gitpython==3.1.47
+gitpython==3.2.1
     # via
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   mlflow-skinny
     #   wandb
 glfw==2.10.0
@@ -724,8 +730,9 @@ graphemeu==0.7.2
     # via alive-progress
 graphene==3.4.3
     # via mlflow
-graphql-core==3.2.8
+graphql-core==3.2.14
     # via
+    #   -r python/requirements/security-requirements.txt
     #   graphene
     #   graphql-relay
     #   moto
@@ -974,6 +981,8 @@ jsonschema-specifications==2025.9.1
     # via
     #   jsonschema
     #   openapi-schema-validator
+jupyter-builder==1.3.0
+    # via jupyterlab
 jupyter-client==8.8.0
     # via
     #   ipykernel
@@ -982,6 +991,7 @@ jupyter-client==8.8.0
 jupyter-core==5.9.1
     # via
     #   ipykernel
+    #   jupyter-builder
     #   jupyter-client
     #   jupyter-server
     #   jupyterlab
@@ -992,18 +1002,20 @@ jupyter-events==0.12.1
     # via jupyter-server
 jupyter-lsp==2.3.1
     # via jupyterlab
-jupyter-server==2.17.0
+jupyter-server==2.21.1
     # via
+    #   -r python/requirements/security-requirements.txt
     #   jupyter-lsp
     #   jupyterlab
     #   jupyterlab-server
     #   notebook-shim
 jupyter-server-terminals==0.5.4
     # via jupyter-server
-jupyterlab==4.5.6
+jupyterlab==4.6.6
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/tune-test-requirements.txt
+    #   -r python/requirements/security-requirements.txt
 jupyterlab-pygments==0.3.0
     # via nbconvert
 jupyterlab-server==2.28.0
@@ -1022,7 +1034,7 @@ keras==3.14.0 ; python_version >= "3.11"
     #   tensorflow
 kiwisolver==1.5.0
     # via matplotlib
-knack==0.11.0
+knack==0.14.0
     # via azure-cli-core
 kombu==5.6.2
     # via celery
@@ -1075,8 +1087,10 @@ lz4==4.4.5
     #   clickhouse-connect
     #   dask
     #   mcap
-mako==1.3.11
-    # via alembic
+mako==1.4.3
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   alembic
 markdown==3.10.2
     # via
     #   ax-platform
@@ -1090,6 +1104,7 @@ markdown-it-py==2.2.0
     #   textual
 markupsafe==3.0.3
     # via
+    #   flask
     #   gradio
     #   jinja2
     #   mako
@@ -1122,8 +1137,10 @@ microsoft-security-utilities-secret-masker==1.0.0b4
     # via azure-cli-core
 minigrid==2.3.1 ; python_version < "3.14"
     # via -r python/requirements/ml/rllib-test-requirements.txt
-mistune==3.2.0
-    # via nbconvert
+mistune==3.4.0
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   nbconvert
 ml-collections==1.1.0
     # via open-spiel
 ml-dtypes==0.5.4
@@ -1167,20 +1184,21 @@ mpmath==1.3.0
     # via
     #   gpytorch
     #   sympy
-msal==1.34.0b1
+msal==1.39.0
     # via
     #   azure-cli-core
     #   azure-datalake-store
     #   azure-identity
     #   msal-extensions
-msal-extensions==1.2.0
+msal-extensions==1.3.1
     # via
     #   azure-cli-core
     #   azure-identity
-msgpack==1.1.2
+msgpack==1.2.4
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/rllib-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   deepspeed
     #   distributed
@@ -1225,8 +1243,10 @@ narwhals==2.20.0
     #   utilsforecast
 nbclient==0.10.4
     # via nbconvert
-nbconvert==7.17.1
-    # via jupyter-server
+nbconvert==7.17.2
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   jupyter-server
 nbformat==5.10.4
     # via
     #   jupyter-server
@@ -1371,8 +1391,10 @@ oauth2client==4.1.3
     #   -r python/requirements/cloud-requirements.txt
     #   gcs-oauth2-boto-plugin
     #   google-apitools
-oauthlib==3.3.1
-    # via requests-oauthlib
+oauthlib==4.0.1
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   requests-oauthlib
 obstore==0.10.0
     # via -r python/requirements/ml/data-test-requirements.txt
 onnx==1.22.0 ; sys_platform != "darwin" or platform_machine != "arm64"
@@ -1620,9 +1642,7 @@ polars==1.40.0
 polars-runtime-32==1.40.0
     # via polars
 portalocker==2.10.1
-    # via
-    #   azure-cli-telemetry
-    #   msal-extensions
+    # via azure-cli-telemetry
 pre-commit==3.5.0
     # via -r python/requirements/lint-requirements.txt
 prettytable==3.17.0
@@ -1727,8 +1747,9 @@ pyarrow==25.0.1
     #   triad
 pyarrow-hotfix==0.7
     # via hudi
-pyasn1==0.6.3
+pyasn1==0.6.5
     # via
+    #   -r python/requirements/security-requirements.txt
     #   oauth2client
     #   pyasn1-modules
     #   rsa
@@ -1779,8 +1800,9 @@ pygments==2.18.0
     #   rich
 pyiceberg==0.11.0 ; python_version < "3.14"
     # via -r python/requirements/ml/data-test-requirements.txt
-pyjwt==2.12.1
+pyjwt==2.15.1
     # via
+    #   -r python/requirements/security-requirements.txt
     #   adal
     #   azure-cli-core
     #   msal
@@ -1801,10 +1823,11 @@ pyopengl==3.1.10
     # via
     #   dm-control
     #   mujoco
-pyopenssl==25.1.0
+pyopenssl==26.4.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   azure-cli-core
     #   gcs-oauth2-boto-plugin
@@ -1932,8 +1955,9 @@ python-json-logger==4.1.0
     # via jupyter-events
 python-lsp-jsonrpc==1.0.0
     # via semgrep
-python-multipart==0.0.26
+python-multipart==0.0.32
     # via
+    #   -r python/requirements/security-requirements.txt
     #   gradio
     #   mlflow-skinny
 python-snappy==0.7.3
@@ -2196,7 +2220,6 @@ six==1.17.0
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   astunparse
-    #   azure-core
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   google-pasta
@@ -2225,7 +2248,7 @@ smart-open==6.2.0
     #   -r python/requirements/test-requirements.txt
 smmap==5.0.3
     # via gitdb
-snowflake-connector-python==4.3.0
+snowflake-connector-python==4.8.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
     # via
@@ -2234,8 +2257,10 @@ sortedcontainers==2.4.0
     #   snowflake-connector-python
 soundfile==0.13.1
     # via -r python/requirements/ml/data-test-requirements.txt
-soupsieve==2.8.3
-    # via beautifulsoup4
+soupsieve==2.10
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   beautifulsoup4
 spinners==0.0.24
     # via halo
 sqlalchemy==2.0.49
@@ -2247,15 +2272,18 @@ sqlalchemy==2.0.49
     #   optuna
     #   pyiceberg
     #   pymars
-sqlparse==0.5.5
-    # via mlflow-skinny
+sqlparse==0.6.1
+    # via
+    #   -r python/requirements/security-requirements.txt
+    #   mlflow-skinny
 stack-data==0.6.3
     # via ipython
 stanio==0.5.1
     # via cmdstanpy
-starlette==1.0.1
+starlette==1.7.0
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   fastapi
     #   gradio
@@ -2436,8 +2464,9 @@ torchvision==0.25.0
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   mosaicml
     #   timm
-tornado==6.5.5
+tornado==6.5.10
     # via
+    #   -r python/requirements/security-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   bokeh
     #   distributed
@@ -2479,6 +2508,7 @@ traitlets==5.14.3
     #   ipykernel
     #   ipython
     #   ipywidgets
+    #   jupyter-builder
     #   jupyter-client
     #   jupyter-core
     #   jupyter-events
@@ -2545,6 +2575,7 @@ typing-extensions==4.16.0
     #   grpcio
     #   gymnasium
     #   huggingface-hub
+    #   jupyterlab
     #   jwcrypto
     #   lance-namespace-urllib3-client
     #   lightning
@@ -2637,7 +2668,7 @@ vine==5.1.0
     #   amqp
     #   celery
     #   kombu
-virtualenv==21.14.12
+virtualenv==21.15.13
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/security-requirements.txt
@@ -2673,7 +2704,7 @@ websockets==15.0.1
     #   -r python/requirements/serve/serve-test-requirements.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
-werkzeug==2.3.8
+werkzeug==3.1.9
     # via
     #   -r python/requirements/test-requirements.txt
     #   flask
