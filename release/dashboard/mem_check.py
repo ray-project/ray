@@ -2,18 +2,29 @@ import argparse
 import json
 import os
 import time
+from typing import List
 
 import ray
+from ray._common.network_utils import build_address
+from ray._common.test_utils import fetch_prometheus_metrics
 from ray._private.memory_monitor import MemoryMonitor, get_top_n_memory_usage
-from ray._private.test_utils import get_system_metric_for_component
-from ray.dashboard.modules.metrics.metrics_head import (
-    DEFAULT_PROMETHEUS_HOST,
-    PROMETHEUS_HOST_ENV_VAR,
-)
 from ray.job_submission import JobStatus, JobSubmissionClient
 
 # Initialize ray to avoid autosuspend.
 addr = ray.init()
+
+
+def get_agent_uss_bytes() -> List[float]:
+    """Read each agent's USS from its node, so the check doesn't depend on the
+    platform's metrics pipeline."""
+    addresses = [
+        build_address(node["NodeManagerAddress"], node["MetricsExportPort"])
+        for node in ray.nodes()
+        if node["Alive"]
+    ]
+    samples = fetch_prometheus_metrics(addresses).get("ray_component_uss_bytes", [])
+    return [s.value for s in samples if s.labels.get("Component") == "agent"]
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -66,11 +77,7 @@ if __name__ == "__main__":
         print(client.get_job_logs(job_id))
         assert False, "Job has failed."
 
-    uss_bytes_for_agent_component = get_system_metric_for_component(
-        "ray_component_uss_bytes",
-        "agent",
-        os.environ.get(PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST),
-    )
+    uss_bytes_for_agent_component = get_agent_uss_bytes()
     assert (
         len(uss_bytes_for_agent_component) > 0
     ), "Agent component memory metrics are not found."
