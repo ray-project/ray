@@ -69,6 +69,10 @@ def _get_level_zero_gpu_names() -> List[str]:
     the driver. Returns an empty list when the loader or a driver is
     unavailable.
     """
+    # TODO(chaojun-zhang): zeInit makes the driver read ZE_AFFINITY_MASK now, and
+    # this runs at `import ray` in every worker before Ray sets the mask for
+    # the task, so tasks may see more GPUs than assigned. The dpctl path had the
+    # same problem. Tracked in https://github.com/ray-project/ray/issues/68576
     lib = _load_level_zero_loader()
     if lib is None or lib.zeInit(0) != 0:
         return []
