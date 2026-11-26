@@ -22,6 +22,7 @@ from ray.data._internal.logical.operators.map_operator import AbstractMap, Filte
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -305,7 +306,7 @@ class ReadFiles(
             object.__setattr__(self, "ray_remote_args", {})
         object.__setattr__(self, "_name", f"ReadFiles{self.datasource_name}")
 
-    def infer_schema(self) -> "pa.Schema":
+    def infer_schema(self) -> Optional["pa.Schema"]:
         # Scanner schema reflects any applied projection pushdown
         # (``scanner.prune_columns`` / empty projection from
         # ``select_columns([])``); the stored ``self.schema`` is the
@@ -317,9 +318,9 @@ class ReadFiles(
         # post-transform column types. Mirrors V1 ``ParquetDatasource``'s
         # dummy-table trick. Falls back to the scanner schema if the
         # probe fails — the UDF may require a non-empty input.
-        if self.block_udf is not None:
+        if self.block_udf is not None and schema is not None:
             try:
-                transformed = self.block_udf(schema.empty_table()).schema
+                transformed = self.block_udf(_create_empty_table(schema)).schema
                 schema = transformed.with_metadata(schema.metadata)
             except Exception:
                 pass

@@ -1,3 +1,6 @@
 pytest
 pytest-asyncio
 pytest-aiohttp
+# Keep in sync with test-requirements.txt, which the rayllm base depset does
+# not include.
+filelock>=4.2.4; python_version >= '3.12'

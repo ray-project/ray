@@ -102,15 +102,18 @@ class _DummySession:
 
 
 @pytest.mark.parametrize(
-    ("available", "expected"),
+    ("platform", "available", "expected"),
     [
         # `fork` is offered by the platform but must never be picked.
-        (["fork", "spawn", "forkserver"], "forkserver"),
+        ("linux", ["fork", "spawn", "forkserver"], "forkserver"),
+        # macOS offers `forkserver`, but its children crash after grpc is imported.
+        ("darwin", ["spawn", "fork", "forkserver"], "spawn"),
         # Windows, and POSIX builds without SCM_RIGHTS, fall back rather than raising.
-        (["spawn"], "spawn"),
+        ("win32", ["spawn"], "spawn"),
     ],
 )
-def test_select_start_method(monkeypatch, available, expected):
+def test_select_start_method(monkeypatch, platform, available, expected):
+    monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.setattr(
         handle_module.multiprocessing, "get_all_start_methods", lambda: available
     )

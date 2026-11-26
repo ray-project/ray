@@ -41,6 +41,40 @@ from ray.util.state import list_actors
 # for bazel test targets.
 os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
+# One Hypothesis profile for every Ray Data property-based test, defined here so
+# it cannot drift between files: `load_profile` is process-global, so two test
+# modules each loading their own copy silently override each other by import
+# order.
+#
+# - `derandomize`: a given commit always explores the same inputs, so a CI
+#   failure reproduces locally and is never a flake.
+# - `deadline=None`: per-example timing on shared CI hosts is too noisy to gate on.
+# - `max_examples`: there is no formula. Hypothesis defaults to 100; raise it
+#   while the suite stays cheap (these run in seconds) and the input space is
+#   wide relative to the bugs being hunted. Keep CI's budget fixed and search
+#   harder locally instead, with `HYPOTHESIS_PROFILE=ray_data_thorough`.
+#
+# Guarded so this shared conftest stays importable where hypothesis is absent.
+try:
+    from hypothesis import HealthCheck, settings as hypothesis_settings
+except ImportError:
+    pass
+else:
+    _ray_data_ci_profile = dict(
+        derandomize=True,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    hypothesis_settings.register_profile(
+        "ray_data_ci", max_examples=200, **_ray_data_ci_profile
+    )
+    hypothesis_settings.register_profile(
+        "ray_data_thorough", max_examples=5000, **_ray_data_ci_profile
+    )
+    hypothesis_settings.load_profile(
+        os.environ.get("HYPOTHESIS_PROFILE", "ray_data_ci")
+    )
+
 
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.
@@ -273,6 +307,20 @@ def restore_data_context(request):
     original = copy.deepcopy(ctx)
     yield ctx
     ray.data.context.DataContext._set_current(original)
+
+
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def datasource_v2(request, restore_data_context):
+    """Run a test once through the V1 reader and once through DataSourceV2.
+
+    The value is ``DataContext.use_datasource_v2`` for that run. For a
+    V2-only test, write
+    ``@pytest.mark.parametrize("datasource_v2", [True], indirect=True)``.
+    For every test in a module, set
+    ``pytestmark = pytest.mark.usefixtures("datasource_v2")``.
+    """
+    restore_data_context.use_datasource_v2 = request.param
+    return request.param
 
 
 def _get_supported_tensor_formats():
