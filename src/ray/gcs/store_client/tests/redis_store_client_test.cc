@@ -195,9 +195,8 @@ TEST_F(RedisStoreClientTest, BasicSimple) {
 }
 
 TEST_F(RedisStoreClientTest, AsyncMultiGetWithDuplicateKeysCompletes) {
-  // A duplicated key in one request used to push two readiness expectations
-  // onto a single concurrency queue while only one is ever satisfied, parking
-  // the request - and every later request on that key - forever.
+  // A key listed twice in one request must not stall that request or the later
+  // requests on the same key.
   std::atomic<int> callbacks{0};
   store_client_->AsyncPut("T",
                           "dup",
@@ -212,11 +211,20 @@ TEST_F(RedisStoreClientTest, AsyncMultiGetWithDuplicateKeysCompletes) {
       "T",
       {"dup", "dup"},
       {[&callbacks](absl::flat_hash_map<std::string, std::string> m) {
-         callbacks++;
          ASSERT_EQ(m.size(), 1);
+         ASSERT_EQ(m["dup"], "v");
+         callbacks++;
        },
        *io_service_pool_->Get()});
-  ASSERT_TRUE(WaitForCondition([&callbacks]() { return callbacks == 2; }, 5000));
+  store_client_->AsyncGet("T",
+                          "dup",
+                          {[&callbacks](auto s, auto r) {
+                             ASSERT_TRUE(r.has_value());
+                             ASSERT_EQ(*r, "v");
+                             callbacks++;
+                           },
+                           *io_service_pool_->Get()});
+  ASSERT_TRUE(WaitForCondition([&callbacks]() { return callbacks == 3; }, 5000));
 }
 
 TEST_F(RedisStoreClientTest, Complicated) {

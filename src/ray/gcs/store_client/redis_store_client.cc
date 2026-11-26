@@ -290,11 +290,9 @@ void RedisStoreClient::SendRedisCmdWithKeys(std::vector<std::string> keys,
       ray::move_mapped(std::move(keys), [&command](std::string &&key) {
         return RedisConcurrencyKey{command.redis_key.table_name, std::move(key)};
       });
-  // Readiness is tracked per key: PushToSendingQueue only counts a key once,
-  // so a duplicated key would leave the request waiting for a readiness
-  // signal that never comes, parking it - and every later request on that
-  // key's queue - forever. Dedup, since the readiness contract is per key.
-  {
+  // A key listed twice would queue this request behind its own entry in that key's
+  // queue, so it would never fire and every later request on the key would wait.
+  if (concurrency_keys.size() > 1) {
     absl::flat_hash_set<RedisConcurrencyKey> seen;
     seen.reserve(concurrency_keys.size());
     std::vector<RedisConcurrencyKey> distinct_keys;
