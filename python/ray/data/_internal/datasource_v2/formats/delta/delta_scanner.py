@@ -1,9 +1,13 @@
 from dataclasses import dataclass
-from typing import ClassVar, Dict, Iterator, Optional, Type
+from typing import ClassVar, Dict, Iterator, List, Optional, Type
 
 import pyarrow as pa
+import pyarrow.dataset as pds
 from typing_extensions import override
 
+from ray.data._internal.datasource_v2.formats.delta.delta_column_mapping import (
+    DeltaColumnMapping,
+)
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
     NUM_RECORDS_COLUMN,
     PARTITION_VALUES_COLUMN,
@@ -22,6 +26,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data.block import BlockMetadata
+from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
 
 
@@ -37,6 +42,70 @@ class DeltaFileReader(ParquetFileReader):
 
     # Replaced, never changed in place, by each ``read``.
     _partition_values_by_path: Dict[str, PartitionValues] = {}
+    # Set by ``DeltaScanner.create_reader``.
+    _column_mapping: Optional[DeltaColumnMapping] = None
+
+    def set_column_mapping(self, column_mapping: Optional[DeltaColumnMapping]) -> None:
+        """Read a column-mapped table's data files by their physical names."""
+        self._column_mapping = column_mapping
+
+    @override
+    def _iter_fragment_tables_without_pickle_check(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+        file_dataset_schema: pa.Schema,
+        predicate: Optional[Expr],
+    ) -> Iterator[pa.Table]:
+        """Scan the file by physical column names, then rename to logical ones.
+
+        Everything above this works in the table's logical column names. The
+        file is scanned with the physical names: the projected columns, the
+        pinned schema (nested fields included) and the filter, so Parquet
+        statistics still prune row groups. Columns the file holds but the
+        table doesn't, such as materialized row-tracking columns, are never
+        read. A filter on a column with nested fields may name those fields
+        by their logical names, so it is applied after renaming instead.
+        """
+        mapping = self._column_mapping
+        if mapping is None:
+            yield from super()._iter_fragment_tables_without_pickle_check(
+                fragment, scanner_kwargs, file_dataset_schema, predicate
+            )
+            return
+        from ray.data._internal.planner.plan_expression.expression_visitors import (
+            get_column_references,
+        )
+
+        kwargs = dict(scanner_kwargs)
+        columns: Optional[List[str]] = kwargs.get("columns")
+        after_rename: Optional[Expr] = None
+        physical_predicate: Optional[Expr] = None
+        if predicate is not None:
+            references = list(get_column_references(predicate))
+            if any(mapping.is_nested(name) for name in references):
+                after_rename = predicate
+                if columns is not None:
+                    columns = columns + [c for c in references if c not in columns]
+            else:
+                physical_predicate = mapping.physical_predicate(predicate)
+        kwargs["filter"] = (
+            physical_predicate.to_pyarrow() if physical_predicate is not None else None
+        )
+        if columns is not None:
+            kwargs["columns"] = mapping.physical_names(columns)
+        for table in super()._iter_fragment_tables_without_pickle_check(
+            fragment,
+            kwargs,
+            mapping.physical_schema(file_dataset_schema),
+            physical_predicate,
+        ):
+            table = mapping.to_logical(table)
+            if after_rename is not None:
+                table = table.filter(after_rename.to_pyarrow())
+                if scanner_kwargs.get("columns") is not None:
+                    table = table.select(scanner_kwargs["columns"])
+            yield table
 
     @override
     def read(self, input_split: FileManifest) -> Iterator[pa.Table]:
@@ -129,8 +198,18 @@ class DeltaScanner(ParquetScanner):
     #: of the version that was latest when the dataset was created, which a
     #: resumed job reads anew.
     version_pinned_by_caller: bool = False
+    #: How the data files name the columns, or ``None`` if they use the
+    #: table's column names.
+    column_mapping: Optional[DeltaColumnMapping] = None
 
     reader_class: ClassVar[Type[ParquetFileReader]] = DeltaFileReader
+
+    @override
+    def create_reader(self) -> ParquetFileReader:
+        reader = super().create_reader()
+        assert isinstance(reader, DeltaFileReader), type(reader)
+        reader.set_column_mapping(self.column_mapping)
+        return reader
 
     @override
     def _create_partition_pruner(self) -> Optional[FilePruner]:

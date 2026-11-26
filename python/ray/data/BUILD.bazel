@@ -49,6 +49,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     extra_srcs = [
+        "tests/delta_test_utils.py",
         "tests/parquet_test_utils.py",
         "tests/schema_planning_utils.py",
     ],

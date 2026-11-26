@@ -306,10 +306,17 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path, datasource_
 # protocol check passes and deltalake 1.6.4 to 1.6.6 returned nulls for every
 # mapped column.
 @pytest.mark.parametrize("mode", ["name", "id"])
-def test_delta_read_rejects_column_mapping(tmp_path, mode):
+def test_delta_read_column_mapping(tmp_path, datasource_v2, mode):
+    """V1 rejects column mapping; V2 reads the name mode."""
     path = os.path.join(tmp_path, "column_mapped")
     write_column_mapped_table(path, mode)
 
+    if datasource_v2 and mode == "name":
+        assert sorted(row["id"] for row in ray.data.read_delta(path).take_all()) == [
+            1,
+            2,
+        ]
+        return
     with pytest.raises(NotImplementedError) as excinfo:
         ray.data.read_delta(path)
 

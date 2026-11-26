@@ -43,6 +43,9 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
 )
+from ray.data._internal.datasource_v2.formats.delta.delta_column_mapping import (
+    DeltaColumnMapping,
+)
 from ray.data._internal.datasource_v2.formats.delta.delta_file_pruning import (
     statistics_keep_mask,
 )
@@ -173,13 +176,20 @@ def load_add_actions(
         ``deltalake`` lists them in the order it replays the log, which follows
         the layout of the latest checkpoint, so a version reloaded after a
         checkpoint written with its rows in another order would otherwise list
-        its files in another order.
+        its files in another order. A column-mapped table's statistics columns
+        are renamed to the logical column names.
     """
     # ``deltalake`` returns an arro3-core table, not a PyArrow one; ``pa.table``
     # converts it through the Arrow C stream interface.
     add_actions = pa.table(table.get_add_actions(flatten=True)).sort_by(
         ADD_ACTION_PATH_COLUMN
     )
+    column_mapping = DeltaColumnMapping.of_table(table)
+    if column_mapping is not None:
+        renames = column_mapping.statistics_renames(add_actions.column_names)
+        add_actions = add_actions.rename_columns(
+            [renames.get(name, name) for name in add_actions.column_names]
+        )
     if partition_filters is not None:
         file_paths = [
             resolve_data_file_path(path)
@@ -418,6 +428,7 @@ class _DeltaLogListing:
         filesystem: "FileSystem",
         partition_schema: pa.Schema,
         shuffle_config: Optional["FileShuffleConfig"] = None,
+        column_mapping: Optional[DeltaColumnMapping] = None,
     ) -> None:
         self._snapshot = snapshot
         # The framework passes ``filesystem=None`` and no file shuffle to a
@@ -426,6 +437,7 @@ class _DeltaLogListing:
         self._filesystem = filesystem
         self._partition_schema = partition_schema
         self._shuffle_config = shuffle_config
+        self._column_mapping = column_mapping
         # Filled by ``list_file_infos``, in the listing task.
         self._partition_values_by_path = {}
 
@@ -598,6 +610,14 @@ class _DeltaLogListing:
         add_known_file_sizes(
             self._filesystem, {info.path: info.size for info in file_infos}
         )
+        if self._column_mapping is not None:
+            # The footers name columns by their physical names. The log
+            # statistics above were renamed to logical names when loaded.
+            predicate = self._column_mapping.physical_predicate(predicate)
+            if kwargs.get("projected_columns") is not None:
+                kwargs["projected_columns"] = self._column_mapping.physical_names(
+                    kwargs["projected_columns"]
+                )
         # pyrefly: ignore[missing-attribute]
         manifests = super().list_files_from_file_infos(
             file_infos,
@@ -658,6 +678,7 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
         shuffle_config: Optional["FileShuffleConfig"] = None,
         coalesce_bytes: int = 0,
         small_shuffle_chunk_size: int = 0,
+        column_mapping: Optional[DeltaColumnMapping] = None,
     ):
         FooterFileIndexer.__init__(
             self,
@@ -670,6 +691,7 @@ class DeltaFileIndexer(_DeltaLogListing, FooterFileIndexer):
             filesystem=filesystem,
             partition_schema=partition_schema,
             shuffle_config=shuffle_config,
+            column_mapping=column_mapping,
         )
 
     @override

@@ -7,6 +7,7 @@ listing yields. ``tests/datasource/test_delta_v2.py`` checks the rows reads
 return.
 """
 
+import posixpath
 import sys
 from typing import Any, Dict, List
 
@@ -16,11 +17,15 @@ import pytest
 from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
     DeltaDatasourceV2,
 )
+from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
+    load_add_actions,
+)
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
 )
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.delta_test_utils import write_mapped_table
 from ray.tests.conftest import *  # noqa
 
 deltalake = pytest.importorskip("deltalake")
@@ -75,6 +80,25 @@ def test_filter_prunes_row_groups(ray_start_regular_shared, row_group_table):
     rows = _list_files(row_group_table, predicate=col("x") >= 80)
 
     assert _row_groups(rows) == [4]
+
+
+@pytest.fixture
+def name_mapped_table(tmp_path) -> str:
+    path = str(tmp_path / "name_mapped")
+    write_mapped_table(path, "name")
+    return path
+
+
+def test_name_mapped_statistics_skip_files(ray_start_regular_shared, name_mapped_table):
+    """The log keys statistics by physical name, nested fields as dotted
+    paths. They're renamed to logical names when loaded, so log-statistics
+    skipping finds them; the footer reads get the filter in physical names."""
+    add_actions = load_add_actions(deltalake.DeltaTable(name_mapped_table))
+    assert {"min.id", "max.s.n", "null_count.extra"} <= set(add_actions.column_names)
+
+    rows = _list_files(name_mapped_table, predicate=col("id") > 5)
+
+    assert {posixpath.dirname(row["__path"]) for row in rows} == {"col-grp=b"}
 
 
 if __name__ == "__main__":
