@@ -680,25 +680,34 @@ class TestAmdGpuProvider(unittest.TestCase):
         mock_pyamdsmi.smi_initialize.return_value = None
         mock_pyamdsmi.smi_shutdown.return_value = None
 
-        self.assertTrue(self.provider.is_available())
-        mock_pyamdsmi.smi_initialize.assert_called_once()
-        mock_pyamdsmi.smi_shutdown.assert_called_once()
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pyamdsmi": mock_pyamdsmi}
+        ):
+            self.assertTrue(self.provider.is_available())
+            mock_pyamdsmi.smi_initialize.assert_called_once()
+            mock_pyamdsmi.smi_shutdown.assert_called_once()
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_is_available_failure(self, mock_pyamdsmi):
         """Test is_available when AMD GPU is not available."""
         mock_pyamdsmi.smi_initialize.side_effect = Exception("AMD driver not found")
 
-        self.assertFalse(self.provider.is_available())
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pyamdsmi": mock_pyamdsmi}
+        ):
+            self.assertFalse(self.provider.is_available())
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_initialize_success(self, mock_pyamdsmi):
         """Test successful initialization."""
         mock_pyamdsmi.smi_initialize.return_value = None
 
-        self.assertTrue(self.provider._initialize())
-        self.assertTrue(self.provider._initialized)
-        mock_pyamdsmi.smi_initialize.assert_called_once()
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pyamdsmi": mock_pyamdsmi}
+        ):
+            self.assertTrue(self.provider._initialize())
+            self.assertTrue(self.provider._initialized)
+            mock_pyamdsmi.smi_initialize.assert_called_once()
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_get_gpu_utilization_success(self, mock_pyamdsmi):

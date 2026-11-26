@@ -32,30 +32,13 @@ def main(args):
         # The pipeline is kept linear:
         # part->lineitem->partsupp->supplier->nation->orders.
 
-        # Load all required tables with early column pruning to reduce
-        # intermediate data size (projection pushes down to Parquet reader)
-        # TODO: Remove manual projection once we support proper projection derivation
-        part = load_table("part", args.sf).select_columns(["p_partkey", "p_name"])
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_nationkey"]
-        )
-        partsupp = load_table("partsupp", args.sf).select_columns(
-            ["ps_partkey", "ps_suppkey", "ps_supplycost"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_orderdate"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            [
-                "l_orderkey",
-                "l_partkey",
-                "l_suppkey",
-                "l_quantity",
-                "l_extendedprice",
-                "l_discount",
-            ]
-        )
-        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
+        # Load tables. Projection pushdown derives the columns each read needs.
+        part = load_table("part", args.sf)
+        supplier = load_table("supplier", args.sf)
+        partsupp = load_table("partsupp", args.sf)
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
+        nation = load_table("nation", args.sf)
 
         # Q9 parameters
         part_name_pattern = "green"
@@ -72,7 +55,7 @@ def main(args):
         # into parquet read predicate conversion.
         lineitem_part = lineitem_part.filter(
             expr=col("p_name").str.contains(part_name_pattern)
-        ).select_columns(
+        ).select_columns(  # drop part's columns before the self-joins below
             [
                 "l_orderkey",
                 "l_partkey",
@@ -90,15 +73,6 @@ def main(args):
             join_type="inner",
             on=("l_partkey", "l_suppkey"),
             right_on=("ps_partkey", "ps_suppkey"),
-        ).select_columns(
-            [
-                "l_orderkey",
-                "l_quantity",
-                "l_extendedprice",
-                "l_discount",
-                "l_suppkey",
-                "ps_supplycost",
-            ]
         )
 
         lineitem_supplier = lineitem_partsupp.join(
@@ -107,15 +81,6 @@ def main(args):
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-        ).select_columns(
-            [
-                "l_orderkey",
-                "l_quantity",
-                "l_extendedprice",
-                "l_discount",
-                "ps_supplycost",
-                "s_nationkey",
-            ]
         )
 
         lineitem_nation = lineitem_supplier.join(
@@ -124,15 +89,6 @@ def main(args):
             join_type="inner",
             on=("s_nationkey",),
             right_on=("n_nationkey",),
-        ).select_columns(
-            [
-                "l_orderkey",
-                "l_quantity",
-                "l_extendedprice",
-                "l_discount",
-                "ps_supplycost",
-                "n_name",
-            ]
         )
 
         ds = lineitem_nation.join(

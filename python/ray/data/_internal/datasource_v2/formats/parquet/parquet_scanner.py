@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Type
 
 import pyarrow as pa
 from typing_extensions import override
@@ -52,6 +52,9 @@ class ParquetScanner(ArrowFileScanner):
     # ``pre_buffer``, ``dictionary_columns``). Carries the deprecated
     # ``dataset_kwargs`` payload from ``read_parquet`` to the worker.
     parquet_format_kwargs: Dict[str, Any] = field(default_factory=dict)
+    # The reader ``create_reader`` builds; a format whose files are Parquet
+    # can substitute a subclass.
+    reader_class: ClassVar[Type[ParquetFileReader]] = ParquetFileReader
 
     @override
     def push_filters(self, predicate: Expr) -> Tuple[ArrowFileScanner, Optional[Expr]]:
@@ -118,7 +121,7 @@ class ParquetScanner(ArrowFileScanner):
         Returns:
             ParquetFileReader with all pushdowns and adaptive batch sizing.
         """
-        return ParquetFileReader(
+        return self.reader_class(
             batch_size=self.batch_size,
             columns=list(self.columns) if self.columns is not None else None,
             predicate=combine_predicates(self.predicate, self.partition_predicate),
