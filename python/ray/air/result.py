@@ -31,6 +31,7 @@ class Result:
     of ``Result`` objects.
 
     This API is the recommended way to access the outputs such as:
+
     - checkpoints (``Result.latest_checkpoint``)
     - the history of reported metrics (``Result.metrics_dataframe``,
       ``Result.latest_metrics``)
