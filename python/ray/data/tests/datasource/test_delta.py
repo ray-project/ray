@@ -16,6 +16,7 @@ from ray.data._internal.object_extensions.arrow import (
 from ray.data._internal.util import rows_same
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.delta_test_utils import (
+    DELETION_VECTOR_TABLE_ROWS,
     write_column_mapped_table,
     write_deletion_vector_table,
 )
@@ -264,42 +265,28 @@ def test_delta_read_checks_the_deltalake_version(
             ray.data.read_delta(path)
 
 
-def test_delta_read_deletion_vectors_message_is_actionable(tmp_path, datasource_v2):
-    """A deletion-vector table must fail with advice that actually works.
+def test_delta_read_deletion_vectors(tmp_path, datasource_v2):
+    """V2 drops the rows the deletion vectors delete. V1 reads the data files
+    with pyarrow, which can't apply them, so it refuses rather than return
+    deleted rows, and points at the V2 reader rather than a library upgrade.
 
-    Both readers read the data files with pyarrow, which cannot apply the
-    deletion-vector bitmaps, so they refuse rather than return deleted rows,
-    and no deltalake version changes that. The message therefore has to point
-    at the table property, not at a library upgrade.
-
-    deltalake cannot *write* a table declaring the feature either, so the log
-    is written by hand.
+    deltalake cannot write deletion vectors, so the log is written by hand.
     """
-    path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
+    path = os.path.join(tmp_path, "tmp_test_delta_dv")
     write_deletion_vector_table(path)
 
+    if datasource_v2:
+        rows = ray.data.read_delta(path).take_all()
+        assert sorted(row["x"] for row in rows) == DELETION_VECTOR_TABLE_ROWS
+        return
     with pytest.raises(RuntimeError) as excinfo:
         ray.data.read_delta(path)
 
     message = str(excinfo.value)
-    # Names the cause and the reader path, so the reason is understandable.
     assert "deletionVectors" in message
-    assert "pyarrow" in message
-    # Names the property to look into, so the reader knows what to research.
-    assert "delta.enableDeletionVectors" in message
-    # Deliberately does NOT prescribe the steps: dropping the feature rewrites
-    # data files and changes what other readers and writers see, which is not a
-    # decision to make from a stack trace.
-    for recipe in ("ALTER TABLE", "DROP FEATURE", "REORG TABLE"):
-        assert recipe not in message, f"message should not prescribe {recipe!r}"
+    assert "use_datasource_v2 = True" in message
     # Does not send anyone chasing a library upgrade that cannot help.
     assert "deltalake>=" not in message
-    # Keeps the original error for anyone debugging deeper: V1's from
-    # deltalake, V2's own check.
-    if not datasource_v2:
-        assert "not yet supported by the deltalake reader" in message
-    else:
-        assert "protocol lists the `deletionVectors` reader feature" in message
 
 
 # Reader 2 / writer 5 tables declare no reader features, so deltalake's own

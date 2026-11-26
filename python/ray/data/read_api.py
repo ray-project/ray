@@ -6666,10 +6666,12 @@ def read_delta(
         ``read_delta`` reads through the DataSourceV2 pipeline. It opens the
         table once, in a Ray task, when ``read_delta`` is called, which pins
         the version and keeps the file list off the driver, skips files using
-        the statistics in the Delta log, and splits files into row-group read
-        units. It raises ``NotImplementedError`` for tables that need a reader
-        feature other than ``timestampNtz``, or that have binary partition
-        columns, and ``ValueError`` if ``include_paths`` would replace the
+        the statistics in the Delta log, splits files into row-group read
+        units, and drops the rows deletion vectors delete. It raises
+        ``NotImplementedError`` for tables that need a reader feature other
+        than ``timestampNtz``, ``columnMapping``, ``deletionVectors`` and
+        ``v2Checkpoint``, or that have binary partition columns, and
+        ``ValueError`` if ``include_paths`` would replace the
         table's own ``path`` column or the log names data files outside the
         table directory, as a shallow clone's does. Because the table is opened and its
         files listed in Ray tasks, the worker nodes, not only the driver, need

@@ -213,7 +213,7 @@ def test_manifests_carry_the_partition_values(partitioned_table):
         paths=paths, sizes=[1] * len(paths), chunk_metadatas=[None] * len(paths)
     )
 
-    (with_values,) = indexer._with_partition_values([manifest])
+    (with_values,) = indexer._with_log_columns([manifest])
 
     extra_columns = with_values.extra_columns
     assert with_values.paths.tolist() == paths
