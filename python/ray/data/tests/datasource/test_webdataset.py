@@ -57,7 +57,7 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
 
 
 def test_webdataset_fileselect_skips_unselected_payloads(tmp_path, monkeypatch):
-    from ray.data._internal.datasource.webdataset_datasource import (
+    from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
         _tar_file_iterator,
     )
 
