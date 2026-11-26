@@ -39,6 +39,7 @@ class OpRule(enum.Enum):
     # Any phase.
     RELEASE_POOL = "release the pool of a completed op"
     UPSCALE_TO_MIN = "upscale to min size"
+    UPSCALE_TO_HELD_ROOM = "upscale into the room held until its first input"
     # Warmup.
     UPSCALE_WARMUP = "upscale toward its warmup share"
     # From the bottleneck snapshot.

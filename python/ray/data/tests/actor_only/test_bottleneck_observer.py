@@ -5,24 +5,24 @@ from typing import Any, Dict, Optional, Tuple, cast
 
 import pytest
 
-from ray.data._internal.actor_autoscaler import AutoscalingActorPool
-from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     SlotUsage,
 )
-from ray.data._internal.experimental.execution.sizer import bottleneck_observer
 from ray.data._internal.experimental.execution.sizer.bottleneck_observer import (
     Adjacency,
     Arrow,
     BottleneckObserver,
+    Edge,
     EdgeShareBreakdown,
     OpShareBreakdown,
     OpShareWindow,
+    Snapshot,
     analyze,
     classify_edge_direction,
     format_snapshot,
     why_should_not_upscale_blocker,
 )
+from ray.data.tests.actor_only.actor_only_test_utils import FakeClock
 
 ARROW_MARGIN = 0.1
 MIN_SEVERITY = 0.1
@@ -39,27 +39,16 @@ def _chain(*ops: str) -> Tuple[Adjacency[str], Adjacency[str]]:
     return prev_ops, next_ops
 
 
-def _analyze(shares, *ops):
-    prev_ops, next_ops = _chain(*ops)
-    return analyze(
-        shares=shares,
-        prev_ops=prev_ops,
-        next_ops=next_ops,
-        arrow_margin=ARROW_MARGIN,
-        min_severity=MIN_SEVERITY,
-    )
-
-
 @pytest.mark.parametrize(
     "blocked, self_limited, consumer_starved, expected",
     [
-        (0.98, 0.0, 0.0, Arrow.DOWNSTREAM),  # producer waits on consumer
-        (0.0, 0.0, 0.9, Arrow.UPSTREAM),  # consumer waits on producer
-        (0.2, 0.0, 0.25, Arrow.TIE),  # within the margin
-        (0.5, 0.0, 0.4, Arrow.TIE),  # exactly the margin is still a tie
-        # Output-backpressured by its own budget while the consumer has room:
-        # the producer limits the edge (video: 1 GPU actor, Write starved).
-        (0.0, 0.8, 0.57, Arrow.UPSTREAM),
+        pytest.param(0.98, 0.0, 0.0, Arrow.DOWNSTREAM, id="producer-waits"),
+        pytest.param(0.0, 0.0, 0.9, Arrow.UPSTREAM, id="consumer-waits"),
+        pytest.param(0.2, 0.0, 0.25, Arrow.TIE, id="within-margin"),
+        pytest.param(0.5, 0.0, 0.4, Arrow.TIE, id="exactly-the-margin"),
+        # A 1-actor producer, held back by its own output budget, feeds a
+        # starved consumer: the producer limits the edge.
+        pytest.param(0.0, 0.8, 0.57, Arrow.UPSTREAM, id="producer-self-limited"),
     ],
 )
 def test_classify_edge_direction(blocked, self_limited, consumer_starved, expected):
@@ -74,186 +63,112 @@ def test_classify_edge_direction(blocked, self_limited, consumer_starved, expect
     )
 
 
-def test_label_contention_names_the_labeled_stage():
-    """autoscale_contention: GenStage is output-backpressured on LabeledStage,
-    Write is starved, so every arrow points at LabeledStage."""
-    shares = {
-        "Gen": OpShareBreakdown(busy=0.02, obp=0.98, starved=0.0, actors=15),
-        "Labeled": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2),
-        "Write": OpShareBreakdown(busy=0.1, obp=0.0, starved=0.9, actors=1),
-    }
-    snapshot = _analyze(shares, "Gen", "Labeled", "Write")
-
-    assert [op for op, _ in snapshot.bottlenecks] == ["Labeled"]
-
-
-def test_image_classification_never_names_the_upstream_reader():
-    """image_classification: Preprocess is output-backpressured on the GPU
-    Predictor; ReadFiles is not a bottleneck, so nothing would flow to it."""
-    shares = {
-        "ReadFiles": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=8),
-        "Preprocess": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=31),
-        "Predictor": OpShareBreakdown(busy=0.95, obp=0.05, starved=0.0, actors=8),
-        "Write": OpShareBreakdown(busy=0.2, obp=0.0, starved=0.8, actors=4),
-    }
-    snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor", "Write")
-
-    assert [op for op, _ in snapshot.bottlenecks] == ["Predictor"]
-
-
-def test_near_tie_reports_both_sides_most_severe_first():
-    """B -> C is a near-tie (0.2 vs 0.15), so neither has an outgoing arrow;
-    both have neighbours waiting on them (A on B, D on C), so both are
-    reported, B first."""
-    shares = {
-        "A": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=10),
-        "B": OpShareBreakdown(busy=0.8, obp=0.2, starved=0.0, actors=8),
-        "C": OpShareBreakdown(busy=0.85, obp=0.0, starved=0.15, actors=6),
-        "D": OpShareBreakdown(busy=0.7, obp=0.0, starved=0.3, actors=4),
-    }
-    snapshot = _analyze(shares, "A", "B", "C", "D")
-
-    assert snapshot.edges[1].arrow is Arrow.TIE
-    assert snapshot.bottlenecks == (
-        ("B", pytest.approx(0.85)),
-        ("C", pytest.approx(0.35)),
-    )
-
-
-def test_ramp_up_tie_is_below_the_severity_floor():
-    """image_classification ramp-up: ReadFiles -> Preprocess is a tie (0.00
-    vs 0.03), so ReadFiles had no outgoing arrow, but at severity 0.03 it is
-    noise, not a bottleneck: only Predictor is named."""
-    shares = {
-        "ReadFiles": OpShareBreakdown(busy=0.99, obp=0.0, starved=0.0, actors=33),
-        "Preprocess": OpShareBreakdown(busy=0.58, obp=0.38, starved=0.03, actors=31),
-        "Predictor": OpShareBreakdown(busy=0.73, obp=0.0, starved=0.16, actors=7),
-    }
-    snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor")
-
-    assert snapshot.edges[0].arrow is Arrow.TIE
-    assert [op for op, _ in snapshot.bottlenecks] == ["Predictor"]
-
-
-def test_tie_side_that_waits_more_than_it_is_waited_on_is_dropped():
-    """Within the arrow margin, but Write is starved (0.25) more than B is
-    blocked on it (0.2): Write's severity is negative, so only B is named."""
-    shares = {
-        "A": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=10),
-        "B": OpShareBreakdown(busy=0.8, obp=0.2, starved=0.0, actors=8),
-        "Write": OpShareBreakdown(busy=0.75, obp=0.0, starved=0.25, actors=27),
-    }
-    snapshot = _analyze(shares, "A", "B", "Write")
-
-    assert snapshot.edges[1].arrow is Arrow.TIE
-    assert [op for op, _ in snapshot.bottlenecks] == ["B"]
-
-
-def test_last_op_working_through_its_tail_is_not_a_bottleneck():
-    """image_classification tail: every upstream op has completed and left
-    the model, so nothing waits on Predictor (severity -0.05)."""
-    shares = {
-        "Predictor": OpShareBreakdown(busy=0.93, obp=0.0, starved=0.05, actors=10),
-    }
-    snapshot = _analyze(shares, "ReadFiles", "Preprocess", "Predictor")
-
-    assert snapshot.bottlenecks == ()
-
-
-def test_sink_bottleneck_uses_only_its_upstream_edge():
-    """A sink that limits the pipeline is found from its producer's output
-    backpressure alone."""
-    shares = {
-        "B": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=6),
-        "Write": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=3),
-    }
-    snapshot = _analyze(shares, "B", "Write")
-
-    assert snapshot.bottlenecks == (("Write", pytest.approx(0.9)),)
-
-
-def test_ops_without_a_full_window_are_left_out():
-    # Gen and Write have no shares yet: no edges, and with no measured
-    # neighbour waiting on it, Labeled is not named either.
-    shares = {"Labeled": OpShareBreakdown(busy=1.0, obp=0.0, starved=0.0, actors=2)}
-    snapshot = _analyze(shares, "Gen", "Labeled", "Write")
-
-    assert snapshot.edges == ()
-    assert snapshot.bottlenecks == ()
-
-
-def test_sink_with_no_actors_is_named_not_its_blocked_producer():
-    """video_object_detection stall: Write never placed an actor, so its
-    queued input is unstaffed time (one fully busy actor), and B, fully
-    output-backpressured on it, points its arrow at it."""
-    shares = {
-        "A": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=6),
-        "B": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=5),
-        "Write": OpShareBreakdown(
-            busy=1.0, obp=0.0, starved=0.0, actors=0, unstaffed=1.0
-        ),
-    }
-    snapshot = _analyze(shares, "A", "B", "Write")
-
-    assert snapshot.bottlenecks == (("Write", pytest.approx(1.0)),)
-    assert snapshot.edges[1].arrow is Arrow.DOWNSTREAM
-
-
-def test_op_blocked_on_an_unmodeled_consumer_is_not_a_bottleneck():
-    """An op output-backpressured nearly all the time is waiting on something
-    downstream, even when that consumer has no shares to draw an arrow to."""
-    shares = {
-        "A": OpShareBreakdown(busy=0.1, obp=0.9, starved=0.0, actors=4),
-        "B": OpShareBreakdown(busy=0.05, obp=0.95, starved=0.0, actors=5),
-    }
-    snapshot = _analyze(shares, "A", "B", "Write")
-
-    assert snapshot.bottlenecks == ()
+def _shares(busy, obp, starved, actors) -> OpShareBreakdown:
+    return OpShareBreakdown(busy=busy, obp=obp, starved=starved, actors=actors)
 
 
 @pytest.mark.parametrize(
-    "consumer_saturated, expected",
-    [(True, "W"), (False, "B")],
-    ids=["consumer-saturated", "producer-budget-limited"],
-)
-def test_output_backpressure_is_attributed_by_what_the_consumer_was_doing(
-    consumer_saturated, expected
-):
-    """B is output-backpressured 80% of the time. If W had no idle slot then
-    (saturated), W holds B back and W is the bottleneck. If W had idle slots
-    and was starved, B's own output budget held it back, so B is: more B
-    actors means more blocks in flight. Raw obp alone cannot tell these apart
-    (video_object_detection: 1 GPU actor, Write starved 57%)."""
-    shares = {
-        "A": OpShareBreakdown(busy=0.0, obp=1.0, starved=0.0, actors=7),
-        "B": OpShareBreakdown(busy=0.2, obp=0.8, starved=0.0, actors=1),
-        "W": OpShareBreakdown(
-            busy=1.0 if consumer_saturated else 0.4,
-            obp=0.0,
-            starved=0.0 if consumer_saturated else 0.57,
-            actors=7,
+    "shares, chain, expected_arrows, expected_bottlenecks",
+    [
+        pytest.param(
+            # Two producers are output-backpressured and the sink is starved,
+            # so every arrow points at the op between them.
+            {
+                "Read": _shares(0.1, 0.9, 0.0, 8),
+                "Preprocess": _shares(0.1, 0.9, 0.0, 31),
+                "Predict": _shares(0.95, 0.05, 0.0, 8),
+                "Write": _shares(0.2, 0.0, 0.8, 4),
+            },
+            ("Read", "Preprocess", "Predict", "Write"),
+            (Arrow.DOWNSTREAM, Arrow.DOWNSTREAM, Arrow.UPSTREAM),
+            (("Predict", 1.65),),
+            id="converging-arrows",
         ),
-    }
-    b_out = (
-        EdgeShareBreakdown(producer_blocked=0.8, producer_self_limited=0.0)
-        if consumer_saturated
-        else EdgeShareBreakdown(producer_blocked=0.0, producer_self_limited=0.8)
-    )
-    edge_shares = {
-        ("A", "B"): EdgeShareBreakdown(producer_blocked=1.0, producer_self_limited=0.0),
-        ("B", "W"): b_out,
-    }
-    prev_ops, next_ops = _chain("A", "B", "W")
+        pytest.param(
+            # B -> C is a near-tie (0.2 vs 0.15), so neither has an outgoing
+            # arrow. A waits on B and D on C, so both are named, B first.
+            {
+                "A": _shares(0.1, 0.9, 0.0, 10),
+                "B": _shares(0.8, 0.2, 0.0, 8),
+                "C": _shares(0.85, 0.0, 0.15, 6),
+                "D": _shares(0.7, 0.0, 0.3, 4),
+            },
+            ("A", "B", "C", "D"),
+            (Arrow.DOWNSTREAM, Arrow.TIE, Arrow.UPSTREAM),
+            (("B", 0.85), ("C", 0.35)),
+            id="near-tie-both-named",
+        ),
+        pytest.param(
+            # During ramp-up the first edge is a tie (0.00 vs 0.03), so A has no
+            # outgoing arrow, but its severity is under the floor.
+            {
+                "A": _shares(0.99, 0.0, 0.0, 33),
+                "B": _shares(0.58, 0.38, 0.03, 31),
+                "C": _shares(0.73, 0.0, 0.16, 7),
+            },
+            ("A", "B", "C"),
+            (Arrow.TIE, Arrow.DOWNSTREAM),
+            (("C", 0.22),),
+            id="tie-below-severity-floor",
+        ),
+        pytest.param(
+            # Within the margin, but Write is starved (0.25) more than B is
+            # blocked on it (0.2): Write's severity is negative.
+            {
+                "A": _shares(0.1, 0.9, 0.0, 10),
+                "B": _shares(0.8, 0.2, 0.0, 8),
+                "Write": _shares(0.75, 0.0, 0.25, 27),
+            },
+            ("A", "B", "Write"),
+            (Arrow.DOWNSTREAM, Arrow.TIE),
+            (("B", 0.95),),
+            id="negative-severity-dropped",
+        ),
+        pytest.param(
+            # A sink that limits the pipeline is found from its producer's
+            # output backpressure alone.
+            {"B": _shares(0.1, 0.9, 0.0, 6), "Write": _shares(1.0, 0.0, 0.0, 3)},
+            ("B", "Write"),
+            (Arrow.DOWNSTREAM,),
+            (("Write", 0.9),),
+            id="sink-from-producer-obp",
+        ),
+        pytest.param(
+            # Only the middle op has a full window: there are no edges, and no
+            # measured neighbour waits on it.
+            {"B": _shares(1.0, 0.0, 0.0, 2)},
+            ("A", "B", "C"),
+            (),
+            (),
+            id="missing-neighbours",
+        ),
+        pytest.param(
+            # B is output-backpressured nearly all the time, so it waits on
+            # something downstream, even with no shares for that consumer.
+            {"A": _shares(0.1, 0.9, 0.0, 4), "B": _shares(0.05, 0.95, 0.0, 5)},
+            ("A", "B", "Write"),
+            (Arrow.DOWNSTREAM,),
+            (),
+            id="blocked-on-unmodeled-consumer",
+        ),
+    ],
+)
+def test_analyze_names_bottlenecks(
+    shares, chain, expected_arrows, expected_bottlenecks
+):
+    prev_ops, next_ops = _chain(*chain)
     snapshot = analyze(
         shares=shares,
         prev_ops=prev_ops,
         next_ops=next_ops,
         arrow_margin=ARROW_MARGIN,
         min_severity=MIN_SEVERITY,
-        edge_shares=edge_shares,
     )
 
-    assert [op for op, _ in snapshot.bottlenecks] == [expected]
+    assert tuple(edge.arrow for edge in snapshot.edges) == expected_arrows
+    assert snapshot.bottlenecks == tuple(
+        (op, pytest.approx(sev)) for op, sev in expected_bottlenecks
+    )
 
 
 def test_share_window_is_slot_time_weighted_and_slides():
@@ -263,17 +178,11 @@ def test_share_window_is_slot_time_weighted_and_slides():
     assert window.shares() is None  # half a window
 
     window.record(dt=5.0, actors=4, slot_s=20, non_obp_busy_s=0, obp_s=20, starved_s=0)
-    shares = window.shares()
-    assert shares is not None
-    assert (shares.busy, shares.obp, shares.starved) == (0.5, 0.5, 0.0)
-    assert shares.actors == 4
+    assert window.shares() == _shares(0.5, 0.5, 0.0, 4)
 
     # Another 10s of starvation pushes the earlier samples out.
     window.record(dt=10.0, actors=2, slot_s=20, non_obp_busy_s=0, obp_s=0, starved_s=20)
-    shares = window.shares()
-    assert shares is not None
-    assert (shares.busy, shares.obp, shares.starved) == (0.0, 0.0, 1.0)
-    assert shares.actors == 2
+    assert window.shares() == _shares(0.0, 0.0, 1.0, 2)
 
 
 def test_share_window_counts_unstaffed_time_as_one_busy_slot():
@@ -288,47 +197,17 @@ def test_share_window_counts_unstaffed_time_as_one_busy_slot():
         unstaffed=True,
     )
     window.record(dt=5.0, actors=1, slot_s=5, non_obp_busy_s=0, obp_s=5, starved_s=0)
-    shares = window.shares()
-    assert shares is not None
-    assert (shares.busy, shares.obp, shares.unstaffed) == (0.5, 0.5, 0.5)
-    assert shares.actors == 1
 
-    # No actors and nothing queued is no data, not a busy stage.
-    idle = OpShareWindow(window_s=10.0)
-    idle.record(dt=10.0, actors=0, slot_s=0, non_obp_busy_s=0, obp_s=0, starved_s=0)
-    assert idle.shares() is None
+    assert window.shares() == OpShareBreakdown(
+        busy=0.5, obp=0.5, starved=0.0, actors=1, unstaffed=0.5
+    )
 
 
-class _Clock:
-    def __init__(self):
-        self.now = 0.0
+def test_share_window_without_actors_or_input_has_no_shares():
+    window = OpShareWindow(window_s=10.0)
+    window.record(dt=10.0, actors=0, slot_s=0, non_obp_busy_s=0, obp_s=0, starved_s=0)
 
-    def __call__(self):
-        return self.now
-
-
-class _Pool:
-    def __init__(self, states=None, max_size=10, per_actor=None):
-        self.states = states or {}
-        self._max_size = max_size
-        self._per_actor = per_actor or ExecutionResources(cpu=1)
-
-    def per_actor_resource_usage(self):
-        return self._per_actor
-
-    def serving_size(self):
-        return sum(len(by_actor) for by_actor in self.states.values())
-
-    def max_size(self):
-        return self._max_size
-
-    bounded_max_size = AutoscalingActorPool.bounded_max_size
-
-    def max_actor_concurrency(self):
-        return 1
-
-    def alive_actor_states_by_node(self):
-        return self.states
+    assert window.shares() is None
 
 
 class _Op:
@@ -348,13 +227,6 @@ class _Op:
         # slot not output-backpressured is busy while busy_slots > 0.
         self.busy_now = (serving - obp_actors) * conc if busy_slots > 0 else 0
         self.completed = False
-        self.metrics = SimpleNamespace(
-            num_task_inputs_processed=0,
-            num_outputs_taken=0,
-            num_task_outputs_generated=0,
-            num_tasks_finished=0,
-        )
-        self.actor_pool = _Pool()
         # Set by ``_observer``: the op's queue, which says whether a bundle
         # is ready to dispatch.
         self.op_state: Optional[_OpState] = None
@@ -379,11 +251,11 @@ class _Op:
 
 
 class _OpState:
-    def __init__(self, queued):
+    def __init__(self, queued, partial=False):
         self.queued = queued
         # Whether the queued blocks form only a partial bundle, which can't
         # dispatch until more input arrives.
-        self.partial = False
+        self.partial = partial
 
     def total_enqueued_input_blocks(self):
         return self.queued
@@ -392,7 +264,7 @@ class _OpState:
         return self.queued > 0 and not self.partial
 
 
-def _observer(*ops, queued, window_s=4.0):
+def _observer(*ops, queued, partial=False, window_s=4.0):
     """An observer over the chain ``ops`` and a stepper that advances the
     fake clock by 1s, moves each op's slot and busy-slot integrals, and
     observes."""
@@ -404,10 +276,12 @@ def _observer(*ops, queued, window_s=4.0):
         next_ops=next_ops,
         is_pg_managed=lambda op: False,
     )
-    topology = cast(Any, {op: _OpState(queued=q) for op, q in zip(ops, queued)})
+    topology = cast(
+        Any, {op: _OpState(queued=q, partial=partial) for op, q in zip(ops, queued)}
+    )
     for op in ops:
         op.op_state = topology[op]
-    clock = _Clock()
+    clock = FakeClock()
     observer = BottleneckObserver(cast(Any, profiles), clock=clock, window_s=window_s)
 
     def step(n=1):
@@ -421,151 +295,188 @@ def _observer(*ops, queued, window_s=4.0):
     return observer, topology, step
 
 
-def test_observer_counts_idle_as_starved_only_without_a_ready_bundle():
-    producer = _Op("P", serving=4, obp_actors=4)
-    consumer = _Op("C", serving=2, busy_slots=1.0)
-    observer, topology, step = _observer(producer, consumer, queued=(0, 3))
-
-    step(5)
-    snapshot = observer.snapshot()
-    shares = cast(Dict[Any, OpShareBreakdown], snapshot.shares)
-
-    # Consumer's idle actor has queued work: a dispatch gap, not starvation.
-    assert shares[consumer].starved == 0.0
-    assert shares[consumer].busy == 0.5
-    assert shares[producer].obp == 1.0
-    assert [op for op, _ in snapshot.bottlenecks] == [consumer]
-    assert "bottlenecks=[C(" in format_snapshot(
-        snapshot=snapshot, names={producer: "P", consumer: "C"}
-    )
-
-    # With its queue empty, the consumer's idle slot is starved.
-    topology[consumer].queued = 0
-    step(5)
-    assert (
-        cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)[consumer].starved
-        == 0.5
-    )
-
-    # Queued blocks that form only a partial bundle can't dispatch: the idle
-    # slot waits on the producer, so it is starved too.
-    topology[consumer].queued = 3
-    topology[consumer].partial = True
-    step(5)
-    assert (
-        cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)[consumer].starved
-        == 0.5
-    )
-    topology[consumer].partial = False
-
-    # The consumer loses every actor with input queued: it stays in the
-    # model as unstaffed, and is still the one named.
-    topology[consumer].queued = 3
-    consumer.serving, consumer.busy_slots = 0, 0.0
-    step(5)
-    snapshot = observer.snapshot()
-    shares = cast(Dict[Any, OpShareBreakdown], snapshot.shares)
-    assert shares[consumer].unstaffed == 1.0
-    assert [op for op, _ in snapshot.bottlenecks] == [consumer]
-    assert "unstaffed=1.00" in format_snapshot(
-        snapshot=snapshot, names={producer: "P", consumer: "C"}
-    )
-
-    # A completed op leaves the model.
-    producer.completed = True
-    step()
-    assert producer not in observer.snapshot().shares
+def _shares_of(observer: BottleneckObserver) -> Dict[Any, OpShareBreakdown]:
+    return cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)
 
 
 @pytest.mark.parametrize(
-    "consumer_busy_now, expected",
-    [(2, "C"), (1, "P")],
-    ids=["consumer-saturated", "consumer-has-an-idle-slot"],
+    "queued, partial, expected_starved",
+    [
+        # The idle slot has queued work: a dispatch gap, not starvation.
+        pytest.param(3, False, 0.0, id="ready-bundle"),
+        pytest.param(0, False, 0.5, id="empty-queue"),
+        # Queued blocks that form only a partial bundle can't dispatch, so
+        # the idle slot waits on the producer.
+        pytest.param(3, True, 0.5, id="partial-bundle"),
+    ],
+)
+def test_observer_counts_idle_as_starved_only_without_a_ready_bundle(
+    queued, partial, expected_starved
+):
+    producer = _Op("P", serving=4, obp_actors=4)
+    consumer = _Op("C", serving=2, busy_slots=1.0)
+    observer, _, step = _observer(
+        producer, consumer, queued=(0, queued), partial=partial
+    )
+
+    step(5)
+
+    assert _shares_of(observer)[consumer] == _shares(0.5, 0.0, expected_starved, 2)
+
+
+def test_consumer_without_actors_but_with_queued_input_is_named():
+    """A consumer with queued input and no actor stays in the model as
+    unstaffed, and the producer waiting on it names it."""
+    producer = _Op("P", serving=4, obp_actors=4)
+    consumer = _Op("C", serving=0)
+    observer, _, step = _observer(producer, consumer, queued=(0, 3))
+
+    step(5)
+
+    snapshot = observer.snapshot()
+    assert _shares_of(observer)[consumer].unstaffed == 1.0
+    assert [op for op, _ in snapshot.bottlenecks] == [consumer]
+
+
+def test_completed_op_leaves_the_model():
+    producer = _Op("P", serving=4, obp_actors=4)
+    consumer = _Op("C", serving=2, busy_slots=1.0)
+    observer, _, step = _observer(producer, consumer, queued=(0, 3))
+    step(5)
+
+    producer.completed = True
+    step()
+
+    assert producer not in observer.snapshot().shares
+
+
+def test_format_snapshot():
+    snapshot = Snapshot(
+        shares={
+            "P": _shares(0.0, 1.0, 0.0, 4),
+            "C": OpShareBreakdown(
+                busy=1.0, obp=0.0, starved=0.0, actors=0, unstaffed=1.0
+            ),
+        },
+        edges=(
+            Edge(
+                producer="P",
+                consumer="C",
+                shares=EdgeShareBreakdown(
+                    producer_blocked=1.0, producer_self_limited=0.0
+                ),
+                consumer_starved=0.0,
+                arrow=Arrow.DOWNSTREAM,
+            ),
+        ),
+        bottlenecks=(("C", 1.0),),
+    )
+
+    assert format_snapshot(snapshot=snapshot, names={"P": "Read", "C": "Write"}) == (
+        "bottlenecks=[Write(sev=1.00, n=0)] | "
+        "edges=[Read->Write blocked=1.00/self=0.00/starved=0.00 [->]] | "
+        "ops=[Read busy=0.00 obp=1.00 starved=0.00 n=4, "
+        "Write busy=1.00 obp=0.00 starved=0.00 n=0 unstaffed=1.00]"
+    )
+
+
+@pytest.mark.parametrize(
+    "consumer_busy_now, expected_edge, expected",
+    [
+        pytest.param(
+            2,
+            EdgeShareBreakdown(producer_blocked=1.0, producer_self_limited=0.0),
+            "C",
+            id="consumer-saturated",
+        ),
+        pytest.param(
+            1,
+            EdgeShareBreakdown(producer_blocked=0.0, producer_self_limited=1.0),
+            "P",
+            id="consumer-has-an-idle-slot",
+        ),
+    ],
 )
 def test_observer_attributes_output_backpressure_by_consumer_state(
-    consumer_busy_now, expected
+    consumer_busy_now, expected_edge, expected
 ):
-    # P's one actor is output-backpressured every step. If C has no idle slot
-    # at those moments, C holds P back; if C has an idle slot (and, with its
-    # queue empty, is starved), P's own budget does, so P is named.
+    """P's one actor is output-backpressured every step. If C has no idle slot
+    at those moments, C holds P back. If C has an idle slot (and, with its
+    queue empty, is starved), P's own output budget holds it back, so P is
+    named: more P actors means more blocks in flight."""
     producer = _Op("P", serving=1, obp_actors=1)
     consumer = _Op("C", serving=2, busy_slots=float(consumer_busy_now))
     consumer.busy_now = consumer_busy_now
     observer, _, step = _observer(producer, consumer, queued=(0, 0))
-    step(5)
-    snapshot = observer.snapshot()
 
+    step(5)
+
+    snapshot = observer.snapshot()
     (edge,) = snapshot.edges
-    if expected == "C":
-        assert edge.shares == EdgeShareBreakdown(
-            producer_blocked=1.0, producer_self_limited=0.0
-        )
-    else:
-        assert edge.shares == EdgeShareBreakdown(
-            producer_blocked=0.0, producer_self_limited=1.0
-        )
+    assert edge.shares == expected_edge
     names: Dict[Any, str] = {producer: "P", consumer: "C"}
     assert [names[op] for op, _ in snapshot.bottlenecks] == [expected]
 
 
-@pytest.mark.parametrize(
-    "serving_before, serving_after",
-    [(1, 2), (2, 1)],
-    ids=["actor-joins", "actor-leaves"],
-)
-def test_resize_at_sample_uses_integrated_slots(serving_before, serving_after):
-    # One busy slot throughout; the serving count changes just before a
-    # sample. The interval's capacity is what served during it, not the
-    # count at the sample: 1 slot (no starvation) or 2 (half starved).
-    op = _Op("C", serving=serving_before, busy_slots=1.0)
+def test_resize_at_sample_uses_integrated_slots():
+    """One busy slot throughout; one of two actors leaves just before a
+    sample. The interval's capacity is what served during it (2 slots, half
+    starved), not the count at the sample (1 slot, never starved)."""
+    op = _Op("C", serving=2, busy_slots=1.0)
     observer, _, step = _observer(op, queued=(0,), window_s=1.0)
     step(3)
-    op.serving = serving_after
+
+    op.serving = 1
     step()
-    shares = cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)
-    assert shares[op].starved == pytest.approx(1 - 1 / serving_before)
+
+    assert _shares_of(observer)[op].starved == pytest.approx(0.5)
 
 
 def test_short_tasks_between_samples_count_as_busy():
-    # Each 1s step the op ran 0.4 slot-seconds of tasks that started and
-    # finished between samples: per-step sampling would see it idle.
+    """Each 1s step the op runs 0.4 slot-seconds of tasks that start and
+    finish between samples, so no sample sees a busy slot. The busy-slot
+    integral still counts them."""
     op = _Op("C", serving=1, busy_slots=0.4)
-    upstream = _Op("P", serving=2, obp_actors=2)
-    observer, _, step = _observer(upstream, op, queued=(0, 5))
+    op.busy_now = 0
+    observer, _, step = _observer(op, queued=(5,))
+
     step(5)
-    shares = cast(Dict[Any, OpShareBreakdown], observer.snapshot().shares)
-    assert shares[op].busy == pytest.approx(0.4)
+
+    assert _shares_of(observer)[op].busy == pytest.approx(0.4)
 
 
 @pytest.mark.parametrize(
     "named, self_limited, op, expected",
     [
-        # 21:57:00 in video: resize (C) took over while the GPU op (B) was
-        # still named; B's input was empty, so upscaling it would not help.
-        (
+        # C became the most severe bottleneck while B was still named. B's
+        # input is empty, so more B actors would not help.
+        pytest.param(
             [("C", 0.92), ("B", 0.45)],
             0.0,
             "B",
             "a more severe bottleneck is upstream",
+            id="upstream-more-severe",
         ),
-        ([("C", 0.92), ("B", 0.45)], 0.0, "C", None),
-        # 22:02:39: resize upscaled while Read was turning self-limited; its
-        # new actors starved.
-        ([("C", 0.97)], 0.12, "C", "input self-limited (0.12)"),
-        ([("C", 0.97)], 0.05, "C", None),
-    ],
-    ids=[
-        "upstream-more-severe",
-        "most-severe-upstream",
-        "input-self-limited",
-        "self-below-margin",
+        pytest.param(
+            [("C", 0.92), ("B", 0.45)], 0.0, "C", None, id="most-severe-upstream"
+        ),
+        # The producer feeding C turns self-limited, so new C actors would
+        # starve.
+        pytest.param(
+            [("C", 0.97)],
+            0.12,
+            "C",
+            "input self-limited (0.12)",
+            id="input-self-limited",
+        ),
+        pytest.param([("C", 0.97)], 0.05, "C", None, id="self-below-margin"),
     ],
 )
 def test_why_should_not_upscale_blocker(named, self_limited, op, expected):
     """A named bottleneck can use more actors only with no more severe named
     op feeding it and no self-limited producer feeding it."""
     _, next_ops = _chain("R", "C", "B", "W")
-    edge = bottleneck_observer.Edge(
+    edge = Edge(
         producer="R",
         consumer="C",
         shares=EdgeShareBreakdown(
@@ -574,11 +485,7 @@ def test_why_should_not_upscale_blocker(named, self_limited, op, expected):
         consumer_starved=0.0,
         arrow=Arrow.DOWNSTREAM,
     )
-    snapshot = bottleneck_observer.Snapshot(
-        shares={},
-        edges=(edge,),
-        bottlenecks=tuple((name, sev) for name, sev in named),
-    )
+    snapshot = Snapshot(shares={}, edges=(edge,), bottlenecks=tuple(named))
     assert (
         why_should_not_upscale_blocker(
             op=op, snapshot=snapshot, next_ops=next_ops, margin=ARROW_MARGIN

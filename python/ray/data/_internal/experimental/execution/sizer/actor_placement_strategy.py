@@ -20,6 +20,7 @@ from typing import (
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
 from ray.data._internal.execution.interfaces.common import ActorId
 from ray.data._internal.experimental.execution.sizer.common import (
+    ContentionByNode,
     CountByNode,
     DrainCost,
     ExecutionResourcesByNode,
@@ -145,9 +146,10 @@ class OpPlacementView:
     # enforces capacity, so ``filter_schedulable_nodes(free)`` = match ∩
     # free-keys and the fit check narrows that to nodes with room.
     match_nodes: Optional[AbstractSet[NodeIdStr]] = None
-    # How many constrained operators can use each node (lower = less
-    # contended); breaks ties when several ops want the same node.
-    constrained_op_count_by_node: CountByNode = field(default_factory=dict)
+    # How contended each node is (lower = less contended; see
+    # ``capacity.contention_by_node``); breaks ties when several ops want the
+    # same node.
+    contention_by_node: ContentionByNode = field(default_factory=dict)
     # Per-victim drain cost, aligned with ``victim_ids_by_node``.
     victim_drain_cost_by_node: Dict[NodeIdStr, List[DrainCost]] = field(
         default_factory=dict

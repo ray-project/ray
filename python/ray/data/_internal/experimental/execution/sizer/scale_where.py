@@ -160,7 +160,7 @@ def build_placement_views(
         views[op] = replace(
             view,
             match_nodes=capacity.schedulable_nodes_by_op.get(op),
-            constrained_op_count_by_node=capacity.constrained_op_count_by_node,
+            contention_by_node=capacity.contention_by_node,
         )
     return views
 
@@ -279,7 +279,7 @@ def _upscale_view(
     return replace(
         view,
         match_nodes=capacity.schedulable_nodes_by_op.get(op),
-        constrained_op_count_by_node=capacity.constrained_op_count_by_node,
+        contention_by_node=capacity.contention_by_node,
     )
 
 

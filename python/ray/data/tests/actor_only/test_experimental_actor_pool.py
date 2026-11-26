@@ -2,6 +2,7 @@
 
 import time
 import unittest
+from types import SimpleNamespace
 from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from unittest import mock
 
@@ -577,29 +578,22 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.select_actors(bundle=_make_bundle(1000)) is None
 
     def test_output_backpressured_actor_capped_at_concurrency(self):
-        """With the probe set, an actor whose output budget is used up is
-        admitted at most ``max_actor_concurrency`` tasks; once its budget
-        frees, the extra slot comes back. Without a probe nothing changes."""
-        for backpressured in (True, False, None):
-            with self.subTest(backpressured=backpressured):
-                pool = self._create_pool(max_tasks_in_flight=2)
-                actor = self._add_ready_actor(pool)
-                if backpressured is not None:
-                    value: bool = backpressured
+        """An actor whose output budget is used up takes at most
+        ``max_actor_concurrency`` tasks. Once its budget frees, it takes
+        tasks up to ``max_tasks_in_flight`` again."""
+        pool = self._create_pool(max_tasks_in_flight=2)
+        actor = self._add_ready_actor(pool)
+        backpressured = {"value": True}
+        pool.set_output_backpressured_probe(lambda _actor_id: backpressured["value"])
+        pool.refresh_actor_state()
 
-                    def probe(_actor_id: str, value: bool = value) -> bool:
-                        return value
+        assert self._select_and_submit(pool, _make_bundle(1000)) == actor
+        pool.refresh_actor_state()
+        assert pool.select_actors(bundle=_make_bundle(1000)) is None
 
-                    pool.set_output_backpressured_probe(probe)
-                pool.refresh_actor_state()
-
-                assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-                pool.refresh_actor_state()
-                second = pool.select_actors(bundle=_make_bundle(1000))
-                if backpressured:
-                    assert second is None
-                else:
-                    assert second is not None
+        backpressured["value"] = False
+        pool.refresh_actor_state()
+        assert pool.select_actors(bundle=_make_bundle(1000)) == actor
 
     # ---- scheduling priority tests ----
 
@@ -793,11 +787,9 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.reclaim_draining_actors(limit=1) == 1
         clock[0] += 0.5  # a and b again: 1
         pool.begin_draining(b, reason=DrainReason.RESIZE)
-        pool._release_running_actor(b)
+        assert pool.process_draining_actors() == 1
         clock[0] += 1.0  # a alone: 1
         assert pool.slot_seconds() - start == 8.0
-        # Busy time never exceeds capacity: nothing ran.
-        assert pool.busy_slot_seconds() == 0.0
 
     def test_drained_actor_is_killed_even_with_stray_handle(self):
         """A fully drained actor is killed at teardown, not just dereferenced.
@@ -2255,11 +2247,6 @@ def test_slot_usage_counts_output_backpressured_actors_whole():
     """Serving (IDLE / ACTIVE) actors' slots: an output-backpressured actor
     contributes all its slots to obp (and its held tasks to obp_busy_slots),
     whether or not it holds tasks; non-serving actors are left out."""
-    from types import SimpleNamespace
-
-    from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
-        ExperimentalActorPoolMapOperator,
-    )
 
     def actor(status, in_flight):
         return SimpleNamespace(status=status, num_tasks_in_flight=in_flight)

@@ -67,9 +67,11 @@ class SizerTelemetry:
     logging would bury the interesting lines; each summary is logged only
     when it changes."""
 
-    def __init__(self, dataset_id: str):
+    def __init__(self, dataset_id: str, *, metrics: Optional[SizerMetrics] = None):
+        """``metrics`` defaults to a new ``SizerMetrics`` for the dataset; tests
+        pass a recorder."""
         self._dataset_id = dataset_id
-        self._metrics = SizerMetrics(dataset_id)
+        self._metrics = metrics if metrics is not None else SizerMetrics(dataset_id)
         # Last summaries logged, to suppress repeats.
         self._last_placement_summary: Optional[str] = None
         self._last_capacity_summary: Optional[str] = None

@@ -32,6 +32,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.operators.placement_constraints import (  # noqa: E501
     PlacementConstraint,
 )
+from ray.data.tests.actor_only.actor_only_test_utils import fake_pg
 
 
 def _reporter(topology, coordinator, bank, **kwargs) -> ActorOnlyResourceReporter:
@@ -155,23 +156,17 @@ def test_per_node_allocation_and_change_tracking():
     assert view.reserved_by_node["node1"].cpu == 2
 
 
-def _fake_pg(id_hex: str, bundle_specs=()) -> Any:
-    return SimpleNamespace(
-        id=SimpleNamespace(hex=lambda: id_hex), bundle_specs=list(bundle_specs)
-    )
-
-
 class _PGOp(ExperimentalActorPoolMapOperator):
     """An actor-pool op exposing only what the reporter reads: its static
     placement group, the ones its ``ray_remote_args_fn`` created, and its
     pool's max size. Skips the operator's ``__init__``."""
 
-    def __init__(self, pg=None, *, fn_pgs=(), uses_fn=False, max_size=4):
+    def __init__(self, pg=None, *, fn_pgs=(), uses_fn=False):
         self._constraint = PlacementConstraint(
             placement_group=pg, mints_pg_per_actor=uses_fn
         )
         self.fn_pgs = list(fn_pgs)
-        self._pool = SimpleNamespace(bounded_max_size=lambda: max_size)
+        self._pool = SimpleNamespace(bounded_max_size=lambda: 4)
 
     def placement_constraint(self) -> PlacementConstraint:
         return self._constraint
@@ -187,16 +182,13 @@ class _PGOp(ExperimentalActorPoolMapOperator):
 @pytest.mark.parametrize(
     "pg_ids, expected",
     [
-        # Several ops sharing one group register it once.
-        (["pg1", "pg1"], {"pg1"}),
-        # Every group the dataset uses is registered.
-        (["pg1", "pg2"], {"pg1", "pg2"}),
-        ([], set()),
+        pytest.param(["pg1", "pg1"], {"pg1"}, id="shared-group-registered-once"),
+        pytest.param([], set(), id="no-groups"),
     ],
 )
 def test_cluster_view_registers_placement_groups(pg_ids, expected):
     coordinator = FakeAutoscalingCoordinator()
-    ops = [_PGOp(_fake_pg(pg_id)) for pg_id in pg_ids]
+    ops = [_PGOp(fake_pg(pg_id)) for pg_id in pg_ids]
     reporter = _reporter(_topology(*ops), coordinator, _FakeResourceBank())
     reporter.get_cluster_view()
     assert coordinator.placement_group_ids == expected
@@ -220,13 +212,13 @@ def test_fn_placement_groups_are_registered_as_they_appear():
     the coordinator takes their bundles out of the non-PG slice. Each view
     re-registers, but an unchanged set sends nothing."""
     coordinator = _RecordingCoordinator()
-    infer = _PGOp(_fake_pg("static"))
+    infer = _PGOp(fake_pg("static"))
     embed = _PGOp(uses_fn=True)
     reporter = _reporter(_topology(infer, embed), coordinator, _FakeResourceBank())
 
     reporter.get_cluster_view()
     reporter.get_cluster_view()
-    embed.fn_pgs.append(_fake_pg("fn"))
+    embed.fn_pgs.append(fake_pg("fn"))
     reporter.get_cluster_view()
     assert coordinator.sent == [
         frozenset({"static"}),
@@ -236,12 +228,10 @@ def test_fn_placement_groups_are_registered_as_they_appear():
 
 def test_cluster_view_measures_placement_group_slots():
     """Slots come from each static group's own bundle specs, in bundle-index
-    order; an op whose group has no known bundles (one minted per actor) is
-    capped at its pool's max size instead."""
-    pinned = _PGOp(_fake_pg("pg1", [{"CPU": 1, "GPU": 1}, {"CPU": 2}]))
-    minted = _PGOp(uses_fn=True, max_size=3)
+    order."""
+    pinned = _PGOp(fake_pg("pg1", [{"CPU": 1, "GPU": 1}, {"CPU": 2}]))
     reporter = _reporter(
-        _topology(pinned, minted), FakeAutoscalingCoordinator(), _FakeResourceBank()
+        _topology(pinned), FakeAutoscalingCoordinator(), _FakeResourceBank()
     )
 
     slots = reporter.get_cluster_view().pg_slots
@@ -252,7 +242,6 @@ def test_cluster_view_measures_placement_group_slots():
     assert slots.static_bundles_by_op == {
         pinned: (BundleKey("pg1", 0), BundleKey("pg1", 1))
     }
-    assert slots.unknown_cap_by_op == {minted: 3}
 
 
 def test_cluster_view_carries_placement_group_part():

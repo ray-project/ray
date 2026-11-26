@@ -7,9 +7,14 @@ separate: it is one value for the whole pipeline, and some rules
 read it.
 
 Statuses (``OpStatus``; each carries an ``OpStatusKind`` tag)
-    Held(reserved)        No input bundle queued yet, so no actors; room for
+    Held(reserved, by_node)
+                          No input bundle queued yet, so no actors; room for
                           ``reserved`` actors (its warmup share) is kept out
-                          of free capacity for it.
+                          of free capacity for it, on the nodes in
+                          ``by_node``. The next tick keeps the room on those
+                          nodes where it still fits. When the op leaves
+                          ``Held``, ``released_holds`` hands its room to it
+                          for that tick.
     Active                Any rule may resize it.
     Cooling(until, upscale_from)
                           The policy resized it after warmup. ``until`` is
@@ -50,20 +55,23 @@ from __future__ import annotations
 
 import enum
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import (
     TYPE_CHECKING,
     ClassVar,
     Dict,
     FrozenSet,
     Iterable,
+    Mapping,
     Optional,
     Set,
     Union,
 )
 
 from ray.data._internal.execution.execution_flags import SIZER_BOTTLENECK_WINDOW_S
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
     LandedUpscales,
     SizeChange,
 )
@@ -91,9 +99,11 @@ class Held:
     run, and an ``on_start`` (e.g. ``on_write_start``) runs on that bundle and
     must run before the first actor serializes the MapTransformer with the
     state it sets. ``reserved``: actors' worth of room held for it this tick,
-    so ops that started earlier cannot take every node's space."""
+    so ops that started earlier cannot take every node's space. ``by_node``:
+    the actors' worth of room held on each node."""
 
     reserved: int = 0
+    by_node: Mapping[NodeIdStr, int] = field(default_factory=dict, hash=False)
     kind: ClassVar[OpStatusKind] = OpStatusKind.HELD
 
 
@@ -149,6 +159,8 @@ class OpStatusMachine:
         cooldown_s: float = SIZER_BOTTLENECK_WINDOW_S,
     ):
         self._cooldown_s = cooldown_s
+        # The room each op that left ``Held`` on the last tick held, per node.
+        self._released_holds: Dict["ExperimentalActorPoolMapOperator", CountByNode] = {}
         # Ops not ``Active``; a missing op is active.
         self._status: Dict["ExperimentalActorPoolMapOperator", OpStatus] = {}
         # Initial status: held until its first input, else active.
@@ -175,13 +187,21 @@ class OpStatusMachine:
             if s.kind is kind and not op.has_completed()
         )
 
+    def released_holds(
+        self,
+    ) -> Dict["ExperimentalActorPoolMapOperator", CountByNode]:
+        """The room each op that left ``Held`` on the last tick held, per node,
+        as actors' worth. Valid until the next tick."""
+        return self._released_holds
+
     # --- events -----------------------------------------------------------
 
     def on_tick(self, *, now: float) -> LandedUpscales:
         """TICK, before held ops' room is reserved and before the policy
         decides:
 
-        - a held op whose first input has arrived becomes active;
+        - a held op whose first input has arrived becomes active, and the room
+          it held is recorded for ``released_holds``;
         - a cooling op whose upscale has landed (no actor pending) starts its
           cooldown, and one whose cooldown has passed becomes active.
 
@@ -192,10 +212,13 @@ class OpStatusMachine:
         A completed op's stored status is dropped, so if lineage
         reconstruction reopens it, it resumes as active."""
         landed: LandedUpscales = {}
+        self._released_holds = {}
         for op, status in list(self._status.items()):
             if op.has_completed():
                 del self._status[op]
             elif isinstance(status, Held) and not op.awaiting_first_input():
+                if status.by_node:
+                    self._released_holds[op] = dict(status.by_node)
                 self._transition(op=op, to=_ACTIVE)
             elif isinstance(status, Cooling):
                 if status.until is None:
@@ -212,9 +235,16 @@ class OpStatusMachine:
                     self._transition(op=op, to=_ACTIVE)
         return landed
 
-    def set_reserved(self, *, op: "ExperimentalActorPoolMapOperator", n: int) -> None:
-        """Record the room held for a held op this tick."""
-        self._transition(op=op, to=Held(reserved=n))
+    def set_reserved(
+        self,
+        *,
+        op: "ExperimentalActorPoolMapOperator",
+        n: int,
+        by_node: Optional[CountByNode] = None,
+    ) -> None:
+        """Record the room held for a held op this tick: ``n`` actors' worth in
+        all, ``by_node`` of it on each node."""
+        self._transition(op=op, to=Held(reserved=n, by_node=dict(by_node or {})))
 
     def start_cooling(
         self,

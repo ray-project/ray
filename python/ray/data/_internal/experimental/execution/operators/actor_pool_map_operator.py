@@ -95,6 +95,9 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     TaskPullRequest,
     is_actor_death,
 )
+from ray.data._internal.execution.interfaces.resource_request import (
+    actor_resource_dict,
+)
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
@@ -732,6 +735,30 @@ class ExperimentalActorPoolMapOperator(ActorPoolMapOperator):
             # placement intent.
             remote_args["scheduling_strategy"] = scheduling_strategy
         return remote_args
+
+    @override
+    def get_resource_requests(self) -> List[Dict[str, float]]:
+        """Report the shape of every actor in the pool, plus one for each
+        actor the pool lacks of its min size.
+
+        The sizer creates an actor only where the dataset's slice has room,
+        and the cluster autoscaler only sees the shapes this method reports.
+        Without the min-size shapes, an op whose actors fit no node in the
+        slice, like a GPU op on a cluster with no GPU node yet, would never
+        get a node.
+
+        A completed op reports only its actors. So does an op in a placement
+        group: the sizer creates its actors without checking room in the
+        slice, and Ray's autoscaler sees a pending placement group directly.
+        """
+        requests = super().get_resource_requests()
+        if self.has_completed() or self.placement_constraint().is_pg_managed:
+            return requests
+        missing = self.actor_pool.min_size() - self.actor_pool.total_size()
+        if missing > 0:
+            shape = actor_resource_dict(self._ray_remote_args)
+            requests.extend(dict(shape) for _ in range(missing))
+        return requests
 
     def fn_placement_groups(self) -> List["PlacementGroup"]:
         """Placement groups this op's ``ray_remote_args_fn`` created so far,

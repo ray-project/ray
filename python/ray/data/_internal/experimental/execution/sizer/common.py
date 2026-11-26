@@ -22,6 +22,8 @@ ExecutionResourcesByNode = Dict[NodeIdStr, ExecutionResources]
 
 # A count per node (actors, ops, ...).
 CountByNode = Dict[NodeIdStr, int]
+# How contended each node is (``capacity.contention_by_node``).
+ContentionByNode = Dict[NodeIdStr, float]
 
 # The scaling request each op hands its pool this tick.
 ScalingRequests = Dict["ExperimentalActorPoolMapOperator", "ActorPoolScalingRequest"]
