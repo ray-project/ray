@@ -3623,6 +3623,97 @@ class TestIcebergDatasourceV2:
         assert ServerSidePlanning.for_table(rest_table) is None
         assert ServerSidePlanning.for_table(self._load_table()) is None
 
+    @_requires_server_side_planning
+    def test_count_matches_the_read_when_the_server_plans(
+        self, fake_rest_catalog, restore_data_context
+    ):
+        """A filtered ``count()`` agrees with the read when the server plans.
+
+        The fake server sends no residual, which PyIceberg reads as
+        ``AlwaysTrue``.
+        """
+        restore_data_context._use_iceberg_datasource_v2 = True
+        path = fake_rest_catalog.planned_path.removeprefix("file://")
+        values = sorted(
+            pq.ParquetFile(path).read(columns=["col_a"])["col_a"].to_pylist()
+        )
+        row_filter = pyi_expr.GreaterThanOrEqual("col_a", values[len(values) // 2])
+
+        def read():
+            return read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs={
+                    "name": "fake_rest",
+                    "type": "rest",
+                    "uri": fake_rest_catalog.uri,
+                    **_SERVER_SIDE_PLANNING_ON,
+                },
+                row_filter=row_filter,
+            )
+
+        # A fresh Dataset each time: one that has been read counts its rows.
+        assert read().count() == len(read().take_all())
+
+    @pytest.mark.parametrize(
+        "row_filter, day, every_row_matches",
+        [
+            ("ts >= '2026-11-02T12:00:00'", "2026-11-03", True),
+            ("ts >= '2026-11-02T12:00:00'", "2026-11-02", False),
+            ("ts != '2026-11-02T11:00:00'", "2026-11-02", False),
+        ],
+    )
+    def test_server_planned_residual_comes_from_the_partition(
+        self, row_filter, day, every_row_matches
+    ):
+        """A server-planned file's residual comes from its partition values.
+
+        The REST spec sends a ``day(ts)`` value as a string, which PyIceberg
+        compares as days since 1970.
+        """
+        from pyiceberg.expressions.parser import parse
+        from pyiceberg.io import load_file_io
+        from pyiceberg.manifest import DataFileContent
+        from pyiceberg.table import DataScan
+        from pyiceberg.table.metadata import new_table_metadata
+        from pyiceberg.table.sorting import UNSORTED_SORT_ORDER
+        from pyiceberg.transforms import DayTransform
+        from pyiceberg.typedef import Record
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            _residual_from_partition,
+        )
+
+        metadata = new_table_metadata(
+            pyi_schema.Schema(
+                pyi_types.NestedField(
+                    1, "ts", pyi_types.TimestampType(), required=False
+                )
+            ),
+            PartitionSpec(
+                PartitionField(
+                    source_id=1, field_id=1000, transform=DayTransform(), name="ts_day"
+                )
+            ),
+            UNSORTED_SORT_ORDER,
+            "file:///unused",
+        )
+        data_file = DataFile.from_args(
+            content=DataFileContent.DATA,
+            file_path="file:///unused/f.parquet",
+            file_format=FileFormat.PARQUET,
+            partition=Record(day),
+            record_count=1,
+            file_size_in_bytes=1,
+        )
+        data_file.spec_id = metadata.default_spec_id
+        scan = DataScan(
+            table_metadata=metadata, io=load_file_io(), row_filter=parse(row_filter)
+        )
+
+        residual = _residual_from_partition(scan, FileScanTask(data_file))
+
+        assert isinstance(residual, pyi_expr.AlwaysTrue) == every_row_matches
+
     def test_select_columns_keeps_the_requested_order(self, restore_data_context):
         """Rows come back in the order ``select_columns`` asked for.
 
