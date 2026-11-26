@@ -20,6 +20,14 @@ ONEAPI_DEVICE_TYPE = "gpu"
 _ARC_PRO_NAME_PATTERN = re.compile(r"Arc(?:\(TM\))?\s+Pro\s+(B\d+)", re.IGNORECASE)
 
 
+def _accelerator_type_from_device_name(device_name: str) -> str:
+    """Map a SYCL / Level Zero device name to a Ray accelerator type."""
+    arc_pro = _ARC_PRO_NAME_PATTERN.search(device_name)
+    if arc_pro:
+        return f"Intel-GPU-Arc-Pro-{arc_pro.group(1).upper()}"
+    return "Intel-GPU-" + "-".join(device_name.split(" ")[-2:])
+
+
 class IntelGPUAcceleratorManager(AcceleratorManager):
     """Intel GPU accelerators."""
 
@@ -93,11 +101,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         try:
             dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE + ":0"
             dev = dpctl.SyclDevice(dev_info)
-            arc_pro = _ARC_PRO_NAME_PATTERN.search(dev.name)
-            if arc_pro:
-                accelerator_type = f"Intel-GPU-Arc-Pro-{arc_pro.group(1).upper()}"
-            else:
-                accelerator_type = "Intel-GPU-" + "-".join(dev.name.split(" ")[-2:])
+            accelerator_type = _accelerator_type_from_device_name(dev.name)
         except Exception:
             accelerator_type = None
         return accelerator_type
