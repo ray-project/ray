@@ -199,6 +199,26 @@ void OwnershipBasedObjectDirectory::ReportObjectSpilled(
   SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
 }
 
+void OwnershipBasedObjectDirectory::ReportObjectPrimaryMoved(
+    const ObjectID &object_id, const NodeID &node_id, const rpc::Address &owner_address) {
+  const WorkerID worker_id = WorkerID::FromBinary(owner_address.worker_id());
+  auto owner_client = GetClient(owner_address);
+  if (owner_client == nullptr) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Object does not have owner. ReportObjectPrimaryMoved becomes a no-op.";
+    return;
+  }
+
+  const bool existing_object = location_buffers_[worker_id].second.contains(object_id);
+  rpc::ObjectLocationUpdate &update = location_buffers_[worker_id].second[object_id];
+  update.set_object_id(object_id.Binary());
+  update.set_primary_moved_to_node_id(node_id.Binary());
+  if (!existing_object) {
+    location_buffers_[worker_id].first.emplace_back(object_id);
+  }
+  SendObjectLocationUpdateBatchIfNeeded(worker_id, node_id, owner_address);
+}
+
 void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
     const WorkerID &worker_id, const NodeID &node_id, const rpc::Address &owner_address) {
   if (in_flight_requests_.contains(worker_id)) {

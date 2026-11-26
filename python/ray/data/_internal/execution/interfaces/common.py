@@ -15,6 +15,12 @@ NodeIdStr = str
 # labels must be set before creation, and the Core ID only exists afterwards.
 LogicalActorId = str
 
+# The ID of a physical operator (``PhysicalOperator.id``).
+OperatorId = str
+
+# The index of a data task within its operator.
+TaskIndex = int
+
 
 class ActorStatus(str, Enum):
     """Lifecycle state of an actor in a Ray Data actor pool."""

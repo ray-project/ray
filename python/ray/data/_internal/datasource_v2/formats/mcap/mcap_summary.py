@@ -129,7 +129,8 @@ def read_summaries(
 
     retried_io_errors = DataContext.get_current().retried_io_errors
     queue = iter(items)
-    with ThreadPoolExecutor(max_workers=max(1, io_concurrency)) as pool:
+    pool = ThreadPoolExecutor(max_workers=max(1, io_concurrency))
+    try:
         window = _SectionWindow(
             pool, filesystem, retried_io_errors, budget_bytes, io_concurrency
         )
@@ -141,6 +142,10 @@ def read_summaries(
                 return
             yield fetched.item, fetched.read
             window.release(fetched)
+    finally:
+        # No ``with`` block: it would join the workers, and the garbage collector
+        # can close this generator while the thread holds a lock joining needs.
+        pool.shutdown(wait=False, cancel_futures=True)
 
 
 @dataclass(frozen=True)

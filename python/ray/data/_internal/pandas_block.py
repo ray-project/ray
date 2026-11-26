@@ -367,12 +367,43 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         return self._column.quantile(q=q)
 
     def value_counts(self) -> Optional[Dict[str, List]]:
-        value_counts = self._column.value_counts()
+        # `dropna=False` to match Arrow's `value_counts`, which counts nulls as
+        # values of their own; pandas drops them by default.
+        value_counts = self._column.value_counts(dropna=False)
         if len(value_counts) == 0:
             return None
+        index = value_counts.index
+        counts = value_counts.to_numpy()
+        # Missing entries are reported as a single canonical `None`, so that
+        # accumulators built from Arrow- and pandas-backed blocks merge on the
+        # same key. Which entries count as missing is dtype-dependent, so use
+        # pandas' own mask rather than testing each value: for an
+        # Arrow-backed column `NaN` is a real value distinct from null (as it
+        # is for Arrow's `value_counts`), while for a numpy or nullable column
+        # `NaN` is the missing marker and becomes null when the block is
+        # converted to Arrow.
+        missing = index.isna()
+        if index.dtype == object and missing.any() and not missing.all():
+            # Mirror `to_arrow` for object columns: a float `NaN` converts to a
+            # `double` NaN, a value distinct from null, so only pandas' own
+            # sentinels (`None`, `pd.NA`, `pd.NaT`) are missing. The exception
+            # is a column with no non-missing entry at all, which `to_arrow`
+            # coerces wholesale to Arrow `null`; `not missing.all()` excludes
+            # it. The index is deduplicated, so this visits at most a few
+            # entries.
+            missing = missing.copy()
+            for i in np.flatnonzero(missing):
+                if isinstance(index[i], (float, np.floating)):
+                    missing[i] = False
+        if not missing.any():
+            return {"values": index.tolist(), "counts": counts.tolist()}
+        # An object column reports each missing sentinel as its own entry, and
+        # `ValueCounter.combine` never merges duplicate keys already inside one
+        # accumulator, so fold them into one.
+        present = ~missing
         return {
-            "values": value_counts.index.tolist(),
-            "counts": value_counts.values.tolist(),
+            "values": index[present].tolist() + [None],
+            "counts": counts[present].tolist() + [int(counts[missing].sum())],
         }
 
     def hash(self) -> BlockColumn:

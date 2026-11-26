@@ -8,8 +8,6 @@ from ray.data._internal.execution.operators.shuffle_operators.shuffle_tasks impo
     ReduceFn,
 )
 
-_SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"POLARS_MAX_THREADS": "1"}}
-
 
 def _make_hash_partition_fn(key_columns: List[str], num_partitions: int) -> PartitionFn:
     """Return a partition function that hash-partitions by key_columns."""
