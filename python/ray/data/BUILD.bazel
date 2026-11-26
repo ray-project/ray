@@ -122,6 +122,7 @@ py_test_module_list(
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
+    extra_srcs = ["tests/actor_only/actor_only_test_utils.py"],
     files = glob(["tests/actor_only/test_*.py"]),
     tags = [
         "exclusive",

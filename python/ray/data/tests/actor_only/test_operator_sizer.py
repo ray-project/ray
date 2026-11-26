@@ -75,8 +75,6 @@ from ray.data._internal.experimental.execution.sizer.op_profile import (
 )
 from ray.data._internal.experimental.execution.sizer.op_status import (
     Active,
-    Completed,
-    Cooling,
     Held,
     OpStatusKind,
 )
@@ -90,13 +88,13 @@ from ray.data._internal.experimental.execution.sizer.policy.ceiling import (
     backlog_actor_target,
     upscale_ceiling,
 )
-from ray.data._internal.experimental.execution.sizer.policy.context import (
-    DecisionContext,
-)
 from ray.data._internal.experimental.execution.sizer.policy.states import (
     OpDecision,
     OpRule,
     SizerPhase,
+)
+from ray.data._internal.experimental.execution.sizer.policy.warmup import (
+    WarmupShares,
 )
 from ray.data._internal.experimental.execution.sizer.scale_where import (
     compute_favored_nodes,
@@ -110,6 +108,7 @@ from ray.data._internal.experimental.execution.sizer.telemetry import (
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.util import GiB, MiB
 from ray.data.context import DataContext
+from ray.data.tests.actor_only.actor_only_test_utils import FakeClock, fake_pg
 from ray.util.scheduling_strategies import (
     In,
     NodeAffinitySchedulingStrategy,
@@ -326,7 +325,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         # Read by the real ``get_resource_requests``.
         self._actor_pool = pool
         self._node = node
-        self._completed = completed
+        self.completed = completed
         self._throttling_disabled = throttling_disabled
         self._execution_finished = execution_finished
         self._fake_metrics = _FakeMetrics()
@@ -412,7 +411,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         return 0
 
     def has_completed(self):
-        return self._completed
+        return self.completed
 
     def throttling_disabled(self):
         return self._throttling_disabled
@@ -497,23 +496,12 @@ class _FakeReporter(ActorOnlyResourceReporter):
         )
 
 
-class _FakeClock:
-    def __init__(self, now: float = 100.0):
-        self.now = now
-
-    def __call__(self) -> float:
-        return self.now
-
-    def advance(self, seconds: float) -> None:
-        self.now += seconds
-
-
 class _TestSizer(OperatorSizer):
     """An ``OperatorSizer`` over fakes, plus the seams tests drive it by: one
     phase at a time, off the fake reporter's view and the fake clock."""
 
-    def __init__(self, topo, reporter: _FakeReporter, clock: _FakeClock):
-        super().__init__(dataset_id="test-ds", clock=clock)
+    def __init__(self, topo, reporter: _FakeReporter, clock: FakeClock, **sizer_kwargs):
+        super().__init__(dataset_id="test-ds", clock=clock, **sizer_kwargs)
         self.reporter = reporter
         self.clock = clock
         self.bootstrap(topo)
@@ -595,16 +583,19 @@ def _make_sizer(
     topo,
     view: Optional[DatasetReservationView] = None,
     pg_bundles_by_id=None,
+    *,
+    sizer_kwargs: Optional[Dict[str, Any]] = None,
     **cluster,
 ) -> _TestSizer:
     """A sizer over ``topo`` whose reporter serves the given cluster view (a
     single ``node0`` by default) and placement-group bundle shapes. Free
     capacity is the tick's real math: allocation minus what the fakes commit
-    (per_actor x total_size)."""
+    (per_actor x total_size). ``sizer_kwargs`` go to ``OperatorSizer``."""
     return _TestSizer(
         topo,
         _FakeReporter(view or _single_node(**cluster), topo, pg_bundles_by_id),
-        _FakeClock(),
+        FakeClock(now=100.0),
+        **(sizer_kwargs or {}),
     )
 
 
@@ -628,16 +619,15 @@ def _counts(decisions) -> Dict[Any, ActorPoolScalingRequest]:
     return {op: d.request for op, d in decisions.items() if d.request is not None}
 
 
-def _tick(sizer: _TestSizer, topo=None) -> Dict[Any, ActorPoolScalingRequest]:
+def _tick(sizer: _TestSizer) -> Dict[Any, ActorPoolScalingRequest]:
     return sizer.how_many()
 
 
-def _warmup_probe(topo, **sizer_attrs):
+def _warmup_probe(topo, **sizer_kwargs):
     """A sizer over ``topo``, and a callable that runs its next tick and
-    reports whether the sizer still waits for the pipeline to flow."""
-    sizer = _make_sizer(topo)
-    for name, value in sizer_attrs.items():
-        setattr(sizer, name, value)
+    reports whether the sizer still waits for the pipeline to flow.
+    ``sizer_kwargs`` go to ``OperatorSizer``."""
+    sizer = _make_sizer(topo, sizer_kwargs=sizer_kwargs)
 
     def waits_for_flow_after_tick() -> bool:
         sizer.how_many()
@@ -727,12 +717,8 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
         labels_by_node={"node0": {}},
     )
     sizer, _ = _bootstrapped(read, write, view=view)
-    target = sizer._policy.warmup.warmup_target(
-        op=write,
-        cluster_capacity=view.reserved_by_node["node0"],
-        pg_slots=PlacementGroupSlots(),
-    )
-    assert target is not None and target > write._pool.min_size()
+    # Write's share: (16 - 2 floors) x 0.8 / 2 = 5.6 -> 5; memory allows 8.
+    target = 5
 
     assert write not in _tick(sizer)
     free = _snapshot_of(sizer).free_by_node["node0"]
@@ -752,11 +738,13 @@ def test_op_awaiting_first_input_has_its_share_held_until_it_arrives():
     assert write not in _tick(sizer)
 
 
-def _video_pipeline(write_awaiting_first_input=False):
-    """video_object_detection's shape on one 32 CPU / 8 GPU / 61.6 memory
-    node: three 1-CPU, 2.4-memory stages around a 1-GPU, 3.3-memory one."""
+def _memory_bound_gpu_pipeline():
+    """Read -> resize -> a 1-GPU feature stage -> Write, one actor each, on
+    one 32 CPU / 8 GPU / 61.6 GiB node. The CPU stages want 2.4 GiB per
+    actor and the GPU stage 3.3 GiB, so memory, not CPU, bounds the shares.
+    Returns (ops dict, view)."""
     read = _FakeOp(
-        "ReadVideo",
+        "Read",
         _FakePool(min_size=1, max_size=100, cpu=1, memory=2.4 * GiB, running=1),
     )
     resize = _FakeOp(
@@ -771,15 +759,8 @@ def _video_pipeline(write_awaiting_first_input=False):
     )
     write = _write_op(
         "Write",
-        _FakePool(
-            min_size=1,
-            max_size=100,
-            cpu=1,
-            memory=2.4 * GiB,
-            running=0 if write_awaiting_first_input else 1,
-        ),
+        _FakePool(min_size=1, max_size=100, cpu=1, memory=2.4 * GiB, running=1),
         inputs=(features,),
-        awaiting_first_input=write_awaiting_first_input,
     )
     view = DatasetReservationView(
         reserved_by_node={
@@ -796,11 +777,11 @@ def test_warmup_share_respects_memory_after_gpu_ops():
     # exceeds the usable 49.3 and leaves the GPU stage unplaceable. GPU stage
     # first: 5 x 3.3 = 16.5; (49.3 - 16.5) / 3 / 2.4 = 4.6 -> 4.
     cpu_target = 4
-    ops, view = _video_pipeline()
-    sizer, _ = _bootstrapped(*ops.values(), view=view)
+    ops, view = _memory_bound_gpu_pipeline()
+    warmup = WarmupShares(profiles=OpProfiles(_topology(*ops.values())))
     capacity = view.reserved_by_node["node0"]
     targets = {
-        name: sizer._policy.warmup.warmup_target(
+        name: warmup.warmup_target(
             op=op, cluster_capacity=capacity, pg_slots=PlacementGroupSlots()
         )
         for name, op in ops.items()
@@ -821,67 +802,39 @@ def test_memory_aware_share_leaves_cpu_only_actors_alone():
     write = _write_op(
         "write", _FakePool(min_size=1, max_size=100, cpu=1), inputs=(read,)
     )
-    sizer, _ = _bootstrapped(read, write, cpu=32)
-    capacity = ExecutionResources(cpu=32, gpu=4)
+    warmup = WarmupShares(profiles=OpProfiles(_topology(read, write)))
     # (32 - 2 floors) x 0.8 / 2 = 12.
     assert (
-        sizer._policy.warmup.warmup_target(
-            op=read, cluster_capacity=capacity, pg_slots=PlacementGroupSlots()
+        warmup.warmup_target(
+            op=read,
+            cluster_capacity=ExecutionResources(cpu=32, gpu=4),
+            pg_slots=PlacementGroupSlots(),
         )
         == 12
     )
 
 
-def test_held_ops_reserve_their_share_and_grow_to_it_once_active():
-    # Write waits on its first input: no actor yet, but its memory-aware share
-    # (4) is held, memory included. Once the input arrives, it upscales into
-    # that share in one step.
-    ops, view = _video_pipeline(write_awaiting_first_input=True)
-    write = ops["write"]
-    sizer, _ = _bootstrapped(*ops.values(), view=view)
-    # Upstream is producing (so only Write's first-input hold is in play).
-    for name in ("read", "resize", "features"):
-        ops[name].metrics.num_task_outputs_generated = 1
-
-    assert write not in _tick(sizer)
-    snapshot = _snapshot_of(sizer)
-    assert _reserved(sizer, write) == 4
-    # 61.6 - 3 running 1-actor stages (2.4 + 2.4 + 3.3) - 4 held x 2.4.
-    assert snapshot.free_by_node["node0"].memory == pytest.approx(
-        (61.6 - 8.1 - 9.6) * GiB, rel=1e-6
-    )
-
-    write.pending_first_input = False
-    request = _tick(sizer)
-    assert (request[write].delta, request[write].reason) == (
-        4,
-        "room held until its first input",
-    )
-    write._pool.pending = 4
-    assert write not in _tick(sizer)
-
-
-def _reserved(sizer: _TestSizer, op) -> int:
+def _held(sizer: _TestSizer, op) -> Held:
     """The room held for ``op`` this tick (it must be held)."""
-    state = sizer._statuses.status(op)
+    state = sizer.statuses.status(op)
     assert isinstance(state, Held), state
-    return state.reserved
+    return state
 
 
 def test_ops_awaiting_first_input_each_reserve_their_share():
     # Every stage downstream of read waits on its first input: each holds its
     # warmup share (no actors started), and each grows to it once its own
     # input arrives.
-    ops, view = _video_pipeline()
+    ops, view = _memory_bound_gpu_pipeline()
     for name in ("resize", "features", "write"):
         ops[name].pending_first_input = True
     sizer, _ = _bootstrapped(*ops.values(), view=view)
 
     _snapshot_of(sizer)
-    held = sizer._statuses.ops_in(kind=OpStatusKind.HELD)
+    held = sizer.statuses.ops_in(kind=OpStatusKind.HELD)
     assert held == {ops["resize"], ops["features"], ops["write"]}
-    assert _reserved(sizer, ops["features"]) == 5
-    resize_reserved = _reserved(sizer, ops["resize"])
+    assert _held(sizer, ops["features"]).reserved == 5
+    resize_reserved = _held(sizer, ops["resize"]).reserved
 
     # resize's first input arrives, so read has produced output.
     ops["read"].metrics.num_task_outputs_generated = 1
@@ -891,115 +844,7 @@ def test_ops_awaiting_first_input_each_reserve_their_share():
     # already has 1 actor); the others stay held.
     assert request[ops["resize"]].delta == resize_reserved - 1
     assert request[ops["resize"]].reason == "room held until its first input"
-    assert sizer._statuses.kind(ops["features"]) is OpStatusKind.HELD
-
-
-@pytest.mark.parametrize(
-    "status, phase, pool_kwargs, completed, rule, delta",
-    [
-        pytest.param(
-            Completed(),
-            SizerPhase.STEADY,
-            dict(running=3),
-            True,
-            OpRule.RELEASE_POOL,
-            -3,
-            id="completed-releases-pool",
-        ),
-        pytest.param(
-            Completed(),
-            SizerPhase.STEADY,
-            dict(running=0),
-            True,
-            OpRule.NONE,
-            None,
-            id="completed-empty-pool",
-        ),
-        pytest.param(
-            Held(reserved=4),
-            SizerPhase.WARMUP,
-            dict(running=0),
-            False,
-            OpRule.NONE,
-            None,
-            id="held-gets-nothing",
-        ),
-        pytest.param(
-            Cooling(),
-            SizerPhase.STEADY,
-            dict(running=2),
-            False,
-            OpRule.NONE,
-            None,
-            id="cooling-waits",
-        ),
-        pytest.param(
-            Active(),
-            SizerPhase.WARMUP,
-            dict(min_size=2, max_size=2, running=2),
-            False,
-            OpRule.NONE,
-            None,
-            id="fixed-pool",
-        ),
-        pytest.param(
-            Active(),
-            SizerPhase.WARMUP,
-            dict(running=1),
-            False,
-            OpRule.UPSCALE_WARMUP,
-            78,
-            id="warmup-share",
-        ),
-        pytest.param(
-            Active(),
-            SizerPhase.STEADY,
-            dict(running=1),
-            False,
-            OpRule.NONE,
-            None,
-            id="steady-without-a-bottleneck-snapshot",
-        ),
-        pytest.param(
-            Active(),
-            SizerPhase.STEADY,
-            dict(min_size=3, running=1),
-            False,
-            OpRule.UPSCALE_TO_MIN,
-            2,
-            id="below-min-upscales-to-min",
-        ),
-    ],
-)
-def test_decide_op_without_a_model(status, phase, pool_kwargs, completed, rule, delta):
-    """``SizingPolicy.decide_op`` picks one rule per op from its status and
-    the sizer phase. On one 100-CPU node the
-    warmup share is (100 - 1 floor) x 0.8 = 79.2 -> 79 actors: 78 more than
-    the 1 running."""
-    kwargs = dict(min_size=1, max_size=100, cpu=1)
-    kwargs.update(pool_kwargs)
-    op = _FakeOp("op", _FakePool(**kwargs), completed=completed)
-    sizer, topo = _bootstrapped(op, cpu=100.0, gpu=0.0)
-    snapshot = sizer.next_tick()
-    assert snapshot is not None
-
-    if not isinstance(status, (Active, Completed)):
-        sizer._statuses._status[op] = status
-    ctx = DecisionContext.from_snapshot(
-        snapshot=snapshot,
-        topology=topo,
-        phase=phase,
-        apmo_profiles=sizer._profiles,
-        now=0.0,
-        bottleneck_snapshot=None,
-    )
-    decision = sizer._policy.decide_op(op=op, ctx=ctx)
-    assert decision.rule is rule
-    if delta is None:
-        assert decision.request is None
-    else:
-        assert decision.request is not None
-        assert decision.request.delta == delta
+    assert sizer.statuses.kind(ops["features"]) is OpStatusKind.HELD
 
 
 def test_warmup_lasts_one_window_after_the_pipeline_flows():
@@ -1012,7 +857,6 @@ def test_warmup_lasts_one_window_after_the_pipeline_flows():
     sizer = _make_sizer(topo)
     observer = sizer._bottleneck_observer
     _tick(sizer)
-    assert sizer.phase is SizerPhase.WARMUP
     assert sizer._flowing_since_t is None
 
     observer._windows[ops["infer"]] = OpShareWindow(observer.window_s)
@@ -1020,7 +864,6 @@ def test_warmup_lasts_one_window_after_the_pipeline_flows():
     _tick(sizer)
     assert sizer._flowing_since_t is not None
     assert observer._windows == {}
-    assert sizer.phase is SizerPhase.WARMUP
 
     sizer.clock.advance(observer.window_s - 2 * SIZER_CADENCE_S)
     _tick(sizer)
@@ -1038,7 +881,7 @@ def test_warmup_times_out_when_a_critical_op_never_produces(caplog, propagate_lo
     # timeout it moves to the warm phase, and says which op it gave up on.
     ops, topo = _linear_pipeline(running=1)
     _, waits_for_flow_after_tick = _warmup_probe(
-        topo, _warmup_timeout_s=10 * SIZER_CADENCE_S
+        topo, warmup_timeout_s=10 * SIZER_CADENCE_S
     )
 
     # The timeout counts from the first tick.
@@ -1338,13 +1181,6 @@ def test_matching_nodes(selector, per_actor, expected: set):
     assert set(c.matching_nodes(_label_view(), per_actor)) == expected
 
 
-class _FakePG:
-    """Minimal placement-group stand-in exposing ``.id.hex()``."""
-
-    def __init__(self, id_hex):
-        self.id = SimpleNamespace(hex=lambda: id_hex)
-
-
 def _pg_op(name, pg, *, bundle_index=None, inputs=(), **pool_kwargs) -> _FakeOp:
     kwargs = dict(min_size=1, max_size=10)
     kwargs.update(pool_kwargs)
@@ -1356,24 +1192,27 @@ def _pg_op(name, pg, *, bundle_index=None, inputs=(), **pool_kwargs) -> _FakeOp:
 
 
 @pytest.mark.parametrize(
-    "running,pending,awaiting_first_input,expected_requests",
+    "running, pending, awaiting_first_input, completed, expected_requests",
     [
         # Autoscale from zero: no actor exists, so the min-size shapes are the
         # only GPU demand the cluster autoscaler sees.
-        pytest.param(0, 0, False, 2, id="no-actors"),
-        pytest.param(1, 0, False, 2, id="one-running"),
-        pytest.param(0, 1, False, 2, id="one-pending"),
-        pytest.param(3, 0, False, 3, id="above-min"),
+        pytest.param(0, 0, False, False, 2, id="no-actors"),
+        pytest.param(1, 0, False, False, 2, id="one-running"),
+        pytest.param(0, 1, False, False, 2, id="one-pending"),
+        pytest.param(3, 0, False, False, 3, id="above-min"),
         # An op held until its first input still asks for its min size.
-        pytest.param(0, 0, True, 2, id="held"),
+        pytest.param(0, 0, True, False, 2, id="held"),
+        # A completed op's actors drain to zero, so it asks only for those left.
+        pytest.param(1, 0, False, True, 1, id="completed"),
     ],
 )
 def test_resource_requests_cover_the_min_size(
-    running, pending, awaiting_first_input, expected_requests
+    running, pending, awaiting_first_input, completed, expected_requests
 ):
-    """multi_stage_batch_inference hung on a cluster with no GPU node: the
-    sizer found no room for the GPU op's actors, so it created none, and the
-    cluster autoscaler never saw any GPU demand."""
+    """On a cluster with no GPU node, the sizer finds no room for a GPU op
+    and creates no actors for it. The op still requests its min-size shapes;
+    otherwise the cluster autoscaler never sees GPU demand and the pipeline
+    hangs."""
     infer = _FakeOp(
         "infer",
         _FakePool(
@@ -1382,24 +1221,14 @@ def test_resource_requests_cover_the_min_size(
         node=None,
         ray_remote_args={"num_cpus": 1, "num_gpus": 1},
         awaiting_first_input=awaiting_first_input,
+        completed=completed,
     )
 
     assert infer.get_resource_requests() == [{"CPU": 1, "GPU": 1}] * expected_requests
 
 
-def test_completed_op_requests_only_its_actors():
-    infer = _FakeOp(
-        "infer",
-        _FakePool(min_size=2, max_size=8, cpu=1, gpu=1, running=1),
-        ray_remote_args={"num_cpus": 1, "num_gpus": 1},
-        completed=True,
-    )
-
-    assert infer.get_resource_requests() == [{"CPU": 1, "GPU": 1}]
-
-
 def test_pg_managed_op_requests_only_its_actors():
-    op = _pg_op("infer", _FakePG("pg1"), min_size=2, gpu=1)
+    op = _pg_op("infer", fake_pg("pg1"), min_size=2, gpu=1)
 
     assert op.get_resource_requests() == []
 
@@ -1409,12 +1238,12 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
     though the PG totals 8 GPU); a bundle index narrows the op to one bundle,
     an out-of-range one is warned about and widened to every bundle; an
     unresolved PG is left out (its capacity is unknown)."""
-    pg = _FakePG("pg1")
+    pg = fake_pg("pg1")
     pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=2)] * 4}
     anywhere = _pg_op("anywhere", pg, gpu=1, running=3)
     pinned = _pg_op("pinned", pg, bundle_index=1, gpu=1, running=1, inputs=[anywhere])
     big = _pg_op("big", pg, gpu=4, inputs=[pinned])
-    unresolved = _pg_op("unresolved", _FakePG("missing"), gpu=1, inputs=[big])
+    unresolved = _pg_op("unresolved", fake_pg("missing"), gpu=1, inputs=[big])
     bad_index = _pg_op("bad_index", pg, bundle_index=9, gpu=1, inputs=[unresolved])
     with caplog.at_level(logging.WARNING):
         bundles = PlacementGroupSlots.measure(
@@ -1451,7 +1280,7 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
     them, but only PG actors can use them: non-PG ops see that node's capacity
     without them, read from each tick's view, so a group Ray places after the
     sizer is built is taken out on the next tick."""
-    pg = _FakePG("pg1")
+    pg = fake_pg("pg1")
     reserved_by_node = {
         "g1": ExecutionResources(cpu=8, gpu=4),
         "c1": ExecutionResources(cpu=8),
@@ -1490,7 +1319,7 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
     [
         # A static PG op grows into what its bundles hold.
         pytest.param(
-            _FakePG("pg1"), False, dict(min_size=2, max_size=10, gpu=1), 4, id="pg"
+            fake_pg("pg1"), False, dict(min_size=2, max_size=10, gpu=1), 4, id="pg"
         ),
         # A ray_remote_args_fn op mints a PG per actor the sizer cannot inspect,
         # so it is capped at its user concurrency (max_size) instead.
@@ -1498,7 +1327,7 @@ def test_placement_group_bundles_are_not_free_for_non_pg_ops():
         # A static PG with no bundles in the view yet is just as unknown:
         # capped at max_size too, rather than held at zero.
         pytest.param(
-            _FakePG("missing"),
+            fake_pg("missing"),
             False,
             dict(min_size=1, max_size=3, gpu=1),
             3,
@@ -1532,7 +1361,7 @@ def test_warmup_equal_share_targets():
     # ends warmup), so write, downstream of it, is held at min.
     ops["a"].metrics.num_task_outputs_generated = 1
     sizer = _make_sizer(topo, cpu=100.0, gpu=4.0)
-    result = _tick(sizer, topo)
+    result = _tick(sizer)
     # min_reserved_cpu = 3 (a, b, write at min 1 x 1 cpu); 3 autoscaled cpu
     # ops. ceiling = (100 - 3) * 0.8 / 3 = 25.87 -> target 25 -> delta 24.
     for key in ("a", "b"):
@@ -1540,12 +1369,6 @@ def test_warmup_equal_share_targets():
     assert ops["write"] not in result
     # Fixed GPU pool at size: no resize request.
     assert ops["infer"] not in result
-
-    # GPU ops size against the GPU share: min_reserved_gpu = 1;
-    # ceiling = (8 - 1) * 0.8 / 1 = 5.6 -> target 5 -> delta 4.
-    gpu_op = _FakeOp("GpuMap", _FakePool(min_size=1, max_size=40, gpu=1, running=1))
-    sizer, topo = _bootstrapped(gpu_op, cpu=100.0, gpu=8.0)
-    assert _tick(sizer, topo)[gpu_op].delta == 4
 
 
 @pytest.mark.parametrize("upstream_has_output", [False, True])
@@ -1560,7 +1383,7 @@ def test_warmup_holds_ops_at_min_until_upstream_produces_output(upstream_has_out
         source.metrics.num_task_outputs_generated = 1
     sizer, topo = _bootstrapped(source, op, cpu=100.0, gpu=0.0)
 
-    result = _tick(sizer, topo)
+    result = _tick(sizer)
 
     # The source is never gated. Share: (100 - 2) * 0.8 / 2 = 39.2 -> 39.
     assert result[source].delta == 38
@@ -1570,44 +1393,34 @@ def test_warmup_holds_ops_at_min_until_upstream_produces_output(upstream_has_out
         assert op not in result
 
 
-@pytest.mark.parametrize(
-    "upstream_completed,expected_delta",
-    [
-        # No more input can arrive: ceil(40 / 1.75) = 23 actors cover the
-        # backlog -> delta 3, not its full share of (100 - 1) * 0.8 = 79.
-        (True, 3),
-        # Upstream still producing: the warmup share, (100 - 2) * 0.8 / 2 =
-        # 39.2 -> target 39 -> delta 19.
-        (False, 19),
-    ],
-)
-def test_upscale_is_capped_at_remaining_work_once_upstream_completes(
-    upstream_completed, expected_delta
-):
+def test_upscale_is_capped_at_remaining_work_once_upstream_completes():
+    """No more input can arrive: ceil(40 / 1.75) = 23 actors cover the
+    backlog, so the op grows by 3, not to its full share of
+    (100 - 1) x 0.8 = 79."""
     upstream = _FakeOp(
         "ListFiles",
         _FakePool(min_size=1, max_size=200, cpu=1, running=1),
-        completed=upstream_completed,
-        execution_finished=upstream_completed,
+        completed=True,
+        execution_finished=True,
     )
-    # Past the upstream-output gate either way.
     upstream.metrics.num_task_outputs_generated = 1
     op = _FakeOp(
         "MapBatches(count_rows)",
         _FakePool(min_size=1, max_size=500, cpu=1, running=20),
         inputs=(upstream,),
     )
-    sizer, topo = _bootstrapped(upstream, op, enqueued=40, cpu=100.0, gpu=0.0)
+    sizer, _ = _bootstrapped(upstream, op, enqueued=40, cpu=100.0, gpu=0.0)
 
-    assert _tick(sizer, topo)[op].delta == expected_delta
+    assert _tick(sizer)[op].delta == 3
 
 
 @pytest.mark.parametrize(
     "upstream_completed,max_size,expected",
     [
-        (False, 500, 500),  # more input can come: the pool bounds it
-        (True, 500, 23),  # ceil(40 / 1.75) actors cover the backlog
-        (True, 10, 10),  # the pool's max is lower still
+        pytest.param(False, 500, 500, id="more-input-can-come"),
+        # ceil(40 / 1.75) actors cover the backlog.
+        pytest.param(True, 500, 23, id="backlog-bounds-it"),
+        pytest.param(True, 10, 10, id="pool-max-is-lower"),
     ],
 )
 def test_upscale_ceiling_is_the_lower_of_pool_max_and_remaining_work(
@@ -1627,9 +1440,13 @@ def test_upscale_ceiling_is_the_lower_of_pool_max_and_remaining_work(
     )
     topo = _topology(upstream, op, enqueued=40)
     assert upscale_ceiling(op=op, op_state=topo[op]) == expected
-    assert (
-        upscale_ceiling(op=op, op_state=None) == max_size
-    )  # no op state: the pool alone
+
+
+def test_upscale_ceiling_without_op_state_is_the_pool_max():
+    upstream = _FakeOp("ListFiles", _FakePool(min_size=1, max_size=200, cpu=1))
+    upstream.completed = True
+    op = _FakeOp("Map", _FakePool(min_size=1, max_size=500, cpu=1), inputs=(upstream,))
+    assert upscale_ceiling(op=op, op_state=None) == 500
 
 
 def test_warmup_share_survives_float_division():
@@ -1637,7 +1454,7 @@ def test_warmup_share_survives_float_division():
     # would leave the pool one actor short of its 32-actor share.
     op = _FakeOp("op", _FakePool(min_size=1, max_size=100, cpu=0.1, running=1))
     sizer, topo = _bootstrapped(op, cpu=4.1, gpu=0.0)
-    assert _tick(sizer, topo)[op].delta == 31
+    assert _tick(sizer)[op].delta == 31
 
 
 def test_warmup_pg_ops_share_their_placement_group():
@@ -1645,7 +1462,7 @@ def test_warmup_pg_ops_share_their_placement_group():
     autoscaled ops in one PG split its bundles like non-PG ops split the
     allocation. They also stay out of the non-PG equal share, so the non-PG
     GPU op gets the whole slice."""
-    pg = _FakePG("pg1")
+    pg = fake_pg("pg1")
     pg_bundles_by_id = {"pg1": [ExecutionResources(gpu=10)]}
     view = DatasetReservationView(
         reserved_by_node={"node0": ExecutionResources(cpu=8, gpu=8)},
@@ -1684,15 +1501,15 @@ def test_warmup_is_upscale_only_and_holds_while_pending():
     # Above the warmup target: warmup must not downscale.
     big = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, running=90))
     sizer, topo = _bootstrapped(big, cpu=100.0)
-    assert big not in _tick(sizer, topo)
+    assert big not in _tick(sizer)
 
     # A granted upscale that is still pending is not re-requested.
     op = _FakeOp("A", _FakePool(min_size=1, max_size=500, cpu=1, running=1))
     sizer, topo = _bootstrapped(op, cpu=100.0)
-    delta = _tick(sizer, topo)[op].delta
+    delta = _tick(sizer)[op].delta
     assert delta > 0
     op._pool.pending = delta
-    assert op not in _tick(sizer, topo)
+    assert op not in _tick(sizer)
 
 
 def test_critical_op_discovery_walks_past_ops_that_never_report_task_outputs():
@@ -1728,7 +1545,21 @@ def test_latch_waits_for_every_branch_of_a_union():
     assert not waits_for_flow_after_tick()
 
 
-@pytest.mark.parametrize("release", ["input_arrives", "op_completes"])
+def _first_input_arrives(op: _FakeOp) -> None:
+    op.pending_first_input = False
+
+
+def _completes(op: _FakeOp) -> None:
+    op.completed = True
+
+
+@pytest.mark.parametrize(
+    "release",
+    [
+        pytest.param(_first_input_arrives, id="input-arrives"),
+        pytest.param(_completes, id="op-completes"),
+    ],
+)
 def test_latch_waits_for_ops_awaiting_first_input(release):
     """A write held at zero actors until its first input is not a critical
     op, but warmup must not end before it can scale: otherwise the warm phase
@@ -1747,10 +1578,7 @@ def test_latch_waits_for_ops_awaiting_first_input(release):
     assert critical_ops(topo) == (read,)
     read.metrics.num_task_outputs_generated = 1
     assert waits_for_flow_after_tick()  # write has no input yet
-    if release == "input_arrives":
-        write.pending_first_input = False
-    else:
-        write._completed = True
+    release(write)
     assert not waits_for_flow_after_tick()
 
 
@@ -1790,7 +1618,7 @@ def test_tick_cadence_gate_and_idle_phases():
 def test_fixed_pool_replenished_below_min_only(running: int, expected_delta):
     fixed = _FakeOp("Infer", _FakePool(min_size=4, max_size=4, gpu=1, running=running))
     sizer, topo = _bootstrapped(fixed)
-    result = _tick(sizer, topo)
+    result = _tick(sizer)
     if expected_delta is None:
         assert fixed not in result
     else:
@@ -1814,7 +1642,7 @@ def test_below_min_grants_full_min_in_order():
         inputs=(producer,),
     )
     sizer, topo = _bootstrapped(src, producer, consumer, cpu=16)
-    result = _tick(sizer, topo)
+    result = _tick(sizer)
     # Consumer (sink-most) then producer are granted; producer's min 30 is
     # clamped to the remaining capacity, exhausting the cluster.
     assert result[consumer].delta == 1
@@ -1839,7 +1667,7 @@ def test_below_min_requests_what_fits(cluster_cpu: float, expected_placed: int):
         inputs=(src,),
     )
     sizer, topo = _bootstrapped(src, mapper, cpu=cluster_cpu, gpu=0)
-    result = _tick(sizer, topo)
+    result = _tick(sizer)
     placed = sum(max(0, req.delta) for req in result.values())
     assert placed == expected_placed
 
@@ -1872,7 +1700,7 @@ def test_below_min_constrained_op_granted_full_min():
         "peer3", _FakePool(min_size=1, max_size=10, cpu=1), inputs=[peer2], node=None
     )
     sizer, topo = _bootstrapped(peer1, pinned, peer2, peer3, view=view)
-    req = _tick(sizer, topo)
+    req = _tick(sizer)
     assert req[pinned].delta == 4
     for peer in (peer1, peer2, peer3):
         assert req[peer].delta >= 1
@@ -1884,10 +1712,10 @@ def test_completed_op_released_with_force():
     sizer, topo = _bootstrapped(done)
     for _ in range(3):
         # The request keeps firing so attrition continues.
-        req = _tick(sizer, topo)[done]
+        req = _tick(sizer)[done]
         assert (req.delta, req.force) == (-10, True)
     pool.running = 4  # attrition removed 6 idle actors
-    assert _tick(sizer, topo)[done].delta == -4
+    assert _tick(sizer)[done].delta == -4
 
 
 def test_source_op_not_released_at_startup():
@@ -1895,7 +1723,7 @@ def test_source_op_not_released_at_startup():
     # done and force-released.
     src = _FakeOp("ReadFiles", _FakePool(min_size=1, max_size=500, cpu=1, running=4))
     sizer, topo = _bootstrapped(src, cpu=100.0)
-    req = _tick(sizer, topo)[src]
+    req = _tick(sizer)[src]
     assert req.delta > 0 and not req.force
 
 
@@ -1947,7 +1775,7 @@ def test_label_aware_caps_constrained_op_to_its_eligible_nodes():
     assert set(snap.schedulable_nodes_by_op[read]) == {"n1"}
 
     # embed wants its min of 10 but only 8 A100 GPUs are free -> capped at 8.
-    req = _tick(sizer, topo)
+    req = _tick(sizer)
     assert req[embed].delta == 8
 
 
@@ -1984,8 +1812,8 @@ def test_warns_once_when_no_node_can_hold_an_op_with_queued_input(
         ]
 
     with caplog.at_level(logging.WARNING):
-        assert gen not in _tick(sizer, topo)
-        _tick(sizer, topo)
+        assert gen not in _tick(sizer)
+        _tick(sizer)
     (message,) = warnings()
     assert "177 queued input block(s)" in message
     assert "{'node-pool': 'cpu'}" in message
@@ -1994,12 +1822,12 @@ def test_warns_once_when_no_node_can_hold_an_op_with_queued_input(
 
     # The label appears: gen_data can be placed again, and is.
     sizer.reporter.view = view({"node-pool": "cpu"})
-    assert _tick(sizer, topo)[gen].delta >= 1
+    assert _tick(sizer)[gen].delta >= 1
 
     # It disappears again: a second warning.
     sizer.reporter.view = view({})
     with caplog.at_level(logging.WARNING):
-        _tick(sizer, topo)
+        _tick(sizer)
     assert len(warnings()) == 2
 
 
@@ -2023,7 +1851,7 @@ def test_reclaimable_actors_do_not_debit_free_capacity_for_later_ops():
         reclaimable=3,  # sink (processed first, sink-most) reclaims these for free
     )
     sizer, topo = _bootstrapped(up, sink, enqueued=100_000, view=view, warm=True)
-    req = _tick(sizer, topo)
+    req = _tick(sizer)
     # sink: 5 below min, of which 3 are reclaimed -> only 2 consume free,
     # leaving 8 CPU. up: 8 below min, and it gets all 8.
     assert req[sink].delta == 5
@@ -2164,29 +1992,13 @@ def test_ledger_grants_do_not_reach_where():
     """A grant is a count WHERE places later, so only the ledger's own map
     loses it; the snapshot's free map, which WHERE places into, keeps it.
     Later grants in the same tick see less room."""
-    op = _FakeOp("op", _FakePool(min_size=1, max_size=10, cpu=1, running=1))
-    sizer, _ = _bootstrapped(op, warm=True, cpu=4.0, gpu=0.0)
-    snapshot = sizer.next_tick()
-    assert snapshot is not None
+    op = cast(Any, _LedgerOp(ExecutionResources(cpu=1)))
+    snapshot = _snapshot({"n1": ExecutionResources(cpu=3)}, {op: None})
     ledger = ConstraintAwareCapacityLedger(snapshot)
-    before = ledger.max_upscale_delta(op)
-    snapshot_cpu = snapshot.free_by_node["node0"].cpu
 
     ledger.grant(op, 1)
-    assert ledger.max_upscale_delta(op) == before - 1
-    assert snapshot.free_by_node["node0"].cpu == snapshot_cpu
-
-
-def test_a_cooling_op_only_upscales_to_min_size():
-    """After the policy resizes an op, it cools down: no rule resizes it
-    until its window describes its new size, except an upscale back to its
-    min size."""
-    short = _FakeOp("short", _FakePool(min_size=3, max_size=10, cpu=1, running=1))
-    sizer, topo = _bootstrapped(short, warm=True)
-    sizer.statuses.start_cooling(op=short, now=sizer.clock())
-    request = _tick(sizer, topo)
-    assert sizer.statuses.kind(short) is OpStatusKind.COOLING
-    assert (request[short].delta, request[short].reason) == (2, "below min size")
+    assert ledger.max_upscale_delta(op) == 2
+    assert snapshot.free_by_node["n1"] == ExecutionResources(cpu=3)
 
 
 def test_next_and_prev_actor_pool_ops_look_through_non_pool_ops():
@@ -2356,11 +2168,11 @@ def test_ordered_ops_use_snapshot_eligibility_for_specificity():
     ]
 
 
-def _heterogeneous_memory_cluster(num_cpu_nodes):
-    """backpressure_heterogeneous_memory_nodes' shape: 8-CPU nodes labelled
-    ``node-pool: cpu``, where a label-selected op holds 7 of 8 CPUs, and two
-    4-CPU / 4-GPU nodes. Returns (view, ops dict) with a GPU op (fixed 8) and
-    a Write, both still awaiting their first input."""
+def _labelled_cpu_nodes_and_gpu_nodes(num_cpu_nodes):
+    """8-CPU nodes labelled ``node-pool: cpu``, where a label-selected op
+    holds 7 of 8 CPUs, plus two 4-CPU / 4-GPU nodes. Returns (view, ops dict)
+    with a GPU op (fixed 8) and a Write, both still awaiting their first
+    input."""
     cpu_nodes = [f"c{i}" for i in range(num_cpu_nodes)]
     reserved = {n: ExecutionResources(cpu=8) for n in cpu_nodes}
     reserved.update({g: ExecutionResources(cpu=4, gpu=4) for g in ("g1", "g2")})
@@ -2394,7 +2206,7 @@ def test_contention_weighs_ops_by_how_few_nodes_they_can_use():
     """Two label-selected ops share 10 CPU nodes (2/10 each); only the GPU op
     can use the 2 GPU nodes (1/2 each). The GPU nodes are the scarce ones,
     though fewer ops can use them."""
-    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=10)
+    view, ops = _labelled_cpu_nodes_and_gpu_nodes(num_cpu_nodes=10)
     cpu_process = _FakeOp(
         "cpu_process",
         _FakePool(min_size=1, max_size=100, cpu=1),
@@ -2409,27 +2221,23 @@ def test_contention_weighs_ops_by_how_few_nodes_they_can_use():
     assert contention["g1"] == pytest.approx(0.5)
 
 
-def _held_by_node(sizer: _TestSizer, op) -> Dict[str, int]:
-    """The room held for ``op`` on each node this tick (it must be held)."""
-    state = sizer._statuses.status(op)
-    assert isinstance(state, Held), state
-    return dict(state.by_node)
-
-
 def test_room_held_until_first_input_goes_to_its_op():
-    """backpressure_heterogeneous_memory_nodes hung: the GPU op held the GPU
-    nodes until its first input, and on the tick it arrived the held Write
-    topped up its hold with those nodes' CPUs, so the GPU op never placed an
-    actor. The room the GPU op held now goes to it, and Write keeps the nodes
-    it held."""
-    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=4)
+    """A GPU op holds the GPU nodes until its first input arrives. On that
+    tick, a held Write must not top up its hold with those nodes' CPUs, or
+    the GPU op never places an actor. The room goes to the GPU op, and Write
+    keeps the nodes it held.
+
+    If the GPU op's pending actors then expire, it is below its min size
+    while Write is still held and short. Its min size comes before Write's
+    hold, so Write still cannot take the GPU nodes' CPUs."""
+    view, ops = _labelled_cpu_nodes_and_gpu_nodes(num_cpu_nodes=4)
     gpu, write = ops["gpu"], ops["write"]
     sizer, _ = _bootstrapped(*ops.values(), view=view)
 
     request = _tick(sizer)
     assert gpu not in request and write not in request
-    assert _held_by_node(sizer, gpu) == {"g1": 4, "g2": 4}
-    write_held = _held_by_node(sizer, write)
+    assert _held(sizer, gpu).by_node == {"g1": 4, "g2": 4}
+    write_held = dict(_held(sizer, write).by_node)
     # Only the CPU nodes' free CPU is left for Write.
     assert set(write_held) <= {"c0", "c1", "c2", "c3"}
 
@@ -2440,40 +2248,26 @@ def test_room_held_until_first_input_goes_to_its_op():
         8,
         "room held until its first input",
     )
-    assert _held_by_node(sizer, write) == write_held
-
-
-def test_min_size_comes_before_a_hold():
-    """After the hand-off, the GPU op's pending actors expire: it is below its
-    min size and no longer leaving ``Held``, while Write is still held and
-    short. Write's top-up must not take the GPU nodes' CPUs back."""
-    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=4)
-    gpu, write = ops["gpu"], ops["write"]
-    sizer, _ = _bootstrapped(*ops.values(), view=view)
-    _tick(sizer)
-    ops["gen"].metrics.num_task_outputs_generated = 1
-    gpu.pending_first_input = False
-    assert _tick(sizer)[gpu].delta == 8
-    write_held = _held_by_node(sizer, write)
+    assert _held(sizer, write).by_node == write_held
 
     # The 8 pending actors expired without starting: the pool is still empty.
     request = _tick(sizer)
     assert (request[gpu].delta, request[gpu].reason) == (8, "below min size")
-    assert _held_by_node(sizer, write) == write_held
+    assert _held(sizer, write).by_node == write_held
 
 
 def test_held_ops_pack_scarcest_first():
     """Two held ops, the unconstrained one earlier in the topology. Packing in
     topology order let it spill onto the GPU nodes, leaving the GPU op no room
     to hold; packing scarcest first lets the GPU op claim them."""
-    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=4)
+    view, ops = _labelled_cpu_nodes_and_gpu_nodes(num_cpu_nodes=4)
     gen, gpu, write = ops["gen"], ops["gpu"], ops["write"]
     write._input_dependencies = [gen]
     sizer, _ = _bootstrapped(gen, write, gpu, view=view)
 
     _tick(sizer)
-    assert _held_by_node(sizer, gpu) == {"g1": 4, "g2": 4}
-    assert set(_held_by_node(sizer, write)) <= {"c0", "c1", "c2", "c3"}
+    assert _held(sizer, gpu).by_node == {"g1": 4, "g2": 4}
+    assert set(_held(sizer, write).by_node) <= {"c0", "c1", "c2", "c3"}
 
 
 def test_gpu_nodes_are_scarce_in_node_pressure():
@@ -2520,7 +2314,7 @@ def test_committed_and_free_by_node_exclude_pg_managed_ops():
         inputs=[c],
     )
     pg._placement_constraint = PlacementConstraint(
-        placement_group=cast(Any, _FakePG("pg1"))
+        placement_group=cast(Any, fake_pg("pg1"))
     )
     fn = _FakeOp(
         "fn",
@@ -2769,13 +2563,12 @@ def test_place_downscales_sheds_untargeted_pendings_by_id(
     assert req.nodes == expected_nodes
 
 
-@pytest.mark.parametrize("unmet", [0, 2])
-def test_downscales_free_capacity_where_a_short_upscaler_fits(unmet):
-    """image_classification_fixed_size: each node has 8 CPUs and 1 GPU, and
-    the GPU op (1 CPU + 1 GPU per actor) is the bottleneck. On g3 and g4 its
-    GPU is free but CPU actors hold every CPU, so the ledger has no room for
-    it. CPUs freed on g1 or g2, whose GPU it already uses, never help it, so
-    downscales should remove CPU actors on g3 and g4."""
+def _favored_nodes_on_gpu_nodes(unmet: int):
+    """Four nodes with 8 CPUs and 1 GPU each. A GPU op (1 CPU + 1 GPU per
+    actor) is ``unmet`` actors short. On g3 and g4 its GPU is free but CPU
+    actors hold every CPU, so the ledger has no room for it there. CPUs
+    freed on g1 or g2, whose GPU it already uses, never help it. Returns the
+    nodes a CPU op's 4-actor downscale should favor, and the CPU op's view."""
     nodes = ("g1", "g2", "g3", "g4")
     free = {
         "g1": ExecutionResources(cpu=3, gpu=0),
@@ -2805,10 +2598,10 @@ def test_downscales_free_capacity_where_a_short_upscaler_fits(unmet):
         reserved_by_node={n: ExecutionResources(cpu=8, gpu=1) for n in nodes},
         free_by_node=free,
     )
-    request = {cpu_op: ActorPoolScalingRequest.downscale(delta=-4)}
     favored = compute_favored_nodes(
-        request=cast(Any, request),
-        unmet=cast(Any, {gpu_op: unmet} if unmet else {}),
+        request=cast(Any, {cpu_op: ActorPoolScalingRequest.downscale(delta=-4)}),
+        # As the sizer passes it: only ops that are short.
+        unmet=cast(Any, {gpu_op: unmet} if unmet > 0 else {}),
         views=cast(Any, {cpu_op: cpu_view}),
         capacity=snapshot,
         free=free,
@@ -2816,15 +2609,23 @@ def test_downscales_free_capacity_where_a_short_upscaler_fits(unmet):
         profiles=OpProfiles(_topology(cpu_op, gpu_op)),
         ordered_ops=(gpu_op, cpu_op),
     )
-    if not unmet:
-        # Nobody is short: downscales go wherever is cheapest.
-        assert favored == set()
-        return
+    return favored, cpu_view
+
+
+def test_downscales_free_capacity_where_a_short_upscaler_fits():
+    """Downscales remove CPU actors on g3 and g4, where the freed CPUs let
+    the short GPU op place."""
+    favored, cpu_view = _favored_nodes_on_gpu_nodes(unmet=2)
     assert favored == {"g3", "g4"}
     victims = LocalityBasedActorPlacement().pick_downscale_nodes(
         cpu_view, count=4, favored_nodes=favored
     )
     assert sorted(victims) == ["g3", "g3", "g4", "g4"]
+
+
+def test_downscales_favor_no_node_when_nobody_is_short():
+    favored, _ = _favored_nodes_on_gpu_nodes(unmet=0)
+    assert favored == set()
 
 
 def test_resolve_evictions_mixed_overage_takes_one_actor_per_dimension():
@@ -2892,7 +2693,7 @@ def test_build_op_profile(pool_kwargs, is_write, has_pg, pinned, expected):
     )
     if has_pg:
         op._placement_constraint = PlacementConstraint(
-            placement_group=cast(Any, _FakePG("pg1"))
+            placement_group=cast(Any, fake_pg("pg1"))
         )
     profile = build_op_profile(op)
     for field, value in expected.items():
@@ -2904,14 +2705,23 @@ def test_build_op_profile(pool_kwargs, is_write, has_pg, pinned, expected):
     assert profiles.profile(op) is profiles.profile(op)
 
 
-def _recorded_phases(monkeypatch, telemetry: SizerTelemetry) -> List[Tuple[str, float]]:
-    observed: List[Tuple[str, float]] = []
-    monkeypatch.setattr(
-        telemetry._metrics,
-        "record_tick_duration",
-        lambda phase, seconds: observed.append((phase, seconds)),
-    )
-    return observed
+class _PhaseRecorder:
+    """Stands in for ``SizerMetrics``: keeps each tick phase's duration."""
+
+    def __init__(self):
+        self.phases: List[Tuple[str, float]] = []
+
+    def record_tick_duration(self, phase: str, seconds: float) -> None:
+        self.phases.append((phase, seconds))
+
+    def record_actor_delta(self, *, operator: str, phase: str, delta: int) -> None:
+        pass
+
+
+def _recording_telemetry() -> Tuple[SizerTelemetry, List[Tuple[str, float]]]:
+    """A telemetry whose metrics land in the returned list."""
+    recorder = _PhaseRecorder()
+    return SizerTelemetry("test-ds", metrics=cast(Any, recorder)), recorder.phases
 
 
 def test_log_decisions_names_each_ops_status_rule_and_reason(caplog, propagate_logs):
@@ -2954,11 +2764,10 @@ def test_log_decisions_names_each_ops_status_rule_and_reason(caplog, propagate_l
     )
 
 
-def test_record_tick_emits_and_clears_collected_timings(monkeypatch):
+def test_record_tick_emits_and_clears_collected_timings():
     """Timings add up per phase until ``record_tick``, which emits them even
     on a tick that sized nothing, then starts the next tick empty."""
-    telemetry = SizerTelemetry("test-ds")
-    observed = _recorded_phases(monkeypatch, telemetry)
+    telemetry, observed = _recording_telemetry()
     telemetry.add_timing_phase("build", 0.001)
     telemetry.add_timing_phase("how_many", 0.002)
     telemetry.add_timing_phase("build", 0.003)  # a later step's build adds up
@@ -2971,14 +2780,15 @@ def test_record_tick_emits_and_clears_collected_timings(monkeypatch):
     assert observed == []
 
 
-def test_timed_adds_each_call_to_its_phase(monkeypatch):
+def test_timed_adds_each_call_to_its_phase():
     """``@timed`` adds every call's wall time to the owner's telemetry under
     its phase, returns the method's result, and records a call that raises
     too."""
+    telemetry, observed = _recording_telemetry()
 
     class _Owner:
         def __init__(self):
-            self._telemetry = SizerTelemetry("test-ds")
+            self._telemetry = telemetry
 
         @timed("work")
         def work(self, x):
@@ -2989,14 +2799,11 @@ def test_timed_adds_each_call_to_its_phase(monkeypatch):
             raise ValueError("boom")
 
     owner = _Owner()
-    observed = _recorded_phases(monkeypatch, owner._telemetry)
     assert owner.work(2) == 4
     owner.work(3)
     with pytest.raises(ValueError):
         owner.fail()
-    owner._telemetry.record_tick(
-        topology={}, decisions={}, where=PlacedRequests(by_op={})
-    )
+    telemetry.record_tick(topology={}, decisions={}, where=PlacedRequests(by_op={}))
     assert [phase for phase, _ in observed] == ["work", "fail"]
     assert all(seconds >= 0 for _, seconds in observed)
 

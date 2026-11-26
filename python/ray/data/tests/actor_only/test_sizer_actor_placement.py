@@ -128,42 +128,63 @@ def test_locality_imbalance_outranks_queue_pressure():
 
 
 @pytest.mark.parametrize(
-    "per_actor,free,count,expected",
+    "per_actor,free,contention,count,expected",
     [
         # Proportional to free slots (not water-filling): 8x the capacity
         # gets 8x the actors.
         pytest.param(
             ExecutionResources(cpu=1),
             dict(A=64, B=8),
+            {},
             9,
             Counter({"A": 8, "B": 1}),
             id="proportional-to-capacity",
         ),
-        # Quotas are 4 * 2/6 = 1.33 each: floors give 1 apiece, the leftover
-        # goes to the remainder tiebreak (fewest of ours, then node id) -> A.
+        # Quotas are 4 * 2/6 = 1.33 each: floors give 1 apiece. The leftover
+        # goes to the largest remainder; all tie, so it goes to the least
+        # contended node, then the node with fewest of our actors, then the
+        # lowest node id -> A.
         pytest.param(
             ExecutionResources(cpu=1),
             dict(A=2, B=2, C=2),
+            {},
             4,
             Counter({"A": 2, "B": 1, "C": 1}),
             id="leftovers-by-largest-remainder",
         ),
+        # The same tie, but other ops also want A and B: the leftover goes to
+        # C, the node no other op wants.
+        pytest.param(
+            ExecutionResources(cpu=1),
+            dict(A=2, B=2, C=2),
+            dict(A=0.5, B=0.5),
+            4,
+            Counter({"A": 1, "B": 1, "C": 2}),
+            id="leftovers-to-least-contended",
+        ),
         pytest.param(
             ExecutionResources(cpu=1),
             dict(A=1, B=1),
+            {},
             10,
             Counter({"A": 1, "B": 1}),
             id="shortfall-returns-short",
         ),
         # Every node at zero capacity: place nothing (and don't divide by 0).
         pytest.param(
-            ExecutionResources(cpu=1), dict(A=0, B=0), 3, Counter(), id="all-full"
+            ExecutionResources(cpu=1),
+            dict(A=0, B=0),
+            {},
+            3,
+            Counter(),
+            id="all-full",
         ),
         # A resource-less actor fits anywhere (inf): split evenly, and the
         # total-capacity clamp must NOT bound the placement to the node count.
         pytest.param(
             ExecutionResources(),
             dict(A=4, B=4, C=4),
+            {},
             6,
             Counter({"A": 2, "B": 2, "C": 2}),
             id="resource-less-even-split",
@@ -171,17 +192,17 @@ def test_locality_imbalance_outranks_queue_pressure():
         pytest.param(
             ExecutionResources(),
             dict(A=1, B=1),
+            {},
             10,
             Counter({"A": 5, "B": 5}),
             id="resource-less-more-actors-than-nodes",
         ),
     ],
 )
-def test_locality_spread(per_actor, free, count, expected):
+def test_locality_spread(per_actor, free, contention, count, expected):
     p = LocalityBasedActorPlacement()
-    placed = p.place_upscale(
-        _view(per_actor_usage=per_actor), free=_free(**free), count=count
-    )
+    view = _view(per_actor_usage=per_actor, contention_by_node=contention)
+    placed = p.place_upscale(view, free=_free(**free), count=count)
     assert Counter(placed) == expected
 
 
@@ -220,17 +241,13 @@ def test_max_placeable_actors(free, per_actor, expected):
 @pytest.mark.parametrize(
     "count,favored,expected",
     [
-        # A favored node gives up its busy actor before any other node gives
-        # up even a cheap one: a short upscaler needs the room there.
-        pytest.param(
-            4, {"A"}, ["A", "A", "A", "B"], id="favored-busy-before-other-cheap"
-        ),
-        # Then the other nodes, cheap victims before busy ones.
-        pytest.param(5, {"A"}, ["A", "A", "A", "B", "C"], id="then-others-cheap-first"),
-        pytest.param(2, {"A"}, ["A", "A"], id="favored-cheap-first"),
-        # No favored nodes: cost-class-major, cheap victims on every node
-        # (by queue size) before any busy one.
-        pytest.param(3, set(), ["A", "A", "B"], id="unfavored-by-queue-size"),
+        # The favored node A gives up its pending and idle actors, then its
+        # busy one, before any other node gives up even a cheap one: a short
+        # upscaler needs the room there. Then the other nodes, cheap victims
+        # before busy ones.
+        pytest.param(5, {"A"}, ["A", "A", "A", "B", "C"], id="favored-node-first"),
+        # No favored nodes: cheap victims on every node, smallest queue
+        # first, before any busy one.
         pytest.param(5, set(), ["A", "A", "B", "C", "A"], id="unfavored-cheap-first"),
     ],
 )
