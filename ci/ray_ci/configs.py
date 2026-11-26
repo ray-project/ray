@@ -20,6 +20,7 @@ PYTHON_VERSIONS = {
     "3.12": PythonVersionInfo(bin_path="cp312-cp312"),
     "3.13": PythonVersionInfo(bin_path="cp313-cp313"),
     "3.14": PythonVersionInfo(bin_path="cp314-cp314"),
+    "3.15": PythonVersionInfo(bin_path="cp315-cp315"),
 }
 DEFAULT_PYTHON_VERSION = "3.9"
 DEFAULT_PYTHON_TAG_VERSION = "3.11"

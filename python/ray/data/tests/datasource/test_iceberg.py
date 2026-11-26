@@ -3030,6 +3030,21 @@ class TestIcebergDatasourceV2:
             f"{_DB_NAME}.{_TABLE_NAME}"
         )
 
+    @classmethod
+    def _indexer(cls):
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            IcebergFileIndexer,
+        )
+
+        table = cls._load_table()
+        return IcebergFileIndexer(
+            table_metadata=table.metadata,
+            io=table.io,
+            scan_kwargs={},
+            snapshot_id=None,
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+
     def test_manifest_preserves_every_field_the_reader_uses(self):
         """A manifest round trip must return each scan task field-for-field."""
         from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
@@ -3121,6 +3136,74 @@ class TestIcebergDatasourceV2:
             ).to_table(scan_tasks)
 
         assert read(rebuilt).equals(read(tasks))
+
+    def test_reader_rejects_pickle_object_columns(self, monkeypatch, tmp_path):
+        """A decoded batch with a pickled-object column is rejected unread.
+
+        The V2 counterpart of ``test_get_read_task_rejects_pickle_object_columns``.
+        The marker file shows nothing was unpickled.
+        """
+        from pyiceberg.io import pyarrow as pyi_pa_io
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (  # noqa: E501
+            IcebergFileReader,
+        )
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+        )
+
+        marker = tmp_path / "exploit_marker"
+
+        class Exploit:
+            def __reduce__(self):
+                return (os.system, (f"touch {marker}",))
+
+        poisoned = pa.table(
+            {
+                "value": [1, 2],
+                "evil": ArrowPythonObjectArray.from_objects([Exploit()] * 2),
+            }
+        )
+
+        class FakeArrowScan:
+            def __init__(self, **kwargs):
+                pass
+
+            def to_record_batches(self, tasks):
+                yield from poisoned.to_batches()
+
+        monkeypatch.setattr(pyi_pa_io, "ArrowScan", FakeArrowScan)
+
+        table = self._load_table()
+        manifest = manifest_from_scan_tasks(list(table.scan().plan_files())[:1])
+        reader = IcebergFileReader(
+            table_metadata=table.metadata,
+            io=table.io,
+            projected_schema=table.scan().projection(),
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+        with pytest.raises(ValueError, match="arrow_pickled_object"):
+            list(reader.read(manifest))
+        assert not marker.exists()
+
+    def test_listing_skips_excluded_read_units(self):
+        """A file whose path is an excluded read unit id is not listed again."""
+        indexer = self._indexer()
+        listed = [
+            path
+            for manifest in indexer.list_files(None, filesystem=None)
+            for path in manifest.paths.tolist()
+        ]
+        assert len(listed) > 1, "need more than one file to exclude one of them"
+
+        remaining = [
+            path
+            for manifest in indexer.list_files(
+                None, filesystem=None, excluded_read_unit_ids={listed[0]}
+            )
+            for path in manifest.paths.tolist()
+        ]
+        assert sorted(remaining) == sorted(listed[1:])
 
 
 if __name__ == "__main__":

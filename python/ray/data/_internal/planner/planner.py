@@ -458,12 +458,15 @@ class Planner:
         queue = [physical_op]
         while queue:
             curr_physical_op = queue.pop()
-            if curr_physical_op._logical_operators:
+            if curr_physical_op in op_map:
                 continue
 
-            curr_physical_op.set_logical_operators(logical_op)
+            # A plan fn may tag an op it created with its own logical op (e.g. the
+            # disk-shuffle writer); we should keep their tag.
+            if not curr_physical_op._logical_operators:
+                curr_physical_op.set_logical_operators(logical_op)
             # Add this operator to the op_map so optimizer can find it
-            op_map[curr_physical_op] = logical_op
+            op_map[curr_physical_op] = curr_physical_op._logical_operators[0]
             queue.extend(curr_physical_op.input_dependencies)
 
         # Also add the final operator (in case the loop didn't catch it)

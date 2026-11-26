@@ -192,7 +192,7 @@ trainer.fit()
 
 (tpu-pytorch-simple-fsdp)=
 
-The `parallel_strategy="fsdp"` option supports only CUDA GPUs. To shard a model across TPU workers, install [TorchTitan](https://github.com/google-pytorch/torchtitan) and pass `parallel_strategy="simple_fsdp"` to {func}`ray.train.torch.prepare_model`. Ray Train shards the model over a 1D `DeviceMesh` with TorchTitan's `simple_fsdp`, using `DTensor` placements that compile as a single graph with `torch.compile(..., backend="tpu")`. Create the optimizer after calling `prepare_model`, and divide the loss by the world size before `backward()` because `simple_fsdp` sums gradients across workers.
+The `parallel_strategy="fsdp"` option supports only CUDA GPUs. To shard a model across TPU workers, install [TorchTitan](https://github.com/pytorch/torchtitan) and pass `parallel_strategy="simple_fsdp"` to {func}`ray.train.torch.prepare_model`. Ray Train shards the model over a 1D `DeviceMesh` with TorchTitan's `simple_fsdp`, using `DTensor` placements that compile as a single graph with `torch.compile(..., backend="tpu")`. Create the optimizer after calling `prepare_model`, and divide the loss by the world size before `backward()` because `simple_fsdp` sums gradients across workers.
 
 The following example defines a `train_func` that shards a model with `simple_fsdp` and compiles the training step across the 16 TPU workers configured above:
 

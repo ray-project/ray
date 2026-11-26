@@ -9,6 +9,7 @@ import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.util import column_udf, extract_values
@@ -294,6 +295,26 @@ def test_require_preserve_order(ray_start_regular_shared):
     assert ds1._logical_plan.require_preserve_order()
     ds2 = ray.data.range(100).map_batches(lambda x: x).repartition(10)
     assert not ds2._logical_plan.require_preserve_order()
+
+
+@pytest.mark.parametrize("seed", [None, 0])
+@pytest.mark.parametrize(
+    "shuffle_strategy, use_disk",
+    [
+        (ShuffleStrategy.SORT_SHUFFLE_PULL_BASED, False),
+        (ShuffleStrategy.SHUFFLE_V2, False),
+        (ShuffleStrategy.SHUFFLE_V2, True),
+    ],
+)
+def test_seeded_disk_shuffle_requires_preserve_order(
+    ray_start_regular_shared, restore_data_context, shuffle_strategy, use_disk, seed
+):
+    ctx = DataContext.get_current()
+    ctx.shuffle_strategy = shuffle_strategy
+    ctx.use_disk_based_hash_shuffle = use_disk
+    ds = ray.data.range(100).random_shuffle(seed=seed)
+    expected = seed is not None and use_disk
+    assert ds._logical_plan.require_preserve_order() == expected
 
 
 if __name__ == "__main__":
