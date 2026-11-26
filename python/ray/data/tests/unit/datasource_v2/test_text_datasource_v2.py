@@ -134,7 +134,9 @@ def test_reader_empty_projection_preserves_rows(tmp_path):
     scanner = TextScanner(schema=TEXT_SCHEMA).prune_columns([])
     tables = list(scanner.create_reader().read(_manifest(path)))
 
-    assert scanner.read_schema().names == []
+    schema = scanner.read_schema()
+    assert schema is not None
+    assert schema.names == []
     assert sum(table.num_rows for table in tables) == 3
     assert all(
         table.column_names == [_BATCH_SIZE_PRESERVING_STUB_COL_NAME] for table in tables
@@ -484,6 +486,7 @@ def test_read_text_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path)
     assert datasource.paths == [str(tmp_path)]
     assert datasource.file_extensions == ["txt"]
     schema = datasource.infer_schema(None)
+    assert schema is not None
     assert schema.names == [TEXT_COLUMN_NAME, "path"]
     path = _write(tmp_path / "data.txt", "café\n\n", encoding="latin-1")
     reader = datasource.create_scanner(schema).create_reader()

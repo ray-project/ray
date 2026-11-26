@@ -212,7 +212,7 @@ class DataSourceV2(ABC, Generic[InputSplit]):
         ...
 
     @abstractmethod
-    def infer_schema(self, sample: Optional[InputSplit]) -> pa.Schema:
+    def infer_schema(self, sample: Optional[InputSplit]) -> Optional[pa.Schema]:
         """Infer schema from a sample of data.
 
         Args:
@@ -220,9 +220,11 @@ class DataSourceV2(ABC, Generic[InputSplit]):
                 :attr:`schema_needs_file_sample` is ``False``.
 
         Returns:
-            PyArrow Schema inferred from the sample. This is the dataset
-            schema; do not pre-apply column pruning, which is pushed down
-            later and applied by ``Scanner.read_schema``.
+            PyArrow Schema inferred from the sample, or ``None`` when the
+            types are only known after decoding and the first read block
+            defines the dataset schema. This is the dataset schema; do not
+            pre-apply column pruning, which is pushed down later and applied
+            by ``Scanner.read_schema``.
 
         Raises:
             ValueError: If schema cannot be inferred from the sample.
@@ -284,7 +286,7 @@ class FileDataSourceV2(DataSourceV2[FileManifest]):
         sample: FileManifest,
         *,
         ray_remote_args: Dict[str, Any],
-    ) -> pa.Schema:
+    ) -> Optional[pa.Schema]:
         """Infer the schema of all candidates before execution.
 
         The default delegates to the existing method so file sources need not

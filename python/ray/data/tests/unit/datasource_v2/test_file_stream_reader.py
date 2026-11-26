@@ -198,12 +198,6 @@ def test_reader_reads_sequentially_under_preserve_order(tmp_path, monkeypatch):
     assert [row["line"] for row in rows] == ["0", "1", "2"]
 
 
-if __name__ == "__main__":
-    import sys
-
-    sys.exit(pytest.main(["-v", __file__]))
-
-
 def test_datasource_may_leave_the_schema_to_the_first_block(tmp_path):
     path = _write(tmp_path / "year=2024" / "a.txt", "a\n")
     datasource = LineDatasource(
@@ -253,3 +247,9 @@ def test_scanner_prunes_by_field_types_without_a_schema(tmp_path):
 
     assert pruned.paths.tolist() == [str(kept)]
     assert rows == [{"line": "a", "year": 2024}]
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
