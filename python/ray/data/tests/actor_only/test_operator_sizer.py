@@ -273,6 +273,10 @@ class _FakePool:
     def max_actor_concurrency(self):
         return self.concurrency
 
+    def get_resource_requests(self):
+        # One shape per actor, as the real pool records at creation.
+        return [{"CPU": 1, "GPU": 1}] * self.total_size()
+
 
 class _FakeOp(ExperimentalActorPoolMapOperator):
     """An actor-pool operator double exposing only what the sizer reads.
@@ -319,6 +323,8 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         self._placement_constraint = None
         self._data_context = DataContext.get_current()
         self._pool = pool
+        # Read by the real ``get_resource_requests``.
+        self._actor_pool = pool
         self._node = node
         self._completed = completed
         self._throttling_disabled = throttling_disabled
@@ -1347,6 +1353,55 @@ def _pg_op(name, pg, *, bundle_index=None, inputs=(), **pool_kwargs) -> _FakeOp:
         placement_group=cast(Any, pg), placement_group_bundle_index=bundle_index
     )
     return op
+
+
+@pytest.mark.parametrize(
+    "running,pending,awaiting_first_input,expected_requests",
+    [
+        # Autoscale from zero: no actor exists, so the min-size shapes are the
+        # only GPU demand the cluster autoscaler sees.
+        pytest.param(0, 0, False, 2, id="no-actors"),
+        pytest.param(1, 0, False, 2, id="one-running"),
+        pytest.param(0, 1, False, 2, id="one-pending"),
+        pytest.param(3, 0, False, 3, id="above-min"),
+        # An op held until its first input still asks for its min size.
+        pytest.param(0, 0, True, 2, id="held"),
+    ],
+)
+def test_resource_requests_cover_the_min_size(
+    running, pending, awaiting_first_input, expected_requests
+):
+    """multi_stage_batch_inference hung on a cluster with no GPU node: the
+    sizer found no room for the GPU op's actors, so it created none, and the
+    cluster autoscaler never saw any GPU demand."""
+    infer = _FakeOp(
+        "infer",
+        _FakePool(
+            min_size=2, max_size=8, cpu=1, gpu=1, running=running, pending=pending
+        ),
+        node=None,
+        ray_remote_args={"num_cpus": 1, "num_gpus": 1},
+        awaiting_first_input=awaiting_first_input,
+    )
+
+    assert infer.get_resource_requests() == [{"CPU": 1, "GPU": 1}] * expected_requests
+
+
+def test_completed_op_requests_only_its_actors():
+    infer = _FakeOp(
+        "infer",
+        _FakePool(min_size=2, max_size=8, cpu=1, gpu=1, running=1),
+        ray_remote_args={"num_cpus": 1, "num_gpus": 1},
+        completed=True,
+    )
+
+    assert infer.get_resource_requests() == [{"CPU": 1, "GPU": 1}]
+
+
+def test_pg_managed_op_requests_only_its_actors():
+    op = _pg_op("infer", _FakePG("pg1"), min_size=2, gpu=1)
+
+    assert op.get_resource_requests() == []
 
 
 def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
