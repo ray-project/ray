@@ -269,6 +269,15 @@ def _stub_table(
             None,
             "",
         ),
+        (
+            _stub_table(
+                reader_version=3,
+                reader_features=["typeWidening", "typeWidening-preview"],
+            ),
+            False,
+            None,
+            "",
+        ),
         # Only the unsupported features are named.
         (
             _stub_table(

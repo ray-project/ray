@@ -94,8 +94,21 @@ _SUPPORTED_COLUMN_MAPPING_MODES = frozenset({"none", "name", "id"})
 #
 # `deletionVectors`: the listing loads each file's deleted row positions from
 # the deletion vectors, and the reader drops those rows.
+#
+# `typeWidening` (and its preview name): a column's type was widened, such as
+# int to long or float to double, without rewriting the files written before,
+# which keep the narrower type. The reader scans every file with the table
+# schema pinned, which casts their columns to the wider type, and applies a
+# filter on a column whose file type differs after that cast.
 _SUPPORTED_READER_FEATURES = frozenset(
-    {"timestampNtz", "columnMapping", "v2Checkpoint", "deletionVectors"}
+    {
+        "timestampNtz",
+        "columnMapping",
+        "v2Checkpoint",
+        "deletionVectors",
+        "typeWidening",
+        "typeWidening-preview",
+    }
 )
 
 # PyArrow scan options that only tune how the V1 reader read; the V2 reader
