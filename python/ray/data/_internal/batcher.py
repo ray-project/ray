@@ -2,7 +2,7 @@ import copy
 import logging
 import warnings
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Set, Tuple
+from typing import Callable, Dict, Optional, Set, Tuple
 
 import numpy as np
 import pyarrow as pa
@@ -207,19 +207,28 @@ class Batcher(BatcherInterface):
     # zero-copy views, we sacrifice what should be a small performance hit for better
     # readability.
 
-    def __init__(self, batch_size: Optional[int], ensure_copy: bool = False):
+    def __init__(
+        self,
+        batch_size: Optional[int],
+        ensure_copy: bool = False,
+        skip_copy: Optional[Callable[[Block], bool]] = None,
+    ):
         """Construct a batcher that yields batches of batch_sizes rows.
 
         Args:
             batch_size: The size of batches to yield.
             ensure_copy: Whether batches are always copied from the underlying base
                 blocks (not zero-copy views).
+            skip_copy: Called on each batch when ``ensure_copy`` is set. If it
+                returns True, the batch isn't copied, because the caller makes
+                its own full copy later.
         """
         self._batch_size = batch_size
         self._buffer = []
         self._buffer_size = 0
         self._done_adding = False
         self._ensure_copy = ensure_copy
+        self._skip_copy = skip_copy
 
     def add(self, block: Block):
         """Add a block to the block buffer.
@@ -259,7 +268,7 @@ class Batcher(BatcherInterface):
         if self._batch_size is None:
             assert len(self._buffer) == 1
             block = self._buffer[0]
-            if needs_copy:
+            if needs_copy and not self._caller_copies(block):
                 # Copy block if needing to ensure fresh batch copy.
                 block = BlockAccessor.for_block(block)
                 block = block.slice(0, block.num_rows(), copy=True)
@@ -301,11 +310,14 @@ class Batcher(BatcherInterface):
         self._buffer_size -= self._batch_size
         needs_copy = needs_copy and not output.will_build_yield_copy()
         batch = output.build()
-        if needs_copy:
+        if needs_copy and not self._caller_copies(batch):
             # Need to ensure that the batch is a fresh copy.
             batch = BlockAccessor.for_block(batch)
             batch = batch.slice(0, batch.num_rows(), copy=True)
         return batch
+
+    def _caller_copies(self, batch: Block) -> bool:
+        return self._skip_copy is not None and self._skip_copy(batch)
 
 
 class ShufflingBatcher(BatcherInterface):

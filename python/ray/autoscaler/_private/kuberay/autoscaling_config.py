@@ -14,6 +14,7 @@ from ray.autoscaler._private.constants import (
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
     FOREGROUND_NODE_LAUNCH_KEY,
+    PENDING_NODE_IDLE_TERMINATION_GATED_KEY,
     WORKER_LIVENESS_CHECK_KEY,
 )
 from ray.autoscaler._private.kuberay import node_provider, utils
@@ -29,6 +30,9 @@ UPSCALING_KEY = "upscalingMode"
 UPSCALING_VALUE_AGGRESSIVE = "Aggressive"
 UPSCALING_VALUE_DEFAULT = "Default"
 UPSCALING_VALUE_CONSERVATIVE = "Conservative"
+# KubeRay labels a RayCluster with the kind of the custom resource that created it.
+ORIGINATED_FROM_CRD_LABEL = "ray.io/originated-from-crd"
+ORIGINATED_FROM_CRD_VALUE_RAYJOB = "RayJob"
 
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
@@ -91,6 +95,15 @@ class AutoscalingConfigProducer:
 
 def _derive_autoscaling_config_from_ray_cr(ray_cr: Dict[str, Any]) -> Dict[str, Any]:
     provider_config = _generate_provider_config(ray_cr["metadata"]["namespace"])
+    # KubeRay's RayJob controller submits the job only after the RayCluster is
+    # ready, so no resource demands need the pending worker Pods until then.
+    labels = ray_cr["metadata"].get("labels") or {}
+    state = (ray_cr.get("status") or {}).get("state")
+    if (
+        labels.get(ORIGINATED_FROM_CRD_LABEL) == ORIGINATED_FROM_CRD_VALUE_RAYJOB
+        and state != "ready"
+    ):
+        provider_config[PENDING_NODE_IDLE_TERMINATION_GATED_KEY] = True
 
     available_node_types = _generate_available_node_types_from_ray_cr_spec(
         ray_cr["spec"]
