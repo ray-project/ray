@@ -2,7 +2,6 @@ import contextlib
 import copy
 import enum
 import importlib
-import json
 import logging
 import os
 import threading
@@ -10,7 +9,7 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
-from ray._common.utils import env_bool, env_float, env_integer
+from ray._common.utils import env_bool, env_float, env_integer, env_tuple
 from ray._private.worker import global_worker
 from ray.data._internal.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
@@ -270,21 +269,6 @@ DEFAULT_ENFORCE_SCHEMAS = env_bool("RAY_DATA_ENFORCE_SCHEMAS", False)
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
-def _env_retry_errors(name: str, default: tuple[str, ...]) -> tuple[str, ...]:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    try:
-        errors = json.loads(value)
-    except json.JSONDecodeError:
-        raise ValueError(f"`{name}` must be a JSON array of strings.") from None
-    if not isinstance(errors, list) or not all(
-        isinstance(error, str) for error in errors
-    ):
-        raise ValueError(f"`{name}` must be a JSON array of strings.")
-    return tuple(errors)
-
-
 # `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
 # shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
@@ -294,7 +278,7 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error UNKNOWN (HTTP status 503)",
 )
 
-DEFAULT_RETRIED_IO_ERRORS = _env_retry_errors(
+DEFAULT_RETRIED_IO_ERRORS = env_tuple(
     "RAY_DATA_RETRIED_IO_ERRORS",
     (
         "AWS Error INTERNAL_FAILURE",

@@ -3,6 +3,7 @@ import binascii
 import errno
 import importlib
 import inspect
+import json
 import logging
 import os
 import random
@@ -60,6 +61,30 @@ def env_bool(key, default):
         val = os.environ[key].lower()
         return val == "true" or val == "1"
     return default
+
+
+def env_tuple(key: str, default: Tuple[str, ...]) -> Tuple[str, ...]:
+    """Read a tuple of strings from a JSON array environment variable.
+
+    Args:
+        key: The environment variable name.
+        default: The value returned when the variable is unset.
+
+    Returns:
+        The parsed strings. An empty JSON array yields an empty tuple.
+
+    Raises:
+        ValueError: If the value is not a JSON array of strings.
+    """
+    if key not in os.environ:
+        return default
+    try:
+        value = json.loads(os.environ[key])
+    except json.JSONDecodeError:
+        raise ValueError(f"`{key}` must be a JSON array of strings.") from None
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise ValueError(f"`{key}` must be a JSON array of strings.")
+    return tuple(value)
 
 
 def import_module_and_attr(

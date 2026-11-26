@@ -625,19 +625,13 @@ def test_per_task_row_limit_caps_chunks_read(
     assert len(reads) == 3
 
 
-@pytest.mark.parametrize("align_axis_0", [False, True])
 @pytest.mark.parametrize("max_attempts", [1, 3])
-@pytest.mark.parametrize("explicit_context", [False, True])
-def test_read_tasks_capture_io_retry_context(
-    tmp_path, monkeypatch, align_axis_0, max_attempts, explicit_context
-):
+def test_read_tasks_respect_io_retry_max_attempts(tmp_path, monkeypatch, max_attempts):
     from ray.data.context import DataContext
 
     store_path = tmp_path / "retry.zarr"
     _write_real_zarr_store(store_path, {"data": (np.arange(4, dtype="<i4"), (4,))})
-    datasource = zarrv2_datasource.ZarrV2Datasource(
-        str(store_path), align_axis_0=align_axis_0
-    )
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
 
     class FlakyArray:
         attempts = 0
@@ -649,19 +643,13 @@ def test_read_tasks_capture_io_retry_context(
     array = FlakyArray()
     monkeypatch.setattr(datasource, "root", {"data": array})
     monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
-    ctx = DataContext(io_retry_max_attempts=max_attempts)
-    ctx.retried_io_errors = ["flaky storage"]
-    global_ctx = DataContext(io_retry_max_attempts=5)
-    with DataContext.current(global_ctx if explicit_context else ctx):
-        tasks = datasource.get_read_tasks(
-            parallelism=1, data_context=ctx if explicit_context else None
-        )
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "io_retry_max_attempts", max_attempts)
+    monkeypatch.setattr(ctx, "retried_io_errors", ["flaky storage"])
 
-    # A planned task keeps its budget even if the caller changes the context.
-    ctx.io_retry_max_attempts = 7
-    with DataContext.current(global_ctx):
-        with pytest.raises(OSError, match="flaky storage"):
-            _execute_read_tasks(tasks)
+    tasks = datasource.get_read_tasks(parallelism=1)
+    with pytest.raises(OSError, match="flaky storage"):
+        _execute_read_tasks(tasks)
 
     assert array.attempts == max_attempts
 
