@@ -29,10 +29,8 @@ from google.cloud import storage
 
 import ray
 from ray.autoscaler._private.aws.config import RAY
-from ray.autoscaler._private.util import fillout_defaults
+from ray.autoscaler._private.util import RAY_INSTALL_COMMAND_PREFIX, fillout_defaults
 
-# How the provider's default setup command that installs Ray starts.
-RAY_INSTALL_COMMAND_PREFIX = "which ray ||"
 # Where this job's Ray wheel goes on each node, relative to the home directory.
 REMOTE_WHEEL_DIR = "release_test_ray_wheel"
 # Where a node gets a virtualenv of this job's Python version when its own
@@ -89,7 +87,7 @@ def check_arguments():
     args = parser.parse_args()
 
     # The latest image holds the last Ray release, not the Ray under test that
-    # runs `ray up`, and a node with another Ray version rejects its token.
+    # runs `ray up`, and `ray up` refuses a node with another Ray version.
     if args.docker_override.startswith("latest") and not args.wheel_override:
         parser.error(
             f"--docker-override {args.docker_override} needs --wheel-override, "

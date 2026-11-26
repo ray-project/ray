@@ -13,6 +13,8 @@ from io import StringIO
 from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from packaging.version import InvalidVersion, Version
+
 import ray
 import ray._private.services as services
 from ray._common.utils import PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME
@@ -279,8 +281,56 @@ def translate_trivial_legacy_config(config: Dict[str, Any]):
             del config[field]
 
 
+# How the default setup command that installs Ray starts. It must match that
+# command in the aws, gcp and azure defaults.yaml.
+RAY_INSTALL_COMMAND_PREFIX = "which ray ||"
+
+# Printed when the default setup command can't install this Ray's version, as
+# pip's own error doesn't say why that version was asked for. The command runs
+# through several layers of shell quoting, so the message holds no quotes,
+# backticks or dollar signs.
+_RAY_INSTALL_ERROR = (
+    "Ray install error: pip could not install Ray {version}, the version of "
+    "the Ray that runs ray up. If that version is not on the package index "
+    "this node uses (PyPI by default), install it with a Docker image or with "
+    "setup_commands in the cluster YAML."
+)
+
+
+def _install_local_ray_version(defaults: Dict[str, Any]) -> None:
+    """Make the default setup commands of a provider install this Ray's
+    version on a node that has no Ray.
+
+    The providers' defaults.yaml install the nightly wheel, which only a dev
+    build of Ray matches, and `ray up` fails on a head node with another Ray
+    minor version. A released Ray installs its own version instead, and if
+    pip can't install it, prints why that version was asked for and how to
+    install it otherwise, and fails. Setup commands from the cluster YAML
+    replace the defaults and aren't changed.
+    """
+    try:
+        version = Version(ray.__version__)
+    except InvalidVersion:
+        return
+    if version.is_devrelease or not defaults.get("setup_commands"):
+        return
+    # A valid version holds no characters that the shell quoting would need
+    # to escape.
+    error = _RAY_INSTALL_ERROR.format(version=ray.__version__)
+    install = (
+        f"{RAY_INSTALL_COMMAND_PREFIX} "
+        f'pip install -U "ray[default]=={ray.__version__}" '
+        f"|| {{ echo '{error}'; false; }}"
+    )
+    defaults["setup_commands"] = [
+        install if cmd.startswith(RAY_INSTALL_COMMAND_PREFIX) else cmd
+        for cmd in defaults["setup_commands"]
+    ]
+
+
 def fillout_defaults(config: Dict[str, Any]) -> Dict[str, Any]:
     defaults = _get_default_config(config["provider"])
+    _install_local_ray_version(defaults)
     defaults.update(config)
 
     # Just for clarity:

@@ -951,6 +951,7 @@ def get_or_create_head_node(
             docker_config=config.get("docker"),
             restart_only=restart_only,
             auth_mode=config.get("auth_mode"),
+            expected_ray_version=ray.__version__,
         )
         updater.start()
         updater.join()
