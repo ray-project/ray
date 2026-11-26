@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 from typing import TYPE_CHECKING, AbstractSet, Any, Iterable, Iterator, List, Optional
 
@@ -167,6 +168,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._coalesce_bytes = coalesce_bytes
         self._partitioning = partitioning
         self._logical_schema = logical_schema
+        self._read_schema: Optional[pa.Schema] = None
         # Coalesce target used instead of ``coalesce_bytes`` (when larger) for a
         # row-group shuffle, so the shuffle unit is a ~chunk-sized run rather
         # than a single, possibly tiny, row group.
@@ -210,6 +212,11 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._max_inflight_batches = (
             _inflight if _inflight is not None else self._num_actors * 2
         )
+
+    def with_read_schema(self, schema: pa.Schema) -> "FooterFileIndexer":
+        indexer = copy.copy(self)
+        indexer._read_schema = schema
+        return indexer
 
     def list_files(
         self,
@@ -327,6 +334,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             partitioning=self._partitioning,
             partition_pruner=partition_pruner,
             logical_schema=self._logical_schema,
+            read_schema=self._read_schema,
         ) as pool:
             manifests = self._read_footers(pool, file_infos, limit)
             if shuffle_row_groups:

@@ -28,6 +28,7 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
 from ray.data._internal.datasource_v2.common.pushdown_utils import (
     _split_predicate_by_columns,
     combine_predicates,
+    has_column_arithmetic,
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils import (
     _row_group_unit_id,
@@ -45,7 +46,11 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.util.expression_utils import division_column_names
+from ray.data.expressions import Operation
+from ray.data.util.expression_utils import (
+    combine_predicate_chain,
+    flatten_predicate_chain,
+)
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc
@@ -84,6 +89,18 @@ def _leaf_matches(leaf_path: str, names: set[str]) -> bool:
 # also carries decimals and UUIDs, so they are only identifiable by logical type.
 _FLOAT_PHYSICAL_TYPES = frozenset({"FLOAT", "DOUBLE"})
 _FLOAT16_LOGICAL_TYPE = "FLOAT16"
+
+
+def _is_stored_as_read(
+    expr: "Expr", physical_schema: pa.Schema, read_schema: pa.Schema
+) -> bool:
+    """Whether the file stores every column of ``expr`` at the read's type."""
+    return all(
+        physical_schema.get_field_index(name) != -1
+        and read_schema.get_field_index(name) != -1
+        and physical_schema.field(name).type == read_schema.field(name).type
+        for name in get_column_references(expr)
+    )
 
 
 def _is_float_leaf(column: ColumnSchema) -> bool:
@@ -131,6 +148,7 @@ class FooterReader:
         partitioning: Partitioning | None = None,
         partition_pruner: PartitionPredicatePruner | None = None,
         logical_schema: pa.Schema | None = None,
+        read_schema: pa.Schema | None = None,
     ):
         from ray.data.context import DEFAULT_RETRIED_IO_ERRORS
 
@@ -157,6 +175,10 @@ class FooterReader:
         self.logical_schema = (
             partition_pruner.schema if partition_pruner is not None else logical_schema
         )
+        # The column types the read computes arithmetic with.
+        self._read_schema = (
+            self.logical_schema if self.logical_schema is not None else read_schema
+        )
         self._predicate = combine_predicates(
             filter_expr,
             partition_pruner.predicate if partition_pruner is not None else None,
@@ -176,6 +198,11 @@ class FooterReader:
         # pruning. ``None`` means "no predicate" -> keep every row group.
         self.filter: "pc.Expression" | None = (
             filter_expr.to_pyarrow() if filter_expr is not None else None
+        )
+        # Arithmetic depends on the column types, so ``_filter_for_file``
+        # builds it per file instead of using ``filter``.
+        self._has_arithmetic = filter_expr is not None and has_column_arithmetic(
+            expr=filter_expr
         )
         # Top-level columns the predicate reads. A row group whose value in any
         # of them may be a null or a NaN cannot be an exact-survivor count --
@@ -269,7 +296,9 @@ class FooterReader:
     ) -> tuple[pc.Expression | None, set[str], bool]:
         """Select safe physical conditions and whether they cover the full filter."""
         if self._predicate is None or (
-            self.partitioning is None and self.logical_schema is None
+            self.partitioning is None
+            and self.logical_schema is None
+            and not self._has_arithmetic
         ):
             return self.filter, self.filter_columns, True
         values = (
@@ -295,22 +324,49 @@ class FooterReader:
                 )
         physical = split.data_predicate
         logical_schema = self.logical_schema
-        if physical is not None:
-            # A root file's partition filter with ``/`` reaches here; PyArrow
-            # would truncate integer division.
-            unsafe = division_column_names(predicate=physical)
-            if logical_schema is not None:
-                physical_schema = schema.to_arrow_schema()
-                unsafe |= {
-                    name
-                    for name in get_column_references(physical)
-                    if physical_schema.get_field_index(name) != -1
-                    and (
-                        logical_schema.get_field_index(name) == -1
-                        or physical_schema.field(name).type
-                        != logical_schema.field(name).type
+        read_schema = self._read_schema
+        physical_schema = (
+            schema.to_arrow_schema()
+            if logical_schema is not None
+            or (self._has_arithmetic and read_schema is not None)
+            else None
+        )
+        if physical is not None and self._has_arithmetic:
+            # Arithmetic prunes a file only when the file stores the columns at
+            # the types the read computes with: a wider read changes the result.
+            conjuncts = list(flatten_predicate_chain(physical, Operation.AND))
+            typed = [
+                conjunct
+                for conjunct in conjuncts
+                if not has_column_arithmetic(expr=conjunct)
+                or (
+                    physical_schema is not None
+                    and read_schema is not None
+                    and _is_stored_as_read(
+                        expr=conjunct,
+                        physical_schema=physical_schema,
+                        read_schema=read_schema,
                     )
-                }
+                    and conjunct._is_pyarrow_convertible(schema=physical_schema)
+                )
+            ]
+            complete = complete and len(typed) == len(conjuncts)
+            physical = combine_predicate_chain(typed, Operation.AND)
+        if (
+            physical is not None
+            and logical_schema is not None
+            and physical_schema is not None
+        ):
+            unsafe = {
+                name
+                for name in get_column_references(physical)
+                if physical_schema.get_field_index(name) != -1
+                and (
+                    logical_schema.get_field_index(name) == -1
+                    or physical_schema.field(name).type
+                    != logical_schema.field(name).type
+                )
+            }
             if unsafe:
                 safe = _split_predicate_by_columns(physical, unsafe)
                 physical = safe.data_predicate
@@ -318,7 +374,9 @@ class FooterReader:
         if physical is None:
             return None, set(), complete
         expression = (
-            self.filter if physical is self._predicate else physical.to_pyarrow()
+            self.filter
+            if physical is self._predicate and not self._has_arithmetic
+            else physical.to_pyarrow(schema=physical_schema)
         )
         return expression, set(get_column_references(physical)), complete
 

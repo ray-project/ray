@@ -131,22 +131,34 @@ def test_pushed_filter_matches_in_memory_filter(
     assert [row["id"] for row in pushed] == [row["id"] for row in in_memory]
 
 
+_ARITHMETIC = {
+    "+": operator.add,
+    "-": operator.sub,
+    "*": operator.mul,
+    "/": operator.truediv,
+    "//": operator.floordiv,
+    "%": operator.mod,
+}
+
+
 @st.composite
-def _division_filter_case(draw):
-    """Rows of a data column ``x`` and a partition ``p``, and filters dividing them."""
+def _arithmetic_filter_case(draw):
+    """Rows of an int8 column ``x`` and a partition ``p``, and arithmetic filters."""
     size = draw(st.integers(1, 6))
     rows = {
-        name: draw(st.lists(st.integers(-7, 7), min_size=size, max_size=size))
+        name: draw(st.lists(st.integers(-100, 100), min_size=size, max_size=size))
         for name in ("x", "p")
     }
     conjuncts = []
     for _ in range(draw(st.integers(1, 2))):
         name = draw(st.sampled_from(["x", "p"]))
-        divisor = draw(st.sampled_from([2, -2, 0.5]))
+        operation = _ARITHMETIC[draw(st.sampled_from(list(_ARITHMETIC)))]
+        # 100 takes ``x`` past int8; 0.5 makes the result a float.
+        number = draw(st.sampled_from([2, -3, 100, 0.5]))
         compare = draw(st.sampled_from([operator.eq, operator.lt, operator.ge]))
-        # A row's own quotient, so truncating an odd value flips that row.
-        threshold = draw(st.sampled_from(rows[name])) / divisor
-        conjuncts.append(compare(col(name) / divisor, threshold))
+        # A row's own result, so a wrapped or truncated value flips that row.
+        threshold = operation(draw(st.sampled_from(rows[name])), number)
+        conjuncts.append(compare(operation(col(name), number), threshold))
     return rows, functools.reduce(operator.and_, conjuncts)
 
 
@@ -155,15 +167,18 @@ def _division_filter_case(draw):
     [("parquet", False), ("parquet", True), ("orc", True)],
 )
 @settings(
-    max_examples=15,
+    max_examples=25,
     derandomize=True,
     deadline=None,
     suppress_health_check=[HealthCheck.function_scoped_fixture],
 )
-@given(case=_division_filter_case())
+@given(case=_arithmetic_filter_case())
 # A root file stores p=7, which PyArrow's truncating 7 / 2 would drop.
 @example(case=({"x": [1], "p": [7]}, (col("p") / 2) == 3.5))
-def test_division_filter_matches_in_memory_filter(
+# PyArrow alone wraps int8 100 + 100 to -56 and truncates -7 // 2 to -3.
+@example(case=({"x": [100], "p": [0]}, (col("x") + 100) == 200))
+@example(case=({"x": [-7], "p": [0]}, (col("x") // 2) == -4))
+def test_arithmetic_filter_matches_in_memory_filter(
     ray_start_regular_shared,
     tmp_path,
     monkeypatch,
@@ -171,7 +186,7 @@ def test_division_filter_matches_in_memory_filter(
     use_datasource_v2,
     case,
 ):
-    """A pushed ``/`` filter keeps Ray's rows, and V2 prunes partitions with it."""
+    """A V2 read takes the whole arithmetic filter and keeps Ray's rows."""
     rows, predicate = case
     monkeypatch.setattr(
         ray.data.DataContext.get_current(), "use_datasource_v2", use_datasource_v2
@@ -181,12 +196,17 @@ def test_division_filter_matches_in_memory_filter(
     for value in set(rows["p"]):
         os.makedirs(f"{root}/p={value}")
         x = [x for x, p in zip(rows["x"], rows["p"]) if p == value]
-        write(pa.table({"x": x}), f"{root}/p={value}/data.{file_format}")
+        write(pa.table({"x": pa.array(x, pa.int8())}), f"{root}/p={value}/data")
     if file_format == "parquet" and use_datasource_v2:
         # A root file stores ``p`` itself, so the reader applies the ``p`` filter.
-        write(pa.table(rows), f"{root}/root.parquet")
+        root_rows = {"x": pa.array(rows["x"], pa.int8()), "p": rows["p"]}
+        write(pa.table(root_rows), f"{root}/root")
     read = ray.data.read_parquet if file_format == "parquet" else ray.data.read_orc
-    ds = read(root, partitioning=Partitioning("hive", field_types={"p": int}))
+    ds = read(
+        root,
+        partitioning=Partitioning("hive", field_types={"p": int}),
+        file_extensions=None,
+    )
 
     pushed = ds.filter(expr=predicate)
     in_memory = ds.materialize().filter(expr=predicate)
@@ -194,8 +214,217 @@ def test_division_filter_matches_in_memory_filter(
         (row["x"], row["p"]) for row in in_memory.take_all()
     )
     keeps_filter = "Filter" in _get_optimized_plan(pushed)
-    data_filter = "x" in get_column_references(predicate)
-    assert keeps_filter == (data_filter or not use_datasource_v2)
+    assert keeps_filter == (not use_datasource_v2)
+
+
+@pytest.mark.parametrize(
+    "table,predicate,error",
+    [
+        # 5 // 0 raises.
+        (
+            pa.table({"n": [-6, 5], "m": [2, 0]}),
+            (col("n") // col("m")) == -3,
+            "divide by zero",
+        ),
+        # 2**53 + 4 has no exact float64.
+        (
+            pa.table({"n": [2**53 + 4, 2**53 + 5, 7]}),
+            (col("n") // 3) == (2**53 + 4) // 3,
+            None,
+        ),
+        # The pushed read keeps float32, as the in-memory filter does.
+        (
+            pa.table(
+                {
+                    "n": pa.array([-0.3, 0.25], pa.float32()),
+                    "m": pa.array([0.1, 0.1], pa.float32()),
+                }
+            ),
+            (col("n") % col("m")) > 0.05,
+            None,
+        ),
+    ],
+    ids=["zero_divisor", "beyond_float64", "float32_mod"],
+)
+def test_floordiv_mod_filter_matches_in_memory_filter(
+    ray_start_regular_shared, tmp_path, monkeypatch, table, predicate, error
+):
+    """An ORC read takes ``//`` and ``%`` filters and keeps Ray's rows or error."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    path = str(tmp_path / "data.orc")
+    orc.write_table(table, path)
+    pushed = ray.data.read_orc(path).filter(expr=predicate)
+    in_memory = ray.data.from_arrow(table).filter(expr=predicate)
+
+    assert "Filter" not in _get_optimized_plan(pushed)
+    if error:
+        for ds in (pushed, in_memory):
+            with pytest.raises(Exception, match=error):
+                ds.take_all()
+    else:
+        assert sorted(row["n"] for row in pushed.take_all()) == sorted(
+            row["n"] for row in in_memory.take_all()
+        )
+
+
+@settings(
+    max_examples=15,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(
+    symbol=st.sampled_from(["+", "-", "*"]),
+    narrow=st.integers(-100, 100),
+    wide=st.integers(-100, 100),
+)
+# int8 100 * 100 wraps to 16, but the read widens ``x`` to int64 first.
+@example(symbol="*", narrow=100, wide=100)
+def test_arithmetic_filter_on_files_of_different_widths(
+    ray_start_regular_shared, tmp_path, monkeypatch, symbol, narrow, wide
+):
+    """A file's own integer width doesn't decide a pushed filter."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    root = tempfile.mkdtemp(dir=tmp_path)
+    for name, value, width in (
+        ("narrow", narrow, pa.int8()),
+        ("wide", wide, pa.int64()),
+    ):
+        pq.write_table(pa.table({"x": pa.array([value], width)}), f"{root}/{name}")
+    operation = _ARITHMETIC[symbol]
+    predicate = operation(col("x"), col("x")) == operation(narrow, narrow)
+    ds = ray.data.read_parquet(root, file_extensions=None)
+
+    pushed = ds.filter(expr=predicate)
+    in_memory = ds.materialize().filter(expr=predicate)
+    assert sorted(row["x"] for row in pushed.take_all()) == sorted(
+        row["x"] for row in in_memory.take_all()
+    )
+
+
+def test_arithmetic_filter_skips_files_without_a_user_schema(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    """Listing gets the inferred read schema, so arithmetic skips files."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    for value in (1, 100):
+        pq.write_table(
+            pa.table({"x": pa.array([value], pa.int8())}),
+            tmp_path / f"{value}.parquet",
+        )
+    ds = ray.data.read_parquet(str(tmp_path)).filter(expr=(col("x") + 100) == 200)
+
+    optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
+    (list_files,) = get_operators_of_type(optimized_plan, ListFiles)
+    listed = list_files.file_indexer.list_files(
+        pa.array(list_files.paths),
+        filesystem=list_files.filesystem,
+        predicate=list_files.predicate,
+    )
+
+    assert sum(len(manifest) for manifest in listed) == 1
+    assert ds.take_all() == [{"x": 100}]
+
+
+_COMPARISONS = {
+    "<": operator.lt,
+    "<=": operator.le,
+    ">": operator.gt,
+    ">=": operator.ge,
+    "==": operator.eq,
+    "!=": operator.ne,
+}
+# NaN and signed zeros are what Parquet min/max statistics hide.
+_FLOAT_VALUES = [float("nan"), 0.0, -0.0, 1.0, -1.0, 2.0, 0.5, float("inf"), None]
+
+
+@st.composite
+def _float_arithmetic_filter_case(draw):
+    """Rows of floats ``f``, ``g`` and an int ``i``, a filter, and whether it is pushed."""
+    size = draw(st.integers(1, 4))
+    floats = st.lists(st.sampled_from(_FLOAT_VALUES), min_size=size, max_size=size)
+    ints = st.lists(st.sampled_from([0, 1, -2, None]), min_size=size, max_size=size)
+    rows = {"f": draw(floats), "g": draw(floats), "i": draw(ints)}
+    symbol = draw(st.sampled_from(list(_ARITHMETIC)))
+    other = draw(st.sampled_from(["f", "g", "i", 0.0, 1, 2.0, -1.5]))
+    operands = [
+        col(draw(st.sampled_from(["f", "g"]))),
+        col(other) if isinstance(other, str) else lit(other),
+    ]
+    float_column_first = draw(st.booleans())
+    if not float_column_first:
+        operands.reverse()
+    # A float divisor tells -0.0 from 0.0, which the statistics don't.
+    float_divisor = symbol in ("/", "//", "%") and (
+        not float_column_first or other in ("f", "g")
+    )
+    comparison = draw(st.sampled_from(list(_COMPARISONS)))
+    threshold = draw(st.sampled_from([0.0, 1.0, 3, col("g")]))
+    predicate = _COMPARISONS[comparison](_ARITHMETIC[symbol](*operands), threshold)
+    return rows, predicate, not float_divisor and comparison != "!="
+
+
+@settings(
+    max_examples=60,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(case=_float_arithmetic_filter_case(), row_group_size=st.integers(1, 3))
+# The statistics of [2.0, NaN] say 2.0 only, and 2.0 + 1 != 3 would skip the NaN row.
+@example(
+    case=(
+        {"f": [2.0, float("nan")], "g": [1.0, 1.0], "i": [1, 1]},
+        (col("f") + 1) != 3,
+        False,
+    ),
+    row_group_size=2,
+)
+# The statistics of [0.0, -0.0] say -0.0 only, and 1 / -0.0 is -inf.
+@example(
+    case=(
+        {"f": [0.0, -0.0], "g": [1.0, 1.0], "i": [1, 1]},
+        (lit(1) / col("f")) > 0,
+        False,
+    ),
+    row_group_size=2,
+)
+@example(
+    case=({"f": [0.0], "g": [1.0], "i": [1]}, col("f").power(-1) > 0, False),
+    row_group_size=1,
+)
+@example(
+    case=(
+        {"f": [2.0, float("nan")], "g": [1.0, 1.0], "i": [1, 1]},
+        (col("f") + 1) == 3,
+        True,
+    ),
+    row_group_size=2,
+)
+def test_float_arithmetic_filter_matches_in_memory_filter(
+    ray_start_regular_shared, tmp_path, monkeypatch, case, row_group_size
+):
+    """Float arithmetic is pushed only where skipping row groups keeps Ray's rows."""
+    rows, predicate, is_pushed = case
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    root = tempfile.mkdtemp(dir=tmp_path)
+    table = pa.table(
+        {
+            "f": pa.array(rows["f"], pa.float64()),
+            "g": pa.array(rows["g"], pa.float32()),
+            "i": pa.array(rows["i"], pa.int32()),
+            "row": list(range(len(rows["f"]))),
+        }
+    )
+    pq.write_table(table, f"{root}/data", row_group_size=row_group_size)
+    ds = ray.data.read_parquet(root, file_extensions=None)
+
+    pushed = ds.filter(expr=predicate)
+    in_memory = ds.materialize().filter(expr=predicate)
+    assert sorted(row["row"] for row in pushed.take_all()) == sorted(
+        row["row"] for row in in_memory.take_all()
+    )
+    assert ("Filter" in _get_optimized_plan(pushed)) == (not is_pushed)
 
 
 def test_division_filter_on_a_partition_skips_pruned_files(

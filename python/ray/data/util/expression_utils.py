@@ -1,16 +1,7 @@
 """Utility functions for expression-based operations."""
 
 import functools
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Hashable,
-    Iterable,
-    List,
-    Optional,
-    Set,
-)
+from typing import TYPE_CHECKING, Any, Callable, Hashable, Iterable, List, Optional
 
 if TYPE_CHECKING:
     from ray.data.expressions import (
@@ -298,18 +289,3 @@ def combine_predicate_chain(
     if not predicates:
         return None
     return functools.reduce(lambda left, right: BinaryExpr(op, left, right), predicates)
-
-
-def division_column_names(predicate: "Expr") -> Set[str]:
-    """Columns of the top-level ``AND`` conjuncts that use ``/``."""
-    from ray.data._internal.planner.plan_expression.expression_visitors import (
-        get_column_references,
-    )
-    from ray.data.expressions import Operation
-
-    return {
-        name
-        for conjunct in flatten_predicate_chain(predicate, Operation.AND)
-        if conjunct._has_division()
-        for name in get_column_references(conjunct)
-    }

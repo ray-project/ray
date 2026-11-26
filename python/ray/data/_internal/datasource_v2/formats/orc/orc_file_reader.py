@@ -214,12 +214,13 @@ class OrcFileReader(FileReader):
         scan_kwargs["columns"] = [
             name for name in required_columns if name not in partitions
         ]
-        # Start from the full predicate in scanner_kwargs. After splitting,
-        # only the data part belongs in PyArrow; other parts are handled separately.
-        if data_predicate is not self._predicate:
-            scan_kwargs["filter"] = (
-                data_predicate.to_pyarrow() if data_predicate is not None else None
-            )
+        # After splitting, only the data part belongs in PyArrow; other parts
+        # are handled separately. Typed with the schema this file scans with.
+        scan_kwargs["filter"] = (
+            data_predicate.to_pyarrow(schema=schema)
+            if data_predicate is not None
+            else None
+        )
         file_schema = pa.schema(
             [field for field in schema if field.name not in partitions]
         )
@@ -231,7 +232,9 @@ class OrcFileReader(FileReader):
         raise_on_pickle_object_columns(pa.Table.from_batches([], schema=decoded_schema))
         scanner = fragment.scanner(**scan_kwargs, schema=file_schema)
         residual_filter = (
-            residual_predicate.to_pyarrow() if residual_predicate is not None else None
+            residual_predicate.to_pyarrow(schema=schema)
+            if residual_predicate is not None
+            else None
         )
         for tagged in scanner.scan_batches():
             table = pa.Table.from_batches([tagged.record_batch])

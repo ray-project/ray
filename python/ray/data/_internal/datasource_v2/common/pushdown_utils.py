@@ -22,6 +22,7 @@ from ray.data.expressions import (
     Operation,
     PyArrowComputeUDFExpr,
     UnaryExpr,
+    _ARITHMETIC_OPERATIONS,
 )
 from ray.data.util.expression_utils import (
     combine_predicate_chain,
@@ -120,6 +121,8 @@ def append_unique_predicate(predicates: List[Expr], predicate: Expr) -> None:
 _STATISTICS_SAFE_FLOAT_COMPARISONS = frozenset(
     {Operation.LT, Operation.LE, Operation.GT, Operation.GE, Operation.EQ}
 )
+# A float divisor tells -0.0 from 0.0, which statistics don't: 1 / f is -inf or inf.
+_DIVISIONS = frozenset({Operation.DIV, Operation.FLOORDIV, Operation.MOD})
 
 
 def float_column_names(schema: pa.Schema) -> Set[str]:
@@ -132,8 +135,9 @@ def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool
 
     Parquet min/max statistics skip NaN and do not tell -0.0 from 0.0, so PyArrow
     can drop matching rows when it prunes on a float column. Only ``<``, ``<=``,
-    ``>``, ``>=``, ``==`` and null checks between a float column and a literal or
-    column are safe, plus ``is_in`` with no NaN or zero in its list.
+    ``>``, ``>=``, ``==`` and null checks are safe, plus ``is_in`` with no NaN or
+    zero in its list. A comparison's sides may be columns, literals, or
+    ``+ - * / // %`` over them with no float column in a divisor.
 
     TODO: Remove once PyArrow fixes NaN (apache/arrow#50807) and signed zero
     (apache/arrow#54915) in statistics.
@@ -150,7 +154,7 @@ def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool
     if isinstance(predicate, UnaryExpr):
         return _is_safe_float_unary(expr=predicate)
     if isinstance(predicate, BinaryExpr):
-        return _is_safe_float_binary(expr=predicate)
+        return _is_safe_float_binary(expr=predicate, float_columns=float_columns)
     return False
 
 
@@ -161,8 +165,23 @@ def _is_safe_float_unary(expr: UnaryExpr) -> bool:
     )
 
 
-def _is_safe_float_binary(expr: BinaryExpr) -> bool:
-    """Comparisons between columns and literals, or ``is_in`` without NaN or zero."""
+def _is_safe_float_term(expr: Expr, float_columns: AbstractSet[str]) -> bool:
+    """A column, a literal, or arithmetic over them with no float column in a divisor."""
+    if isinstance(expr, (ColumnExpr, LiteralExpr)):
+        return True
+    if not isinstance(expr, BinaryExpr) or expr.op not in _ARITHMETIC_OPERATIONS:
+        return False
+    if expr.op in _DIVISIONS and not float_columns.isdisjoint(
+        get_column_references(expr.right)
+    ):
+        return False
+    return _is_safe_float_term(
+        expr=expr.left, float_columns=float_columns
+    ) and _is_safe_float_term(expr=expr.right, float_columns=float_columns)
+
+
+def _is_safe_float_binary(expr: BinaryExpr, float_columns: AbstractSet[str]) -> bool:
+    """Comparisons between safe terms, or ``is_in`` without NaN or zero."""
     if (
         expr.op == Operation.IN
         and isinstance(expr.left, ColumnExpr)
@@ -174,32 +193,19 @@ def _is_safe_float_binary(expr: BinaryExpr) -> bool:
         return all(value == value and value != 0 for value in values)
     return (
         expr.op in _STATISTICS_SAFE_FLOAT_COMPARISONS
-        and isinstance(expr.left, (ColumnExpr, LiteralExpr))
-        and isinstance(expr.right, (ColumnExpr, LiteralExpr))
+        and _is_safe_float_term(expr=expr.left, float_columns=float_columns)
+        and _is_safe_float_term(expr=expr.right, float_columns=float_columns)
     )
-
-
-# Arithmetic operators whose result type PyArrow takes from the column.
-_ARITHMETIC_OPERATIONS = frozenset(
-    {
-        Operation.ADD,
-        Operation.SUB,
-        Operation.MUL,
-        Operation.DIV,
-        Operation.MOD,
-        Operation.FLOORDIV,
-    }
-)
 
 
 def has_column_arithmetic(expr: Expr) -> bool:
     """Whether ``expr`` does arithmetic on a column.
 
-    PyArrow evaluates a pushed filter's arithmetic in the column's type, so
-    int8 ``x + 100`` wraps to -56, while Ray's row filter widens it first.
+    Without a schema, PyArrow evaluates a pushed filter's arithmetic in the
+    column's type, so int8 ``x + 100`` wraps to -56, while Ray's row filter
+    widens it first. V2 file reads pass their schema to ``Expr.to_pyarrow()``;
+    V1 reads don't, so their arithmetic filters stay above the read.
     ``power`` is the only compute method that takes a second operand.
-
-    TODO: Remove once ``Expr.to_pyarrow()`` widens like Ray's row filter.
     """
     expr = expr._unalias()
     if isinstance(expr, BinaryExpr):
