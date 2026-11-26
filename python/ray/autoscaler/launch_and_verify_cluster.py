@@ -14,6 +14,7 @@ import glob
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -36,6 +37,11 @@ REMOTE_WHEEL_DIR = "release_test_ray_wheel"
 # Where a node gets a virtualenv of this job's Python version when its own
 # Python is another version, relative to the home directory.
 REMOTE_VENV_DIR = "release_test_venv"
+# How long printing the failure logs may take, so that a hung `ray exec` can't
+# keep the cluster from being torn down.
+FAILURE_LOGS_TIMEOUT_S = 300
+# Where Ray writes its logs on each node.
+RAY_LOGS_DIR = "/tmp/ray/session_latest/logs"
 
 
 def check_arguments():
@@ -63,13 +69,15 @@ def check_arguments():
     )
     parser.add_argument(
         "--docker-override",
-        choices=["disable", "latest", "latest-gpu", "nightly", "commit"],
+        choices=["disable", "latest", "latest-gpu", "nightly", "release"],
         default="disable",
         help=(
-            "Override the docker image used for the head node and worker nodes. "
-            "`latest` and `latest-gpu` use the last Ray release's CPU or GPU "
-            "image of this job's Python version, and need --wheel-override to "
-            "install the Ray under test on it."
+            "Override the docker image used for the head node and worker nodes "
+            "with a public image of this job's Python version. `latest` and "
+            "`latest-gpu` use the last Ray release's CPU or GPU image, and need "
+            "--wheel-override to install the Ray under test on it. `nightly` "
+            "uses the nightly image, which only a master build matches. "
+            "`release` uses the published image of this release commit."
         ),
     )
     parser.add_argument(
@@ -114,6 +122,9 @@ def python_image_tag() -> str:
 def get_docker_image(docker_override: str):
     """Get the docker image to use for the head node and worker nodes.
 
+    Every image has this job's Python version, so that the Ray wheel under
+    test installs on it.
+
     Args:
         docker_override: The value of the --docker-override flag.
 
@@ -121,21 +132,30 @@ def get_docker_image(docker_override: str):
         The docker image to use for the head node and worker nodes, or None if not
         applicable.
     """
+    py = python_image_tag()
     if docker_override == "latest":
-        return f"rayproject/ray:latest-{python_image_tag()}"
+        return f"rayproject/ray:latest-{py}"
     elif docker_override == "latest-gpu":
-        return f"rayproject/ray:latest-{python_image_tag()}-gpu"
+        return f"rayproject/ray:latest-{py}-gpu"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py310"
-    elif docker_override == "commit":
-        if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py310"
-        else:
+        # The nightly image holds master's Ray, whose version only a master
+        # build shares. `ray up` refuses the mismatch on a release branch.
+        if "dev" not in ray.__version__:
+            print(
+                "Error: the nightly image only matches a master build of Ray, but "
+                f"this test runs Ray {ray.__version__}."
+            )
+            sys.exit(1)
+        return f"rayproject/ray:nightly-{py}"
+    elif docker_override == "release":
+        # Published to Docker Hub for release branch commits only.
+        if not re.match(r"^[0-9]+\.[0-9]+\.[0-9]+$", ray.__version__):
             print(
                 "Error: docker image is only available for "
                 f"release version, but we get: {ray.__version__}"
             )
             sys.exit(1)
+        return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-{py}"
     return None
 
 
@@ -478,6 +498,131 @@ def cleanup_security_groups(config):
         print(f"Error cleaning up security groups: {e}")
 
 
+# Holds no characters that are special in a grep regex or need shell quoting.
+RAYLET_LOGS_MARKER = "=== ray start failed; raylet logs on this worker ==="
+
+
+def print_raylet_logs_when_worker_start_fails(config_yaml: dict) -> None:
+    """Make a worker print its raylet logs when its `ray start` fails.
+
+    The autoscaler terminates a worker whose start commands fail, so its logs
+    are gone by the time the test fails. The output goes to the autoscaler
+    logs on the head, which the test prints.
+    """
+    # Fill in provider defaults so configs that omit `worker_start_ray_commands`
+    # keep the default start commands instead of replacing them with `[]`.
+    worker_cmds = fillout_defaults(config_yaml).get("worker_start_ray_commands") or []
+    if not worker_cmds:
+        return
+    config_yaml["worker_start_ray_commands"] = [
+        (
+            f"{{ {cmd.strip().rstrip(';')}; }} || {{ echo '{RAYLET_LOGS_MARKER}'; "
+            f"tail -n 60 {RAY_LOGS_DIR}/raylet.out {RAY_LOGS_DIR}/raylet.err; false; }}"
+        )
+        if "ray start" in cmd
+        else cmd
+        for cmd in worker_cmds
+    ]
+
+
+def describe_aws_instances(config: dict) -> str:
+    """Return the cluster's EC2 instances, including terminated ones.
+
+    The state reason of a terminated worker tells whether AWS reclaimed a spot
+    instance, which the autoscaler doesn't log.
+    """
+    if config.get("provider", {}).get("type") != "aws":
+        return ""
+    try:
+        ec2_client = boto3.client("ec2", region_name=config["provider"]["region"])
+        response = ec2_client.describe_instances(
+            Filters=[
+                {"Name": "tag:ray-cluster-name", "Values": [config["cluster_name"]]}
+            ]
+        )
+    except Exception as e:
+        return f"Couldn't describe the cluster's instances: {e}"
+    lines = []
+    for reservation in response["Reservations"]:
+        for instance in reservation["Instances"]:
+            tags = {t["Key"]: t["Value"] for t in instance.get("Tags", [])}
+            lines.append(
+                " ".join(
+                    [
+                        instance["LaunchTime"].isoformat(),
+                        instance["InstanceId"],
+                        tags.get("ray-node-type", "?"),
+                        instance.get("InstanceLifecycle", "on-demand"),
+                        instance["State"]["Name"],
+                        tags.get("ray-node-status", "?"),
+                        instance.get("StateReason", {}).get("Message", ""),
+                    ]
+                )
+            )
+    return "\n".join(sorted(lines))
+
+
+def get_failure_logs(
+    config_yaml: dict, cluster_config: Path, no_config_cache: bool, env: dict
+) -> str:
+    """Return the logs that show why a worker didn't join the cluster.
+
+    They are the autoscaler logs on the head, which include the setup output
+    of the workers, the head's GCS log, and the raylet logs of each worker.
+    """
+    ssh_user = (
+        config_yaml.get("auth", {}).get("ssh_user")
+        or fillout_defaults(config_yaml)["auth"]["ssh_user"]
+    )
+    container = config_yaml.get("docker", {}).get("container_name")
+    on_worker = f"docker exec {shlex.quote(container)} " if container else ""
+    script = (
+        f"echo '--- Worker launches and failures:'; "
+        f"grep -hiE 'Launched instance|Failed to launch|Attempt failed|capacity|"
+        f"Terminating instance|Stopping instance|commands failed|update-failed' "
+        f"{RAY_LOGS_DIR}/monitor* | grep -v 'Full command is' | tail -n 40; "
+        f"echo '--- Raylet logs of workers whose ray start failed:'; "
+        # Matches the marker at the end of a line, after any prefix, but not
+        # the logged copies of the worker start command that echoes it, where
+        # the rest of the command follows the marker. A carriage return can
+        # end the line, as the command runs in a terminal.
+        f"grep -hE -A 125 '{RAYLET_LOGS_MARKER}[[:space:]]*$' {RAY_LOGS_DIR}/monitor* "
+        f"| tail -n 250; "
+        f"echo '--- Autoscaler errors:'; "
+        f"grep -hiE 'error|exception|failed|denied|unauthorized|no space' "
+        f"{RAY_LOGS_DIR}/monitor* | grep -v 'Full command is' | tail -n 30; "
+        f"echo '--- Autoscaler status:'; tail -n 25 {RAY_LOGS_DIR}/monitor.log; "
+        f"echo '--- GCS on the head:'; "
+        f"grep -hiE 'Registering new node|unauthenticated|token|error' "
+        f"{RAY_LOGS_DIR}/gcs_server.out | grep -v 'Debug state' | tail -n 30; "
+        f"for ip in $(ray get-worker-ips ~/ray_bootstrap_config.yaml 2>/dev/null "
+        f"| grep -E '^[0-9]+([.][0-9]+){{3}}$'); do "
+        f'echo "--- Raylet on worker $ip:"; '
+        f"ssh -i ~/ray_bootstrap_key.pem -o StrictHostKeyChecking=no "
+        f"-o UserKnownHostsFile=/dev/null -o ConnectTimeout=10 "
+        f"{shlex.quote(ssh_user)}@$ip "
+        f'"{on_worker}tail -n 40 {RAY_LOGS_DIR}/raylet.out {RAY_LOGS_DIR}/raylet.err"; '
+        f"done"
+    )
+    cmd = ["ray", "exec", str(cluster_config), script]
+    if no_config_cache:
+        cmd.append("--no-config-cache")
+    try:
+        result = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            env=env,
+            timeout=FAILURE_LOGS_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired as e:
+        partial = (e.stdout or b"").decode("utf-8", errors="replace")
+        return f"{partial}\nTimed out after {FAILURE_LOGS_TIMEOUT_S}s."
+    except Exception as e:
+        return f"Couldn't fetch the failure logs: {e}"
+    return result.stdout.decode("utf-8", errors="replace")
+
+
 def run_ray_commands(
     config_yaml: dict,
     cluster_config: Path,
@@ -511,10 +656,16 @@ def run_ray_commands(
     try:
         subprocess.run(cmd, check=True, capture_output=True, env=env)
     except subprocess.CalledProcessError as e:
-        print(e.output)
         # print stdout and stderr
-        print(f"stdout:\n{e.stdout.decode('utf-8')}")
-        print(f"stderr:\n{e.stderr.decode('utf-8')}")
+        print(f"stdout:\n{e.stdout.decode('utf-8', errors='replace')}")
+        print(f"stderr:\n{e.stderr.decode('utf-8', errors='replace')}")
+        # `ray up` can fail after it launched the head node, for example when
+        # the head node runs another Ray version. Don't mask the original error
+        # if cleanup itself fails.
+        try:
+            cleanup_cluster(config_yaml, cluster_config)
+        except Exception as cleanup_err:
+            print(f"Warning: cleanup after `ray up` failure failed: {cleanup_err}")
         raise e
 
     print("======================================")
@@ -550,7 +701,20 @@ def run_ray_commands(
             f"Error: Verification failed after {retries} attempts. Cleaning up cluster "
             "before exiting..."
         )
-        cleanup_cluster(config_yaml, cluster_config)
+        # Printed before the cleanup, whose output is short: the release test
+        # harness keeps only the end of the output, and can miss the last lines.
+        try:
+            print("======================================")
+            print("Logs that show why workers didn't join:")
+            print(get_failure_logs(config_yaml, cluster_config, no_config_cache, env))
+            aws_instances = describe_aws_instances(config_yaml)
+            if aws_instances:
+                print("--- The cluster's instances (launch time, id, node type, ")
+                print("lifecycle, state, Ray node status, state reason):")
+                print(aws_instances)
+            print("======================================")
+        finally:
+            cleanup_cluster(config_yaml, cluster_config)
         print("======================================")
         print("Exiting script.")
         sys.exit(1)
@@ -605,6 +769,8 @@ if __name__ == "__main__":
         override_wheel_with_local(config_yaml, wheel_path, tempfile.mkdtemp())
     elif wheel_override:
         override_wheels_url(config_yaml, wheel_override)
+
+    print_raylet_logs_when_worker_start_fails(config_yaml)
 
     provider_type = config_yaml.get("provider", {}).get("type")
     config_yaml["provider"]["cache_stopped_nodes"] = False
