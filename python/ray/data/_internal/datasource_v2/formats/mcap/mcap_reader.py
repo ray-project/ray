@@ -500,11 +500,10 @@ class MCAPReader(Reader[FileManifest]):
         """Broadcast one path-derived partition value, typed by the schema if known."""
         as_str = None if value is None else str(value)
         array = pa.repeat(pa.scalar(as_str, type=pa.string()), num_rows)
-        schema = self._schema
-        if schema is not None:
-            idx = schema.get_field_index(name)
-            if idx != -1 and schema.field(idx).type != pa.string():
-                array = array.cast(schema.field(idx).type)
+        if self._schema is not None:
+            idx = self._schema.get_field_index(name)
+            if idx != -1 and self._schema.field(idx).type != pa.string():
+                array = array.cast(self._schema.field(idx).type)
         return array
 
 
