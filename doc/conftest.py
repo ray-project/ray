@@ -3,3 +3,4 @@ def pytest_configure(config):
         config.addinivalue_line(
             "markers", f"requires_{requirement}: required H100 cluster topology"
         )
+    config.addinivalue_line("markers", "sglang: requires SGLang instead of vLLM")

@@ -464,12 +464,11 @@ class Worker:
         # tensor_transport, to avoid circular import and because it imports
         # third-party dependencies like PyTorch.
         self._rdt_manager = None
-        # When the worker is constructed. Record the original value of the
+        # Lazily record the initial value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
-        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
-        self.original_visible_accelerator_ids = (
-            ray._private.utils.get_visible_accelerator_ids()
-        )
+        # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables
+        # so importing ray._private.worker does not probe accelerator SDKs pre-fork.
+        self._original_visible_accelerator_ids = None
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
         self.serialization_context_map = {}
@@ -523,6 +522,19 @@ class Worker:
 
             self._rdt_manager = RDTManager()
         return self._rdt_manager
+
+    @property
+    def original_visible_accelerator_ids(self):
+        """Lazily resolve visible accelerator IDs to avoid pre-fork SDK/env probes."""
+        if self._original_visible_accelerator_ids is None:
+            self._original_visible_accelerator_ids = (
+                ray._private.utils.get_visible_accelerator_ids()
+            )
+        return self._original_visible_accelerator_ids
+
+    @original_visible_accelerator_ids.setter
+    def original_visible_accelerator_ids(self, value):
+        self._original_visible_accelerator_ids = value
 
     @property
     def connected(self):
@@ -1064,7 +1076,17 @@ class Worker:
             # Note: shutdown() function is called from atexit handler.
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
-        self.core_worker.run_task_loop()
+        try:
+            self.core_worker.run_task_loop()
+        finally:
+            # The task loop returns only after the C++ core worker has shut down
+            # and been released. Drop the handle so nothing after this point
+            # (e.g. the atexit shutdown hook) calls into the released worker:
+            # that quick-exits the process mid-teardown, which surfaces as an
+            # access violation on Windows. It may already be gone if a task
+            # called ray.shutdown().
+            if hasattr(self, "core_worker"):
+                del self.core_worker
         sys.exit(0)
 
     def print_logs(self):
