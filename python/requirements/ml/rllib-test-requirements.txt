@@ -34,9 +34,6 @@ open-spiel==2.0.2; python_version >= '3.14'
 h5py==3.12.1; python_version < '3.14'
 h5py==3.16.0; python_version >= '3.14'
 
-# Requirements for rendering.
-moviepy
-
 # numexpr is an optional pandas dependency that gets imported at runtime.
 # It must be explicitly pinned here to ensure compatibility with numpy 2.x.
 numexpr

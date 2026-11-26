@@ -4724,8 +4724,6 @@ pillow==11.3.0 \
     --hash=sha256:fdae223722da47b024b867c1ea0be64e0df702c5e0a60e27daad39bf960dd1e4 \
     --hash=sha256:fe27fb049cdcca11f11a7bfda64043c37b30e6b91f10cb5bab275806c32f6ab3
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   diffusers
     #   matplotlib
 platformdirs==4.9.6 \

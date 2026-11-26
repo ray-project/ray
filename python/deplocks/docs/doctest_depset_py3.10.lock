@@ -1590,7 +1590,6 @@ decorator==5.2.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
-    #   moviepy
     #   tensorflow-probability
 deepspeed==0.18.9 \
     --hash=sha256:ee4818dcf342794f74f429a0aeebef90291ec808fa82609c5140c23e665c4011
@@ -2329,15 +2328,15 @@ gpytorch==1.15.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   botorch
-gradio==6.15.2 ; sys_platform != 'win32' \
-    --hash=sha256:3492eee59cbe4afd21e8f458fc229f0d92c17bdaacaefaf9580dd63a6406c82d \
-    --hash=sha256:67433b1889dc8526658196277ca9e34109f73aa65656635c0dc6afb542571f55
+gradio==6.32.0 ; sys_platform != 'win32' \
+    --hash=sha256:0d5170c3dfa445ee932979ecf0abac43a3814b603868d4d2c6efec5b5605372c \
+    --hash=sha256:4a5250eaf622154a28217f5d18d50c01b1a949842e11ebe2b1f8055a2fc92849
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-gradio-client==2.5.0 ; sys_platform != 'win32' \
-    --hash=sha256:4cde99bad62149595c30c90876ca2e405e3a13687ecf895474f3412cb476673d \
-    --hash=sha256:d43e2179c29076292a76485ad7ed2e6eaa19d14ac58283bd7f5beabfe4ca958c
+gradio-client==2.7.2 ; sys_platform != 'win32' \
+    --hash=sha256:12c9d2d940df28eb8dce58eef61f5e808265ad87bbbca53704d1330aa701e5e2 \
+    --hash=sha256:5b568b8189b86cfdacab39fecc2ee66900348cdd83a1c0bb968a98c83eafc198
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gradio
@@ -2816,7 +2815,6 @@ imageio==2.34.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/rllib-test-requirements.txt
-    #   moviepy
 imageio-ffmpeg==0.4.5 \
     --hash=sha256:266601aab7619acf6ff78cd5ba78b5a593a1119a96d266d33b88bfcd01bbd3ca \
     --hash=sha256:39a9ab4326bdf5eae3457961dfdfb4317078659ebe4e6980914ac897a462aeb2 \
@@ -2827,7 +2825,6 @@ imageio-ffmpeg==0.4.5 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/rllib-requirements.txt
-    #   moviepy
 importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
@@ -4035,12 +4032,6 @@ moto==5.1.18 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
-moviepy==2.2.1 \
-    --hash=sha256:6b56803fec2ac54b557404126ac1160e65448e03798fa282bd23e8fab3795060 \
-    --hash=sha256:c80cb56815ece94e5e3e2d361aa40070eeb30a09d23a24c4e684d03e16deacb1
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/rllib-test-requirements.txt
 mpmath==1.3.0 \
     --hash=sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f \
     --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
@@ -4727,7 +4718,6 @@ numpy==2.1.3 \
     #   mlflow
     #   modin
     #   moocore
-    #   moviepy
     #   msgpack-numpy
     #   mujoco
     #   nevergrad
@@ -5556,14 +5546,12 @@ pillow==11.3.0 \
     --hash=sha256:fdae223722da47b024b867c1ea0be64e0df702c5e0a60e27daad39bf960dd1e4 \
     --hash=sha256:fe27fb049cdcca11f11a7bfda64043c37b30e6b91f10cb5bab275806c32f6ab3
     # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/test-requirements.txt
     #   aim
     #   bokeh
     #   gradio
     #   imageio
     #   matplotlib
-    #   moviepy
     #   pytesseract
     #   torchvision
 pip==26.0.1 ; python_full_version < '3.14' \
@@ -5629,12 +5617,6 @@ prettytable==3.17.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   skops
-proglog==0.1.12 \
-    --hash=sha256:361ee074721c277b89b75c061336cb8c5f287c92b043efa562ccf7866cda931c \
-    --hash=sha256:ccaafce51e80a81c65dc907a460c07ccb8ec1f78dc660cfd8f9ec3a22f01b84c
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   moviepy
 prometheus-client==0.25.0 \
     --hash=sha256:5e373b75c31afb3c86f1a52fa1ad470c9aace18082d39ec0d2f918d11cc9ba28 \
     --hash=sha256:d5aec89e349a6ec230805d0df882f3807f74fd6c1a2fa86864e3c2279059fed1
@@ -6668,7 +6650,6 @@ python-dotenv==1.2.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow-skinny
-    #   moviepy
     #   uvicorn
 python-json-logger==4.1.0 \
     --hash=sha256:132994765cf75bf44554be9aa49b06ef2345d23661a96720262716438141b6b2 \
@@ -8413,7 +8394,6 @@ tqdm==4.67.1 \
     #   lightning
     #   mosaicml
     #   optuna
-    #   proglog
     #   prophet
     #   pymars
     #   pyro-ppl
