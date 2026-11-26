@@ -20,6 +20,13 @@ from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
 from ray.data._internal.datasource_v2.formats.delta.delta_scanner import (
     DeltaScanner,
 )
+from ray.data._internal.datasource_v2.interfaces.file_manifest import (
+    FileChunk,
+    FileManifest,
+)
+from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+    PartitionHints,
+)
 
 deltalake = pytest.importorskip("deltalake")
 
@@ -180,6 +187,28 @@ def test_indexer_and_scanner_survive_worker_serialization(
     assert sum(counts) == 4
     assert len(opens) == (0 if log_has_row_counts else 3)
     assert unsized_opens == []
+
+
+def test_file_partitioner_bins_fill_to_the_block_target(partitioned_table):
+    """Bins close at the read's block target, as for Parquet."""
+    hints = PartitionHints(min_bucket_size=1, max_bucket_size=2, num_buckets=7)
+    partitioner = _datasource(partitioned_table).get_file_partitioner(hints=hints)
+    partitioner.add_input(
+        FileManifest.construct_manifest(
+            paths=["f"] * 4,
+            sizes=[4] * 4,
+            chunk_metadatas=[
+                FileChunk(unit_ids=(i,), num_rows=1, size_bytes=1).to_metadata()
+                for i in range(4)
+            ],
+        )
+    )
+    partitioner.finalize()
+    bins = []
+    while partitioner.has_partition():
+        chunks = partitioner.next_partition().file_chunk_metadatas
+        bins.append(sum(chunk["size_bytes"] for chunk in chunks))
+    assert bins == [2, 2]
 
 
 def _stub_table(

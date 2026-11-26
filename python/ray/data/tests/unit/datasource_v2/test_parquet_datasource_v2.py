@@ -506,16 +506,42 @@ def test_parquet_fragment_workers(tmp_path, monkeypatch, cap, expected_workers):
         assert pool.call_args.kwargs["preserve_ordering"]
 
 
+def _bin_bytes(partitioner, sizes):
+    """The bytes in each bin ``partitioner`` makes of one file's row groups."""
+    partitioner.add_input(
+        FileManifest.construct_manifest(
+            paths=["f"] * len(sizes),
+            sizes=[sum(sizes)] * len(sizes),
+            chunk_metadatas=[
+                FileChunk(unit_ids=(i,), num_rows=1, size_bytes=size).to_metadata()
+                for i, size in enumerate(sizes)
+            ],
+        )
+    )
+    partitioner.finalize()
+    bins = []
+    while partitioner.has_partition():
+        chunks = partitioner.next_partition().file_chunk_metadatas
+        bins.append(sum(chunk["size_bytes"] for chunk in chunks))
+    return bins
+
+
 @pytest.mark.parametrize(
-    "bucket, cap", [(2, 2), (sys.maxsize, DEFAULT_TARGET_MAX_BLOCK_SIZE)]
+    "bucket, budget",
+    [
+        pytest.param(2, 2, id="follows_block_target"),
+        pytest.param(
+            sys.maxsize, DEFAULT_TARGET_MAX_BLOCK_SIZE, id="default_when_sizing_off"
+        ),
+    ],
 )
-def test_get_file_partitioner_returns_bin_packer(tmp_path, bucket, cap):
-    """Bins cap at the block target, or the default one when block sizing is off."""
+def test_file_partitioner_bins_fill_to_the_block_target(tmp_path, bucket, budget):
+    """Bins close at the block target, or at the default one when block sizing is off."""
     datasource = ParquetDatasourceV2([str(tmp_path)])
     hints = PartitionHints(min_bucket_size=1, max_bucket_size=bucket, num_buckets=7)
     partitioner = datasource.get_file_partitioner(hints=hints)
     assert isinstance(partitioner, OnlineBinPacker)
-    assert partitioner._cap == cap
+    assert _bin_bytes(partitioner, [budget // 2] * 4) == [budget, budget]
 
 
 @pytest.mark.parametrize("schema", [None, pa.schema([("a", pa.string())])])

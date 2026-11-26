@@ -11,7 +11,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterator, List, NamedTuple, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Collection,
+    Iterator,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from ray.util.debug import log_once
 
@@ -58,6 +67,7 @@ _VARINT_CONTINUES = 0x80  # a varint byte's high bit, set on every byte but the 
 _FILE_META_ROW_GROUPS = 4  # FileMetaData.row_groups, list<RowGroup>
 _ROW_GROUP_COLUMNS = 1  # RowGroup.columns, list<ColumnChunk>
 _COLUMN_CHUNK_META_DATA = 3  # ColumnChunk.meta_data, a ColumnMetaData
+_COLUMN_META_DATA_PAGE_OFFSET = 9  # ColumnMetaData.data_page_offset
 _COLUMN_META_SIZE_STATISTICS = 16  # ColumnMetaData.size_statistics
 _SIZE_STATS_UNENCODED_BYTES = 1  # SizeStatistics.unencoded_byte_array_data_bytes
 _SIZE_STATS_REPETITION_HISTOGRAM = 2  # SizeStatistics.repetition_level_histogram
@@ -86,6 +96,22 @@ class _ListHeader:
 
     count: int
     element_type: int
+
+
+# A RowGroup's total_byte_size and num_rows, fields 2 and 3, each start with this
+# header byte: an id one past the previous field's, and the i64 type.
+_NEXT_FIELD_I64 = bytes([(1 << _NIBBLE_BITS) | _I64])
+
+
+def _zigzag_varint(value: int) -> bytes:
+    """A signed 64-bit integer as Thrift writes it."""
+    n = (value << 1) ^ (value >> 63)
+    encoded = bytearray()
+    while n > _VARINT_VALUE_MASK:
+        encoded.append((n & _VARINT_VALUE_MASK) | _VARINT_CONTINUES)
+        n >>= _VARINT_BITS
+    encoded.append(n)
+    return bytes(encoded)
 
 
 class _ThriftDesync(Exception):
@@ -337,12 +363,94 @@ class _CompactReader:
                 self._skip(field.type)
         return stats
 
-    def read(self) -> List[List[Optional[LeafSizeStats]]]:
-        """``SizeStatistics`` by ``[row_group][leaf]``."""
+    def _first_data_page_offset(self) -> Optional[int]:
+        """The first leaf's ``data_page_offset`` in the row group starting here,
+        which no other row group of the file has. Leaves the reader where it was."""
+        start = self._pos
+        try:
+            for field in self._fields():
+                if field.id != _ROW_GROUP_COLUMNS or field.type != _LIST:
+                    return None
+                if not self._list_header().count:
+                    return None
+                for chunk_field in self._fields():
+                    if chunk_field.id != _COLUMN_CHUNK_META_DATA:
+                        self._skip(chunk_field.type)
+                        continue
+                    for meta_field in self._fields():
+                        if meta_field.id == _COLUMN_META_DATA_PAGE_OFFSET:
+                            return self._zigzag()
+                        self._skip(meta_field.type)
+                    return None
+            return None
+        finally:
+            self._pos = start
+
+    def _jump(self, footer: bytes, metadata: "FileMetaData", row_group: int) -> None:
+        """Move to where ``row_group`` starts, from anywhere before it.
+
+        A row group's bytes don't say how long they are, so the walk can't step
+        over one. But the row group before ends with its total_byte_size and its
+        num_rows, which PyArrow reports too: search for those, and take the first
+        place followed by a row group whose first leaf starts at the right offset.
+        """
+        before = metadata.row_group(row_group - 1)
+        ending = (
+            _NEXT_FIELD_I64
+            + _zigzag_varint(before.total_byte_size)
+            + _NEXT_FIELD_I64
+            + _zigzag_varint(before.num_rows)
+        )
+        first_page = metadata.row_group(row_group).column(0).data_page_offset
+        found = self._pos
+        while True:
+            found = footer.find(ending, found)
+            if found < 0:
+                raise _ThriftDesync(f"row group {row_group} not found")
+            self._pos = found + len(ending)
+            try:
+                # The rest of the row group before, then the one wanted.
+                self._skip_struct()
+                if self._first_data_page_offset() == first_page:
+                    return
+            except (IndexError, _ThriftDesync):
+                pass
+            found += 1
+
+    def _row_groups(
+        self, metadata: "FileMetaData", count: int, wanted: Collection[int]
+    ) -> List[List[Optional[LeafSizeStats]]]:
+        """``wanted``'s row groups of the ``count`` starting here; the others are
+        left empty."""
+        stats: List[List[Optional[LeafSizeStats]]] = [[] for _ in range(count)]
+        footer = bytes(self._buf)
+        here = 0  # the row group the reader stands at the start of
+        for row_group in sorted(wanted):
+            if row_group != here:
+                self._jump(footer, metadata, row_group)
+            stats[row_group] = self._row_group()
+            here = row_group + 1
+        return stats
+
+    def read(
+        self,
+        metadata: Optional["FileMetaData"] = None,
+        wanted: Optional[Collection[int]] = None,
+    ) -> List[List[Optional[LeafSizeStats]]]:
+        """``SizeStatistics`` by ``[row_group][leaf]``. Given ``wanted`` row groups
+        of ``metadata``, only theirs: the others are empty and aren't walked."""
         stats: List[List[Optional[LeafSizeStats]]] = []
         for field in self._fields():
             if field.id == _FILE_META_ROW_GROUPS and field.type == _LIST:
-                for _ in range(self._list_header().count):
+                count = self._list_header().count
+                if wanted is not None and metadata is not None:
+                    start = self._pos
+                    try:
+                        return self._row_groups(metadata, count, wanted)
+                    except (IndexError, _ThriftDesync):
+                        # A row group wasn't found: walk them all.
+                        self._pos = start
+                for _ in range(count):
                     stats.append(self._row_group())
             else:
                 self._skip(field.type)
@@ -371,17 +479,18 @@ def footer_bytes(metadata: "FileMetaData") -> Optional[memoryview]:
 
 
 def read_footer_stats(
-    metadata: "FileMetaData",
+    metadata: "FileMetaData", row_groups: Optional[Collection[int]] = None
 ) -> Optional[List[List[Optional[LeafSizeStats]]]]:
     """Each leaf's ``SizeStatistics`` by ``[row_group][leaf]``, or ``None`` when the
-    footer can't be read or its row-group or leaf counts come out wrong."""
+    footer can't be read or its row-group or leaf counts come out wrong. Given
+    ``row_groups``, the other row groups may be empty."""
     buf = footer_bytes(metadata)
     if buf is None:
         return None
     try:
-        row_groups = _CompactReader(buf).read()
-        num_row_groups = metadata.num_row_groups
+        stats = _CompactReader(buf).read(metadata, row_groups)
         num_columns = metadata.num_columns
+        num_row_groups = metadata.num_row_groups
     except Exception as exc:
         # Sizing falls back, so a footer this can't decode must not fail the read.
         if log_once("parquet_footer_stats_unreadable"):
@@ -392,8 +501,9 @@ def read_footer_stats(
             )
         return None
 
-    if len(row_groups) != num_row_groups:
+    if len(stats) != num_row_groups:
         return None
-    if any(len(columns) != num_columns for columns in row_groups):
+    read = range(num_row_groups) if row_groups is None else row_groups
+    if any(len(stats[row_group]) != num_columns for row_group in read):
         return None
-    return row_groups
+    return stats
