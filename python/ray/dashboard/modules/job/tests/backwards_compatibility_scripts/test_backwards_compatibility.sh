@@ -16,8 +16,9 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSION=$(python -c"from platform import python_version; print(python_version())")
 
-# 2.3.0 is the oldest Ray release with a Python 3.11 wheel.
-RAY_VERSIONS=("2.3.0")
+# Ray releases before 2.6 cannot serve job submissions on Python 3.11 (the job
+# head calls random.sample() on a set).
+RAY_VERSIONS=("2.8.1")
 
 for RAY_VERSION in "${RAY_VERSIONS[@]}"
 do
@@ -48,7 +49,9 @@ do
 
     # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
     # ray<2.9 is only compatible with pydantic<2 and setuptools < 70.
-    python -m pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}" setuptools==69.5.1
+    # The old dashboard also imports async_timeout without depending on it
+    # (aiohttp only pulls it in before Python 3.11) and needs protobuf<5.
+    python -m pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}" setuptools==69.5.1 async_timeout "protobuf<5"
 
     printf "\n\n\n"
     echo "========================================================="
@@ -98,7 +101,7 @@ do
         exit 1
     fi
 
-    if ! pytest -vs "${DIR}"/../test_backwards_compatibility.py::test_error_message; then
+    if ! pytest -vs "${DIR}"/../test_backwards_compatibility.py::test_submit_job_kwargs; then
         cleanup
         exit 1
     fi
