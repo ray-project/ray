@@ -694,7 +694,9 @@ def test_decide_still_downscales_a_kept_blocked_op_that_is_idle():
     assert decision.request is not None and decision.request.delta < 0
 
 
-def _gpu_node_ctx(ops, *, free_by_node, shares, bottlenecks):
+def _gpu_node_ctx(
+    ops, *, free_by_node, shares, bottlenecks, free_after_drains_by_node=None
+):
     """A STEADY context over nodes with 8 CPUs and 1 GPU each, every op
     allowed on every node."""
     nodes = frozenset(free_by_node)
@@ -702,6 +704,7 @@ def _gpu_node_ctx(ops, *, free_by_node, shares, bottlenecks):
         schedulable_nodes_by_op={op: nodes for op in ops},
         reserved_by_node={n: ExecutionResources(cpu=8, gpu=1) for n in nodes},
         free_by_node=free_by_node,
+        free_after_drains_by_node=free_after_drains_by_node or {},
         ordered_ops=tuple(ops),
     )
     return DecisionContext(
@@ -737,6 +740,43 @@ def test_decide_makes_only_the_room_a_short_bottleneck_needs():
     assert decisions[gpu_op].unmet == 3
     assert decisions[producer].rule is OpRule.DOWNSCALE_BLOCKED
     assert _delta(decisions[producer]) == -3
+
+
+@pytest.mark.parametrize(
+    "draining_nodes, expected_delta",
+    [
+        pytest.param((), -3, id="nothing-draining"),
+        # An earlier tick's drain frees a CPU on g1: only g2 and g3 still
+        # need an actor removed.
+        pytest.param(("g1",), -2, id="drain-covers-one-node"),
+        # Drains already free the room on every node: removing more actors
+        # would cut the producer twice for the same room.
+        pytest.param(("g1", "g2", "g3"), 0, id="drains-cover-the-room"),
+    ],
+)
+def test_decide_counts_room_that_drains_will_free(draining_nodes, expected_delta):
+    """read_from_uris: a blocked producer downscaled to make room, and its
+    drains had not finished by the next tick. The GPU op was still short, so
+    the producer was cut again for the same room. Room a drain will free
+    counts toward what the short op needs."""
+    producer = _op("download", current=25)
+    producer.actors_by_node = {"g1": 8, "g2": 8, "g3": 8, "g4": 1}
+    gpu_op = _op("Predictor", current=7, max_size=10, cpu=1, gpu=1)
+    ops = [producer, gpu_op]
+    policy, _ = _policy(ops, next_ops={producer: [gpu_op]})
+    free = {n: ExecutionResources(cpu=0, gpu=1) for n in ("g1", "g2", "g3")}
+    free["g4"] = ExecutionResources(cpu=5, gpu=0)
+    free_after_drains = {n: ExecutionResources(cpu=1, gpu=1) for n in draining_nodes}
+    ctx = _gpu_node_ctx(
+        ops,
+        free_by_node=free,
+        free_after_drains_by_node=free_after_drains,
+        shares={producer: (0.1, 0.9, 0.0), gpu_op: (1.0, 0.0, 0.0)},
+        bottlenecks=[(gpu_op, 0.9)],
+    )
+    decisions = policy.decide(ctx=ctx)
+    assert decisions[gpu_op].unmet == 3
+    assert _delta(decisions[producer]) == expected_delta
 
 
 def test_decide_blocked_ops_share_the_room_to_make():

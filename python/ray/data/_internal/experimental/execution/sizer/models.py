@@ -19,6 +19,7 @@ from ray.data._internal.experimental.execution.actor_only_resource_reporter impo
 from ray.data._internal.experimental.execution.sizer.capacity import (
     committed_by_node,
     constrained_op_count_by_node,
+    draining_by_node,
     nodes_to_reclaim,
     pg_free_by_bundle,
     unknown_pg_headroom,
@@ -83,6 +84,10 @@ class ClusterStateSnapshot:
     # = `reserved_by_node` - committed, floored at 0, minus the nodes in
     # `nodes_to_reclaim` (dropped whole: an actor placed there would be evicted).
     free_by_node: ExecutionResourcesByNode
+    # = `reserved_by_node` - (committed - draining actors), floored at 0, on the
+    # nodes in `free_by_node`: what each node's free capacity becomes once its
+    # draining actors finish. Equals `free_by_node` where nothing is draining.
+    free_after_drains_by_node: ExecutionResourcesByNode = field(default_factory=dict)
     # = committed - draining actors - reserved, where above 0.
     # How much more we currently commit on a node than our slice allows.
     # Draining actors are not counted: they are already leaving. Draining
@@ -150,11 +155,21 @@ class ClusterStateSnapshot:
         # 3. Calculate current usage (running + pending) of the cluster.
         committed = committed_by_node(profiles)
 
-        # 4. Calculate the amount of free resources available in this snapshot.
+        # 4. Calculate the amount of free resources available in this snapshot,
+        # and what it becomes once the draining actors finish.
         free = {
             node_id: res.subtract(committed.get(node_id, zero)).max(zero)
             for node_id, res in reserved.items()
             if node_id not in reclaim
+        }
+        draining = draining_by_node(profiles)
+        free_after_drains = {
+            node_id: reserved[node_id]
+            .subtract(committed.get(node_id, zero).subtract(draining[node_id]))
+            .max(zero)
+            if node_id in draining
+            else res
+            for node_id, res in free.items()
         }
 
         # 5. Build a reservation view, which allows us to determine
@@ -173,6 +188,7 @@ class ClusterStateSnapshot:
         pg_slots = reservation.pg_slots
         return cls(
             free_by_node=free,
+            free_after_drains_by_node=free_after_drains,
             reserved_by_node=reserved,
             nodes_to_reclaim=reclaim,
             schedulable_nodes_by_op=schedulable_nodes_by_op,

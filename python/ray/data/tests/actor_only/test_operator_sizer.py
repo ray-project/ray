@@ -2415,6 +2415,38 @@ def test_nodes_to_reclaim_nets_out_draining_actors(draining_cpu, expected_over):
         assert reclaim["n1"].cpu == expected_over
 
 
+@pytest.mark.parametrize(
+    "reserved_cpu, draining_cpu, expected_after_drains_cpu",
+    [
+        pytest.param(8, 2, 2, id="drain-frees-room"),
+        # Over-committed: the drain only brings the node back to its slice,
+        # so it frees nothing, not the 2 CPUs a plain `free + draining` gives.
+        pytest.param(6, 2, 0, id="drain-covers-an-overage"),
+        pytest.param(8, 0, 0, id="nothing-draining"),
+    ],
+)
+def test_snapshot_free_after_drains(
+    reserved_cpu, draining_cpu, expected_after_drains_cpu
+):
+    """``free_after_drains_by_node`` is a node's free capacity once its
+    draining actors finish: the slice minus what stays committed."""
+    op = _FakeOp(
+        "Map",
+        _FakePool(min_size=1, max_size=10, cpu=1),
+        committed={"n1": ExecutionResources(cpu=8)},
+        draining={"n1": ExecutionResources(cpu=draining_cpu)} if draining_cpu else None,
+    )
+    snapshot = ClusterStateSnapshot.build(
+        DatasetReservationView(
+            reserved_by_node={"n1": ExecutionResources(cpu=reserved_cpu)}
+        ),
+        OpProfiles(_topology(op)),
+        seconds_since_allocation_change=0.0,
+    )
+    assert snapshot.free_by_node["n1"].cpu == 0
+    assert snapshot.free_after_drains_by_node["n1"].cpu == expected_after_drains_cpu
+
+
 def test_replacements_for_draining_actors_are_not_read_as_an_overage():
     """Draining actors and the pendings that replace them both count as
     committed until the drain finishes; netting out the draining ones keeps the

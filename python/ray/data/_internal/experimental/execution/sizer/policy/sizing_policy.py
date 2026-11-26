@@ -482,6 +482,13 @@ class _RoomToMake:
     actor may use, the blocked ops remove only enough actors to cover what
     that actor lacks there. WHERE removes actors on those nodes first
     (``scale_where.compute_favored_nodes``).
+
+    Each node starts from its free capacity once its draining actors finish
+    (``ClusterStateSnapshot.free_after_drains_by_node``), not its free capacity
+    now. A drain an earlier tick started to make room still holds that room
+    until it ends, and the short op stays short meanwhile. Counting only what
+    is free now would remove more actors for the same room on every tick
+    until the drain ends.
     """
 
     def __init__(self, *, decisions: OpDecisions, ctx: DecisionContext):
@@ -492,10 +499,13 @@ class _RoomToMake:
             for op, d in decisions.items()
             if d.unmet > 0 and not ctx.apmo_profiles.is_pg_managed(op)
         }
-        # Per node: free capacity, plus what blocked ops removed this tick,
-        # minus what the short actors placed on it this tick take.
+        # Per node: free capacity once draining actors finish, plus what
+        # blocked ops removed this tick, minus what the short actors placed on
+        # it this tick take.
+        free_after_drains = ctx.snapshot.free_after_drains_by_node
         self._free_by_node: ExecutionResourcesByNode = {
-            node_id: res.copy() for node_id, res in ctx.snapshot.free_by_node.items()
+            node_id: free_after_drains.get(node_id, res).copy()
+            for node_id, res in ctx.snapshot.free_by_node.items()
         }
 
     def make(self, *, op: "ExperimentalActorPoolMapOperator", most: int) -> int:
