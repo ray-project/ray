@@ -24,15 +24,9 @@ def main(args):
         #   GROUP BY p_brand, p_type, p_size
         #   ORDER BY supplier_cnt DESC, p_brand, p_type, p_size;
 
-        part = load_table("part", args.sf).select_columns(
-            ["p_partkey", "p_brand", "p_type", "p_size"]
-        )
-        partsupp = load_table("partsupp", args.sf).select_columns(
-            ["ps_partkey", "ps_suppkey"]
-        )
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_comment"]
-        )
+        part = load_table("part", args.sf)
+        partsupp = load_table("partsupp", args.sf)
+        supplier = load_table("supplier", args.sf)
 
         # Q16 parameters
         excluded_brand = "Brand#45"
@@ -51,7 +45,7 @@ def main(args):
         # Suppliers with complaints: LIKE '%Customer%Complaints%'.
         complainers = supplier.filter(
             expr=col("s_comment").str.match_regex("Customer.*Complaints")
-        ).select_columns(["s_suppkey"])
+        )
 
         # Inner join with the selective part filter first so the anti join
         # below shuffles the reduced dataset instead of all of partsupp.
@@ -70,14 +64,12 @@ def main(args):
             num_partitions=200,
             on=("ps_suppkey",),
             right_on=("s_suppkey",),
-        ).select_columns(["p_brand", "p_type", "p_size", "ps_suppkey"])
+        )
 
         # COUNT(DISTINCT ps_suppkey): dedupe first, then count.
-        distinct_suppliers = (
-            joined.groupby(["p_brand", "p_type", "p_size", "ps_suppkey"])
-            .aggregate(Count(alias_name="_dedupe"))
-            .select_columns(["p_brand", "p_type", "p_size", "ps_suppkey"])
-        )
+        distinct_suppliers = joined.groupby(
+            ["p_brand", "p_type", "p_size", "ps_suppkey"]
+        ).aggregate(Count(alias_name="_dedupe"))
 
         _ = (
             distinct_suppliers.groupby(["p_brand", "p_type", "p_size"])

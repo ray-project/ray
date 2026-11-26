@@ -55,7 +55,19 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
     plugin = WorkingDirPlugin(tmpdir, gcs_client)
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
 
-    files = os.listdir(f"{tmpdir}/working_dir_files")
+    def list_package_files() -> list[str]:
+        # Skip the `<pkg>.lock` file guarding the download. filelock>=4 keeps
+        # it on disk after release and reopens it without truncating, so its
+        # ctime never changes; it isn't part of the downloaded package.
+        files = [
+            f
+            for f in os.listdir(f"{tmpdir}/working_dir_files")
+            if not f.endswith(".lock")
+        ]
+        assert files, "Expected the package to be unpacked in working_dir_files."
+        return files
+
+    files = list_package_files()
 
     # Iterate over the files and storing creation metadata.
     creation_metadata = {}
@@ -67,7 +79,7 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
     time.sleep(1)
 
     await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
-    files = os.listdir(f"{tmpdir}/working_dir_files")
+    files = list_package_files()
 
     for file in files:
         file_metadata = os.stat(f"{tmpdir}/working_dir_files/{file}")

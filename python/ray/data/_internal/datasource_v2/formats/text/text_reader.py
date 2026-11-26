@@ -145,13 +145,24 @@ class TextReader(Reader[FileManifest]):
 
     def _read_bytes(self, path: str) -> bytes:
         """Return the file's decompressed bytes, inferring the codec from its name."""
+        from ray.data.context import DataContext
+
         filesystem = self._filesystem or LocalFileSystem()
         compression = infer_compression(path)
+        # Read in blocks of this size, as the V1 reader does. An HTTP server
+        # without range requests (such as ``python -m http.server``) then
+        # returns a file up to this size in one request; fsspec's own 5 MiB
+        # blocks would need a range request for anything larger.
+        buffer_size = DataContext.get_current().streaming_read_buffer_size
         if compression == "snappy":
             # Arrow's own codec detection raises on ``.snappy``; open raw.
-            with filesystem.open_input_stream(path, compression=None) as f:
+            with filesystem.open_input_stream(
+                path, compression=None, buffer_size=buffer_size
+            ) as f:
                 return _decompress_snappy(f, filesystem)
-        with filesystem.open_input_stream(path, compression=compression) as f:
+        with filesystem.open_input_stream(
+            path, compression=compression, buffer_size=buffer_size
+        ) as f:
             return f.readall()
 
     def _partition_matches(self, path: str) -> bool:
