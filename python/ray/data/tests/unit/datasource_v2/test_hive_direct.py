@@ -579,6 +579,21 @@ def test_orc_rejects_decoded_pickle_before_filter(tmp_path, monkeypatch, nested)
     assert not marker.exists()
 
 
+def test_file_indexer_passes_the_read_schema_to_the_native_indexer(
+    tmp_path, monkeypatch
+):
+    """A Hive read lists through the native indexer that was given the read schema."""
+    schema = pa.schema([("id", pa.int64())])
+    source = HiveDirectDatasource(HiveFileTable(str(tmp_path), "parquet", schema))
+    native = MagicMock()
+    monkeypatch.setattr(source._source, "_get_file_indexer", lambda: native)
+    indexer = source._get_file_indexer().with_read_schema(schema)
+    native.with_read_schema.assert_called_once_with(schema)
+    list(indexer.list_file_infos(pa.array([]), filesystem=None))
+    native.with_read_schema.return_value.list_file_infos.assert_called_once()
+    native.list_file_infos.assert_not_called()
+
+
 @pytest.mark.parametrize("file_format", ["parquet", "orc"])
 def test_scanner_options_preserve_native_behavior(tmp_path, monkeypatch, file_format):
     schema = pa.schema([("id", pa.int64())])

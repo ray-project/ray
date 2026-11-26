@@ -441,6 +441,7 @@ def make_row_group_bin_packer(
     # Bins are budgeted on the estimated decoded size, so a read task's output
     # stays near ``target_max_block_size``. Without a block target ``read_api``
     # passes ``sys.maxsize``, one bin for every file, so that takes the default.
+    # ``RAY_DATA_PARQUET_BIN_PACKING_BYTES`` overrides the budget, in decoded bytes.
     budget = hints.max_bucket_size if hints is not None else None
     if not budget or budget >= sys.maxsize:
         budget = DEFAULT_TARGET_MAX_BLOCK_SIZE

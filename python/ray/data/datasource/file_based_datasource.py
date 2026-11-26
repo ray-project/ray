@@ -97,8 +97,9 @@ class FileShuffleConfig:
         small_chunks_shuffle: If True, shuffle runs of Parquet row groups instead of
             whole files, so each read task mixes rows from many files. Contiguous
             row groups are coalesced into runs of about
-            ``DataContext.small_shuffle_chunk_size`` uncompressed bytes before the
-            shuffle. Row groups are never split, so the effective shuffle unit is
+            ``DataContext.small_shuffle_chunk_size`` bytes, as estimated once
+            decoded to Arrow, before the shuffle. Row groups are never split, so
+            the effective shuffle unit is
             ``max(row_group_size, small_shuffle_chunk_size)``. Only supported by
             ``read_parquet`` with ``DataContext.use_datasource_v2`` enabled;
             other readers ignore it and shuffle whole files. Defaults to False.

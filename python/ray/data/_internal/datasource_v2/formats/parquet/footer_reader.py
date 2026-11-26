@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import (
@@ -58,6 +59,7 @@ from ray.data._internal.datasource_v2.formats.parquet.parquet_size_statistics im
 )
 from ray.data._internal.datasource_v2.formats.parquet.parquet_utils import (
     READER_CPU_COUNT,
+    _row_group_uncompressed_size,
     read_format_kwargs,
 )
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
@@ -143,6 +145,60 @@ class _FileSizing(NamedTuple):
 # than the floor.
 _UNMODELLED_RATIO = 4
 _UNMODELLED_MIN_BYTES = 12 << 20
+
+# Sizing a row group from the footer takes about 10 microseconds a leaf. A file
+# with more column chunks to size than this has only its first, middle and last
+# row groups sized, and the rest scaled from those three.
+_MAX_SIZED_COLUMN_CHUNKS = 1000
+# A scaled row group may hold longer values than the sized ones, so it leans high.
+_SCALED_FACTOR = 1.25
+
+
+def _row_groups_to_size(rg_ids: list[int], num_leaves: int) -> list[int]:
+    """The row groups sized from the footer; the others are scaled from them."""
+    if num_leaves * len(rg_ids) <= _MAX_SIZED_COLUMN_CHUNKS:
+        return rg_ids
+    return sorted({rg_ids[0], rg_ids[(len(rg_ids) - 1) // 2], rg_ids[-1]})
+
+
+class _SizedRates:
+    """The most a file's sized row groups decode to and peak at, per row and per
+    stored byte, and the least any peaks above its decoded bytes."""
+
+    def __init__(self):
+        self._decoded_per_row = self._decoded_per_byte = 0.0
+        self._peak_per_row = self._peak_per_byte = 0.0
+        self._least_overhead = math.inf
+
+    def add(
+        self, row_group: RowGroupMetaData, uncompressed: int, decoded: int, peak: int
+    ) -> None:
+        """Count a sized row group, whose read leaves are ``uncompressed`` bytes."""
+        rows = max(row_group.num_rows, 1)
+        stored = max(row_group.total_byte_size, 1)
+        self._decoded_per_row = max(self._decoded_per_row, decoded / rows)
+        # No less than the uncompressed bytes, so a scaled row group isn't sized
+        # under them either.
+        self._decoded_per_byte = max(
+            self._decoded_per_byte, decoded / stored, uncompressed / stored
+        )
+        self._peak_per_row = max(self._peak_per_row, peak / rows)
+        self._peak_per_byte = max(self._peak_per_byte, peak / stored)
+        self._least_overhead = min(self._least_overhead, peak - decoded)
+
+    def sizes(self, row_group: RowGroupMetaData) -> tuple[int, int]:
+        """The decoded and peak bytes of a row group not sized itself: the larger
+        of what its rows and its stored bytes give at the sized row groups' rates.
+        A peak's fixed part doesn't shrink with the row group."""
+        rows, stored = row_group.num_rows, row_group.total_byte_size
+        decoded = math.ceil(
+            _SCALED_FACTOR
+            * max(self._decoded_per_row * rows, self._decoded_per_byte * stored)
+        )
+        peak = _SCALED_FACTOR * max(
+            self._peak_per_row * rows, self._peak_per_byte * stored
+        )
+        return decoded, math.ceil(max(peak, decoded + self._least_overhead))
 
 
 def _unmodelled_bytes(
@@ -275,6 +331,9 @@ class FooterReader:
             if projected_cols is not None
             else None
         )
+        self._read_names: frozenset[str] | None = (
+            None if self.read_order is None else frozenset(self.read_order)
+        )
         # Reused across files; make_fragment is what lets us apply
         # split_by_row_group.
         self.file_format = pds.ParquetFileFormat()
@@ -333,7 +392,13 @@ class FooterReader:
         try:
             # Cached on the fragment by the footer read.
             file_schema: pa.Schema | None = fragment.physical_schema
-        except Exception:
+        except pa.ArrowException as e:
+            logger.debug(
+                "Can't build the Arrow schema of %s, so its row groups are sized "
+                "from their uncompressed bytes: %s",
+                path,
+                e,
+            )
             file_schema = None
         schema = metadata.schema
         columns = [schema.column(j) for j in range(len(schema))]
@@ -626,7 +691,7 @@ class FooterReader:
                 idx >= 0 and not pa.types.is_null(file_schema.field(idx).type)
             ):
                 continue
-            projected = self.read_order is None or field.name in self.read_order
+            projected = self._read_names is None or field.name in self._read_names
             if projected or field.type == GENERATED_ID_COLUMN_TYPE:
                 added.append(field)
         return added_bytes(added=added, path=path, partition_values=partition_values)
@@ -719,17 +784,38 @@ class FooterReader:
         per_rg: list[FileChunk] = []
         if rg_indices:
             # One Thrift walk per file over the footer bytes ``metadata`` already
-            # holds -- no extra IO, though ``__reduce__`` re-serializes the
-            # footer, so skip it when every row group was pruned.
-            size_stats = read_footer_stats(metadata)
+            # holds, reading only the row groups sized -- no extra IO, though
+            # ``__reduce__`` re-serializes the footer, so skip it when every row
+            # group was pruned.
+            rg_ids = list(rg_indices)
+            sized = _row_groups_to_size(rg_ids, num_leaves=metadata.num_columns)
+            scaled = len(sized) < len(rg_ids)
+            size_stats = read_footer_stats(
+                metadata,
+                row_groups=None if len(sized) == metadata.num_row_groups else sized,
+            )
             sizing = self._file_sizing(file=file, fragment=fragment, metadata=metadata)
-            for rg_idx in rg_indices:
+            rates = _SizedRates()
+            sizes: dict[int, tuple[int, int]] = {}
+            for rg_idx in sized:
                 row_group = metadata.row_group(rg_idx)
-                decoded, peak = self._row_group_sizes(
+                decoded, peak = sizes[rg_idx] = self._row_group_sizes(
                     row_group=row_group,
                     sizing=sizing,
                     size_stats=None if size_stats is None else size_stats[rg_idx],
                 )
+                if scaled:
+                    rates.add(
+                        row_group=row_group,
+                        uncompressed=_row_group_uncompressed_size(
+                            row_group, sizing.leaf_indices
+                        ),
+                        decoded=decoded,
+                        peak=peak,
+                    )
+            for rg_idx in rg_ids:
+                row_group = metadata.row_group(rg_idx)
+                decoded, peak = sizes.get(rg_idx) or rates.sizes(row_group)
                 per_rg.append(
                     FileChunk(
                         unit_ids=(rg_idx,),

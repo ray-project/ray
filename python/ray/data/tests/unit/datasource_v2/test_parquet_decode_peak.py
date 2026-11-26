@@ -327,43 +327,68 @@ def _mixed():
     )
 
 
-@pytest.mark.parametrize(
-    "unmodelled", ["file", "strings-without-statistics", "delta-byte-array-leaf"]
-)
-def test_small_unmodelled_row_groups_pay_the_floor(tmp_path, monkeypatch, unmodelled):
-    """A file, or a leaf without exact counts, costs each small row group the floor, once."""
+def _assert_small_row_groups_pay_the_floor(path, **kwargs):
+    """Each of ``path``'s four small row groups is charged the floor, once."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
-    path = tmp_path / "f.parquet"
-    write_kwargs = {}
-    if unmodelled == "file":
-        monkeypatch.setattr(reader, "build_leaf_profiles", lambda **kwargs: None)
-    elif unmodelled == "strings-without-statistics":
-        # Neither SizeStatistics nor a min and max to size the dictionary's strings.
-        monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
-        write_kwargs = {"write_statistics": ["i"]}
-    else:
-        write_kwargs = {
-            "use_dictionary": False,
-            "column_encoding": {"s": "DELTA_BYTE_ARRAY"},
-        }
-    pq.write_table(_mixed(), path, row_group_size=M // 4, **write_kwargs)
     charge = _SAFETY_FACTOR * reader._UNMODELLED_MIN_BYTES
-    sizes = _peaks(path)
+    sizes = _peaks(path, **kwargs)
     assert len(sizes) == 4
     assert all(charge < size < charge + (1 << 20) for size in sizes), sizes
 
 
-@pytest.mark.parametrize("retyped", [False, True])
+def test_small_row_groups_of_an_unmodelled_file_pay_the_floor(tmp_path):
+    """A read with an option the estimator doesn't model."""
+    path = tmp_path / "f.parquet"
+    pq.write_table(_mixed(), path, row_group_size=M // 4)
+    _assert_small_row_groups_pay_the_floor(
+        path, format_kwargs={"binary_type": pa.large_binary()}
+    )
+
+
+def test_small_row_groups_with_unsized_strings_pay_the_floor(tmp_path, monkeypatch):
+    """Dictionary strings with neither SizeStatistics nor a min and max."""
+    import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
+
+    # PyArrow has no option to leave SizeStatistics out, so hide them.
+    monkeypatch.setattr(reader, "read_footer_stats", lambda metadata, row_groups: None)
+    path = tmp_path / "f.parquet"
+    pq.write_table(_mixed(), path, row_group_size=M // 4, write_statistics=["i"])
+    _assert_small_row_groups_pay_the_floor(path)
+
+
+def test_small_row_groups_with_a_delta_byte_array_leaf_pay_the_floor(tmp_path):
+    """An encoding whose footer doesn't give the strings' bytes."""
+    path = tmp_path / "f.parquet"
+    pq.write_table(
+        _mixed(),
+        path,
+        row_group_size=M // 4,
+        use_dictionary=False,
+        column_encoding={"s": "DELTA_BYTE_ARRAY"},
+    )
+    _assert_small_row_groups_pay_the_floor(path)
+
+
+@pytest.mark.parametrize(
+    "read_schema",
+    [
+        pytest.param(None, id="as_stored"),
+        pytest.param(
+            pa.schema([("i", pa.int64()), ("s", pa.large_string())]), id="retyped"
+        ),
+    ],
+)
 def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(
-    tmp_path, monkeypatch, retyped
+    tmp_path, monkeypatch, read_schema
 ):
     """Past the floor, the charge is a multiple of the unsized leaves' uncompressed
     bytes, once even when the read retypes them; the sized ``int64`` column isn't
     in it."""
     import ray.data._internal.datasource_v2.formats.parquet.footer_reader as reader
 
-    monkeypatch.setattr(reader, "read_footer_stats", lambda metadata: None)
+    # PyArrow has no option to leave SizeStatistics out, so hide them.
+    monkeypatch.setattr(reader, "read_footer_stats", lambda metadata, row_groups: None)
     path = tmp_path / "f.parquet"
     table = pa.table(
         {
@@ -377,9 +402,6 @@ def test_large_unmodelled_leaves_pay_by_their_uncompressed_bytes(
     strings = pq.read_metadata(path).row_group(0).column(1).total_uncompressed_size
     charge = _SAFETY_FACTOR * reader._UNMODELLED_RATIO * strings
     assert charge > _SAFETY_FACTOR * reader._UNMODELLED_MIN_BYTES
-    read_schema = None
-    if retyped:
-        read_schema = pa.schema([("i", pa.int64()), ("s", pa.large_string())])
     (size,) = _peaks(path, read_schema=read_schema)
     assert charge < size < charge + _SAFETY_FACTOR * (12 << 20), (size, charge)
 
@@ -558,6 +580,34 @@ def test_size_is_the_decoded_size_under_the_peak(tmp_path):
     sizes, peaks = _sizes(path), _peaks(path)
     assert all(0.95 <= size / t <= 1.05 for size, t in zip(sizes, true)), (sizes, true)
     assert all(size < peak for size, peak in zip(sizes, peaks))
+
+
+@pytest.mark.parametrize("sampled", [False, True], ids=["at-the-limit", "over-it"])
+def test_file_of_many_column_chunks_sizes_three_row_groups(
+    tmp_path, monkeypatch, sampled
+):
+    """Past the limit only the first, middle and last row groups are sized, and
+    the others take the largest of the three's rates."""
+    from ray.data._internal.datasource_v2.formats.parquet import footer_reader
+
+    path = tmp_path / "many.parquet"
+    schema = pa.schema([("a", pa.string()), ("b", pa.int64())])
+    with pq.ParquetWriter(path, schema) as writer:
+        # Each row group's strings are longer than the one before's.
+        for group in range(9):
+            columns = {"a": ["x" * (1 + 50 * group)] * 100, "b": list(range(100))}
+            writer.write_table(pa.table(columns, schema=schema))
+    every = list(zip(_sizes(path), _peaks(path)))
+
+    limit = 2 * 9 - sampled
+    monkeypatch.setattr(footer_reader, "_MAX_SIZED_COLUMN_CHUNKS", limit)
+    listed = list(zip(_sizes(path), _peaks(path)))
+
+    sized = (0, 4, 8) if sampled else range(9)
+    assert [listed[group] for group in sized] == [every[group] for group in sized]
+    for group in set(range(9)) - set(sized):
+        assert listed[group][0] > every[group][0]
+        assert listed[group][1] >= every[group][1]
 
 
 if __name__ == "__main__":

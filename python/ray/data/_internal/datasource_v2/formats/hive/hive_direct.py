@@ -1,5 +1,6 @@
 """Hive metadata planning composed with native Parquet and ORC datasources."""
 
+import copy
 import logging
 import re
 from contextlib import suppress
@@ -843,6 +844,12 @@ class _HiveFileIndexer(FileIndexer):
         self._paths = source.paths
         self._filesystem = source.filesystem
         self._retained = retained
+
+    def with_read_schema(self, schema: pa.Schema) -> "_HiveFileIndexer":
+        """A copy whose wrapped indexer sizes files as cast to ``schema``."""
+        indexer = copy.copy(self)
+        indexer._indexer = self._indexer.with_read_schema(schema)
+        return indexer
 
     def list_files(self, paths, *, filesystem=None, **kwargs) -> Iterable[FileManifest]:
         if self._retained is not None:
