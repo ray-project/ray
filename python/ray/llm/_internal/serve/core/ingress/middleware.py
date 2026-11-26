@@ -1,4 +1,3 @@
-import re
 import uuid
 from asyncio import CancelledError
 from typing import Any, Dict, Optional
@@ -32,10 +31,8 @@ def get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", None)
 
 
-# Pydantic adds segments to an error location for unions and validators, e.g.
-# "str", "list[str]", "function-wrap[...]" or "ChatCompletionUserMessageParam".
-# Field names are lowercase, so only those and list indices are kept.
-_FIELD_NAME_RE = re.compile(r"[a-z_][a-z0-9_]*")
+# Pydantic adds type names to an error location for union members, e.g.
+# ("body", "stop", "str"). They are not field names.
 _TYPE_NAMES = {"str", "int", "float", "bool", "bytes", "none"}
 
 
@@ -44,12 +41,13 @@ def _get_param(error: Dict[str, Any]) -> Optional[str]:
     if error.get("type") == "json_invalid":
         # The location is ("body", <character offset>), not a field.
         return None
+    # Skip the request part ("body") and segments that are not field names,
+    # e.g. "list[str]", "function-wrap[...]" or "ChatCompletionUserMessageParam".
     parts = [
         str(part)
-        # The first segment is the request part, e.g. "body".
         for part in error.get("loc", ())[1:]
         if isinstance(part, int)
-        or (_FIELD_NAME_RE.fullmatch(part) and part not in _TYPE_NAMES)
+        or (part.isidentifier() and part.islower() and part not in _TYPE_NAMES)
     ]
     return ".".join(parts) or None
 
