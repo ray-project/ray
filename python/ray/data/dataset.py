@@ -6290,7 +6290,11 @@ class Dataset:
 
         Arguments:
             sql: An ``INSERT INTO`` statement with one parameter per column, in the
-                order returned by :meth:`Dataset.columns`.
+                dataset's known column order. Ray binds each block by column name
+                in that order. If the column order is unknown before execution,
+                all nonempty blocks must have the same column order. Use
+                :meth:`Dataset.select_columns` to set it explicitly. A mismatch
+                across write tasks is reported after those tasks may have committed.
             connection_factory: A function that takes no arguments and returns a
                 Python DB API2
                 `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
@@ -6304,7 +6308,7 @@ class Dataset:
         datasink = SQLDatasink(
             sql=sql,
             connection_factory=connection_factory,
-            column_names=self.columns() or [],
+            column_names=self.columns(fetch_if_missing=False),
         )
         self.write_datasink(
             datasink,

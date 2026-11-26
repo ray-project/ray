@@ -2,9 +2,12 @@ import sqlite3
 import tempfile
 from typing import Generator
 
+import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.datasource.sql_datasink import SQLDatasink
+from ray.data._internal.execution.interfaces import TaskContext
 from ray.tests.conftest import *  # noqa  # noqa
 
 
@@ -147,6 +150,88 @@ def test_write_sql(temp_database: str):
 
     result = connection.cursor().execute("SELECT * FROM test ORDER BY number")
     assert result.fetchall() == [("spam", 0), ("ham", 1)]
+
+
+def test_write_sql_unknown_order_runs_udf_once(temp_database):
+    with sqlite3.connect(temp_database) as db:
+        db.execute("CREATE TABLE output(a, b)")
+        db.execute("CREATE TABLE calls(marker)")
+
+    def counted(batch):
+        with sqlite3.connect(temp_database) as db:
+            db.execute("INSERT INTO calls VALUES (?)", (int(batch["a"][0]),))
+        return batch
+
+    ds = ray.data.from_items(
+        [{"a": 11, "b": 12}, {"a": 21, "b": 22}], override_num_blocks=2
+    ).map_batches(counted)
+    assert ds.columns(fetch_if_missing=False) is None
+    ds.write_sql(
+        "INSERT INTO output VALUES (?, ?)", lambda: sqlite3.connect(temp_database)
+    )
+    with sqlite3.connect(temp_database) as db:
+        assert db.execute("SELECT * FROM calls ORDER BY marker").fetchall() == [
+            (11,),
+            (21,),
+        ]
+        assert db.execute("SELECT * FROM output ORDER BY a").fetchall() == [
+            (11, 12),
+            (21, 22),
+        ]
+
+
+def test_write_sql_inconsistent_order_across_tasks(temp_database):
+    with sqlite3.connect(temp_database) as db:
+        db.execute("CREATE TABLE output(a, b)")
+    ds = ray.data.from_items(
+        [{"a": 11, "b": 12}, {"b": 22, "a": 21}], override_num_blocks=2
+    ).map_batches(lambda batch: batch)
+    with pytest.raises(ValueError, match=r"select_columns.*committed"):
+        ds.write_sql(
+            "INSERT INTO output VALUES (?, ?)", lambda: sqlite3.connect(temp_database)
+        )
+    with sqlite3.connect(temp_database) as db:
+        assert db.execute("SELECT * FROM output ORDER BY a").fetchall() == [
+            (11, 12),
+            (22, 21),
+        ]
+
+
+def test_write_sql_inconsistent_order_in_one_task(temp_database):
+    with sqlite3.connect(temp_database) as db:
+        db.execute("CREATE TABLE output(a, b)")
+    sink = SQLDatasink(
+        "INSERT INTO output VALUES (?, ?)",
+        lambda: sqlite3.connect(temp_database),
+        column_names=None,
+    )
+    blocks = [
+        pa.table({}),
+        pa.table({"a": [11], "b": [12]}),
+        pa.table({"b": [22], "a": [21]}),
+    ]
+    with pytest.raises(ValueError, match="select_columns"):
+        sink.write(blocks, TaskContext(task_idx=0, op_name="Write"))
+    with sqlite3.connect(temp_database) as db:
+        assert db.execute("SELECT * FROM output").fetchall() == []
+
+
+def test_write_sql_known_columns_mismatch(temp_database):
+    with sqlite3.connect(temp_database) as db:
+        db.execute("CREATE TABLE output(a, b)")
+    sink = SQLDatasink(
+        "INSERT INTO output VALUES (?, ?)",
+        lambda: sqlite3.connect(temp_database),
+        column_names=["a", "b"],
+    )
+    with pytest.raises(ValueError) as error:
+        sink.write(
+            [pa.table({"a": [1], "c": [2]})], TaskContext(task_idx=0, op_name="Write")
+        )
+    message = str(error.value)
+    assert "expected columns ['a', 'b'], got ['a', 'c']" in message
+    assert "Missing columns: ['b']" in message
+    assert "Unexpected columns: ['c']" in message
 
 
 @pytest.mark.parametrize("num_blocks", (1, 20))
