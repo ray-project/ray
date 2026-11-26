@@ -494,6 +494,114 @@ def test_running_attempt_keeps_a_node(tracker):
     )
 
 
+#: read:0 -> map:0 -> {left:0, right:0} -> write:0. The write loses its input, so
+#: the whole lineage re-executes for the plan, and left:0 and right:0 are submitted.
+_WRITE_FAILS_BELOW_A_FAN_OUT = [
+    Submit("read:0"),
+    Complete("read:0", num_outputs=1),
+    Submit("map:0", {"read:0": [0]}),
+    Complete("map:0", num_outputs=2),
+    Submit("left:0", {"map:0": [0]}),
+    Submit("right:0", {"map:0": [1]}),
+    Complete("left:0", num_outputs=1),
+    Complete("right:0", num_outputs=1),
+    Submit("write:0", {"left:0": [0], "right:0": [0]}),
+    Fail("write:0", expected_seed_task_ids=["read:0"], plan=_PLAN),
+    Submit("read:0", plan=_PLAN),
+    Submit("map:0", {"read:0": [0]}, plan=_PLAN),
+    Complete("read:0", num_outputs=1, plan=_PLAN),
+    Submit("left:0", {"map:0": [0]}, plan=_PLAN),
+    Submit("right:0", {"map:0": [1]}, plan=_PLAN),
+    Complete("map:0", num_outputs=2, plan=_PLAN),
+]
+
+#: left:0 loses its input. The seed re-executes, and map:0 is submitted for the plan
+#: and sends output 0 to left:0. map:0 is still running.
+_LEFT_SIBLING_LOSES_ITS_INPUT = [
+    Fail("left:0", expected_seed_task_ids=["read:0"], plan=_PLAN),
+    Submit("read:0", plan=_PLAN),
+    Submit("map:0", {"read:0": [0]}, plan=_PLAN),
+    Complete("read:0", num_outputs=1, plan=_PLAN),
+    OutputBlock("map:0", "map:0/0", 0),
+    QueueBlock("map:0", 0, _PLAN),
+]
+
+#: right:0 loses its input while map:0 is still running, so the walk passes map:0
+#: and the seed re-executes again. map:0 then sends output 1 and completes.
+_RIGHT_SIBLING_LOSES_ITS_INPUT_BEFORE_MAP_COMPLETES = [
+    Fail("right:0", expected_seed_task_ids=["read:0"], plan=_PLAN),
+    # The running map:0 now also re-produces output 1 for right:0, so the seed
+    # re-execution the right sibling failure just returned is redundant.
+    ExpectPendingChildren("map:0", _PLAN, {"right:0": {"map:0": [1]}}),
+    ExpectObjectReuseStatus("map:0", 1, _PLAN, ObjectReuseStatus.OBJECT_REUSED),
+    # The running map:0 sends output 1 to right:0. This is right:0's recovered input.
+    OutputBlock("map:0", "map:0/1", 1),
+    QueueBlock("map:0", 1, _PLAN),
+    Complete("map:0", num_outputs=2, plan=_PLAN),
+    # map:0 sent everything the plan needs from it.
+    ExpectPendingChildren("map:0", _PLAN, {}),
+]
+
+#: The seed's extra re-execution queues a redundant re-execution of map:0.
+_SEED_QUEUES_A_REDUNDANT_MAP = [
+    Submit("read:0", plan=_PLAN),
+    OutputBlock("read:0", "read:0/0", 0),
+    QueueBlock("read:0", 0, _PLAN),
+    Complete("read:0", num_outputs=1, plan=_PLAN),
+]
+
+#: left:0, right:0 and the write finish the plan, and the write is collected.
+_FINISH_THE_PLAN_AND_WRITE = [
+    SubmitBlocks("left:0", ["map:0/0"], [_PLAN]),
+    OutputBlock("left:0", "left:0/0", 0),
+    QueueBlock("left:0", 0, _PLAN),
+    Complete("left:0", num_outputs=1, plan=_PLAN),
+    # right:0 re-executes on the output 1 the running map:0 sent, not on anything
+    # from the redundant re-execution.
+    SubmitBlocks("right:0", ["map:0/1"], [_PLAN]),
+    OutputBlock("right:0", "right:0/0", 0),
+    QueueBlock("right:0", 0, _PLAN),
+    Complete("right:0", num_outputs=1, plan=_PLAN),
+    SubmitBlocks("write:0", ["left:0/0", "right:0/0"], [_PLAN]),
+    QueueBlock("write:0", 0, _PLAN),
+    *_complete_write("write:0", plan=_PLAN),
+]
+
+
+def test_queued_reconstruction_task_keeps_a_node(tracker):
+    """A task with a reconstruction task waiting in its queue must not be garbage
+    collected, even after the plan's write task finishes and the lineages of all the
+    tasks downstream of it are garbage collected.
+
+    ``right:0`` loses its input while ``map:0`` re-executes for the plan, so the seed
+    re-executes again and queues a redundant re-execution of ``map:0``. The rest of
+    the plan finishes and the write is collected before that re-execution is
+    submitted.
+    """
+    run_actions(
+        [
+            *_WRITE_FAILS_BELOW_A_FAN_OUT,
+            *_LEFT_SIBLING_LOSES_ITS_INPUT,
+            *_RIGHT_SIBLING_LOSES_ITS_INPUT_BEFORE_MAP_COMPLETES,
+            *_SEED_QUEUES_A_REDUNDANT_MAP,
+            ExpectNodeAttribute(
+                "map:0", "plans_with_queued_reconstruction_task", {"write:0"}
+            ),
+            *_FINISH_THE_PLAN_AND_WRITE,
+            ExpectTaskIds(["map:0", "read:0"]),
+            # The redundant re-execution of map:0 is submitted, produces nothing
+            # for the plan, and its lineage is GC'd when it completes.
+            SubmitBlocks("map:0", ["read:0/0"], [_PLAN]),
+            ExpectObjectReuseStatus(
+                "map:0", 0, _PLAN, ObjectReuseStatus.OBJECT_UNRELATED
+            ),
+            Complete("map:0", num_outputs=2, plan=_PLAN),
+            ExpectTaskIds([]),
+        ],
+        tracker,
+    )
+
+
 def test_reconstructed_lineage_is_collected_once_written(tracker):
     """After a recovery completes and its target is written, nothing is left."""
     run_actions(

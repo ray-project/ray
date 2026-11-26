@@ -9,6 +9,7 @@ import pytest  # noqa
 from ray._common.utils import binary_to_hex
 from ray._private.test_utils import get_test_config_path
 from ray.autoscaler import AUTOSCALER_DIR_PATH
+from ray.autoscaler._private.constants import PENDING_NODE_IDLE_TERMINATION_GATED_KEY
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.instance_manager import config as config_mod
 from ray.autoscaler.v2.instance_manager.config import (
@@ -186,6 +187,18 @@ def test_pending_idle_timeout_s_disabled_by_default(monkeypatch):
         get_test_config_path("test_ray_complex.yaml")
     ).get_cached_autoscaling_config()
     assert config.get_pending_idle_timeout_s() is None
+
+
+@pytest.mark.parametrize("gated, expected", [(False, 600.0), (True, None)])
+def test_pending_idle_timeout_s_gated(monkeypatch, gated, expected):
+    monkeypatch.setattr(config_mod, "RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S", 600)
+    config = FileConfigReader(
+        get_test_config_path("test_ray_complex.yaml")
+    ).get_cached_autoscaling_config()
+    if gated:
+        provider_config = config.get_raw_config_mutable()["provider"]
+        provider_config[PENDING_NODE_IDLE_TERMINATION_GATED_KEY] = True
+    assert config.get_pending_idle_timeout_s() == expected
 
 
 def test_read_config():

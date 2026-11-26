@@ -599,6 +599,128 @@ TEST_F(WorkerKillingPolicyByTimeTest,
   ASSERT_EQ(workers_to_kill[2].first->WorkerId(), idle_small->WorkerId());
 }
 
+TEST_F(WorkerKillingPolicyByTimeTest,
+       TestPolicyRecomputesThresholdFromLatestTotalMemory) {
+  TimeBasedWorkerKillingPolicy policy(
+      [](int64_t total_memory_bytes) {
+        return static_cast<int64_t>(total_memory_bytes * 0.7);
+      },
+      0 /*kill_buffer_bytes*/);
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1001);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers{worker};
+  ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot({{worker, 200}});
+
+  // Used memory is 800 bytes. With the original 2000-byte total, a 70% threshold
+  // is 1400 bytes, so the policy should not kill anything.
+  ASSERT_TRUE(policy
+                  .SelectWorkersToKill(workers,
+                                       process_snapshot,
+                                       CreateSystemSnapshot(800, 2000 /*total_bytes*/))
+                  .empty());
+
+  // Simulate the same runtime cgroup downsize handled by ThresholdMemoryMonitor:
+  // used memory is unchanged, but total memory shrinks to 1000 bytes. The policy
+  // must recompute the threshold as 700 bytes and select a worker; using a cached
+  // startup threshold of 1400 bytes would incorrectly select nothing.
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(
+          workers, process_snapshot, CreateSystemSnapshot(800, 1000 /*total_bytes*/));
+
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), worker->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest, TestPolicyRecomputesKillBufferOnEveryDecision) {
+  // The getter stands in for a root cgroup read whose memory.max changes at
+  // runtime (in-place pod resize).
+  int64_t kill_buffer_bytes = 0;
+  TimeBasedWorkerKillingPolicy policy(
+      [](int64_t total_memory_bytes) {
+        return static_cast<int64_t>(total_memory_bytes * 0.7);
+      },
+      [&kill_buffer_bytes]() { return kill_buffer_bytes; });
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> small_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1001);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> large_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1002);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers{small_worker, large_worker};
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{small_worker, 25}, {large_worker, 100}});
+
+  // Threshold is 700 bytes. With 690 bytes used and no buffer, there is
+  // nothing to free, so no worker is selected (and the policy keeps no pending
+  // kill targets).
+  ASSERT_TRUE(
+      policy
+          .SelectWorkersToKill(workers, process_snapshot, CreateSystemSnapshot(690, 1000))
+          .empty());
+
+  // The buffer grows to 50 bytes (e.g. the pod limit was resized). The policy
+  // must pick up the new value: it needs to free 690 - 700 + 50 = 40 bytes and
+  // stops after the 100-byte worker. A cached 0-byte buffer would select none.
+  kill_buffer_bytes = 50;
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(
+          workers, process_snapshot, CreateSystemSnapshot(690, 1000));
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), large_worker->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest, TestKillBufferIgnoresSnapshotTotalMemory) {
+  // Under resource isolation the policy receives the user-slice snapshot, whose
+  // total_bytes is host MemTotal rather than the pod limit. The kill buffer must
+  // not scale with that total; it comes only from the getter.
+  TimeBasedWorkerKillingPolicy policy([](int64_t) { return 700; }, []() { return 50; });
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> small_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1001);
+  clock_.AdvanceTime(absl::Milliseconds(1));
+  std::shared_ptr<WorkerInterface> large_worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1002);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers{small_worker, large_worker};
+  ProcessesMemorySnapshot process_snapshot =
+      CreateProcessSnapshot({{small_worker, 25}, {large_worker, 100}});
+
+  // Need to free 720 - 700 + 50 = 70 bytes, so only the 100-byte worker is
+  // selected even though the snapshot reports a huge (host-sized) total.
+  std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill =
+      policy.SelectWorkersToKill(
+          workers, process_snapshot, CreateSystemSnapshot(720, 1000000 /*total_bytes*/));
+  ASSERT_EQ(workers_to_kill.size(), 1);
+  ASSERT_EQ(workers_to_kill[0].first->WorkerId(), large_worker->WorkerId());
+}
+
+TEST_F(WorkerKillingPolicyByTimeTest, TestPolicySkipsWhenThresholdUnavailable) {
+  TimeBasedWorkerKillingPolicy policy(
+      [](int64_t) { return MemoryMonitorInterface::kNull; }, 0 /*kill_buffer_bytes*/);
+
+  TaskID owner_id = TaskID::ForDriverTask(job_id_);
+  std::shared_ptr<WorkerInterface> worker = CreateTaskWorker(
+      owner_id, has_retry_, port_, rpc::TaskType::NORMAL_TASK, clock_, 1001);
+
+  std::vector<std::shared_ptr<WorkerInterface>> workers{worker};
+  ProcessesMemorySnapshot process_snapshot = CreateProcessSnapshot({{worker, 1000}});
+
+  ASSERT_TRUE(policy
+                  .SelectWorkersToKill(workers,
+                                       process_snapshot,
+                                       CreateSystemSnapshot(2000, 2000 /*total_bytes*/))
+                  .empty())
+      << "When the runtime threshold is unavailable (for example, transient "
+         "memory.high read failure under resource isolation), the policy should "
+         "skip this decision instead of treating kNull as a threshold.";
+}
+
 }  // namespace raylet
 
 }  // namespace ray

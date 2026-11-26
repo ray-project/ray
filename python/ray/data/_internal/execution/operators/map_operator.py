@@ -703,6 +703,20 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         child. ``displaced`` is an earlier copy of the same slot it replaced
         (a re-run re-produced it), which no consumer will read."""
 
+    def _context_task_idx(self, inputs: Optional[RefBundle]) -> int:
+        """The ``TaskContext.task_idx`` of the task about to be submitted on ``inputs``.
+
+        A reconstruction task reuses the index of the task it re-runs. Output file
+        names, random seeds and ``monotonically_increasing_id`` derive from this
+        index, so a re-run overwrites and reproduces the original rather than
+        writing a second file or drawing different values. The operator's own
+        bookkeeping keeps using the fresh ``_next_data_task_idx``.
+        """
+        stamp = inputs.reconstruction_stamp if inputs is not None else None
+        if stamp is not None:
+            return self._task_index_of(stamp.lineage_task_id)
+        return self._next_data_task_idx
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,

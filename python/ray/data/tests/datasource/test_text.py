@@ -7,8 +7,14 @@ import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.logical.operators import ReadFiles
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.mock_http_server import (
+    data_file,
+    no_ranges_file,
+    no_ranges_num_lines,
+)
 from ray.tests.conftest import *  # noqa
 
 
@@ -200,13 +206,30 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path, text_reader_version)
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]
 
 
-def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
-    # HTTP reads keep the V1 reader whatever ``use_datasource_v2`` says.
-    ds = ray.data.read_text(http_file, filesystem=HTTPFileSystem())
-    assert ds.count() > 0
-    # Test auto-resolve of HTTP file system when it is not provided.
-    ds = ray.data.read_text(http_file)
-    assert ds.count() > 0
+@pytest.mark.parametrize(
+    "url, num_lines",
+    [(data_file, 1000), (no_ranges_file, no_ranges_num_lines)],
+    ids=["no-size", "no-ranges"],
+)
+@pytest.mark.parametrize("filesystem", [HTTPFileSystem(), None], ids=["fsspec", "auto"])
+@pytest.mark.parametrize("num_paths", [1, 2])
+def test_fsspec_http_file_system(
+    ray_start_regular_shared,
+    http_server,
+    text_reader_version,
+    url,
+    num_lines,
+    filesystem,
+    num_paths,
+):
+    """``no-size``: the server sends no ``Content-Length``, so the filesystem
+    reports no size for the file; V2 must still read it, not skip it.
+    ``no-ranges``: the server sends the size but ignores range requests, and
+    the file is larger than fsspec's 5 MiB read block; V2 reads it in blocks of
+    ``streaming_read_buffer_size``, in one request, as V1 does."""
+    ds = ray.data.read_text([url] * num_paths, filesystem=filesystem)
+    assert isinstance(ds._logical_plan.dag, ReadFiles) == text_reader_version
+    assert _to_lines(ds.take_all()) == ["some test data"] * num_lines * num_paths
 
 
 if __name__ == "__main__":

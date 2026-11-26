@@ -38,11 +38,9 @@ def main(args):
         # The scalar AVG subquery is computed first as a plain float via
         # Dataset.mean(). The NOT EXISTS is implemented as a left_anti join.
 
-        # Load tables with early projection.
-        customer = load_table("customer", args.sf).select_columns(
-            ["c_custkey", "c_phone", "c_acctbal"]
-        )
-        orders = load_table("orders", args.sf).select_columns(["o_custkey"])
+        # Load tables. Projection pushdown derives the columns each read needs.
+        customer = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
 
         # Q22 parameters
         codes_regex = "^(13|31|23|29|30|18|17)$"

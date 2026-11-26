@@ -1289,10 +1289,16 @@
     script: python image_embedding_from_uris/main.py {{args}}
 
 # Ray Data lineage reconstruction under chaos, with optional output correctness check.
-- name: image_embedding_from_uris_fake_gpu_lineage_reconstruction_chaos
+# Each kill round takes down 2 raylets, so the kill caps are even. 16 is the default
+# to run. 8 and 30 bound how much churn the run sees.
+- name: image_embedding_from_uris_fake_gpu_lineage_reconstruction_chaos_kills_{{max_kills}}
   python: "3.11"
   frequency: manual
   group: data-batch-inference
+
+  matrix:
+    setup:
+      max_kills: [8, 16, 30]
 
   cluster:
     anyscale_sdk_2026: true
@@ -1315,7 +1321,8 @@
       python image_embedding_from_uris/main.py
       --inference-concurrency 20 20 --fake-gpu --chaos --lineage-reconstruction
       --chaos-kill-interval-s 60 --chaos-kill-batch-size 2
-      --chaos-min-alive-workers 12 --verify-output
+      --chaos-min-alive-workers 12 --chaos-max-kills {{max_kills}}
+      --verify-output
 
 
 - name: image_embedding_from_jsonl_{{case}}
