@@ -27,14 +27,16 @@ adal==1.2.7
     # via msrestazure
 adlfs==2026.4.0
     # via -r python/requirements/cloud-requirements.txt
-aioboto3==12.1.0
+aioboto3==15.5.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   -r python/requirements/serve/serve-test-requirements.txt
-aiobotocore==2.8.0
+aiobotocore==2.25.1
     # via
     #   aioboto3
     #   s3fs
+aiofiles==25.1.0
+    # via aioboto3
 aiohappyeyeballs==2.6.1
     # via aiohttp
 aiohttp==3.14.4
@@ -125,12 +127,10 @@ attrs==26.1.0
     #   -r python/requirements/test-requirements.txt
     #   aiohttp
     #   dm-tree
-    #   glom
     #   jsonschema
     #   open-spiel
     #   openlineage-python
     #   referencing
-    #   semgrep
 audioop-lts==0.2.2
     # via gradio
 autograd==1.8.0
@@ -216,14 +216,9 @@ bokeh==3.1.0
     # via
     #   -r python/requirements/ml/data-requirements.txt
     #   dask
-boltons==21.0.0
-    # via
-    #   face
-    #   glom
-    #   semgrep
 boto==2.49.0
     # via gcs-oauth2-boto-plugin
-boto3==1.29.7
+boto3==1.40.61
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   -r python/requirements/ml/train-test-requirements.txt
@@ -233,7 +228,7 @@ boto3==1.29.7
     #   aws-sam-translator
     #   moto
     #   smart-open
-botocore==1.32.7
+botocore==1.40.61
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   aiobotocore
@@ -245,8 +240,6 @@ botorch==0.16.1
     # via ax-platform
 braceexpand==0.1.7
     # via webdataset
-bracex==2.6
-    # via wcmatch
 brotli==1.2.1
     # via
     #   -r python/requirements/security-requirements.txt
@@ -294,7 +287,6 @@ click==8.5.0
     #   black
     #   celery
     #   click-didyoumean
-    #   click-option-group
     #   click-plugins
     #   click-repl
     #   dask
@@ -304,15 +296,12 @@ click==8.5.0
     #   mlflow-skinny
     #   pyiceberg
     #   ray
-    #   semgrep
     #   tensorflow-datasets
     #   typer
     #   uvicorn
     #   wandb
 click-didyoumean==0.3.1
     # via celery
-click-option-group==0.5.9
-    # via semgrep
 click-plugins==1.1.1.2
     # via celery
 click-repl==0.3.0
@@ -343,7 +332,6 @@ colorama==0.4.6
     #   -r python/requirements/test-requirements.txt
     #   halo
     #   log-symbols
-    #   semgrep
 colorful==0.5.8
     # via -r python/requirements.txt
 colorlog==6.10.1
@@ -423,9 +411,7 @@ decord==0.6.0
 deepspeed==0.18.9
     # via -r python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
-    # via
-    #   nbconvert
-    #   semgrep
+    # via nbconvert
 delta-kernel-rust-sharing-wrapper==0.3.1
     # via delta-sharing
 delta-sharing==1.4.1
@@ -486,8 +472,6 @@ everett==3.1.0
     # via comet-ml
 executing==2.2.1
     # via stack-data
-face==26.0.0
-    # via glom
 fairscale==0.4.6
     # via -r python/requirements/ml/tune-test-requirements.txt
 farama-notifications==0.0.4
@@ -579,8 +563,6 @@ gitpython==3.1.47
     #   wandb
 glfw==2.10.0
     # via mujoco
-glom==22.1.0
-    # via semgrep
 google-api-core==2.30.3
     # via
     #   -r python/requirements/ml/data-test-requirements.txt
@@ -853,6 +835,7 @@ jinja2==3.1.6
     #   torch-geometric
 jmespath==1.1.0
     # via
+    #   aiobotocore
     #   azure-cli-core
     #   boto3
     #   botocore
@@ -889,7 +872,6 @@ jsonschema==4.24.1
     #   openapi-schema-validator
     #   openapi-spec-validator
     #   ray
-    #   semgrep
 jsonschema-path==0.3.4
     # via openapi-spec-validator
 jsonschema-specifications==2025.9.1
@@ -1104,6 +1086,7 @@ mujoco==3.15.0
 multidict==6.9.1
     # via
     #   -r python/requirements/security-requirements.txt
+    #   aiobotocore
     #   aiohttp
     #   yarl
 multipledispatch==1.0.0
@@ -1402,7 +1385,6 @@ packaging==26.3
     #   pytest-sugar
     #   pytorch-lightning
     #   ray
-    #   semgrep
     #   skops
     #   statsmodels
     #   taskiq
@@ -1450,8 +1432,6 @@ pathspec==1.0.4
     #   black
 patsy==1.0.2
     # via statsmodels
-peewee==3.19.0
-    # via semgrep
 pettingzoo==1.24.3
     # via -r python/requirements/ml/rllib-test-requirements.txt
 pexpect==4.8.0
@@ -1742,6 +1722,7 @@ python-dateutil==2.9.0.post0
     # via
     #   -r python/requirements/cloud-requirements.txt
     #   adal
+    #   aiobotocore
     #   arrow
     #   botocore
     #   celery
@@ -1767,8 +1748,6 @@ python-dotenv==1.2.2
     #   testcontainers
 python-json-logger==4.1.0
     # via jupyter-events
-python-lsp-jsonrpc==1.0.0
-    # via semgrep
 python-multipart==0.0.26
     # via
     #   gradio
@@ -1880,7 +1859,6 @@ requests==2.33.1
     #   requests-toolbelt
     #   responses
     #   segment-analytics-python
-    #   semgrep
     #   smart-open
     #   tensorflow-datasets
     #   torch-geometric
@@ -1917,7 +1895,6 @@ rich==13.7.1
     #   keras
     #   memray
     #   pyiceberg
-    #   semgrep
     #   textual
     #   typer
 rpds-py==0.30.0
@@ -1929,15 +1906,13 @@ rsa==4.7.2
     #   gcs-oauth2-boto-plugin
     #   google-auth
     #   oauth2client
-ruamel-yaml==0.17.40
-    # via semgrep
 s3fs==2023.12.1
     # via -r python/requirements/ml/core-requirements.txt
 s3torchconnector==1.5.0
     # via -r python/requirements/ml/train-test-requirements.txt
 s3torchconnectorclient==1.5.0
     # via s3torchconnector
-s3transfer==0.8.0
+s3transfer==0.14.0
     # via boto3
 safehttpx==0.1.7
     # via gradio
@@ -1985,8 +1960,6 @@ semantic-version==2.10.0
     # via
     #   comet-ml
     #   gradio
-semgrep==1.32.0
-    # via -r python/requirements/lint-requirements.txt
 send2trash==2.1.0
     # via jupyter-server
 sentencepiece==0.2.1
@@ -2151,8 +2124,6 @@ tokenizers==0.23.2
     # via transformers
 toml==0.10.2
     # via tensorflow-datasets
-tomli==2.0.2
-    # via semgrep
 tomlkit==0.13.3
     # via
     #   gradio
@@ -2268,12 +2239,10 @@ types-pycurl==7.45.3.20240421
     # via -r python/requirements/lint-requirements.txt
 types-pyyaml==6.0.12.2
     # via -r python/requirements/lint-requirements.txt
-types-requests==2.31.0.6
+types-requests==2.33.0.20261030
     # via -r python/requirements/lint-requirements.txt
 types-setuptools==80.9.0.20250822
     # via -r python/requirements/lint-requirements.txt
-types-urllib3==1.26.25.14
-    # via types-requests
 typing-extensions==4.16.0
     # via
     #   -r python/requirements/serve/serve-test-requirements.txt
@@ -2318,7 +2287,6 @@ typing-extensions==4.16.0
     #   pyre-extensions
     #   pyright
     #   pytorch-lightning
-    #   semgrep
     #   sqlalchemy
     #   testcontainers
     #   textual
@@ -2343,15 +2311,14 @@ tzlocal==5.3.1
     #   celery
 uc-micro-py==2.0.0
     # via linkify-it-py
-ujson==5.12.0
-    # via python-lsp-jsonrpc
 uri-template==1.3.0
     # via jsonschema
 uritemplate==4.2.0
     # via google-api-python-client
-urllib3==1.26.20
+urllib3==2.8.0
     # via
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/security-requirements.txt
     #   botocore
     #   clickhouse-connect
     #   comet-ml
@@ -2362,9 +2329,9 @@ urllib3==1.26.20
     #   lance-namespace-urllib3-client
     #   requests
     #   responses
-    #   semgrep
     #   sentry-sdk
     #   testcontainers
+    #   types-requests
 utilsforecast==0.2.15
     # via statsforecast
 uv==0.8.9
@@ -2392,8 +2359,6 @@ watchfiles==1.3.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   -r python/requirements.txt
-wcmatch==8.5.2
-    # via semgrep
 wcwidth==0.6.0
     # via
     #   prettytable
