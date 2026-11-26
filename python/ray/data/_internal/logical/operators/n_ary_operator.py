@@ -1,13 +1,15 @@
 import enum
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Set
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorUnifiesInputSchemas,
     PredicatePassThroughBehavior,
 )
+from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -120,9 +122,9 @@ class Zip(NAry):
         ):
             return None
         try:
-            combined = input_schemas[0].empty_table()
+            combined = _create_empty_table(input_schemas[0])
             for s in input_schemas[1:]:
-                combined = BlockAccessor.for_block(combined).zip(s.empty_table())
+                combined = BlockAccessor.for_block(combined).zip(_create_empty_table(s))
         except (pa.ArrowTypeError, pa.ArrowInvalid):
             return None
         return combined.schema
@@ -183,6 +185,7 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
 class Union(
     NAry,
     LogicalOperatorSupportsPredicatePassThrough,
+    LogicalOperatorSupportsProjectionPassThrough,
     LogicalOperatorUnifiesInputSchemas,
 ):
     """Logical operator for union."""
@@ -209,3 +212,8 @@ class Union(
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # Union allows pushing filter into each branch
         return PredicatePassThroughBehavior.PUSH_INTO_BRANCHES
+
+    def required_input_columns(
+        self, required_output_columns: Optional[Set[str]]
+    ) -> Optional[List[Optional[Set[str]]]]:
+        return [required_output_columns for _ in self.input_dependencies]

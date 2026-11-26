@@ -137,6 +137,7 @@ RAY_PROCESSES = [
     ["ray.util.client.server", False],
     ["default_worker.py", False],  # Python worker.
     ["setup_worker.py", False],  # Python environment setup worker.
+    ["fork_server.py", False],  # Python worker fork server.
     # For mac osx, setproctitle doesn't change the process name returned
     # by psutil but only cmdline.
     [
@@ -172,3 +173,8 @@ DISABLE_NODE_UPDATERS_KEY = "disable_node_updaters"
 DISABLE_LAUNCH_CONFIG_CHECK_KEY = "disable_launch_config_check"
 FOREGROUND_NODE_LAUNCH_KEY = "foreground_node_launch"
 WORKER_LIVENESS_CHECK_KEY = "worker_liveness_check"
+# Autoscaler v2 only. When this provider config flag is set, the autoscaler
+# will not terminate pending nodes due to lack of resource demands. KubeRay
+# uses this for the RayCluster created for a RayJob until it becomes ready,
+# because the job is not submitted until the RayCluster is ready.
+PENDING_NODE_IDLE_TERMINATION_GATED_KEY = "pending_node_idle_termination_gated"

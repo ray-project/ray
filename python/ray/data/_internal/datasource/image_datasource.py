@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Iterator, List, Optional, Tuple, Union
 
 import numpy as np
 
+from ray.data._internal.datasource.image_utils import _ALLOWED_PIL_FORMATS
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockMetadata
@@ -77,9 +78,12 @@ class ImageDatasource(FileBasedDatasource):
         data = f.readall()
 
         try:
-            image = Image.open(io.BytesIO(data))
+            image = Image.open(io.BytesIO(data), formats=_ALLOWED_PIL_FORMATS)
         except UnidentifiedImageError as e:
-            raise ValueError(f"PIL couldn't load image file at path '{path}'.") from e
+            raise ValueError(
+                f"PIL couldn't load image file at path '{path}'. Ray Data only "
+                f"decodes these image formats: {_ALLOWED_PIL_FORMATS}."
+            ) from e
 
         if self.size is not None and image.size != tuple(reversed(self.size)):
             height, width = self.size

@@ -1,29 +1,29 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0
 
-import fnmatch
 import io
 import json
-import re
-import tarfile
 from functools import partial
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Union
 
 from ray._common.utils import env_bool
+from ray.data._internal.datasource_v2.formats.webdataset.webdataset_utils import (
+    ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR,
+    WEBDATASET_READ_CHUNK_SIZE,
+    _apply_list,
+    _default_decoder,
+    _group_by_keys,
+    _tar_file_iterator,
+)
 from ray.data._internal.util import iterate_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
-ALLOW_UNSAFE_DESERIALIZATION_ENV_VAR = (
-    "RAY_DATA_WEBDATASET_ALLOW_UNSAFE_DESERIALIZATION"
-)
-
-# Number of samples accumulated into each emitted DataFrame block.
-WEBDATASET_READ_CHUNK_SIZE = 512
-
-
 if TYPE_CHECKING:
     import pyarrow
+
+
+extension_to_format = {"jpg": "jpeg"}
 
 
 def _base_plus_ext(path: str):
@@ -335,6 +335,9 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
             import PIL.Image
 
             if isinstance(value, np.ndarray):
+                # PIL can't encode (H, W, 1) arrays.
+                if value.ndim == 3 and value.shape[2] == 1:
+                    value = value[:, :, 0]
                 value = PIL.Image.fromarray(value)
             assert isinstance(value, PIL.Image.Image)
             stream = io.BytesIO()

@@ -875,7 +875,7 @@ For a trusted, row-producing SQL query, pass `query` and an explicit `pyarrow.Sc
 Query reads require an explicit Arrow schema. DataSourceV2 planning needs it on the driver before the read worker executes the query. See [issue #66840](https://github.com/ray-project/ray/issues/66840) for optional schema inference from the same query execution.
 :::
 
-Non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; Impyla truncates sub-microsecond precision. Complex types are unsupported.
+In the default `read_mode="hs2"`, non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; `impyla` truncates sub-microsecond precision. Complex types are unsupported in this mode.
 
 Because table reads use `SELECT *`, an unsupported column type prevents reading the whole table. Use `query=` to select supported columns and provide a matching schema.
 
@@ -942,7 +942,23 @@ The example uses the binary HiveServer2 protocol. Each read runs at most one dat
 The reader attempts to cancel the HiveServer2 operation and close its cursor and connection when reading ends. Closing a Dataset iterator can force Ray to stop the read worker before Python cleanup runs. Immediate operation cancellation or explicit connection cleanup isn't guaranteed.
 :::
 
-Compared with {func}`~ray.data.read_sql`, `read_hive` fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+Compared with {func}`~ray.data.read_sql`, the default HS2 mode fetches results in batches and maps HiveServer2 metadata to Arrow types with schema validation. `read_sql` uses `fetchall()` within each read task and infers Arrow types from Python row values. `read_hive` also provides table identifier validation, table schema lookup, and HiveServer2 operation cancellation.
+
+(native-hive-file-reads)=
+#### Native Hive file reads
+
+Use `read_mode="direct"` to read supported Parquet or ORC Hive tables without partitions using native Ray Data readers. Both managed and external tables are eligible. The driver gets metadata through HiveServer2. Workers read storage directly. Queries, partitions, transactional tables, custom SerDes, and Iceberg/Delta/Hudi tables aren't supported.
+
+Driver and workers need independent storage access. Pass a configured PyArrow `filesystem` when needed. See {func}`~ray.data.read_hive` for client requirements, column mapping, type compatibility, and schema-checking costs.
+
+```python
+dataset = ray.data.read_hive(
+    "analytics.events",
+    connection_factory=create_connection,
+    read_mode="direct",
+    override_num_blocks=8,
+)
+```
 
 (reading_sql)=
 (reading-sql-databases)=
@@ -1036,30 +1052,27 @@ To read from Snowflake, install the [Snowflake Connector for Python](https://doc
 pip install snowflake-connector-python
 ```
 
-Then, define your connection logic and query the database.
+Then, call {func}`~ray.data.read_snowflake` with your query and the arguments for `snowflake.connector.connect`. Ray runs the query once and downloads the result in parallel.
 
 ```python
-import snowflake.connector
-
 import ray
 
-def create_connection():
-    return snowflake.connector.connect(
-        user=...,
-        password=...,
-        account="ZZKXUVH-IPB52023",
-        database="example",
-    )
+connection_parameters = dict(
+    user=...,
+    password=...,
+    account="ZZKXUVH-IPB52023",
+    database="example",
+)
 
 # Get all movies
-dataset = ray.data.read_sql("SELECT * FROM movie", create_connection)
+dataset = ray.data.read_snowflake("SELECT * FROM movie", connection_parameters)
 # Get movies after the year 1980
-dataset = ray.data.read_sql(
-    "SELECT title, score FROM movie WHERE year >= 1980", create_connection
+dataset = ray.data.read_snowflake(
+    "SELECT title, score FROM movie WHERE year >= 1980", connection_parameters
 )
 # Get the number of movies per year
-dataset = ray.data.read_sql(
-    "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
+dataset = ray.data.read_snowflake(
+    "SELECT year, COUNT(*) FROM movie GROUP BY year", connection_parameters
 )
 ```
 
@@ -1309,6 +1322,7 @@ The community maintains the following connectors, which integrate Ray Data with 
 * [Apache Doris Ray Connector](https://github.com/jiangxt2/ray-doris): Reads and writes data between Ray Data and [Apache Doris](https://doris.apache.org/).
 * [Kinetica Ray Connector](https://github.com/kineticadb/kinetica-ray): Reads and writes data between Ray Data and [Kinetica](https://www.kinetica.com/).
 * [Qdrant Ray Connector](https://github.com/qdrant-labs/qdrant-ray): Writes Ray datasets to [Qdrant](https://qdrant.tech/) in parallel.
+* [Redis ADBC Driver](https://github.com/redis/redis-adbc-driver/blob/main/docs/integrations/ray.md): Reads and writes data between Ray Data and [Redis](https://redis.io/) through an Arrow Database Connectivity (ADBC) driver.
 
 ## Performance considerations
 

@@ -16,6 +16,7 @@ from ray.autoscaler._private.constants import (
     DEFAULT_UPSCALING_SPEED,
     DISABLE_LAUNCH_CONFIG_CHECK_KEY,
     DISABLE_NODE_UPDATERS_KEY,
+    PENDING_NODE_IDLE_TERMINATION_GATED_KEY,
     RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S,
 )
 from ray.autoscaler._private.kuberay.autoscaling_config import AutoscalingConfigProducer
@@ -212,16 +213,16 @@ class AutoscalingConfig:
         )
 
     def get_docker_config(self, ray_node_type: NodeType) -> Dict[str, Any]:
-        """
-        Return the docker config for the specified node type.
-            If it's a head node, the image will be chosen in the following order:
-                1. Node specific docker image.
-                2. The 'docker' config's 'head_image' field.
-                3. The 'docker' config's 'image' field.
-            If it's a worker node, the image will be chosen in the following order:
-                1. Node specific docker image.
-                2. The 'docker' config's 'worker_image' field.
-                3. The 'docker' config's 'image' field.
+        """Return the docker config for the specified node type.
+
+        If it's a head node, the image will be chosen in the following order:
+            1. The 'docker' config's 'head_image' field.
+            2. The 'docker' config's 'image' field.
+
+        If it's a worker node, the image will be chosen in the following order:
+            1. The node type's 'docker.worker_image' field.
+            2. The 'docker' config's 'worker_image' field.
+            3. The 'docker' config's 'image' field.
         """
         # TODO(rickyx): It's unfortunate we have multiple fields in ray-schema.json
         #  that can specify docker images. We should consolidate them.
@@ -411,6 +412,8 @@ class AutoscalingConfig:
         """Returns the idle timeout in seconds for the pending nodes not needed by any
         resource demands, or None if they should never be terminated for it.
         """
+        if self.get_provider_config().get(PENDING_NODE_IDLE_TERMINATION_GATED_KEY):
+            return None
         timeout_s = RAY_AUTOSCALER_PENDING_NODE_IDLE_TIMEOUT_S
         return float(timeout_s) if timeout_s >= 0 else None
 
@@ -484,11 +487,6 @@ class FileConfigReader(IConfigReader):
             return AutoscalingConfig(config, skip_content_hash=self._skip_content_hash)
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
-        """
-        Returns:
-            AutoscalingConfig: The autoscaling config.
-        """
-
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):
@@ -506,10 +504,6 @@ class KubeRayConfigReader(IConfigReader):
         return AutoscalingConfig(self._config_producer())
 
     def get_cached_autoscaling_config(self) -> AutoscalingConfig:
-        """
-        Returns:
-            AutoscalingConfig: The autoscaling config.
-        """
         return self._cached_config
 
     def refresh_cached_autoscaling_config(self):

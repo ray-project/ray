@@ -21,7 +21,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)]
+SUPPORTED_PYTHONS = [(3, 10), (3, 11), (3, 12), (3, 13), (3, 14), (3, 15)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -223,7 +223,7 @@ if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 17.0.0",
+        "pyarrow >= 23.0.0",
     ]
     pydantic_deps = [
         "pydantic>=2.5.0,<3; python_version < '3.14'",
@@ -385,9 +385,9 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]==0.32.0",
-                "nixl==1.5.0",
-                "nixl-cu13==1.5.0",
+                "vllm[audio]==0.34.0",
+                "nixl==1.5.2",
+                "nixl-cu13==1.5.2",
                 "jsonref>=1.1.0",
                 "jsonschema",
                 "ninja",
@@ -759,6 +759,7 @@ if __name__ == "__main__":
             "Programming Language :: Python :: 3.12",
             "Programming Language :: Python :: 3.13",
             "Programming Language :: Python :: 3.14",
+            "Programming Language :: Python :: 3.15",
         ],
         packages=setup_spec.get_packages(),
         cmdclass=cmdclass,

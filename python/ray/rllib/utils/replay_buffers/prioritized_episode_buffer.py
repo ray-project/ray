@@ -59,60 +59,50 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
     then updating the priorities would not work because the buffer caches the last
     sampled timestep indices).
 
-    .. testcode::
-
-        import gymnasium as gym
-
-        from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-        from ray.rllib.utils.replay_buffers import (
-            PrioritizedEpisodeReplayBuffer
-        )
-
-        # Create the environment.
-        env = gym.make("CartPole-v1")
-
-        # Set up the loop variables
-        terminated = False
-        truncated = False
-        num_timesteps = 10000
-        episodes = []
-
-        # Initialize the first episode entries.
-        eps = SingleAgentEpisode()
-        obs, info = env.reset()
-        eps.add_env_reset(obs, info)
-
-        # Sample 10,000 timesteps.
-        for i in range(num_timesteps):
-            # If terminated we create a new episode.
-            if terminated:
-                episodes.append(eps.to_numpy())
-                eps = SingleAgentEpisode()
-                obs, info = env.reset()
-                eps.add_env_reset(obs, info)
-
-            action = env.action_space.sample()
-            obs, reward, terminated, truncated, info = env.step(action)
-            eps.add_env_step(
-                obs,
-                action,
-                reward,
-                info,
-                terminated=terminated,
-                truncated=truncated
-            )
-
-        # Add the last (truncated) episode to the list of episodes.
-        if not terminated or truncated:
-            episodes.append(eps)
-
-        # Create the buffer.
-        buffer = PrioritizedEpisodeReplayBuffer()
-        # Add the list of episodes sampled.
-        buffer.add(episodes)
-
-        # Pull a sample from the buffer using an `n-step` of 3.
-        sample = buffer.sample(num_items=256, gamma=0.95, n_step=3)
+    Examples:
+        >>> import gymnasium as gym
+        >>> from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+        >>> from ray.rllib.utils.replay_buffers import (
+        ...     PrioritizedEpisodeReplayBuffer
+        ... )
+        >>> # Create the environment.
+        >>> env = gym.make("CartPole-v1")
+        >>> # Set up the loop variables
+        >>> terminated = False
+        >>> truncated = False
+        >>> num_timesteps = 10000
+        >>> episodes = []
+        >>> # Initialize the first episode entries.
+        >>> eps = SingleAgentEpisode()
+        >>> obs, info = env.reset()
+        >>> eps.add_env_reset(obs, info)
+        >>> # Sample 10,000 timesteps.
+        >>> for i in range(num_timesteps):
+        ...     # If terminated we create a new episode.
+        ...     if terminated:
+        ...         episodes.append(eps.to_numpy())
+        ...         eps = SingleAgentEpisode()
+        ...         obs, info = env.reset()
+        ...         eps.add_env_reset(obs, info)
+        ...
+        ...     action = env.action_space.sample()
+        ...     obs, reward, terminated, truncated, info = env.step(action)
+        ...     eps.add_env_step(
+        ...         obs,
+        ...         action,
+        ...         reward,
+        ...         info,
+        ...         terminated=terminated,
+        ...         truncated=truncated
+        ...     )
+        >>> # Add the last episode, which the loop hasn't added yet.
+        >>> episodes.append(eps)
+        >>> # Create the buffer.
+        >>> buffer = PrioritizedEpisodeReplayBuffer()
+        >>> # Add the list of episodes sampled.
+        >>> buffer.add(episodes)
+        >>> # Pull a sample from the buffer using an `n-step` of 3.
+        >>> sample = buffer.sample(num_items=256, gamma=0.95, n_step=3)
     """
 
     def __init__(

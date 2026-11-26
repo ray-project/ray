@@ -60,6 +60,21 @@ def test_orc_reader_yields_batches(tmp_path):
     assert pa.concat_tables(batches).equals(expected)
 
 
+def test_orc_reader_reads_duplicated_path_once_per_row(tmp_path):
+    # The same file listed twice is two manifest rows sharing a path; the
+    # reader dedupes paths only to build the pyarrow dataset and must still
+    # fan out one read per row, so neither copy is silently dropped.
+    path = tmp_path / "data.orc"
+    expected = pa.table({"id": list(range(100))})
+    _write_orc(path, expected)
+
+    result = pa.concat_tables(
+        OrcScanner(schema=expected.schema).create_reader().read(_manifest(path, path))
+    )
+
+    assert result.column("id").to_pylist() == list(range(100)) * 2
+
+
 def test_orc_reader_reads_multiple_stripes(tmp_path):
     path = tmp_path / "multi.orc"
     expected = pa.table({"id": list(range(100_000))})
@@ -1565,8 +1580,9 @@ def test_orc_reader_initial_estimate_is_cached(
     original = orc_file_reader.estimate_batch_size
     estimate = Mock(wraps=original) if available else Mock(return_value=None)
     monkeypatch.setattr(orc_file_reader, "estimate_batch_size", estimate)
+    # Keep all batches empty so observed rows cannot replace the initial estimate.
     reader = OrcScanner(
-        schema=table.schema, target_block_size=65536, limit=0
+        schema=table.schema, target_block_size=65536, predicate=col("payload") == ""
     ).create_reader()
     for _ in range(2):
         assert list(reader.read(_manifest(path))) == []

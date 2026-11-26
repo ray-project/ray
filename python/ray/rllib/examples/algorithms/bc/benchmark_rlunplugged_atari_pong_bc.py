@@ -1,4 +1,7 @@
-"""
+"""Benchmarks behavior cloning (BC) on the RL Unplugged Atari Pong data.
+
+The RL Unplugged data has the following schema:
+
 schema={
       a_t: int64,
       r_t: float,

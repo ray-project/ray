@@ -21,6 +21,7 @@ def get_local_ongoing_lineage_reconstruction_tasks():
 
 @timed_cache(ttl=1)
 def get_draining_nodes() -> Dict[str, int]:
+    """Map draining node IDs (hex strings) to deadline timestamps in ms."""
     return ray._private.state.state.get_draining_nodes()
 
 

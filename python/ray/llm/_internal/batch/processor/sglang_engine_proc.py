@@ -49,8 +49,11 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     )
     task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
-        description="The task type to use. If not specified, will use "
-        "'generate' by default.",
+        description="The task type to use: 'generate' (default) or 'score'.",
+    )
+    task_kwargs: Dict[str, Any] = Field(
+        default_factory=dict,
+        description="Options for the task type. The 'generate' task takes none.",
     )
 
     @root_validator(pre=True)
@@ -109,12 +112,15 @@ def build_sglang_engine_processor(
         ChatTemplateStage,
         DetokenizeStage,
         SGLangEngineStage,
-        TokenizeStage,
     )
+    from ray.llm._internal.batch.tasks.sglang import get_sglang_task_cls
     from ray.llm._internal.common.utils.download_utils import (
         NodeModelDownloadable,
         download_model_files,
     )
+
+    task_cls = get_sglang_task_cls(config.task_type)
+    config = task_cls.prepare_config(config)
 
     ray.init(runtime_env=config.runtime_env, ignore_reinit_error=True)
 
@@ -158,25 +164,21 @@ def build_sglang_engine_processor(
         processor_defaults,
     )
     if tokenize_stage_cfg.enabled:
-        stages.append(
-            TokenizeStage(
-                fn_constructor_kwargs=dict(
-                    model=tokenize_stage_cfg.model_source,
-                    trust_remote_code=trust_remote_code,
-                ),
-                map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
-            )
-        )
+        stages.append(task_cls.build_tokenize_stage(config, tokenize_stage_cfg))
 
     # Core stage -- the SGLang engine.
+    engine_stage_kwargs = dict(
+        model=config.model_source,
+        engine_kwargs=config.engine_kwargs,
+        task_type=config.task_type,
+        max_pending_requests=config.max_pending_requests,
+    )
+    # Pass only when set, so generate's kwargs are unchanged.
+    if config.task_kwargs:
+        engine_stage_kwargs["task_kwargs"] = config.task_kwargs
     stages.append(
         SGLangEngineStage(
-            fn_constructor_kwargs=dict(
-                model=config.model_source,
-                engine_kwargs=config.engine_kwargs,
-                task_type=config.task_type,
-                max_pending_requests=config.max_pending_requests,
-            ),
+            fn_constructor_kwargs=engine_stage_kwargs,
             map_batches_kwargs=dict(
                 zero_copy_batch=True,
                 # The number of running replicas. This is a deprecated field, but
@@ -245,6 +247,8 @@ def build_sglang_engine_processor(
             e,
         )
         hf_config = None
+
+    task_cls.validate_model(config, hf_config)
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE

@@ -119,7 +119,7 @@ trainer.fit()
 
 :::{tab-item} TPU
 :sync: TPU
-When you set `use_tpu=True`, Ray Train configures the distributed environment for TPU execution on each worker. The specific initialization depends on the trainer you use, such as {class}`~ray.train.v2.jax.JaxTrainer`.
+When you set `use_tpu=True`, Ray Train configures the distributed environment for TPU execution on each worker. It assigns ranks by TPU slice, then by host in `TPU_WORKER_ID` order, then by lowest assigned TPU device ID, so each host's workers receive contiguous ranks. The specific initialization depends on the trainer you use, such as {class}`~ray.train.v2.jax.JaxTrainer`.
 
 The following example shows a basic TPU training setup with {class}`~ray.train.v2.jax.JaxTrainer`:
 
@@ -148,29 +148,31 @@ trainer.fit()
 
 When you use {class}`~ray.train.torch.TorchTrainer` with `resources_per_worker={"TPU": 1}`, Ray Train initializes the `tpu_dist` backend for [TorchTPU](https://torchtpu.readthedocs.io/en/latest/), sets the `torch.distributed` and multi-slice `MEGASCALE_*` environment variables, and binds each worker to `torch.device("tpu")` through {func}`ray.train.torch.get_device`.
 
-The following example runs one training step with TorchTPU on 16 per-device workers:
+The following example trains a model with TorchTPU on 16 per-device workers:
 
 ```python
 import torch
+from torch.utils.data import DataLoader, TensorDataset
 
 import ray.train
 from ray.train import ScalingConfig
-from ray.train.torch import TorchTrainer, get_device, prepare_model
+from ray.train.torch import TorchTrainer, prepare_data_loader, prepare_model
 
 
 def train_func():
-    device = get_device()
-    model = torch.nn.Linear(128, 10).to(device)
+    model = torch.nn.Linear(128, 10)
     model = prepare_model(model)
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
-    inputs = torch.randn(32, 128, device=device)
-    targets = torch.randint(0, 10, (32,), device=device)
+    dataset = TensorDataset(torch.randn(1024, 128), torch.randint(0, 10, (1024,)))
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    dataloader = prepare_data_loader(dataloader)
 
-    optimizer.zero_grad()
-    loss = torch.nn.functional.cross_entropy(model(inputs), targets)
-    loss.backward()
-    optimizer.step()
+    for inputs, targets in dataloader:
+        optimizer.zero_grad()
+        loss = torch.nn.functional.cross_entropy(model(inputs), targets)
+        loss.backward()
+        optimizer.step()
 
     ray.train.report({"loss": loss.item()})
 
@@ -186,6 +188,63 @@ trainer = TorchTrainer(
     ),
 )
 trainer.fit()
+```
+
+(tpu-pytorch-simple-fsdp)=
+
+The `parallel_strategy="fsdp"` option supports only CUDA GPUs. To shard a model across TPU workers, install [TorchTitan](https://github.com/pytorch/torchtitan) and pass `parallel_strategy="simple_fsdp"` to {func}`ray.train.torch.prepare_model`. Ray Train shards the model over a 1D `DeviceMesh` with TorchTitan's `simple_fsdp`, using `DTensor` placements that compile as a single graph with `torch.compile(..., backend="tpu")`. Create the optimizer after calling `prepare_model`, and divide the loss by the world size before `backward()` because `simple_fsdp` sums gradients across workers.
+
+The following example defines a `train_func` that shards a model with `simple_fsdp` and compiles the training step across the 16 TPU workers configured above:
+
+```python
+import torch
+from torch.utils.data import DataLoader, TensorDataset
+from torchtitan.experiments.graph_trainer import simple_fsdp
+
+import ray.train
+from ray.train.torch import prepare_data_loader, prepare_model
+
+
+def train_func():
+    model = torch.nn.Sequential(
+        torch.nn.Linear(128, 256),
+        torch.nn.SiLU(),
+        torch.nn.Linear(256, 32),
+    )
+    mp_policy = simple_fsdp.MixedPrecisionPolicy(
+        param_dtype=torch.bfloat16,
+        reduce_dtype=torch.float32,
+    )
+    model = prepare_model(
+        model,
+        parallel_strategy="simple_fsdp",
+        parallel_strategy_kwargs={"mp_policy": mp_policy},
+    )
+    optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
+
+    dataset = TensorDataset(
+        torch.randn(1024, 128, dtype=torch.bfloat16),
+        torch.randint(0, 32, (1024,)),
+    )
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True, drop_last=True)
+    dataloader = prepare_data_loader(dataloader)
+
+    world_size = ray.train.get_context().get_world_size()
+
+    def train_step(mod, inputs, targets):
+        outputs = mod(inputs)
+        loss = torch.nn.functional.cross_entropy(outputs.float(), targets)
+        (loss / world_size).backward()
+        return loss.detach()
+
+    compiled_step = torch.compile(train_step, backend="tpu")
+
+    for inputs, targets in dataloader:
+        optimizer.zero_grad()
+        loss = compiled_step(model, inputs, targets)
+        optimizer.step()
+
+    ray.train.report({"loss": loss.item()})
 ```
 :::
 ::::
@@ -313,6 +372,29 @@ trainer = TorchTrainer(
     ),
     torch_config=TorchConfig(backend="gloo"),
 )
+```
+
+(pytorch-prefetch-batches-with-streams)=
+
+### PyTorch: Prefetch batches with device streams
+
+With `auto_transfer=True`, {func}`ray.train.torch.prepare_data_loader` prefetches the next batch onto a separate device stream, such as a `torch.cuda.Stream` or `torch.tpu.Stream`, while the current stream runs the training step. `prepare_data_loader` enables stream prefetching by default when `move_to_device=True` and skips it on devices without stream support, such as CPUs:
+
+```python
+from torch.utils.data import DataLoader
+from ray.train.torch import prepare_data_loader
+
+
+def train_func():
+    ...
+    dataloader = DataLoader(dataset, batch_size=32, shuffle=True)
+    # auto_transfer=True is enabled by default; set auto_transfer=False to disable
+    # asynchronous host-to-device stream prefetching.
+    dataloader = prepare_data_loader(dataloader, auto_transfer=True)
+
+    for inputs, targets in dataloader:
+        # Batches are prefetched onto the device stream automatically.
+        ...
 ```
 
 (nccl-setting-the-communication-network-interface)=

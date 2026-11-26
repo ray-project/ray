@@ -78,6 +78,45 @@ def test_tensorflow_linear(ray_start_4_cpus, num_workers):
     assert result.checkpoint
 
 
+@pytest.mark.parametrize("num_workers", [1, 2])
+def test_tensorflow_dataset_batch_size_is_global(ray_start_4_cpus, num_workers):
+    """The dataset batch size is the global batch size, split across workers."""
+    per_worker_batch_size = 16
+    rows_per_worker = 160
+
+    def train_func():
+        import tensorflow as tf
+
+        steps = []
+
+        class CountSteps(tf.keras.callbacks.Callback):
+            def on_train_batch_end(self, batch, logs=None):
+                steps.append(batch)
+
+        strategy = tf.distribute.MultiWorkerMirroredStrategy()
+        with strategy.scope():
+            model = build_model()
+            model.compile(optimizer="sgd", loss="mean_squared_error")
+
+        global_batch_size = per_worker_batch_size * train.get_context().get_world_size()
+        tf_dataset = train.get_dataset_shard(TRAIN_DATASET_KEY).to_tf(
+            feature_columns="x", label_columns="y", batch_size=global_batch_size
+        )
+        model.fit(tf_dataset, callbacks=[CountSteps()], verbose=0)
+        # Each step processes `per_worker_batch_size` rows on each worker.
+        assert len(steps) == rows_per_worker // per_worker_batch_size
+
+    dataset = ray.data.from_items(
+        [{"x": float(i), "y": float(i)} for i in range(rows_per_worker * num_workers)]
+    )
+    trainer = TensorflowTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=ScalingConfig(num_workers=num_workers),
+        datasets={TRAIN_DATASET_KEY: dataset},
+    )
+    trainer.fit()
+
+
 def test_report_and_load_using_ml_session(ray_start_4_cpus):
     def train_func():
         checkpoint = train.get_checkpoint()

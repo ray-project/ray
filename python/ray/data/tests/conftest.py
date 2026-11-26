@@ -18,7 +18,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.cache import _disable_timed_cache_for_tests
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
@@ -42,6 +41,40 @@ from ray.util.state import list_actors
 # for bazel test targets.
 os.environ.setdefault("RAY_DATA_PARQUET_FOOTER_NUM_ACTORS", "1")
 
+# One Hypothesis profile for every Ray Data property-based test, defined here so
+# it cannot drift between files: `load_profile` is process-global, so two test
+# modules each loading their own copy silently override each other by import
+# order.
+#
+# - `derandomize`: a given commit always explores the same inputs, so a CI
+#   failure reproduces locally and is never a flake.
+# - `deadline=None`: per-example timing on shared CI hosts is too noisy to gate on.
+# - `max_examples`: there is no formula. Hypothesis defaults to 100; raise it
+#   while the suite stays cheap (these run in seconds) and the input space is
+#   wide relative to the bugs being hunted. Keep CI's budget fixed and search
+#   harder locally instead, with `HYPOTHESIS_PROFILE=ray_data_thorough`.
+#
+# Guarded so this shared conftest stays importable where hypothesis is absent.
+try:
+    from hypothesis import HealthCheck, settings as hypothesis_settings
+except ImportError:
+    pass
+else:
+    _ray_data_ci_profile = dict(
+        derandomize=True,
+        deadline=None,
+        suppress_health_check=[HealthCheck.too_slow],
+    )
+    hypothesis_settings.register_profile(
+        "ray_data_ci", max_examples=200, **_ray_data_ci_profile
+    )
+    hypothesis_settings.register_profile(
+        "ray_data_thorough", max_examples=5000, **_ray_data_ci_profile
+    )
+    hypothesis_settings.load_profile(
+        os.environ.get("HYPOTHESIS_PROFILE", "ray_data_ci")
+    )
+
 
 def mock_all_to_all_op(input_op, name="MockAllToAll"):
     """Create a mock AllToAllOperator for testing.
@@ -57,7 +90,7 @@ def mock_all_to_all_op(input_op, name="MockAllToAll"):
         data_context=ray.data.DataContext.get_current(),
         name=name,
     )
-    op.start = MagicMock(side_effect=lambda *_: None)
+    op.start = MagicMock(side_effect=lambda *_, **__: None)
     return op
 
 
@@ -176,13 +209,9 @@ def s3_fs_with_anonymous_crendential(
 def _s3_fs(aws_credentials, s3_server, s3_path):
     import urllib.parse
 
-    from packaging.version import parse as parse_version
-
     kwargs = aws_credentials.copy()
-
-    if get_pyarrow_version() >= parse_version("9.0.0"):
-        kwargs["allow_bucket_creation"] = True
-        kwargs["allow_bucket_deletion"] = True
+    kwargs["allow_bucket_creation"] = True
+    kwargs["allow_bucket_deletion"] = True
 
     fs = None
     try:
@@ -280,33 +309,34 @@ def restore_data_context(request):
     ray.data.context.DataContext._set_current(original)
 
 
-def _get_supported_tensor_formats():
-    """Get list of supported tensor formats based on PyArrow version.
+@pytest.fixture(params=[False, True], ids=["v1", "v2"])
+def datasource_v2(request, restore_data_context):
+    """Run a test once through the V1 reader and once through DataSourceV2.
 
-    Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
-    native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
+    The value is ``DataContext.use_datasource_v2`` for that run. For a
+    V2-only test, write
+    ``@pytest.mark.parametrize("datasource_v2", [True], indirect=True)``.
+    For every test in a module, set
+    ``pytestmark = pytest.mark.usefixtures("datasource_v2")``.
     """
-    from ray.data._internal.tensor_extensions.arrow import (
-        MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
-        FixedShapeTensorFormat,
-    )
+    restore_data_context.use_datasource_v2 = request.param
+    return request.param
 
-    formats = [FixedShapeTensorFormat.V1, FixedShapeTensorFormat.V2]
-    if get_pyarrow_version() >= MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR:
-        formats.append(FixedShapeTensorFormat.ARROW_NATIVE)
-    return formats
+
+def _get_supported_tensor_formats():
+    """Get the list of supported tensor formats."""
+    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
+
+    return [
+        FixedShapeTensorFormat.V1,
+        FixedShapeTensorFormat.V2,
+        FixedShapeTensorFormat.ARROW_NATIVE,
+    ]
 
 
 @pytest.fixture(params=_get_supported_tensor_formats())
 def tensor_format(request):
-    """Fixture that yields supported tensor formats.
-
-    Yields V1, V2 for all PyArrow versions.
-    Yields ARROW_NATIVE only when PyArrow >= 16.
-
-    This allows tests to use `tensor_format.to_type()` safely without
-    needing fallback logic for unsupported PyArrow versions.
-    """
+    """Fixture that yields supported tensor formats (V1, V2, ARROW_NATIVE)."""
     return request.param
 
 
@@ -550,7 +580,6 @@ def op_two_block():
             wall_time_s=block_params["wall_time"][i],
             cpu_time_s=block_params["cpu_time"][i],
             block_transform_time_s=block_params["block_transform_time"][i],
-            node_id=block_params["node_id"][i],
             task_idx=block_params["task_idx"][i],
         )
         block_meta_list.append(
@@ -559,6 +588,7 @@ def op_two_block():
                 size_bytes=block_params["size_bytes"][i],
                 input_files=None,
                 exec_stats=block_exec_stats,
+                node_id=block_params["node_id"][i],
             )
         )
     return block_params, block_meta_list

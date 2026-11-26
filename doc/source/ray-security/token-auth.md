@@ -1,32 +1,34 @@
 ---
 myst:
   html_meta:
-    description: "Configure token-based authentication for Ray clusters with RAY_AUTH_MODE=token and ray get-auth-token, including token storage and TLS."
+    description: "Configure Ray token authentication, which is on by default for every cluster starting in Ray 2.61. Create and distribute the token, opt out with RAY_AUTH_MODE=disabled, and scrape metrics with the token."
 ---
 
 (token-auth)=
 
 # Ray token authentication
 
-Enable token authentication in Ray to secure cluster access and prevent unauthorized use. This guide explains how authentication works and how to set it up for different deployment scenarios.
+Ray token authentication secures cluster access and prevents unauthorized use. This guide explains how authentication works and how to set it up for different deployment scenarios.
 
 :::{note}
-Token authentication is available in Ray 2.52.0 or later.
+Token authentication is available in Ray 2.52.0 or later. Ray 2.59 turns it on by default for local clusters, and Ray 2.61 turns it on by default for every cluster, including remote and multi-node clusters.
 :::
 
 ## How Ray token authentication works
 
-To enable token authentication, set the environment variable `RAY_AUTH_MODE=token` before starting your Ray cluster. When you start a Ray cluster with authentication enabled, all external Ray APIs and internal communications are authenticated using the token as a shared secret.
+Starting in Ray 2.61, token authentication is on for every Ray cluster unless you set `RAY_AUTH_MODE=disabled`. Ray authenticates all external APIs and internal communications with the token as a shared secret. Every node in a cluster and every client that connects to it needs the same token.
 
-The process for generating and configuring authentication tokens differs depending on how you launch your Ray cluster. When you start a local instance of Ray using `ray.init()` with token authentication enabled, Ray automatically generates and uses a token.
+The following create a token when none exists:
 
-Other cluster launching methods require that you generate a token before starting the cluster. You can `ray get-auth-token [--generate]` to retrieve your existing token or generate a new one.
+- `ray.init()` without an `address`, when it starts a new local cluster.
+- `ray get-auth-token --generate`.
+- `ray up`, which ships the token to the head node. The head node ships it to every worker node it launches.
 
-:::{warning}
-**Token authentication rollout.** Ray 2.59 turns on token authentication by default for local clusters. `ray.init()` without an `address` enables authentication and generates a token at `~/.ray/auth_token` when none exists. `ray start --head` enables authentication when a token is already available, and otherwise warns that it started an unauthenticated cluster. Set `RAY_AUTH_MODE=disabled` to opt out.
+Ray's test cluster utilities and C++ and Java drivers that start their own cluster also create one. For the full list, see {ref}`Token authentication internals <token-authentication>`.
 
-Ray 2.61 extends the default to all clusters, including remote and multi-node clusters. From that release, every node in a cluster and every client that connects to it needs the same token. Set up token distribution before you upgrade, as described in [Configure token authentication for remote clusters](#configure-token-authentication-for-remote-clusters).
-:::
+`ray start --head` never creates a token. Create one first with `ray get-auth-token --generate`, then copy it to every node and client of the cluster. Worker nodes, drivers that connect to an existing cluster, and other clients never create a token either, because a token made there can't match the cluster's.
+
+To run a cluster without authentication, set `RAY_AUTH_MODE=disabled` on every node and every client, as described in [Opt out of token authentication](#opt-out-of-token-authentication).
 
 (what-token-does-ray-use)=
 
@@ -46,8 +48,8 @@ When managing multiple tokens, we recommend storing them in local files and usin
 
 Ray transmits the authentication token as an HTTP header, which is transmitted in plaintext when using insecure `http` connections. We recommend enabling some form of encryption whenever exposing a Ray cluster over the network. Consider the following:
 
-- **Local development**: Traffic doesn't leave your machine, so no additional security is needed.
-- **SSH tunneling**: Use SSH tunneling/port forwarding via the `ray dashboard` command or `kubectl port-forward`.
+- **Local development**: Traffic doesn't leave your machine, so it needs no encryption. Ray assumes the machine is single-tenant or that you trust every user on it.
+- **SSH tunneling**: Use SSH tunneling or port forwarding through the `ray dashboard` command or `kubectl port-forward`.
 - **TLS termination**: Deploy a TLS proxy in front of your Ray cluster.
 - **VPN/Overlay networks**: Use network-level encryption for all traffic into and within the cluster.
 
@@ -58,66 +60,55 @@ Don't expose Ray clusters directly to the internet without encryption. Tokens al
 Tokens have the following properties:
 
 - Ray stores tokens by default in plaintext at `~/.ray/auth_token`.
-- Use file permissions to keep token files secure, especially in shared environments.
+- Make token files readable only by you, especially on a shared host. For the default location, run `chmod 700 ~/.ray` and `chmod 600 ~/.ray/auth_token`.
 - Don't commit tokens to version control.
 - Tokens don't expire. Your local token remains valid unless you delete and regenerate the token. Ray clusters use the same token for the lifetime of the cluster.
 
 ## Configure token authentication for local development
 
-To enable authentication on your local machine for development, set the `RAY_AUTH_MODE=token` environment variable in your shell or IDE. You can persist this configuration in your `.bashrc` file or similar.
+Local development needs no authentication settings. Everything that runs as the same user on one machine reads the token from `~/.ray/auth_token`.
 
 ### Local development with ray.init()
 
-When you run a script that starts a new local Ray cluster with `ray.init()` (that is, `ray.init()` without an `address`, so it starts a fresh cluster), Ray enables token authentication by default and handles the token automatically:
+When a script calls `ray.init()` without an `address` and starts a new local Ray cluster, Ray handles the token automatically:
 
 - If no token exists at `~/.ray/auth_token`, Ray generates one, saves it there, and logs a message confirming the new token.
 - If a token already exists at `~/.ray/auth_token`, Ray reuses it.
 
-This happens even when you haven't set `RAY_AUTH_MODE=token`. To start a new local cluster without authentication, set `RAY_AUTH_MODE=disabled`.
-
 For example:
 
 ```bash
-$ python -c "import ray;ray.init()"
+python -c "import ray;ray.init()"
 ```
 
-On the first run, this command (or any script that starts Ray) logs a line like:
+On the first run, this command and any other script that starts Ray log a line like:
 
-```bash
+```text
 Generated new authentication token and saved to ~/.ray/auth_token
 ```
 
-Connecting to an existing cluster with `ray.init(address=...)` doesn't generate a token. As with any client, you must have the cluster's token configured when the cluster has token authentication enabled, as described in {ref}`What token does Ray use? <what-token-does-ray-use>`. A `ray.init()` call that finds a running local cluster on its own, with no `address` or with `address="auto"`, behaves differently: if `RAY_AUTH_MODE` isn't set and a token is available from any of the token sources, it enables token authentication and uses that token. A script can then connect to a cluster that `ray start --head` started with the same token, without setting `RAY_AUTH_MODE=token`.
+Connecting to an existing cluster with `ray.init(address=...)`, or with a `ray.init()` that finds a running local cluster, doesn't generate a token. As with any client, you must have the cluster's token configured, as described in {ref}`What token does Ray use? <what-token-does-ray-use>`.
 
 ### Local development with ray start
 
-When you start a local head cluster with `ray start --head`, Ray enables token authentication automatically if a token is already available from any of the token sources, even when you haven't set `RAY_AUTH_MODE=token`. Ray considers a token available when any of the following is set: the `RAY_AUTH_TOKEN` environment variable, a valid file at the path in `RAY_AUTH_TOKEN_PATH`, or the default token file `~/.ray/auth_token`. Generate a token once with `ray get-auth-token --generate` and Ray uses it every time you run `ray start --head` on that machine. To opt out when a token is available, set `RAY_AUTH_MODE=disabled`.
-
-If no token is available from any source, behavior depends on `RAY_AUTH_MODE`:
-
-- If you didn't set `RAY_AUTH_MODE=token`, authentication stays disabled and `ray start --head` logs a warning that the cluster is unauthenticated.
-- If you set `RAY_AUTH_MODE=token`, `ray start` raises an error with instructions to generate a token.
-
-`ray start --head` logs a warning whenever it starts a cluster without token authentication, whether because no token is available or because you set `RAY_AUTH_MODE=disabled`.
-
-Worker nodes don't enable token authentication automatically. When you add a worker node with `ray start --address`, Ray ignores any available token unless you set `RAY_AUTH_MODE=token`, so the worker can't join a head node that has token authentication enabled. The join fails even if the worker runs on the same machine as the head node and `~/.ray/auth_token` exists. It also fails if you set `RAY_AUTH_TOKEN` without `RAY_AUTH_MODE`. To add the worker node, set `RAY_AUTH_MODE=token`:
+Before you start a head node with `ray start --head`, create a token once. After that, every `ray start` and `ray.init()` that runs as the same user on the machine reads it:
 
 ```bash
-RAY_AUTH_MODE=token ray start --address=<head-node-ip>:6379
+ray get-auth-token --generate
+ray start --head
+ray start --address=127.0.0.1:6379
+python -c "import ray; ray.init()"
 ```
 
-If you set `RAY_AUTH_MODE=token` before a token exists, `ray start --head` raises an error instead of starting:
+If no token exists, `ray start --head` fails before it starts anything:
 
-```bash
-$ export RAY_AUTH_MODE=token
-$ ray start --head
-...
-ray.exceptions.AuthenticationError: Token authentication is enabled but no authentication token was found. Ensure that the token for the cluster is available in a local file (e.g., ~/.ray/auth_token or via RAY_AUTH_TOKEN_PATH) or as the `RAY_AUTH_TOKEN` environment variable. To generate a token for local development, use `ray get-auth-token --generate` For remote clusters, ensure that the token is propagated to all nodes of the cluster when token authentication is enabled. For more information, see: https://docs.ray.io/en/latest/ray-security/token-auth.html
+```text
+Error: Token authentication is enabled but no authentication token was found. Run `ray get-auth-token --generate` to create one, then put that token on every node of the cluster before starting it.
 ```
 
 ## Configure token authentication for remote clusters
 
-When working with remote clusters you must ensure that all nodes in the remote cluster have token authentication enabled and access to the same token. Any clients that interact with the remote cluster, including your local machine, must also have the token configured. The following sections provide an overview of configuring this using the Ray cluster launcher and self-managed clusters.
+When working with remote clusters, all nodes in the cluster need the same token. Any clients that interact with the remote cluster, including your local machine, must also have the token configured. The following sections cover the Ray cluster launcher, self-managed clusters, Ray on Spark, and clients on other machines.
 
 For instructions on configuring token authentication with KubeRay, see {ref}`Token authentication with KubeRay <kuberay-auth>`.
 
@@ -129,56 +120,11 @@ Anyscale manages authentication automatically for users.
 
 ### Ray clusters on remote virtual machines
 
-This section provides instructions for using `ray up` to launch a remote cluster on virtual machines with token authentication enabled.
+`ray up` sets up token authentication with no extra steps. It uses this machine's token, found in the order described in {ref}`What token does Ray use? <what-token-does-ray-use>`, and creates `~/.ray/auth_token` if no token exists. It ships the token to the head node as a file, and the head node ships it to every worker node it launches, including worker nodes the autoscaler adds later. If your cluster YAML already uses `file_mounts` to mount a token at `~/.ray/auth_token`, `ray up` uses that token instead.
 
-#### Step 1: Generate a token
+Set authentication with the `auth_mode` key of the cluster YAML, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`. For details and for upgrading existing clusters, see {ref}`Token authentication with the cluster launcher <vm-cluster-token-auth>`.
 
-You must generate a token on your local machine. Run the following command to generate a token:
-
-```bash
-ray get-auth-token --generate
-```
-
-This command generates a token on your local machine at the path `~/.ray/auth_token` and outputs it to the terminal.
-
-#### Step 2: Specify token authentication values in your cluster configuration YAML
-
-To enable and configure token authentication, you add the following setting to your cluster configuration YAML:
-
-- Use `file_mounts` to mount your locally generated token file to all nodes in the cluster.
-- Use `initialization_commands` to set the environment variable `RAY_AUTH_MODE=token` for all virtual machines in the cluster.
-
-The following is an example cluster configuration YAML that includes the `file_mounts` and `initialization_commands` settings required to enable token authentication and use the token generated on your local machine at the path `~/.ray/auth_token`:
-
-```yaml
-cluster_name: my-cluster-name
-provider:
-    type: aws
-    region: us-west-2
-max_workers: 2
-available_node_types:
-    ray.head.default:
-        resources: {}
-        node_config:
-            InstanceType: m5.large
-    ray.worker.default:
-        min_workers: 2
-        max_workers: 2
-        resources: {}
-        node_config:
-            InstanceType: m5.large
-
-# Mount a locally generated token file to all nodes in the Ray cluster.
-file_mounts: {
-    "/home/ubuntu/.ray/auth_token": "~/.ray/auth_token",
-}
-
-# Set the RAY_AUTH_MODE environment variable for all shell sessions on the cluster.
-initialization_commands:
-  - echo "export RAY_AUTH_MODE=token" >> ~/.bashrc
-```
-
-#### Step 3: Launch the Ray cluster
+#### Step 1: Launch the Ray cluster
 
 Run the following command to launch a Ray cluster using your cluster configuration YAML:
 
@@ -186,7 +132,7 @@ Run the following command to launch a Ray cluster using your cluster configurati
 ray up cluster.yaml
 ```
 
-#### Step 4: Configure the Ray dashboard and port forwarding
+#### Step 2: Configure the Ray dashboard and port forwarding
 
 Connecting to the Ray dashboard configures secure SSH port forwarding between your local machine and the Ray cluster. Complete this step even if you don't plan to use the dashboard for monitoring.
 
@@ -196,78 +142,155 @@ Run the following command to set up port forwarding for the Ray dashboard port (
 ray dashboard cluster.yaml
 ```
 
-Upon opening the dashboard, a prompt displays requesting your authentication token. To display the token in plaintext, you can run the following on your local machine:
+When you open the dashboard, a prompt asks for your authentication token. To display the token in plaintext, run the following on your local machine:
 
 ```bash
-export RAY_AUTH_MODE=token
 ray get-auth-token
 ```
 
-Paste the token in the prompt and click **Submit**. The token gets stored as a cookie for a maximum of 30 days. When you open the dashboard for a cluster that uses a different token, a prompt appears to enter the token for that cluster.
+Paste the token in the prompt and click **Submit**. The token stays in a cookie for up to 30 days. When you open the dashboard for a cluster that uses a different token, a prompt asks for the token for that cluster.
 
-#### Step 5: Submit a Ray job
+#### Step 3: Submit a Ray job
 
 You can submit a Ray job with token authentication using secure SSH port forwarding:
 
 ```bash
-export RAY_AUTH_MODE=token
-ray job submit --working-dir . -- python script.py
+ray job submit --address http://127.0.0.1:8265 --working-dir . -- python script.py
 ```
 
 ### Self-managed clusters
 
-If you have a custom deployment where you run `ray start` on multiple nodes, you can use token authentication by generating a token and distributing it to all nodes in the cluster, as shown in the following steps.
+If you have a custom deployment where you run `ray start` on multiple nodes, generate a token and distribute it to all nodes in the cluster, as shown in the following steps.
 
 #### Step 1: Generate a token
 
-Generate a token on a single machine using the following command:
+Generate a token on the head node using the following command:
 
 ```bash
 ray get-auth-token --generate
 ```
 
-:::{note}
-Any machine that needs to interact with the cluster must have the token used to configure authentication.
-:::
-
 #### Step 2: Copy the token to all nodes
 
-Copy the same token to each node in your Ray cluster. For example, use `scp` to copy the token:
+Copy the same token to each node in your Ray cluster. Don't pass the token on a command line. For example, use `scp` to copy the token file:
 
 ```bash
-scp ~/.ray/auth_token user@node1:~/.ray/auth_token;
-scp ~/.ray/auth_token user@node2:~/.ray/auth_token;
+scp ~/.ray/auth_token user@node2:~/.ray/auth_token
+scp ~/.ray/auth_token user@node3:~/.ray/auth_token
 ```
 
-#### Step 3: Start Ray with token authentication
+#### Step 3: Start Ray
 
-You must set the environment variable `RAY_AUTH_MODE=token` on each node before running `ray start`, as in the following example:
+Start the head node:
 
 ```bash
-ssh user@node1 "RAY_AUTH_MODE=token ray start --head";
-ssh user@node2 "RAY_AUTH_MODE=token ray start --address=node1:6379";
+ray start --head
 ```
+
+Then start each worker node:
+
+```bash
+ray start --address=<head-node-ip>:6379
+```
+
+A worker node without the token fails immediately with an error that says to run `ray get-auth-token` on the head node and copy the token.
+
+(ray-on-spark-token-auth)=
+
+### Ray on Spark
+
+`setup_ray_cluster` and `setup_global_ray_cluster` don't create or copy a token. The Ray head node runs on the Spark driver machine, and each Ray worker node runs in a Spark task on a Spark worker machine. Put the same token on all of those machines before you call either function.
+
+#### Step 1: Generate a token
+
+On the Spark driver machine, run the following command as the user that runs the Spark application:
+
+```bash
+ray get-auth-token --generate
+```
+
+#### Step 2: Copy the token to every Spark worker machine
+
+On each Spark worker machine, copy the token to `~/.ray/auth_token`, where `~` is the home directory of the user that runs the Spark executors. Don't pass the token on a command line. For example, create `~/.ray` and use `scp` to copy the token file:
+
+```bash
+ssh user@spark-worker-1 'mkdir -p -m 700 ~/.ray'
+scp ~/.ray/auth_token user@spark-worker-1:~/.ray/auth_token
+```
+
+If the token file is somewhere other than `~/.ray/auth_token`, such as shared storage that every machine mounts, set `RAY_AUTH_TOKEN_PATH` in the driver's environment. Then pass it to the executors with the Spark property `spark.executorEnv.RAY_AUTH_TOKEN_PATH`.
+
+#### Step 3: Start the Ray cluster
+
+Call `setup_ray_cluster` as usual. Without a token on the driver machine, it fails with the same error as `ray start --head`. If Ray worker nodes lack the token, `setup_ray_cluster` fails after about two minutes with an error that says to copy the token from the head node.
+
+To opt out of token authentication for Ray on Spark, set `RAY_AUTH_MODE=disabled` in the driver's environment. Then pass it to the executors with `spark.executorEnv.RAY_AUTH_MODE=disabled`.
+
+### Clients on other machines
+
+Clients on the head node and on the machine that ran `ray up` already have the token. Any other machine that runs a client, such as `ray job submit` or `ray.init(address=...)`, needs a copy of the token file at `~/.ray/auth_token`. After you copy it, run the client as usual:
+
+```bash
+ray job submit --address http://<head-node-ip>:8265 -- python script.py
+```
+
+Set `RAY_AUTH_TOKEN_PATH` only when the token file lives somewhere other than `~/.ray/auth_token`.
+
+## Opt out of token authentication
+
+To run a cluster without authentication, set `RAY_AUTH_MODE=disabled` on every node and every client of the cluster:
+
+```bash
+RAY_AUTH_MODE=disabled ray start --head
+RAY_AUTH_MODE=disabled ray start --address=<head-node-ip>:6379
+RAY_AUTH_MODE=disabled ray job submit --address http://<head-node-ip>:8265 -- python script.py
+```
+
+The head node logs a warning that authentication is disabled and that anyone who can reach the cluster's ports can run code on it. For clusters that `ray up` launches, set `auth_mode: disabled` in the cluster YAML instead.
+
+A node or client must use the same mode as the cluster. A mismatch never falls back to running without authentication:
+
+| Cluster | Node or client | Result |
+|---|---|---|
+| Token authentication | Same token | Works |
+| Token authentication | Different token | Rejected |
+| Token authentication | No token | Fails before connecting |
+| Token authentication | `RAY_AUTH_MODE=disabled` | Rejected for a missing token |
+| `RAY_AUTH_MODE=disabled` | Token authentication | Rejected with the same error as a missing token |
+| `RAY_AUTH_MODE=disabled` | `RAY_AUTH_MODE=disabled` | Works |
+
+With `RAY_AUTH_MODE=disabled`, the dashboard head, the dashboard agent, and the runtime environment agent reject any request that carries an `Authorization` header or a non-empty `X-Ray-Authorization` header. The `Authorization` check covers every scheme, including `Bearer` and `Basic`. A reverse proxy in front of the dashboard that adds its own `Authorization` header must strip it before forwarding the request. Otherwise, turn on token authentication for the cluster.
+
+Kubernetes token authentication, which `ENABLE_K8S_TOKEN_AUTH` turns on, requires `RAY_AUTH_MODE=token`. Ray refuses to start when you set both `RAY_AUTH_MODE=disabled` and `ENABLE_K8S_TOKEN_AUTH`.
+
+## Scrape metrics with token authentication
+
+With token authentication on, Ray's Prometheus metrics endpoints require the token, so every scraper needs it. For the Prometheus configuration, see {ref}`Scrape metrics with token authentication <metrics-token-auth>`.
+
+To keep the metrics endpoints open while token authentication protects everything else, set `RAY_AUTH_SKIP_METRICS=1` on every node before `ray start`. Scrapers then need no token. The setting has no effect when authentication is disabled.
 
 ## Troubleshooting token authentication issues
 
 You might encounter the following problems with token authentication.
 
-### Token authentication isn't enabled
+### Connection fails with AuthenticationError
 
-Make sure you've set the `RAY_AUTH_MODE=token` environment variable in the environment where you're launching Ray *and* in any shell where you are using a client to connect to Ray.
+A node, driver, or client that the cluster rejects raises `ray.exceptions.AuthenticationError` immediately, without retrying. Before Ray 2.61, `ray.init(address=...)` raised `ConnectionError` after retrying. `AuthenticationError` subclasses `ConnectionError`, so existing `except ConnectionError` handlers still catch it.
+
+The error names its fix. Run `ray get-auth-token` on the head node and copy the token to the machine that failed. If the cluster opted out with `RAY_AUTH_MODE=disabled`, set `RAY_AUTH_MODE=disabled` on that machine too.
 
 ### Authentication token not found
 
-If running locally, run `ray get-auth-token --generate` to create a token on your local machine. If running a remote cluster, make sure you've followed instructions to copy your token into the cluster.
+For local development, run `ray get-auth-token --generate` once to create a token on your machine. For a remote cluster, copy the token from the head node, as described in [Configure token authentication for remote clusters](#configure-token-authentication-for-remote-clusters).
 
 ### Invalid authentication token
 
 Any client that tries to interact with a Ray cluster must have the same token as the Ray cluster.
 
-If the token on your local machine doesn't match the token in a Ray cluster, you can use the `RAY_AUTH_TOKEN_PATH` or `RAY_AUTH_TOKEN` environment variable to configure a token for interacting with that cluster. You must work with the creator of the cluster to get the token.
+If the token on your local machine doesn't match the token in a Ray cluster, set the `RAY_AUTH_TOKEN_PATH` or `RAY_AUTH_TOKEN` environment variable to configure a token for interacting with that cluster. You must work with the creator of the cluster to get the token.
 
 :::{note}
-It's possible to stop and then restart a cluster using a different token. All clients connecting to the cluster must have the updated token to connect successfully.
+You can stop a cluster and restart it with a different token. All clients connecting to the cluster must have the updated token to connect successfully.
 :::
 
 ## Next steps

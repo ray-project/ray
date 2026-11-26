@@ -12,10 +12,14 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
-    MIN_PYARROW_VERSION_TYPE_PROMOTION,
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
@@ -436,11 +440,12 @@ def test_map_batches_generator(
 
 
 @pytest.mark.parametrize(
-    "num_rows,num_blocks,batch_size",
+    "num_rows,num_blocks,batch_size,batch_format",
     [
-        (10, 5, 2),
-        (10, 1, 10),
-        (12, 3, 2),
+        (10, 5, 2, "pandas"),
+        (10, 1, 10, "pandas"),
+        (12, 3, 2, "pandas"),
+        (3, 1, None, "numpy"),
     ],
 )
 def test_map_batches_batch_mutation(
@@ -448,6 +453,7 @@ def test_map_batches_batch_mutation(
     num_rows,
     num_blocks,
     batch_size,
+    batch_format,
     restore_data_context,
     target_max_block_size_infinite_or_default,
 ):
@@ -456,18 +462,26 @@ def test_map_batches_batch_mutation(
 
     # Test that batch mutation works without encountering a read-only error (e.g. if the
     # batch is a zero-copy view on data in the object store).
-    def mutate(df):
-        df["id"] += 1
-        return df
+    def mutate(batch):
+        if batch_format == "numpy":
+            assert batch["id"].flags.writeable
+        batch["id"] += 1
+        return batch
 
     ds = ray.data.range(num_rows, override_num_blocks=num_blocks).repartition(
         num_blocks
     )
-    # Convert to Pandas blocks.
-    ds = ds.map_batches(lambda df: df, batch_format="pandas", batch_size=None)
+    if batch_format == "pandas":
+        # Convert to Pandas blocks.
+        ds = ds.map_batches(lambda batch: batch, batch_format="pandas", batch_size=None)
 
     # Apply UDF that mutates the batches.
-    ds = ds.map_batches(mutate, batch_size=batch_size, zero_copy_batch=False)
+    ds = ds.map_batches(
+        mutate,
+        batch_size=batch_size,
+        batch_format=batch_format,
+        zero_copy_batch=False,
+    )
     assert [row["id"] for row in ds.iter_rows()] == list(range(1, num_rows + 1))
 
 
@@ -524,6 +538,48 @@ def test_map_batches_batch_zero_copy(
     # Source is untouched; mutated dataset reflects ``id + 1``.
     assert source_ids == list(range(num_rows))
     assert mutated_ids == list(range(1, num_rows + 1))
+
+
+@pytest.mark.parametrize("batch_size", [2, 3, None])
+@pytest.mark.parametrize("with_variable_shaped_tensor", [False, True])
+def test_map_batches_numpy_batch_mutation(
+    ray_start_regular_shared, batch_size, with_variable_shaped_tensor
+):
+    # With ``zero_copy_batch=False``, mutating a NumPy batch in place must not
+    # change the source. Fixed-width columns are only copied as NumPy arrays,
+    # while variable-shaped tensors convert to object arrays whose elements point
+    # into the block, so the block itself has to be copied too.
+    def make_row(i, value):
+        row = {"id": value, "tensor": np.full((2, 2), value)}
+        if with_variable_shaped_tensor:
+            row["ragged"] = np.full(i + 1, value)
+        return row
+
+    def mutate(batch):
+        batch["id"] += 1
+        batch["tensor"] += 1
+        if with_variable_shaped_tensor:
+            for arr in batch["ragged"]:
+                arr += 1
+        return batch
+
+    def assert_rows(rows, offset):
+        rows = sorted(rows, key=lambda row: row["id"])
+        for i, row in enumerate(rows):
+            expected = make_row(i, i + offset)
+            assert row.keys() == expected.keys()
+            for key, value in expected.items():
+                np.testing.assert_array_equal(row[key], value)
+
+    source = ray.data.from_items(
+        [make_row(i, i) for i in range(4)], override_num_blocks=2
+    ).materialize()
+    mutated = source.map_batches(
+        mutate, batch_format="numpy", batch_size=batch_size, zero_copy_batch=False
+    )
+
+    assert_rows(mutated.take_all(), offset=1)
+    assert_rows(source.take_all(), offset=0)
 
 
 BLOCK_BUNDLING_TEST_CASES = [
@@ -815,10 +871,6 @@ def test_map_batches_async_generator_fast_yield(
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION,
-    reason="Requires PyArrow >= 14.0.0 for type promotion in nested struct fields",
-)
 def test_map_batches_struct_field_type_divergence(shutdown_only):
     """Test map_batches with struct fields that have diverging primitive types."""
 
@@ -849,6 +901,69 @@ def test_map_batches_struct_field_type_divergence(shutdown_only):
     # Rows with a=1.5 should have float a, with b=None
     assert rows[2]["data"] == {"a": 1.5, "b": None, "c": 100}
     assert rows[3]["data"] == {"a": 1.5, "b": None, "c": 100}
+
+
+@pytest.mark.parametrize("is_generator", [False, True])
+def test_map_batches_sync_udf_not_fused_with_async_actor(shutdown_only, is_generator):
+    """A sync UDF must not fuse into an async callable-class operator.
+
+    Regression test for https://github.com/ray-project/ray/issues/57729. An async
+    UDF hosts an event loop on the map worker's thread, so fusing would make the
+    sync UDF's ``asyncio.run()`` fail with "cannot be called from a running event
+    loop". The two operators must stay separate at plan time.
+    """
+
+    def _load_batch(batch):
+        async def _load_all():
+            return await asyncio.gather(
+                *(asyncio.to_thread(lambda p: p, item) for item in batch["id"])
+            )
+
+        batch["data"] = asyncio.run(_load_all())
+        return batch
+
+    def sync_udf(batch):
+        return _load_batch(batch)
+
+    def sync_generator_udf(batch):
+        yield _load_batch(batch)
+
+    class AsyncActor:
+        # Stays async on purpose: it is what makes the fused worker host a loop.
+        async def __call__(self, batch):
+            await asyncio.sleep(0.001)
+            return batch
+
+    n = 4
+    ds = (
+        ray.data.range(n, override_num_blocks=n)
+        .map_batches(sync_generator_udf if is_generator else sync_udf)
+        .map_batches(AsyncActor, concurrency=1)
+    )
+
+    # Plan-time assertion: the operators stay separate. Fused, the sync UDF runs
+    # on the async worker's event-loop thread and `asyncio.run()` above raises.
+    # Walk the linear DAG from the sink back to the source, then reverse it so
+    # the list reads source -> sink.
+    ops = []
+    op = get_execution_plan(ds._logical_plan)[0].dag
+    while op is not None:
+        ops.append(op)
+        assert len(op.input_dependencies) <= 1, op.input_dependencies
+        op = op.input_dependencies[0] if op.input_dependencies else None
+    ops.reverse()
+
+    # Expected: Input -> ReadRange->MapBatches(sync) -> MapBatches(AsyncActor).
+    assert len(ops) == 3, ops
+    input_op, sync_op, async_op = ops
+    assert isinstance(input_op, InputDataBuffer), ops
+    assert isinstance(sync_op, TaskPoolMapOperator), ops
+    assert isinstance(async_op, ActorPoolMapOperator), ops
+    assert async_op.input_dependencies == [sync_op]
+
+    result = ds.take_all()
+    assert len(result) == n
+    assert sorted(row["data"] for row in result) == list(range(n))
 
 
 if __name__ == "__main__":

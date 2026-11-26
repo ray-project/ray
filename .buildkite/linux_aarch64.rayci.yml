@@ -10,8 +10,21 @@ steps:
     wanda: ci/docker/forge.aarch64.wanda.yaml
     instance_type: builder-arm64
 
+  # Bazel built for glibc 2.17, for the images that run Bazel inside
+  # manylinux2014. See the x86_64 step in _forge.rayci.yml for why.
+  # TODO: remove after the move to manylinux_2_28 (see _forge.rayci.yml).
+  - name: bazel-glibc217-aarch64
+    label: "wanda: bazel for manylinux2014 (aarch64)"
+    wanda: ci/docker/bazel-glibc217.wanda.yaml
+    env_file: rayci.env
+    env:
+      HOSTTYPE: "aarch64"
+    instance_type: builder-arm64
+
   - name: manylinux-aarch64
     wanda: ci/docker/manylinux.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
+    depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     env:
       HOSTTYPE: "aarch64"
@@ -20,6 +33,8 @@ steps:
   - name: ray-java-build-aarch64
     label: "wanda: java build (aarch64)"
     wanda: ci/docker/ray-java.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
+    depends_on: bazel-glibc217-aarch64
     tags:
       - release_wheels
       - java
@@ -186,6 +201,8 @@ steps:
   - name: ray-core-build-aarch64
     label: "wanda: core binary parts py{{array.python}} (aarch64)"
     wanda: ci/docker/ray-core.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
+    depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     array:
       python:
@@ -194,6 +211,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: "-aarch64"
@@ -212,6 +230,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: "-aarch64"
@@ -240,11 +259,14 @@ steps:
       - ./ci/build/copy_build_artifacts.sh wheel
     array:
       python:
+        # py3.10 wheels still go to S3 for downstream image builds (the Anyscale
+        # runtime images install them). They are no longer released to PyPI.
         - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     depends_on:
       - ray-wheel-build-aarch64($)
       - forge
@@ -257,6 +279,8 @@ steps:
   - name: ray-cpp-core-build-aarch64
     label: "wanda: cpp core (aarch64)"
     wanda: ci/docker/ray-cpp-core.wanda.yaml
+    # TODO: drop after the move to manylinux_2_28 (see _forge.rayci.yml).
+    depends_on: bazel-glibc217-aarch64
     env_file: rayci.env
     env:
       ARCH_SUFFIX: "-aarch64"
@@ -383,7 +407,6 @@ steps:
         --architecture aarch64
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"
@@ -477,7 +500,6 @@ steps:
         --architecture aarch64
     array:
       python:
-        - "3.10"
         - "3.11"
         - "3.12"
         - "3.13"

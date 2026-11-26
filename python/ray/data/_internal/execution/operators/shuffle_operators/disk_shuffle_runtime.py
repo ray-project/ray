@@ -6,7 +6,9 @@ import errno
 import json
 import logging
 import os
+import pickle
 import struct
+import tempfile
 import threading
 import time
 import uuid
@@ -32,23 +34,13 @@ import ray
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.util import MiB
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
-from ray.data.block import BlockExecStats
-from ray.exceptions import (
-    ActorDiedError,
-    ActorUnavailableError,
-    ActorUnschedulableError,
-)
+from ray.exceptions import ActorDiedError, ActorUnschedulableError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
 _SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_disk"
-
-# Endpoint resolution polls while the actor restarts (Ray raises
-# ActorUnavailableError): the poll interval, and the warn cadence (in polls) so
-# a stuck fetch stays visible.
-_ENDPOINT_POLL_INTERVAL_S = 2.0
-_ENDPOINT_POLL_WARN_EVERY = 15  # ~30s at the interval above
 
 # Materialized handle metadata per reduce resolve batch.
 _DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB
@@ -140,6 +132,9 @@ class ShuffleHandle(TypedDict, total=False):
     """
 
     path: str
+    # Index of the map task that wrote this file; the regroup orders handles
+    # by it so every reducer sees shards in the same order.
+    map_id: int
     # Dense per-partition range index (see _build_range_index): row ``p`` is
     # ``(offset, length)`` of partition ``p``'s on-disk IPC frame.
     # ``length == 0`` => this mapper wrote no frame for ``p`` (reducer skips
@@ -159,7 +154,6 @@ class ShuffleHandle(TypedDict, total=False):
     num_partitions: int
     total_bytes: int
     compression: Optional[str]
-    exec_stats: Optional["BlockExecStats"]
 
 
 class _Endpoint(NamedTuple):
@@ -195,13 +189,16 @@ def _is_disk_exhausted(exc: BaseException) -> bool:
 class ShuffleFileServerAnomalyError(RuntimeError):
     """Terminal shuffle file-server failure: a driver-level retry cannot fix it.
 
-    We run with ``max_restarts=-1``, ``lifetime="detached"``,
-    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``, this means Ray auto-restarts
-    the actor on any mid-life crash and surfaces ``ActorUnavailableError``
-    during the restart window. So the anomalous states we key off of are:
+    The server is a named actor owned by the driver-side regroup operator,
+    created with ``max_restarts=-1``, ``max_task_retries=-1`` and
+    ``NodeAffinitySchedulingStrategy(node_id, soft=False)``. Ray auto-restarts
+    it on any mid-life crash and holds ``endpoint()`` calls until the restart
+    completes, so a transient ``ActorUnavailableError`` never reaches us. The
+    anomalous states we key off of are:
 
-    - ``ActorDiedError``          -> ``__init__`` raised, or external
-                                    ``ray.kill(actor, no_restart=True)``.
+    - ``ActorDiedError``          -> ``__init__`` raised, the owning driver
+                                    exited, or ``ray.kill(actor, no_restart=True)``
+                                    (the regroup operator's teardown).
     - ``ActorUnschedulableError`` -> pinned node is gone; ``soft=False`` blocks
                                     relocation. Terminal at the shuffle layer;
                                     an upstream lineage layer must re-execute
@@ -286,7 +283,13 @@ class _PartitionWriter:
         shards = self._staging.get(partition_id)
         if not shards:
             return
-        tbl = pa.concat_tables(shards) if len(shards) > 1 else shards[0]
+        # Promote compatible schemas (e.g. null vs int64 column) like the
+        # object-store map task; plain ``pa.concat_tables`` would reject them.
+        tbl = (
+            transform_pyarrow.concat(shards, promote_types=True, preserve_order=True)
+            if len(shards) > 1
+            else shards[0]
+        )
         if self._combine_native_ok is None:
             # Once per map: concat above guarantees a uniform schema, so native
             # combine is safe iff no column is an extension type. Avoids the
@@ -395,11 +398,15 @@ def _make_flight_server(host: str, base_dir: str):
     return _ShuffleFlightServer(_grpc_location(host, 0))
 
 
-@ray.remote(num_cpus=0, max_restarts=-1)
+@ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class ShuffleFileServer:
     """Per-node file fetch service: owns an Arrow Flight server that serves
-    byte-ranges of local shuffle files to remote reducers. Survives individual
-    map/reduce workers; in a real cluster, one per node (NodeAffinity)."""
+    byte-ranges of local shuffle files to remote reducers.
+
+    One per (shuffle, node), pinned with NodeAffinity. Created and owned by
+    the driver-side ``DiskHashShuffleRegroupOp`` when the first mapper handle
+    from that node arrives, and killed in its teardown; survives individual
+    map/reduce workers but not the driver."""
 
     def __init__(
         self,
@@ -427,6 +434,31 @@ def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
 
     shutil.rmtree(map_dir, ignore_errors=True)
     shutil.rmtree(reduce_dir, ignore_errors=True)
+
+
+def teardown_disk_shuffle(shuffle_nodes: Iterable[Tuple[str, str]]) -> None:
+    """Remove the shuffle directories of every ``(shuffle_id, node_id)`` in
+    ``shuffle_nodes`` on that node. Called once from the regroup operator's
+    teardown, when no reducer can still need the files. The node's
+    ``ShuffleFileServer`` is owned by the regroup operator and killed there;
+    serving a removed directory is harmless, so the two need no ordering.
+    """
+    cleanup_refs = []
+    for shuffle_id, node_id in shuffle_nodes:
+        try:
+            map_dir, reduce_dir = disk_shuffle_dirs(shuffle_id)
+            cleanup_refs.append(
+                _cleanup_shuffle_dir.options(
+                    scheduling_strategy=NodeAffinitySchedulingStrategy(
+                        node_id, soft=False
+                    ),
+                ).remote(map_dir, reduce_dir)
+            )
+        except Exception:
+            pass
+
+    if cleanup_refs:
+        ray.wait(cleanup_refs, num_returns=len(cleanup_refs), timeout=5.0)
 
 
 # =============================================================================
@@ -475,6 +507,8 @@ class _NodeGroup:
     shuffle_id: str
     node_id: str
     members: List[_FileRanges] = field(default_factory=list)
+    # Position of each member in the reducer's source list (map task order).
+    source_idxs: List[int] = field(default_factory=list)
 
 
 class _PwriteSink:
@@ -571,7 +605,7 @@ def _fetch_from_file_server(
     restart can rebind the port). A changed incarnation means the server restarted:
     reset the sink and retry in place. An unchanged incarnation means the process
     stayed up but the fetch still failed: retry once (a blip ``_resolve`` may have
-    polled through), then escalate to a terminal ``ShuffleFileServerAnomalyError``
+    waited through), then escalate to a terminal ``ShuffleFileServerAnomalyError``
     (likely a network block on the Flight port). Flight error classes / gRPC codes:
     https://arrow.apache.org/docs/python/api/flight.html
     https://grpc.io/docs/guides/status-codes/
@@ -597,36 +631,20 @@ def _fetch_from_file_server(
             raise ShuffleFileServerAnomalyError(
                 f"ShuffleFileServer on node {node_id} not found in namespace: {e}"
             ) from e
-        poll_count = 0
-        while True:
-            try:
-                ep = cast(_Endpoint, ray.get(server.endpoint.remote()))
-                break
-            except ActorUnavailableError:
-                poll_count += 1
-                if poll_count % _ENDPOINT_POLL_WARN_EVERY == 0:
-                    logger.warning(
-                        f"ShuffleFileServer on node {node_id} unavailable "
-                        f"(~{poll_count * _ENDPOINT_POLL_INTERVAL_S:.0f}s), "
-                        f"still polling..."
-                    )
-                time.sleep(_ENDPOINT_POLL_INTERVAL_S)
-            except ActorDiedError as e:
-                # With max_restarts=-1, Ray auto-restarts on mid-life death and
-                # surfaces ActorUnavailableError during the restart. So an
-                # ActorDiedError reaching us means init failure or external
-                # ray.kill
-                raise ShuffleFileServerAnomalyError(
-                    f"ShuffleFileServer on node {node_id} is dead: {e}"
-                ) from e
-            except ActorUnschedulableError as e:
-                # Pinned node is gone; soft=False can't relocate the actor.
-                # Ray transitions from ActorUnavailableError to this ~10s after
-                # heartbeat loss.
-                raise ShuffleFileServerAnomalyError(
-                    f"ShuffleFileServer on node {node_id} is unschedulable "
-                    f"(node likely dead): {e}"
-                ) from e
+        try:
+            ep = cast(_Endpoint, ray.get(server.endpoint.remote()))
+        except ActorDiedError as e:
+            # Ray restarts the actor on mid-life death, so an ActorDiedError
+            # reaching us means init failure or external ray.kill.
+            raise ShuffleFileServerAnomalyError(
+                f"ShuffleFileServer on node {node_id} is dead: {e}"
+            ) from e
+        except ActorUnschedulableError as e:
+            # Pinned node is gone; soft=False can't relocate the actor.
+            raise ShuffleFileServerAnomalyError(
+                f"ShuffleFileServer on node {node_id} is unschedulable "
+                f"(node likely dead): {e}"
+            ) from e
         with _ENDPOINT_CACHE_LOCK:
             _ENDPOINT_CACHE[key] = ep
         return ep
@@ -697,7 +715,35 @@ def _chunk_members_by_bytes(
         yield batch
 
 
-def _handle_batch_size(handles, batch_bytes):
+def disk_shuffle_dirs(shuffle_id: str) -> Tuple[str, str]:
+    prefix = os.path.join(tempfile.gettempdir(), f"ray_shuffle_disk_{shuffle_id}")
+    return f"{prefix}_map", f"{prefix}_reduce"
+
+
+_HANDLE_COLUMN = "__disk_shuffle_handle__"
+
+
+def handle_to_block(handle: "ShuffleHandle") -> pa.Table:
+    """Wrap a ``ShuffleHandle`` in a one-row Arrow block."""
+    return pa.table({_HANDLE_COLUMN: pa.array([pickle.dumps(handle)], pa.binary())})
+
+
+def handle_from_block(block: pa.Table) -> "ShuffleHandle":
+    """Inverse of ``handle_to_block``; raises if ``block`` isn't a handle block."""
+    if not (
+        isinstance(block, pa.Table)
+        and block.column_names == [_HANDLE_COLUMN]
+        and block.num_rows == 1
+    ):
+        raise ValueError(
+            "Expected a one-row disk-shuffle handle block, got "
+            f"{type(block).__name__} with columns "
+            f"{getattr(block, 'column_names', None)}"
+        )
+    return pickle.loads(block.column(0)[0].as_py())
+
+
+def _handle_batch_size(handles: List["ray.ObjectRef"], batch_bytes: int) -> int:
     """#handles to resolve per batch so materialized metadata stays ≈ batch_bytes.
 
     Peeks one handle for ``num_partitions`` (each handle ≈ num_partitions × 32
@@ -707,9 +753,7 @@ def _handle_batch_size(handles, batch_bytes):
     """
     if not handles:
         return 1
-    probe = handles[0]
-    if not isinstance(probe, dict):
-        probe = cast(dict, ray.get(probe))
+    probe = handle_from_block(ray.get(handles[0]))
     try:
         npart = int(probe.get("num_partitions") or len(probe["index_ranges"]))
     except Exception:
@@ -719,13 +763,13 @@ def _handle_batch_size(handles, batch_bytes):
 
 
 def _handles_to_sources(
-    handles: List["ShuffleHandle"],
+    handles: List["ray.ObjectRef"],
     partition_id: int,
     batch_bytes: int = _DEFAULT_HANDLE_BATCH_BYTES,
 ) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
-    """Extract per-partition source refs from a reducer's input handles.
+    """Extract per-partition source refs from a reducer's input handle blocks.
 
-    Resolves handle refs in ≈``batch_bytes`` batches, reads this partition's row
+    Resolves handle-block refs in ≈``batch_bytes`` batches, reads this partition's row
     out of each handle's dense range index, then frees the batch — so in-flight
     handle memory stays constant, not O(maps × partitions). Skips handles with
     ``index_ranges[p].length == 0`` (no on-disk frame); picks the first
@@ -739,13 +783,9 @@ def _handles_to_sources(
     batch_size = _handle_batch_size(handles, batch_bytes)
     for start in range(0, len(handles), batch_size):
         batch = handles[start : start + batch_size]
-        refs = [handle for handle in batch if not isinstance(handle, dict)]
         # pyrefly: ignore[no-matching-overload]
-        vals = iter(ray.get(refs)) if refs else iter(())
-        resolved = [
-            handle if isinstance(handle, dict) else next(vals) for handle in batch
-        ]
-        for handle in resolved:
+        for block in ray.get(batch):
+            handle = handle_from_block(block)
             if output_schema is None:
                 output_schema = handle.get("schema")
             # Dense index: partition_id is the row; only this row materializes
@@ -763,14 +803,13 @@ def _handles_to_sources(
                         ),
                     )
                 )
-        del resolved, vals
     return sources, output_schema
 
 
 def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
     """Collapse sources by file server so each file server gets ONE Flight connection."""
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
-    for source in sources:
+    for source_idx, source in enumerate(sources):
         key = (source.shuffle_id, source.node_id)
         group = by_key.get(key)
         if group is None:
@@ -781,7 +820,27 @@ def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
             )
             by_key[key] = group
         group.members.append(source.file)
+        group.source_idxs.append(source_idx)
     return list(by_key.values())
+
+
+def _order_tables_by_source(
+    groups: List[_NodeGroup], tables_by_group: List[List[pa.Table]]
+) -> List[pa.Table]:
+    """Return the decoded tables of ``groups`` in source (map task) order.
+
+    Grouping by file server orders sources by node, which follows where the
+    scheduler placed each map task; ``source_idxs`` undoes that so the reduce
+    input is the same on every run.
+    """
+    by_source: Dict[int, List[pa.Table]] = {}
+    for group, tables in zip(groups, tables_by_group):
+        pos = 0
+        for source_idx, member in zip(group.source_idxs, group.members):
+            end = pos + len(member.ranges)
+            by_source[source_idx] = tables[pos:end]
+            pos = end
+    return [table for idx in sorted(by_source) for table in by_source[idx]]
 
 
 def _compute_prefetch_layout(

@@ -10,6 +10,10 @@ import pytest
 
 from ray._common.utils import get_default_ray_temp_dir
 from ray._private.ray_constants import SESSION_LATEST
+from ray.dashboard.modules.metrics.dashboards.data_llm_dashboard_panels import (
+    DATA_LLM_GRAFANA_PANELS,
+    data_llm_dashboard_config,
+)
 from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
     DEFAULT_GRAFANA_ROWS,
     MAX_NPUS,
@@ -20,6 +24,10 @@ from ray.dashboard.modules.metrics.dashboards.default_dashboard_panels import (
 )
 from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
+)
+from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
+    GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE,
+    generate_data_llm_grafana_dashboard,
 )
 from ray.tests.conftest import _ray_start
 
@@ -328,6 +336,130 @@ def test_serve_dashboard_utilizes_global_filters():
                 # We skip expressions that are constant value targets serving as visual aids
                 continue
             assert "{global_filters}" in target.expr
+
+
+DATA_LLM_GLOBAL_FILTERS_ENV_VAR = (
+    GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE.format(
+        name=data_llm_dashboard_config.name
+    )
+)
+SESSION_FILTER = 'SessionName=~"$SessionName"'
+RAY_IO_CLUSTER_FILTER = 'ray_io_cluster=~"$Cluster"'
+# The filter Anyscale's managed Grafana injects through the env override.
+CLUSTER_ID_FILTER = 'ClusterId=~"$ClusterId"'
+
+
+def _generate_data_llm_dashboard(monkeypatch, override_filter):
+    if override_filter is None:
+        monkeypatch.delenv(DATA_LLM_GLOBAL_FILTERS_ENV_VAR, raising=False)
+    else:
+        monkeypatch.setenv(DATA_LLM_GLOBAL_FILTERS_ENV_VAR, override_filter)
+    content, _ = generate_data_llm_grafana_dashboard()
+    return json.loads(content)
+
+
+def _panel_exprs(dashboard):
+    return [t["expr"] for panel in dashboard["panels"] for t in panel["targets"]]
+
+
+def _variables_by_name(dashboard):
+    return {v["name"]: v for v in dashboard["templating"]["list"]}
+
+
+def test_data_llm_dashboard_utilizes_global_filters():
+    """Every label selector of every Data LLM target carries `{global_filters}`.
+
+    A mean divides a sum by a count, so each selector is checked, not just
+    each expression.
+    """
+    for panel in DATA_LLM_GRAFANA_PANELS:
+        for target in panel.targets:
+            # In the template, each selector opens with an escaped "{{".
+            num_selectors = target.expr.count("{{")
+            num_filtered = target.expr.count("{global_filters}")
+
+            assert num_selectors > 0, f"{panel.title}: {target.expr}"
+            assert num_filtered == num_selectors, f"{panel.title}: {target.expr}"
+
+
+def test_data_llm_dashboard_has_session_and_cluster_variables(monkeypatch):
+    """The generated Data LLM dashboard offers SessionName and Cluster
+    dropdowns ahead of the model and worker dropdowns that they narrow.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter=None)
+
+    names = [v["name"] for v in dashboard["templating"]["list"]]
+
+    assert names == [
+        "datasource",
+        "SessionName",
+        "Cluster",
+        "vllm_model_name",
+        "workerid",
+        "interval",
+    ]
+
+
+@pytest.mark.parametrize("override_filter", [None, CLUSTER_ID_FILTER])
+def test_data_llm_dashboard_panels_apply_all_filters(monkeypatch, override_filter):
+    """Every selector of every generated panel query carries both standard
+    filters, plus the env override filter when one is set.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter)
+
+    exprs = _panel_exprs(dashboard)
+
+    assert exprs
+    expected = [SESSION_FILTER, RAY_IO_CLUSTER_FILTER]
+    if override_filter is not None:
+        expected.append(override_filter)
+    for expr in exprs:
+        # After formatting, each selector opens with a single "{".
+        num_selectors = expr.count("{")
+        for label_filter in expected:
+            assert expr.count(label_filter) == num_selectors, expr
+
+
+@pytest.mark.parametrize("override_filter", [None, CLUSTER_ID_FILTER])
+def test_data_llm_dashboard_variables_avoid_self_reference(
+    monkeypatch, override_filter
+):
+    """The SessionName and Cluster dropdowns carry the env override filter but
+    never their own variable, and the model and worker dropdowns narrow to the
+    chosen session and cluster.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter)
+
+    variables = _variables_by_name(dashboard)
+
+    for name in ("SessionName", "Cluster"):
+        query = variables[name]["query"]["query"]
+        # Match the quoted value so "$ClusterId" doesn't count as "$Cluster".
+        assert f'"${name}"' not in query, query
+        if override_filter is not None:
+            assert override_filter in query, query
+    for name in ("vllm_model_name", "workerid"):
+        query = variables[name]["query"]["query"]
+        assert SESSION_FILTER in query, query
+        assert RAY_IO_CLUSTER_FILTER in query, query
+
+
+@pytest.mark.parametrize("override_filter", [None, CLUSTER_ID_FILTER])
+def test_data_llm_dashboard_has_no_dangling_commas(monkeypatch, override_filter):
+    """No generated panel or dropdown selector has an empty matcher between
+    commas, or a comma next to a brace, which Prometheus would reject.
+    """
+    dashboard = _generate_data_llm_dashboard(monkeypatch, override_filter)
+
+    queries = _panel_exprs(dashboard) + [
+        v["query"]["query"]
+        for v in dashboard["templating"]["list"]
+        if isinstance(v.get("query"), dict)
+    ]
+
+    assert queries
+    for query in queries:
+        assert not re.search(r",\s*,|,\s*}|{\s*,", query), query
 
 
 def test_serve_dashboard_excludes_system_traffic():

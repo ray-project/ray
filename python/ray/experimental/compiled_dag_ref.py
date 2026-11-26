@@ -99,6 +99,22 @@ class CompiledDAGRef:
         self._dag._delete_execution_results(self._execution_index, self._channel_index)
 
     def get(self, timeout: Optional[float] = None):
+        """Wait for the execution result and return it.
+
+        ``ray.get()`` on a CompiledDAGRef calls this method. It can be called only
+        once per CompiledDAGRef.
+
+        Args:
+            timeout: The maximum time in seconds to wait for the execution. None
+                uses the compiled graph's default get timeout, 0 returns or times out
+                without blocking, and -1 waits indefinitely.
+
+        Returns:
+            The execution result.
+
+        Raises:
+            ValueError: If the result was already retrieved.
+        """
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
@@ -158,6 +174,14 @@ class CompiledDAGFuture:
     2. ray.wait() is not supported.
     3. CompiledDAGFuture cannot be copied, deep copied, or pickled.
     4. CompiledDAGFuture cannot be passed as an argument to another task.
+
+    Args:
+        dag: The compiled DAG that generated this CompiledDAGFuture.
+        execution_index: The index of the DAG execution that this
+            CompiledDAGFuture corresponds to.
+        fut: The asyncio future that resolves to the execution result.
+        channel_index: The index of the DAG output channel to fetch the result
+            from. If None, the result wraps the results of all output channels.
     """
 
     def __init__(

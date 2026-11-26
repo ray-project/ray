@@ -680,25 +680,34 @@ class TestAmdGpuProvider(unittest.TestCase):
         mock_pyamdsmi.smi_initialize.return_value = None
         mock_pyamdsmi.smi_shutdown.return_value = None
 
-        self.assertTrue(self.provider.is_available())
-        mock_pyamdsmi.smi_initialize.assert_called_once()
-        mock_pyamdsmi.smi_shutdown.assert_called_once()
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pyamdsmi": mock_pyamdsmi}
+        ):
+            self.assertTrue(self.provider.is_available())
+            mock_pyamdsmi.smi_initialize.assert_called_once()
+            mock_pyamdsmi.smi_shutdown.assert_called_once()
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_is_available_failure(self, mock_pyamdsmi):
         """Test is_available when AMD GPU is not available."""
         mock_pyamdsmi.smi_initialize.side_effect = Exception("AMD driver not found")
 
-        self.assertFalse(self.provider.is_available())
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pyamdsmi": mock_pyamdsmi}
+        ):
+            self.assertFalse(self.provider.is_available())
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_initialize_success(self, mock_pyamdsmi):
         """Test successful initialization."""
         mock_pyamdsmi.smi_initialize.return_value = None
 
-        self.assertTrue(self.provider._initialize())
-        self.assertTrue(self.provider._initialized)
-        mock_pyamdsmi.smi_initialize.assert_called_once()
+        with patch.dict(
+            "sys.modules", {"ray._private.thirdparty.pyamdsmi": mock_pyamdsmi}
+        ):
+            self.assertTrue(self.provider._initialize())
+            self.assertTrue(self.provider._initialized)
+            mock_pyamdsmi.smi_initialize.assert_called_once()
 
     @patch("ray._private.thirdparty.pyamdsmi", create=True)
     def test_get_gpu_utilization_success(self, mock_pyamdsmi):
@@ -757,6 +766,26 @@ class TestGpuMetricProvider(unittest.TestCase):
         self.assertTrue(self.provider._enable_metric_report)
         self.assertEqual(len(self.provider._providers), 2)
         self.assertFalse(self.provider._initialized)
+
+    @patch.object(GpuMetricProvider, "_detect_gpu_provider")
+    def test_initialize_disabled(self, mock_detect):
+        """Test disabled GPU metrics do not probe GPU providers."""
+        with patch(
+            "ray.dashboard.modules.reporter.gpu_providers.NvidiaGpuProvider"
+        ) as mock_nvidia_provider, patch(
+            "ray.dashboard.modules.reporter.gpu_providers.AmdGpuProvider"
+        ) as mock_amd_provider:
+            provider = GpuMetricProvider(enable_metric_report=False)
+
+        self.assertFalse(provider.initialize())
+        self.assertFalse(provider.initialize())
+        self.assertEqual(provider.get_gpu_usage(), [])
+        self.assertEqual(provider._providers, [])
+        self.assertTrue(provider._initialized)
+        self.assertFalse(provider.is_metric_report_enabled())
+        mock_nvidia_provider.assert_not_called()
+        mock_amd_provider.assert_not_called()
+        mock_detect.assert_not_called()
 
     @patch.object(NvidiaGpuProvider, "is_available", return_value=True)
     @patch.object(AmdGpuProvider, "is_available", return_value=False)

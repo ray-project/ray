@@ -79,7 +79,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
     return;
   }
 
-  auto resource_loads = data.mutable_resource_load();
   auto resource_load_by_shape =
       data.mutable_resource_load_by_shape()->mutable_resource_demands();
 
@@ -105,7 +104,12 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
           scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
           rpc::SchedulingStrategy::SchedulingStrategyCase::
               kNodeAffinitySchedulingStrategy;
-      if ((is_node_affinity_scheduling_strategy ||
+      // A soft lease that spills when its node is full can run on any node.
+      const auto &node_affinity = scheduling_class_descriptor.scheduling_strategy
+                                      .node_affinity_scheduling_strategy();
+      const bool can_run_on_any_node =
+          node_affinity.soft() && node_affinity.spill_on_unavailable();
+      if (((is_node_affinity_scheduling_strategy && !can_run_on_any_node) ||
            AllLabelSelectorsAreHardNodeAffinity(scheduling_class_descriptor)) &&
           !is_infeasible) {
         // Resource demands from hard node affinity constraints shouldn't create new
@@ -126,11 +130,6 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
       for (const auto &resource : resources) {
         const auto &label = resource.first;
         const auto &quantity = resource.second;
-
-        if (count != 0) {
-          // Add to `resource_loads`.
-          (*resource_loads)[label] += quantity * count;
-        }
         // Add to `resource_load_by_shape`.
         (*by_shape_entry->mutable_shape())[label] = quantity;
       }

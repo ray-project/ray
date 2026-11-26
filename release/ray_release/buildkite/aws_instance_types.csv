@@ -316,6 +316,10 @@ m6i.8xlarge,32,0
 m6i.large,2,0
 m6i.metal,128,0
 m6i.xlarge,4,0
+m7i.2xlarge,8,0
+m7i.4xlarge,16,0
+m7i.8xlarge,32,0
+m7i.xlarge,4,0
 mac1.metal,12,0
 p2.16xlarge,64,16
 p2.8xlarge,32,8

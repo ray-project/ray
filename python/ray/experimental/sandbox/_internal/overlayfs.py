@@ -11,8 +11,10 @@ whether the worker has mount privileges or not (see ``UserNamespaceType.detect``
 and ``ImageMountMode.detect``). A worker with them mounts it in a per-sandbox
 mount namespace. There, the kernel's erofs driver mounts the image on a loop
 device, or ``erofsfuse`` mounts it through FUSE if that fails, and every file
-keeps its owner from the image either way. A worker without mount privileges
-uses ``erofsfuse`` to mount the image inside a per-sandbox user namespace.
+keeps its owner from the image either way. If neither is available,
+``fsck.erofs`` extracts a shared lower directory once. Each sandbox mounts it
+read-only beneath its own writable overlay. A worker without mount privileges
+uses FUSE or the extracted directory inside a per-sandbox user namespace.
 A worker running as root maps every id it has to itself in the new user
 namespace, so every file keeps its owner from the image. A worker running
 as any other user maps the subordinate ids getsubids or /etc/subuid and
@@ -31,6 +33,7 @@ lower layer.
 """
 
 import enum
+import fcntl
 import functools
 import logging
 import os
@@ -281,15 +284,17 @@ class IdMaps:
 
 
 class ImageMountMode(enum.Enum):
-    """How an overlayfs sandbox's EROFS image gets mounted."""
+    """How an EROFS image supplies an overlayfs sandbox's lower layer."""
 
-    # A sandbox's EROFS image is mounted in one of two ways, KERNEL or FUSE.
+    # A sandbox's EROFS image supplies its lower layer via KERNEL, FUSE, or EXTRACTED.
     # KERNEL mounts it with the kernel's erofs driver on a loop device, which
     # requires mount privileges. FUSE mounts it with erofsfuse, which runs as a
-    # regular process and works in either user namespace. The detect method
-    # determines which one applies to the sandboxes this worker creates.
+    # regular process and works in either user namespace. EXTRACTED unpacks it
+    # into a shared rootfs directory that each sandbox bind-mounts read-only.
+    # The detect method chooses the mode for the sandboxes this worker creates.
     KERNEL = "kernel"
     FUSE = "fuse"
+    EXTRACTED = "extracted"
 
     @classmethod
     @functools.lru_cache(maxsize=None)
@@ -304,42 +309,32 @@ class ImageMountMode(enum.Enum):
         Returns:
             ``ImageMountMode.KERNEL`` if it has mount privileges and the
             kernel's erofs driver can mount the image on a loop device, else
-            ``ImageMountMode.FUSE``.
+            ``ImageMountMode.FUSE``, or ``ImageMountMode.EXTRACTED`` if neither
+            kernel EROFS nor FUSE mounts work.
 
         Raises:
-            SandboxCreationError: If it can't mount the image either way.
+            SandboxCreationError: If it can't mount the image in any mode.
         """
-        # In the host's user namespace, the kernel's erofs driver should mount
-        # the EROFS image if it has sufficient privileges. If that fails,
-        # erofsfuse mounts it instead.
+        # Kernel EROFS mounts require the host user namespace; the other modes
+        # also work inside a private user namespace when its mount probe passes.
+        modes = [cls.FUSE, cls.EXTRACTED]
         if userns is UserNamespaceType.HOST:
-            # A kernel mount that hangs counts as one that failed, so the
-            # worker can still use erofsfuse.
+            modes.insert(0, cls.KERNEL)
+        failures = []
+        for mode in modes:
             try:
-                mounted, kernel_errstr = _probe_mount(
-                    UserNamespaceType.HOST, cls.KERNEL
-                )
+                mounted, error = _probe_mount(userns, mode)
+            except _ProbeTimeoutError:
+                raise
             except SandboxCreationError as err:
-                mounted, kernel_errstr = False, str(err)
+                mounted, error = False, str(err)
             if mounted:
-                return cls.KERNEL
-            mounted, fuse_errstr = _probe_mount(UserNamespaceType.HOST, cls.FUSE)
-            if mounted:
-                return cls.FUSE
-            raise SandboxCreationError(
-                "Can't mount an overlayfs sandbox's rootfs on this node. "
-                f"Mounting with the kernel's erofs driver failed with: {kernel_errstr}."
-                f" Mounting with erofsfuse failed with: {fuse_errstr}"
-            )
-
-        # In a private user namespace, only erofsfuse can mount the image,
-        # since the kernel doesn't allow erofs mounts inside it.
-        mounted, fuse_errstr = _probe_mount(UserNamespaceType.PRIVATE, cls.FUSE)
-        if mounted:
-            return cls.FUSE
+                logger.info("Overlayfs sandboxes use image mount mode %s", mode.value)
+                return mode
+            failures.append(f"{mode.value}: {error}")
         raise SandboxCreationError(
             "Can't mount an overlayfs sandbox's rootfs on this node. "
-            f"Mounting with erofsfuse failed with: {fuse_errstr}"
+            + "; ".join(failures)
         )
 
 
@@ -458,6 +453,11 @@ class RootfsOverlay:
                 ]
             case ImageMountMode.FUSE:
                 mount_image = [start_erofsfuse, wait_for_mount, check_mount]
+            case ImageMountMode.EXTRACTED:
+                mount_image = [
+                    'mount --bind "$image" "$tmpfs/lower"',
+                    'mount -o remount,bind,ro,nosuid "$tmpfs/lower"',
+                ]
             case _:
                 raise ValueError(f"Unknown image mount mode {self.image_mount_mode!r}")
 
@@ -641,86 +641,56 @@ def needs_rootfs_overlay(spec: Dict[str, Any]) -> bool:
 
     It does when OCI hooks run on the host before it starts, since those can
     write to its rootfs, and those writes must never reach the cached image.
-    It also does when its rootfs is read-only and some of its mounts need
-    mount points the image doesn't have. runsc applies no overlay of its own
-    to a read-only root, and can't create them in the image, but can in the
-    kernel overlay's upper layer.
     """
-    if has_prestart_hooks(spec):
-        return True
-    if not spec.get("root", {}).get("readonly"):
-        return False
-    return len(missing_mount_points(spec)) > 0
-
-
-def has_prestart_hooks(spec: Dict[str, Any]) -> bool:
-    """Whether this OCI spec has hooks that run on the host before the
-    container starts."""
     hooks = spec.get("hooks") or {}
     return any(hooks.get(kind) for kind in _PRESTART_HOOKS)
 
 
-def missing_mount_points(spec: Dict[str, Any]) -> List[str]:
-    """The destinations of this OCI spec's mounts that need a mount point in
-    the image, which it may not have.
-
-    Every image has the mount points image_utils seeds into it at build time,
-    so mounts there never need one. Neither does a mount inside another
-    mount, such as a device node under /dev, since its mount point gets
-    created in that mount rather than in the image. This doesn't check
-    whether the image has any others, so a mount onto a path it does have
-    counts too.
-    """
-    # Build a list of available mount points, which every image has. This
-    # includes "/" as well as the directories and files image_utils seeds into
-    # every image at build time.
-    available = {"/"}
-    for path in image_utils._MOUNTPOINT_DIRS + image_utils._MOUNTPOINT_FILES:
-        available.add(os.path.join("/", path))
-
-    # Build the list of desired mounts from the spec.
-    mounts = []
-    for m in spec.get("mounts") or []:
-        if m.get("destination"):
-            mounts.append(os.path.normpath(m["destination"]))
-
-    # Define a helper function to check if a given mount is inside another
-    # mount or not. If it is, its mount point comes from that other mount
-    # rather than the image, so it doesn't need to be in "available".
-    def inside_another_mount(path: str) -> bool:
-        parent = os.path.dirname(path)
-        if parent == path:
-            return False
-        return parent in mounts or inside_another_mount(parent)
-
-    # Build the list of missing mount points and return it. Skip any mounts
-    # that are verified as already available or inside another mount.
-    missing = []
-    for m in mounts:
-        if m in available or inside_another_mount(m):
-            continue
-        missing.append(m)
-    return missing
-
-
-def can_mount_rootfs_overlay() -> bool:
-    """Whether this worker can mount an overlayfs sandbox's rootfs, as
-    ``UserNamespaceType.detect`` and ``ImageMountMode.detect`` decide.
-
-    Returns:
-        True if it can, else False.
-
-    Raises:
-        SandboxCreationError: If a probe times out, since that says nothing
-            about whether it can.
-    """
-    try:
-        ImageMountMode.detect(UserNamespaceType.detect())
-    except _ProbeTimeoutError:
-        raise
-    except SandboxCreationError:
-        return False
-    return True
+def _extract_image_rootfs(image: str, timeout_seconds: float = 600) -> str:
+    directory = f"{image}.rootfs"
+    with open(f"{directory}.lock", "a", encoding="utf-8") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if os.path.isdir(directory):
+            return directory
+        if not shutil.which("fsck.erofs"):
+            raise SandboxCreationError(
+                "Install fsck.erofs to use the extracted-rootfs fallback "
+                "when kernel EROFS and FUSE mounts are unavailable."
+            )
+        # The cached image is uncompressed, so its size approximates the tree's.
+        # Mount probes extract a scratch image outside the cache.
+        image_dir = os.path.dirname(image)
+        if os.path.exists(os.path.join(image_dir, ".extracted")):
+            image_utils.reserve_image_cache_space(image_dir, os.path.getsize(image))
+        with tempfile.TemporaryDirectory(
+            prefix=".erofs-extract-", dir=os.path.dirname(image)
+        ) as temporary:
+            extracted = os.path.join(temporary, "rootfs")
+            try:
+                # Without root, fsck.erofs otherwise applies this process's umask to
+                # every mode it extracts: /tmp would lose its world write bit.
+                result = subprocess.run(
+                    [
+                        "fsck.erofs",
+                        "--preserve-perms",
+                        f"--extract={extracted}",
+                        image,
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_seconds,
+                )
+            except subprocess.TimeoutExpired as error:
+                raise _ProbeTimeoutError(
+                    "Timed out extracting the EROFS image "
+                    f"after {timeout_seconds:g} seconds"
+                ) from error
+            if result.returncode:
+                raise SandboxCreationError(
+                    f"Could not extract EROFS image {image!r}: {result.stderr}"
+                )
+            os.rename(extracted, directory)
+    return directory
 
 
 def prepare(
@@ -730,6 +700,7 @@ def prepare(
     bundle_dir: str,
     userns: Optional[UserNamespaceType] = None,
     image_mount_mode: Optional[ImageMountMode] = None,
+    extract_timeout_seconds: float = 600,
 ) -> RootfsOverlay:
     """Create an overlayfs sandbox's overlay directories in its bundle, and
     return the RootfsOverlay that mounts its kernel overlay the way this
@@ -741,6 +712,8 @@ def prepare(
         bundle_dir: The sandbox's bundle directory.
         userns: The type of user namespace to mount it in. Detected if not given.
         image_mount_mode: How to mount the EROFS image. Detected if not given.
+        extract_timeout_seconds: Timeout for extracting the image rootfs,
+            in seconds. Defaults to 600; mount probes use 30.
 
     Returns:
         The sandbox's kernel overlay, ready to wrap its runsc command with.
@@ -763,6 +736,8 @@ def prepare(
         userns = UserNamespaceType.detect()
     if image_mount_mode is None:
         image_mount_mode = ImageMountMode.detect(userns)
+    if image_mount_mode is ImageMountMode.EXTRACTED:
+        image = _extract_image_rootfs(image, timeout_seconds=extract_timeout_seconds)
 
     # Only a private user namespace maps the worker's subordinate ids.
     id_maps = None
@@ -842,6 +817,7 @@ def _probe_mount(
             bundle_dir=scratch,
             userns=userns,
             image_mount_mode=image_mount_mode,
+            extract_timeout_seconds=30,
         )
 
         # Run it the way a sandbox runs, in its own session with stderr going

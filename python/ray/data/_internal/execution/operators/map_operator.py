@@ -34,6 +34,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.resource_bank import ResourceBankBase
 
 import ray
 from ray import ObjectRef
@@ -42,6 +43,7 @@ from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
     TaskPoolStrategy,
+    maybe_promote_compute_strategy,
 )
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
@@ -50,6 +52,7 @@ from ray.data._internal.execution.bundle_queue import (
     RebundleQueue,
     ReorderingBundleQueue,
 )
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     BlockSlice,
     ExecutionOptions,
@@ -58,6 +61,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
+from ray.data._internal.execution.interfaces.common import LogicalActorId
 from ray.data._internal.execution.interfaces.physical_operator import (
     DataOpTask,
     MetadataOpTask,
@@ -88,6 +92,7 @@ from ray.data._internal.execution.util import (
     merge_label_selector,
     yield_block_with_stats,
 )
+from ray.data._internal.logical.interfaces.partitioning import HashPartitioning
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import MemoryProfiler, iterate_with_retry
 from ray.data.block import (
@@ -221,6 +226,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     Warn if the size of the map UDF exceeds this threshold.
     """
 
+    is_read_op: bool = False
+    """Whether this op reads from a datasource. Set by the read planners (and
+    propagated through fusion)."""
+
     def __init__(
         self,
         map_transformer: MapTransformer,
@@ -236,6 +245,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         ray_remote_args: Optional[Dict[str, Any]],
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         default_logical_memory_enabled: bool = False,
+        generator_backpressure_disabled: bool = False,
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
         # instead.
@@ -262,12 +272,18 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self._map_task_kwargs = map_task_kwargs
         self._ray_remote_args = ray_remote_args
         self._ray_remote_args_fn = ray_remote_args_fn
+        # When True, subclasses emit no streaming-generator backpressure keys
+        # for this operator's tasks (Ray core treats an absent key as
+        # disabled).
+        self._generator_backpressure_disabled = generator_backpressure_disabled
         self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
-        self._block_ref_bundler = ref_bundler
-        if self._block_ref_bundler is None:
-            self._block_ref_bundler = RebundleQueue(EstimateSize(min_rows_per_bundle))
+        self._block_ref_bundler = (
+            RebundleQueue(EstimateSize(min_rows_per_bundle))
+            if ref_bundler is None
+            else ref_bundler
+        )
 
         # Queue for task outputs, either ordered or unordered (this is set by start()).
         self._output_queue: Optional[BaseBundleQueue] = None
@@ -363,6 +379,10 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             name += f"->SplitBlocks({self._additional_split_factor})"
         return name
 
+    @override
+    def min_num_rows_needed_to_make_progress(self) -> int:
+        return self._block_ref_bundler.min_rows_per_bundle
+
     @classmethod
     def create(
         cls,
@@ -383,6 +403,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         per_block_limit: Optional[int] = None,
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
+        generator_backpressure_disabled: bool = False,
+        is_read_op: bool = False,
+        output_partitioning: Optional[HashPartitioning] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
 
@@ -423,6 +446,12 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 scheduled on the same worker processes as this operator's. This flag
                 is useful to prevent side-effects from affecting other operators, like
                 large PyArrow memory allocations.
+            generator_backpressure_disabled: If ``True``, apply no streaming-generator
+                backpressure to this operator's tasks (no per-task or actor-wide
+                buffer bounds). For fast, lightweight operators (e.g. file listing)
+                that default backpressure would starve downstream of inputs.
+            is_read_op: Whether this op reads from a datasource.
+            output_partitioning: See ``PhysicalOperator.output_partitioning``.
 
         Returns:
             A ``MapOperator`` instance whose concrete subclass depends on the
@@ -438,6 +467,13 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         if compute_strategy is None:
             compute_strategy = TaskPoolStrategy()
 
+        # The actor-only backend transparently promotes ``TaskPoolStrategy`` to
+        # ``ActorPoolStrategy`` here; this is a no-op otherwise. The decision is
+        # self-gated inside the helper so this factory stays backend-agnostic.
+        compute_strategy = maybe_promote_compute_strategy(
+            compute_strategy, data_context
+        )
+
         # Apply per-block limit to the map transformer if set
         if per_block_limit is not None:
             map_transformer = _wrap_transformer_with_limit(
@@ -449,7 +485,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             )
 
             TaskPoolMapOperator = get_task_pool_map_operator_cls()
-            return TaskPoolMapOperator(
+            op = TaskPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -465,7 +501,9 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 on_start=on_start,
                 isolate_workers=isolate_workers,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                generator_backpressure_disabled=generator_backpressure_disabled,
             )
+            op.is_read_op = is_read_op
         elif isinstance(compute_strategy, ActorPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_actor_pool_map_operator_cls,
@@ -478,7 +516,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 )
 
             ActorPoolMapOperator = get_actor_pool_map_operator_cls()
-            return ActorPoolMapOperator(
+            op = ActorPoolMapOperator(
                 map_transformer,
                 input_op,
                 data_context,
@@ -493,23 +531,37 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 ray_remote_args=ray_remote_args,
                 on_start=on_start,
                 default_logical_memory_enabled=data_context.default_map_logical_memory_enabled,
+                generator_backpressure_disabled=generator_backpressure_disabled,
+                is_read_op=is_read_op,
             )
         else:
             raise ValueError(f"Unsupported execution strategy {compute_strategy}")
+        op._output_partitioning = output_partitioning
+        return op
 
     def start(
         self,
         options: "ExecutionOptions",
         block_ref_counter: "BlockRefCounter",
         lineage_tracker: Optional["LineageTracker"] = None,
+        resource_bank: Optional["ResourceBankBase"] = None,
     ):
-        super().start(options, block_ref_counter, lineage_tracker)
+        super().start(
+            options, block_ref_counter, lineage_tracker, resource_bank=resource_bank
+        )
         # Create output queue with desired ordering semantics.
-        if options.preserve_order:
-            self._output_queue = ReorderingBundleQueue()
-        else:
-            self._output_queue = FIFOBundleQueue()
+        self._output_queue = self._create_output_queue(options.preserve_order)
+        self._apply_additional_block_split()
 
+    def _create_output_queue(self, preserve_order: bool) -> BaseBundleQueue:
+        """Build the operator's output queue. Overridable so a backend can pick a
+        different implementation (e.g. the actor-only backend uses a priority
+        queue that serves draining actors' outputs first)."""
+        if preserve_order:
+            return ReorderingBundleQueue()
+        return FIFOBundleQueue()
+
+    def _apply_additional_block_split(self) -> None:
         map_transformer = self._map_transformer
         # Apply additional block split if needed.
         if self.get_additional_split_factor() > 1:
@@ -551,6 +603,16 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self._block_ref_bundler.add(refs)
         self._metrics.on_input_queued(refs, input_index=0)
 
+        self._maybe_dispatch_next_bundle()
+
+    def _maybe_dispatch_next_bundle(self) -> None:
+        """Dispatch a task for the next full bundle, if the bundler has one.
+
+        Extension point used after each input is added. The base (push)
+        implementation self-dispatches a task as soon as a full bundle is
+        available. The actor-only backend overrides this so inputs are instead
+        enqueued for the scheduling loop to pull via ``launch_task()``.
+        """
         if self._block_ref_bundler.has_next():
             # The ref bundler combines one or more `RefBundle`s into a new
             # `RefBundle`. To update metrics appropriately, we need to deque
@@ -562,12 +624,17 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             for bundle in input_refs:
                 self._metrics.on_input_dequeued(bundle, input_index=0)
 
-            # If the bundler has a full bundle, add it to the operator's task submission
-            # queue
+            # If the bundler has a full bundle, add it to the operator's task
+            # submission queue.
             #
-            # NOTE: This is a strict path, hence operator is *required* to launch
-            #       at least 1 task
-            self._try_schedule_task(bundled_input, strict=True)
+            # NOTE: The standard backend keeps this a strict path (the operator
+            #       is *required* to launch at least 1 task). Under the
+            #       actor-only backend admission is enforced by per-actor
+            #       budgets instead, so a bundle that cannot be placed right
+            #       now is queued rather than forced.
+            self._try_schedule_task(
+                bundled_input, strict=not actor_only_backend_enabled(self.data_context)
+            )
 
     def _get_dynamic_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -620,11 +687,29 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         self._output_queue.add(bundle, key=task_index)
         self._metrics.on_output_queued(bundle)
 
+    def _context_task_idx(self, inputs: Optional[RefBundle]) -> int:
+        """The ``TaskContext.task_idx`` of the task about to be submitted on ``inputs``.
+
+        A reconstruction task reuses the index of the task it re-runs. Output file
+        names, random seeds and ``monotonically_increasing_id`` derive from this
+        index, so a re-run overwrites and reproduces the original rather than
+        writing a second file or drawing different values. The operator's own
+        bookkeeping keeps using the fresh ``_next_data_task_idx``.
+        """
+        stamp = inputs.reconstruction_stamp if inputs is not None else None
+        if stamp is not None:
+            return self._task_index_of(stamp.lineage_task_id)
+        return self._next_data_task_idx
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,
         inputs: RefBundle,
-        task_done_callback: Optional[Callable[[], None]] = None,
+        task_output_ready_callback: Optional[Callable[[RefBundle], None]] = None,
+        task_done_callback: Optional[
+            Callable[[RefBundle, int, Optional[Exception]], None]
+        ] = None,
+        task_resource_request: Optional[Dict[str, float]] = None,
     ):
         """Submit a new data-handling task."""
         # TODO(hchen):
@@ -683,16 +768,29 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
             self._metrics.on_task_output_generated(task_index, output)
 
             if lineage_tracker is not None:
-                # Attribute the block to (this task, output_index) so whichever
-                # downstream task consumes it can name its own dependencies.
-                lineage_tracker.register_block_output(
-                    lineage_task_id, output.block_refs[0].hex(), output_index
-                )
                 if sorted_reconstruction_plan_ids:
-                    for reconstruction_plan_id in sorted_reconstruction_plan_ids:
-                        status = lineage_tracker.get_object_reuse_status(
+                    statuses = {
+                        reconstruction_plan_id: lineage_tracker.get_object_reuse_status(
                             lineage_task_id, output_index, reconstruction_plan_id
                         )
+                        for reconstruction_plan_id in sorted_reconstruction_plan_ids
+                    }
+                    # Attribute the block to (this task, output_index) so whichever
+                    # downstream task consumes it can name its own dependencies. Only
+                    # for blocks that will reach a consumer: a dropped one would never
+                    # be resolved, leaving its entry behind for the rest of the run.
+                    if any(
+                        status
+                        in (
+                            ObjectReuseStatus.OBJECT_REUSED,
+                            ObjectReuseStatus.OBJECT_NEW,
+                        )
+                        for status in statuses.values()
+                    ):
+                        lineage_tracker.register_block_output(
+                            lineage_task_id, output.block_refs[0].hex(), output_index
+                        )
+                    for reconstruction_plan_id, status in statuses.items():
                         # REUSED: withhold until the child reconstruction task's whole input set is
                         # re-produced, then release it as one bundle
                         # (`_release_reconstruction_blocks_to_child`). Emitting now would run the
@@ -729,11 +827,19 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     return
                 else:
                     # This is a fresh task
+                    lineage_tracker.register_block_output(
+                        lineage_task_id, output.block_refs[0].hex(), output_index
+                    )
                     lineage_tracker.register_block_queued(lineage_task_id, output_index)
 
             # Notify output queue that the task has produced an new output.
-            self._output_queue.add(output, key=task_index)
+            # ``_output_add_kwargs`` lets subclasses tag the bundle differently
+            # (e.g. the actor-only backend keys by producing actor id).
+            self._output_queue.add(output, **self._output_add_kwargs(task_index))
             self._metrics.on_output_queued(output)
+
+            if task_output_ready_callback:
+                task_output_ready_callback(output)
 
         def _task_done_callback(
             task_index: int,
@@ -775,18 +881,29 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_ids, task_index
                     )
+                    self._num_reconstruction_tasks_finished += 1
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
                         lineage_tracker.register_task_complete(
-                            lineage_task_id, reconstruction_plan_id
+                            lineage_task_id,
+                            num_outputs=next_output_index,
+                            reconstruction_plan_id=reconstruction_plan_id,
                         )
                 else:
-                    lineage_tracker.register_task_complete(lineage_task_id)
+                    # The output count lets the tracker garbage collect this task
+                    # once every output has been consumed by a collected task.
+                    lineage_tracker.register_task_complete(
+                        lineage_task_id, num_outputs=next_output_index
+                    )
+                # A completed write task's rows are durable, so its lineage is no
+                # longer needed.
+                if self._is_sink_operator():
+                    lineage_tracker.try_garbage_collect_lineage(lineage_task_id)
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
             if task_done_callback:
-                task_done_callback()
+                task_done_callback(inputs, task_index, exception)
 
         data_task = DataOpTask(
             task_index,
@@ -797,6 +914,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                 task_index, output
             ),
             task_done_callback=functools.partial(_task_done_callback, task_index),
+            task_resource_request=task_resource_request,
             operator_name=self.name,
             lineage_task_id=lineage_task_id,
             reconstruction_plan_ids=reconstruction_plan_ids,
@@ -854,12 +972,33 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         assert self._started
         return self._output_queue.has_next()
 
+    def lineage_reconstruction_progress_str(self) -> str:
+        if self._lineage_tracker is None:
+            return ""
+        num_queued = len(self._batched_plans)
+        num_running = sum(
+            1 for task in self._data_tasks.values() if task.reconstruction_plan_ids
+        )
+        num_finished = self._num_reconstruction_tasks_finished
+        if not (num_queued or num_running or num_finished):
+            return ""
+        return (
+            f"Reconstruction: {num_queued} queued, {num_running} running, "
+            f"{num_finished} finished"
+        )
+
     def _get_next_inner(self) -> RefBundle:
         assert self._started
         bundle = self._output_queue.get_next()
+        self._record_output_dequeued(bundle)
+        return bundle
+
+    def _record_output_dequeued(self, bundle: RefBundle) -> None:
         self._metrics.on_output_dequeued(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))
-        return bundle
+
+    def _output_add_kwargs(self, task_index: int) -> Dict[str, Any]:
+        return {"key": task_index}
 
     @abstractmethod
     def progress_str(self) -> str:
@@ -913,6 +1052,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    actor_id: Optional[LogicalActorId] = None,
     slices: Optional[List[BlockSlice]] = None,
     **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, "BlockMetadataWithSchema"]]:
@@ -925,6 +1065,7 @@ def _map_task(
         ctx: The :class:`TaskContext` for the task, used to look up
             per-task settings and propagate context to the UDF.
         *blocks: The concrete block values from the task ref bundle.
+        actor_id: The globally unique logical actor id created by Ray Data.
         slices: List of block slices for this task to process.
         **kwargs: Additional keyword arguments stored on ``ctx.kwargs`` and
             forwarded to the map transformer.
@@ -969,7 +1110,24 @@ def _map_task(
         # `max_concurrent_calls_per_actor > 1` several run at once.
         clock = TransformClock()
 
+        match retry_on:
+            case True:
+                to_match = None
+            case False:
+                to_match = []
+            case _:
+                to_match = retry_on
+        max_attempts = data_context.max_map_retries + 1
+        attempts_started = 0
+
         def transform_iter_factory():
+            nonlocal attempts_started
+            # Tell the transform whether this attempt can still be rerun, so it
+            # knows whether to emit its buffered rows before an error.
+            attempts_started += 1
+            ctx.rerun_policy = ctx.rerun_policy.with_map_retries(
+                max_attempts - attempts_started, to_match
+            )
             # Clear any per-task custom stats before each attempt (the reporter
             # is reused across retries of this task), so a prior attempt's stats
             # can't leak into this one. A producing transform repopulates it
@@ -986,19 +1144,11 @@ def _map_task(
                 clock=clock,
             )
 
-        match retry_on:
-            case True:
-                to_match = None
-            case False:
-                to_match = []
-            case _:
-                to_match = retry_on
-
         block_iter = iterate_with_retry(
             transform_iter_factory,
             description="apply UDF transform",
             match=to_match,
-            max_attempts=data_context.max_map_retries + 1,
+            max_attempts=max_attempts,
             unwrap_cause=True,
         )
 
@@ -1020,6 +1170,7 @@ def _map_task(
                         output_build_time_s=phase_times.output_build_s,
                         stage_time_s=phase_times.stage_s,
                         task_idx=ctx.task_idx,
+                        actor_id=actor_id,
                     )
                     # NOTE: This tracks task duration up to this point, though we're
                     # primarily interested in task total duration.
