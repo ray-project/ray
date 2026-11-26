@@ -739,6 +739,8 @@ These images don't include machine learning libraries such as PyTorch, TensorFlo
 
 See {ref}`docker-images` for the full tag format, including the Python version and platform tags.
 
+`ray up` copies the auth token and the head node's bootstrap files into each container. It uses `rsync` if the image has it, and otherwise pipes each file into the container with `docker exec`. If the container user can differ from the SSH user, a custom image needs `sudo`, so that `ray up` can give the container user ownership of copied files it can't read. The `rayproject/ray` images include `sudo`.
+
 (cluster-configuration-head-image)=
 
 ### `docker.head_image`

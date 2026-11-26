@@ -626,6 +626,35 @@ class DockerCommandRunner(CommandRunnerInterface):
             docker_cmd=self.docker_cmd,
         )[0]
 
+    def _copy_into_container_cmd(self, host_source: str, target: str) -> str:
+        """Return a host command that copies the host file `host_source` to
+        `target` in the container, as the container user.
+
+        Uses rsync if the container has it. Otherwise pipes the file into
+        the container with `docker exec`. Before the auth token, only the head
+        container got copied files, so worker images may lack rsync.
+        The command holds only paths, never the file's contents.
+        """
+        dst = self._docker_expand_user(target)
+        container_has_rsync = (
+            f"{self.docker_cmd} exec {self.container_name} "
+            "sh -c 'command -v rsync' >/dev/null 2>&1"
+        )
+        rsync = (
+            f"rsync -e '{self.docker_cmd} exec -i' -avz {host_source} "
+            f"{self.container_name}:{dst}"
+        )
+        # The token file must stay owner-only.
+        pipe = (
+            f"{self.docker_cmd} exec -i {self.container_name} "
+            f"sh -c {quote(f'umask 077 && cat > {quote(dst)}')} "
+            f"< {quote(host_source)}"
+        )
+        return (
+            f"{self._create_parent_in_container_cmd(target)} && "
+            f"if {container_has_rsync}; then {rsync}; else {pipe}; fi"
+        )
+
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
         host_source = os.path.join(
@@ -734,7 +763,10 @@ class DockerCommandRunner(CommandRunnerInterface):
         return string
 
     def _check_if_container_restart_is_needed(
-        self, image: str, cleaned_bind_mounts: Dict[str, str]
+        self,
+        image: str,
+        cleaned_bind_mounts: Dict[str, str],
+        copied_mounts: Optional[List[str]] = None,
     ) -> bool:
         re_init_required = False
         running_image = (
@@ -782,6 +814,20 @@ class DockerCommandRunner(CommandRunnerInterface):
                     "this node to pick up the following file_mounts {}",
                     unfulfilled_mounts,
                 )
+            # A container from an earlier `ray up` can bind mount a file that
+            # is now copied in, and a bind-mounted file can't be replaced.
+            bind_mounted_copies = {
+                self._docker_expand_user(remote).strip("/")
+                for remote in copied_mounts or []
+            } & active_remote_mounts
+            if bind_mounted_copies:
+                re_init_required = True
+                cli_logger.warning(
+                    "This Docker Container is already running. "
+                    "Restarting the Docker container on this node to copy in "
+                    "the following files instead of bind mounting them {}",
+                    bind_mounted_copies,
+                )
         except json.JSONDecodeError:
             cli_logger.verbose(
                 "Unable to check if file_mounts specified in the YAML "
@@ -792,15 +838,12 @@ class DockerCommandRunner(CommandRunnerInterface):
     def run_init(
         self, *, as_head: bool, file_mounts: Dict[str, str], sync_run_yet: bool
     ):
+        BOOTSTRAP_MOUNTS = ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]
         # Files copied into the container instead of bind mounted. A bind
         # mount shows the host file's owner, the host's SSH user, who can have
         # another UID than the container user. A copy made in the container
         # belongs to the container user. The owner-only auth token needs that.
-        BOOTSTRAP_MOUNTS = [
-            "~/ray_bootstrap_config.yaml",
-            "~/ray_bootstrap_key.pem",
-            AUTH_TOKEN_REMOTE_PATH,
-        ]
+        copied_mounts = BOOTSTRAP_MOUNTS + [AUTH_TOKEN_REMOTE_PATH]
 
         specific_image = self.docker_config.get(
             f"{'head' if as_head else 'worker'}_image", self.docker_config.get("image")
@@ -824,7 +867,7 @@ class DockerCommandRunner(CommandRunnerInterface):
         # Bootstrap files cannot be bind mounted because docker opens the
         # underlying inode. When the file is switched, docker becomes outdated.
         cleaned_bind_mounts = file_mounts.copy()
-        for mnt in BOOTSTRAP_MOUNTS:
+        for mnt in copied_mounts:
             cleaned_bind_mounts.pop(mnt, None)
 
         docker_run_executed = False
@@ -832,8 +875,13 @@ class DockerCommandRunner(CommandRunnerInterface):
         container_running = self._check_container_status()
         requires_re_init = False
         if container_running:
+            # Only check mounts we will copy in: e.g. `--no-restart` keeps the
+            # cluster's existing token and must not restart the container.
+            active_copied_mounts = [m for m in copied_mounts if m in file_mounts]
             requires_re_init = self._check_if_container_restart_is_needed(
-                specific_image, cleaned_bind_mounts
+                specific_image,
+                cleaned_bind_mounts,
+                copied_mounts=active_copied_mounts,
             )
             if requires_re_init:
                 docker_stop_cmd = f"{self.docker_cmd} stop {self.container_name}"
@@ -889,21 +937,27 @@ class DockerCommandRunner(CommandRunnerInterface):
                 self.docker_cmd,
             )
             self.run(start_command, run_env="host")
+            # A newly started container may have a different HOME than an
+            # earlier one that was stopped above.
+            self.home_dir = None
             docker_run_executed = True
 
         # Explicitly copy in ray bootstrap files and the auth token.
-        for mount in BOOTSTRAP_MOUNTS:
+        for mount in copied_mounts:
             if mount in file_mounts:
                 if not sync_run_yet:
                     # NOTE(ilr) This rsync is needed because when starting from
                     #  a stopped instance,  /tmp may be deleted and `run_init`
-                    # is called before the first `file_sync` happens
-                    self.run_rsync_up(file_mounts[mount], mount)
+                    # is called before the first `file_sync` happens. It only
+                    # syncs to the host: the copy below puts it in the container.
+                    self.run_rsync_up(
+                        file_mounts[mount],
+                        mount,
+                        options={"docker_mount_if_possible": True},
+                    )
                 self.ssh_command_runner.run(
-                    "{mkdir} && rsync -e '{cmd} exec -i' -avz {src} {container}:{dst}".format(
-                        mkdir=self._create_parent_in_container_cmd(mount),
-                        cmd=self.docker_cmd,
-                        src=os.path.join(
+                    self._copy_into_container_cmd(
+                        os.path.join(
                             self._get_docker_host_mount_location(
                                 self.ssh_command_runner.cluster_name
                             ),
@@ -911,8 +965,7 @@ class DockerCommandRunner(CommandRunnerInterface):
                         ).replace(
                             "\\", "/"
                         ),  # Convert Windows paths to Unix-style for rsync
-                        container=self.container_name,
-                        dst=self._docker_expand_user(mount),
+                        mount,
                     )
                 )
                 try:
@@ -936,12 +989,17 @@ class DockerCommandRunner(CommandRunnerInterface):
                     current_user = (
                         self.run("whoami", with_output=True).decode("utf-8").strip()
                     )
+                    effect = (
+                        "Ray on this node can't authenticate to the cluster"
+                        if mount == AUTH_TOKEN_REMOTE_PATH
+                        else "Ray may not be able to autoscale"
+                    )
                     cli_logger.warning(
                         f"File ({mount}) is owned by user:{owner} and group:"
                         f"{group} with permissions ({permissions}). The "
                         f"current user ({current_user}) does not have "
-                        "permission to read these files, and Ray may not be "
-                        "able to autoscale. This can be resolved by "
+                        f"permission to read these files, and {effect}. "
+                        "This can be resolved by "
                         "installing `sudo` in your container, or adding a "
                         f"command like 'chown {current_user} {mount}' to "
                         "your `setup_commands`."
