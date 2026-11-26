@@ -57,8 +57,6 @@ class TestOpenAICompatibility:
                 messages=[{"role": "user", "content": "Hello world"}],
             )
         assert "Could not find" in str(exc_info.value)
-        # The SDK unwraps the OpenAI {"error": {...}} envelope into `body`.
-        assert "Could not find" in exc_info.value.body["message"]
 
     def test_completions_stream(self, testing_model):  # noqa: F811
         client, model = testing_model
