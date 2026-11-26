@@ -95,6 +95,26 @@ class MemoryMonitorUtils {
       const std::string &proc_dir = kProcDirectory);
 
   /**
+   * @brief Takes the system memory snapshot that the non-resource-isolation
+   *        memory monitor and worker killer both judge.
+   *
+   * This is TakeSystemMemoryUsageSnapshot with include_swap=true, so it is
+   * RAM + swap when `count_swap_in_memory_monitor` is on and RAM-only otherwise.
+   * ThresholdMemoryMonitor fires on this snapshot and the worker killing policy
+   * recomputes its threshold from it, so both must call this one function;
+   * otherwise the policy can judge a RAM-only view, select no workers, and leave
+   * the monitor firing again.
+   *
+   * @param root_cgroup_path The path to the root cgroup
+   *                         to read the memory usage from.
+   * @param proc_dir The proc directory path
+   *                 to read the OS level memory usage from.
+   * @return The used and total memory in bytes.
+   */
+  static const MemoryUsageSnapshot TakeMonitoredSystemMemoryUsageSnapshot(
+      const std::string &root_cgroup_path, const std::string &proc_dir = kProcDirectory);
+
+  /**
    * @brief Takes a snapshot of user and system slice memory usage across the
    *        host machine.
    *
@@ -152,10 +172,16 @@ class MemoryMonitorUtils {
       const std::string proc_dir = kProcDirectory);
 
   /**
-   * @brief Computes the memory threshold.
+   * @brief Computes the memory threshold, failing fast on any error.
    *
    * @details Memory usage threshold = max(total_memory * usage_threshold_, total_memory -
    * min_memory_free_bytes)
+   *
+   * This is a fail-fast wrapper around GetMemoryThresholdOrNull(): both share one
+   * implementation, so the formula (including the root swap budget added under
+   * resource isolation when count_swap_in_memory_monitor is on) cannot drift.
+   * Any condition that GetMemoryThresholdOrNull() would tolerate by returning
+   * kNull or by ignoring the absolute threshold is a RAY_CHECK failure here.
    *
    * @param total_memory_bytes The total amount of memory available in the system.
    * @param usage_threshold A value in [0-1] to indicate the max usage.
@@ -173,6 +199,47 @@ class MemoryMonitorUtils {
    * @return The memory threshold.
    */
   static int64_t GetMemoryThreshold(
+      int64_t total_memory_bytes,
+      float usage_threshold,
+      int64_t min_memory_free_bytes,
+      bool resource_isolation_enabled,
+      const CgroupManagerInterface &cgroup_manager,
+      const std::string &root_cgroup_path = MemoryMonitorInterface::kDefaultCgroupPath);
+
+  /**
+   * @brief Validates static memory-threshold configuration values.
+   *
+   * Runtime threshold computation is allowed to skip transient failures (for
+   * example cgroup read failures), but invalid static RayConfig values should
+   * still fail fast just like GetMemoryThreshold().
+   */
+  static void ValidateMemoryThresholdConfig(float usage_threshold,
+                                            int64_t min_memory_free_bytes);
+
+  /**
+   * @brief Computes the memory threshold for runtime/poll-time decisions.
+   *
+   * @details This has the same threshold formula as GetMemoryThreshold(), but is
+   * safe to call repeatedly after startup: transient cgroup read failures,
+   * invalid cgroup constraint values, and temporary totals below the configured
+   * min-free reservation return kNull (or fall back to the fractional threshold
+   * for the min-free case) instead of crashing the raylet with RAY_CHECK.
+   *
+   * In resource isolation mode, memory.high is the authoritative user-slice
+   * threshold. If it cannot be read or parsed, this returns kNull instead of
+   * applying a host-level threshold to user-slice usage.
+   *
+   * When count_swap_in_memory_monitor is on, the resource-isolation threshold is
+   * memory.high plus the root cgroup's swap budget (ResolveRootSwapMaxBytes),
+   * because the per-tick user-slice usage includes the slice's swap.current.
+   *
+   * @param root_cgroup_path The root cgroup whose `memory.swap.max` is the
+   *        user slice's effective swap budget. Only read under resource
+   *        isolation with count_swap_in_memory_monitor on.
+   * @return The resolved threshold in bytes, or MemoryMonitorInterface::kNull
+   *         when the threshold is unavailable for this runtime decision.
+   */
+  static int64_t GetMemoryThresholdOrNull(
       int64_t total_memory_bytes,
       float usage_threshold,
       int64_t min_memory_free_bytes,

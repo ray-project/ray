@@ -675,8 +675,25 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
   }
 
   if (chunk_status.ok()) {
+    // Read before WriteChunk: once the object is sealed, the store's notification
+    // can reach the main service and drop the move record (CancelPull) at any time.
+    const bool is_move = IsMovePull(object_id);
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
+    const bool sealed = buffer_pool_.WriteChunk(object_id,
+                                                data_size,
+                                                metadata_size,
+                                                chunk_index,
+                                                data,
+                                                /*defer_release=*/is_move);
+    if (is_move && sealed) {
+      // WriteChunk kept the plasma store reference it took when it created the
+      // object. The seal already queued the store's "object added" notification on
+      // the main service, and the raylet pins the move while handling it; this
+      // release is queued behind that, so the store cannot evict the object before
+      // it is pinned.
+      main_service_->post([this, object_id]() { buffer_pool_.ReleaseObject(object_id); },
+                          "ObjectManager.ReleaseMovedObject");
+    }
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
@@ -764,6 +781,10 @@ std::string ObjectManager::DebugString() const {
          << num_chunks_received_cancelled_;
   result << "\n- num chunks received failed / plasma error: "
          << num_chunks_received_failed_due_to_plasma_;
+  {
+    absl::ReaderMutexLock lock(&move_pull_mutex_);
+    result << "\n- num move pull records: " << move_pull_object_ids_.size();
+  }
   result << "\nEvent stats:" << rpc_service_.stats()->StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();

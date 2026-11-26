@@ -17,7 +17,10 @@
 #include <gtest/gtest.h>
 
 #include <atomic>
+#include <map>
 #include <memory>
+#include <set>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -204,6 +207,13 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                 .death_info()
                 .reason_message(),
             "mock reason message");
+  const int64_t end_time_ms = node_manager.GetAllDeadNodes()
+                                  .at(NodeID::FromBinary(node->node_id()))
+                                  ->end_time_ms();
+  const auto &dead_timestamp =
+      ray_event_03.node_lifecycle_event().state_transitions(0).timestamp();
+  ASSERT_EQ(dead_timestamp.seconds() * 1000 + dead_timestamp.nanos() / 1000000,
+            end_time_ms);
 }
 
 TEST_F(GcsNodeManagerTest, TestNodeFailurePublishesDeathBeforePersist) {
@@ -420,6 +430,61 @@ TEST_F(GcsNodeManagerTest, TestInitializeDoesNotNotifyNodeAddedListeners) {
 
   EXPECT_EQ(notifications, 0);
   EXPECT_TRUE(node_manager.GetAliveNode(NodeID::FromBinary(node->node_id())).has_value());
+}
+
+// A DEAD event emitted while the head's event aggregator was down is lost, so a
+// restarted or promoted GCS re-sends the state of every node it loads, letting consumers
+// converge on the stored state.
+TEST_F(GcsNodeManagerTest, TestInitializeEmitsNodeEventsForLoadedNodes) {
+  RayConfig::instance().initialize(R"({"enable_ray_event": true})");
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   *io_context_,
+                                   client_pool_.get(),
+                                   ClusterID::Nil(),
+                                   *fake_ray_event_recorder_,
+                                   "test_session_name",
+                                   observability_publisher_.get(),
+                                   clock_);
+  auto alive_node = GenNodeInfo();
+  alive_node->set_state(rpc::GcsNodeInfo::ALIVE);
+  PutNodeInStorage(*alive_node);
+  auto dead_node = GenNodeInfo();
+  dead_node->set_state(rpc::GcsNodeInfo::DEAD);
+  dead_node->mutable_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+  dead_node->mutable_death_info()->set_reason_message("health check failed");
+  dead_node->set_end_time_ms(1700000000123);
+  PutNodeInStorage(*dead_node);
+
+  node_manager.Initialize(LoadInitData());
+
+  std::map<std::string, rpc::events::NodeLifecycleEvent> lifecycle_by_node_id;
+  std::set<std::string> defined_node_ids;
+  auto events = fake_ray_event_recorder_->FlushBuffer();
+  ASSERT_EQ(events.size(), 4);
+  for (auto &event : events) {
+    auto ray_event = std::move(*event).Serialize().value();
+    if (ray_event.event_type() == rpc::events::RayEvent::NODE_DEFINITION_EVENT) {
+      defined_node_ids.insert(ray_event.node_definition_event().node_id());
+    } else {
+      ASSERT_EQ(ray_event.event_type(), rpc::events::RayEvent::NODE_LIFECYCLE_EVENT);
+      lifecycle_by_node_id[ray_event.node_lifecycle_event().node_id()] =
+          ray_event.node_lifecycle_event();
+    }
+  }
+  EXPECT_EQ(defined_node_ids,
+            (std::set<std::string>{alive_node->node_id(), dead_node->node_id()}));
+  ASSERT_EQ(lifecycle_by_node_id.size(), 2);
+  EXPECT_EQ(lifecycle_by_node_id[alive_node->node_id()].state_transitions(0).state(),
+            rpc::events::NodeLifecycleEvent::ALIVE);
+  const auto &dead_transition =
+      lifecycle_by_node_id[dead_node->node_id()].state_transitions(0);
+  EXPECT_EQ(dead_transition.state(), rpc::events::NodeLifecycleEvent::DEAD);
+  EXPECT_EQ(dead_transition.death_info().reason(),
+            rpc::events::NodeLifecycleEvent::DeathInfo::UNEXPECTED_TERMINATION);
+  EXPECT_EQ(dead_transition.death_info().reason_message(), "health check failed");
+  EXPECT_EQ(dead_transition.timestamp().seconds(), 1700000000);
+  EXPECT_EQ(dead_transition.timestamp().nanos(), 123000000);
 }
 
 // Register a node-added listener that calls back into
