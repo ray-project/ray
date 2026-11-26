@@ -1,4 +1,5 @@
 # These imports are used for metrics tracking, will remove for PR
+import hashlib
 import logging
 import random
 import time
@@ -6,6 +7,7 @@ from typing import (
     Any,
     List,
     Optional,
+    Tuple,
 )
 
 import ray
@@ -137,15 +139,26 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         else:
             self._tree_actor = tree_actor
 
-    def _find_prompt_arg(self, pending_request: PendingRequest) -> Optional[Any]:
-        """Returns the request argument carrying a 'messages' or 'prompt' value."""
+    def _find_prompt_arg(
+        self, pending_request: PendingRequest
+    ) -> Optional[Tuple[Any, Any]]:
+        """Returns the request argument carrying a usable text value.
+
+        Preserves the original _extract_text_from_request selection: per
+        argument, 'messages' wins over 'prompt' even when its value is None,
+        and a None value means "keep looking at the next argument" — it does
+        not fall through to that argument's 'prompt'. Returns the argument
+        together with the selected value, so callers that need the argument
+        (e.g. for cache_salt) and callers that need the value agree on which
+        argument supplied the text.
+        """
         for arg in pending_request.args:
             for valid_input_type in ("messages", "prompt"):
-                if (
-                    hasattr(arg, valid_input_type)
-                    and getattr(arg, valid_input_type) is not None
-                ):
-                    return arg
+                if hasattr(arg, valid_input_type):
+                    value = getattr(arg, valid_input_type)
+                    if value is not None:
+                        return arg, value
+                    break
         return None
 
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
@@ -164,13 +177,13 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         Raises:
             ValueError: If no prompt or messages attribute is found in the request
         """
-        arg = self._find_prompt_arg(pending_request)
-        if arg is None:
+        found = self._find_prompt_arg(pending_request)
+        if found is None:
             raise ValueError(
                 "No request with message or prompt attribute found in pending_request.args"
             )
 
-        prompt = arg.messages if hasattr(arg, "messages") else arg.prompt
+        _, prompt = found
         return self._normalize_prompt_to_string(prompt)
 
     def _cache_salt_from_request(
@@ -179,12 +192,26 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         """Returns the request's cache salt, if it carries one.
 
         vLLM does not share KV cache blocks across cache salts, so a request's
-        salt is part of what its text is keyed under in the prefix tree.
+        salt is part of what its text is keyed under in the prefix tree. The
+        salt is read off the same argument that supplied the request's text.
         """
-        arg = self._find_prompt_arg(pending_request)
-        if arg is None:
+        found = self._find_prompt_arg(pending_request)
+        if found is None:
             return None
+        arg, _ = found
         return getattr(arg, "cache_salt", None) or None
+
+    def _salt_key_token(self, cache_salt: str) -> str:
+        """Returns a fixed-length token identifying a cache salt in the tree.
+
+        Salts are arbitrary caller strings: one salt can contain the '\\0'
+        delimiter or be a prefix of another salt, so the raw salt cannot
+        delimit namespaces in the prefix tree. A SHA-256 hex digest keeps
+        different salts' key prefixes disjoint — two digests differ within
+        their first bytes, so a query under one salt can never match text
+        inserted under another — while keeping the key bounded in length.
+        """
+        return hashlib.sha256(cache_salt.encode("utf-8")).hexdigest()
 
     def _coerce_to_text(self, value: Any) -> str:
         if value is None:
@@ -231,14 +258,17 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
 
         vLLM's prefix cache doesn't share KV across LoRA adapters, so the text of a
         multiplexed request goes under its model ID. It also doesn't share KV across
-        cache salts, so the text of a request with a cache salt goes under its salt.
+        cache salts, so the text of a request with a cache salt goes under a
+        fixed-length digest of its salt (see _salt_key_token). Requests with
+        neither keep the empty prefix, and model-only requests keep the
+        '\\0<model_id>\\0' prefix, both byte-identical to before.
         """
         model_id = pending_request.metadata.multiplexed_model_id
         cache_salt = self._cache_salt_from_request(pending_request)
         if not model_id and not cache_salt:
             return ""
         if cache_salt:
-            return f"\0{model_id or ''}\0{cache_salt}\0"
+            return f"\0{model_id or ''}\0{self._salt_key_token(cache_salt)}\0"
         return f"\0{model_id}\0"
 
     def _send_tree_lookup(

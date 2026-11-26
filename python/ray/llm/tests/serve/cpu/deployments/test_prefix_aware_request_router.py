@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import time
 from typing import Optional
 
@@ -88,6 +89,15 @@ class PromptRequest:
 class ChatRequest:
     def __init__(self, messages, cache_salt: Optional[str] = None):
         self.messages = messages
+        self.cache_salt = cache_salt
+
+
+class BothRequest:
+    """A request argument carrying both a messages and a prompt attribute."""
+
+    def __init__(self, messages, prompt, cache_salt: Optional[str] = None):
+        self.messages = messages
+        self.prompt = prompt
         self.cache_salt = cache_salt
 
 
@@ -528,6 +538,70 @@ class TestCacheSaltRouting:
         chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
         assert chosen == [[r2]]
 
+    @pytest.mark.asyncio
+    async def test_prefix_match_salt_with_embedded_nul(self, prefix_request_router):
+        """A salt containing the key delimiter can't leak into another salt.
+
+        The raw salt used to sit in the key between '\\0' delimiters, so a
+        salt like "a\\0hello" and a prompt starting with "hello" could build
+        a key that a request under salt "a" prefix-matches. Salts are now
+        digested to fixed-length tokens, so the two namespaces stay disjoint.
+        """
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello\0hello", cache_salt="a\0hello")
+
+        req = fake_pending_request(prompt="hello\0hello", cache_salt="a")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_salt_prefix_of_another_salt(
+        self, prefix_request_router
+    ):
+        """One salt being a prefix of another must not share its prefix hits."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello world", cache_salt="ab")
+
+        req = fake_pending_request(prompt="hello world", cache_salt="a")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+        # The reverse direction, with a fresh prompt so the first insert
+        # can't satisfy the query: cached under "a", queried under "ab".
+        record_routed(prefix_request_router, r1, "goodbye world", cache_salt="a")
+        req = fake_pending_request(prompt="goodbye world", cache_salt="ab")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_salted_vs_unsalted(self, prefix_request_router):
+        """A prefix cached with a salt doesn't count for salt-free requests."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello world", cache_salt="tenant-a")
+
+        req = fake_pending_request(prompt="hello world")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+        # And the other way, with a fresh prompt: an unsalted insert doesn't
+        # count for a salted query.
+        record_routed(prefix_request_router, r1, "goodbye world")
+        req = fake_pending_request(prompt="goodbye world", cache_salt="tenant-a")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
 
 class TestNonBlockingTreeCalls:
     """Tests that the router doesn't block its event loop on the tree actor."""
@@ -754,6 +828,33 @@ class TestPromptNormalization:
     def test_extract_raises_when_no_prompt_or_messages(self, prefix_request_router):
         with pytest.raises(ValueError):
             _ = prefix_request_router._extract_text_from_request(fake_pending_request())
+
+    def test_extract_skips_none_messages_arg(self, prefix_request_router):
+        """A None messages value doesn't swallow a later valid argument.
+
+        The original extraction kept looking when an argument's messages
+        value was None, even if that argument also carried a prompt. The
+        shared helper must preserve that: the text (and the salt) come
+        from the later argument, not from the first argument's prompt.
+        """
+        req = PendingRequest(
+            args=[
+                BothRequest(None, "ignored", cache_salt="salt-first"),
+                ChatRequest([{"content": "Hello"}], cache_salt="salt-second"),
+            ],
+            kwargs={},
+            metadata=RequestMetadata(
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
+            ),
+            created_at=time.time(),
+        )
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello"
+        assert prefix_request_router._cache_salt_from_request(req) == "salt-second"
+        assert prefix_request_router._prefix_tree_key_prefix(req) == (
+            "\0\0" + hashlib.sha256("salt-second".encode("utf-8")).hexdigest() + "\0"
+        )
 
     @pytest.mark.parametrize(
         "prefix_request_router",
