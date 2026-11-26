@@ -12,7 +12,7 @@ Idle termination reclaims a RayCluster that has no drivers connected. The Ray au
 
 ## How does the Ray autoscaler detect an idle Ray cluster?
 
-The Ray autoscaler queries the Global Control Service (GCS) job table and checks whether any {term}`driver` is currently connected to the Ray cluster. If no driver is connected for `spec.idleTerminationOptions.timeoutSeconds`, the autoscaler considers the Ray cluster idle. The autoscaler ignores the following when it looks for drivers:
+The Ray autoscaler queries the Global Control Service (GCS) job table and checks whether any {term}`driver` is connected to the Ray cluster. If no driver is connected for `spec.idleTerminationOptions.timeoutSeconds`, the autoscaler considers the Ray cluster idle. The autoscaler ignores the following when it looks for drivers:
 
 - Detached actors. A Ray cluster that runs only detached actors is still idle. See {ref}`actor-lifetimes`.
 - Drivers that Ray starts internally, such as the Ray dashboard's driver.
@@ -30,11 +30,9 @@ Idle termination offers two policies, `Suspend` and `Delete`. `Suspend` is the d
 
 `Suspend` deletes the RayCluster's Pods but keeps the RayCluster custom resource. To resume the Ray cluster, set `spec.idleSuspend` to `false`.
 
-
 ### `Delete` policy
 
 `Delete` deletes the RayCluster's Pods and the RayCluster custom resource. You can't resume a deleted RayCluster.
-
 
 ## Prerequisites
 
@@ -43,7 +41,6 @@ Idle termination has the following requirements:
 - Ray autoscaler v2 is enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
 - Ray 2.60.0 or later.
 - KubeRay v1.8 or later.
-
 
 ## RBAC and security
 
@@ -70,10 +67,10 @@ spec:
 
 `idleTerminationOptions` has two fields:
 
-- `timeoutSeconds`: Required. The number of seconds the Ray cluster must have no driver connected before the autoscaler applies the policy. The value must be non-negative.
+- `timeoutSeconds`: Required. The number of seconds the Ray cluster must have no driver connected before the autoscaler applies the policy. The value must be nonnegative.
 - `policy`: The action the autoscaler takes once the Ray cluster has been idle for `timeoutSeconds`. Set it to `Suspend` or `Delete`. The default is `Suspend`.
 
-Make sure `spec.rayVersion` is set to `"2.60.0"` or later (matching your Ray image). If `spec.rayVersion` is unset or earlier than `2.60.0`, the KubeRay operator rejects the RayCluster with an `InvalidRayClusterSpec` event.
+Make sure `spec.rayVersion` is set to `"2.60.0"` or later and matches your Ray image. If `spec.rayVersion` is unset or earlier than `2.60.0`, the KubeRay operator rejects the RayCluster with an `InvalidRayClusterSpec` event.
 
 See the [full sample YAML](https://github.com/kuberay-project/kuberay/blob/v1.8.0/ray-operator/config/samples/ray-cluster.autoscaler-v2-terminate-idle-cluster.yaml) in the KubeRay repository.
 
@@ -161,7 +158,7 @@ kubectl get raycluster ray-cluster-autoscaler-v2-terminate-idle-cluster -o jsonp
 false
 ```
 
-Stop the job (or wait for it to finish) so the autoscaler idle-suspends the RayCluster again before Step 5:
+Stop the job, or wait for it to finish, so the autoscaler idle-suspends the RayCluster again before Step 5:
 
 ```bash
 kubectl exec $HEAD_POD -c ray-head -- ray job stop --address http://localhost:8265 keep-alive
