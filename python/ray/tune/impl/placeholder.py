@@ -175,33 +175,26 @@ def inject_placeholders(
         return config
 
 
+def _is_placeholder(value, *tokens):
+    return (
+        isinstance(value, (tuple, list))
+        and len(value) == 2
+        and isinstance(value[0], str)
+        and value[0] in tokens
+        and isinstance(value[1], str)
+    )
+
+
 def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
     if not path:
         return prefix, config
 
     key = path[0]
-    if isinstance(config, tuple):
-        if config[0] in (_FunctionResolver.TOKEN, _RefResolver.TOKEN):
-            # Found a matching placeholder.
-            # Note that we do not require that the full path are consumed before
-            # declaring a match. Because this placeholder may be part of a nested
-            # search space. For example, the following config:
-            #   config = {
-            #       "param1": tune.grid_search([
-            #           tune.grid_search([Object1, 2, 3]),
-            #           tune.grid_search([Object2, 5, 6]),
-            #       ]),
-            #   }
-            # will result in placeholders under path ("param1", 0, 0).
-            # After expansion though, the choosen placeholder will live under path
-            # ("param1", 0) like this: config = {"param1": (Placeholder1, 2, 3)}
-            return prefix, config
-        elif key < len(config):
-            return _get_placeholder(
-                config[key], prefix=prefix + (path[0],), path=path[1:]
-            )
-    elif (isinstance(config, dict) and key in config) or (
-        isinstance(config, list) and key < len(config)
+    if _is_placeholder(config, _FunctionResolver.TOKEN, _RefResolver.TOKEN):
+        # Expanding a nested choice can move a placeholder higher up the path.
+        return prefix, config
+    if (isinstance(config, dict) and key in config) or (
+        isinstance(config, (list, tuple)) and isinstance(key, int) and key < len(config)
     ):
         # Expand config tree recursively.
         return _get_placeholder(config[key], prefix=prefix + (path[0],), path=path[1:])
@@ -212,7 +205,7 @@ def _get_placeholder(config: Any, prefix: Tuple, path: Tuple):
 
 @DeveloperAPI
 def resolve_placeholders(config: Any, replaced: defaultdict):
-    """Replaces placeholders contained by a config dict with the original values.
+    """Replaces placeholders in a config dict, preserving already resolved values.
 
     Args:
         config: The config to replace placeholders in.
@@ -227,8 +220,7 @@ def resolve_placeholders(config: Any, replaced: defaultdict):
                 continue
 
             prefix, ph = _get_placeholder(config, (), path)
-            if not ph:
-                # Represents an unchosen value. Just skip.
+            if not _is_placeholder(ph, resolver_type.TOKEN):
                 continue
 
             for resolver in resolvers:
