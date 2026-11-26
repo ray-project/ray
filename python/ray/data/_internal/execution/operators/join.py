@@ -284,16 +284,22 @@ def _join_tables_iter(
                 f"(overlapping columns: {sorted(collisions)})"
             )
 
-        # The renamed sets mirror the renames below, including the left side's
-        # exclusion of its own key columns.
-        _validate_suffix_collision(
-            "left", left_columns_suffix, left_cols, collisions - set(left_on)
+        # Apply explicit suffixes to the whole input, including payload that
+        # will be set aside during preprocessing. Ordinary join keys keep
+        # their names; condition keys are payload as well as match inputs.
+        left_table, left_condition_key_col_names = _suffix_join_columns(
+            "left",
+            left_table,
+            left_columns_suffix,
+            collisions - set(left_on),
+            left_condition_key_col_names,
         )
-        _validate_suffix_collision(
+        right_table, right_condition_key_col_names = _suffix_join_columns(
             "right",
+            right_table,
             right_columns_suffix,
-            set(right_table.schema.names),
             collisions,
+            right_condition_key_col_names,
         )
 
     preprocess_result_l, preprocess_result_r = _preprocess(
@@ -311,11 +317,24 @@ def _join_tables_iter(
         preprocess_result_r.supported_projection, rechunk=False
     ).lazy()
 
-    condition_match_cols = [
-        f"__ray_join_condition_key_{i}__"
-        for i in range(len(left_condition_key_col_names))
-    ]
-    if condition_match_cols:
+    right_suffix = right_columns_suffix or "_right"
+    condition_match_cols = []
+    if left_condition_key_col_names:
+        # A temporary key must be free both before the join and after Polars
+        # applies its suffix to any remaining overlap.
+        left_names = set(left_table.column_names)
+        right_names = set(right_table.column_names)
+        occupied = (
+            left_names
+            | right_names
+            | {name + right_suffix for name in left_names & right_names}
+        )
+        for i in range(len(left_condition_key_col_names)):
+            name = f"__ray_join_condition_key_{i}__"
+            while name in occupied:
+                name += "_"
+            condition_match_cols.append(name)
+
         left_df = left_df.with_columns(
             [
                 pl.col(key).alias(match_col)
@@ -336,44 +355,17 @@ def _join_tables_iter(
         right_on = right_on + condition_match_cols
 
     target_join_type = join_type
-    left_cols_suffix = left_columns_suffix
-    right_cols_suffix = right_columns_suffix
-
     # Polars has no right-semi / right-anti; swap sides and run the left form.
     if target_join_type in (JoinType.RIGHT_SEMI, JoinType.RIGHT_ANTI):
         left_df, right_df = right_df, left_df
         left_on, right_on = right_on, left_on
-        left_cols_suffix, right_cols_suffix = right_cols_suffix, left_cols_suffix
+        right_suffix = left_columns_suffix or "_right"
         target_join_type = (
             JoinType.LEFT_SEMI
             if target_join_type is JoinType.RIGHT_SEMI
             else JoinType.LEFT_ANTI
         )
 
-    # Polars only suffixes the right side of name collisions
-    # (https://github.com/pola-rs/polars/issues/12418). Pre-rename colliding
-    # columns so left_suffix / right_suffix match Arrow join behavior.
-    # Skip for semi/anti: only one side appears in the result, so suffixes
-    # must not rewrite the kept side's names (Arrow left them unchanged).
-    if not is_semi_or_anti:
-        left_cols = set(left_df.collect_schema().names())
-        right_output_cols = set(right_df.collect_schema().names()) - set(right_on)
-        collisions = left_cols & right_output_cols
-
-        if left_cols_suffix:
-            # Exclude left keys: left_on still references their original names.
-            renameable_on_left = collisions - set(left_on)
-            if renameable_on_left:
-                left_df = left_df.rename(
-                    {c: f"{c}{left_cols_suffix}" for c in renameable_on_left}
-                )
-
-        if right_cols_suffix and collisions:
-            right_df = right_df.rename(
-                {c: f"{c}{right_cols_suffix}" for c in collisions}
-            )
-
-    right_suffix = right_cols_suffix or "_right"
     # Names present on either input before the join. Used so we do not
     # drop a user payload column that happens to be named like a suffixed
     # right key (e.g. ``id_right`` on an ``id`` join).
@@ -409,66 +401,75 @@ def _join_tables_iter(
     if condition_match_cols:
         joined = joined.drop(condition_match_cols)
 
+    deferred_l = preprocess_result_l.unsupported_projection
+    deferred_r = preprocess_result_r.unsupported_projection
+    if not is_semi_or_anti and (deferred_l.num_columns or deferred_r.num_columns):
+        # Polars suffixes remaining collisions on the right. Account for
+        # fields it couldn't see, including the retained key of a right join.
+        left_output = set(left_table.column_names)
+        right_output = set(right_table.column_names)
+        if join_type is JoinType.RIGHT_OUTER:
+            left_output.difference_update(left_on)
+        else:
+            right_output.difference_update(right_on)
+        collisions = left_output & right_output
+        occupied = left_output | (right_output - collisions)
+        hidden_left = set(deferred_l.column_names)
+        hidden_right = set(deferred_r.column_names)
+        polars_renames = {}
+        arrow_renames = {}
+        for name in sorted(collisions):
+            target = name + right_suffix
+            if target in occupied:
+                raise pl.exceptions.DuplicateError(
+                    f"duplicate join output column: {target}"
+                )
+            if name in hidden_right:
+                arrow_renames[name] = target
+            elif name in hidden_left:
+                polars_renames[name] = target
+        if polars_renames:
+            joined = joined.rename(polars_renames)
+        if arrow_renames:
+            deferred_r = deferred_r.rename_columns(arrow_renames)
+
     has_output = False
     for batch in joined.collect_batches(engine="streaming"):
         has_output = True
-        yield _postprocess(
-            batch.to_arrow(),
-            preprocess_result_l.unsupported_projection,
-            preprocess_result_r.unsupported_projection,
-        )
+        yield _postprocess(batch.to_arrow(), deferred_l, deferred_r)
 
     # Streaming collect can return no batches for a 0-row join. Yield a
     # schema-carrying empty table so downstream joins don't see a 0-column
     # sentinel.
     if not has_output:
         empty = pl.DataFrame(schema=joined.collect_schema()).to_arrow()
-        yield _postprocess(
-            empty,
-            preprocess_result_l.unsupported_projection,
-            preprocess_result_r.unsupported_projection,
-        )
+        yield _postprocess(empty, deferred_l, deferred_r)
 
 
-def _validate_suffix_collision(
+def _suffix_join_columns(
     side: str,
+    table: "pa.Table",
     suffix: Optional[str],
-    side_col_names: Set[str],
     renamed_col_names: Set[str],
-) -> None:
-    """Reject a suffix that renames a column onto a name already in use.
+    condition_keys: Tuple[str, ...],
+) -> Tuple["pa.Table", Tuple[str, ...]]:
+    """Rename payload fields and keep condition-key references bound to them."""
+    if not suffix or not renamed_col_names:
+        return table, condition_keys
 
-    A suffix can create a duplicate instead of resolving one: renaming ``c``
-    to ``f"{c}{suffix}"`` collides when a column of that name already exists
-    on the same side. Polars reports this from deep inside the lazy plan as a
-    DuplicateError naming only the result, so name the inputs here.
-
-    Only a column that keeps its name can be collided with. Polars applies a
-    rename mapping in one step, so ``value`` -> ``value{suffix}`` is fine when
-    ``value{suffix}`` -> ``value{suffix}{suffix}`` moves the occupant aside in
-    the same mapping -- the shape a self-join or a chained join produces once
-    an earlier join has already left suffixed columns behind. Two renamed
-    columns can never collide with each other either, since appending one
-    suffix to distinct names keeps them distinct.
-
-    Args:
-        side: ``"left"`` or ``"right"``, used in the error message.
-        suffix: The suffix to apply, or None to skip the check.
-        side_col_names: Every column name on that side.
-        renamed_col_names: The subset that the suffix will be applied to.
-    """
-    if not suffix:
-        return
-
-    unmoved_col_names = side_col_names - renamed_col_names
-    conflicting = sorted(
-        f"{c}{suffix}" for c in renamed_col_names if f"{c}{suffix}" in unmoved_col_names
-    )
+    # A chained rename (v -> v_l, v_l -> v_l_l) vacates its targets.
+    # Only an unrenamed column can already occupy a destination.
+    renames = {c: f"{c}{suffix}" for c in renamed_col_names}
+    unmoved_col_names = set(table.column_names) - renamed_col_names
+    conflicting = sorted(unmoved_col_names.intersection(renames.values()))
     if conflicting:
         raise ValueError(
             f"{side.capitalize()} columns suffix {suffix!r} collides with existing "
             f"{side} columns: {conflicting}"
         )
+    return table.rename_columns(renames), tuple(
+        renames.get(c, c) for c in condition_keys
+    )
 
 
 def _require_polars():

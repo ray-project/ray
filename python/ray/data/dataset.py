@@ -3740,10 +3740,11 @@ class Dataset:
                 used as keys for the join operation. When none, `on` will
                 be assumed to be a list of columns to be used for the right dataset
                 as well.
-            left_suffix: (Optional) Suffix to be appended for columns of the left
-                operand.
-            right_suffix: (Optional) Suffix to be appended for columns of the right
-                operand.
+            left_suffix: Suffix for left non-key columns with overlapping names,
+                including list and struct columns. Semi and anti joins keep the
+                original names of the retained side.
+            right_suffix: Suffix for right output columns with overlapping names,
+                including list and struct columns.
             condition: (Optional) Additional join condition, as an expression over
                 the *input* column names of both operands (before any suffix is
                 applied). Every conjunct of the form ``col("a") == col("b")``
