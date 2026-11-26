@@ -64,7 +64,12 @@ from ray.data._internal.operator_schema_exporter import (
     get_operator_schema_exporter,
 )
 from ray.data._internal.progress import get_progress_manager
-from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.stats import (
+    DatasetStats,
+    Timer,
+    _StatsManager,
+    _to_metric_tag_value,
+)
 from ray.data._internal.stats_summary_actor import report_stats_summary
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.exceptions import UserCodeException
@@ -572,7 +577,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def update_metrics(self, sched_loop_duration: int):
         self._sched_loop_duration_s.set(
-            sched_loop_duration, tags={"dataset": self._dataset_id}
+            sched_loop_duration,
+            tags={"dataset": _to_metric_tag_value(self._dataset_id)},
         )
 
     def get_stats(self):

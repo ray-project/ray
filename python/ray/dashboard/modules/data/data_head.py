@@ -69,10 +69,18 @@ class DataHead(SubprocessModule):
         job_id = req.match_info["job_id"]
 
         try:
-            from ray.data._internal.stats import get_or_create_stats_actor
+            from ray.data._internal.stats import (
+                _to_metric_tag_value,
+                get_or_create_stats_actor,
+            )
 
             _stats_actor = get_or_create_stats_actor()
             datasets = await _stats_actor.get_datasets.remote(job_id)
+            # Dataset metric tags are escaped to ASCII, so map them back to
+            # the dataset IDs reported by the stats actor.
+            dataset_ids_by_tag = {
+                _to_metric_tag_value(dataset): dataset for dataset in datasets
+            }
             # Initializes dataset metric values
             for dataset in datasets:
                 for metric, queries in DATASET_METRICS.items():
@@ -92,8 +100,12 @@ class DataHead(SubprocessModule):
                             prom_query.format(metric, self.session_name, "dataset")
                         )
                         for res in dataset_result["data"]["result"]:
-                            dataset, value = res["metric"]["dataset"], res["value"][1]
-                            if dataset in datasets:
+                            dataset_tag, value = (
+                                res["metric"]["dataset"],
+                                res["value"][1],
+                            )
+                            dataset = dataset_ids_by_tag.get(dataset_tag)
+                            if dataset is not None:
                                 datasets[dataset][metric][query_name] = value
 
                         # Operator level
@@ -103,16 +115,17 @@ class DataHead(SubprocessModule):
                             )
                         )
                         for res in operator_result["data"]["result"]:
-                            dataset, operator, value = (
+                            dataset_tag, operator, value = (
                                 res["metric"]["dataset"],
                                 res["metric"]["operator"],
                                 res["value"][1],
                             )
+                            dataset = dataset_ids_by_tag.get(dataset_tag)
                             # Check if dataset/operator is in current _StatsActor scope.
                             # Prometheus server may contain metrics from previous
                             # cluster if not reset.
                             if (
-                                dataset in datasets
+                                dataset is not None
                                 and operator in datasets[dataset]["operators"]
                             ):
                                 datasets[dataset]["operators"][operator][metric][
