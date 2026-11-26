@@ -43,6 +43,7 @@ from ray.data._internal.experimental.execution.actor_only_metrics import (
 )
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
     ActorOnlyResourceReporter,
+    DatasetReservationView,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (
     ExperimentalActorPoolMapOperator,
@@ -139,7 +140,8 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         assert self._actor_only_metrics is not None
 
         # 1. Get the cluster snapshot view. This holds current, pending
-        # pg, and other node resource usage.
+        # pg, and other node resource usage. A rejected actor placement (step 3)
+        # forces a refresh of it.
         cluster_view = self._resource_reporter.get_cluster_view()
         self._resource_bank.set_node_view(node_view=cluster_view.reserved_by_node)
         self._resource_bank.drain_consumed_blocks()
@@ -155,10 +157,16 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
 
-        # 3. If there are any operators that are IDLE, execute escape hatch
+        # 3. If an actor placement was rejected, refresh the reservation view the
+        # bank and the sizer use before making new decisions.
+        fresh_view = self._handle_failed_placements(topology=topology)
+        if fresh_view is not None:
+            cluster_view = fresh_view
+
+        # 4. If there are any operators that are IDLE, execute escape hatch
         self._maybe_run_escape_hatch()
 
-        # 4. Build a cluster snapshot if ready for sizing decision.
+        # 5. Build a cluster snapshot if ready for sizing decision.
         cluster_state_snapshot = self._sizer.maybe_build_cluster_state_snapshot(
             cluster_view=cluster_view,
             seconds_since_allocation_change=(
@@ -176,10 +184,10 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         self._release_drained_actors_of_completed_ops(topology)
         self._resource_bank.drain_consumed_blocks()
 
-        # 5. Launch tasks
+        # 6. Launch tasks
         self._launch_tasks()
 
-        # 6. Update metrics and logs
+        # 7. Update metrics and logs
         self._sizer.observe_after_launch()
         self._sample_output_backpressure(topology)
         self._actor_only_metrics.maybe_update(
@@ -187,10 +195,38 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         )
         self._report_current_usage()
 
-        # 7. Node-level cluster autoscaling.
+        # 8. Node-level cluster autoscaling.
         self._cluster_autoscaler.try_trigger_scaling()
 
         return self._finalize_scheduling_loop_step(topology)
+
+    def _handle_failed_placements(
+        self, topology: Topology
+    ) -> Optional[DatasetReservationView]:
+        """Refresh the reservation after a rejected actor placement.
+
+        Args:
+            topology: The operators to check for a rejected placement.
+
+        Returns:
+            A freshly recomputed view, already handed to the resource bank, or
+            ``None`` if no placement was rejected since the last step.
+        """
+        failed_placements = [
+            op
+            for op in topology
+            if isinstance(op, ExperimentalActorPoolMapOperator)
+            and op.actor_placement_failed
+        ]
+        if failed_placements:
+            assert self._resource_reporter is not None
+            cluster_view = self._resource_reporter.get_cluster_view(recompute=True)
+            assert self._resource_bank is not None
+            self._resource_bank.set_node_view(node_view=cluster_view.reserved_by_node)
+            for op in failed_placements:
+                op.actor_placement_failed = False
+            return cluster_view
+        return None
 
     @staticmethod
     def _expire_pending_actors(topology: Topology) -> None:

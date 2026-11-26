@@ -358,18 +358,35 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             placement_group_ids=frozenset(placement_group_ids),
         )
 
-    def get_reserved_resources(self) -> SplitReservedResources:
-        """Return reserved resources without blocking.
+    def get_reserved_resources(self, recompute: bool = False) -> SplitReservedResources:
+        """Return cached reservations, or synchronously recompute when requested.
 
-        Submits an async RPC and immediately returns the last cached result.
+        By default, submits an async RPC and returns the last cached result.
         The cache is updated the next time the pending RPC completes.
 
         Because the actor processes calls in FIFO order, the result always
         reflects state after all previously submitted ``request_resources`` calls
         to the same actor.
 
-        On actor errors, returns the cached value and logs a warning; never raises.
+        Normal polling falls back to the cache on actor errors. A forced
+        recomputation propagates errors instead of returning stale placement.
+
+        Args:
+            recompute: Wait for a fresh allocation, discarding any older pending
+                poll so it cannot overwrite the refreshed cache later.
+
+        Returns:
+            The allocation split into ordinary and placement-group resources.
         """
+        if recompute:
+            self._pending_reserved_resources = None
+            self._cached_reserved_resources = ray.get(
+                self._autoscaling_coordinator.get_reserved_resources.remote(
+                    self._requester_id, recompute=True
+                )
+            )
+            return self._cached_reserved_resources
+
         ref = self._pending_reserved_resources
         if ref is not None:
             ready, _ = ray.wait([ref], timeout=0)

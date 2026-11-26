@@ -324,5 +324,23 @@ def test_reporter_drives_cluster_autoscaler_scale_up(
         assert allocated == ExecutionResources.zero()
 
 
+def test_cluster_view_forces_coordinator_recomputation():
+    from unittest.mock import Mock
+
+    from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
+        SplitReservedResources,
+    )
+
+    coordinator = Mock()
+    coordinator.get_reserved_resources.return_value = SplitReservedResources(
+        {"survivor": {"CPU": 2}}, {"survivor": {"GPU": 1}}
+    )
+    reporter = _reporter({}, coordinator, _FakeResourceBank())
+    view = reporter.get_cluster_view(recompute=True)
+    coordinator.get_reserved_resources.assert_called_once_with(recompute=True)
+    assert view.reserved_by_node == {"survivor": ExecutionResources(cpu=2, gpu=1)}
+    assert view.pg_reserved_by_node == {"survivor": ExecutionResources(gpu=1)}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

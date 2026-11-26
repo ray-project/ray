@@ -289,15 +289,24 @@ class ActorOnlyResourceReporter:
 
     def _get_split_reserved_by_node(
         self,
+        *,
+        recompute: bool = False,
     ) -> Tuple[
         Dict[NodeIdStr, ExecutionResources], Dict[NodeIdStr, ExecutionResources]
     ]:
         """Read the coordinator reservation once.
 
+        Args:
+            recompute: Wait for a fresh coordinator allocation instead of its cache.
+
         Returns:
             The whole reservation per node, and the placement-group part of it.
         """
-        split = self._autoscaling_coordinator.get_reserved_resources()
+        split = (
+            self._autoscaling_coordinator.get_reserved_resources(recompute=True)
+            if recompute
+            else self._autoscaling_coordinator.get_reserved_resources()
+        )
         reservation = {
             node_id: ExecutionResources.from_resource_dict(resources)
             for node_id, resources in split.total().items()
@@ -355,10 +364,21 @@ class ActorOnlyResourceReporter:
             self._autoscaling_coordinator.register_placement_groups(pg_ids)
             self._registered_pg_ids = pg_ids
 
-    def get_cluster_view(self) -> DatasetReservationView:
-        """Snapshot of the cluster as visible to this dataset right now."""
+    def get_cluster_view(self, *, recompute: bool = False) -> DatasetReservationView:
+        """Snapshot of the cluster as visible to this dataset right now.
+
+        Args:
+            recompute: Wait for a fresh coordinator reservation instead of its
+                cache, e.g. after an actor placement was rejected.
+
+        Returns:
+            The dataset's reservation per node, with its placement-group part,
+            node labels, draining nodes and placement-group slots.
+        """
         self._register_placement_groups()
-        reserved_by_node, pg_reserved_by_node = self._get_split_reserved_by_node()
+        reserved_by_node, pg_reserved_by_node = self._get_split_reserved_by_node(
+            recompute=recompute
+        )
         if self._pg_slots is None:
             self._pg_slots = PlacementGroupSlots.measure(
                 (

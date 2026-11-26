@@ -107,7 +107,7 @@ def _bare_executor(
 
 def _executor_with(**private_fields: Any) -> ExperimentalStreamingExecutor:
     """An executor built without ``__init__``, with only the given private
-    fields set. Name each field without its leading underscore."""
+    fields and methods set. Name each without its leading underscore."""
     executor = ExperimentalStreamingExecutor.__new__(ExperimentalStreamingExecutor)
     for name, value in private_fields.items():
         setattr(executor, f"_{name}", value)
@@ -255,14 +255,115 @@ def test_bottleneck_observer_samples_after_tasks_launch():
         # Not due: the escape hatch returns at once.
         last_detection_timestamp=float("inf"),
         idle_detection_interval_s=0.0,
+        launch_tasks=lambda: calls.append("launch"),
+        report_current_usage=lambda: None,
+        finalize_scheduling_loop_step=lambda topology: True,
     )
-    executor._launch_tasks = lambda: calls.append("launch")
-    executor._report_current_usage = lambda: None
-    executor._finalize_scheduling_loop_step = lambda topology: True
 
     executor._scheduling_loop_step({})
 
     assert calls.index("launch") < calls.index("observe_after_launch")
+
+
+class _PlacementFailedOp(ExperimentalActorPoolMapOperator):
+    """An actor-pool op whose last actor placement may have been rejected.
+    Skips the operator's ``__init__``."""
+
+    def __init__(self, placement_failed: bool):
+        self.actor_placement_failed = placement_failed
+
+
+class _TwoViewReporter:
+    """Serves a stale cluster view, and a fresh one when asked to
+    recompute."""
+
+    def __init__(self):
+        self.stale = SimpleNamespace(reserved_by_node={"stale": None})
+        self.fresh = SimpleNamespace(reserved_by_node={"fresh": None})
+
+    def get_cluster_view(self, recompute: bool = False) -> Any:
+        return self.fresh if recompute else self.stale
+
+    def seconds_since_allocation_change(self) -> float:
+        return 0.0
+
+
+class _ViewSink:
+    """Records each node view the bank receives and each cluster view the
+    sizer builds its snapshot from."""
+
+    def __init__(self):
+        self.node_views: List[Any] = []
+        self.cluster_views: List[Any] = []
+
+    def set_node_view(self, *, node_view: Any) -> None:
+        self.node_views.append(node_view)
+
+    def drain_consumed_blocks(self) -> None:
+        pass
+
+    def maybe_build_cluster_state_snapshot(self, *, cluster_view: Any, **kwargs):
+        self.cluster_views.append(cluster_view)
+        return None
+
+    def observe_after_launch(self) -> None:
+        pass
+
+
+@pytest.mark.parametrize(
+    "placement_failed, expected_view",
+    [
+        pytest.param(False, "stale", id="placed"),
+        pytest.param(True, "fresh", id="placement-rejected"),
+    ],
+)
+def test_rejected_placement_refreshes_the_cluster_view(
+    monkeypatch, placement_failed, expected_view
+):
+    """When the coordinator rejects an actor placement while completed tasks
+    are processed, the step re-reads the reservation before the bank and the
+    sizer use it, and clears the op's flag."""
+    from ray.data._internal.experimental.execution import (
+        streaming_executor as executor_mod,
+    )
+
+    monkeypatch.setattr(executor_mod, "process_completed_tasks", lambda **kwargs: 0)
+    op = _PlacementFailedOp(placement_failed)
+    reporter = _TwoViewReporter()
+    sink = _ViewSink()
+    others: List[str] = []
+    executor = _executor_with(
+        resource_reporter=reporter,
+        resource_bank=sink,
+        sizer=sink,
+        actor_only_metrics=_Recorder(others, maybe_update=None),
+        cluster_autoscaler=_Recorder(others, try_trigger_scaling=None),
+        metadata_fetcher=None,
+        lineage_tracker=None,
+        max_errored_blocks=0,
+        num_errored_blocks=0,
+        topology={},
+        # Not due: the escape hatch returns at once.
+        last_detection_timestamp=float("inf"),
+        idle_detection_interval_s=0.0,
+        # Steps that read the op's pool, which this op does not have.
+        expire_pending_actors=lambda topology: None,
+        release_drained_actors_of_completed_ops=lambda topology: None,
+        sample_output_backpressure=lambda topology: None,
+        launch_tasks=lambda: None,
+        report_current_usage=lambda: None,
+        finalize_scheduling_loop_step=lambda topology: True,
+    )
+    topology: Any = {op: None}
+
+    executor._scheduling_loop_step(topology)
+
+    view = getattr(reporter, expected_view)
+    assert (sink.cluster_views, sink.node_views[-1], op.actor_placement_failed) == (
+        [view],
+        view.reserved_by_node,
+        False,
+    )
 
 
 class _DrainingOp:

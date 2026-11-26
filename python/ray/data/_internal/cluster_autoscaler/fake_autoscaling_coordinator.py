@@ -105,8 +105,8 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         """Record them; the fake reserves every requested bundle regardless."""
         self.placement_group_ids = frozenset(placement_group_ids)
 
-    def get_reserved_resources(self) -> SplitReservedResources:
-        """Return the reserved resources if they haven't expired."""
+    def get_reserved_resources(self, recompute: bool = False) -> SplitReservedResources:
+        """Return unexpired reservations; recompute is a no-op for this fake."""
         if self._allocation is None:
             return SplitReservedResources({}, {})
 
