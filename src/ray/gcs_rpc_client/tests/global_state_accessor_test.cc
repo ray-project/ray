@@ -196,7 +196,7 @@ TEST_P(GlobalStateAccessorTest, TestJobTable) {
     std::promise<bool> promise;
     gcs_client_->Jobs().AsyncAdd(
         job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }
@@ -216,7 +216,7 @@ TEST_P(GlobalStateAccessorTest, TestJobTableWithSubmissionId) {
     std::promise<bool> promise;
     gcs_client_->Jobs().AsyncAdd(
         job_table_data, [&promise](Status status) { promise.set_value(status.ok()); });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
   ASSERT_EQ(global_state_->GetAllJobInfo().size(), job_count);
 }

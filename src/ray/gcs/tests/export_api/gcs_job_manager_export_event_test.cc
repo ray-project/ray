@@ -65,7 +65,7 @@ class GcsJobManagerTest : public ::testing::Test {
       promise.set_value(true);
       io_service_.run();
     });
-    promise.get_future().get();
+    (void)promise.get_future().get();
 
     gcs_publisher_ =
         std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
@@ -146,7 +146,7 @@ TEST_F(GcsJobManagerTest, TestRayEventDriverJobEvents) {
       [&promise](Status, std::function<void()>, std::function<void()>) {
         promise.set_value(true);
       });
-  promise.get_future().get();
+  (void)promise.get_future().get();
   auto buffer = fake_ray_event_recorder_->FlushBuffer();
 
   ASSERT_EQ(buffer.size(), 2);
@@ -202,7 +202,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
       [&promise](Status, std::function<void()>, std::function<void()>) {
         promise.set_value(true);
       });
-  promise.get_future().get();
+  (void)promise.get_future().get();
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
@@ -221,7 +221,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
       [&job_finished_promise](Status, std::function<void()>, std::function<void()>) {
         job_finished_promise.set_value(true);
       });
-  job_finished_promise.get_future().get();
+  (void)job_finished_promise.get_future().get();
 
   vc.clear();
   ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");

@@ -145,7 +145,7 @@ class GcsTaskManagerTest : public ::testing::Test {
         },
         "SyncAddTaskEventData");
 
-    promise.get_future().get();
+    (void)promise.get_future().get();
 
     // Assert on RPC reply.
     EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
@@ -171,7 +171,7 @@ class GcsTaskManagerTest : public ::testing::Test {
         },
         "SyncAddEvent");
 
-    promise.get_future().get();
+    (void)promise.get_future().get();
 
     // Assert on RPC reply.
     EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
@@ -253,7 +253,7 @@ class GcsTaskManagerTest : public ::testing::Test {
         },
         "SyncGetTaskEvents");
 
-    promise.get_future().get();
+    (void)promise.get_future().get();
 
     EXPECT_EQ(StatusCode(reply.status().code()), expectedStatusCode);
     return reply;

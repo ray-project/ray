@@ -542,7 +542,7 @@ class RedisStoreClientMetricsTest : public ::testing::Test {
         std::move(value),
         /*overwrite=*/true,
         {[&promise](bool added) { promise.set_value(added); }, *io_service_});
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
 
   std::optional<std::string> GetSync(const std::string &table, const std::string &key) {
@@ -761,7 +761,7 @@ TEST_F(RedisStoreClientMetricsTest, LabelsMatchCommandsAndTables) {
     std::promise<int> promise;
     store_client_->AsyncGetNextJobID(
         {[&promise](int id) { promise.set_value(id); }, *io_service_});
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
   {
     std::promise<Status> promise;

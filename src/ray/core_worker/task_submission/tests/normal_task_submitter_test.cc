@@ -1679,7 +1679,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   store_io_context.GetIoService().post(
       [&wait_for_io_ctx_empty]() { wait_for_io_ctx_empty.set_value(true); },
       "wait_for_io_ctx_empty");
-  wait_for_io_ctx_empty.get_future().get();
+  (void)wait_for_io_ctx_empty.get_future().get();
 
   submitter.ReportWorkerBacklog();
   ASSERT_EQ(raylet_client->reported_backlogs.size(), 2);
