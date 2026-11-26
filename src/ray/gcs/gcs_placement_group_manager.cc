@@ -337,6 +337,32 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     const auto &placement_group_id = placement_group->GetPlacementGroupID();
     // Do not reschedule if the placement group has removed already.
     if (registered_placement_groups_.contains(placement_group_id)) {
+      // A queue entry can outlive the need for it: a group may be queued more than
+      // once, and another attempt can place every bundle before this entry runs.
+      // The bundle scheduling policies RAY_CHECK a non-empty request, so passing a
+      // group with nothing to place to the scheduler would crash the GCS. There is
+      // no work left, so treat the group as created.
+      //
+      // If it is not yet CREATED, run the success path, which sets CREATED, persists
+      // the group, and answers `WaitPlacementGroup` callers once the write completes.
+      // No attempt is in flight here, and an attempt gives a bundle a node only after
+      // preparing it and takes the node back if the commit fails, so every bundle is
+      // already committed. A group can only become CREATED from PREPARED, the state
+      // the scheduler sets before it commits bundles, so set PREPARED first.
+      //
+      // No scheduling was started for this entry, so the scheduling-in-progress
+      // marker stays clear and the loop moves on to the next entry.
+      if (!placement_group->HasUnplacedBundles()) {
+        RAY_LOG(INFO) << "Placement group " << placement_group_id
+                      << " has no unplaced bundles, skip scheduling it. State: "
+                      << rpc::PlacementGroupTableData::PlacementGroupState_Name(
+                             placement_group->GetState());
+        if (placement_group->GetState() != rpc::PlacementGroupTableData::CREATED) {
+          placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+          OnPlacementGroupCreationSuccess(placement_group);
+        }
+        continue;
+      }
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
       stats->set_scheduling_started_time_ns(clock_.NowUnixNanos());
@@ -1074,6 +1100,29 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
   if (iter != registered_placement_groups_.end()) {
     auto &placement_group = iter->second;
     if (placement_group->HasUnplacedBundles()) {
+      // This runs from the storage callback of a creation success, so a newer
+      // scheduling attempt for the same group may already be in flight: a node
+      // died after the success, the group was queued, and the queue entry was
+      // taken before this callback ran. That attempt's bundles get their nodes
+      // only after the prepare phase, so they still count as unplaced here.
+      // Queueing the group again would add a duplicate entry that later runs with
+      // nothing to place, and setting RESCHEDULING would break the PREPARED ->
+      // CREATED transition of that attempt. Leave the group to the in-flight
+      // attempt instead.
+      //
+      // Return true so the caller does not answer `WaitPlacementGroup` callers
+      // yet, because the group still has unplaced bundles. The in-flight attempt
+      // answers them. Its success path runs this check again, which answers the
+      // waiters once nothing is left to place or queues the group again. Its
+      // failure path keeps the group for a retry, in the pending queue or in the
+      // infeasible list, and the retry's success answers them. Removing the group
+      // answers them with an error.
+      if (IsSchedulingInProgress(placement_group->GetPlacementGroupID())) {
+        RAY_LOG(INFO) << "The placement group still has unplaced bundles and its "
+                         "scheduling is in progress, leave it to that attempt, id:"
+                      << placement_group->GetPlacementGroupID();
+        return true;
+      }
       if ((!IsInPendingQueue(placement_group->GetPlacementGroupID())) &&
           placement_group->GetState() != rpc::PlacementGroupTableData::REMOVED) {
         RAY_LOG(INFO) << "The placement group still has unplaced bundles, so put "
