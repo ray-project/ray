@@ -27,6 +27,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+from ray.data.expressions import col
 
 
 class LineReader(FileStreamReader):
@@ -218,3 +219,37 @@ def test_datasource_may_leave_the_schema_to_the_first_block(tmp_path):
     rows = _rows(scanner.create_reader(), path)
 
     assert rows == [{"line": "a", "year": "2024"}]
+
+
+def test_reader_types_partition_values_from_field_types_without_a_schema(tmp_path):
+    path = _write(tmp_path / "year=2024" / "a.txt", "a\n")
+    reader = LineReader(
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
+        )
+    )
+
+    tables = list(reader.read(_manifest(path)))
+
+    assert tables[0].schema.field("year").type == pa.int64()
+    assert tables[0].to_pylist() == [{"line": "a", "year": 2024}]
+
+
+def test_scanner_prunes_by_field_types_without_a_schema(tmp_path):
+    kept = _write(tmp_path / "year=2024" / "a.txt", "a\n")
+    dropped = _write(tmp_path / "year=2023" / "b.txt", "b\n")
+    scanner = LineScanner(
+        schema=None,
+        partitioning=Partitioning(
+            PartitionStyle.HIVE,
+            base_dir=str(tmp_path),
+            field_names=["year"],
+            field_types={"year": int},
+        ),
+    ).prune_partitions(col("year") == 2024)
+
+    pruned = scanner.prune_input_split(_manifest(kept, dropped))
+    rows = pa.concat_tables(list(scanner.create_reader().read(pruned))).to_pylist()
+
+    assert pruned.paths.tolist() == [str(kept)]
+    assert rows == [{"line": "a", "year": 2024}]

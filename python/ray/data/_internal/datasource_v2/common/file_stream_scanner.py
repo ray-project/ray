@@ -16,6 +16,9 @@ from ray.data._internal.datasource_v2.common.file_pruners import (
     PartitionPredicatePruner,
 )
 from ray.data._internal.datasource_v2.common.file_scanner import FileScanner
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    partition_value_schema,
+)
 from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
 from ray.data._internal.datasource_v2.interfaces.pushdown import (
     SupportsColumnPruning,
@@ -52,7 +55,7 @@ class FileStreamScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdow
         return PartitionPredicatePruner(
             self.partitioning,
             self.partition_predicate,
-            schema=self.schema,
+            schema=partition_value_schema(self.schema, self.partitioning),
             keep_unknown=True,
         )
 

@@ -32,6 +32,7 @@ from pyarrow.fs import FileSystem, HadoopFileSystem, LocalFileSystem
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.common.partitioning_utils import (
     _evaluate_path_predicate,
+    partition_value_schema,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnit
@@ -129,6 +130,7 @@ class FileStreamReader(Reader[FileManifest], ABC):
             synthesized_columns
         )
         self._schema = schema
+        self._partition_value_schema = partition_value_schema(schema, partitioning)
 
     @abstractmethod
     def _read_stream(self, stream: pa.NativeFile, path: str) -> Iterator[pa.Table]:
@@ -261,7 +263,10 @@ class FileStreamReader(Reader[FileManifest], ABC):
         values = {name: parsed.get(name) for name in referenced}
         return bool(
             _evaluate_path_predicate(
-                self._partition_predicate, values, self._schema, path=path
+                self._partition_predicate,
+                values,
+                self._partition_value_schema,
+                path=path,
             )
         )
 
@@ -318,7 +323,10 @@ class FileStreamReader(Reader[FileManifest], ABC):
             if wanted is not None and name not in wanted:
                 continue
             table = table.append_column(
-                name, _broadcast_partition_value(name, value, num_rows, self._schema)
+                name,
+                _broadcast_partition_value(
+                    name, value, num_rows, self._partition_value_schema
+                ),
             )
         return table
 
