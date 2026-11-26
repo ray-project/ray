@@ -39,8 +39,8 @@ Idle termination offers two policies, `Suspend` and `Delete`. `Suspend` is the d
 Idle termination has the following requirements:
 
 - Ray autoscaler v2 is enabled on the RayCluster. See {ref}`kuberay-autoscaler-v2`.
-- Ray 2.60.0 or later.
-- KubeRay v1.8 or later.
+- The RayCluster runs Ray 2.60.0 or later.
+- The KubeRay operator is v1.8 or later.
 
 ## RBAC and security
 
