@@ -250,8 +250,16 @@ def _stub_table(
                 reader_version=2, configuration={"delta.columnMapping.mode": "id"}
             ),
             False,
+            None,
+            "",
+        ),
+        (
+            _stub_table(
+                reader_version=2, configuration={"delta.columnMapping.mode": "other"}
+            ),
+            False,
             NotImplementedError,
-            "`delta.columnMapping.mode` is 'id'",
+            "`delta.columnMapping.mode` is 'other'",
         ),
         (
             _stub_table(

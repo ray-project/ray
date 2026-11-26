@@ -46,7 +46,7 @@ class DeltaFileReader(ParquetFileReader):
     _column_mapping: Optional[DeltaColumnMapping] = None
 
     def set_column_mapping(self, column_mapping: Optional[DeltaColumnMapping]) -> None:
-        """Read a column-mapped table's data files by their physical names."""
+        """Read a column-mapped table's data files by the names they use."""
         self._column_mapping = column_mapping
 
     @override
@@ -57,12 +57,14 @@ class DeltaFileReader(ParquetFileReader):
         file_dataset_schema: pa.Schema,
         predicate: Optional[Expr],
     ) -> Iterator[pa.Table]:
-        """Scan the file by physical column names, then rename to logical ones.
+        """Scan the file by the column names it uses, then rename to logical ones.
 
         Everything above this works in the table's logical column names. The
-        file is scanned with the physical names: the projected columns, the
-        pinned schema (nested fields included) and the filter, so Parquet
-        statistics still prune row groups. Columns the file holds but the
+        file is scanned with its own names: the physical names in the ``name``
+        mode, and in the ``id`` mode the names of the file's columns whose
+        Parquet field ids match the log's column ids. That covers the projected
+        columns, the pinned schema (nested fields included) and the filter, so
+        Parquet statistics still prune row groups. Columns the file holds but the
         table doesn't, such as materialized row-tracking columns, are never
         read. A filter on a column with nested fields may name those fields
         by their logical names, so it is applied after renaming instead.
@@ -77,6 +79,9 @@ class DeltaFileReader(ParquetFileReader):
             get_column_references,
         )
 
+        # In the ``id`` mode, columns are matched by the Parquet field ids in
+        # the file's own schema, which the scan reads anyway.
+        file_schema = fragment.physical_schema if mapping.mode == "id" else None
         kwargs = dict(scanner_kwargs)
         columns: Optional[List[str]] = kwargs.get("columns")
         after_rename: Optional[Expr] = None
@@ -88,19 +93,19 @@ class DeltaFileReader(ParquetFileReader):
                 if columns is not None:
                     columns = columns + [c for c in references if c not in columns]
             else:
-                physical_predicate = mapping.physical_predicate(predicate)
+                physical_predicate = mapping.physical_predicate(predicate, file_schema)
         kwargs["filter"] = (
             physical_predicate.to_pyarrow() if physical_predicate is not None else None
         )
         if columns is not None:
-            kwargs["columns"] = mapping.physical_names(columns)
+            kwargs["columns"] = mapping.physical_names(columns, file_schema)
         for table in super()._iter_fragment_tables_without_pickle_check(
             fragment,
             kwargs,
-            mapping.physical_schema(file_dataset_schema),
+            mapping.physical_schema(file_dataset_schema, file_schema),
             physical_predicate,
         ):
-            table = mapping.to_logical(table)
+            table = mapping.to_logical(table, file_schema)
             if after_rename is not None:
                 table = table.filter(after_rename.to_pyarrow())
                 if scanner_kwargs.get("columns") is not None:

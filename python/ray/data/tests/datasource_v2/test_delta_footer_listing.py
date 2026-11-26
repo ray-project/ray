@@ -82,21 +82,23 @@ def test_filter_prunes_row_groups(ray_start_regular_shared, row_group_table):
     assert _row_groups(rows) == [4]
 
 
-@pytest.fixture
-def name_mapped_table(tmp_path) -> str:
-    path = str(tmp_path / "name_mapped")
-    write_mapped_table(path, "name")
+@pytest.fixture(params=["name", "id"])
+def mapped_table(tmp_path, request) -> str:
+    """A column-mapped table. In the ``id`` mode its files use other column
+    names than the log's physical names, so only the field ids match."""
+    path = str(tmp_path / "mapped")
+    write_mapped_table(path, request.param)
     return path
 
 
-def test_name_mapped_statistics_skip_files(ray_start_regular_shared, name_mapped_table):
-    """The log keys statistics by physical name, nested fields as dotted
-    paths. They're renamed to logical names when loaded, so log-statistics
-    skipping finds them; the footer reads get the filter in physical names."""
-    add_actions = load_add_actions(deltalake.DeltaTable(name_mapped_table))
+def test_mapped_statistics_skip_files(ray_start_regular_shared, mapped_table):
+    """The log keys statistics by physical name in both modes, nested fields
+    as dotted paths. They're renamed to logical names when loaded, so
+    log-statistics skipping finds them."""
+    add_actions = load_add_actions(deltalake.DeltaTable(mapped_table))
     assert {"min.id", "max.s.n", "null_count.extra"} <= set(add_actions.column_names)
 
-    rows = _list_files(name_mapped_table, predicate=col("id") > 5)
+    rows = _list_files(mapped_table, predicate=col("id") > 5)
 
     assert {posixpath.dirname(row["__path"]) for row in rows} == {"col-grp=b"}
 

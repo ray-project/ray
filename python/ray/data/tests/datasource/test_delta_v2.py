@@ -699,10 +699,12 @@ def test_reads_with_v2_by_default(partitioned_table):
     assert _uses_v2(ray.data.read_delta(partitioned_table))
 
 
-@pytest.fixture
-def name_mapped_table(tmp_path) -> str:
-    path = str(tmp_path / "name_mapped")
-    write_mapped_table(path, "name")
+@pytest.fixture(params=["name", "id"])
+def mapped_table(tmp_path, request) -> str:
+    """A column-mapped table. In the ``id`` mode its files use other column
+    names than the log's physical names, so only the field ids match."""
+    path = str(tmp_path / "mapped")
+    write_mapped_table(path, request.param)
     return path
 
 
@@ -732,21 +734,21 @@ def name_mapped_table(tmp_path) -> str:
     ],
     ids=["all", "filter", "partition_filter", "nested_filter", "select"],
 )
-def test_reads_a_name_mapped_table(name_mapped_table, transform, expected):
-    """Data files name columns by physical name, nested fields too. They also
-    hold the partition column and a row-tracking column that aren't read, and
-    the first file lacks ``extra``, which is null-filled."""
-    ds = transform(_read(name_mapped_table))
+def test_reads_a_mapped_table(mapped_table, transform, expected):
+    """Data files name columns by physical name or field id, nested fields
+    too. They also hold the partition column and a row-tracking column that
+    aren't read, and the first file lacks ``extra``, which is null-filled."""
+    ds = transform(_read(mapped_table))
 
     assert _rows(ds) == sorted(
         expected(MAPPED_TABLE_ROWS), key=lambda row: repr(sorted(row.items()))
     )
 
 
-def test_name_mapped_table_counts_from_the_log(name_mapped_table):
+def test_mapped_table_counts_from_the_log(mapped_table):
     """Which files the log statistics skip is tested in
     ``tests/datasource_v2/test_delta_footer_listing.py``."""
-    assert _read(name_mapped_table).count() == len(MAPPED_TABLE_ROWS)
+    assert _read(mapped_table).count() == len(MAPPED_TABLE_ROWS)
 
 
 if __name__ == "__main__":
