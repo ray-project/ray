@@ -269,7 +269,8 @@ def test_bottleneck_observer_samples_after_tasks_launch(
     ]
     expected_view = fresh_view if ops else stale_view
     assert (
-        sizer.perform_sizing_decision.call_args.kwargs["cluster_view"] is expected_view
+        sizer.maybe_build_cluster_state_snapshot.call_args.kwargs["cluster_view"]
+        is expected_view
     )
     executor._resource_bank.set_node_view.assert_called_with(
         node_view=expected_view.reserved_by_node

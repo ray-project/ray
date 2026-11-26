@@ -3,7 +3,6 @@ from ray.data.aggregate import Sum
 from ray.data.datatype import DataType
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -41,18 +40,8 @@ def main(args):
         end_date = datetime(1995, 1, 1)
         high_priorities = ["1-URGENT", "2-HIGH"]
 
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_orderpriority"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            [
-                "l_orderkey",
-                "l_shipmode",
-                "l_commitdate",
-                "l_shipdate",
-                "l_receiptdate",
-            ]
-        )
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Filter lineitem: restricted shipmodes, late (receipt > commit),
         # on-time shipment (ship < commit), and receipt date in window.
@@ -64,7 +53,7 @@ def main(args):
                 & (col("l_receiptdate") >= start_date)
                 & (col("l_receiptdate") < end_date)
             )
-        ).select_columns(["l_orderkey", "l_shipmode"])
+        )
 
         joined = lineitem.join(
             orders,
@@ -98,6 +87,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

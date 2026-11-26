@@ -1,9 +1,9 @@
-"""Phase 3: resolve each delta to nodes -- where new actors land, where actors
-are shed.
+"""Phase 3: resolve each delta to nodes -- where new actors land, and which
+nodes a downscale removes actors from.
 
 Nothing here keeps state between ticks: placement is re-derived from current
 state every time, so a failed placement or a slow drain simply retries when
-scale_how_many re-emits its delta.
+the how-many pass asks for the delta again.
 """
 
 from __future__ import annotations
@@ -29,13 +29,19 @@ from ray.data._internal.experimental.execution.sizer.actor_placement_strategy im
     ActorPlacementStrategy,
     OpPlacementView,
     max_placeable_actors,
+    nodes_where_freeing_fits,
 )
-from ray.data._internal.experimental.execution.sizer.models import TickCapacitySnapshot
+from ray.data._internal.experimental.execution.sizer.common import (
+    DrainCost,
+    ExecutionResourcesByNode,
+    ScalingRequests,
+)
+from ray.data._internal.experimental.execution.sizer.models import ClusterStateSnapshot
 from ray.data._internal.experimental.execution.sizer.op_profile import OpProfiles
 from ray.data._internal.experimental.execution.sizer.telemetry import SizerTelemetry
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
+    pass
 
 # Sorts eviction candidates cheapest first: (cost class, tasks in flight,
 # unconsumed outputs, op index, rank in the op's victim list). Class 0 =
@@ -45,16 +51,16 @@ _EvictionCandidate = Tuple[int, int, int, int, int]
 
 def resolve_evictions(
     *,
-    nodes_to_reclaim: Dict[NodeIdStr, ExecutionResources],
+    nodes_to_reclaim: ExecutionResourcesByNode,
     profiles: OpProfiles,
 ) -> Dict[ExperimentalActorPoolMapOperator, List[NodeIdStr]]:
-    """How many actors each op sheds on each over-allocated node: enough to
-    erase the node's overage, and no more. One node entry per actor to shed;
-    the pool picks which actors go.
+    """How many actors each op removes from each over-allocated node: enough
+    to erase the node's overage, and no more. One node entry per actor to
+    remove; the pool picks which actors go.
 
     Per node, candidates from every op are counted cheapest first (pending,
     then fewest tasks in flight / unconsumed outputs) -- the order the pool
-    sheds in. A candidate counts only if it frees a dimension that is still
+    removes them in. A candidate counts only if it frees a dimension that is still
     over budget, so a {1 CPU, 1 GPU} overage costs one CPU actor and one GPU
     actor, not every CPU actor on the node. PG-managed ops are skipped (not in
     our allocation).
@@ -66,7 +72,7 @@ def resolve_evictions(
     views = {
         op: placement_view.build_op_placement_view(op, rank_victims=True) for op in ops
     }
-    shed: Dict[ExperimentalActorPoolMapOperator, List[NodeIdStr]] = {}
+    removed: Dict[ExperimentalActorPoolMapOperator, List[NodeIdStr]] = {}
     for node_id, over_budget in nodes_to_reclaim.items():
         remaining = over_budget
         for _, _, _, op_index, _ in sorted(_eviction_candidates(ops, views, node_id)):
@@ -75,9 +81,9 @@ def resolve_evictions(
             per_actor_usage = views[ops[op_index]].per_actor_usage
             if not _frees_over_budget_dim(per_actor_usage, remaining):
                 continue
-            shed.setdefault(ops[op_index], []).append(node_id)
+            removed.setdefault(ops[op_index], []).append(node_id)
             remaining = remaining.subtract(per_actor_usage).max(zero)
-    return shed
+    return removed
 
 
 def _eviction_candidates(
@@ -92,8 +98,10 @@ def _eviction_candidates(
             candidates.append((0, 0, 0, op_index, rank))
         costs = view.victim_drain_cost_by_node.get(node_id, [])
         for rank in range(len(view.victim_ids_by_node.get(node_id, []))):
-            in_flight, unconsumed = costs[rank] if rank < len(costs) else (0, 0)
-            candidates.append((1, in_flight, unconsumed, op_index, rank))
+            cost = costs[rank] if rank < len(costs) else DrainCost(0, 0)
+            candidates.append(
+                (1, cost.tasks_in_flight, cost.unconsumed_outputs, op_index, rank)
+            )
     return candidates
 
 
@@ -111,11 +119,11 @@ def _frees_over_budget_dim(
 def evict_from_reclaimed_nodes(
     *,
     placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest],
-    nodes_to_reclaim: Dict[NodeIdStr, ExecutionResources],
+    nodes_to_reclaim: ExecutionResourcesByNode,
     profiles: OpProfiles,
 ) -> Set[ExperimentalActorPoolMapOperator]:
-    """Shed actors off nodes we're losing (reservation shrink or node
-    draining). They drain gracefully and are never reclaimed. Eviction takes
+    """Downscale actors off nodes we're losing (a smaller reservation, or a
+    draining node). They drain gracefully and are never reclaimed. Eviction takes
     precedence over this tick's normal sizing for the same op (which
     re-requests next tick).
 
@@ -140,8 +148,8 @@ def evict_from_reclaimed_nodes(
 
 def build_placement_views(
     *,
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
-    capacity: TickCapacitySnapshot,
+    request: ScalingRequests,
+    capacity: ClusterStateSnapshot,
 ) -> Dict[ExperimentalActorPoolMapOperator, OpPlacementView]:
     """A placement view per requested op, carrying its schedulable nodes and
     the per-node contention the strategy sorts on. Only downscales pay for sorted
@@ -159,19 +167,26 @@ def build_placement_views(
 
 def compute_favored_nodes(
     *,
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
+    unmet: Dict[ExperimentalActorPoolMapOperator, int],
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
-    reserved: Dict[NodeIdStr, ExecutionResources],
-    free: Dict[NodeIdStr, ExecutionResources],
+    capacity: ClusterStateSnapshot,
+    free: ExecutionResourcesByNode,
     placement: ActorPlacementStrategy,
     profiles: OpProfiles,
     ordered_ops: Sequence[ExperimentalActorPoolMapOperator],
 ) -> Set[NodeIdStr]:
-    """Nodes that capacity-short upscalers (delta does not fit in free
-    capacity) want freed.
+    """Nodes that capacity-short upscalers want freed.
 
-    Feeds victim selection, so a downscale sheds where the freed capacity
-    actually helps someone rather than wherever is convenient.
+    Feeds victim selection, so a downscale removes actors where the freed
+    capacity helps an upscaler, rather than wherever is convenient.
+
+    An op is capacity-short by ``unmet`` actors (what the policy's ledger had
+    no room for), plus any part of its granted request that does not fit in
+    ``free``. Only nodes where one of its actors would fit, once this tick's
+    downscales free what they hold there, can help it. An op needing a GPU
+    and a CPU, for example, gains nothing from CPUs freed on a node whose GPU
+    is taken.
     """
     # Nodes where a downscaling op has pending/idle victims -- eviction there
     # is ~instant, so the "capacity free now" ranking applies; nodes that can
@@ -183,6 +198,7 @@ def compute_favored_nodes(
             view = views[op]
             fast_free_nodes.update(view.pending_ids_by_node)
             fast_free_nodes.update(view.idle_actors_by_node)
+    freeable = _freeable_by_node(request=request, views=views)
 
     # (view, unmet delta) per capacity-short upscaling op, scarcest first. A
     # pin is a normal size-1 schedulable set, so pinned ops DO participate --
@@ -192,42 +208,92 @@ def compute_favored_nodes(
     capacity_short: List[Tuple[OpPlacementView, int]] = []
     for op in ordered_ops:
         req = request.get(op)
-        if req is None or req.delta <= 0:
+        short = unmet.get(op, 0)
+        if req is None and short <= 0:
+            continue
+        if req is not None and req.delta < 0:
             continue
         # PG-managed ops consume their PG reservation, not the free map, so
         # evicting a non-PG actor never helps them.
         if profiles.is_pg_managed(op):
             continue
-        view = views[op]
-        fits = sum(
-            max_placeable_actors(free[node_id], view.per_actor_usage)
-            for node_id in view.filter_schedulable_nodes(free)
+        view = views.get(op) or _upscale_view(op, capacity)
+        if req is not None:
+            fits = sum(
+                max_placeable_actors(free[node_id], view.per_actor_usage)
+                for node_id in view.filter_schedulable_nodes(free)
+            )
+            short += max(0, req.delta - int(min(fits, req.delta)))
+        if short <= 0:
+            continue
+        useful = nodes_where_freeing_fits(
+            per_actor=view.per_actor_usage,
+            nodes=view.filter_schedulable_nodes(capacity.reserved_by_node),
+            free=free,
+            freeable=freeable,
         )
-        if fits < req.delta:
-            capacity_short.append((view, req.delta - int(fits)))
+        if useful:
+            capacity_short.append((replace(view, match_nodes=useful), short))
     if not capacity_short:
         return set()
 
     return set(
         placement.compute_favored_nodes(
             capacity_short_views=capacity_short,
-            all_nodes=set(reserved),
+            all_nodes=set(capacity.reserved_by_node),
             fast_free_nodes=fast_free_nodes,
         )
+    )
+
+
+def _freeable_by_node(
+    *,
+    request: ScalingRequests,
+    views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
+) -> ExecutionResourcesByNode:
+    """What this tick's downscales could free on each node: per downscaling
+    op, its actors there (pending or running), at most its whole delta."""
+    freeable: ExecutionResourcesByNode = {}
+    for op, req in request.items():
+        if req.delta >= 0:
+            continue
+        view = views[op]
+        nodes = set(view.victim_ids_by_node) | set(view.pending_ids_by_node)
+        for node_id in nodes:
+            count = len(view.victim_ids_by_node.get(node_id, ())) + len(
+                view.pending_ids_by_node.get(node_id, ())
+            )
+            count = min(count, -req.delta)
+            freeable[node_id] = freeable.get(node_id, ExecutionResources.zero()).add(
+                view.per_actor_usage.scale(count)
+            )
+    return freeable
+
+
+def _upscale_view(
+    op: ExperimentalActorPoolMapOperator, capacity: ClusterStateSnapshot
+) -> OpPlacementView:
+    """A placement view for an op with no request this tick, for its fit
+    test: its per-actor usage and schedulable nodes."""
+    view = placement_view.build_op_placement_view(op, rank_victims=False)
+    return replace(
+        view,
+        match_nodes=capacity.schedulable_nodes_by_op.get(op),
+        constrained_op_count_by_node=capacity.constrained_op_count_by_node,
     )
 
 
 def place_downscales(
     *,
     placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest],
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
     favored: Set[NodeIdStr],
-    free: Dict[NodeIdStr, ExecutionResources],
+    free: ExecutionResourcesByNode,
     placement: ActorPlacementStrategy,
     evicted_ops: Set[ExperimentalActorPoolMapOperator],
 ) -> None:
-    """Resolve each downscale delta to the nodes it sheds from."""
+    """Resolve each downscale delta to the nodes it removes actors from."""
     for op, req in request.items():
         if req.delta >= 0 or op in evicted_ops:
             continue
@@ -247,7 +313,7 @@ def place_downscales(
             ]
         else:
             # Untargeted pendings go first: they hold no node's capacity, so
-            # cancelling them costs nothing, and no node-shaped shed reaches
+            # cancelling them costs nothing, and no downscale by node reaches
             # them.
             pending_ids = view.untargeted_pending_ids[: -req.delta]
             remaining = -req.delta - len(pending_ids)
@@ -263,7 +329,7 @@ def place_downscales(
         placed[op] = ScaleDownRequest.on_nodes(
             nodes, pending_ids=pending_ids, force=True, reason=req.reason
         )
-        # Refund the capacity of the pendings this sheds (the pool cancels
+        # Refund the capacity of the pendings this removes (the pool cancels
         # them first): they never landed, so this tick's upscales can reuse
         # it. Running victims hold their capacity until dead.
         for node_id, count in Counter(nodes).items():
@@ -277,9 +343,9 @@ def place_downscales(
 def place_upscales(
     *,
     placed: Dict[ExperimentalActorPoolMapOperator, PlacedScalingRequest],
-    request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"],
+    request: ScalingRequests,
     views: Dict[ExperimentalActorPoolMapOperator, OpPlacementView],
-    free: Dict[NodeIdStr, ExecutionResources],
+    free: ExecutionResourcesByNode,
     placement: ActorPlacementStrategy,
     profiles: OpProfiles,
     ordered_ops: Sequence[ExperimentalActorPoolMapOperator],
@@ -300,7 +366,7 @@ def place_upscales(
 
     for op in upscale_ops:
         req = request[op]
-        # PG-managed op: capacity was already capped in scale_how_many (PG
+        # PG-managed op: capacity was already capped in the how-many pass (PG
         # bundle count or user concurrency), and the op's placement group
         # picks the node. Emit untargeted -- no free-map math, no strategy --
         # reclaiming draining actors first as usual.
@@ -333,7 +399,7 @@ def place_upscales(
         nodes = placement.place_upscale(view, free=free, count=new_n)
         if len(nodes) < new_n:
             # The free map has no room for the remainder: drop it and let
-            # scale_how_many re-request it next tick. Every placement stays
+            # the how-many pass request it again next tick. Every placement stays
             # under the locality strategy -- no untargeted fallback.
             telemetry.log_placement_shortfall(
                 op=op,

@@ -338,6 +338,26 @@ Classification models differ in the following ways:
 - Use direct `prompt` input instead of `messages`.
 - Access classification logits through `row["embeddings"]`.
 
+(sglang_score)=
+
+## Score items against a query with SGLang
+
+{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` supports `task_type="score"`, which runs SGLang's [score API](https://docs.sglang.io/basic_usage/native_api.html) and requires SGLang 0.5.21 or later. Each row holds one `query` and a list of `items`, and `row["scores"]` holds one score list per item, in item order. To score all items of a row in one forward pass with SGLang's multi-item scoring, set `enable_mis=True` and `attention_backend="flashinfer"` in `engine_kwargs`. Multi-item scores can differ slightly from scores of each item on its own, because the query and items are tokenized separately instead of as one text.
+
+```{literalinclude} doc_code/working-with-llms/sglang_score_example.py
+:language: python
+:start-after: __sglang_score_example_start__
+:end-before: __sglang_score_example_end__
+```
+
+Configure the score task as follows:
+
+- `task_kwargs`: `label_token_ids`, `apply_softmax`, `item_first`, `embed_override_token_id`, and `score_extraction_token_id`. Generative models require `label_token_ids`, which set the order of each item's scores. See the [SGLang score API](https://docs.sglang.io/basic_usage/native_api.html) for details.
+- Input: each row needs a `query` string and an `items` list of strings. To pass token IDs instead, set `tokenize_stage=False` and provide `query_token_ids` and `item_token_ids`.
+- Embedding overrides: set `embed_override_token_id`, then add a `query_embed_overrides` column, an `item_embed_overrides` column with one entry or `None` per item, or both. Each vector replaces one `embed_override_token_id` token, in order.
+- Score extraction: set `score_extraction_token_id` to get one score list per occurrence of that token in each item. Without multi-item scoring, also set `disable_radix_cache=True` and `chunked_prefill_size=-1` in `engine_kwargs`. Score extraction doesn't support `item_first` or `allow_auto_truncate`.
+
+
 (openai_compatible_api_endpoint)=
 (openai-compatible-endpoints)=
 
@@ -635,7 +655,11 @@ The Ray project fully tests each Ray release with a compatible vLLM version. The
 * - Ray release
   - vLLM version
 * - nightly
+  - 0.34.0
+* - 2.61.0
   - 0.33.0
+* - 2.60.0
+  - 0.29.0
 * - 2.59.0
   - 0.27.0
 * - 2.58.0

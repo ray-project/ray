@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Count
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -28,17 +27,14 @@ def main(args):
         word1 = "special"
         word2 = "requests"
 
-        customers = load_table("customer", args.sf).select_columns(["c_custkey"])
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey", "o_comment"]
-        )
+        customers = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
 
         # Filter out orders whose comment matches '%<word1>%<word2>%' before the join
         # o_comment NOT LIKE '%special%requests%'
         orders = orders.filter(
             expr=~col("o_comment").str.match_regex(f"{word1}.*{word2}")
         )
-        orders = orders.select_columns(["o_orderkey", "o_custkey"])
 
         # Left outer join: customer LEFT OUTER JOIN orders ON c_custkey = o_custkey
         # Customers with no matching orders will have null o_orderkey
@@ -76,6 +72,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

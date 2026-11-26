@@ -1,7 +1,7 @@
 import ray
 import argparse
 
-from benchmark import Benchmark, benchmark_job_config
+from benchmark import Benchmark
 
 
 def parse_args() -> argparse.Namespace:
@@ -72,7 +72,5 @@ def main(args):
 
 
 if __name__ == "__main__":
-    # Start Ray explicitly so the job config applies (see benchmark_job_config).
-    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     main(args)

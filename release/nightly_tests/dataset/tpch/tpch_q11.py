@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -38,13 +37,9 @@ def main(args):
         nation_name = "GERMANY"
         fraction = 0.0001 / args.sf
 
-        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_nationkey"]
-        )
-        partsupp = load_table("partsupp", args.sf).select_columns(
-            ["ps_partkey", "ps_suppkey", "ps_availqty", "ps_supplycost"]
-        )
+        nation = load_table("nation", args.sf)
+        supplier = load_table("supplier", args.sf)
+        partsupp = load_table("partsupp", args.sf)
 
         # Filter nation to the target country, then join to suppliers.
         nation_filtered = nation.filter(expr=col("n_name") == nation_name)
@@ -55,11 +50,12 @@ def main(args):
             num_partitions=200,
             on=("n_nationkey",),
             right_on=("s_nationkey",),
-        ).select_columns(["s_suppkey"])
+        )
 
         # partsupp restricted to national suppliers, with stock value.
         # Materialize so the scalar total and the per-part aggregate both
         # read from the same intermediate (Ray Data has no CSE).
+        # Projection pushdown stops at materialize(), so prune by hand first.
         partsupp_germany = (
             partsupp.join(
                 nation_supplier,
@@ -93,6 +89,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

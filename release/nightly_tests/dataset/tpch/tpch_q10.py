@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -30,25 +29,11 @@ def main(args):
         # The pipeline is kept linear:
         # orders -> customer -> nation -> lineitem.
 
-        # Load all required tables with early projection.
-        customer = load_table("customer", args.sf).select_columns(
-            [
-                "c_custkey",
-                "c_name",
-                "c_nationkey",
-                "c_acctbal",
-                "c_address",
-                "c_phone",
-                "c_comment",
-            ]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey", "o_orderdate"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_extendedprice", "l_discount", "l_returnflag"]
-        )
-        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
+        # Load tables. Projection pushdown derives the columns each read needs.
+        customer = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
+        nation = load_table("nation", args.sf)
 
         # Q10 parameters
         date = datetime(1993, 10, 1)
@@ -82,18 +67,6 @@ def main(args):
             num_partitions=200,
             on=("c_nationkey",),
             right_on=("n_nationkey",),
-        )
-        orders_customer_nation = orders_customer_nation.select_columns(
-            [
-                "o_orderkey",
-                "o_custkey",
-                "c_name",
-                "c_acctbal",
-                "n_name",
-                "c_address",
-                "c_phone",
-                "c_comment",
-            ]
         )
 
         # Join with returned lineitems.
@@ -136,6 +109,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
 from common import load_table, parse_tpch_args, run_tpch_benchmark, to_f64
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -23,19 +22,8 @@ def main(args):
         #   OR (... 'Brand#23', MED containers, quantity 10..20, size 1..10 ...)
         #   OR (... 'Brand#34', LG containers, quantity 20..30, size 1..15 ...);
 
-        part = load_table("part", args.sf).select_columns(
-            ["p_partkey", "p_brand", "p_size", "p_container"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            [
-                "l_partkey",
-                "l_quantity",
-                "l_extendedprice",
-                "l_discount",
-                "l_shipinstruct",
-                "l_shipmode",
-            ]
-        )
+        part = load_table("part", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q19 parameters
         clauses = [
@@ -100,6 +88,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

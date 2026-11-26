@@ -43,6 +43,7 @@ from ray.data._internal.experimental.execution.actor_only_metrics import (
 )
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
     ActorOnlyResourceReporter,
+    DatasetReservationView,
 )
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (
     ExperimentalActorPoolMapOperator,
@@ -71,15 +72,12 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
     # inside it at this cadence so the display keeps moving.
     PROGRESS_REFRESH_INTERVAL_S: float = 1.0
 
+    # Handles actor pool sizing and placement
     _sizer: Optional[OperatorSizer] = None
-    # Built in ``_create_cluster_autoscaler`` (which the base ``execute`` runs
-    # before ``bootstrap``) because the autoscaler's utilization gauge reads
-    # through it; ``bootstrap`` hands the same instance to the sizer.
     _resource_reporter: Optional[ActorOnlyResourceReporter] = None
     _actor_only_metrics: Optional[ActorOnlyMetrics] = None
-    # Set (under ``_shutdown_lock``) by the one shutdown call that runs the
-    # final metrics flush and bank finalize.
-    _finalize_claimed: bool = False
+    # Used to ensure shutting down the executor is thread-safe
+    _finalized: bool = False
 
     @override
     def _create_cluster_autoscaler(self) -> ClusterAutoscaler:
@@ -93,8 +91,11 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             subcluster_selector=self._data_context.execution_options.label_selector,
         )
         self._resource_reporter = ActorOnlyResourceReporter(
-            self._topology, coordinator, self._resource_bank
+            topology=self._topology,
+            autoscaling_coordinator=coordinator,
+            resource_bank=self._resource_bank,
         )
+        self._resource_reporter.bootstrap()
         return create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
@@ -102,7 +103,8 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             execution_id=self._dataset_id,
             autoscaling_coordinator=coordinator,
             resource_utilization_calculator=RollingLogicalUtilizationGauge(
-                self._resource_reporter, execution_id=self._dataset_id
+                resource_reporter=self._resource_reporter,
+                execution_id=self._dataset_id,
             ),
         )
 
@@ -110,23 +112,19 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
     def bootstrap(self) -> None:
         assert self._topology is not None
         assert self._resource_reporter is not None
-        # Start the hatch's clock now, so its first scan waits one interval:
-        # nothing can be stuck before the loop has run.
+        # 1. IDLE detection logic
         self._last_detection_timestamp: float = time.perf_counter()
         self._last_progress_refresh_timestamp: float = 0.0
         self._idle_detection_interval_s: float = 1.0
 
-        # The cluster autoscaler owns the coordinator request's lifecycle; the
-        # sizer only reads allocations through the reporter.
-        self._sizer = OperatorSizer(
-            dataset_id=self._dataset_id,
-            topology=self._topology,
-            resource_reporter=self._resource_reporter,
-        )
-        self._sizer.initial_sizing_request()
+        # 2. Sizing
+        self._sizer = OperatorSizer(dataset_id=self._dataset_id)
+        self._sizer.bootstrap(topology=self._topology)
 
+        # 3. Metrics
         self._actor_only_metrics = ActorOnlyMetrics(
-            dataset_id=self._dataset_id, update_interval=self.UPDATE_METRICS_INTERVAL_S
+            dataset_id=self._dataset_id,
+            update_interval=self.UPDATE_METRICS_INTERVAL_S,
         )
         for op, op_state in self._topology.items():
             if isinstance(op, ExperimentalActorPoolMapOperator):
@@ -141,14 +139,14 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         assert self._sizer is not None
         assert self._actor_only_metrics is not None
 
-        # Share the allocation between the bank and sizer. A rejected actor
-        # placement below forces a refresh before making new sizing decisions.
-        cluster_view = self._resource_reporter.get_cluster_view(
-            include_labels=True, include_draining_nodes=True
-        )
+        # 1. Get the cluster snapshot view. This holds current, pending
+        # pg, and other node resource usage. A rejected actor placement (step 3)
+        # forces a refresh of it.
+        cluster_view = self._resource_reporter.get_cluster_view()
         self._resource_bank.set_node_view(node_view=cluster_view.reserved_by_node)
         self._resource_bank.drain_consumed_blocks()
 
+        # 2. Update running tasks state to completed.
         num_errored_blocks = process_completed_tasks(
             topology=topology,
             max_errored_blocks=self._max_errored_blocks,
@@ -159,37 +157,61 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             self._max_errored_blocks -= num_errored_blocks
         self._num_errored_blocks += num_errored_blocks
 
-        self._handle_failed_placements(topology=topology)
+        # 3. If an actor placement was rejected, refresh the reservation view the
+        # bank and the sizer use before making new decisions.
+        fresh_view = self._handle_failed_placements(topology=topology)
+        if fresh_view is not None:
+            cluster_view = fresh_view
 
+        # 4. If there are any operators that are IDLE, execute escape hatch
         self._maybe_run_escape_hatch()
 
-        self._sizer.perform_sizing_decision(
+        # 5. Build a cluster snapshot if ready for sizing decision.
+        cluster_state_snapshot = self._sizer.maybe_build_cluster_state_snapshot(
             cluster_view=cluster_view,
             seconds_since_allocation_change=(
                 self._resource_reporter.seconds_since_allocation_change()
             ),
         )
-        self._expire_pending_actors(topology)
+        if cluster_state_snapshot is not None:
+            self._sizer.perform_sizing_decision(
+                cluster_state_snapshot=cluster_state_snapshot
+            )
 
-        self._resource_bank.drain_consumed_blocks()
+        # TODO(Justin): This is only here until the old backend is gone, but otherwise,
+        # this can be shunted inside op.refresh_state() in the base class.
+        self._expire_pending_actors(topology)
         self._release_drained_actors_of_completed_ops(topology)
+        self._resource_bank.drain_consumed_blocks()
+
+        # 6. Launch tasks
         self._launch_tasks()
-        # After the launch: a slot freed this step and refilled by it is busy,
-        # not idle (see ``OperatorSizer.observe_after_launch``).
+
+        # 7. Update metrics and logs
         self._sizer.observe_after_launch()
         self._sample_output_backpressure(topology)
-
         self._actor_only_metrics.maybe_update(
             topology=topology, resource_bank=self._resource_bank
         )
         self._report_current_usage()
 
-        # Node-level autoscaling only; actor-pool sizing belongs to the sizer.
+        # 8. Node-level cluster autoscaling.
         self._cluster_autoscaler.try_trigger_scaling()
 
         return self._finalize_scheduling_loop_step(topology)
 
-    def _handle_failed_placements(self, topology: Topology):
+    def _handle_failed_placements(
+        self, topology: Topology
+    ) -> Optional[DatasetReservationView]:
+        """Refresh the reservation after a rejected actor placement.
+
+        Args:
+            topology: The operators to check for a rejected placement.
+
+        Returns:
+            A freshly recomputed view, already handed to the resource bank, or
+            ``None`` if no placement was rejected since the last step.
+        """
         failed_placements = [
             op
             for op in topology
@@ -198,13 +220,13 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         ]
         if failed_placements:
             assert self._resource_reporter is not None
-            cluster_view = self._resource_reporter.get_cluster_view(
-                include_labels=True, include_draining_nodes=True, recompute=True
-            )
+            cluster_view = self._resource_reporter.get_cluster_view(recompute=True)
             assert self._resource_bank is not None
             self._resource_bank.set_node_view(node_view=cluster_view.reserved_by_node)
             for op in failed_placements:
                 op.actor_placement_failed = False
+            return cluster_view
+        return None
 
     @staticmethod
     def _expire_pending_actors(topology: Topology) -> None:
@@ -318,10 +340,10 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             should_finalize = (
                 self._topology is not None
                 and self._execution_started
-                and not self._finalize_claimed
+                and not self._finalized
             )
             if should_finalize:
-                self._finalize_claimed = True
+                self._finalized = True
         try:
             return super().shutdown(force, exception)
         finally:

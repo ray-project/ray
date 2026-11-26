@@ -5,10 +5,26 @@ from __future__ import annotations
 import abc
 import math
 from dataclasses import dataclass, field
-from typing import AbstractSet, Dict, Hashable, Iterable, List, Optional, Tuple, TypeVar
+from typing import (
+    AbstractSet,
+    Dict,
+    FrozenSet,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 from ray.data._internal.execution.interfaces import ExecutionResources, NodeIdStr
 from ray.data._internal.execution.interfaces.common import ActorId
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    DrainCost,
+    ExecutionResourcesByNode,
+    UpscaleSplit,
+)
 
 # Fallback bytes-per-actor used to convert a node's queued input into a
 # collocation fill when a view carries no per-actor input-bytes figure
@@ -66,6 +82,30 @@ def pack_actors(
     return placed
 
 
+def nodes_where_freeing_fits(
+    *,
+    per_actor: ExecutionResources,
+    nodes: Iterable[NodeIdStr],
+    free: ExecutionResourcesByNode,
+    freeable: ExecutionResourcesByNode,
+) -> FrozenSet[NodeIdStr]:
+    """The ``nodes`` where one actor of shape ``per_actor`` fits once
+    ``freeable`` is freed on top of ``free``.
+
+    An actor needing a GPU and a CPU, for example, fits nowhere that CPUs are
+    freed next to a GPU already taken.
+    """
+    zero = ExecutionResources.zero()
+    return frozenset(
+        node_id
+        for node_id in nodes
+        if max_placeable_actors(
+            free.get(node_id, zero).add(freeable.get(node_id, zero)), per_actor
+        )
+        >= 1
+    )
+
+
 @dataclass(frozen=True)
 class OpPlacementView:
     """One operator's placement snapshot for a tick: where its actors, its
@@ -82,13 +122,13 @@ class OpPlacementView:
     # input into a reasonable collocation fill.
     input_bytes_per_actor: Optional[int]
     # Alive non-draining actors + targeted pendings, per node.
-    actors_by_node: Dict[NodeIdStr, int]
+    actors_by_node: CountByNode
     # Bytes of this op's queued input per node.
-    input_queue_bytes_by_node: Dict[NodeIdStr, int]
+    input_queue_bytes_by_node: CountByNode
     # Alive actors of upstream producer / downstream consumer actor-pool
     # operators, per node.
-    upstream_actors_by_node: Dict[NodeIdStr, int]
-    downstream_actors_by_node: Dict[NodeIdStr, int]
+    upstream_actors_by_node: CountByNode
+    downstream_actors_by_node: CountByNode
     # Downscale victims per node: running actors not already draining,
     # cheapest to drain first (see ``victim_drain_cost_by_node``). Busy actors
     # ARE victims -- they just take longer to drain. Empty unless the view was
@@ -96,7 +136,7 @@ class OpPlacementView:
     victim_ids_by_node: Dict[NodeIdStr, List[ActorId]]
     # Non-draining actors with zero tasks in flight, per node. Evicting
     # these (like cancelling pendings) frees capacity ~immediately.
-    idle_actors_by_node: Dict[NodeIdStr, int]
+    idle_actors_by_node: CountByNode
     # Pending (not yet ready) actors per target node -- the cheapest victims:
     # cancelling one frees its claimed capacity immediately.
     pending_ids_by_node: Dict[NodeIdStr, List[ActorId]]
@@ -107,11 +147,9 @@ class OpPlacementView:
     match_nodes: Optional[AbstractSet[NodeIdStr]] = None
     # How many constrained operators can use each node (lower = less
     # contended); breaks ties when several ops want the same node.
-    constrained_op_count_by_node: Dict[NodeIdStr, int] = field(default_factory=dict)
-    # Per-victim drain cost aligned with ``victim_ids_by_node``: (tasks in
-    # flight, unconsumed output blocks). Both must reach zero before a
-    # draining victim exits, so lower = frees capacity sooner.
-    victim_drain_cost_by_node: Dict[NodeIdStr, List[Tuple[int, int]]] = field(
+    constrained_op_count_by_node: CountByNode = field(default_factory=dict)
+    # Per-victim drain cost, aligned with ``victim_ids_by_node``.
+    victim_drain_cost_by_node: Dict[NodeIdStr, List[DrainCost]] = field(
         default_factory=dict
     )
     # Pendings with no target node (placement-group or initial-size actors):
@@ -142,7 +180,7 @@ class ActorPlacementStrategy(abc.ABC):
         self,
         view: OpPlacementView,
         *,
-        free: Dict[NodeIdStr, ExecutionResources],
+        free: ExecutionResourcesByNode,
         count: int,
     ) -> List[NodeIdStr]:
         """Assign ``count`` new actors to nodes.
@@ -169,18 +207,19 @@ class ActorPlacementStrategy(abc.ABC):
         count: int,
         favored_nodes: AbstractSet[NodeIdStr],
     ) -> List[NodeIdStr]:
-        """Pick where a downscale sheds ``count`` actors.
+        """Pick where a downscale removes ``count`` actors.
 
         Args:
             view: The operator's placement snapshot.
-            count: Number of actors to shed.
+            count: Number of actors to remove.
             favored_nodes: Nodes that capacity-short upscaling operators
-                want freed -- shedding there is preferred so the freed
-                capacity benefits the upscaler.
+                want freed. Actors there are removed before any elsewhere,
+                so the freed capacity reaches the upscaler.
 
         Returns:
-            One node id per actor to shed (a node repeats when several leave
-            it), cheapest-to-free first. May be shorter than ``count``.
+            One node id per actor to remove (a node repeats when several leave
+            it): favored nodes first, and cheapest-to-free first within each.
+            May be shorter than ``count``.
         """
         ...
 
@@ -196,7 +235,7 @@ class ActorPlacementStrategy(abc.ABC):
         does not fit in free capacity) want freed.
 
         Fed into ``pick_downscale_nodes`` as ``favored_nodes`` so downscales
-        shed where the freed capacity benefits the upscalers.
+        remove actors where the freed capacity benefits the upscalers.
 
         Args:
             capacity_short_views: (view, unmet delta) per capacity-short
@@ -212,9 +251,9 @@ class ActorPlacementStrategy(abc.ABC):
         """
         ...
 
-    def upscale_breakdown(self) -> Dict[str, Tuple[int, int]]:
-        """Per op id, how the last upscale split into (collocated, spread)
-        actors, for telemetry. Strategies that don't track this return {}."""
+    def upscale_breakdown(self) -> Dict[str, UpscaleSplit]:
+        """Per op id, how the last upscale split between placement phases,
+        for telemetry. Strategies that don't track this return {}."""
         return {}
 
     @abc.abstractmethod

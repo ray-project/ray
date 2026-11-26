@@ -1,7 +1,8 @@
 """Tests for _ExperimentalActorPool heap-based scheduling."""
 
+import time
 import unittest
-from typing import Any, Dict, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Optional, Tuple, cast
 from unittest import mock
 
 import pyarrow as pa
@@ -19,7 +20,6 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.execution_flags import (
-    ACTOR_ONLY_SLOW_TASK_THRESHOLD_S,
     BLOCK_SIZE_TO_OUTPUT_BYTES_RATIO,
     PER_ACTOR_INPUT_BACKPRESSURE_LIMIT,
 )
@@ -257,11 +257,8 @@ class TestExperimentalActorPool(unittest.TestCase):
         max_num_output_bytes_per_actor: Optional[int] = 10_000_000,
         per_actor_resource_usage=None,
         node_resources=None,
-        task_duration_s: Optional[float] = ACTOR_ONLY_SLOW_TASK_THRESHOLD_S / 10,
+        slot_clock: Callable[[], float] = time.monotonic,
     ) -> _ExperimentalActorPool:
-        """``task_duration_s`` defaults to fast tasks, so the pool uses every
-        in-flight slot; pass a slow duration, or None (unknown, counted as
-        slow), to test the slow-task cap."""
         config = AutoscalingActorConfig(
             min_size=min_size,
             max_size=max_size,
@@ -274,10 +271,11 @@ class TestExperimentalActorPool(unittest.TestCase):
             max_num_output_bytes_per_actor=max_num_output_bytes_per_actor,
         )
         pool = _ExperimentalActorPool(
-            create_actor_fn=self._create_actor_fn, config=config
+            create_actor_fn=self._create_actor_fn,
+            config=config,
+            slot_clock=slot_clock,
         )
         pool.set_resource_bank(_RecordingResourceBank(node_resources))
-        pool.set_average_task_duration(task_duration_s)
         return pool
 
     def _create_pool_with_metrics(
@@ -578,75 +576,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         # Both actors at the cap.
         assert pool.select_actors(bundle=_make_bundle(1000)) is None
 
-    def test_slow_tasks_wait_for_pending_actor_instead_of_queueing(self):
-        """While an actor is pending and task duration is unknown (counts as
-        slow), a busy actor's extra slot is held back, so the second task goes
-        to the pending actor once it is ready rather than queueing behind the
-        first task."""
-        pool = self._create_pool(max_tasks_in_flight=2, task_duration_s=None)
-        actor1 = self._add_ready_actor(pool, node_id="node1")
-        pending, ready_ref = self._add_pending_actor(pool, node_id="node2")
-
-        b1, b2 = _make_bundle(1000), _make_bundle(1000)
-        assert self._select_and_submit(pool, b1) == actor1
-        assert pool.select_actors(bundle=b2) is None
-
-        ray.get(ready_ref)
-        pool.pending_to_running(ready_ref)
-        assert self._select_and_submit(pool, b2) == pending
-
-    def test_extra_slot_used_when_tasks_fast(self):
-        """The extra slot is used once tasks are known to be fast, with or
-        without actors pending."""
-        for case in ("no_pending", "pending"):
-            with self.subTest(case=case):
-                pool = self._create_pool(max_tasks_in_flight=2, task_duration_s=None)
-                actor = self._add_ready_actor(pool)
-                if case == "pending":
-                    self._add_pending_actor(pool, node_id="node2")
-                pool.set_average_task_duration(ACTOR_ONLY_SLOW_TASK_THRESHOLD_S / 10)
-                pool.refresh_actor_state()
-
-                assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-                assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-                assert pool.select_actors(bundle=_make_bundle(1000)) is None
-
-    def test_slow_tasks_go_to_an_idle_actor_instead_of_queueing(self):
-        """video_object_detection Write (~10s tasks, 2 in flight per actor):
-        with nothing pending, a busy actor's extra slot was used, so tasks
-        queued behind running ones while other actors sat idle. With slow
-        tasks each actor takes only what it runs at once, and the next task
-        goes to the actor that frees up."""
-        pool = self._create_pool(max_tasks_in_flight=2)
-        actor1 = self._add_ready_actor(pool, node_id="node1")
-        actor2 = self._add_ready_actor(pool, node_id="node2")
-        pool.set_average_task_duration(ACTOR_ONLY_SLOW_TASK_THRESHOLD_S * 2)
-        pool.refresh_actor_state()
-
-        b1, b2, b3 = (_make_bundle(1000) for _ in range(3))
-        first = self._select_and_submit(pool, b1)
-        second = self._select_and_submit(pool, b2)
-        assert {first, second} == {actor1, actor2}
-        # Both busy: the third task waits rather than queueing behind one.
-        assert pool.select_actors(bundle=b3) is None
-
-        assert first is not None
-        pool.on_task_completed(first, input_bundle=b1)
-        assert self._select_and_submit(pool, b3) == first
-
-    def test_slow_tasks_still_hold_extra_slot_after_refresh(self):
-        """A known duration at or above the threshold keeps the cap while an
-        actor is pending; the heaps rebuilt on refresh honor it."""
-        pool = self._create_pool(max_tasks_in_flight=2)
-        actor = self._add_ready_actor(pool)
-        self._add_pending_actor(pool, node_id="node2")
-        pool.set_average_task_duration(ACTOR_ONLY_SLOW_TASK_THRESHOLD_S)
-        pool.refresh_actor_state()
-
-        assert self._select_and_submit(pool, _make_bundle(1000)) == actor
-        pool.refresh_actor_state()
-        assert pool.select_actors(bundle=_make_bundle(1000)) is None
-
     def test_output_backpressured_actor_capped_at_concurrency(self):
         """With the probe set, an actor whose output budget is used up is
         admitted at most ``max_actor_concurrency`` tasks; once its budget
@@ -735,10 +664,6 @@ class TestExperimentalActorPool(unittest.TestCase):
         # node ids, so register it directly).
         pending, ready_ref, usage = pool._create_actor()
         pool._add_pending_actor(pending, ready_ref, usage, target_node_id="node1")
-        # Fast tasks: keep every slot open despite the pending actor, so two
-        # tasks can be admitted to one actor below.
-        pool.set_average_task_duration(0.0)
-        pool.refresh_actor_state()
 
         pool.on_task_submitted(one_task_many_outputs, _make_bundle(100))
         self._set_outstanding_outputs(pool, one_task_many_outputs, 5)
@@ -825,26 +750,54 @@ class TestExperimentalActorPool(unittest.TestCase):
         submit, completion and status change, so a task shorter than a sizer
         tick still counts. A draining actor is not serving and adds nothing."""
         clock = [100.0]
-        with mock.patch.object(pool_mod.time, "monotonic", lambda: clock[0]):
-            pool = self._create_pool(max_tasks_in_flight=4, max_size=4)
-            a = self._add_ready_actor(pool, node_id="node1")
-            b = self._add_ready_actor(pool, node_id="node2")
-            start = pool.busy_slot_seconds()
+        pool = self._create_pool(
+            max_tasks_in_flight=4, max_size=4, slot_clock=lambda: clock[0]
+        )
+        a = self._add_ready_actor(pool, node_id="node1")
+        b = self._add_ready_actor(pool, node_id="node2")
+        start = pool.busy_slot_seconds()
 
-            # A 0.5s task on a: counted though it starts and ends between reads.
-            pool.on_task_submitted(a, _make_bundle(100))
-            clock[0] += 0.5
-            pool.on_task_completed(a, _make_bundle(100))
-            # Two tasks on b with max_concurrency=1: one slot, for 2s.
-            pool.on_task_submitted(b, _make_bundle(100))
-            pool.on_task_submitted(b, _make_bundle(100))
-            clock[0] += 2.0
-            assert pool.busy_slot_seconds() - start == 2.5
+        # A 0.5s task on a: counted though it starts and ends between reads.
+        pool.on_task_submitted(a, _make_bundle(100))
+        clock[0] += 0.5
+        pool.on_task_completed(a, _make_bundle(100))
+        # Two tasks on b with max_concurrency=1: one slot, for 2s.
+        pool.on_task_submitted(b, _make_bundle(100))
+        pool.on_task_submitted(b, _make_bundle(100))
+        clock[0] += 2.0
+        assert pool.busy_slot_seconds() - start == 2.5
 
-            # Draining b stops its contribution though its tasks still run.
-            pool.begin_draining(b, reason=DrainReason.RESIZE)
-            clock[0] += 3.0
-            assert pool.busy_slot_seconds() - start == 2.5
+        # Draining b stops its contribution though its tasks still run.
+        pool.begin_draining(b, reason=DrainReason.RESIZE)
+        clock[0] += 3.0
+        assert pool.busy_slot_seconds() - start == 2.5
+
+    def test_slot_seconds_integrates_serving_actors(self):
+        """The slot integral counts each serving (IDLE/ACTIVE) actor's slots
+        for the time it serves, so an actor that joins, drains, comes back or
+        leaves between two reads counts for only its part of the interval."""
+        clock = [100.0]
+        pool = self._create_pool(
+            max_tasks_in_flight=4, max_size=4, slot_clock=lambda: clock[0]
+        )
+        self._add_ready_actor(pool, node_id="node1")
+        start = pool.slot_seconds()
+
+        clock[0] += 1.0  # a alone: 1
+        b = self._add_ready_actor(pool, node_id="node2")
+        clock[0] += 2.0  # a and b: 4
+        pool.begin_draining(b, reason=DrainReason.RESIZE)
+        clock[0] += 1.0  # a alone; draining b adds nothing: 1
+        assert pool.slot_seconds() - start == 6.0
+
+        assert pool.reclaim_draining_actors(limit=1) == 1
+        clock[0] += 0.5  # a and b again: 1
+        pool.begin_draining(b, reason=DrainReason.RESIZE)
+        pool._release_running_actor(b)
+        clock[0] += 1.0  # a alone: 1
+        assert pool.slot_seconds() - start == 8.0
+        # Busy time never exceeds capacity: nothing ran.
+        assert pool.busy_slot_seconds() == 0.0
 
     def test_drained_actor_is_killed_even_with_stray_handle(self):
         """A fully drained actor is killed at teardown, not just dereferenced.
@@ -2324,6 +2277,7 @@ def test_slot_usage_counts_output_backpressured_actors_whole():
     pool.alive_actor_states_by_node = lambda: {"node1": states}
     pool.max_actor_concurrency = lambda: 2
     pool.busy_slot_seconds = lambda: 42.0
+    pool.slot_seconds = lambda: 50.0
     op._actor_pool = pool
     op._actor_pull_budget = lambda actor_id: (
         TaskPullRequest.zero()
@@ -2335,9 +2289,12 @@ def test_slot_usage_counts_output_backpressured_actors_whole():
     assert (usage.serving_actors, usage.slots) == (4, 8)
     # blocked_busy holds 3 tasks but has only 2 slots.
     assert (usage.obp_slots, usage.obp_busy_slots) == (4, 2)
-    # busy holds 2 tasks on 2 slots; idle holds none.
-    assert usage.busy_slots == 2
+    # busy holds 2 tasks on 2 slots, blocked_busy 2; idle holds none.
+    assert usage.busy_slots == 4
+    # Only idle's 2 slots can start a task.
+    assert usage.idle_slots == 2
     assert usage.busy_slot_seconds == 42.0
+    assert usage.slot_seconds == 50.0
 
 
 def test_expired_pending_actor_is_released_and_killed(monkeypatch):
@@ -2410,6 +2367,22 @@ def test_input_queue_bytes_by_node_tracks_queued_bundles():
     assert queued is not None
     op._dequeue_bundle_for_dispatch(queued)
     assert op.input_queue_bytes_by_node() == {}
+
+
+@pytest.mark.parametrize("has_on_start", [False, True])
+def test_awaiting_first_input_until_a_bundle_is_queued(has_on_start):
+    """The sizer starts no actors for an op until it is no longer awaiting its
+    first input. That flips when the first bundle is queued for dispatch --
+    the same point ``on_start`` runs, so an op with one has run it by then."""
+    op = _make_actor_op({"num_cpus": 1})
+    calls = []
+    if has_on_start:
+        op._on_start = calls.append
+    assert op.awaiting_first_input()
+
+    op._add_input_inner(_make_bundle(100, node_id="node1"), 0)
+    assert not op.awaiting_first_input()
+    assert len(calls) == int(has_on_start)
 
 
 def test_backpressure_progress_str_reports_blocked_share():

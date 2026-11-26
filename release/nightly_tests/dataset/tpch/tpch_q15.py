@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Max, Sum
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -39,12 +38,8 @@ def main(args):
         start_date = datetime(1996, 1, 1)
         end_date = datetime(1996, 4, 1)
 
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_name", "s_address", "s_phone"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_suppkey", "l_extendedprice", "l_discount", "l_shipdate"]
-        )
+        supplier = load_table("supplier", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         lineitem = lineitem.filter(
             expr=((col("l_shipdate") >= start_date) & (col("l_shipdate") < end_date))
@@ -85,6 +80,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

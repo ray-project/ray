@@ -777,7 +777,11 @@ def _reconstruct_lost_object(
     # A retry of a failed reconstruction attempt reuses the reconstruction plans it served; a fresh failure
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
+    # A plan's trace can stop at a task with a queued reconstruction task and return
+    # no restart tasks, while another plan of the same task reaches one. So each
+    # restart task is re-executed only for the plans whose trace returned it.
     restart_inputs: Dict[str, Optional[RefBundle]] = {}
+    restart_to_plan_ids: Dict[str, Set[str]] = defaultdict(set)
     reconstruction_plan_ids: Set[str] = set()
     try:
         for failed_plan_id in sorted(task.reconstruction_plan_ids) or [None]:
@@ -789,7 +793,9 @@ def _reconstruct_lost_object(
                 failed_plan_id,
                 available_input=available_input,
             )
-            restart_inputs.update(plan_restart_inputs)
+            for restart_id, restart_input in plan_restart_inputs.items():
+                restart_inputs[restart_id] = restart_input
+                restart_to_plan_ids[restart_id].add(reconstruction_plan_id)
             reconstruction_plan_ids.add(reconstruction_plan_id)
     except ValueError as err:
         raise LineageReconstructionError(
@@ -825,15 +831,15 @@ def _reconstruct_lost_object(
         # Clear the completion state of the restart op and everything downstream
         # so a re-injected input can flow through again.
         _clear_downstream_completion_state(topology, restart_op)
+        restart_plan_ids = restart_to_plan_ids[restart_id]
+        restart_plans_str = ", ".join(sorted(restart_plan_ids))
         # If a reconstruction task for this task is already queued, these plans
         # join it.
-        if restart_op.join_queued_reconstruction_task(
-            restart_id, reconstruction_plan_ids
-        ):
+        if restart_op.join_queued_reconstruction_task(restart_id, restart_plan_ids):
             logger.info(
                 "[lineage-reconstruction] Plan(s) %s joined the queued reconstruction task "
                 "of task %s on operator %r.",
-                plans_str,
+                restart_plans_str,
                 restart_id,
                 restart_op.name,
             )
@@ -845,7 +851,7 @@ def _reconstruct_lost_object(
         # Without it the resubmitted bundle is minted a fresh id and the plan never
         # resolves.
         restart_input = restart_op.stamp_reconstruction_task(
-            restart_id, reconstruction_plan_ids, restart_input
+            restart_id, restart_plan_ids, restart_input
         )
         source_op = restart_op.input_dependencies[0]
         topology[source_op].add_output(restart_input)
@@ -855,9 +861,17 @@ def _reconstruct_lost_object(
             restart_id,
             restart_op.name,
             restart_input.size_bytes(),
-            plans_str,
+            restart_plans_str,
         )
 
+    if not restart_task_ids:
+        logger.warning(
+            "Reconstructing lost object for task %s via plan(s) %s from pending "
+            "reconstruction tasks. No task is resubmitted.",
+            task.lineage_task_id,
+            plans_str,
+        )
+        return
     logger.warning(
         "Reconstructing lost object for task %s via plan(s) %s from task(s) %s.",
         task.lineage_task_id,
@@ -1564,5 +1578,10 @@ def format_op_state_summary(
         desc += f"; {suffix}"
     if extra_summary:
         desc += f"; Obj store: {extra_summary}"
+
+    # Lineage reconstruction status; empty unless reconstruction is enabled.
+    reconstruction = op_state.op.lineage_reconstruction_progress_str()
+    if reconstruction:
+        desc += f"; {reconstruction}"
 
     return desc

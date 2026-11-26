@@ -142,21 +142,6 @@ class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
             logger.info(f"Requesting resources: {resources_per_worker} * {num_workers}")
         self._send_resource_request()
 
-    # --------------------------
-    # WorkerGroupCallback
-    # --------------------------
-
-    def after_worker_group_start(self, worker_group: WorkerGroup):
-        """Register the worker group's placement group with the coordinator."""
-        if self._coordinator_client is None:
-            return
-        placement_group = (
-            worker_group.get_worker_group_state().placement_group_handle.placement_group
-        )
-        self._coordinator_client.register_placement_group(
-            placement_group_id=placement_group.id.hex()
-        )
-
     async def before_controller_shutdown(self):
         """Cancel the resource request when the controller shuts down."""
         self._cancel_resource_request()
@@ -164,3 +149,22 @@ class ScalingPolicy(abc.ABC, ControllerCallback, WorkerGroupCallback):
     def before_controller_abort(self):
         """Cancel the resource request when the controller is aborted."""
         self._cancel_resource_request()
+
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
+    def after_worker_group_start(self, worker_group: WorkerGroup):
+        """Register the worker group's placement group with the coordinator."""
+        assert self._coordinator_client is not None
+        placement_group = (
+            worker_group.get_worker_group_state().placement_group_handle.placement_group
+        )
+        self._coordinator_client.register_placement_group(
+            placement_group_id=placement_group.id.hex()
+        )
+
+    def before_worker_group_shutdown(self, worker_group: WorkerGroup):
+        """Unregister the worker group's placement group from the coordinator."""
+        assert self._coordinator_client is not None
+        self._coordinator_client.register_placement_group(placement_group_id=None)

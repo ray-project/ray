@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -30,16 +29,10 @@ def main(args):
         # This implementation keeps a linear join path:
         # customer -> orders -> lineitem.
 
-        # Load all required tables with early projection.
-        customer = load_table("customer", args.sf).select_columns(
-            ["c_custkey", "c_mktsegment"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey", "o_orderdate", "o_shippriority"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_shipdate", "l_extendedprice", "l_discount"]
-        )
+        # Load tables. Projection pushdown derives the columns each read needs.
+        customer = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q3 parameters
         date = datetime(1995, 3, 15)
@@ -47,7 +40,6 @@ def main(args):
 
         # Filter customer by segment.
         customer_filtered = customer.filter(expr=col("c_mktsegment") == segment)
-        customer_filtered = customer_filtered.select_columns(["c_custkey"])
 
         # Filter orders by date
         orders_filtered = orders.filter(expr=col("o_orderdate") < date)
@@ -59,7 +51,7 @@ def main(args):
             num_partitions=200,
             on=("c_custkey",),
             right_on=("o_custkey",),
-        ).select_columns(["o_orderkey", "o_orderdate", "o_shippriority"])
+        )
 
         # Join with lineitem and filter by ship date
         lineitem_filtered = lineitem.filter(expr=col("l_shipdate") > date)
@@ -92,6 +84,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

@@ -15,6 +15,10 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (
     OpPlacementView,
 )
+from ray.data._internal.experimental.execution.sizer.common import (
+    CountByNode,
+    DrainCost,
+)
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
@@ -42,9 +46,9 @@ def build_op_placement_view(
     """
     pool = op.actor_pool
     victim_ids_by_node: Dict[NodeIdStr, List[ActorId]] = {}
-    victim_drain_cost_by_node: Dict[NodeIdStr, List[Tuple[int, int]]] = {}
-    actors_by_node: Dict[NodeIdStr, int] = {}
-    idle_actors_by_node: Dict[NodeIdStr, int] = {}
+    victim_drain_cost_by_node: Dict[NodeIdStr, List[DrainCost]] = {}
+    actors_by_node: CountByNode = {}
+    idle_actors_by_node: CountByNode = {}
     for node_id, states in pool.alive_actor_states_by_node().items():
         non_draining = {
             actor_id: state
@@ -110,13 +114,13 @@ def build_op_placement_view(
 def _rank_victims(
     op: ExperimentalActorPoolMapOperator,
     states: Mapping[ActorId, "_ExperimentalActorState"],
-) -> Tuple[List[ActorId], List[Tuple[int, int]]]:
+) -> Tuple[List[ActorId], List[DrainCost]]:
     """One node's actors, cheapest to drain first, with their drain cost.
 
     Order: fewest tasks in flight, then fewest output blocks the ResourceBank
     still counts against the actor (both must reach 0 before a draining actor
     can exit), then least recently used. Returns ``(actor_ids, costs)`` with
-    ``costs[i] = (tasks_in_flight, unconsumed_outputs)``.
+    ``costs[i]`` the drain cost of ``actor_ids[i]``.
     """
     ranked = sorted(
         (
@@ -129,7 +133,10 @@ def _rank_victims(
     )
     return (
         [actor_id for _, _, _, actor_id in ranked],
-        [(in_flight, unconsumed) for in_flight, unconsumed, _, _ in ranked],
+        [
+            DrainCost(tasks_in_flight=in_flight, unconsumed_outputs=unconsumed)
+            for in_flight, unconsumed, _, _ in ranked
+        ],
     )
 
 

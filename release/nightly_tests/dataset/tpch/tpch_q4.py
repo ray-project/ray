@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Count
 from ray.data.expressions import col
 from common import load_table, parse_tpch_args, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -32,13 +31,9 @@ def main(args):
         # The EXISTS subquery is implemented as a left_semi join, which
         # returns orders that have at least one matching late lineitem.
 
-        # Load tables with early projection.
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_orderpriority", "o_orderdate"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_commitdate", "l_receiptdate"]
-        )
+        # Load tables. Projection pushdown derives the columns each read needs.
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
 
         # Q4 parameters
         date_start = datetime(1993, 7, 1)
@@ -47,12 +42,10 @@ def main(args):
         # Filter orders by date range, then drop o_orderdate (no longer needed).
         orders_filtered = orders.filter(
             expr=(col("o_orderdate") >= date_start) & (col("o_orderdate") < date_end)
-        ).select_columns(["o_orderkey", "o_orderpriority"])
+        )
 
         # Filter lineitem: commitdate < receiptdate (late deliveries).
-        lineitem_late = lineitem.filter(
-            expr=col("l_commitdate") < col("l_receiptdate")
-        ).select_columns(["l_orderkey"])
+        lineitem_late = lineitem.filter(expr=col("l_commitdate") < col("l_receiptdate"))
 
         # Semi-join: keep only orders that have at least one late lineitem.
         ds = orders_filtered.join(
@@ -78,6 +71,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

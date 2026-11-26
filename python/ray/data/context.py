@@ -176,6 +176,24 @@ DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION = env_bool(
     "RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION", True
 )
 
+DEFAULT_PARTIAL_AGGREGATION_MODE = os.environ.get(
+    "RAY_DATA_PARTIAL_AGGREGATION_MODE", "estimate"
+)
+
+DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS = env_integer(
+    "RAY_DATA_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS", 100_000
+)
+
+DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD = env_float(
+    "RAY_DATA_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD", 0.8
+)
+
+DEFAULT_ENABLE_TOP_N_REWRITE = env_bool("RAY_DATA_ENABLE_TOP_N_REWRITE", True)
+
+DEFAULT_TOP_N_REWRITE_MAX_LIMIT = env_integer(
+    "RAY_DATA_TOP_N_REWRITE_MAX_LIMIT", 10_000
+)
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -720,8 +738,9 @@ class DataContext:
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         use_datasource_v2: When True, ``ray.data.read_parquet()``,
-            ``ray.data.read_orc()``, ``ray.data.read_mcap()`` and
-            ``ray.data.read_text()`` route through the DataSourceV2 pipeline.
+            ``ray.data.read_orc()``, ``ray.data.read_mcap()``, ``ray.data.read_csv()``,
+            ``ray.data.read_text()``, ``ray.data.read_json()`` and
+            ``ray.data.read_webdataset()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
@@ -940,6 +959,30 @@ class DataContext:
             ``SHUFFLE_V2`` strategy, e.g. right after a join on those keys.
             Defaults to the ``RAY_DATA_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION``
             environment variable (``True`` when unset).
+        partial_aggregation_mode: Whether the map tasks of a ``SHUFFLE_V2``
+            group-by pre-aggregate their input. ``"estimate"`` (default) makes
+            each map task skip partial aggregation when its group keys are
+            nearly unique, shipping column-pruned rows to the reducers
+            instead. ``"always"`` pre-aggregates in every map task, which
+            turns adaptive skipping off, and ``"never"`` skips it in every map
+            task. Defaults to the ``RAY_DATA_PARTIAL_AGGREGATION_MODE``
+            environment variable.
+        adaptive_partial_aggregation_sample_rows: Number of rows a map task
+            samples, spread across its whole input, to estimate how many
+            distinct keys the input has. Tasks with fewer input rows always
+            aggregate.
+        adaptive_partial_aggregation_unique_ratio_threshold: A map task skips
+            partial aggregation when its estimated distinct keys divided by
+            its input rows is above this ratio.
+        enable_top_n_rewrite: Whether ``sort(...).limit(k)`` runs as a Top-N
+            (local candidate selection plus one global merge) instead of a full
+            sort under the ``SHUFFLE_V2`` strategy. Defaults to the
+            ``RAY_DATA_ENABLE_TOP_N_REWRITE`` environment variable (``True``
+            when unset).
+        top_n_rewrite_max_limit: Largest ``k`` that the Top-N rewrite applies to;
+            a larger limit keeps the full sort. Defaults to the
+            ``RAY_DATA_TOP_N_REWRITE_MAX_LIMIT`` environment variable (10000
+            when unset).
         max_hash_shuffle_aggregators: Maximum number of aggregating actors that can be
             provisioned for hash-shuffle aggregations.
         min_hash_shuffle_aggregator_wait_time_in_s: Minimum time to wait for hash
@@ -1106,6 +1149,20 @@ class DataContext:
     # input is already hash-partitioned on its keys (SHUFFLE_V2 only).
     enable_aggregate_shuffle_elimination: bool = (
         DEFAULT_ENABLE_AGGREGATE_SHUFFLE_ELIMINATION
+    )
+    # Whether TopNRewriteRule turns sort().limit(k) into a Top-N (SHUFFLE_V2
+    # only), and the largest k it applies to.
+    enable_top_n_rewrite: bool = DEFAULT_ENABLE_TOP_N_REWRITE
+    top_n_rewrite_max_limit: int = DEFAULT_TOP_N_REWRITE_MAX_LIMIT
+
+    # Whether SHUFFLE_V2 group-by map tasks pre-aggregate (see the Args
+    # docstring).
+    partial_aggregation_mode: str = DEFAULT_PARTIAL_AGGREGATION_MODE
+    adaptive_partial_aggregation_sample_rows: int = (
+        DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_SAMPLE_ROWS
+    )
+    adaptive_partial_aggregation_unique_ratio_threshold: float = (
+        DEFAULT_ADAPTIVE_PARTIAL_AGGREGATION_UNIQUE_RATIO_THRESHOLD
     )
 
     ################################################################

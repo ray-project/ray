@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import functools
 import logging
+import time
 from collections import Counter
-from typing import TYPE_CHECKING, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, TypeVar, cast
 
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.util import locality_string, memory_string
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
@@ -16,20 +17,49 @@ from ray.data._internal.experimental.execution.operators.actor_pool_models impor
     PlacedScalingRequest,
     ScaleUpRequest,
 )
+from ray.data._internal.experimental.execution.sizer.common import (
+    ExecutionResourcesByNode,
+)
 from ray.data._internal.experimental.execution.sizer.metrics import SizerMetrics
 from ray.data._internal.experimental.execution.sizer.models import (
-    PerOpSizingRequest,
-    PlacedSizingRequest,
+    ClusterStateSnapshot,
+    PlacedRequests,
 )
 
 if TYPE_CHECKING:
-    from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
     from ray.data._internal.execution.streaming_executor_state import Topology
     from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
         ActorPlacementStrategy,
     )
+    from ray.data._internal.experimental.execution.sizer.op_status import OpStatus
+    from ray.data._internal.experimental.execution.sizer.policy.states import (
+        OpDecision,
+        SizerPhase,
+    )
 
 logger = logging.getLogger(__name__)
+
+_F = TypeVar("_F", bound=Callable[..., Any])
+
+
+def timed(phase: str) -> Callable[[_F], _F]:
+    """Method decorator: add each call's wall time to ``self._telemetry``
+    under ``phase``. Calls add up until the next ``record_tick`` emits and
+    clears them, so a method that runs on every scheduling-loop step reports
+    its total since the last tick."""
+
+    def decorate(fn: _F) -> _F:
+        @functools.wraps(fn)
+        def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+            t0 = time.perf_counter()
+            try:
+                return fn(self, *args, **kwargs)
+            finally:
+                self._telemetry.add_timing_phase(phase, time.perf_counter() - t0)
+
+        return cast(_F, wrapper)
+
+    return decorate
 
 
 class SizerTelemetry:
@@ -40,41 +70,99 @@ class SizerTelemetry:
     def __init__(self, dataset_id: str):
         self._dataset_id = dataset_id
         self._metrics = SizerMetrics(dataset_id)
-        # Last pool size logged by the terminal-release branch, per op.
-        self._release_logged_size: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Last summaries logged, to suppress repeats.
-        self._last_request_summary: Optional[str] = None
         self._last_placement_summary: Optional[str] = None
         self._last_capacity_summary: Optional[str] = None
         self._last_shortfall_summary: Optional[str] = None
         # Cumulative cross-node input bytes per op at the last tick, to log the
         # per-tick delta (see _log_locality).
         self._last_remote_bytes: Dict[ExperimentalActorPoolMapOperator, int] = {}
+        # Wall time per phase since the last ``record_tick`` (see ``timed``).
+        self._timings: Dict[str, float] = {}
+        # Ops warned about as unplaceable, so each is warned about once until
+        # it can be placed again (see ``warn_unplaceable_ops``).
+        self._unplaceable_ops: Set[ExperimentalActorPoolMapOperator] = set()
 
-    # --- scale_how_many ------------------------------------------------------
+    def add_timing_phase(self, phase: str, seconds: float) -> None:
+        """Add ``seconds`` to ``phase``'s total for the current tick."""
+        self._timings[phase] = self._timings.get(phase, 0.0) + seconds
 
-    def log_completed_release(
-        self, op: ExperimentalActorPoolMapOperator, num_actors_to_release: int
+    # --- how-many pass -------------------------------------------------------
+
+    def log_decisions(
+        self,
+        *,
+        phase: "SizerPhase",
+        decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
+        statuses: Dict[ExperimentalActorPoolMapOperator, "OpStatus"],
     ) -> None:
-        if self._release_logged_size.get(op) != num_actors_to_release:
-            logger.debug(
-                "OperatorSizer: releasing %d actors of %s (completed)",
-                num_actors_to_release,
-                op.name,
+        """Log, once per tick, why each op is sized the way it is: the
+        phase, and each op's status, rule, delta and reason. The delta is
+        what fits after the ledger; ``no room for n`` is the part that did
+        not."""
+        parts = []
+        for op, op_decision in decisions.items():
+            status = statuses[op].kind.name.lower()
+            rule = op_decision.rule.name.lower()
+            request = op_decision.request
+            no_room = f" (no room for {op_decision.unmet})" if op_decision.unmet else ""
+            if request is None:
+                parts.append(f"{op.name}[{status}]: {rule}{no_room}")
+                continue
+            parts.append(
+                f"{op.name}[{status}]: {rule} {request.delta:+d} "
+                f"({request.reason}){no_room}"
             )
-            self._release_logged_size[op] = num_actors_to_release
+        logger.debug("OperatorSizer tick: phase=%s | %s", phase.value, "; ".join(parts))
 
-    def log_request_summary(
-        self, request: Dict[ExperimentalActorPoolMapOperator, "ActorPoolScalingRequest"]
+    def warn_unplaceable_ops(
+        self,
+        *,
+        topology: "Topology",
+        snapshot: ClusterStateSnapshot,
     ) -> None:
-        if not request:
+        """Warn when an op has queued input and no actors, and no node in
+        this dataset's slice can hold one of its actors. Without this, the
+        pipeline stalls with no error: the sizer grants the op nothing, and
+        nothing else reports why.
+
+        No node can hold an actor when none matches the op's label selector,
+        or when every matching node's slice is smaller than one actor. Ops
+        placed through a placement group are skipped, since Ray core places
+        them. Each op is warned about once until it can be placed again.
+        """
+        if not snapshot.reserved_by_node:
+            # No slice yet (for example, at startup): every op looks
+            # unplaceable, and nothing is wrong.
             return
-        summary = "; ".join(
-            f"{op.name}: {req.delta:+d} ({req.reason})" for op, req in request.items()
-        )
-        if summary != self._last_request_summary:
-            logger.debug("OperatorSizer: requests %s", summary)
-            self._last_request_summary = summary
+        for op, nodes in snapshot.schedulable_nodes_by_op.items():
+            constraint = op.placement_constraint()
+            stuck = (
+                not nodes
+                and not constraint.is_pg_managed
+                and not op.has_completed()
+                and op.actor_pool.serving_size() == 0
+                and topology[op].total_enqueued_input_blocks() > 0
+            )
+            if not stuck:
+                self._unplaceable_ops.discard(op)
+                continue
+            if op in self._unplaceable_ops:
+                continue
+            self._unplaceable_ops.add(op)
+            logger.warning(
+                "OperatorSizer: %s has %d queued input block(s) and no actors, "
+                "and none of the %d node(s) in this dataset's slice can hold "
+                "one of its actors (label_selector=%s, per actor: %s). Check "
+                "that the cluster's nodes carry the labels the op selects and "
+                "have room for one actor; until then, the pipeline cannot make "
+                "progress.",
+                op.name,
+                topology[op].total_enqueued_input_blocks(),
+                len(snapshot.reserved_by_node),
+                constraint.label_selector,
+                op.actor_pool.per_actor_resource_usage(),
+            )
 
     # --- scale_where ---------------------------------------------------------
 
@@ -85,7 +173,7 @@ class SizerTelemetry:
         num_placed: int,
         num_new: int,
         num_reclaimed: int,
-        free: Dict[NodeIdStr, ExecutionResources],
+        free: ExecutionResourcesByNode,
         per_actor: ExecutionResources,
     ) -> None:
         total_free = ExecutionResources.zero()
@@ -109,8 +197,8 @@ class SizerTelemetry:
 
     def log_placement(
         self,
-        alloc: Dict[NodeIdStr, ExecutionResources],
-        free: Dict[NodeIdStr, ExecutionResources],
+        alloc: ExecutionResourcesByNode,
+        free: ExecutionResourcesByNode,
         placed: Dict[ExperimentalActorPoolMapOperator, "PlacedScalingRequest"],
         placement: "ActorPlacementStrategy",
     ) -> None:
@@ -131,7 +219,9 @@ class SizerTelemetry:
             where = dict(Counter(req.nodes)) if req.nodes else "untargeted"
             if isinstance(req, ScaleUpRequest):
                 via = breakdown.get(op.id)
-                via_str = f" via={via[0]}collocate/{via[1]}spread" if via else ""
+                via_str = (
+                    f" via={via.collocated}collocate/{via.spread}spread" if via else ""
+                )
                 reclaim_str = (
                     f" reclaim={req.num_to_reclaim}" if req.num_to_reclaim else ""
                 )
@@ -155,8 +245,8 @@ class SizerTelemetry:
 
     @staticmethod
     def _capacity_map(
-        alloc: Dict[NodeIdStr, ExecutionResources],
-        free: Dict[NodeIdStr, ExecutionResources],
+        alloc: ExecutionResourcesByNode,
+        free: ExecutionResourcesByNode,
     ) -> str:
         """Per-node free/allocated, compact enough for one log line."""
         parts = []
@@ -181,72 +271,61 @@ class SizerTelemetry:
 
     def record_tick(
         self,
-        topology: "Topology",
-        how_many: PerOpSizingRequest,
-        where: PlacedSizingRequest,
         *,
-        prepare_s: float,
-        cross_op_optimize_s: float,
-        per_op_how_many_s: float,
-        per_op_where_s: float,
-        apply_s: float,
-        e2e_s: float,
+        topology: "Topology",
+        decisions: Dict[ExperimentalActorPoolMapOperator, "OpDecision"],
+        where: PlacedRequests,
     ) -> None:
-        """Close out one evaluation.
+        """Close out one evaluation: emit and clear the phase timings
+        collected since the last tick, then the actor deltas.
 
-        The phase histograms observe every step, including ones that sized
-        nothing: the optimizer does most of its work on those, so durations
-        recorded only on sizing ticks would miss it. The verbose roll-up is
-        logged only when something actually changed.
+        The phase histograms observe every tick, including ones that sized
+        nothing. The verbose roll-up is logged only when something actually
+        changed.
         """
-        for phase, seconds in (
-            ("prepare", prepare_s),
-            ("cross_op_optimize", cross_op_optimize_s),
-            ("per_op_how_many", per_op_how_many_s),
-            ("per_op_where", per_op_where_s),
-            ("apply", apply_s),
-            ("e2e", e2e_s),
-        ):
+        timings, self._timings = self._timings, {}
+        for phase, seconds in timings.items():
             self._metrics.record_tick_duration(phase, seconds)
 
-        if not how_many.request and not where.request:
+        decided = {
+            op: d.request.delta for op, d in decisions.items() if d.request is not None
+        }
+        placed = {op: req.delta for op, req in where.by_op.items()}
+        if not decided and not placed:
             return
 
-        for phase, placed in (
-            ("per_op_how_many", how_many.request),
-            ("per_op_where", where.request),
+        for phase, deltas in (
+            ("per_op_how_many", decided),
+            ("per_op_where", placed),
         ):
-            for op, r in placed.items():
+            for op, delta in deltas.items():
                 self._metrics.record_actor_delta(
-                    operator=topology[op].op_tag(), phase=phase, delta=r.delta
+                    operator=topology[op].op_tag(), phase=phase, delta=delta
                 )
 
         up = down = 0
         per_op = []
-        for op, r in where.request.items():
-            if not r.delta:
+        for op, delta in placed.items():
+            if not delta:
                 continue
-            per_op.append(f"{op.name}:{r.delta:+d}")
-            if r.delta > 0:
-                up += r.delta
+            per_op.append(f"{op.name}:{delta:+d}")
+            if delta > 0:
+                up += delta
             else:
-                down -= r.delta
+                down -= delta
         nodes = {
-            node for r in where.request.values() if r.delta > 0 for node in r.nodes
+            node for req in where.by_op.values() if req.delta > 0 for node in req.nodes
         }
         logger.debug(
-            "OperatorSizer tick: e2e=%.1fms (cross_op_optimize=%.1f "
-            "per_op_how_many=%.1f per_op_where=%.1f apply=%.1f) | "
+            "OperatorSizer tick: (%s ms) | "
             "scale_up=+%d scale_down=-%d across %d ops "
             "[%s]; placed on %d nodes",
-            e2e_s * 1e3,
-            cross_op_optimize_s * 1e3,
-            per_op_how_many_s * 1e3,
-            per_op_where_s * 1e3,
-            apply_s * 1e3,
+            " ".join(
+                f"{phase}={seconds * 1e3:.1f}" for phase, seconds in timings.items()
+            ),
             up,
             down,
-            len(where.request),
+            len(where.by_op),
             ", ".join(per_op),
             len(nodes),
         )

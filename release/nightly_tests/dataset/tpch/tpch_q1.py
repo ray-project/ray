@@ -2,7 +2,6 @@ import ray
 from ray.data.aggregate import Count, Mean, Sum
 from ray.data.expressions import col
 from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
-from benchmark import benchmark_job_config
 
 
 def main(args):
@@ -30,17 +29,6 @@ def main(args):
         )
 
         # Drop original DECIMALs
-        ds = ds.select_columns(
-            [
-                "l_returnflag",
-                "l_linestatus",
-                "l_quantity_f",
-                "l_extendedprice_f",
-                "l_discount_f",
-                "disc_price",
-                "charge",
-            ]
-        )
 
         _ = (
             ds.groupby(["l_returnflag", "l_linestatus"])
@@ -79,6 +67,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    ray.init(job_config=benchmark_job_config())
+    ray.init()
     args = parse_tpch_args()
     main(args)

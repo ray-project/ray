@@ -337,14 +337,6 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         """
         self._map_task_kwargs_fns.append(map_task_kwargs_fn)
 
-    def awaiting_on_start(self) -> bool:
-        """Whether an ``on_start`` callback is registered but has not run yet.
-
-        Until it runs, the serialized ``MapTransformer`` would miss the state
-        it sets (e.g. Iceberg's table metadata from ``on_write_start``).
-        """
-        return self._on_start is not None and not self._on_start_called
-
     def _notify_first_input(self, bundled_input: RefBundle) -> None:
         """Invoke on_start callback with schema if registered and not yet invoked.
 
@@ -711,6 +703,20 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
         child. ``displaced`` is an earlier copy of the same slot it replaced
         (a re-run re-produced it), which no consumer will read."""
 
+    def _context_task_idx(self, inputs: Optional[RefBundle]) -> int:
+        """The ``TaskContext.task_idx`` of the task about to be submitted on ``inputs``.
+
+        A reconstruction task reuses the index of the task it re-runs. Output file
+        names, random seeds and ``monotonically_increasing_id`` derive from this
+        index, so a re-run overwrites and reproduces the original rather than
+        writing a second file or drawing different values. The operator's own
+        bookkeeping keeps using the fresh ``_next_data_task_idx``.
+        """
+        stamp = inputs.reconstruction_stamp if inputs is not None else None
+        if stamp is not None:
+            return self._task_index_of(stamp.lineage_task_id)
+        return self._next_data_task_idx
+
     def _submit_data_task(
         self,
         gen: ObjectRefGenerator,
@@ -895,6 +901,7 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
                     self._release_reconstruction_blocks_to_child(
                         lineage_task_id, reconstruction_plan_ids, task_index
                     )
+                    self._num_reconstruction_tasks_finished += 1
                     for reconstruction_plan_id in sorted_reconstruction_plan_ids:
                         lineage_tracker.register_task_complete(
                             lineage_task_id,
@@ -984,6 +991,21 @@ class MapOperator(LineageReconstructionMixin, PhysicalOperator, ABC):
     def has_next(self) -> bool:
         assert self._started
         return self._output_queue.has_next()
+
+    def lineage_reconstruction_progress_str(self) -> str:
+        if self._lineage_tracker is None:
+            return ""
+        num_queued = len(self._batched_plans)
+        num_running = sum(
+            1 for task in self._data_tasks.values() if task.reconstruction_plan_ids
+        )
+        num_finished = self._num_reconstruction_tasks_finished
+        if not (num_queued or num_running or num_finished):
+            return ""
+        return (
+            f"Reconstruction: {num_queued} queued, {num_running} running, "
+            f"{num_finished} finished"
+        )
 
     def _get_next_inner(self) -> RefBundle:
         assert self._started
