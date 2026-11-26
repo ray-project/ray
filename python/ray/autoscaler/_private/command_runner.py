@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import click
 
 from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+from ray.autoscaler._private.auth_token import AUTH_TOKEN_REMOTE_PATH
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,
@@ -604,22 +605,9 @@ class DockerCommandRunner(CommandRunnerInterface):
                 # Without it, docker copies the source *into* the target
                 host_destination += "/."
 
-            # This path may not exist inside the container. This ensures
-            # that the path is created!
-            prefix = with_docker_exec(
-                [
-                    "mkdir -p {}".format(
-                        os.path.dirname(self._docker_expand_user(target))
-                    )
-                ],
-                container_name=self.container_name,
-                with_interactive=is_using_login_shells(),
-                docker_cmd=self.docker_cmd,
-            )[0]
-
             self.ssh_command_runner.run(
                 "{} && rsync -e '{} exec -i' -avz {} {}:{}".format(
-                    prefix,
+                    self._create_parent_in_container_cmd(target),
                     self.docker_cmd,
                     host_destination,
                     self.container_name,
@@ -627,6 +615,16 @@ class DockerCommandRunner(CommandRunnerInterface):
                 ),
                 silent=is_rsync_silent(),
             )
+
+    def _create_parent_in_container_cmd(self, target: str) -> str:
+        """Return a host command that creates the parent directory of
+        `target` in the container, since rsync doesn't create it."""
+        return with_docker_exec(
+            ["mkdir -p {}".format(os.path.dirname(self._docker_expand_user(target)))],
+            container_name=self.container_name,
+            with_interactive=is_using_login_shells(),
+            docker_cmd=self.docker_cmd,
+        )[0]
 
     def run_rsync_down(self, source, target, options=None):
         options = options or {}
@@ -794,7 +792,15 @@ class DockerCommandRunner(CommandRunnerInterface):
     def run_init(
         self, *, as_head: bool, file_mounts: Dict[str, str], sync_run_yet: bool
     ):
-        BOOTSTRAP_MOUNTS = ["~/ray_bootstrap_config.yaml", "~/ray_bootstrap_key.pem"]
+        # Files copied into the container instead of bind mounted. A bind
+        # mount shows the host file's owner, the host's SSH user, who can have
+        # another UID than the container user. A copy made in the container
+        # belongs to the container user. The owner-only auth token needs that.
+        BOOTSTRAP_MOUNTS = [
+            "~/ray_bootstrap_config.yaml",
+            "~/ray_bootstrap_key.pem",
+            AUTH_TOKEN_REMOTE_PATH,
+        ]
 
         specific_image = self.docker_config.get(
             f"{'head' if as_head else 'worker'}_image", self.docker_config.get("image")
@@ -885,7 +891,7 @@ class DockerCommandRunner(CommandRunnerInterface):
             self.run(start_command, run_env="host")
             docker_run_executed = True
 
-        # Explicitly copy in ray bootstrap files.
+        # Explicitly copy in ray bootstrap files and the auth token.
         for mount in BOOTSTRAP_MOUNTS:
             if mount in file_mounts:
                 if not sync_run_yet:
@@ -894,7 +900,8 @@ class DockerCommandRunner(CommandRunnerInterface):
                     # is called before the first `file_sync` happens
                     self.run_rsync_up(file_mounts[mount], mount)
                 self.ssh_command_runner.run(
-                    "rsync -e '{cmd} exec -i' -avz {src} {container}:{dst}".format(
+                    "{mkdir} && rsync -e '{cmd} exec -i' -avz {src} {container}:{dst}".format(
+                        mkdir=self._create_parent_in_container_cmd(mount),
                         cmd=self.docker_cmd,
                         src=os.path.join(
                             self._get_docker_host_mount_location(
