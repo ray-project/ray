@@ -591,7 +591,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             input_blocks = [entry.ref for entry in bundle.blocks]
             self._actor_pool.on_task_submitted(actor, input_bundle=bundle)
 
-            ctx = self._create_task_context(actor)
+            ctx = self._create_task_context(actor, bundle)
             actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
@@ -663,10 +663,12 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             self._metrics.bytes_remote_inputs_read += remote_bytes
             self._metrics.num_remote_blocks_read += remote_blocks
 
-    def _create_task_context(self, actor: ActorHandle) -> TaskContext:
-        """Build the ``TaskContext`` for a task submitted to ``actor``."""
+    def _create_task_context(
+        self, actor: ActorHandle, inputs: Optional[RefBundle] = None
+    ) -> TaskContext:
+        """Build the ``TaskContext`` for a task submitted to ``actor`` on ``inputs``."""
         return TaskContext(
-            task_idx=self._next_data_task_idx,
+            task_idx=self._context_task_idx(inputs),
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
             rerun_policy=self._actor_rerun_policy(),

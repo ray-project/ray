@@ -685,6 +685,10 @@ def test_leases_rescheduling_during_draining(ray_start_cluster):
     assert ray.get(obj_ref) == worker2.node_id
 
 
+_FAKE_MONOTONIC_START_S = 1000.0
+_FAKE_WALL_EPOCH_S = 1_700_000_000.0
+
+
 class _FakeNode:
     """Minimal stand-in for Node to exercise _drain_node_before_shutdown."""
 
@@ -722,14 +726,18 @@ def _run_drain(
         ray_node.ray_constants, "RAY_GRACEFUL_SHUTDOWN_POLL_INTERVAL_S", poll_interval
     )
 
-    clock = {"t": 1000.0}
+    clock = {"t": _FAKE_MONOTONIC_START_S}
     sleeps = []
 
     def fake_sleep(s):
         sleeps.append(s)
         clock["t"] += s
 
+    # The wall clock moves in lockstep with the monotonic clock, offset by a
+    # fixed epoch, so tests can compare the end of the wait to the drain
+    # deadline that was sent to the GCS.
     monkeypatch.setattr(ray_node.time, "monotonic", lambda: clock["t"])
+    monkeypatch.setattr(ray_node.time, "time", lambda: _FAKE_WALL_EPOCH_S + clock["t"])
     monkeypatch.setattr(ray_node.time, "sleep", fake_sleep)
 
     gcs = mock.MagicMock()
@@ -754,13 +762,15 @@ def _run_drain(
     return gcs, sleeps, polls["n"]
 
 
+def _fake_wall_ms_after(sleeps):
+    return (_FAKE_WALL_EPOCH_S + _FAKE_MONOTONIC_START_S + sum(sleeps)) * 1000
+
+
 def test_drain_marks_node_draining_then_polls(monkeypatch):
     node_id = ray.NodeID.from_random().hex()
-    before_ms = int(time.time() * 1000)
     gcs, sleeps, polls = _run_drain(
         monkeypatch, timeout_s=5.0, node_id=node_id, raylet_dead_after_polls=None
     )
-    after_ms = int(time.time() * 1000)
 
     gcs.drain_node.assert_called_once()
     args = gcs.drain_node.call_args.args
@@ -768,13 +778,77 @@ def test_drain_marks_node_draining_then_polls(monkeypatch):
     # yields a nil id that the GCS silently accepts without draining the raylet.
     assert args[0] == node_id
     assert args[1] == autoscaler_pb2.DrainNodeReason.DRAIN_NODE_REASON_PREEMPTION
-    assert before_ms + 5000 <= args[3] <= after_ms + 5000
+    assert args[3] == int((_FAKE_WALL_EPOCH_S + _FAKE_MONOTONIC_START_S) * 1000) + 5000
     # The drain RPC must be bounded so a hung/unreachable GCS can't block the
     # SIGTERM handler and delay teardown.
     assert gcs.drain_node.call_args.kwargs["timeout"] == 5.0
-    # Raylet never exits -> we poll and wait up to (not beyond) the cap.
+    # Raylet never exits -> we poll up to the cap, then wait only the small
+    # margin that puts us past the drain deadline.
     assert polls > 1
-    assert sum(sleeps) == pytest.approx(5.0)
+    assert sum(sleeps) == pytest.approx(5.0 + ray_node._DRAIN_DEADLINE_MARGIN_MS / 1000)
+
+
+@pytest.mark.parametrize("timeout_s", [0.3, 1.0, 5.0, 30.0])
+@pytest.mark.parametrize("poll_interval", [0.001, 0.1, 0.5, 7.0])
+def test_drain_timeout_kills_only_after_deadline(monkeypatch, timeout_s, poll_interval):
+    # Regression test for https://github.com/ray-project/ray/issues/68304. The
+    # raylet records the node death as preempted only if the drain deadline is
+    # strictly in the past (in whole milliseconds) when it receives SIGTERM.
+    # If the node never goes idle, the wait must therefore end strictly after
+    # the deadline that was sent to the GCS, never in the same millisecond.
+    gcs, sleeps, _ = _run_drain(
+        monkeypatch,
+        timeout_s=timeout_s,
+        node_id=ray.NodeID.from_random().hex(),
+        poll_interval=poll_interval,
+    )
+    deadline_timestamp_ms = gcs.drain_node.call_args.args[3]
+    raylet_now_ms = int(_fake_wall_ms_after(sleeps))
+    assert deadline_timestamp_ms < raylet_now_ms
+    # ...but not by much more than the margin.
+    assert raylet_now_ms <= deadline_timestamp_ms + ray_node._DRAIN_DEADLINE_MARGIN_MS
+
+
+def test_drain_early_exit_does_not_wait_for_deadline(monkeypatch):
+    # When the raylet finishes draining on its own, it already recorded the
+    # preemption from the drain request, so there is no reason to wait.
+    gcs, sleeps, _ = _run_drain(
+        monkeypatch,
+        timeout_s=30.0,
+        node_id=ray.NodeID.from_random().hex(),
+        raylet_dead_after_polls=2,
+    )
+    assert _fake_wall_ms_after(sleeps) < gcs.drain_node.call_args.args[3]
+
+
+@pytest.mark.parametrize(
+    "now_offset_ms,expected_sleep_s",
+    [
+        (-500, 0.51),  # Before the deadline: sleep up to deadline + margin.
+        (0, 0.01),  # At the deadline: sleep only the margin.
+        (5, 0.005),
+        (11, None),  # Already past deadline + margin: don't sleep.
+        (1000, None),
+        (-10_000_000, 1.0),  # Wall clock jumped back: the wait is capped.
+    ],
+)
+def test_wait_until_past_drain_deadline(monkeypatch, now_offset_ms, expected_sleep_s):
+    deadline_timestamp_ms = 1_700_000_000_000
+    monkeypatch.setattr(
+        ray_node.time,
+        "time",
+        lambda: (deadline_timestamp_ms + now_offset_ms) / 1000,
+    )
+    slept = []
+    monkeypatch.setattr(ray_node.time, "sleep", lambda s: slept.append(s))
+
+    ray_node._wait_until_past_drain_deadline(deadline_timestamp_ms)
+
+    if expected_sleep_s is None:
+        assert slept == []
+    else:
+        # Float seconds near the epoch carry ~1e-7 s of rounding error.
+        assert slept == [pytest.approx(expected_sleep_s, abs=1e-5)]
 
 
 def test_drain_exits_early_when_raylet_self_terminates(monkeypatch):

@@ -2257,5 +2257,49 @@ TEST_F(CoreWorkerTest, LateLocationReportForFreedObjectFreesThatCopy) {
   EXPECT_EQ(local_raylet_client_->free_local_objects_batches, (std::vector<int>{1}));
 }
 
+// Tests that a primary-moved report makes the consumer's node the primary copy, so
+// losing the producer's node neither unpins the object nor starts its recovery.
+TEST_F(CoreWorkerTest, PrimaryMovedReportMovesThePrimaryCopy) {
+  const NodeID producer_node_id = NodeID::FromRandom();
+  const NodeID consumer_node_id = NodeID::FromRandom();
+  auto object_id = ObjectID::FromRandom();
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+  reference_counter_->AddOwnedObject(object_id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     /*add_local_ref=*/true,
+                                     /*pinned_at_node_id=*/producer_node_id);
+
+  rpc::UpdateObjectLocationBatchRequest request;
+  request.set_intended_worker_id(core_worker_->GetWorkerID().Binary());
+  request.set_node_id(consumer_node_id.Binary());
+  auto *update = request.add_object_location_updates();
+  update->set_object_id(object_id.Binary());
+  update->set_plasma_location_update(rpc::ObjectPlasmaLocationUpdate::ADDED);
+  update->set_primary_moved_to_node_id(consumer_node_id.Binary());
+  rpc::UpdateObjectLocationBatchReply reply;
+  core_worker_->HandleUpdateObjectLocationBatch(
+      request, &reply, [](Status, std::function<void()>, std::function<void()>) {});
+
+  bool owned_by_us = false;
+  bool spilled = false;
+  NodeID pinned_at;
+  ASSERT_TRUE(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
+      object_id, &owned_by_us, &pinned_at, &spilled));
+  EXPECT_EQ(pinned_at, consumer_node_id);
+
+  reference_counter_->ResetObjectsOnRemovedNode(producer_node_id);
+  ASSERT_TRUE(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
+      object_id, &owned_by_us, &pinned_at, &spilled));
+  EXPECT_EQ(pinned_at, consumer_node_id);
+  EXPECT_TRUE(reference_counter_->FlushObjectsToRecover().empty());
+
+  reference_counter_->RemoveLocalReference(object_id, nullptr);
+}
+
 }  // namespace core
 }  // namespace ray

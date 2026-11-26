@@ -49,8 +49,7 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
     )
     task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
-        description="The task type to use. If not specified, will use "
-        "'generate' by default.",
+        description="The task type to use: 'generate' (default) or 'score'.",
     )
     task_kwargs: Dict[str, Any] = Field(
         default_factory=dict,
@@ -248,6 +247,8 @@ def build_sglang_engine_processor(
             e,
         )
         hf_config = None
+
+    task_cls.validate_model(config, hf_config)
 
     architectures = getattr(hf_config, "architectures", [])
     architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
