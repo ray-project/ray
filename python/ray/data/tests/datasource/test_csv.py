@@ -269,6 +269,25 @@ def test_read_csv_v2_rejects_a_quoted_value_split_across_chunks(
     assert rows == [{"text": "first\nsecond"}, {"text": "plain"}]
 
 
+def test_read_csv_v2_preserves_three_quotes_when_double_quote_is_disabled(
+    ray_start_regular_shared, tmp_path, csv_v2_small_chunks, monkeypatch
+):
+    head = b'id,text\n1,"""\n'
+    path = tmp_path / "quotes.csv"
+    path.write_bytes(head + b"2,plain\n")
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+    monkeypatch.setenv("RAY_DATA_CSV_HEADER_NUM_ACTORS", "0")
+
+    rows = ray.data.read_csv(
+        str(path),
+        partitioning=None,
+        parse_options=pcsv.ParseOptions(double_quote=False),
+    ).take_all()
+
+    # The first two quotes open and close the field. The third is literal.
+    assert sorted((row["id"], row["text"]) for row in rows) == [(1, '"'), (2, "plain")]
+
+
 def test_read_csv_v2_preserve_order_keeps_chunks_in_order(
     ray_start_regular_shared, tmp_path, csv_v2_small_chunks, restore_data_context
 ):

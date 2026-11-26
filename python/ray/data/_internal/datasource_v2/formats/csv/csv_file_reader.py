@@ -34,6 +34,12 @@ def csv_file_format(
 # Chunk metadata key for a split file's column names, read from its header.
 COLUMN_NAMES_KEY = "column_names"
 
+_QUOTE_SCAN_BUFFER_BYTES = 64 * KiB
+_MULTILINE_CSV_HINT = (
+    "Pass parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) "
+    "to read the file without byte-range splitting."
+)
+
 
 def has_header(read_options: pcsv.ReadOptions) -> bool:
     """Whether a CSV file's first line names its columns."""
@@ -49,9 +55,11 @@ def _chunk_ends_in_quoted_value(
     quote state. An odd run toggles it at a field's start, or leaves it outside
     otherwise. The latter determines the answer without scanning earlier bytes.
 
+    Files with an escape character are read whole and bypass this check.
+
     Args:
         lines: The chunk's newline-aligned bytes.
-        parse_options: The CSV delimiter, quoting and quote-escaping settings.
+        parse_options: The CSV delimiter, quote character and doubled-quote settings.
 
     Returns:
         Whether the chunk ends before its quoted field closes.
@@ -65,7 +73,7 @@ def _chunk_ends_in_quoted_value(
     toggled = False
     end = len(lines)
     while end:
-        start = max(0, end - 64 * KiB)
+        start = max(0, end - _QUOTE_SCAN_BUFFER_BYTES)
         block = lines[start:end].tobytes()
         if double_quote and quote not in block.replace(quote * 2, b""):
             # Every quote run is even, so this buffer preserves quote state.
@@ -85,7 +93,7 @@ def _chunk_ends_in_quoted_value(
             # until its start is known, without copying the whole chunk.
             while first == 0 and start > 0 and lines[start - 1] == quote_byte:
                 end = start
-                start = max(0, end - 64 * KiB)
+                start = max(0, end - _QUOTE_SCAN_BUFFER_BYTES)
                 block = lines[start:end].tobytes()
                 prefix = block.rstrip(quote)
                 run_length += len(block) - len(prefix)
@@ -142,9 +150,7 @@ def invalid_csv_chunk_error(path: str, error: Exception) -> ValueError:
         message += (
             "The file is split at newline bytes, so a newline inside a quoted or "
             "escaped value that the piece can't see can cause a row with a "
-            "different number of columns: pass "
-            "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
-            "read each file whole. "
+            f"different number of columns. {_MULTILINE_CSV_HINT} "
         )
     return ValueError(message + "See read_csv() documentation for more details.")
 
@@ -231,9 +237,7 @@ class CsvFileReader(LineChunkableFileReader):
         ):
             raise ValueError(
                 f"A chunk of CSV file {fragment_to_read.unit.source!r} ends inside "
-                "a quoted value. Pass "
-                "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) "
-                "to read the file without byte-range splitting."
+                f"a quoted value. {_MULTILINE_CSV_HINT}"
             )
         return lines
 

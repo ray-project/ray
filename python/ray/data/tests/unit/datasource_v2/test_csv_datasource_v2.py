@@ -32,6 +32,7 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
+    _QUOTE_SCAN_BUFFER_BYTES,
     csv_file_format,
     invalid_csv_chunk_error,
 )
@@ -427,11 +428,20 @@ def test_rejects_a_chunk_ending_inside_a_quoted_value(
     assert table.column("text").to_pylist() == expected
 
 
-@pytest.mark.parametrize("quote_char", ['"', "'", False])
+@pytest.mark.parametrize(
+    "quote_char,values",
+    [
+        pytest.param('"', ['5" pipe', "5' pipe", "plain"], id="double_quotes"),
+        pytest.param("'", ['5" pipe', "5' pipe", "plain"], id="single_quotes"),
+        pytest.param(
+            False, ['5" pipe', "5' pipe", '"unfinished', "plain"], id="disabled"
+        ),
+    ],
+)
 def test_split_files_preserve_quotes_in_unquoted_values(
-    tmp_path, small_chunks, quote_char
+    tmp_path, small_chunks, quote_char, values
 ):
-    values = ['5" pipe', "5' pipe", "plain"] * 40
+    values = values * 40
     path = _write(tmp_path / "a.csv", "text\n" + "\n".join(values))
 
     table = _read_all(
@@ -443,27 +453,6 @@ def test_split_files_preserve_quotes_in_unquoted_values(
     )
 
     assert table.column("text").to_pylist() == values
-
-
-def test_split_file_preserves_three_quotes_when_double_quote_is_disabled(monkeypatch):
-    head = b'id,text\n1,"""\n'
-    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
-    filesystem = pa.fs._MockFileSystem()
-    path = "quotes.csv"
-    with filesystem.open_output_stream(path) as stream:
-        stream.write(head + b"2,plain\n")
-
-    datasource = CsvDatasourceV2(
-        [path],
-        filesystem=filesystem,
-        arrow_csv_args={"parse_options": pcsv.ParseOptions(double_quote=False)},
-    )
-
-    # The first two quotes open and close the field. The third is literal.
-    assert _read_all(datasource, [path]).to_pylist() == [
-        {"id": 1, "text": '"'},
-        {"id": 2, "text": "plain"},
-    ]
 
 
 @pytest.mark.parametrize("delimiter", [",", ";"])
@@ -489,7 +478,9 @@ def test_split_files_preserve_escaped_quotes(tmp_path, small_chunks, delimiter):
 def test_rejects_a_cut_value_after_a_long_run_of_escaped_quotes(
     tmp_path, monkeypatch, newline
 ):
-    head = f"text{newline}" + '"' * (2 * 65536 + 1) + f"first{newline}"
+    head = (
+        f"text{newline}" + '"' * (2 * _QUOTE_SCAN_BUFFER_BYTES + 1) + f"first{newline}"
+    )
     path = _write(tmp_path / "a.csv", head + f'second"{newline}')
     monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
 
@@ -504,23 +495,6 @@ def test_split_files_preserve_many_empty_quoted_values(tmp_path, monkeypatch):
     table = _read_all(CsvDatasourceV2([path]), [path])
 
     assert table.num_rows == 100000
-
-
-def test_split_files_keep_opening_quotes_when_quoting_is_disabled(
-    tmp_path, small_chunks
-):
-    values = ['"unfinished', "plain"] * 40
-    path = _write(tmp_path / "a.csv", "text\n" + "\n".join(values))
-
-    table = _read_all(
-        CsvDatasourceV2(
-            [path],
-            arrow_csv_args={"parse_options": pcsv.ParseOptions(quote_char=False)},
-        ),
-        [path],
-    )
-
-    assert table.column("text").to_pylist() == values
 
 
 @pytest.mark.parametrize(
