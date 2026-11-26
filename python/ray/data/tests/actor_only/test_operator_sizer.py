@@ -2388,6 +2388,25 @@ def test_room_held_until_first_input_goes_to_its_op():
     assert _held_by_node(sizer, write) == write_held
 
 
+def test_min_size_comes_before_a_hold():
+    """After the hand-off, the GPU op's pending actors expire: it is below its
+    min size and no longer leaving ``Held``, while Write is still held and
+    short. Write's top-up must not take the GPU nodes' CPUs back."""
+    view, ops = _heterogeneous_memory_cluster(num_cpu_nodes=4)
+    gpu, write = ops["gpu"], ops["write"]
+    sizer, _ = _bootstrapped(*ops.values(), view=view)
+    _tick(sizer)
+    ops["gen"].metrics.num_task_outputs_generated = 1
+    gpu.pending_first_input = False
+    assert _tick(sizer)[gpu].delta == 8
+    write_held = _held_by_node(sizer, write)
+
+    # The 8 pending actors expired without starting: the pool is still empty.
+    request = _tick(sizer)
+    assert (request[gpu].delta, request[gpu].reason) == (8, "below min size")
+    assert _held_by_node(sizer, write) == write_held
+
+
 def test_held_ops_pack_scarcest_first():
     """Two held ops, the unconstrained one earlier in the topology. Packing in
     topology order let it spill onto the GPU nodes, leaving the GPU op no room

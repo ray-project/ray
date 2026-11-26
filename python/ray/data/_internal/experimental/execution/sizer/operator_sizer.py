@@ -499,27 +499,40 @@ class OperatorSizer:
            the moment it frees: in backpressure_heterogeneous_memory_nodes, a
            held Write took the CPUs of the GPU nodes the GPU op had held, and
            the GPU op never placed an actor.
-        2. Each held op keeps the room it held last tick, on the same nodes,
+        2. Room for each op below its min size that is not held is kept out
+           the same way, and the policy grants it with
+           ``OpRule.UPSCALE_TO_MIN``. An op cannot run below its min size,
+           while a held op cannot use its room until data reaches it, so a
+           min size comes before a hold. Step 1 covers only the tick an op
+           leaves ``Held``; this covers an op that falls below its min size
+           later, e.g. when its pending actors expire.
+        3. Each held op keeps the room it held last tick, on the same nodes,
            where it still fits, so held ops do not trade nodes every tick.
-        3. Each tops up what it still lacks on the least contended nodes
+        4. Each tops up what it still lacks on the least contended nodes
            (``ClusterStateSnapshot.contention_by_node``).
+
+        Steps 2-4 go scarcest op first (``ClusterStateSnapshot.ordered_ops``),
+        so an op with few nodes to choose from claims them before an op that
+        could go anywhere.
 
         Example: CPU nodes c0, c1 with 1 free CPU each; GPU nodes g1, g2 with
         4 CPU / 4 GPU each. Last tick, GPU (fixed 8) held {g1: 4, g2: 4} and
         Write (wants 10) held {c0: 1, c1: 1}. GPU's first input arrived.
         ``free`` shows free CPUs; each actor of either op takes one.
 
-            start:     free = {c0: 1, c1: 1, g1: 4, g2: 4}
-                       released = {GPU: {g1: 4, g2: 4}}
-            1. shield: free = {c0: 1, c1: 1, g1: 0, g2: 0}
-            2. keep:   Write holds {c0: 1, c1: 1}
-                       free = {c0: 0, c1: 0, g1: 0, g2: 0}
-            3. top up: Write lacks 8, nothing free; holds 2 of 10
-            1. return: free = {c0: 0, c1: 0, g1: 4, g2: 4}
-            policy:    GPU UPSCALE_TO_HELD_ROOM +8 -> g1, g2
+            start:       free = {c0: 1, c1: 1, g1: 4, g2: 4}
+                         released = {GPU: {g1: 4, g2: 4}}
+            1. shield:   free = {c0: 1, c1: 1, g1: 0, g2: 0}
+            3. keep:     Write holds {c0: 1, c1: 1}
+                         free = {c0: 0, c1: 0, g1: 0, g2: 0}
+            4. top up:   Write lacks 8, nothing free; holds 2 of 10
+            1-2. return: free = {c0: 0, c1: 0, g1: 4, g2: 4}
+            policy:      GPU UPSCALE_TO_HELD_ROOM +8 -> g1, g2
 
         Without step 1, Write's top-up takes g1's and g2's 8 CPUs, and GPU,
-        needing 1 CPU per actor, never places one.
+        needing 1 CPU per actor, never places one. If GPU's pending actors
+        expire a tick later, it is below its min size and no longer leaving
+        ``Held``: step 2 sets its 8 aside before Write packs, the same way.
         """
         free = snapshot.free_by_node
         contention = snapshot.contention_by_node
@@ -535,12 +548,33 @@ class OperatorSizer:
                 if kept:
                     shielded.append((node_id, per_actor.scale(len(kept))))
 
-        # How many actors' worth each held op holds this tick, scarcest op
-        # first: the steps below pack in this order, so an op with few nodes
-        # to choose from claims them before an op that could go anywhere.
-        global_limits = snapshot.get_global_limits()
+        # 2. Keep room for each op below its min size, and not held, out of the
+        # free map for now. Room released to it in step 1 counts toward it.
         held_ops = self._statuses.ops_in(kind=OpStatusKind.HELD)
         non_pg_ops = set(self._profiles.non_pg_ops)
+        released = self._statuses.released_holds()
+        for op in snapshot.ordered_ops:
+            if op in held_ops or op not in non_pg_ops or op.has_completed():
+                continue
+            pool = op.actor_pool
+            below_min = (
+                pool.min_size()
+                - pool.serving_size()
+                - sum(released.get(op, {}).values())
+            )
+            if below_min <= 0:
+                continue
+            nodes = sorted(
+                (n for n in free if n in snapshot.schedulable_nodes_by_op[op]),
+                key=lambda n: (contention.get(n, 0.0), n),
+            )
+            per_actor = pool.per_actor_resource_usage()
+            for node_id in pack_actors(free, nodes, per_actor, below_min):
+                shielded.append((node_id, per_actor))
+
+        # How many actors' worth each held op holds this tick, scarcest op
+        # first.
+        global_limits = snapshot.get_global_limits()
         to_hold: Dict[ExperimentalActorPoolMapOperator, int] = {}
         for op in snapshot.ordered_ops:
             if op not in held_ops or op not in non_pg_ops or op.has_completed():
@@ -559,7 +593,7 @@ class OperatorSizer:
                 continue
             to_hold[op] = num_to_hold
 
-        # 2. Keep last tick's room where it still fits.
+        # 3. Keep last tick's room where it still fits.
         held_by_op: Dict[ExperimentalActorPoolMapOperator, CountByNode] = {}
         for op, num_to_hold in to_hold.items():
             per_actor = op.actor_pool.per_actor_resource_usage()
@@ -578,7 +612,7 @@ class OperatorSizer:
                     held[node_id] = len(kept)
             held_by_op[op] = held
 
-        # 3. Top up on the least contended nodes.
+        # 4. Top up on the least contended nodes.
         for op, num_to_hold in to_hold.items():
             held = held_by_op[op]
             lacking = num_to_hold - sum(held.values())
@@ -602,7 +636,7 @@ class OperatorSizer:
                 op.name,
             )
 
-        # 1. (cont.) Give the released room back for the policy to grant.
+        # 1-2. (cont.) Give the room back for the policy to grant.
         for node_id, room in shielded:
             free[node_id] = free[node_id].add(room)
 
