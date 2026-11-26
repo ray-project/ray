@@ -828,26 +828,34 @@ def _partitioned_file_table(
                 # Hive reserves the marker in ADD PARTITION. Real dynamic
                 # inserts create the NULL/default partitions instead.
                 cursor.execute("SET hive.exec.dynamic.partition.mode=nonstrict")
-                dt = spec["dt"]
-                region = spec["region"]
-                dt_value = (
-                    "CAST(NULL AS DATE)"
-                    if dt == _DEFAULT_PARTITION_NAME
-                    else f"DATE {_hive_literal(dt)}"
-                )
-                region_value = (
-                    "CAST(NULL AS STRING)"
-                    if region == _DEFAULT_PARTITION_NAME
-                    else _hive_literal(region)
-                )
+                partition_values = [
+                    "NULL"
+                    if value == _DEFAULT_PARTITION_NAME
+                    else (
+                        f"DATE {_hive_literal(value)}"
+                        if key == "dt"
+                        else _hive_literal(value)
+                    )
+                    for key, value in spec.items()
+                ]
+
+                def row_values(row):
+                    values = [str(row["id"])]
+                    if "name" in partition["rows"].column_names:
+                        values.append(
+                            _hive_literal(row["name"])
+                            if row["name"] is not None
+                            else "NULL"
+                        )
+                    return "(" + ", ".join(values + partition_values) + ")"
+
                 values = ", ".join(
-                    f"({row['id']}, "
-                    f"{_hive_literal(row['name']) if row['name'] is not None else 'NULL'}, "
-                    f"{dt_value}, {region_value})"
-                    for row in partition["rows"].to_pylist()
+                    row_values(row) for row in partition["rows"].to_pylist()
                 )
+                partition_keys = ", ".join(f"`{key}`" for key in spec)
                 cursor.execute(
-                    f"INSERT INTO TABLE {table} PARTITION (dt, region) VALUES {values}"
+                    f"INSERT INTO TABLE {table} PARTITION ({partition_keys}) "
+                    f"VALUES {values}"
                 )
             else:
                 custom = (
@@ -939,6 +947,7 @@ def test_partitioned_native_read_matches_hs2(direct_runtime, backend, file_forma
                 "rows": _partitioned_rows(40),
             },
         ],
+        backend=backend,
     ) as (fs, path, table, cursor, factory):
         statements = []
         dataset = _read_direct(table, _metadata_only_factory(factory, statements), fs)
@@ -947,6 +956,20 @@ def test_partitioned_native_read_matches_hs2(direct_runtime, backend, file_forma
         assert _metadata_lookup_count(statements) == 6
         expected = _reference_rows(cursor, table)
         assert sorted(rows, key=lambda row: row["id"]) == expected
+
+        from ray.data.expressions import col
+
+        filtered = dataset.filter(
+            expr=(col("dt") >= date(2026, 9, 2)) & (col("id") > 12)
+        ).take_all()
+        cursor.execute(
+            f"SELECT * FROM {table} WHERE dt >= DATE '2026-09-02' AND id > 12"
+        )
+        names = [column[0].split(".")[-1] for column in cursor.description]
+        expected_filtered = [dict(zip(names, row)) for row in cursor.fetchall()]
+        assert sorted(filtered, key=lambda row: row["id"]) == sorted(
+            expected_filtered, key=lambda row: row["id"]
+        )
 
 
 def test_partitioned_custom_location_matches_hs2(direct_runtime):
@@ -1018,42 +1041,28 @@ def test_partitioned_default_partition_matches_hs2(direct_runtime):
         assert {row["dt"] for row in defaults if row["id"] >= 20} == {None}
 
 
-def test_partitioned_filter_stays_residual_and_matches_hs2(direct_runtime):
-    from ray.data.expressions import col
-
+def test_partitioned_boolean_default_matches_hs2(direct_runtime):
     with _partitioned_file_table(
-        "id BIGINT, name STRING",
-        _PARTITION_COLUMNS_SQL,
+        "id BIGINT",
+        "flag BOOLEAN",
         "parquet",
         [
             {
-                "spec": {"dt": "2026-09-01", "region": "us"},
-                "rows": _partitioned_rows(0),
+                "spec": {"flag": "true"},
+                "rows": pa.table({"id": pa.array([0], type=pa.int64())}),
             },
             {
-                "spec": {"dt": "2026-09-02", "region": "eu"},
-                "rows": _partitioned_rows(10),
+                "spec": {"flag": "false"},
+                "rows": pa.table({"id": pa.array([10], type=pa.int64())}),
             },
             {
-                "spec": {"dt": "2026-09-03", "region": "eu"},
-                "rows": _partitioned_rows(20),
+                "spec": {"flag": _DEFAULT_PARTITION_NAME},
+                "rows": pa.table({"id": pa.array([20], type=pa.int64())}),
             },
         ],
     ) as (fs, path, table, cursor, factory):
-        dataset = _read_direct(table, factory, fs)
-        # Partition-key predicates stay residual above the read in this stage.
-        rows = dataset.filter(
-            expr=(col("dt") >= date(2026, 9, 2)) & (col("id") > 12)
-        ).take_all()
-        cursor.execute(
-            f"SELECT * FROM {table} WHERE dt >= DATE '2026-09-02' AND id > 12"
-        )
-        names = [column[0].split(".")[-1] for column in cursor.description]
-        expected = [dict(zip(names, row)) for row in cursor.fetchall()]
-        assert sorted(rows, key=lambda row: row["id"]) == sorted(
-            expected, key=lambda row: row["id"]
-        )
-        assert {row["dt"] for row in rows} == {date(2026, 9, 2), date(2026, 9, 3)}
+        rows = _read_direct(table, factory, fs).take_all()
+        assert sorted(rows, key=lambda row: row["id"]) == _reference_rows(cursor, table)
 
 
 if __name__ == "__main__":

@@ -22,29 +22,17 @@ from typing import (
     Optional,
     Set,
     Tuple,
-    TYPE_CHECKING,
     Union,
     cast,
 )
 
-from typing_extensions import override
 from urllib.parse import unquote, urlsplit
-
-if TYPE_CHECKING:
-    from ray.data.expressions import Expr
 
 import pyarrow as pa
 import pyarrow.dataset as pds
 
-from ray.data._internal.datasource_v2.common.arrow_file_scanner import (
-    ArrowFileScanner,
-)
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat
 from ray.data._internal.datasource_v2.common.listing_utils import sample_files
-from ray.data._internal.datasource_v2.common.pushdown_utils import (
-    _split_predicate_by_columns,
-    combine_predicates,
-)
 from ray.data._internal.datasource_v2.common.schema_inference import (
     _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
     infer_schema_from_files,
@@ -116,8 +104,9 @@ class HiveFileTable:
     ``schema`` holds the data columns. ``partition_fields`` declares the
     registered partition keys (empty for nonpartitioned tables) and
     ``partitions`` carries each registered partition's location and typed
-    values. The default-partition marker only maps to a NULL value for
-    non-string keys, matching HiveServer2's ``SELECT *`` behavior.
+    values. The default-partition marker stays literal for string keys,
+    becomes True for boolean keys, and maps to NULL for other key types,
+    matching the supported HiveServer2 profile.
     """
 
     location: str
@@ -128,26 +117,10 @@ class HiveFileTable:
     schema_evolution_case_sensitive: bool = False
     partition_fields: Tuple[pa.Field, ...] = ()
     partitions: Tuple[HivePartitionInfo, ...] = ()
-    default_partition_name: str = _DEFAULT_PARTITION_NAME
 
 
-def _read_hive_setting(cursor, option: str, default=None):
+def _read_hive_setting(cursor, option: str, default=None, *, preserve_value=False):
     """Read one setting from the metadata cursor's actual HS2 session."""
-    cursor.execute(f"SET {option}")
-    rows = cursor.fetchall()
-    if len(rows) != 1 or len(rows[0]) != 1:
-        raise ValueError(f"Cannot determine Hive setting {option}")
-    text = str(rows[0][0]).strip()
-    if text == f"{option} is undefined":
-        return default
-    key, separator, value = text.partition("=")
-    if key.strip() != option or not separator:
-        raise ValueError(f"Cannot determine Hive setting {option}")
-    return value.strip().lower()
-
-
-def _read_hive_marker(cursor, option: str, default: str) -> str:
-    """Read a case-sensitive text setting such as the default partition name."""
     cursor.execute(f"SET {option}")
     rows = cursor.fetchall()
     if len(rows) != 1 or len(rows[0]) != 1:
@@ -158,7 +131,12 @@ def _read_hive_marker(cursor, option: str, default: str) -> str:
     key, separator, value = text.partition("=")
     if key.strip() != option or not separator:
         raise ValueError(f"Cannot determine Hive setting {option}")
-    return value
+    return value if preserve_value else value.strip().lower()
+
+
+def _read_hive_marker(cursor, option: str, default: str) -> str:
+    """Read a case-sensitive text setting such as the default partition name."""
+    return _read_hive_setting(cursor, option, default, preserve_value=True)
 
 
 def _partition_key_field(name: str, hive_type: str) -> pa.Field:
@@ -205,7 +183,13 @@ def _convert_partition_value(text: str, data_type: pa.DataType):
     if pa.types.is_string(data_type):
         return text
     if pa.types.is_signed_integer(data_type):
-        return int(text)
+        value = int(text)
+        if str(value) != text:
+            raise ValueError(
+                "Hive direct-read cannot establish the identity of non-canonical "
+                f"integer partition value {text!r}"
+            )
+        return value
     if pa.types.is_floating(data_type):
         return float(text)
     if pa.types.is_boolean(data_type):
@@ -246,22 +230,31 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
         cursor.execute(f"DESCRIBE FORMATTED `{database}`.`{table}`")
         metadata = _parse_file_table(cursor.fetchall())
         if metadata.partition_fields:
-            metadata = replace(
-                metadata,
-                default_partition_name=_read_hive_marker(
-                    cursor,
-                    "hive.exec.default.partition.name",
-                    _DEFAULT_PARTITION_NAME,
-                ),
+            default_partition_name = _read_hive_marker(
+                cursor,
+                "hive.exec.default.partition.name",
+                _DEFAULT_PARTITION_NAME,
             )
             cursor.execute(f"SHOW PARTITIONS `{database}`.`{table}`")
             spec_rows = cursor.fetchall()
+            decode_names = _read_hive_setting(
+                cursor, "hive.decode.partition.name", "false"
+            )
+            if decode_names not in ("true", "false"):
+                raise ValueError("Cannot determine Hive partition-name decoding mode")
+            if decode_names == "true" and any(
+                row and row[0] is not None and "%" in str(row[0]) for row in spec_rows
+            ):
+                raise ValueError(
+                    "Hive direct-read cannot recover unambiguous partition identities "
+                    "with hive.decode.partition.name=true"
+                )
             raw_specs = _parse_partition_specs(
                 spec_rows, metadata.partition_fields, database, table
             )
             typed_specs = [
                 _typed_partition_values(
-                    raw, metadata.partition_fields, metadata.default_partition_name
+                    raw, metadata.partition_fields, default_partition_name
                 )
                 for raw in raw_specs
             ]
@@ -272,6 +265,8 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
                 spec,
                 database,
                 table,
+                metadata_cursor=cursor,
+                max_connections=spec.metadata_max_connections,
             )
             metadata = replace(metadata, partitions=tuple(partitions))
         if metadata.file_format == "parquet":
@@ -493,10 +488,14 @@ def _typed_partition_values(
     partition_fields: Tuple[pa.Field, ...],
     default_partition_name: str,
 ) -> Tuple[Optional[object], ...]:
-    """Type each partition value; the default marker is NULL only off-string."""
+    """Type partition values using the supported HS2 default-marker profile."""
 
     def convert(text, field):
-        if text == default_partition_name and not pa.types.is_string(field.type):
+        if text == default_partition_name:
+            if pa.types.is_string(field.type):
+                return text
+            if pa.types.is_boolean(field.type):
+                return True
             return None
         value = _convert_partition_value(text, field.type)
         return pa.scalar(value, type=field.type).as_py()
@@ -615,72 +614,76 @@ def _read_partition_locations(
     spec: HiveReadSpec,
     database: str,
     table: str,
+    metadata_cursor,
+    max_connections: int,
 ) -> List[HivePartitionInfo]:
-    """Fetch each registered partition's storage descriptor through HS2.
-
-    At most sixteen driver threads each own one connection and cursor for this
-    lookup. They reuse that session across descriptors; native read workers
-    never receive the connection factory.
-    """
+    """Fetch registered descriptors without exceeding the HS2 session budget."""
     if not raw_specs:
         return []
-    pending = iter(enumerate(raw_specs))
-    lookup_lock = Lock()
-    stopped = False
+    if max_connections < 1:
+        raise ValueError("metadata_max_connections must be a positive integer")
     locations = [""] * len(raw_specs)
 
-    def fetch():
-        nonlocal stopped
-        connection = None
-        cursor = None
-        try:
-            while True:
-                with lookup_lock:
-                    if stopped:
-                        return
-                    item = next(pending, None)
-                if item is None:
-                    return
-                index, raw_values = item
-                if cursor is None:
-                    connection = _connect(spec.connection_factory)
-                    cursor = connection.cursor(user=spec.user)
-                assignments = ", ".join(
-                    "`"
-                    + field.name.replace("`", "``")
-                    + "` = "
-                    + _partition_sql_literal(raw)
-                    for field, raw in zip(metadata.partition_fields, raw_values)
-                )
-                cursor.execute(
-                    f"DESCRIBE FORMATTED `{database}`.`{table}` "
-                    f"PARTITION ({assignments})"
-                )
-                locations[index] = _parse_partition_details(
-                    cursor.fetchall(),
-                    database=database,
-                    table=table,
-                    raw_values=raw_values,
-                    table_format=metadata.file_format,
-                    table_schema=metadata.schema,
-                )
-        except Exception:
-            with lookup_lock:
-                stopped = True
-            raise
-        finally:
-            if cursor is not None:
-                with suppress(Exception):
-                    cursor.close()
-            if connection is not None:
-                with suppress(Exception):
-                    connection.close()
+    def describe(cursor, index: int, raw_values: List[str]) -> None:
+        assignments = ", ".join(
+            "`" + field.name.replace("`", "``") + "` = " + _partition_sql_literal(raw)
+            for field, raw in zip(metadata.partition_fields, raw_values)
+        )
+        cursor.execute(
+            f"DESCRIBE FORMATTED `{database}`.`{table}` " f"PARTITION ({assignments})"
+        )
+        locations[index] = _parse_partition_details(
+            cursor.fetchall(),
+            database=database,
+            table=table,
+            raw_values=raw_values,
+            table_format=metadata.file_format,
+            table_schema=metadata.schema,
+        )
 
-    workers = min(len(raw_specs), 16)
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        futures = [executor.submit(fetch) for _ in range(workers)]
-        for future in futures:
-            future.result()
+    if max_connections == 1:
+        for index, raw_values in enumerate(raw_specs):
+            describe(metadata_cursor, index, raw_values)
+    else:
+        pending = iter(enumerate(raw_specs))
+        lookup_lock = Lock()
+        stopped = False
+
+        def fetch():
+            nonlocal stopped
+            connection = None
+            cursor = None
+            try:
+                while True:
+                    with lookup_lock:
+                        if stopped:
+                            return
+                        item = next(pending, None)
+                    if item is None:
+                        return
+                    index, raw_values = item
+                    if cursor is None:
+                        connection = _connect(spec.connection_factory)
+                        cursor = connection.cursor(user=spec.user)
+                    describe(cursor, index, raw_values)
+            except Exception:
+                with lookup_lock:
+                    stopped = True
+                raise
+            finally:
+                if cursor is not None:
+                    with suppress(Exception):
+                        cursor.close()
+                if connection is not None:
+                    with suppress(Exception):
+                        connection.close()
+
+        # The table metadata session remains open and counts against the budget.
+        workers = min(len(raw_specs), max_connections - 1)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(fetch) for _ in range(workers)]
+            for future in futures:
+                future.result()
     _validate_partition_locations(locations)
     return [
         HivePartitionInfo(values, location)
@@ -1052,23 +1055,6 @@ class _HiveParquetScanner(ParquetScanner):
         kw_only=True, repr=False
     )
 
-    @override
-    def push_filters(
-        self, predicate: "Expr"
-    ) -> Tuple[ArrowFileScanner, Optional["Expr"]]:
-        """Keep partition-column filters above the read; they are synthesized."""
-        synthesized = {column.name for column in self.synthesized_columns}
-        if not synthesized:
-            return super().push_filters(predicate)
-        split = _split_predicate_by_columns(predicate, synthesized)
-        residual = combine_predicates(
-            split.partition_predicate, split.residual_predicate
-        )
-        if split.data_predicate is None:
-            return self, residual
-        scanner, _ = super().push_filters(split.data_predicate)
-        return scanner, residual
-
     def create_reader(self) -> _HiveParquetSchemaValidatingReader:
         return _HiveParquetSchemaValidatingReader(
             hive_schema=self.hive_schema,
@@ -1283,27 +1269,6 @@ class _HiveOrcScanner(OrcScanner):
     force_positional_evolution: bool = dataclass_field(kw_only=True, default=False)
     tolerate_missing_schema: bool = dataclass_field(kw_only=True, default=True)
     schema_evolution_case_sensitive: bool = dataclass_field(kw_only=True, default=False)
-
-    @override
-    def push_filters(
-        self, predicate: "Expr"
-    ) -> Tuple[ArrowFileScanner, Optional["Expr"]]:
-        """Keep partition-column filters above the read; they are synthesized.
-
-        ``OrcScanner`` guards the same split behind ``partitioning``, but Hive
-        partition columns are synthesized with no ``Partitioning`` spec.
-        """
-        synthesized = {column.name for column in self.synthesized_columns}
-        if not synthesized:
-            return super().push_filters(predicate)
-        split = _split_predicate_by_columns(predicate, synthesized)
-        residual = combine_predicates(
-            split.partition_predicate, split.residual_predicate
-        )
-        if split.data_predicate is None:
-            return self, residual
-        scanner, _ = super().push_filters(split.data_predicate)
-        return scanner, residual
 
     def create_reader(self) -> _HiveOrcFileReader:
         return _HiveOrcFileReader(
@@ -1546,7 +1511,6 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         )
         self._hive_schema = table.schema
         self._sampled_names = sampled_names
-        self._partition_fields = partition_fields
         self._file_format = table.file_format
         self._force_positional_evolution = table.force_positional_evolution
         self._tolerate_missing_schema = table.tolerate_missing_schema
