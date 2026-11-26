@@ -16,23 +16,16 @@ from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-# Skip all tests if mcap is not available
+# Skip all tests if mcap is not available. Run every test through both
+# ``read_mcap`` paths, V1 ``MCAPDatasource`` and ``MCAPDatasourceV2``.
 MCAP_AVAILABLE = importlib.util.find_spec("mcap") is not None
-pytestmark = pytest.mark.skipif(
-    not MCAP_AVAILABLE,
-    reason="mcap module not available. Install with: pip install mcap",
-)
-
-
-@pytest.fixture(autouse=True, params=[False, True], ids=["v1", "v2"])
-def datasource_v2(request, restore_data_context):
-    """Run every test against both read paths of ``read_mcap``.
-
-    ``True`` reads through ``MCAPDatasourceV2`` and ``False`` through the legacy
-    ``MCAPDatasource``. Both must return the same rows.
-    """
-    ray.data.DataContext.get_current().use_datasource_v2 = request.param
-    return request.param
+pytestmark = [
+    pytest.mark.skipif(
+        not MCAP_AVAILABLE,
+        reason="mcap module not available. Install with: pip install mcap",
+    ),
+    pytest.mark.usefixtures("datasource_v2"),
+]
 
 
 def create_test_mcap_file(file_path: str, messages: list, index: bool = True) -> None:

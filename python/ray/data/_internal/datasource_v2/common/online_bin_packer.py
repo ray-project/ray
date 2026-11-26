@@ -37,11 +37,11 @@ class BinItem:
     @property
     def size_bytes(self) -> int:
         # What the packer budgets: the run's bytes for a run, else the on-disk
-        # file size.
+        # file size. A whole file of unknown size counts as zero bytes here;
+        # ``OnlineBinPacker._place`` gives it a bin of its own.
         if self.run is not None:
             return self.run.size_bytes
-        assert self.file.size is not None
-        return self.file.size
+        return 0 if self.file.size is None else self.file.size
 
 
 @dataclass(frozen=True)
@@ -282,9 +282,9 @@ def _bin_items(manifest: FileManifest) -> List[BinItem]:
     items: List[BinItem] = []
     extra_columns = manifest.extra_columns
     for row_index, (path, file_size, md) in enumerate(
-        zip(manifest.paths, manifest.file_sizes, manifest.file_chunk_metadatas)
+        zip(manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas)
     ):
-        file = FileInfo(path=str(path), size=int(file_size))
+        file = FileInfo(path=str(path), size=file_size)
         run = (
             None if md is None or "unit_ids" not in md else FileChunk.from_metadata(md)
         )
@@ -406,6 +406,11 @@ class OnlineBinPacker(FilePartitioner):
         return [item.size_bytes]
 
     def _place(self, item: BinItem) -> None:
+        if item.run is None and item.file.size is None:
+            # A whole file of unknown size can't be budgeted against the
+            # others, so it gets its own bin, one read task per file.
+            self._output.append(Bin((item,), 0))
+            return
         item_bytes = item.size_bytes
         seen_bytes = self._seen_bytes_by_path.get(item.file.path, 0)
         self._seen_bytes_by_path[item.file.path] = seen_bytes + item_bytes
@@ -511,13 +516,9 @@ class OnlineBinPacker(FilePartitioner):
                 files.append(file)
                 chunk_metadatas.append(merged.to_metadata())
                 extra_columns.append(extra_columns_by_file[file])
-        sizes: List[int] = []
-        for file in files:
-            assert file.size is not None
-            sizes.append(file.size)
         return FileManifest.construct_manifest(
             paths=[file.path for file in files],
-            sizes=sizes,
+            sizes=[file.size for file in files],
             chunk_metadatas=chunk_metadatas,
             extra_columns=_concat_extra_columns(extra_columns),
         )

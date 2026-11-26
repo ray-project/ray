@@ -168,6 +168,22 @@ def test_random_shuffle(
     assert r1.take() == ds.take()
 
 
+def test_seeded_random_shuffle_ignores_arrival_order(
+    shutdown_only, configure_shuffle_method, disable_fallback_to_object_extension
+):
+    """A seed gives the same order even when read tasks finish out of order."""
+
+    def finish_last_block_first(batch):
+        time.sleep(0.2 * (4 - batch["id"][0] // 20))
+        return batch
+
+    def shuffled(fn):
+        ds = ray.data.range(100, override_num_blocks=5).map_batches(fn)
+        return ds.random_shuffle(seed=0).take_all()
+
+    assert shuffled(lambda batch: batch) == shuffled(finish_last_block_first)
+
+
 def test_random_shuffle_check_random(
     shutdown_only, disable_fallback_to_object_extension
 ):

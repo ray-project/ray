@@ -38,9 +38,23 @@ class LogicalPlan(Plan):
 
     def require_preserve_order(self) -> bool:
         """Whether this plan requires to preserve order."""
-        from ray.data._internal.logical.operators import Zip
+        from ray.data._internal.logical.operators import RandomShuffle, Zip
+        from ray.data.context import ShuffleStrategy
 
-        return any(isinstance(op, Zip) for op in self.dag.post_order_iter())
+        for op in self.dag.post_order_iter():
+            if isinstance(op, Zip):
+                return True
+            # The disk shuffle v2 map seeds each block by its map task index, which
+            # follows input arrival order, so a seeded shuffle needs that order fixed.
+            if (
+                isinstance(op, RandomShuffle)
+                and op.seed_config is not None
+                and op.seed_config.seed is not None
+                and self.context.shuffle_strategy == ShuffleStrategy.SHUFFLE_V2
+                and self.context.use_disk_based_hash_shuffle
+            ):
+                return True
+        return False
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
