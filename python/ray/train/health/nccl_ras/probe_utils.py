@@ -1,7 +1,5 @@
 """What the NCCL hang detector's probes run: ``ncclras``, ``nvidia-smi``,
-``py-spy`` and the PyTorch Flight Recorder dump. Copied in order from
-``NCCLRASCallback``'s module, ``ray.train.v2._internal.callbacks.nccl_ras``,
-which keeps its own copies until it's deleted."""
+``py-spy`` and the PyTorch Flight Recorder dump."""
 import os
 import subprocess
 import threading

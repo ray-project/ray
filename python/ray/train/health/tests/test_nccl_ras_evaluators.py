@@ -1,9 +1,5 @@
-"""Tests of the NCCL hang detector's evaluators and RAS reports, in
-``ray.train.health.nccl_ras``.
+"""Tests of the NCCL hang detector's evaluators and RAS reports, in ``ray.train.health.nccl_ras``."""
 
-Most are copies of ``test_nccl_ras_callback.py``'s, which check that
-``NCCLRASCallback`` detects, reports and acts on the same hangs.
-"""
 import json
 import logging
 import re
@@ -1108,8 +1104,7 @@ def test_each_report_is_evaluated_once(monkeypatch):
 
 
 def test_a_report_that_does_not_parse_is_skipped(monkeypatch):
-    # Like the callback, which raised `unparseable_json` and tried the next
-    # worker: the next node's report is evaluated, and that node is kept.
+    # The next node's report is evaluated, and that node is kept.
     # A report that doesn't parse is parsed once.
     detector = make_detector(monkeypatch, NCCL_RAS_ACTION_OBSERVE, confirm_count=5)
     evaluator = detector.evaluator
@@ -1160,7 +1155,7 @@ def test_no_report_before_nccl_starts(monkeypatch):
 
 def test_a_failed_poll_is_logged_once(monkeypatch, caplog, propagate_logs):
     # The controller evaluates the same failed poll on every tick, but it's
-    # logged once, and at INFO once a report came in, as the callback did.
+    # logged once, and at INFO once a report came in.
     detector = make_detector(monkeypatch, NCCL_RAS_ACTION_FAIL, confirm_count=5)
     detector.tick(_FROZEN)
     timed_out = RASQueryError("timed out (8.0)")
@@ -1192,10 +1187,9 @@ def test_a_fatal_error_on_one_node_does_not_disable_detection(monkeypatch):
 def test_a_fatal_error_disables_detection_once_every_worker_node_has_it(
     monkeypatch, caplog, propagate_logs
 ):
-    # Like the callback, which tried every worker: a node that reports a fatal
-    # error first, before the others report, doesn't disable detection. A node
-    # whose NodeMonitor failed never reports, so the error is logged once
-    # meanwhile.
+    # A node that reports a fatal error first, before the others report,
+    # doesn't disable detection. A node whose NodeMonitor failed never
+    # reports, so the error is logged once meanwhile.
     workers = [
         make_train_worker(0, "10.0.0.1", 100, node_id="node-a"),
         make_train_worker(1, "10.0.0.2", 100, node_id="node-b"),
