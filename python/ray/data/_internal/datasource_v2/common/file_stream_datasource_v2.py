@@ -171,18 +171,23 @@ class FileStreamDatasourceV2(FileDataSourceV2):
         return True
 
     @abstractmethod
-    def _infer_file_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
+    def _infer_file_schema(self, sample: Optional[FileManifest]) -> Optional[pa.Schema]:
         """Return the schema of the columns the reader decodes from a file.
 
         Partition and synthesized columns are appended by :meth:`infer_schema`.
         A fixed schema needs no file opened; a format whose types depend on the
-        data may read from ``sample``, which lists up to 16 files.
+        data may read from ``sample``, which lists up to 16 files. Return
+        ``None`` when the types are only known after decoding (variable-shaped
+        tensors): the first read block then defines the dataset schema, and the
+        reader types partition columns from their values.
         """
         ...
 
     @override
-    def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:
+    def infer_schema(self, sample: Optional[FileManifest]) -> Optional[pa.Schema]:
         schema = self._infer_file_schema(sample)
+        if schema is None:
+            return None
         sample_paths: List[str] = sample.paths.tolist() if sample is not None else []
 
         resolved_partitioning = self.resolve_partitioning(sample)
@@ -221,7 +226,7 @@ class FileStreamDatasourceV2(FileDataSourceV2):
 
     def _scanner_kwargs(
         self,
-        schema: pa.Schema,
+        schema: Optional[pa.Schema],
         filesystem: Optional["FileSystem"],
         options: Dict[str, Any],
     ) -> Dict[str, Any]:
@@ -239,7 +244,7 @@ class FileStreamDatasourceV2(FileDataSourceV2):
     @override
     def create_scanner(
         self,
-        schema: pa.Schema,
+        schema: Optional[pa.Schema],
         filesystem: Optional["FileSystem"] = None,
         **options: Any,
     ) -> "FileStreamScanner":

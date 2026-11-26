@@ -39,7 +39,7 @@ class FileStreamScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdow
     listing and the reader evaluates the predicate on nulls before opening it.
     """
 
-    schema: pa.Schema
+    schema: Optional[pa.Schema]
     filesystem: Optional[FileSystem] = None
     open_stream_args: Dict[str, Any] = field(default_factory=dict)
     synthesized_columns: Tuple[SynthesizedColumn, ...] = ()
@@ -57,15 +57,17 @@ class FileStreamScanner(FileScanner, SupportsColumnPruning, SupportsLimitPushdow
         )
 
     @override
-    def read_schema(self) -> pa.Schema:
-        """Return the dataset schema after column pruning."""
-        if self.columns is None:
-            return self.schema
+    def read_schema(self) -> Optional[pa.Schema]:
+        """Return the dataset schema after column pruning; ``None`` when the
+        format defers it to the first read block."""
+        schema = self.schema
+        if self.columns is None or schema is None:
+            return schema
         fields = []
         for name in self.columns:
-            idx = self.schema.get_field_index(name)
+            idx = schema.get_field_index(name)
             assert idx >= 0, f"Column {name} not found in schema"
-            fields.append(self.schema.field(idx))
+            fields.append(schema.field(idx))
         return pa.schema(fields)
 
     def _reader_kwargs(self) -> Dict[str, Any]:

@@ -147,7 +147,8 @@ Never extend `DataSourceV2` directly.
 
 A format that decodes a whole file from one byte stream (binary, text, images,
 NumPy, audio, video) extends the `FileStream*` ladder in `common/` instead:
-`FileStreamDatasourceV2` (`_infer_file_schema`, `create_scanner`),
+`FileStreamDatasourceV2` (`_infer_file_schema`, which may return `None` to leave
+the schema to the first read block, and `create_scanner`),
 `FileStreamScanner` (column, limit and partition pushdown) and
 `FileStreamReader` (`_read_stream(stream, path)` yields the data columns; the
 base opens, decompresses, retries, appends partition and `path` columns and

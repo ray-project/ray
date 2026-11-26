@@ -1,17 +1,24 @@
 """Unit tests for the shared byte-stream reader, through a minimal format."""
 
 from pathlib import Path
-from typing import Iterator, List
+from typing import Any, Iterator, List, Optional
 from unittest.mock import Mock
 
 import pyarrow as pa
 import pytest
+from pyarrow.fs import FileSystem
 
 from ray.data._internal.datasource_v2.common import (
     file_stream_reader as file_stream_reader_mod,
 )
+from ray.data._internal.datasource_v2.common.file_stream_datasource_v2 import (
+    FileStreamDatasourceV2,
+)
 from ray.data._internal.datasource_v2.common.file_stream_reader import (
     FileStreamReader,
+)
+from ray.data._internal.datasource_v2.common.file_stream_scanner import (
+    FileStreamScanner,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
@@ -19,6 +26,7 @@ from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
     SynthesizedColumn,
 )
 from ray.data.context import DataContext
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
 class LineReader(FileStreamReader):
@@ -34,6 +42,30 @@ class ThreadedLineReader(LineReader):
     num_threads_per_task = 2
 
 
+class LineScanner(FileStreamScanner):
+    def create_reader(self) -> LineReader:
+        return LineReader(**self._reader_kwargs())
+
+
+class LineDatasource(FileStreamDatasourceV2):
+    """Leaves the schema to the first read block, as a format whose types are
+    only known after decoding would."""
+
+    def __init__(self, paths: List[str], **kwargs: Any):
+        super().__init__(paths, name="Lines", **kwargs)
+
+    def _infer_file_schema(self, sample: Optional[FileManifest]) -> Optional[pa.Schema]:
+        return None
+
+    def create_scanner(
+        self,
+        schema: Optional[pa.Schema],
+        filesystem: Optional[FileSystem] = None,
+        **options: Any,
+    ) -> LineScanner:
+        return LineScanner(**self._scanner_kwargs(schema, filesystem, options))
+
+
 class OffsetColumn(SynthesizedColumn):
     """Records where each table sits in its file."""
 
@@ -47,6 +79,7 @@ class OffsetColumn(SynthesizedColumn):
 
 
 def _write(path: Path, content: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content)
     return path
 
@@ -168,3 +201,20 @@ if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+
+def test_datasource_may_leave_the_schema_to_the_first_block(tmp_path):
+    path = _write(tmp_path / "year=2024" / "a.txt", "a\n")
+    datasource = LineDatasource(
+        [str(tmp_path)],
+        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        include_paths=True,
+    )
+
+    assert datasource.infer_schema(_manifest(path)) is None
+    scanner = datasource.create_scanner(None).prune_columns(["line", "year"])
+    assert scanner.read_schema() is None
+
+    rows = _rows(scanner.create_reader(), path)
+
+    assert rows == [{"line": "a", "year": "2024"}]
