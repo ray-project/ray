@@ -137,6 +137,17 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         else:
             self._tree_actor = tree_actor
 
+    def _find_prompt_arg(self, pending_request: PendingRequest) -> Optional[Any]:
+        """Returns the request argument carrying a 'messages' or 'prompt' value."""
+        for arg in pending_request.args:
+            for valid_input_type in ("messages", "prompt"):
+                if (
+                    hasattr(arg, valid_input_type)
+                    and getattr(arg, valid_input_type) is not None
+                ):
+                    return arg
+        return None
+
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
         """Extracts the text content from a pending request for prefix matching.
 
@@ -153,23 +164,27 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         Raises:
             ValueError: If no prompt or messages attribute is found in the request
         """
-        prompt = None
-        for arg in pending_request.args:
-            valid_input_types = ["messages", "prompt"]
-            for valid_input_type in valid_input_types:
-                if hasattr(arg, valid_input_type):
-                    prompt = (
-                        arg.prompt if valid_input_type == "prompt" else arg.messages
-                    )
-                    break
-            if prompt is not None:
-                break
-        if prompt is None:
+        arg = self._find_prompt_arg(pending_request)
+        if arg is None:
             raise ValueError(
                 "No request with message or prompt attribute found in pending_request.args"
             )
 
+        prompt = arg.messages if hasattr(arg, "messages") else arg.prompt
         return self._normalize_prompt_to_string(prompt)
+
+    def _cache_salt_from_request(
+        self, pending_request: PendingRequest
+    ) -> Optional[str]:
+        """Returns the request's cache salt, if it carries one.
+
+        vLLM does not share KV cache blocks across cache salts, so a request's
+        salt is part of what its text is keyed under in the prefix tree.
+        """
+        arg = self._find_prompt_arg(pending_request)
+        if arg is None:
+            return None
+        return getattr(arg, "cache_salt", None) or None
 
     def _coerce_to_text(self, value: Any) -> str:
         if value is None:
@@ -215,10 +230,16 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         """Returns what a request's text is prefixed with in the prefix tree.
 
         vLLM's prefix cache doesn't share KV across LoRA adapters, so the text of a
-        multiplexed request goes under its model ID.
+        multiplexed request goes under its model ID. It also doesn't share KV across
+        cache salts, so the text of a request with a cache salt goes under its salt.
         """
         model_id = pending_request.metadata.multiplexed_model_id
-        return f"\0{model_id}\0" if model_id else ""
+        cache_salt = self._cache_salt_from_request(pending_request)
+        if not model_id and not cache_salt:
+            return ""
+        if cache_salt:
+            return f"\0{model_id or ''}\0{cache_salt}\0"
+        return f"\0{model_id}\0"
 
     def _send_tree_lookup(
         self,

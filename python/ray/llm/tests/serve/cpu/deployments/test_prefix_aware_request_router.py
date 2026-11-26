@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import Optional
 
 import pytest
 
@@ -79,22 +80,24 @@ def prefix_request_router(tree_actor, request):
 
 
 class PromptRequest:
-    def __init__(self, prompt: str):
+    def __init__(self, prompt: str, cache_salt: Optional[str] = None):
         self.prompt = prompt
+        self.cache_salt = cache_salt
 
 
 class ChatRequest:
-    def __init__(self, messages):
+    def __init__(self, messages, cache_salt: Optional[str] = None):
         self.messages = messages
+        self.cache_salt = cache_salt
 
 
 def fake_pending_request(
-    prompt=None, messages=None, multiplexed_model_id=""
+    prompt=None, messages=None, multiplexed_model_id="", cache_salt=None
 ) -> PendingRequest:
     if prompt is not None:
-        args = [PromptRequest(prompt)]
+        args = [PromptRequest(prompt, cache_salt=cache_salt)]
     elif messages is not None:
-        args = [ChatRequest(messages)]
+        args = [ChatRequest(messages, cache_salt=cache_salt)]
     else:
         args = []
 
@@ -110,10 +113,14 @@ def fake_pending_request(
     )
 
 
-def record_routed(router, replica, prompt, multiplexed_model_id=""):
+def record_routed(router, replica, prompt, multiplexed_model_id="", cache_salt=None):
     """Records a prompt as routed to a replica, as Serve does once it's accepted."""
     router.on_request_routed(
-        fake_pending_request(prompt=prompt, multiplexed_model_id=multiplexed_model_id),
+        fake_pending_request(
+            prompt=prompt,
+            multiplexed_model_id=multiplexed_model_id,
+            cache_salt=cache_salt,
+        ),
         replica.replica_id,
         result=None,
     )
@@ -459,6 +466,67 @@ class TestMultiplexedRouting:
 
         req = fake_pending_request(prompt="hello world", multiplexed_model_id="m1")
         assert await prefix_request_router._choose_replica_for_request(req) == r2
+
+
+class TestCacheSaltRouting:
+    """Tests for cache-salt namespacing in the prefix tree."""
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_within_salt(self, prefix_request_router):
+        """A prefix cached under a salt counts for requests with that salt."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello world", cache_salt="tenant-a")
+
+        # r2 has less cached text, but only r1 has the prompt cached for tenant-a.
+        req = fake_pending_request(prompt="hello world", cache_salt="tenant-a")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r1]]
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_is_per_salt(self, prefix_request_router):
+        """A prefix cached under one salt doesn't count for another."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(prefix_request_router, r1, "hello world", cache_salt="tenant-a")
+
+        # Neither replica has the prompt cached for tenant-b, so the one with less
+        # cached text is chosen.
+        req = fake_pending_request(prompt="hello world", cache_salt="tenant-b")
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_needs_both_model_and_salt(self, prefix_request_router):
+        """A cached prefix counts only when model and salt both match."""
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        r2 = FakeRunningReplica("r2")
+        r2.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r1, r2])
+        record_routed(
+            prefix_request_router, r1, "hello world", "m1", cache_salt="tenant-a"
+        )
+
+        # Same salt but a different model: no prefix hit.
+        req = fake_pending_request(
+            prompt="hello world", multiplexed_model_id="m2", cache_salt="tenant-a"
+        )
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
+
+        # Same model but a different salt: no prefix hit either.
+        req = fake_pending_request(
+            prompt="hello world", multiplexed_model_id="m1", cache_salt="tenant-b"
+        )
+        chosen = await prefix_request_router._prefix_match_best_replicas(req, [r1, r2])
+        assert chosen == [[r2]]
 
 
 class TestNonBlockingTreeCalls:
