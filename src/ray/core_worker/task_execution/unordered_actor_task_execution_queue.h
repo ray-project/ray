@@ -104,6 +104,8 @@ class UnorderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
+  /// Set by Stop(). Tasks that become runnable afterwards are canceled.
+  bool stopped_ ABSL_GUARDED_BY(mu_) = false;
 
   FRIEND_TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttempts);
   FRIEND_TEST(UnorderedActorTaskExecutionQueueTest,
