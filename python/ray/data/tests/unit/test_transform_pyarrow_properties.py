@@ -18,27 +18,17 @@ The generated types deliberately cover the branches ``_reconcile_field``
 special-cases: ``null`` (the lattice bottom), nested structs, and lists.
 
 Hypothesis runs here are **derandomized**: a given commit always explores the
-same inputs, so a failure is reproducible and is never a flake. Raising
-``max_examples`` locally is a cheap way to search harder when touching
-``_reconcile_field``.
+same inputs, so a failure is reproducible and is never a flake. To search
+harder when touching ``_reconcile_field``, run with
+``HYPOTHESIS_PROFILE=ray_data_thorough`` (see ``tests/conftest.py``).
 """
 import itertools
 
 import pyarrow as pa
 import pytest
-from hypothesis import HealthCheck, assume, given, settings, strategies as st
+from hypothesis import assume, given, strategies as st
 
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-
-settings.register_profile(
-    "ray_data_ci",
-    max_examples=200,
-    derandomize=True,
-    deadline=None,
-    suppress_health_check=[HealthCheck.too_slow],
-)
-settings.load_profile("ray_data_ci")
-
 
 leaf_types = st.sampled_from(
     [

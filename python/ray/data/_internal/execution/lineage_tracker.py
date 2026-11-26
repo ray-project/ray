@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Tuple
 
+from ray.data._internal.execution.interfaces.common import OperatorId, TaskIndex
+
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import RefBundle
 
@@ -11,6 +13,13 @@ logger = logging.getLogger(__name__)
 # The ID of a data task. This represents the ID of the initial task execution:
 # all retries of that task share the same lineage task ID even if the Ray Core task
 # ID differs.
+#
+# Operators format it as ``"{operator_id}:{task_index}"``, where ``operator_id`` is
+# the physical operator's UUID and ``task_index`` is the index the task was first
+# submitted under, for example ``"7691d4b1-7242-426b-8b17-a2ca4a1a811d:51"``. A
+# reconstruction task keeps the ID of the task it re-runs, so the ID also recovers
+# that task's original index. Build and read IDs with ``make_lineage_task_id`` and
+# ``parse_lineage_task_id``. The tracker itself treats IDs as opaque strings.
 LineageTaskId = str
 
 # The index of one of the output blocks produced by a task.
@@ -23,6 +32,39 @@ ReconstructionPlanId = LineageTaskId
 # An opaque, unique ID for one output block. Kept a plain string so this module
 # stays free of Ray types.
 BlockId = str
+
+
+def make_lineage_task_id(
+    operator_id: OperatorId, task_index: TaskIndex
+) -> LineageTaskId:
+    """The lineage task ID of ``operator_id``'s task first submitted as ``task_index``."""
+    return f"{operator_id}:{task_index}"
+
+
+def parse_lineage_task_id(
+    lineage_task_id: LineageTaskId,
+) -> Tuple[OperatorId, TaskIndex]:
+    """Split a lineage task ID into ``(operator_id, task_index)``.
+
+    The inverse of ``make_lineage_task_id``.
+
+    Args:
+        lineage_task_id: The ID to split.
+
+    Returns:
+        The ID of the operator that owns the task, and the task's index.
+
+    Raises:
+        ValueError: If ``lineage_task_id`` isn't ``"{operator_id}:{task_index}"``
+            with a non-empty operator ID and a non-negative integer index.
+    """
+    operator_id, sep, task_index = lineage_task_id.rpartition(":")
+    if not sep or not operator_id or not task_index.isdigit():
+        raise ValueError(
+            f"Malformed lineage task ID {lineage_task_id!r}: expected "
+            "'{operator_id}:{task_index}'."
+        )
+    return operator_id, int(task_index)
 
 
 class ObjectReuseStatus(Enum):

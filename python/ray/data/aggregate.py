@@ -2176,11 +2176,10 @@ class TopKUnique(VectorizedAggregateFnV2[Dict[str, List], List[Any]]):
 
         values: List[Any] = []
         counts: List[int] = []
-        # Null accounting differs by block type: a pandas column drops nulls
-        # from `value_counts` entirely, while an Arrow column reports them as
-        # entries (None for nulls, NaN as a float value). Strip null-ish
-        # entries here and re-add one canonical `None` entry below, so both
-        # block types produce the same accumulator.
+        # Both block types now report nulls from `value_counts` as a single
+        # canonical `None` entry. Strip null-ish entries here and re-add one
+        # `None` entry below, so the accumulator does not depend on block type
+        # and honours `ignore_nulls`.
         null_count_from_entries = 0
         for value, count in zip(value_counts["values"], value_counts["counts"]):
             if is_null(value):

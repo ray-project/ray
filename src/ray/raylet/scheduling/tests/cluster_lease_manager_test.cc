@@ -1880,6 +1880,61 @@ TEST_F(ClusterLeaseManagerTest, ResourceReportForNodeAffinitySchedulingStrategyT
   ASSERT_EQ(demand.shape().at("GPU"), 1);
 }
 
+TEST_F(ClusterLeaseManagerTest, ResourceReportIncludesSoftNodeAffinityThatSpills) {
+  // Fill the node, so a lease pinned to it can't run there.
+  RayLease full_lease = CreateLease({{ray::kCPU_ResourceLabel, 8}});
+  rpc::RequestWorkerLeaseReply full_reply;
+  auto noop_callback = [](Status, std::function<void()>, std::function<void()>) {};
+  lease_manager_.QueueAndScheduleLease(
+      full_lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{
+          internal::ReplyCallback(noop_callback, &full_reply)});
+  std::shared_ptr<MockWorker> worker =
+      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, clock_);
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
+  pool_.TriggerCallbacks();
+  ASSERT_EQ(leased_workers_.size(), 1);
+  rpc::SchedulingStrategy scheduling_strategy;
+  auto *node_affinity = scheduling_strategy.mutable_node_affinity_scheduling_strategy();
+  node_affinity->set_node_id(id_.Binary());
+  node_affinity->set_soft(true);
+  node_affinity->set_spill_on_unavailable(true);
+  RayLease lease =
+      CreateLease({{ray::kCPU_ResourceLabel, 1}}, 0, {}, nullptr, scheduling_strategy);
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  bool *callback_occurred_ptr = &callback_occurred;
+  auto callback = [callback_occurred_ptr](
+                      Status, std::function<void()>, std::function<void()>) {
+    *callback_occurred_ptr = true;
+  };
+  lease_manager_.QueueAndScheduleLease(
+      lease,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+  pool_.TriggerCallbacks();
+  ASSERT_FALSE(callback_occurred);
+  // No node has room, so the autoscaler must see the demand to add one.
+  rpc::ResourcesData data;
+  lease_manager_.FillResourceUsage(data);
+  const auto &demands = data.resource_load_by_shape().resource_demands();
+  ASSERT_EQ(demands.size(), 1);
+  ASSERT_EQ(demands[0].shape().at("CPU"), 1);
+  ASSERT_EQ(demands[0].num_ready_requests_queued(), 1);
+  ASSERT_EQ(demands[0].num_infeasible_requests_queued(), 0);
+  // Once a node is added, the lease spills to it.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 8);
+  lease_manager_.ScheduleAndGrantLeases();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
+  AssertNoLeaks();
+}
+
 TEST_F(ClusterLeaseManagerTest,
        ResourceReportSuppressesNodeAffinityLabelSelectorWithoutFallback) {
   rpc::RequestWorkerLeaseReply reply;
