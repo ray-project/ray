@@ -23,9 +23,10 @@ class TorchftConfig(TorchConfig):
     Pass this as the ``torch_config`` of a
     :class:`~ray.train.torch.TorchTrainer` to train with
     `torchft <https://github.com/meta-pytorch/torchft>`_. Ray Train then
-    starts the torchft Lighthouse server as an actor on the head node, sets
-    the ``TORCHFT_LIGHTHOUSE`` environment variable on every training
-    worker, and creates one process group per replica group instead of one
+    starts the torchft Lighthouse server as an actor on the node that runs
+    the Ray Train controller, which is usually the head node. It sets the
+    ``TORCHFT_LIGHTHOUSE`` environment variable on every training worker
+    and creates one process group per replica group instead of one
     process group across all workers. Each Ray Train worker is its own
     replica group. When a worker fails, Ray Train replaces only that
     replica group instead of restarting the whole worker group, and the
@@ -62,7 +63,7 @@ class TorchftConfig(TorchConfig):
             ``min_replicas`` is required: the minimum number of replica
             groups that must be alive to form a quorum and keep training.
             ``bind`` defaults to ``"[::]:0"``, which binds the Lighthouse
-            to a free port on the head node. The torchft version you
+            to a free port on the Lighthouse's node. The torchft version you
             install defines the remaining keys, such as
             ``join_timeout_ms``, ``quorum_tick_ms``, and
             ``heartbeat_timeout_ms``.
