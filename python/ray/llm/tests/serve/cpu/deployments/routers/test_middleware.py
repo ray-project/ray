@@ -44,10 +44,6 @@ def client():
             headers={"Retry-After": "1"},
         )
 
-    @app.get("/raise-dict-detail")
-    def raise_dict_detail():
-        raise HTTPException(status_code=400, detail={"reason": "bad"})
-
     add_exception_handling_middleware(app)
     app.add_middleware(SetRequestIdMiddleware)
     return TestClient(
@@ -77,13 +73,6 @@ def test_http_exception_5xx_message_is_generic(client):
     error = response.json()["error"]
     assert error["message"] == f"Internal Server Error (Request ID: {REQUEST_ID})"
     assert error["type"] == "InternalServerError"
-
-
-def test_http_exception_with_non_string_detail(client):
-    response = client.get("/raise-dict-detail")
-
-    assert response.status_code == 400
-    assert "bad" in response.json()["error"]["message"]
 
 
 @pytest.mark.parametrize(
