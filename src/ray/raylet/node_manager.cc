@@ -279,13 +279,15 @@ NodeManager::NodeManager(
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
+      // cgroup_manager_ is declared before all members that reference it, so
+      // those members are destroyed first during teardown.
+      cgroup_manager_(std::move(cgroup_manager)),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
-          config.enable_resource_isolation, *cgroup_manager)),
+          config.enable_resource_isolation, *cgroup_manager_)),
+      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                     config.enable_resource_isolation,
-                                                    *cgroup_manager)),
-      add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
-      cgroup_manager_(std::move(cgroup_manager)),
+                                                    *cgroup_manager_)),
       shutting_down_(shutting_down),
       clock_(clock),
       acceptor_(std::move(acceptor)),
@@ -1726,7 +1728,7 @@ void NodeManager::ProcessWaitRequestMessage(
     // already local. Missing objects will be pulled from remote node managers.
     // If an object's owner dies, an error will be stored as the object's
     // value.
-    AsyncWait(client, refs);
+    AsyncWait(client, refs, /*is_move=*/{});
   }
 
   if (message->num_required_objects() == 0) {
@@ -1793,7 +1795,11 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
-  AsyncWait(client, refs);
+  std::vector<bool> is_move;
+  if (message->is_move() != nullptr) {
+    is_move.assign(message->is_move()->begin(), message->is_move()->end());
+  }
+  AsyncWait(client, refs, is_move);
   // De-duplicate the object IDs.
   absl::flat_hash_set<ObjectID> object_id_set(object_ids.begin(), object_ids.end());
   object_ids.assign(object_id_set.begin(), object_id_set.end());
@@ -2395,7 +2401,8 @@ void NodeManager::AsyncGet(const std::shared_ptr<ClientConnection> &client,
 }
 
 void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
-                            const std::vector<rpc::ObjectReference> &object_refs) {
+                            const std::vector<rpc::ObjectReference> &object_refs,
+                            const std::vector<bool> &is_move) {
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (!worker) {
     worker = worker_pool_.GetRegisteredDriver(client);
@@ -2406,7 +2413,8 @@ void NodeManager::AsyncWait(const std::shared_ptr<ClientConnection> &client,
 
   // Start an async request to get or wait for the objects.
   // The objects will be fetched locally unless the get or wait request is canceled.
-  lease_dependency_manager_.StartOrUpdateWaitRequest(worker->WorkerId(), object_refs);
+  lease_dependency_manager_.StartOrUpdateWaitRequest(
+      worker->WorkerId(), object_refs, is_move);
 }
 
 void NodeManager::CancelGetRequest(const std::shared_ptr<ClientConnection> &client,
@@ -2482,6 +2490,20 @@ void NodeManager::SpillIfOverPrimaryObjectsThreshold() {
 
 void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
+  // A received move is pinned as the new primary copy before the lease
+  // dependency manager cancels the wait pull, which owns the move record.
+  if (object_manager_.IsMovePull(object_id)) {
+    rpc::Address owner_address;
+    owner_address.set_node_id(object_info.owner_node_id.Binary());
+    owner_address.set_ip_address(object_info.owner_ip_address);
+    owner_address.set_port(object_info.owner_port);
+    owner_address.set_worker_id(object_info.owner_worker_id.Binary());
+    if (PinAndReportMovedObject(object_id, owner_address)) {
+      num_moved_objects_pinned_++;
+    } else {
+      num_moved_objects_pin_failed_++;
+    }
+  }
   // Notify the task dependency manager that this object is local.
   const auto ready_lease_ids = lease_dependency_manager_.HandleObjectLocal(object_id);
   RAY_LOG(DEBUG).WithField(object_id).WithField(self_node_id_)
@@ -2616,6 +2638,8 @@ std::string NodeManager::DebugString() const {
     result << "\nnum async plasma notifications: "
            << async_plasma_objects_notification_.size();
   }
+  result << "\nnum moved objects pinned: " << num_moved_objects_pinned_;
+  result << "\nnum moved objects pin failed: " << num_moved_objects_pin_failed_;
 
   // Event stats.
   result << "\nEvent stats:" << io_service_.stats()->StatsString();
@@ -2713,6 +2737,41 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
   }
   RAY_CHECK_EQ(request.object_ids_size(), reply->successes_size());
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+bool NodeManager::PinAndReportMovedObject(const ObjectID &object_id,
+                                          const rpc::Address &owner_address) {
+  // The error object that MarkObjectFailed writes for a failed pull has no owner,
+  // so nothing would ever free its pin.
+  if (WorkerID::FromBinary(owner_address.worker_id()).IsNil()) {
+    RAY_LOG(DEBUG).WithField(object_id) << "Not pinning moved object without an owner";
+    return false;
+  }
+  if (failed_workers_cache_.contains(WorkerID::FromBinary(owner_address.worker_id())) ||
+      failed_nodes_cache_.contains(NodeID::FromBinary(owner_address.node_id()))) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Not pinning moved object because its owner is dead";
+    return false;
+  }
+  std::vector<ObjectID> object_ids{object_id};
+  std::vector<std::unique_ptr<RayObject>> results;
+  // The received copy still holds the store reference taken when it was created
+  // (ReceiveObjectChunk releases it on the main service, behind this call), so
+  // the store cannot have evicted it: the Get only misses if the store itself is
+  // unreachable.
+  // Regarding the last check, the copy can be pending deletion when the owner died,
+  // or freed the object, while the move was in flight; the raylet is about to delete
+  // it, so it must not be pinned.
+  if (!GetObjectsFromPlasma(object_ids, &results) || results[0] == nullptr ||
+      local_object_manager_.ObjectPendingDeletion(object_id)) {
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Moved object is not in the object store or is being freed";
+    return false;
+  }
+  local_object_manager_.PinObjectsAndWaitForFree(
+      object_ids, std::move(results), owner_address, /*generator_id=*/ObjectID::Nil());
+  object_directory_.ReportObjectPrimaryMoved(object_id, self_node_id_, owner_address);
+  return true;
 }
 
 void NodeManager::HandleGetSystemConfig(rpc::GetSystemConfigRequest request,
@@ -3173,10 +3232,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           }
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
-          MemoryUsageSnapshot memory_usage_snapshot =
-              MemoryMonitorUtils::TakeSystemMemoryUsageSnapshot(
-                  MemoryMonitorInterface::kDefaultCgroupPath,
-                  /*include_swap=*/true);
+          MemoryUsageSnapshot memory_usage_snapshot;
           if (initial_config_.enable_resource_isolation) {
             StatusSetOr<std::pair<MemoryUsageSnapshot, MemoryUsageSnapshot>,
                         StatusT::NotFound>
@@ -3184,15 +3240,25 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                     MemoryMonitorUtils::TakeUserAndSystemSliceMemoryUsageSnapshot(
                         cgroup_manager_->GetUserCgroupPath(),
                         cgroup_manager_->GetSystemCgroupPath());
-            if (user_and_system_slice_memory_snapshot_or.has_value()) {
-              memory_usage_snapshot =
-                  user_and_system_slice_memory_snapshot_or.value().first;
-            } else {
-              RAY_LOG(ERROR) << absl::StrFormat(
-                  "Failed to take user and system slice memory snapshot due to: %s. "
-                  "Falling back to host system memory snapshot.",
-                  user_and_system_slice_memory_snapshot_or.message());
+            if (!user_and_system_slice_memory_snapshot_or.has_value()) {
+              RAY_LOG_EVERY_MS(ERROR, MemoryMonitorInterface::kErrorLogIntervalMs)
+                  << absl::StrFormat(
+                         "Failed to take user and system slice memory snapshot due to: "
+                         "%s. "
+                         "Skipping this resource-isolation worker killing decision.",
+                         user_and_system_slice_memory_snapshot_or.message());
+              ReleaseKillWorkerInProgress();
+              return;
             }
+            memory_usage_snapshot =
+                user_and_system_slice_memory_snapshot_or.value().first;
+          } else {
+            // Same snapshot ThresholdMemoryMonitor fires on (RAM + swap when
+            // count_swap_in_memory_monitor is on); the policy recomputes its
+            // threshold from it.
+            memory_usage_snapshot =
+                MemoryMonitorUtils::TakeMonitoredSystemMemoryUsageSnapshot(
+                    MemoryMonitorInterface::kDefaultCgroupPath);
           }
 
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>

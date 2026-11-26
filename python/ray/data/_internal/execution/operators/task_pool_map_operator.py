@@ -55,6 +55,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = None,
         isolate_workers: bool = False,
         default_logical_memory_enabled: bool = False,
+        generator_backpressure_disabled: bool = False,
     ):
         """Create an TaskPoolMapOperator instance.
 
@@ -91,6 +92,8 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             default_logical_memory_enabled: If ``True``, the operator launches tasks
                 with a default logical ``memory``. The method for choosing the
                 default is an implementation detail.
+            generator_backpressure_disabled: If ``True``, apply no
+                streaming-generator backpressure to this operator's tasks.
         """
         super().__init__(
             map_transformer,
@@ -106,6 +109,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             ray_remote_args,
             on_start,
             default_logical_memory_enabled,
+            generator_backpressure_disabled,
         )
 
         self._isolate_workers = isolate_workers
@@ -190,7 +194,7 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         # Submit the task as a normal Ray task.
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         ctx = TaskContext(
-            task_idx=self._next_data_task_idx,
+            task_idx=self._context_task_idx(bundle),
             op_name=self.name,
             target_max_block_size_override=self.target_max_block_size_override,
             rerun_policy=_task_rerun_policy(dynamic_ray_remote_args),
@@ -200,7 +204,8 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
         resource_request = task_resource_dict(dynamic_ray_remote_args)
 
         if (
-            "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
+            not self._generator_backpressure_disabled
+            and "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
             and self.data_context._max_num_blocks_in_streaming_gen_buffer is not None
         ):
             # The `_generator_backpressure_num_objects` parameter should be
@@ -221,7 +226,9 @@ class TaskPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
 
         self._current_logical_usage = self._current_logical_usage.add(logical_usage)
 
-        def task_done_callback():
+        def task_done_callback(
+            inputs: RefBundle, task_index: int, exception: Optional[Exception]
+        ) -> None:
             self._current_logical_usage = self._current_logical_usage.subtract(
                 logical_usage
             )

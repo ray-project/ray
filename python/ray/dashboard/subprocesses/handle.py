@@ -2,6 +2,7 @@ import asyncio
 import logging
 import multiprocessing
 import os
+import sys
 from typing import Optional, Union
 
 import multidict
@@ -30,7 +31,12 @@ logger = logging.getLogger(__name__)
 def select_start_method() -> str:
     # Never `fork`, though the platform offers it: Ray's C bindings keep static state a
     # forked child would inherit from whichever process called start_module().
-    if "forkserver" in multiprocessing.get_all_start_methods():
+    # Nor `forkserver` on macOS: once the server has imported grpc, a child forked from
+    # it aborts on its first use of a system framework, such as a proxy lookup.
+    if (
+        sys.platform != "darwin"
+        and "forkserver" in multiprocessing.get_all_start_methods()
+    ):
         return "forkserver"
     return "spawn"
 

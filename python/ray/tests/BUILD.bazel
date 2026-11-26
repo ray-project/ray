@@ -53,6 +53,7 @@ py_test_module_list(
         "test_autoscaler_drain_node_api.py",
         "test_component_failures_2.py",
         "test_component_failures_3.py",
+        "test_consume_once_cross_node.py",
         "test_dashboard_profiler.py",
         "test_dataclient_disconnect.py",
         "test_debug_tools.py",
@@ -85,6 +86,7 @@ py_test_module_list(
         "test_task_events_3.py",
         "test_unavailable_actors.py",
         "test_util_helpers.py",
+        "test_worker_teardown.py",
     ],
     tags = [
         "exclusive",

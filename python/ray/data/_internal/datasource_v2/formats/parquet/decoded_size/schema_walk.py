@@ -50,6 +50,13 @@ class LeafProfile(NamedTuple):
     # The writer counts every DELTA_BYTE_ARRAY value in SizeStatistics bytes.
     counts_delta_byte_array: bool = False
 
+    @property
+    def list_offset_width(self) -> int:
+        """Bytes per offset of the widest list above the leaf: 4 under only a
+        fixed_size_list, which PyArrow reads as a list before dropping the offsets."""
+        widths = [node.width for node in self.nodes[:-1] if node.kind == _LIST]
+        return max(widths, default=4)
+
 
 class _Position(NamedTuple):
     """The level context the schema walk hands a child array."""

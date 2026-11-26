@@ -4433,6 +4433,51 @@ class TestPrecomputeSerializeKeys:
         assert to_launch == {"type_1": 2}
 
 
+def test_max_num_nodes_cancels_only_needed_min_worker_launches():
+    node_type_configs = {
+        "head": NodeTypeConfig(
+            name="head", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=0
+        ),
+        "type_1": NodeTypeConfig(
+            name="type_1", resources={"CPU": 1}, min_worker_nodes=0, max_worker_nodes=5
+        ),
+        "type_2": NodeTypeConfig(
+            name="type_2", resources={"CPU": 1}, min_worker_nodes=2, max_worker_nodes=2
+        ),
+    }
+    instances = []
+    for i, (node_type, kind) in enumerate(
+        [("head", NodeKind.HEAD)] + [("type_1", NodeKind.WORKER)] * 4
+    ):
+        instances.append(
+            make_autoscaler_instance(
+                im_instance=Instance(
+                    instance_type=node_type,
+                    status=Instance.RAY_RUNNING,
+                    instance_id=str(i),
+                    node_id=f"r{i}",
+                    node_kind=kind,
+                ),
+                ray_node=NodeState(
+                    ray_node_type_name=node_type,
+                    available_resources={"CPU": 0},
+                    total_resources={"CPU": 1},
+                    node_id=f"r{i}".encode(),
+                ),
+            )
+        )
+
+    # 5 nodes are running and type_2 needs 2 more, but the cluster holds at most 6.
+    request = sched_request(
+        node_type_configs=node_type_configs, max_num_nodes=6, instances=instances
+    )
+    reply = ResourceDemandScheduler(event_logger).schedule(request)
+
+    to_launch, to_terminate = _launch_and_terminate(reply)
+    assert to_launch == {"type_2": 1}
+    assert to_terminate == []
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

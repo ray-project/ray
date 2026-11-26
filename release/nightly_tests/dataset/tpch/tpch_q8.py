@@ -40,26 +40,14 @@ def main(args):
         # The pipeline is kept mostly linear:
         # (region->nation->customer)->orders->lineitem->part->supplier->nation.
 
-        # Load all required tables with early column pruning to reduce
-        # intermediate data size (projection pushes down to Parquet reader)
-        # TODO: Remove manual projection once we support proper projection derivation
-        region = load_table("region", args.sf).select_columns(["r_regionkey", "r_name"])
-        nation = load_table("nation", args.sf).select_columns(
-            ["n_nationkey", "n_name", "n_regionkey"]
-        )
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_nationkey"]
-        )
-        customer = load_table("customer", args.sf).select_columns(
-            ["c_custkey", "c_nationkey"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey", "o_orderdate"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_partkey", "l_suppkey", "l_extendedprice", "l_discount"]
-        )
-        part = load_table("part", args.sf).select_columns(["p_partkey", "p_type"])
+        # Load tables. Projection pushdown derives the columns each read needs.
+        region = load_table("region", args.sf)
+        nation = load_table("nation", args.sf)
+        supplier = load_table("supplier", args.sf)
+        customer = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
+        part = load_table("part", args.sf)
 
         # Q8 parameters
         date1 = datetime(1995, 1, 1)
@@ -88,7 +76,6 @@ def main(args):
             on=("n_nationkey",),
             right_on=("c_nationkey",),
         )
-        customer_nation = customer_nation.select_columns(["c_custkey"])
 
         # Filter part by type
         part_filtered = part.filter(expr=col("p_type") == part_type)
@@ -97,6 +84,8 @@ def main(args):
         orders_filtered = orders.filter(
             expr=((col("o_orderdate") >= date1) & (col("o_orderdate") < date2))
         )
+        # Drop nation's columns so the supplier-nation join below does not
+        # collide on them.
         orders_customer = orders_filtered.join(
             customer_nation,
             num_partitions=join_num_partitions,
@@ -112,15 +101,6 @@ def main(args):
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
-        ).select_columns(
-            [
-                "l_orderkey",
-                "l_partkey",
-                "l_suppkey",
-                "l_extendedprice",
-                "l_discount",
-                "o_orderdate",
-            ]
         )
 
         # Join with part
@@ -130,7 +110,7 @@ def main(args):
             join_type="inner",
             on=("l_partkey",),
             right_on=("p_partkey",),
-        ).select_columns(["l_suppkey", "l_extendedprice", "l_discount", "o_orderdate"])
+        )
 
         # Keep supplier->nation on the main path.
         lineitem_supplier = lineitem_part.join(
@@ -139,8 +119,6 @@ def main(args):
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-        ).select_columns(
-            ["l_extendedprice", "l_discount", "o_orderdate", "s_nationkey"]
         )
 
         ds = lineitem_supplier.join(

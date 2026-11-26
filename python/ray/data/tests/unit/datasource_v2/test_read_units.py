@@ -227,17 +227,23 @@ def test_footer_indexer_skips_whole_files_before_footer_reads_and_forwards_ids(
     monkeypatch.setattr(footer_file_indexer, "FooterReaderActor", _FakeActorClass)
     monkeypatch.setattr(ray, "kill", lambda _actor: None)
 
+    filesystem = LocalFileSystem()
     indexer = FooterFileIndexer(ignore_missing_paths=False)
     list(
         indexer.list_files(
             pa.array([str(tmp_path)]),
-            filesystem=LocalFileSystem(),
+            filesystem=filesystem,
             excluded_read_unit_ids=excluded,
         )
     )
 
     assert actor_kwargs == [
         {
+            "filesystem": filesystem,
+            "io_concurrency": footer_file_indexer._DEFAULT_IO_CONCURRENCY,
+            "filter_expr": None,
+            "projected_cols": None,
+            "coalesce_bytes": 0,
             "excluded_read_unit_ids": excluded,
             "partitioning": None,
             "partition_pruner": None,

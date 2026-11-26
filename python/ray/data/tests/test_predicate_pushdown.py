@@ -80,6 +80,52 @@ def test_synthesized_path_filters_use_output_values(
     assert sorted(rows, key=lambda row: row["id"]) == expected
 
 
+@pytest.mark.parametrize("use_datasource_v2", [True, False], ids=["v2", "v1"])
+@pytest.mark.parametrize(
+    "values,predicate",
+    [
+        ([40.0, float("nan")], col("x") != 40.0),
+        ([40.0, float("nan")], ~(col("x") >= 30.0)),
+        ([40.0, float("nan")], (col("x") >= 30.0) == lit(False)),
+        ([40.0, float("nan")], col("x").is_in([float("nan")])),
+        ([-0.0, 0.0], col("x").is_in([0.0])),
+        ([40.0, float("nan")], col("x").not_in([40.0])),
+        ([40.0, float("nan")], (col("x") != 40.0) & (col("id") >= 0)),
+        ([40.0, float("nan")], col("x") > 30.0),
+        (pa.array([100, 1], pa.int8()), (col("x") + 100) > 120),
+    ],
+    ids=[
+        "ne",
+        "not_ge",
+        "ge_is_false",
+        "is_in_nan",
+        "is_in_zero",
+        "not_in",
+        "ne_and_int",
+        "gt",
+        "int8_add",
+    ],
+)
+def test_pushed_filter_matches_in_memory_filter(
+    ray_start_regular_shared,
+    tmp_path,
+    monkeypatch,
+    use_datasource_v2,
+    values,
+    predicate,
+):
+    """A pushed-down filter returns the rows the same filter keeps in memory."""
+    path = str(tmp_path / "data.parquet")
+    pq.write_table(pa.table({"id": [0, 1], "x": values}), path)
+    monkeypatch.setattr(
+        ray.data.DataContext.get_current(), "use_datasource_v2", use_datasource_v2
+    )
+    ds = ray.data.read_parquet(path)
+    pushed = ds.filter(expr=predicate).take_all()
+    in_memory = ds.materialize().filter(expr=predicate).take_all()
+    assert [row["id"] for row in pushed] == [row["id"] for row in in_memory]
+
+
 def test_synthesized_path_residual_preserves_read_constraints(
     ray_start_regular_shared, tmp_path, monkeypatch
 ):

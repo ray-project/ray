@@ -33,10 +33,8 @@ def main(args):
         start_date = datetime(1995, 9, 1)
         end_date = datetime(1995, 10, 1)
 
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_partkey", "l_extendedprice", "l_discount", "l_shipdate"]
-        )
-        part = load_table("part", args.sf).select_columns(["p_partkey", "p_type"])
+        lineitem = load_table("lineitem", args.sf)
+        part = load_table("part", args.sf)
 
         lineitem = lineitem.filter(
             expr=((col("l_shipdate") >= start_date) & (col("l_shipdate") < end_date))
