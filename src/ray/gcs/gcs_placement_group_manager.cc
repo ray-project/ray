@@ -1124,20 +1124,35 @@ bool GcsPlacementGroupManager::RescheduleIfStillHasUnplacedBundles(
                     << placement_group->GetPlacementGroupID();
       return true;
     }
-    if (placement_group->HasUnplacedBundles()) {
-      if ((!IsInPendingQueue(placement_group->GetPlacementGroupID())) &&
-          placement_group->GetState() != rpc::PlacementGroupTableData::REMOVED) {
-        RAY_LOG(INFO) << "The placement group still has unplaced bundles, so put "
-                         "it to pending queue again, id:"
+    if (placement_group->HasUnplacedBundles() &&
+        placement_group->GetState() != rpc::PlacementGroupTableData::REMOVED) {
+      // The group is already queued, for example because a node died after the
+      // success and its queue entry has not run yet. That entry will place the
+      // remaining bundles, so do not queue the group again or change its state.
+      //
+      // Return true so the caller does not answer `WaitPlacementGroup` callers yet:
+      // some bundles have no node, so the group is not ready. The queue entry
+      // answers them. If it places every bundle, its success path runs this check
+      // again. If it finds nothing left to place when it runs, it takes the success
+      // path directly. If it fails, the group is queued for a retry, or held as
+      // infeasible until a node is added, as for any group that cannot be placed
+      // yet. Removing the group answers them with an error.
+      if (IsInPendingQueue(placement_group->GetPlacementGroupID())) {
+        RAY_LOG(INFO) << "The placement group still has unplaced bundles and is "
+                         "already queued, leave it to the queue entry, id:"
                       << placement_group->GetPlacementGroupID();
-        placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
-        AddToPendingQueue(placement_group, 0);
-        gcs_table_storage_->PlacementGroupTable().Put(
-            placement_group->GetPlacementGroupID(),
-            placement_group->GetPlacementGroupTableData(),
-            {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
         return true;
       }
+      RAY_LOG(INFO) << "The placement group still has unplaced bundles, so put "
+                       "it to pending queue again, id:"
+                    << placement_group->GetPlacementGroupID();
+      placement_group->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
+      AddToPendingQueue(placement_group, 0);
+      gcs_table_storage_->PlacementGroupTable().Put(
+          placement_group->GetPlacementGroupID(),
+          placement_group->GetPlacementGroupTableData(),
+          {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
+      return true;
     }
   }
   return false;

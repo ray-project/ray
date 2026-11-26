@@ -291,6 +291,10 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoGcsServiceHandler
   bool IsInPendingQueue(const PlacementGroupID &placement_group_id) const;
 
   /// Reschedule this placement group if it still has unplaced bundles.
+  ///
+  /// \return True if the group is not ready yet, so `WaitPlacementGroup` callers
+  /// must keep waiting. A later scheduling attempt, or removing the group, answers
+  /// them.
   bool RescheduleIfStillHasUnplacedBundles(const PlacementGroupID &placement_group_id);
 
   /// The io loop that is used to delay execution of tasks (e.g.,

@@ -1174,6 +1174,70 @@ TEST_F(GcsPlacementGroupManagerTest, TestQueuedGroupWithNoUnplacedBundlesIsNotSc
               ElementsAre(2, 2));
 }
 
+TEST_F(GcsPlacementGroupManagerTest,
+       TestDelayedCreationCallbackDoesNotAnswerWaitersWhileQueued) {
+  ///
+  /// A creation success's storage callback can run while the same group sits in the
+  /// pending queue with unplaced bundles: a node died after the success, and the
+  /// queue entry has not run yet because another group is being scheduled. The
+  /// callback must not answer `WaitPlacementGroup` callers then. The queue entry's
+  /// success answers them.
+  ///
+  /// pg 1 scheduled (attempt A), pg 2 queued -> A succeeds, storage callback delayed
+  /// -> pg 2 scheduled -> node dead, pg 1 queued -> A's storage callback runs -> pg 2
+  /// succeeds -> pg 1 scheduled (attempt B) -> B succeeds.
+  ///
+  auto request = GenCreatePlacementGroupRequest(
+      "", rpc::PlacementStrategy::STRICT_SPREAD, /*bundles_count=*/2);
+  RegisterPlacementGroup(request, [](Status status) {});
+  auto placement_group = fake_placement_group_scheduler_->placement_groups_.back();
+  const auto placement_group_id = placement_group->GetPlacementGroupID();
+  RegisterPlacementGroup(GenCreatePlacementGroupRequest(), [](Status status) {});
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 1);
+
+  // Attempt A succeeds. The io service is not run, so its storage callback waits.
+  PrepareBundleResources(placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+
+  // Pg 2 starts scheduling, so pg 1's queue entry cannot run while it is in flight.
+  gcs_placement_group_manager_->SchedulePendingPlacementGroups();
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 2);
+  auto other_placement_group = fake_placement_group_scheduler_->placement_groups_.back();
+
+  // The node holding bundle 0 of pg 1 dies, which queues pg 1.
+  fake_placement_group_scheduler_->group_on_dead_node_ = placement_group_id;
+  fake_placement_group_scheduler_->bundles_on_dead_node_ = {0};
+  gcs_placement_group_manager_->OnNodeDead(NodeID::FromRandom());
+  int wait_callback_count = 0;
+  gcs_placement_group_manager_->WaitPlacementGroup(placement_group_id,
+                                                   [&wait_callback_count](Status status) {
+                                                     RAY_CHECK_OK(status);
+                                                     ++wait_callback_count;
+                                                   });
+
+  // A's storage callback runs while pg 1 is queued. Bundle 0 is still unplaced.
+  RunIOService();
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 2);
+  EXPECT_EQ(wait_callback_count, 0);
+  EXPECT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::RESCHEDULING);
+
+  // Pg 2 succeeds, so pg 1's queue entry runs as attempt B.
+  PrepareBundleResources(other_placement_group);
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(other_placement_group);
+  RunIOService();
+  ASSERT_EQ(fake_placement_group_scheduler_->GetPlacementGroupCount(), 3);
+  EXPECT_EQ(wait_callback_count, 0);
+
+  // B succeeds and places bundle 0, which answers the waiter.
+  PrepareBundleResourcesWithIndex(placement_group, {0});
+  gcs_placement_group_manager_->OnPlacementGroupCreationSuccess(placement_group);
+  RunIOService();
+  EXPECT_EQ(wait_callback_count, 1);
+  EXPECT_EQ(placement_group->GetState(), rpc::PlacementGroupTableData::CREATED);
+  EXPECT_THAT(fake_placement_group_scheduler_->unplaced_bundle_counts_,
+              ElementsAre(2, 2, 1));
+}
+
 /// TODO(sang): Currently code is badly structured that it is difficult to test
 /// the following scenarios. We should rewrite some APIs and handle them.
 /// 1. Node is dead before finishing to create a pg
