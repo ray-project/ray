@@ -685,7 +685,13 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         node's resources) and skips startup.
         """
         reclaimed = self.reclaim_draining_actors(limit=req.num_to_reclaim)
-        num_new = len(req.nodes) if req.nodes else req.delta - reclaimed
+        # How many actors the request planned to create. A reclaim shortfall
+        # is not topped up: the shortfall actors were planned onto specific
+        # nodes, and when ``nodes`` is empty the request was reclaim-only --
+        # creating untargeted actors there would let Ray core place them
+        # anywhere, including a node the pool is draining. The next tick
+        # re-plans from updated state.
+        num_new = req.delta - req.num_to_reclaim
 
         logger.debug(
             f"Scaling up {self._map_worker_cls_name} actor pool by {req.delta} "
@@ -772,7 +778,9 @@ class _ExperimentalActorPool(AutoscalingActorPool):
         victims.extend(logical_id for _, _, logical_id in ranked)
 
         num_downscaled = 0
-        for logical_id in victims[:count]:
+        for logical_id in victims:
+            if num_downscaled >= count:
+                break
             if self._downscale_actor_by_id(logical_id, reason):
                 num_downscaled += 1
         return num_downscaled

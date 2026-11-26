@@ -719,6 +719,32 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert pool.num_draining_actors() == 2
         assert pool.num_running_actors() == 1
 
+    def test_scale_down_keeps_shedding_after_a_victim_is_gone(self):
+        """A victim picked from the snapshot can be gone by apply time (it
+        drained, or died). A node-shaped shed counts actors, not slots: it
+        must keep walking the ranked candidates until it has shed ``count``,
+        not slice the first ``count`` and come up short."""
+        pool = self._create_pool(max_size=4)
+        self._add_ready_actor(pool, node_id="node1")
+        self._add_ready_actor(pool, node_id="node1")
+
+        real_downscale = pool._downscale_actor_by_id
+        calls: List[Any] = []
+
+        def _fail_first(logical_id, reason):
+            calls.append(logical_id)
+            if len(calls) == 1:
+                return False  # "already gone"
+            return real_downscale(logical_id, reason)
+
+        with mock.patch.object(pool, "_downscale_actor_by_id", side_effect=_fail_first):
+            applied = pool.scale(
+                ScaleDownRequest.on_nodes(("node1",), force=True, reason="test")
+            )
+
+        assert applied == -1
+        assert len(calls) == 2, "must fall through to the next candidate"
+
     def test_reclaim_takes_busiest_draining_actor_first(self):
         """A reclaim takes the busiest draining actor first: it rescues the
         most in-flight work from a slow drain. ``reclaimable_node_ids`` reports
@@ -1094,6 +1120,25 @@ class TestExperimentalActorPool(unittest.TestCase):
         assert applied == 2
         assert pool.num_draining_actors() == 0
         assert pool.num_pending_actors() == 1
+
+    def test_scale_up_reclaim_only_shortfall_does_not_create_untargeted_actors(self):
+        """A reclaim-only upscale (``num_to_reclaim=N``, no target nodes) must
+        not backfill a shortfall with untargeted actor creations. The sizer
+        chose reclaim-only because there was no room on any node; creating
+        actors without node affinity would let Ray core place them anywhere,
+        including a node the pool is draining. The shortfall is left for the
+        next sizer tick to re-plan."""
+        pool = self._create_pool(max_size=10)
+        # No draining actors to reclaim.
+        self._add_ready_actor(pool, node_id="node1")
+
+        # Request: reclaim 2, create 0 new. Pool has 0 reclaimable actors.
+        applied = pool.scale(
+            ScaleUpRequest.untargeted(2, num_to_reclaim=2, reason="test")
+        )
+        # Shortfall must NOT be topped up: applied must be 0, no pending actors.
+        assert applied == 0
+        assert pool.num_pending_actors() == 0
 
     def test_refresh_disabled_still_reaps_dead_draining_actor(self):
         """With RAY_DATA_REFRESH_ACTOR_STATE off, the pool skips the full

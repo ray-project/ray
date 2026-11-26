@@ -694,6 +694,52 @@ def test_transfer_whose_recipient_never_grew_closes_as_lost():
     assert metrics.actions[-1] == (rule.name, "recipient", "lost")
 
 
+def test_transfer_timeout_cancels_claimed_pending_ids_exactly():
+    """When a transfer times out, the pool must cancel the exact claimed
+    pending actors, not a per-node count. The old per-node path was correct
+    under the guard invariant but could cancel the wrong actor if that
+    invariant ever broke; using pending_ids is simpler and more precise."""
+    from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+        ScaleDownRequest,
+    )
+    from ray.data._internal.experimental.execution.sizer.optimizer.capacity_transfer import (  # noqa: E501
+        SIZER_TRANSFER_TIMEOUT_S,
+    )
+
+    scaled: list = []
+
+    class _TrackingPool(_Pool):
+        def scale(self, req):
+            scaled.append(req)
+            return 0
+
+    pool = _TrackingPool(
+        pending_ids={"node1": ["actor-a", "actor-b"], "node2": ["actor-c"]}
+    )
+    recipient = _op("recipient", pool=pool)
+    metrics = _Metrics()
+    rule = _transfer_rule(metrics=metrics)
+    state = rule.new_state()
+    # Only actor-a and actor-c are claimed; actor-b on node1 belongs to something else.
+    state.in_flight[recipient] = TransferInFlight(
+        recipient=recipient,
+        donors=frozenset({_donor_op()}),
+        started_t=0.0,
+        claimed_ids=("actor-a", "actor-c"),
+    )
+
+    rule.advance(_ctx(now=SIZER_TRANSFER_TIMEOUT_S + 1), state)
+
+    assert not state.in_flight
+    assert metrics.actions[-1] == (rule.name, "recipient", "timeout")
+    assert len(scaled) == 1
+    req = scaled[0]
+    assert isinstance(req, ScaleDownRequest)
+    # Must name the two claimed actors exactly, regardless of which nodes they are on.
+    assert set(req.pending_ids) == {"actor-a", "actor-c"}
+    assert req.nodes == ()
+
+
 # --- SilentBottleneckGrant -----------------------------------------------------
 
 
