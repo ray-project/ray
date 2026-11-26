@@ -1,4 +1,4 @@
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional, Tuple
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -98,7 +98,11 @@ def _join(right: Optional[Dataset] = None, join_type: str = "inner") -> Dataset:
     )
 
 
-_PANDAS_HOW = {"inner": "inner", "left_outer": "left", "right_outer": "right"}
+_PANDAS_HOW: Dict[str, Literal["inner", "left", "right"]] = {
+    "inner": "inner",
+    "left_outer": "left",
+    "right_outer": "right",
+}
 
 
 def _join_pd(
