@@ -5,9 +5,10 @@ import traceback
 from functools import partial
 from typing import Awaitable, Callable, TypeVar
 
-from fastapi import HTTPException, status
+from fastapi import status
 from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
+from starlette.exceptions import HTTPException
 
 from ray import serve
 from ray.llm._internal.common.errors import VLLM_CLIENT_ERRORS, VLLM_FATAL_ERRORS
@@ -148,7 +149,7 @@ def _extract_message(e):
         internal_message = extract_message_from_exception(e)
 
     if isinstance(e, HTTPException):
-        message = e.detail
+        message = str(e.detail)
     elif isinstance(e, OpenAIHTTPException):
         message = e.message
     else:
