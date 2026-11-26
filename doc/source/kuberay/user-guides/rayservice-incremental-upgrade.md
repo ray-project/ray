@@ -109,7 +109,7 @@ spec:
 
 6. Install the KubeRay operator, following [these instructions](../getting-started/operator-installation.md). The minimum version for this guide is v1.5.1. To use this feature, the `RayServiceIncrementalUpgrade` feature gate must be enabled. To enable the feature gate when installing the kuberay operator, run the following command:
 ```bash
-helm install kuberay-operator kuberay/kuberay-operator --version v1.7.0 \
+helm install kuberay-operator kuberay/kuberay-operator --version v1.8.0 \
   --set featureGates\[0\].name=RayServiceIncrementalUpgrade \
   --set featureGates\[0\].enabled=true
 ```

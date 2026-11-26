@@ -27,7 +27,7 @@ kind create cluster --name rayjob-test --image kindest/node:v1.35.0
 ### Step 2: Install the KubeRay operator with `SidecarSubmitterRestart` enabled
 
 ```sh
-helm upgrade --install kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
+helm upgrade --install kuberay-operator kuberay/kuberay-operator --version 1.8.0 \
   --set "featureGates[0].name=SidecarSubmitterRestart" \
   --set "featureGates[0].enabled=true"
 ```
