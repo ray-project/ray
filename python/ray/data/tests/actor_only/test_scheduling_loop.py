@@ -2,6 +2,7 @@
 and shutdown ordering."""
 import sys
 import threading
+from types import SimpleNamespace
 from typing import Any, Callable, List, Optional, Set
 from unittest.mock import MagicMock
 
@@ -104,6 +105,35 @@ def _bare_executor(
     return executor
 
 
+def _executor_with(**private_fields: Any) -> ExperimentalStreamingExecutor:
+    """An executor built without ``__init__``, with only the given private
+    fields set. Name each field without its leading underscore."""
+    executor = ExperimentalStreamingExecutor.__new__(ExperimentalStreamingExecutor)
+    for name, value in private_fields.items():
+        setattr(executor, f"_{name}", value)
+    return executor
+
+
+class _Recorder:
+    """A stand-in that defines only the methods it is given. Each call
+    appends the method's name to ``calls`` and returns the given value; any
+    other attribute raises ``AttributeError``."""
+
+    def __init__(self, calls: List[str], **returns: Any):
+        self._calls = calls
+        self._returns = returns
+
+    def __getattr__(self, name: str) -> Callable[..., Any]:
+        if name.startswith("_") or name not in self._returns:
+            raise AttributeError(name)
+
+        def method(*args: Any, **kwargs: Any) -> Any:
+            self._calls.append(name)
+            return self._returns[name]
+
+        return method
+
+
 class _FakeBank(ResourceBankBase):
     """Records each finalize, so a test can tell whether a flush read a bank
     that another thread had already cleared."""
@@ -181,23 +211,58 @@ def test_escape_hatch_sees_consumption_queued_this_step(monkeypatch):
     )
 
     calls: List[str] = []
-    bank = MagicMock()
-    bank.drain_consumed_blocks.side_effect = lambda: calls.append("drain")
     monkeypatch.setattr(
         executor_mod,
         "relieve_output_deadlock",
-        lambda **kwargs: calls.append("hatch"),
+        lambda **kwargs: calls.append("relieve_output_deadlock"),
     )
-    executor = ExperimentalStreamingExecutor.__new__(ExperimentalStreamingExecutor)
-    executor._last_detection_timestamp = 0.0
-    executor._idle_detection_interval_s = 0.0
-    executor._output_node = (MagicMock(), MagicMock())
-    executor._resource_bank = bank
-    executor._topology = {}
+    executor = _executor_with(
+        last_detection_timestamp=0.0,
+        idle_detection_interval_s=0.0,
+        output_node=(object(), object()),
+        resource_bank=_Recorder(calls, drain_consumed_blocks=None),
+        topology={},
+    )
 
     executor._maybe_run_escape_hatch()
 
-    assert calls == ["drain", "hatch"]
+    assert calls == ["drain_consumed_blocks", "relieve_output_deadlock"]
+
+
+def test_bottleneck_observer_samples_after_tasks_launch():
+    """The observer reads slots at one instant. Sampled before the launch,
+    every slot a task freed this step looks idle though the launch refills
+    it, which made producers look self-limited. It samples after."""
+    calls: List[str] = []
+    others: List[str] = []
+    executor = _executor_with(
+        resource_reporter=_Recorder(
+            others,
+            get_cluster_view=SimpleNamespace(reserved_by_node={}),
+            seconds_since_allocation_change=0.0,
+        ),
+        resource_bank=_Recorder(others, set_node_view=None, drain_consumed_blocks=None),
+        actor_only_metrics=_Recorder(others, maybe_update=None),
+        cluster_autoscaler=_Recorder(others, try_trigger_scaling=None),
+        sizer=_Recorder(
+            calls, maybe_build_cluster_state_snapshot=None, observe_after_launch=None
+        ),
+        metadata_fetcher=_Recorder(others, emit_ready=[], fire_done_callbacks=[]),
+        lineage_tracker=None,
+        max_errored_blocks=0,
+        num_errored_blocks=0,
+        topology={},
+        # Not due: the escape hatch returns at once.
+        last_detection_timestamp=float("inf"),
+        idle_detection_interval_s=0.0,
+    )
+    executor._launch_tasks = lambda: calls.append("launch")
+    executor._report_current_usage = lambda: None
+    executor._finalize_scheduling_loop_step = lambda topology: True
+
+    executor._scheduling_loop_step({})
+
+    assert calls.index("launch") < calls.index("observe_after_launch")
 
 
 class _DrainingOp:

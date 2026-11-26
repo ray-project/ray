@@ -24,7 +24,23 @@ from ray.data._internal.execution.interfaces.execution_options import ExecutionR
 from ray.data._internal.execution.resource_bank import LiveObjStore
 from ray.data._internal.experimental.execution.actor_only_resource_reporter import (
     ActorOnlyResourceReporter,
+    BundleKey,
 )
+from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
+    ExperimentalActorPoolMapOperator,
+)
+from ray.data._internal.experimental.execution.operators.placement_constraints import (  # noqa: E501
+    PlacementConstraint,
+)
+from ray.data.tests.actor_only.actor_only_test_utils import fake_pg
+
+
+def _reporter(topology, coordinator, bank, **kwargs) -> ActorOnlyResourceReporter:
+    """A reporter with no cluster: no node labels, no draining nodes, unless
+    a test injects its own."""
+    kwargs.setdefault("get_node_labels", dict)
+    kwargs.setdefault("get_draining_node_ids", list)
+    return ActorOnlyResourceReporter(topology, coordinator, bank, **kwargs)
 
 
 class _ReporterOp:
@@ -76,9 +92,7 @@ def _coordinator_with(bundles, by_node=None) -> FakeAutoscalingCoordinator:
 
 
 def test_reporter_satisfies_the_gauge_protocol():
-    reporter = ActorOnlyResourceReporter(
-        _topology(), FakeAutoscalingCoordinator(), _FakeResourceBank()
-    )
+    reporter = _reporter(_topology(), FakeAutoscalingCoordinator(), _FakeResourceBank())
     assert isinstance(reporter, ResourceReporter)
 
 
@@ -93,7 +107,7 @@ def test_usage_pending_and_limits():
     )
     bank = _FakeResourceBank({op1: (10, 20, 5), op2: (5, 0, 0)})
     coordinator = _coordinator_with([{"CPU": 4, "GPU": 1}, {"CPU": 8}])
-    reporter = ActorOnlyResourceReporter(_topology(op1, op2), coordinator, bank)
+    reporter = _reporter(_topology(op1, op2), coordinator, bank)
 
     usage = reporter.get_global_usage()
     assert (usage.cpu, usage.gpu, usage.memory) == (5, 1, 300)
@@ -108,9 +122,7 @@ def test_usage_pending_and_limits():
 
 
 def test_empty_topology_and_no_allocation_report_zero():
-    reporter = ActorOnlyResourceReporter(
-        _topology(), FakeAutoscalingCoordinator(), _FakeResourceBank()
-    )
+    reporter = _reporter(_topology(), FakeAutoscalingCoordinator(), _FakeResourceBank())
     assert reporter.get_global_usage() == ExecutionResources.zero()
     assert reporter.get_global_pending_usage() == ExecutionResources.zero()
     assert reporter.get_global_limits() == ExecutionResources.zero()
@@ -122,7 +134,7 @@ def test_per_node_allocation_and_change_tracking():
         [{"CPU": 1}],
         by_node={"node0": {"CPU": 4, "GPU": 1}, "node1": {"CPU": 8}},
     )
-    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+    reporter = _reporter(_topology(), coordinator, _FakeResourceBank())
 
     by_node = reporter.get_reserved_resources_by_node()
     assert set(by_node) == {"node0", "node1"}
@@ -142,29 +154,43 @@ def test_per_node_allocation_and_change_tracking():
 
     view = reporter.get_cluster_view()
     assert view.reserved_by_node["node1"].cpu == 2
-    assert view.labels_by_node == {} and view.pg_bundles == {}
 
 
-def _fake_pg(id_hex: str, bundle_specs=()) -> Any:
-    return SimpleNamespace(
-        id=SimpleNamespace(hex=lambda: id_hex), bundle_specs=list(bundle_specs)
-    )
+class _PGOp(ExperimentalActorPoolMapOperator):
+    """An actor-pool op exposing only what the reporter reads: its static
+    placement group, the ones its ``ray_remote_args_fn`` created, and its
+    pool's max size. Skips the operator's ``__init__``."""
+
+    def __init__(self, pg=None, *, fn_pgs=(), uses_fn=False):
+        self._constraint = PlacementConstraint(
+            placement_group=pg, mints_pg_per_actor=uses_fn
+        )
+        self.fn_pgs = list(fn_pgs)
+        self._pool = SimpleNamespace(bounded_max_size=lambda: 4)
+
+    def placement_constraint(self) -> PlacementConstraint:
+        return self._constraint
+
+    def fn_placement_groups(self) -> List[Any]:
+        return list(self.fn_pgs)
+
+    @property
+    def actor_pool(self) -> Any:
+        return self._pool
 
 
 @pytest.mark.parametrize(
     "pg_ids, expected",
     [
-        # Several ops sharing one group register it once.
-        (["pg1", "pg1"], {"pg1"}),
-        # Every group the dataset uses is registered.
-        (["pg1", "pg2"], {"pg1", "pg2"}),
-        ([], set()),
+        pytest.param(["pg1", "pg1"], {"pg1"}, id="shared-group-registered-once"),
+        pytest.param([], set(), id="no-groups"),
     ],
 )
-def test_register_placement_groups(pg_ids, expected):
+def test_cluster_view_registers_placement_groups(pg_ids, expected):
     coordinator = FakeAutoscalingCoordinator()
-    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
-    reporter.register_placement_groups([_fake_pg(pg_id) for pg_id in pg_ids])
+    ops = [_PGOp(fake_pg(pg_id)) for pg_id in pg_ids]
+    reporter = _reporter(_topology(*ops), coordinator, _FakeResourceBank())
+    reporter.get_cluster_view()
     assert coordinator.placement_group_ids == expected
 
 
@@ -180,29 +206,41 @@ class _RecordingCoordinator(FakeAutoscalingCoordinator):
         super().register_placement_groups(placement_group_ids)
 
 
-def test_register_placement_groups_sends_only_changes():
-    """Re-registering the same set sends nothing; a new group sends the whole
-    set again."""
+def test_fn_placement_groups_are_registered_as_they_appear():
+    """Placement groups a ray_remote_args_fn creates per actor are registered
+    alongside the static ones, including for an op with no static group, so
+    the coordinator takes their bundles out of the non-PG slice. Each view
+    re-registers, but an unchanged set sends nothing."""
     coordinator = _RecordingCoordinator()
-    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+    infer = _PGOp(fake_pg("static"))
+    embed = _PGOp(uses_fn=True)
+    reporter = _reporter(_topology(infer, embed), coordinator, _FakeResourceBank())
 
-    reporter.register_placement_groups([_fake_pg("pg1")])
-    reporter.register_placement_groups([_fake_pg("pg1")])
-    reporter.register_placement_groups([_fake_pg("pg1"), _fake_pg("pg2")])
-    assert coordinator.sent == [frozenset({"pg1"}), frozenset({"pg1", "pg2"})]
+    reporter.get_cluster_view()
+    reporter.get_cluster_view()
+    embed.fn_pgs.append(fake_pg("fn"))
+    reporter.get_cluster_view()
+    assert coordinator.sent == [
+        frozenset({"static"}),
+        frozenset({"static", "fn"}),
+    ]
 
 
-def test_cache_pg_bundle_shapes_reads_bundle_specs():
-    """Shapes come from the group's own bundle specs, in bundle-index order."""
-    reporter = ActorOnlyResourceReporter(
-        _topology(), FakeAutoscalingCoordinator(), _FakeResourceBank()
+def test_cluster_view_measures_placement_group_slots():
+    """Slots come from each static group's own bundle specs, in bundle-index
+    order."""
+    pinned = _PGOp(fake_pg("pg1", [{"CPU": 1, "GPU": 1}, {"CPU": 2}]))
+    reporter = _reporter(
+        _topology(pinned), FakeAutoscalingCoordinator(), _FakeResourceBank()
     )
-    reporter.cache_pg_bundle_shapes(
-        [_fake_pg("pg1", [{"CPU": 1, "GPU": 1}, {"CPU": 2}])]
-    )
-    view = reporter.get_cluster_view(include_pg_bundles=True)
-    assert view.pg_bundles == {
-        "pg1": [ExecutionResources(cpu=1, gpu=1), ExecutionResources(cpu=2)]
+
+    slots = reporter.get_cluster_view().pg_slots
+    assert slots.shapes == {
+        BundleKey("pg1", 0): ExecutionResources(cpu=1, gpu=1),
+        BundleKey("pg1", 1): ExecutionResources(cpu=2),
+    }
+    assert slots.static_bundles_by_op == {
+        pinned: (BundleKey("pg1", 0), BundleKey("pg1", 1))
     }
 
 
@@ -214,7 +252,7 @@ def test_cluster_view_carries_placement_group_part():
         placement_group_resources_by_node={"g1": {"CPU": 2, "GPU": 2}},
     )
     coordinator.request_resources([{"CPU": 1}], expire_after_s=60)
-    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+    reporter = _reporter(_topology(), coordinator, _FakeResourceBank())
 
     view = reporter.get_cluster_view()
     assert view.reserved_by_node == {
@@ -223,6 +261,27 @@ def test_cluster_view_carries_placement_group_part():
     }
     assert view.pg_reserved_by_node == {"g1": ExecutionResources(cpu=2, gpu=2)}
     assert reporter.get_global_limits() == ExecutionResources(cpu=16, gpu=2)
+
+
+def test_cluster_view_reads_labels_and_draining_nodes_through_seams():
+    """Node labels and draining nodes come from the injected readers (Ray's
+    state API in production), read fresh on every view."""
+    labels = {"g1": {"accelerator": "A100"}, "c1": {}}
+    draining = {"c1": 1_700_000_000_000}  # node id -> drain deadline (ms)
+    reporter = _reporter(
+        _topology(),
+        FakeAutoscalingCoordinator(),
+        _FakeResourceBank(),
+        get_node_labels=lambda: labels,
+        get_draining_node_ids=lambda: draining,
+    )
+
+    view = reporter.get_cluster_view()
+    assert view.labels_by_node == labels
+    assert view.draining_nodes == frozenset({"c1"})
+
+    draining.clear()
+    assert reporter.get_cluster_view().draining_nodes == frozenset()
 
 
 @pytest.mark.parametrize("cpu_running,should_scale_up", [(4.0, False), (8.0, True)])
@@ -238,7 +297,7 @@ def test_reporter_drives_cluster_autoscaler_scale_up(
     op = _ReporterOp(
         running=ExecutionResources(cpu=cpu_running), pending=ExecutionResources.zero()
     )
-    reporter = ActorOnlyResourceReporter(
+    reporter = _reporter(
         _topology(op), _coordinator_with([{"CPU": 10}]), _FakeResourceBank()
     )
     # A separate coordinator receives the autoscaler's scale-up requests.

@@ -1,3 +1,5 @@
+import math
+import sys
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
@@ -344,6 +346,12 @@ class AutoscalingActorPool(ABC):
     def max_size(self) -> float:
         """Max size of the actor pool (``inf`` when unbounded)."""
         return self._config.max_size
+
+    def bounded_max_size(self) -> int:
+        """``max_size`` as an int; an unbounded pool (``inf``) reads as
+        ``sys.maxsize`` so cap arithmetic stays integral."""
+        max_size = self.max_size()
+        return int(max_size) if math.isfinite(max_size) else sys.maxsize
 
     def get_pool_util(self) -> float:
         """Calculate the utilization of the given actor pool."""

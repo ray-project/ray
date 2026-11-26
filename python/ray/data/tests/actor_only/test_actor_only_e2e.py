@@ -7,6 +7,7 @@ this backend until reads are planned as actor pools (a separate change), so a
 ``read_*`` / ``range`` source would stall here.
 """
 import logging
+import re
 import sys
 import threading
 import time
@@ -106,7 +107,7 @@ def test_autoscaling_pool_grows(
 
     messages = [r.getMessage() for r in caplog.records]
     assert any(
-        "requests MapBatches(Slow): +" in m for m in messages
+        re.search(r"MapBatches\(Slow\)\[\w+\]: \w+ \+\d", m) for m in messages
     ), "the sizer never asked to grow the pool"
     assert any(
         "placement: MapBatches(Slow): +" in m for m in messages

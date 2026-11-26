@@ -103,67 +103,41 @@ DRAIN_STALL_WARN_S: int = env_integer("RAY_DATA_DRAIN_STALL_WARN_S", 120)
 SIZER_CADENCE_S: float = env_float("RAY_DATA_SIZER_CADENCE_S", 2.0)
 
 # Warmup equal-share: fraction of the allocation shared out across autoscaled
-# operators; the rest is headroom for the warm loop to grow into.
+# operators; the rest is headroom for the sizing policy to upscale into.
 SIZER_RESERVATION_RATIO: float = env_float("RAY_DATA_SIZER_RESERVATION_RATIO", 0.8)
 
-# Warm-loop growth / shrink steps, as fractions of the pool's current size.
-SIZER_UPSCALE_FACTOR: float = env_float("RAY_DATA_SIZER_UPSCALE_FACTOR", 0.5)
-SIZER_DOWNSCALE_FACTOR: float = env_float("RAY_DATA_SIZER_DOWNSCALE_FACTOR", 0.1)
-
-# Consecutive fully-idle sizing ticks before the warm loop drains a pool.
-SIZER_DOWNSCALE_HYSTERESIS: int = env_integer("RAY_DATA_SIZER_DOWNSCALE_HYSTERESIS", 3)
-
-# Fraction of RUNNING actors with an exhausted pull budget at which an
-# operator's output reads as backpressured to the warm loop and the optimizer.
-SIZER_OUTQUEUE_FULL_FRACTION: float = env_float(
-    "RAY_DATA_SIZER_OUTQUEUE_FULL_FRACTION", 0.5
-)
-
-# Demand-target utilization divisor: the warm loop grows a fed pool only toward
-# its backlog-based actor count divided by this, so a cold-start empty output
-# queue cannot drive unbounded growth that fills the cluster. Matches the
-# standard actor autoscaler's default upscaling threshold.
+# Backlog-target utilization divisor: once every upstream op has completed,
+# an op upscales to at most its remaining backlog's actor count divided by
+# this. Matches the standard actor autoscaler's default upscaling threshold.
 SIZER_UTIL_THRESHOLD: float = env_float("RAY_DATA_SIZER_UTIL_THRESHOLD", 1.75)
 
-# Pipeline optimizer: cancel a capacity transfer whose claimed pending actors
-# have not landed by then.
-SIZER_TRANSFER_TIMEOUT_S: float = env_float("RAY_DATA_SIZER_TRANSFER_TIMEOUT_S", 60.0)
+# Step sizes after warmup. An op's first upscale multiplies its size by
+# 1 + SIZER_UPSCALE_STEP and its first downscale by 1 - SIZER_DOWNSCALE_STEP.
+# Each op then adapts its own steps: a step in the same direction as the last
+# doubles, a step in the other direction halves (see policy/steps.py).
+SIZER_UPSCALE_STEP: float = env_float("RAY_DATA_SIZER_UPSCALE_STEP", 0.5)
+SIZER_DOWNSCALE_STEP: float = env_float("RAY_DATA_SIZER_DOWNSCALE_STEP", 0.2)
 
-# Pipeline optimizer: for this many sizer ticks (SIZER_CADENCE_S each) after a
-# transfer closes, a transfer that would move its capacity back is refused as
-# thrashing. Bounded so a transfer that turns out wrong can still be undone.
-SIZER_TRANSFER_THRASH_WINDOW_TICKS: int = env_integer(
-    "RAY_DATA_SIZER_TRANSFER_THRASH_WINDOW_TICKS", 20
+# A flag for the bottleneck model, which drives every sizing decision after
+# warmup. Seconds of history behind each operator's busy / OBP / starved
+# fractions. An op resized after warmup also waits this long, once its resize
+# lands, before its next resize, so its window describes its new size.
+SIZER_BOTTLENECK_WINDOW_S: float = env_float("RAY_DATA_SIZER_BOTTLENECK_WINDOW_S", 10.0)
+# How far output-backpressured(producer) and starved(consumer) must differ
+# before an edge's arrow picks a side; closer than this, the edge is a tie.
+SIZER_BOTTLENECK_ARROW_MARGIN: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_ARROW_MARGIN", 0.1
 )
-
-# Length of the optimizer's per-operator signal windows, in samples. One
-# sample is taken per scheduling-loop step.
-SIZER_SIGNAL_WINDOW_SAMPLES: int = env_integer(
-    "RAY_DATA_SIZER_SIGNAL_WINDOW_SAMPLES", 20
+# Min severity for an op to be named a bottleneck: below it, the arrows'
+# noise (e.g. a near-tie edge during ramp-up) rather than neighbours waiting.
+SIZER_BOTTLENECK_MIN_SEVERITY: float = env_float(
+    "RAY_DATA_SIZER_BOTTLENECK_MIN_SEVERITY", 0.1
 )
-
-# Seconds the dataset's allocation must stay unchanged before the sizer treats
-# the cluster as settled. Capacity transfers wait for this: while the cluster
-# is still growing, the autoscaler gives starved ops capacity.
-SIZER_CLUSTER_SETTLE_S: float = env_float("RAY_DATA_SIZER_CLUSTER_SETTLE_S", 15.0)
-
 # Seconds the sizer stays in warmup at most. Warmup normally ends once every
 # critical operator has produced output; if one never does (e.g. it cannot get
-# an actor), the sizer moves to the warm phase anyway, whose feedback loop and
-# capacity transfers can unstick it.
+# an actor), the sizer leaves warmup anyway, and the sizing policy can
+# unstick it.
 SIZER_WARMUP_TIMEOUT_S: float = env_float("RAY_DATA_SIZER_WARMUP_TIMEOUT_S", 300.0)
-
-# Consecutive sizing ticks with an unplaced ask before an operator qualifies
-# as a capacity-transfer recipient.
-SIZER_SHORTFALL_TICKS: int = env_integer("RAY_DATA_SIZER_SHORTFALL_TICKS", 3)
-
-# Fraction of an operator's actors that must have a task in flight, at every
-# sample of the signal window, for it to count as a silent bottleneck. Below 1
-# because some actors are always between tasks: a task needs a full input
-# bundle, and a slow upstream leaves less than one queued.
-SIZER_SILENT_BOTTLENECK_BUSY_FRACTION: float = env_float(
-    "RAY_DATA_SIZER_SILENT_BOTTLENECK_BUSY_FRACTION", 0.6
-)
 
 
 def actor_only_backend_enabled(

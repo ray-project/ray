@@ -6,7 +6,7 @@ Capacity
 --------
 reserved
     This dataset's slice of each node, as handed out by the autoscaling
-    coordinator (``DatasetAllocationView``).
+    coordinator (``DatasetReservationView``).
 
 committed
     Capacity held by this dataset's non-PG actors on a node: running actors
@@ -26,68 +26,72 @@ constrained
 nodes to reclaim
     Nodes where committed capacity exceeds the dataset's current slice, for
     example because the coordinator shrank the allocation or the node is
-    draining. Actors are evicted from these nodes until usage fits the slice.
+    draining. Actors are removed from these nodes until usage fits the slice.
 
 PG-managed
     An op whose actors are placed through a placement group. The sizer does
     not choose their nodes. Non-PG ops are placed directly by the sizer.
 
 
-Per-op sizing (``scale_how_many``)
-----------------------------------
+State machine (``operator_sizer``, ``policy``)
+----------------------------------------------
+step
+    One pass of the executor's scheduling loop, many times a second.
+
 tick
-    One sizing evaluation, performed every ``SIZER_CADENCE_S``.
+    A step on which the sizer decides, at most once per ``SIZER_CADENCE_S``
+    (about a second or two). Every tick is a step; most steps are not ticks.
+    A tick runs: how many, where, apply.
 
-warmup
-    The initial phase of a run. Until every op has received input and every
-    critical op has produced output, there is no backpressure signal to react
-    to, so each op is sized to an equal share of the allocation. An op starts
-    no actors before its first input; its share is held for it until then.
+phase (``SizerPhase``)
+    WARMUP until every op has received input, every critical op has
+    produced output, and the bottleneck observer has then measured one full
+    window: there is no feedback yet, so each op is sized to an equal share
+    of the allocation. An op starts no actors before its first input; its
+    share is held for it until then. STEADY after that.
 
-has work
-    The op has queued input or tasks in flight.
+status (``OpStatus``)
+    What the sizer may do to an op now, a permission rather than a size (see
+    ``op_status.py`` for the full state machine): held until its first input
+    (room reserved, no actors), active (any rule may resize it), cooling
+    after the policy resized it, or completed.
 
-backpressured
-    The op's output is blocked: enough of its actors have exhausted their
-    output budget (``SIZER_OUTQUEUE_FULL_FRACTION``).
+rule (``OpRule``)
+    What sized an op this tick (``SizingPolicy.decide_op``): RELEASE_POOL,
+    UPSCALE_TO_MIN, UPSCALE_WARMUP, UPSCALE_BOTTLENECK,
+    UPSCALE_BUSY, DOWNSCALE_BLOCKED, DOWNSCALE_IDLE, or NONE.
 
-demand
-    The number of actors the op needs for its current backlog: queued input
-    plus tasks in flight.
+upscale / downscale
+    Adding or removing actors. Every rule does one or the other, or nothing.
+    "Drain" means only what the pool does to a running actor it removes:
+    the actor finishes its tasks before it exits.
 
-want
-    The actor-count delta requested by the op based on its own signals,
-    before capacity constraints are applied.
+step size
+    How far one upscale or downscale moves an op after warmup, as a fraction
+    of its size (``policy/steps.py``). Each op's steps double while it keeps
+    moving the same way and halve when it turns around.
+
+how_many
+    The tick's first step: ``SizingPolicy.decide`` picks one rule and count
+    per op. WHERE then places the counts.
 
 ledger
-    The free capacity available during one sizing tick, debited as growth
-    requests are granted.
-
-shortfall
-    The number of requested actors that could not be granted.
-
-ungranted
-    An op that requested growth but was granted zero actors.
+    The free capacity left during one tick (``ConstraintAwareCapacityLedger``).
+    Every upscale in the how-many step checks and spends it.
 
 
-Cross-op optimization (``optimizer``)
---------------------------------------
-guard
-    A lock over ops. While one optimization rule is resizing an op, no other
-    rule may modify it.
+Bottleneck snapshot (``bottleneck_observer``)
+---------------------------------------------
+busy / obp / starved
+    Shares of an op's slot time spent running, output-backpressured, or idle
+    with nothing queued.
 
-keeping up
-    A consumer that processes its producer's output as fast as it arrives,
-    so the consumer is not what limits the pipeline.
+blocked / self-limited
+    The two parts of a producer's obp: blocked while its consumer had no
+    idle slot, self-limited while the consumer had one and the producer's
+    own output budget held it back.
 
-silent bottleneck
-    An op that limits the pipeline without asking to grow: its actors are busy
-    and its output is backpressured, while its consumers are keeping up.
-
-capacity transfer
-    Moving capacity from ops with spare actors (donors) to an op whose growth
-    requests repeatedly go ungranted (the recipient).
-
-victim
-    A donor actor evicted to make room for the recipient.
+bottleneck
+    An op no edge's arrow points away from, with enough severity (how much
+    its neighbours wait on it).
 """
