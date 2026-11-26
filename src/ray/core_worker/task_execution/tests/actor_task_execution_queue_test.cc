@@ -43,6 +43,7 @@ class FakeWaiter : public ActorTaskExecutionArgWaiterInterface {
   // Record the (task_id, attempt_number) of each fetch in call order so tests
   // can refer to a fetch by its 0-based call index via Complete().
   void BeginArgsFetch(const std::vector<rpc::ObjectReference> &dependencies,
+                      const std::vector<bool> &is_move,
                       const TaskAttempt &task_attempt) override {
     fetch_order_.push_back(task_attempt);
   }
@@ -80,6 +81,7 @@ void EnqueueWithFetch(ActorTaskExecutionQueueInterface &queue,
   auto deps = task.TaskSpec().GetDependencies();
   if (!deps.empty()) {
     waiter.BeginArgsFetch(deps,
+                          task.TaskSpec().GetDependencyIsMove(),
                           TaskAttempt{task.TaskID(), task.TaskSpec().AttemptNumber()});
   }
   queue.EnqueueTask(seq_no, client_processed_up_to, std::move(task));

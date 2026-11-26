@@ -23,6 +23,12 @@ ActorId = str
 # Placement-group id strings (``PlacementGroup.id.hex()``).
 PlacementGroupIdStr = str
 
+# The ID of a physical operator (``PhysicalOperator.id``).
+OperatorId = str
+
+# The index of a data task within its operator.
+TaskIndex = int
+
 
 class ActorStatus(str, Enum):
     """Lifecycle state of an actor in a Ray Data actor pool."""
