@@ -1,4 +1,5 @@
 import enum
+import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, List, Optional, Set
 
@@ -37,6 +38,14 @@ class MixStoppingCondition(enum.Enum):
 
     STOP_ON_SHORTEST = "stop_on_shortest"
     STOP_ON_LONGEST_DROP = "stop_on_longest_drop"
+
+
+def validate_mix_weights(weights: List[float]) -> None:
+    # NaN and +inf slip through `weight <= 0`, then poison the normalized weights.
+    if any(not math.isfinite(weight) for weight in weights):
+        raise ValueError(f"Weights must be finite. Got weights: {weights}")
+    if any(weight <= 0 for weight in weights):
+        raise ValueError(f"Weights must be positive. Got weights: {weights}")
 
 
 def estimate_num_mix_outputs(
@@ -151,8 +160,7 @@ class Mix(NAry, LogicalOperatorUnifiesInputSchemas):
                 f"Number of input operators ({len(input_dependencies)}) must match "
                 f"number of weights ({len(weights)})."
             )
-        if any(weight <= 0 for weight in weights):
-            raise ValueError(f"Weights must be positive. Got weights: {weights}")
+        validate_mix_weights(weights)
 
         for input_op in input_dependencies:
             assert isinstance(input_op, LogicalOperator), input_op

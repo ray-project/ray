@@ -17,6 +17,49 @@ def _make_ds(source_id, num_rows, rows_per_block):
     )
 
 
+@pytest.mark.parametrize(
+    "bad_weight,expected_match",
+    [
+        (float("nan"), "finite"),
+        (float("inf"), "finite"),
+        (float("-inf"), "finite"),
+        (0.0, "positive"),
+        (-1.0, "positive"),
+    ],
+)
+def test_mix_rejects_invalid_weights(
+    ray_start_10_cpus_shared, bad_weight, expected_match
+):
+    ds1 = ray.data.range(10)
+    ds2 = ray.data.range(10)
+    with pytest.raises(ValueError, match=expected_match):
+        ds1.mix(ds2, weights=[bad_weight, 1.0])
+
+
+@pytest.mark.parametrize(
+    "bad_weight,expected_match",
+    [
+        (float("nan"), "finite"),
+        (float("inf"), "finite"),
+        (float("-inf"), "finite"),
+        (0.0, "positive"),
+        (-1.0, "positive"),
+    ],
+)
+def test_mix_operator_rejects_invalid_weights(bad_weight, expected_match):
+    from unittest.mock import MagicMock
+
+    from ray.data._internal.execution.interfaces import PhysicalOperator
+
+    input_ops = [MagicMock(spec=PhysicalOperator) for _ in range(2)]
+    with pytest.raises(ValueError, match=expected_match):
+        MixOperator(
+            ray.data.DataContext.get_current(),
+            *input_ops,
+            weights=[bad_weight, 1.0],
+        )
+
+
 @pytest.mark.parametrize("weights", [[1, 1], None])
 def test_mix_equal_weights(ray_start_10_cpus_shared, weights):
     """Equal weights with uniform blocks should produce 50/50 every 2 blocks.
