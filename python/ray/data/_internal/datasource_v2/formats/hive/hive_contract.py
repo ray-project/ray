@@ -41,6 +41,7 @@ class HiveReadSpec:
     query: Optional[str] = field(default=None, repr=False)
     schema: Optional[pa.Schema] = None
     limit: Optional[int] = None
+    metadata_max_connections: int = 1
 
     def __post_init__(self) -> None:
         if not callable(self.connection_factory):
@@ -61,6 +62,12 @@ class HiveReadSpec:
             or self.limit < 0
         ):
             raise ValueError("limit must be a non-negative integer")
+        if (
+            isinstance(self.metadata_max_connections, bool)
+            or not isinstance(self.metadata_max_connections, int)
+            or self.metadata_max_connections < 1
+        ):
+            raise ValueError("metadata_max_connections must be a positive integer")
 
         if self.table is not None:
             _parse_table_identifier(self.table)

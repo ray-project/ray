@@ -304,8 +304,7 @@ def test_direct_full_schema_retains_candidates_and_lineage(
         prefix = ("new_" if index == 16 else "old_") if positional else ""
         values = {
             prefix + "id": pa.array([index], type=pa.int32()),
-            prefix
-            + "payload": pa.array(
+            prefix + "payload": pa.array(
                 [None if index == 0 else {"ts": -1 if index % 2 else 1001}],
                 type=pa.struct([("ts", pa.timestamp("ns"))]),
             ),
@@ -405,11 +404,135 @@ def test_direct_late_file_failure_does_not_replay_hs2(
 def test_direct_empty_table_preserves_schema(
     ray_start_regular_shared, direct_table, file_format, merge_schema
 ):
-
     declared = pa.schema([("id", pa.int64())])
     dataset = direct_table(file_format, declared, merge_schema=merge_schema)
     assert dataset.take_all() == []
     assert dataset.schema().base_schema == declared
+
+
+@pytest.mark.parametrize("file_format", ["parquet", "orc"])
+def test_direct_api_partitioned_read_synthesizes_and_filters_residual(
+    ray_start_regular_shared, tmp_path, monkeypatch, file_format
+):
+    from datetime import date
+
+    import pyarrow.parquet as pq
+    from pyarrow import orc
+
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+    from ray.data.expressions import col
+
+    first = tmp_path / "p1"
+    second = tmp_path / "region=u%3Ds"
+    unregistered = tmp_path / "unregistered"
+    for directory in (first, second, unregistered):
+        directory.mkdir()
+    writer = pq.write_table if file_format == "parquet" else orc.write_table
+    writer(pa.table({"id": [1, 3]}), first / "000000_0")
+    writer(pa.table({"id": [2, 4]}), second / "000001_0")
+    writer(pa.table({"id": [99]}), unregistered / "part-99")
+
+    partition_fields = (
+        pa.field("dt", pa.date32()),
+        pa.field("region", pa.string()),
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(
+            str(tmp_path),
+            file_format,
+            pa.schema([("id", pa.int64())]),
+            partition_fields=partition_fields,
+            partitions=(
+                hive_direct.HivePartitionInfo((date(2026, 9, 1), "us"), str(first)),
+                hive_direct.HivePartitionInfo((date(2026, 9, 2), "u=s"), str(second)),
+            ),
+        ),
+    )
+
+    dataset = read_hive(
+        "events", connection_factory=lambda: object(), read_mode="direct"
+    )
+    assert dataset.schema().names == ["id", "dt", "region"]
+
+    rows = dataset.take_all()
+    assert sorted(row["id"] for row in rows) == [1, 2, 3, 4]
+    values = {(row["id"], row["dt"], row["region"]) for row in rows}
+    assert values == {
+        (1, date(2026, 9, 1), "us"),
+        (3, date(2026, 9, 1), "us"),
+        (2, date(2026, 9, 2), "u=s"),
+        (4, date(2026, 9, 2), "u=s"),
+    }
+
+    arithmetic = dataset.filter(expr=(col("id") + 1) > 2).take_all()
+    assert sorted(row["id"] for row in arithmetic) == [2, 3, 4]
+
+    pruned = dataset.filter(expr=col("dt") >= date(2026, 9, 2))
+    rows = pruned.take_all()
+    assert sorted(row["id"] for row in rows) == [2, 4]
+    assert {row["region"] for row in rows} == {"u=s"}
+    assert sorted(
+        row["region"] for row in dataset.select_columns(["region"]).take_all()
+    ) == ["u=s", "u=s", "us", "us"]
+    assert dataset.select_columns([]).count() == 4
+
+
+def test_direct_api_partitioned_table_without_partitions(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(
+            str(tmp_path),
+            "parquet",
+            pa.schema([("id", pa.int64())]),
+            partition_fields=(pa.field("region", pa.string()),),
+        ),
+    )
+    dataset = read_hive(
+        "events", connection_factory=lambda: object(), read_mode="direct"
+    )
+    assert dataset.schema().names == ["id", "region"]
+    assert dataset.take_all() == []
+
+
+@pytest.mark.parametrize("alias_kind", ["duplicate", "unresolved"])
+def test_direct_api_rejects_ambiguous_partition_locations(
+    ray_start_regular_shared, tmp_path, monkeypatch, alias_kind
+):
+    from ray.data._internal.datasource_v2.formats.hive import hive_direct
+
+    locations = (
+        (str(tmp_path), tmp_path.as_uri())
+        if alias_kind == "duplicate"
+        else ("file://", str(tmp_path))
+    )
+    monkeypatch.setattr(
+        hive_direct,
+        "read_file_table_metadata",
+        lambda spec: hive_direct.HiveFileTable(
+            str(tmp_path),
+            "parquet",
+            pa.schema([("id", pa.int64())]),
+            partition_fields=(pa.field("region", pa.string()),),
+            partitions=tuple(
+                hive_direct.HivePartitionInfo((f"r{index}",), location)
+                for index, location in enumerate(locations)
+            ),
+        ),
+    )
+    match = (
+        "duplicate partition locations"
+        if alias_kind == "duplicate"
+        else "resolve every partition location"
+    )
+    with pytest.raises(ValueError, match=match):
+        read_hive("events", connection_factory=lambda: object(), read_mode="direct")
 
 
 if __name__ == "__main__":

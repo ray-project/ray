@@ -46,6 +46,14 @@ def test_table_and_query_modes():
         ({"table": "events", "schema": pa.schema([("id", pa.int64())])}, "schema"),
         ({"table": "events", "limit": -1}, "limit"),
         ({"table": "events", "limit": True}, "limit"),
+        (
+            {"table": "events", "metadata_max_connections": 0},
+            "metadata_max_connections",
+        ),
+        (
+            {"table": "events", "metadata_max_connections": True},
+            "metadata_max_connections",
+        ),
         ({"query": "SELECT 1"}, "pyarrow.Schema"),
         ({"query": "  ", "schema": pa.schema([("id", pa.int64())])}, "query"),
         ({"query": "SELECT 1", "schema": pa.schema([])}, "pyarrow.Schema"),

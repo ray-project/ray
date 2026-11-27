@@ -4529,6 +4529,7 @@ def read_hive(
     read_mode: Literal["hs2", "direct"] = "hs2",
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     merge_schema: bool = False,
+    metadata_max_connections: int = 1,
     num_cpus: Optional[float] = None,
     memory: Optional[float] = None,
     resources: Optional[Dict[str, float]] = None,
@@ -4680,10 +4681,12 @@ def read_hive(
             data scanning. HS2 mode sends it as SQL; direct mode uses Ray's
             global limit. This argument isn't supported for query reads.
         read_mode: ``"hs2"`` preserves the single-query HiveServer2 path.
-            ``"direct"`` uses native Parquet/ORC readers for nonpartitioned,
-            non-ACID tables. Queries, custom SerDes, Iceberg/Delta/Hudi, and
-            Parquet positional access are unsupported. The driver validates
-            Hive metadata before file planning. See Notes for compatibility.
+            ``"direct"`` uses native Parquet/ORC readers for non-ACID tables,
+            including registered partitions and custom locations. Partition
+            columns appear after the data columns. Partition-column filters
+            apply as residual filters after the read in this implementation.
+            Queries, custom SerDes, Iceberg/Delta/Hudi, and Parquet positional
+            access are unsupported. See Notes for compatibility.
         filesystem: The direct-mode filesystem, inferred from LOCATION if omitted.
             Driver and workers need storage credentials, network access and
             client dependencies; storage access doesn't inherit HS2 policies.
@@ -4698,6 +4701,11 @@ def read_hive(
             snapshot and don't protect against same-path replacements.
             See https://github.com/ray-project/ray/issues/67040 for
             planning optimizations.
+        metadata_max_connections: In direct mode, the maximum number of HS2
+            sessions used for table and partition metadata, including the
+            initial table-metadata session. The default of 1 reuses that
+            session sequentially. Increase it only when the deployment permits
+            more concurrent sessions. This doesn't affect file-read parallelism.
         num_cpus: The number of CPUs to reserve for the read task.
         memory: The heap memory in bytes to reserve for the read task.
         resources: Custom resources to reserve for the read task, expressed as
@@ -4721,6 +4729,8 @@ def read_hive(
         raise TypeError("merge_schema must be a bool")
     if read_mode == "hs2" and (filesystem is not None or merge_schema):
         raise ValueError("filesystem and merge_schema require read_mode='direct'")
+    if read_mode == "hs2" and metadata_max_connections != 1:
+        raise ValueError("metadata_max_connections requires read_mode='direct'")
     if override_num_blocks is not None and (
         isinstance(override_num_blocks, bool)
         or not isinstance(override_num_blocks, int)
@@ -4739,6 +4749,7 @@ def read_hive(
         query=query,
         schema=schema,
         limit=limit,
+        metadata_max_connections=metadata_max_connections,
     )
     if read_mode == "direct":
         from ray.data._internal.datasource_v2.formats.hive.hive_direct import (

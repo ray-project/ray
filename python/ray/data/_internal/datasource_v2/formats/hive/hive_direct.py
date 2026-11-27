@@ -1,7 +1,10 @@
 """Hive metadata planning composed with native Parquet and ORC datasources."""
 
+import datetime
+import decimal
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from dataclasses import (
     dataclass,
@@ -9,6 +12,7 @@ from dataclasses import (
     fields as dataclass_fields,
     replace,
 )
+from threading import Lock
 from typing import (
     Any,
     Callable,
@@ -21,7 +25,8 @@ from typing import (
     Union,
     cast,
 )
-from urllib.parse import urlsplit
+
+from urllib.parse import unquote, urlsplit
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -53,6 +58,10 @@ from ray.data._internal.datasource_v2.interfaces.file_indexer import (
     FileInfo,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    ReadUnitPosition,
+    SynthesizedColumn,
+)
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
 from ray.data._internal.util import iterate_with_retry
 from ray.data.context import DataContext
@@ -71,9 +80,34 @@ _FORMATS = {
 }
 
 
+_DEFAULT_PARTITION_NAME = "__HIVE_DEFAULT_PARTITION__"
+
+
+@dataclass(frozen=True)
+class HivePartitionInfo:
+    """One registered partition resolved through HiveServer2.
+
+    ``values`` holds typed Python values aligned to the table's declared
+    partition keys, with ``None`` representing a SQL NULL. ``location`` is
+    the partition's own storage location, which may live outside the table
+    directory when a partition carries a custom location.
+    """
+
+    values: Tuple[Optional[object], ...]
+    location: str
+
+
 @dataclass(frozen=True)
 class HiveFileTable:
-    """Validated nonpartitioned file table; contains no HS2 connection."""
+    """Validated file table; contains no HS2 connection.
+
+    ``schema`` holds the data columns. ``partition_fields`` declares the
+    registered partition keys (empty for nonpartitioned tables) and
+    ``partitions`` carries each registered partition's location and typed
+    values. The default-partition marker stays literal for string keys,
+    becomes True for boolean keys, and maps to NULL for other key types,
+    matching the supported HiveServer2 profile.
+    """
 
     location: str
     file_format: str
@@ -81,21 +115,106 @@ class HiveFileTable:
     force_positional_evolution: bool = False
     tolerate_missing_schema: bool = True
     schema_evolution_case_sensitive: bool = False
+    partition_fields: Tuple[pa.Field, ...] = ()
+    partitions: Tuple[HivePartitionInfo, ...] = ()
 
 
-def _read_hive_setting(cursor, option: str, default=None):
+def _read_hive_setting(cursor, option: str, default=None, *, preserve_value=False):
     """Read one setting from the metadata cursor's actual HS2 session."""
     cursor.execute(f"SET {option}")
     rows = cursor.fetchall()
     if len(rows) != 1 or len(rows[0]) != 1:
         raise ValueError(f"Cannot determine Hive setting {option}")
-    text = str(rows[0][0]).strip()
-    if text == f"{option} is undefined":
+    text = str(rows[0][0])
+    if text.strip() == f"{option} is undefined":
         return default
     key, separator, value = text.partition("=")
     if key.strip() != option or not separator:
         raise ValueError(f"Cannot determine Hive setting {option}")
-    return value.strip().lower()
+    return value if preserve_value else value.strip().lower()
+
+
+def _read_hive_marker(cursor, option: str, default: str) -> str:
+    """Read a case-sensitive text setting such as the default partition name."""
+    return _read_hive_setting(cursor, option, default, preserve_value=True)
+
+
+def _partition_key_field(name: str, hive_type: str) -> pa.Field:
+    """Map a declared partition key, keeping only scalar HS2-comparable keys."""
+    arrow_type = hive_type_to_arrow(hive_type)
+    supported = (
+        pa.types.is_boolean(arrow_type)
+        or pa.types.is_signed_integer(arrow_type)
+        or pa.types.is_floating(arrow_type)
+        or pa.types.is_string(arrow_type)
+        or pa.types.is_date(arrow_type)
+        or pa.types.is_timestamp(arrow_type)
+        or pa.types.is_decimal(arrow_type)
+    )
+    if not supported:
+        raise ValueError(
+            "Hive direct-read does not support partition key type "
+            f"{hive_type!r} for column {name!r}"
+        )
+    return pa.field(name, arrow_type)
+
+
+def _parse_partition_timestamp(text: str) -> datetime.datetime:
+    """Parse a partition timestamp value, discarding sub-microsecond digits."""
+    date_part, dot, fraction = text.partition(".")
+    if dot:
+        digits = "".join(character for character in fraction if character.isdigit())
+        text = f"{date_part}.{digits[:6]}" if digits else date_part
+    try:
+        value = datetime.datetime.fromisoformat(text)
+    except ValueError as error:
+        raise ValueError(
+            f"Hive direct-read has an invalid timestamp partition value {text!r}"
+        ) from error
+    if value.tzinfo is not None:
+        raise ValueError(
+            "Hive direct-read requires timezone-naive timestamp partition values"
+        )
+    return value
+
+
+def _convert_partition_value(text: str, data_type: pa.DataType):
+    """Parse one partition value string into the declared key's Arrow value."""
+    if pa.types.is_string(data_type):
+        return text
+    if pa.types.is_signed_integer(data_type):
+        value = int(text)
+        if str(value) != text:
+            raise ValueError(
+                "Hive direct-read cannot establish the identity of non-canonical "
+                f"integer partition value {text!r}"
+            )
+        return value
+    if pa.types.is_floating(data_type):
+        return float(text)
+    if pa.types.is_boolean(data_type):
+        if text.lower() not in ("true", "false"):
+            raise ValueError(
+                f"Hive direct-read has an invalid boolean partition value {text!r}"
+            )
+        return text.lower() == "true"
+    if pa.types.is_date(data_type):
+        try:
+            return datetime.date.fromisoformat(text)
+        except ValueError as error:
+            raise ValueError(
+                f"Hive direct-read has an invalid date partition value {text!r}"
+            ) from error
+    if pa.types.is_timestamp(data_type):
+        return _parse_partition_timestamp(text)
+    if pa.types.is_decimal(data_type):
+        try:
+            return decimal.Decimal(text)
+        except decimal.InvalidOperation as error:
+            raise ValueError(
+                f"Hive direct-read has an invalid decimal partition value {text!r}"
+            ) from error
+    raise ValueError(f"Hive direct-read cannot convert partition values to {data_type}")
 
 
 def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
@@ -110,6 +229,46 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
         cursor = connection.cursor(user=spec.user)
         cursor.execute(f"DESCRIBE FORMATTED `{database}`.`{table}`")
         metadata = _parse_file_table(cursor.fetchall())
+        if metadata.partition_fields:
+            default_partition_name = _read_hive_marker(
+                cursor,
+                "hive.exec.default.partition.name",
+                _DEFAULT_PARTITION_NAME,
+            )
+            cursor.execute(f"SHOW PARTITIONS `{database}`.`{table}`")
+            spec_rows = cursor.fetchall()
+            decode_names = _read_hive_setting(
+                cursor, "hive.decode.partition.name", "false"
+            )
+            if decode_names not in ("true", "false"):
+                raise ValueError("Cannot determine Hive partition-name decoding mode")
+            if decode_names == "true" and any(
+                row and row[0] is not None and "%" in str(row[0]) for row in spec_rows
+            ):
+                raise ValueError(
+                    "Hive direct-read cannot recover unambiguous partition identities "
+                    "with hive.decode.partition.name=true"
+                )
+            raw_specs = _parse_partition_specs(
+                spec_rows, metadata.partition_fields, database, table
+            )
+            typed_specs = [
+                _typed_partition_values(
+                    raw, metadata.partition_fields, default_partition_name
+                )
+                for raw in raw_specs
+            ]
+            partitions = _read_partition_locations(
+                raw_specs,
+                typed_specs,
+                metadata,
+                spec,
+                database,
+                table,
+                metadata_cursor=cursor,
+                max_connections=spec.metadata_max_connections,
+            )
+            metadata = replace(metadata, partitions=tuple(partitions))
         if metadata.file_format == "parquet":
             value = _read_hive_setting(cursor, "parquet.column.index.access", "false")
             if value not in ("true", "false"):
@@ -162,12 +321,28 @@ def read_file_table_metadata(spec: HiveReadSpec) -> HiveFileTable:
             connection.close()
 
 
+def _validate_hive_location(location: Optional[str]) -> str:
+    """Reject missing, unsupported, or credentialed Hive storage locations."""
+    if not location:
+        raise ValueError("Hive direct-read requires a location and complete schema")
+    uri = urlsplit(location)
+    if uri.scheme not in ("", "file", "hdfs", "s3", "s3a"):
+        raise ValueError("Hive direct-read requires a supported storage location")
+    if "@" in uri.netloc:
+        raise ValueError(
+            "Configure storage credentials on the filesystem, not LOCATION"
+        )
+    return location
+
+
 def _parse_file_table(rows) -> HiveFileTable:
     columns: List[pa.Field] = []
+    partition_fields: List[pa.Field] = []
     details: Dict[str, str] = {}
     table_properties: Dict[str, str] = {}
     serde_properties: Dict[str, str] = {}
     in_columns = True
+    in_partition_info = False
     properties: Optional[Dict[str, str]] = None
     for row in rows:
         if len(row) < 3:
@@ -176,9 +351,14 @@ def _parse_file_table(rows) -> HiveFileTable:
             "" if item is None else str(item).strip() for item in row[:3]
         )
         if key.startswith("# Partition Information"):
-            raise ValueError("Hive direct-read does not yet support partitioned tables")
+            in_partition_info = True
+            properties = None
+            continue
         if key.startswith("# Detailed Table Information"):
             in_columns = False
+            in_partition_info = False
+            properties = None
+            continue
         if key.startswith("#"):
             if in_columns and not (key == "# col_name" and value == "data_type"):
                 raise ValueError("Unsupported Hive column metadata header")
@@ -189,14 +369,23 @@ def _parse_file_table(rows) -> HiveFileTable:
         if in_columns:
             if not key or not value:
                 raise ValueError("Hive direct-read requires complete column metadata")
-            columns.append(
-                pa.field(
-                    # DESCRIBE preserves literal column names, including spaces.
-                    str(row[0]),
-                    hive_type_to_arrow(value),
-                    metadata={b"hive_type": value.encode()},
+            if in_partition_info:
+                partition_fields.append(
+                    _partition_key_field(
+                        # DESCRIBE preserves literal key names, including spaces.
+                        str(row[0]),
+                        value,
+                    )
                 )
-            )
+            else:
+                columns.append(
+                    pa.field(
+                        # DESCRIBE preserves literal column names, including spaces.
+                        str(row[0]),
+                        hive_type_to_arrow(value),
+                        metadata={b"hive_type": value.encode()},
+                    )
+                )
         elif key == "Table Parameters:":
             properties = table_properties
         elif key == "Storage Desc Params:":
@@ -239,19 +428,295 @@ def _parse_file_table(rows) -> HiveFileTable:
             )
     if file_format is None:
         raise ValueError("Hive direct-read requires a supported Parquet or ORC SerDe")
-    location = details.get("Location:")
-    if not location or not columns:
+    if not columns:
         raise ValueError("Hive direct-read requires a location and complete schema")
-    uri = urlsplit(location)
-    if uri.scheme not in ("", "file", "hdfs", "s3", "s3a"):
-        raise ValueError("Hive direct-read requires a supported storage location")
-    if "@" in uri.netloc:
-        raise ValueError(
-            "Configure storage credentials on the filesystem, not LOCATION"
-        )
+    location = _validate_hive_location(details.get("Location:"))
     if len({field.name.lower() for field in columns}) != len(columns):
         raise ValueError("Hive direct-read requires unambiguous column names")
-    return HiveFileTable(location, file_format, pa.schema(columns))
+    if len({field.name.lower() for field in partition_fields}) != len(partition_fields):
+        raise ValueError("Hive direct-read requires unambiguous partition key names")
+    if {field.name.lower() for field in columns} & {
+        field.name.lower() for field in partition_fields
+    }:
+        raise ValueError(
+            "Hive direct-read requires partition keys distinct from data columns"
+        )
+    return HiveFileTable(
+        location,
+        file_format,
+        pa.schema(columns),
+        partition_fields=tuple(partition_fields),
+    )
+
+
+def _parse_partition_specs(
+    rows, partition_fields: Tuple[pa.Field, ...], database: str, table: str
+) -> List[List[str]]:
+    """Parse SHOW PARTITIONS output into unescaped value lists."""
+    specs = []
+    for row in rows:
+        if len(row) < 1 or row[0] is None:
+            raise ValueError("Hive direct-read requires complete partition metadata")
+        spec = str(row[0])
+        if not spec:
+            continue
+        parts = spec.split("/")
+        if len(parts) != len(partition_fields):
+            raise ValueError(
+                f"Hive partition {spec!r} on {database}.{table} does not match "
+                "the declared partition keys"
+            )
+        values = []
+        for part, field in zip(parts, partition_fields):
+            key, separator, raw_value = part.partition("=")
+            if not separator or unquote(key) != field.name:
+                raise ValueError(
+                    f"Hive partition {spec!r} on {database}.{table} does not "
+                    "match the declared partition keys"
+                )
+            values.append(unquote(raw_value))
+        specs.append(values)
+    if len({tuple(spec) for spec in specs}) != len(specs):
+        raise ValueError(
+            f"Hive direct-read found ambiguous duplicate partitions on {database}.{table}"
+        )
+    return specs
+
+
+def _typed_partition_values(
+    raw_values: List[str],
+    partition_fields: Tuple[pa.Field, ...],
+    default_partition_name: str,
+) -> Tuple[Optional[object], ...]:
+    """Type partition values using the supported HS2 default-marker profile."""
+
+    def convert(text, field):
+        if text == default_partition_name:
+            if pa.types.is_string(field.type):
+                return text
+            if pa.types.is_boolean(field.type):
+                return True
+            return None
+        value = _convert_partition_value(text, field.type)
+        return pa.scalar(value, type=field.type).as_py()
+
+    return tuple(
+        convert(text, field) for text, field in zip(raw_values, partition_fields)
+    )
+
+
+def _partition_sql_literal(text: str) -> str:
+    escapes = {
+        "\\": "\\\\",
+        "'": "\\'",
+        "\n": "\\n",
+        "\r": "\\r",
+        "\t": "\\t",
+        "\b": "\\b",
+        "\0": "\\0",
+    }
+    return "'" + "".join(escapes.get(character, character) for character in text) + "'"
+
+
+def _parse_partition_details(
+    rows,
+    *,
+    database: str,
+    table: str,
+    raw_values: List[str],
+    table_format: str,
+    table_schema: pa.Schema,
+) -> str:
+    """Validate one partition's storage descriptor and return its location."""
+    details: Dict[str, str] = {}
+    partition_properties: Dict[str, str] = {}
+    serde_properties: Dict[str, str] = {}
+    in_columns = True
+    in_partition_info = False
+    columns = []
+    properties: Optional[Dict[str, str]] = None
+    for row in rows:
+        if len(row) < 3:
+            raise ValueError("Hive direct-read requires complete partition metadata")
+        key, value, comment = (
+            "" if item is None else str(item).strip() for item in row[:3]
+        )
+        if key.startswith("# Partition Information"):
+            in_partition_info = True
+            continue
+        if key.startswith("# Detailed Partition Information"):
+            in_columns = False
+            properties = None
+            continue
+        if key.startswith("#"):
+            properties = None
+            continue
+        if not key and not value:
+            continue
+        if in_columns:
+            if not in_partition_info:
+                if not key or not value:
+                    raise ValueError(
+                        "Hive direct-read requires complete partition schema"
+                    )
+                columns.append(
+                    pa.field(
+                        str(row[0]),
+                        hive_type_to_arrow(value),
+                        metadata={b"hive_type": value.encode()},
+                    )
+                )
+            continue
+        if key == "Partition Parameters:":
+            properties = partition_properties
+        elif key == "Storage Desc Params:":
+            properties = serde_properties
+        elif key.endswith(":"):
+            properties = None
+            details[key] = value
+        elif properties is not None:
+            if key:
+                properties[key.casefold()] = value
+            else:
+                properties[value.casefold()] = comment
+    label = f"{database}.{table} partition ({'/'.join(raw_values)})"
+    if not pa.schema(columns).equals(table_schema, check_metadata=True):
+        raise ValueError(f"Hive partition {label} has an incompatible declared schema")
+    if partition_properties.get(
+        "transactional", "false"
+    ).lower() != "false" or partition_properties.get("transactional_properties"):
+        raise ValueError(f"Hive direct-read does not support ACID partition {label}")
+    if partition_properties.get("storage_handler") or partition_properties.get(
+        "table_type", ""
+    ).lower() in ("iceberg", "delta", "hudi"):
+        raise ValueError(f"Hive table formats cannot be read directly at {label}")
+    if _FORMATS.get(
+        (details.get("InputFormat:", ""), details.get("SerDe Library:", ""))
+    ) != (table_format):
+        raise ValueError(
+            f"Hive partition {label} has an incompatible SerDe or InputFormat"
+        )
+    for option in ("parquet.column.index.access", "orc.force.positional.evolution"):
+        if any(
+            properties.get(option, "false").lower() != "false"
+            for properties in (partition_properties, serde_properties)
+        ):
+            raise ValueError(
+                f"Hive partition {label} does not support positional column access"
+            )
+    return _validate_hive_location(details.get("Location:"))
+
+
+def _read_partition_locations(
+    raw_specs: List[List[str]],
+    typed_specs: List[Tuple[Optional[object], ...]],
+    metadata: HiveFileTable,
+    spec: HiveReadSpec,
+    database: str,
+    table: str,
+    metadata_cursor,
+    max_connections: int,
+) -> List[HivePartitionInfo]:
+    """Fetch registered descriptors without exceeding the HS2 session budget."""
+    if not raw_specs:
+        return []
+    if max_connections < 1:
+        raise ValueError("metadata_max_connections must be a positive integer")
+    locations = [""] * len(raw_specs)
+
+    def describe(cursor, index: int, raw_values: List[str]) -> None:
+        assignments = ", ".join(
+            "`" + field.name.replace("`", "``") + "` = " + _partition_sql_literal(raw)
+            for field, raw in zip(metadata.partition_fields, raw_values)
+        )
+        cursor.execute(
+            f"DESCRIBE FORMATTED `{database}`.`{table}` " f"PARTITION ({assignments})"
+        )
+        locations[index] = _parse_partition_details(
+            cursor.fetchall(),
+            database=database,
+            table=table,
+            raw_values=raw_values,
+            table_format=metadata.file_format,
+            table_schema=metadata.schema,
+        )
+
+    if max_connections == 1:
+        for index, raw_values in enumerate(raw_specs):
+            describe(metadata_cursor, index, raw_values)
+    else:
+        pending = iter(enumerate(raw_specs))
+        lookup_lock = Lock()
+        stopped = False
+
+        def fetch():
+            nonlocal stopped
+            connection = None
+            cursor = None
+            try:
+                while True:
+                    with lookup_lock:
+                        if stopped:
+                            return
+                        item = next(pending, None)
+                    if item is None:
+                        return
+                    index, raw_values = item
+                    if cursor is None:
+                        connection = _connect(spec.connection_factory)
+                        cursor = connection.cursor(user=spec.user)
+                    describe(cursor, index, raw_values)
+            except Exception:
+                with lookup_lock:
+                    stopped = True
+                raise
+            finally:
+                if cursor is not None:
+                    with suppress(Exception):
+                        cursor.close()
+                if connection is not None:
+                    with suppress(Exception):
+                        connection.close()
+
+        # The table metadata session remains open and counts against the budget.
+        workers = min(len(raw_specs), max_connections - 1)
+        with ThreadPoolExecutor(max_workers=workers) as executor:
+            futures = [executor.submit(fetch) for _ in range(workers)]
+            for future in futures:
+                future.result()
+    _validate_partition_locations(locations)
+    return [
+        HivePartitionInfo(values, location)
+        for values, location in zip(typed_specs, locations)
+    ]
+
+
+def _validate_partition_locations(locations: List[str]) -> None:
+    """Reject duplicate or overlapping locations before any file is listed."""
+    for location in locations:
+        path = urlsplit(location).path
+        if (
+            location.startswith("//")
+            or "//" in path
+            or any(part in (".", "..") for part in path.split("/"))
+        ):
+            raise ValueError(
+                "Hive direct-read requires canonical partition locations without "
+                "dot segments or repeated separators"
+            )
+    normalized = [location.rstrip("/") for location in locations]
+    if len(set(normalized)) != len(normalized):
+        raise ValueError("Hive direct-read found duplicate partition locations")
+    roots = set(normalized)
+    for child in normalized:
+        parent = child
+        while "/" in parent:
+            parent = parent.rsplit("/", 1)[0]
+            if parent in roots:
+                raise ValueError(
+                    "Hive direct-read found overlapping partition locations "
+                    f"{parent!r} and {child!r}"
+                )
 
 
 def _compatible_read_type(expected: pa.DataType, actual: pa.DataType) -> pa.DataType:
@@ -487,6 +952,65 @@ def _required_hive_fields(reader, sampled_names: dict) -> Optional[Set[str]]:
         for hive_name, physical_name in sampled_names.items()
         if hive_name in required_top_level or physical_name in required_top_level
     }
+
+
+def _normalize_partition_root(path: str) -> str:
+    return path.rstrip("/")
+
+
+class _HivePartitionResolver:
+    """Longest-prefix resolution from a file path to its partition's values.
+
+    Locations never overlap (validated during planning), so each listed file
+    belongs to exactly one partition. Check directory ancestors so sibling
+    names such as ``p1-trap`` cannot hide the owning root ``p1``.
+    """
+
+    def __init__(
+        self,
+        partition_locations: Tuple[Tuple[str, Tuple[Optional[object], ...]], ...],
+    ):
+        self._values_by_root = {
+            _normalize_partition_root(location): tuple(values)
+            for location, values in partition_locations
+        }
+
+    def values_for(self, path: str) -> Optional[Tuple[Optional[object], ...]]:
+        path = _normalize_partition_root(path)
+        while path not in self._values_by_root:
+            if "/" not in path:
+                return None
+            path = path.rsplit("/", 1)[0]
+        return self._values_by_root[path]
+
+
+class _HivePartitionColumn(SynthesizedColumn):
+    """Synthesize one partition column from the partition owning the file."""
+
+    def __init__(
+        self,
+        name: str,
+        data_type: pa.DataType,
+        resolver: _HivePartitionResolver,
+        index: int,
+    ):
+        self.name = name
+        self.type = data_type
+        self.requires_read_unit_boundaries = False
+        self._resolver = resolver
+        self._index = index
+
+    def compute(self, position: ReadUnitPosition, num_rows: int) -> pa.Array:
+        values = self._resolver.values_for(str(position.unit.source))
+        if values is None:
+            raise ValueError(
+                "Hive direct-read listed a file outside every registered "
+                f"partition location: {position.unit.source!s}"
+            )
+        value = values[self._index]
+        if value is None:
+            return pa.nulls(num_rows, type=self.type)
+        return pa.array([value] * num_rows, type=self.type)
 
 
 class _HiveParquetSchemaValidatingReader(ParquetFileReader):
@@ -762,6 +1286,7 @@ class _HiveOrcScanner(OrcScanner):
             ignore_prefixes=self.ignore_prefixes,
             schema=self.schema,
             target_block_size=self.target_block_size,
+            synthesized_columns=self.synthesized_columns,
         )
 
 
@@ -836,11 +1361,21 @@ def _cast_hive_timestamps(values, target_type: pa.DataType):
 
 
 class _HiveFileIndexer(FileIndexer):
-    """Bind the native filesystem and, in full-schema mode, its retained list."""
+    """Bind the native filesystem, listing roots, and retained full-schema list.
 
-    def __init__(self, source, retained: Optional[FileManifest]):
+    Listing roots are the registered partition locations (the table location
+    for nonpartitioned tables), so directories outside registered partition
+    locations are never listed.
+    """
+
+    def __init__(
+        self,
+        source,
+        retained: Optional[FileManifest],
+        roots: Tuple[str, ...],
+    ):
         self._indexer = source._get_file_indexer()
-        self._paths = source.paths
+        self._roots = tuple(roots)
         self._filesystem = source.filesystem
         self._retained = retained
 
@@ -857,7 +1392,7 @@ class _HiveFileIndexer(FileIndexer):
             )
         else:
             yield from self._indexer.list_files(
-                pa.array(self._paths), filesystem=self._filesystem, **kwargs
+                pa.array(self._roots), filesystem=self._filesystem, **kwargs
             )
 
     def list_file_infos(
@@ -868,7 +1403,7 @@ class _HiveFileIndexer(FileIndexer):
                 yield FileInfo(str(path), int(size))
         else:
             yield from self._indexer.list_file_infos(
-                pa.array(self._paths), filesystem=self._filesystem, **kwargs
+                pa.array(self._roots), filesystem=self._filesystem, **kwargs
             )
 
 
@@ -877,17 +1412,34 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
 
     def __init__(self, table: HiveFileTable, filesystem=None, merge_schema=False):
         super().__init__("HiveDirect", DatasourceCategory.DATABASE)
+
         # Hadoop table locations commonly use s3a; Arrow's native client uses s3.
-        location = table.location
-        if location.startswith("s3a://"):
-            location = "s3://" + location[len("s3a://") :]
+        def _native_location(location: str) -> str:
+            if location.startswith("s3a://"):
+                location = "s3://" + location[len("s3a://") :]
+            # Hive reports literal percent-escaped directory names. Arrow URI
+            # parsing must not decode them into different filesystem paths.
+            if table.partition_fields and urlsplit(location).scheme:
+                location = location.replace("%", "%25")
+            return location
+
+        partition_fields = table.partition_fields
+        if partition_fields:
+            roots = [
+                _native_location(partition.location) for partition in table.partitions
+            ]
+        else:
+            roots = [_native_location(table.location)]
+        # A partitioned table may have no registered partitions yet; keep the
+        # table location only to construct the native source and list nothing.
+        source_paths = roots if roots else [_native_location(table.location)]
         if table.file_format == "parquet":
             from ray.data._internal.datasource_v2.formats.parquet.parquet_datasource_v2 import (
                 ParquetDatasourceV2,
             )
 
             source = ParquetDatasourceV2(
-                [location],
+                source_paths,
                 filesystem=filesystem,
                 partitioning=None,
                 file_extensions=None,
@@ -898,19 +1450,38 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             )
 
             source = OrcDatasourceV2(
-                [location],
+                source_paths,
                 filesystem=filesystem,
                 partitioning=None,
                 file_extensions=None,
             )
-        if not source.paths:
+        if not source.paths and not partition_fields:
             raise ValueError("Hive direct-read location could not be resolved")
-        sample = sample_files(
-            source._get_file_indexer(),
-            source.paths,
-            source.filesystem,
-            max_files=None if merge_schema else 16,
+        # Reuse the source's resolved paths so listing and partition association
+        # share one namespace. Resolution may skip paths, so never zip a shortened
+        # result with the original partition values.
+        resolved_roots = list(source.paths) if roots else []
+        if len(resolved_roots) != len(roots):
+            raise ValueError(
+                "Hive direct-read could not resolve every partition location"
+            )
+        if partition_fields:
+            _validate_partition_locations(resolved_roots)
+        self._partition_locations = tuple(
+            (resolved, partition.values)
+            for resolved, partition in zip(resolved_roots, table.partitions)
         )
+        if partition_fields and not roots:
+            sample = FileManifest.construct_manifest(
+                paths=[], sizes=[], chunk_metadatas=[]
+            )
+        else:
+            sample = sample_files(
+                source._get_file_indexer(),
+                source.paths,
+                source.filesystem,
+                max_files=None if merge_schema else 16,
+            )
         if merge_schema and len(sample) > _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT:
             logger.warning(
                 "Full Hive schema inference discovered %d candidate files, exceeding "
@@ -920,7 +1491,7 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
                 _FULL_SCHEMA_INFERENCE_WARNING_FILE_COUNT,
             )
         if table.file_format == "orc":
-            self._schema, sampled_names = _infer_orc_read_schema(
+            data_schema, sampled_names = _infer_orc_read_schema(
                 table, sample, source.filesystem
             )
             self.column_renames = {}
@@ -928,15 +1499,32 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             physical = source.infer_schema(sample) if len(sample) else pa.schema([])
             sampled_names = _sampled_column_names(table.schema, physical)
             _validate_file_schema(table.schema, physical, sampled_names)
-            self._schema, self.column_renames = _read_schema(table.schema, physical)
+            data_schema, self.column_renames = _read_schema(table.schema, physical)
+        # The read schema appends partition keys after the data columns. The
+        # conversion projections zip ``_hive_schema`` (data columns only) with
+        # the leading data fields, so synthesized partition values keep their
+        # declared output types unchanged.
+        self._schema = (
+            pa.schema(list(data_schema) + list(partition_fields))
+            if partition_fields
+            else data_schema
+        )
         self._hive_schema = table.schema
         self._sampled_names = sampled_names
         self._file_format = table.file_format
         self._force_positional_evolution = table.force_positional_evolution
         self._tolerate_missing_schema = table.tolerate_missing_schema
         self._schema_evolution_case_sensitive = table.schema_evolution_case_sensitive
+        self._partition_resolver = _HivePartitionResolver(self._partition_locations)
+        self._partition_columns = tuple(
+            _HivePartitionColumn(
+                field.name, field.type, self._partition_resolver, index
+            )
+            for index, field in enumerate(partition_fields)
+        )
         self._source: FileDataSourceV2 = source
         self._retained = sample if merge_schema else None
+        self._listing_roots = tuple(resolved_roots)
 
     def column_expressions(self):
         """Use existing typed projections for bounded strings and timestamp units.
@@ -949,6 +1537,9 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         from ray.data.expressions import Expr, col, pyarrow_udf
 
         expressions = {}
+        # ``self._schema`` may append synthesized partition keys after the
+        # data fields; zip stops at the data fields, leaving partition
+        # values at their declared output types.
         for field, read_field in zip(self._hive_schema, self._schema):
             expression = col(field.name)
             if field.type != read_field.type:
@@ -980,7 +1571,7 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
         return ["hive://direct"]
 
     def _get_file_indexer(self) -> FileIndexer:
-        return _HiveFileIndexer(self._source, self._retained)
+        return _HiveFileIndexer(self._source, self._retained, self._listing_roots)
 
     def get_file_partitioner(self, **kwargs):
         return self._source.get_file_partitioner(**kwargs)
@@ -1003,14 +1594,18 @@ class HiveDirectDatasource(DataSourceWithMetadata[FileManifest]):
             for descriptor in dataclass_fields(scanner)
             if descriptor.init
         }
+        scanner_options["synthesized_columns"] = (
+            tuple(scanner_options.get("synthesized_columns") or ())
+            + self._partition_columns
+        )
         if self._file_format == "orc":
-            scanner_options[
-                "force_positional_evolution"
-            ] = self._force_positional_evolution
+            scanner_options["force_positional_evolution"] = (
+                self._force_positional_evolution
+            )
             scanner_options["tolerate_missing_schema"] = self._tolerate_missing_schema
-            scanner_options[
-                "schema_evolution_case_sensitive"
-            ] = self._schema_evolution_case_sensitive
+            scanner_options["schema_evolution_case_sensitive"] = (
+                self._schema_evolution_case_sensitive
+            )
         return scanner_type(
             **scanner_options,
             hive_schema=self._hive_schema,
