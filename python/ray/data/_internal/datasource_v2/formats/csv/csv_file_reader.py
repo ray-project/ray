@@ -1,7 +1,8 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import Any, Dict, Iterator, List
+from codecs import BOM_UTF8
+from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -16,7 +17,7 @@ from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.read_units import ReadUnitFragment
-from ray.data._internal.util import infer_compression
+from ray.data._internal.util import KiB, infer_compression
 
 
 def csv_file_format(
@@ -34,10 +35,90 @@ def csv_file_format(
 # Chunk metadata key for a split file's column names, read from its header.
 COLUMN_NAMES_KEY = "column_names"
 
+_QUOTE_SCAN_BUFFER_BYTES = 64 * KiB
+_MULTILINE_CSV_HINT = (
+    "Pass parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) "
+    "to read the file without byte-range splitting."
+)
+
 
 def has_header(read_options: pcsv.ReadOptions) -> bool:
     """Whether a CSV file's first line names its columns."""
     return not (read_options.column_names or read_options.autogenerate_column_names)
+
+
+def _chunk_ends_in_quoted_value(
+    lines: memoryview, parse_options: pcsv.ParseOptions
+) -> bool:
+    """Return whether a newline-aligned CSV chunk ends inside a quoted field.
+
+    Scan backwards in bounded buffers. An even run of doubled quotes preserves
+    quote state. An odd run toggles it at a field's start, or leaves it outside
+    otherwise. The latter determines the answer without scanning earlier bytes.
+
+    Files with an escape character are read whole and bypass this check.
+
+    Args:
+        lines: The chunk's newline-aligned bytes.
+        parse_options: The CSV delimiter, quote character and doubled-quote settings.
+
+    Returns:
+        Whether the chunk ends before its quoted field closes.
+    """
+    if not parse_options.quote_char:
+        return False
+    quote = parse_options.quote_char.encode("ascii")
+    quote_byte = ord(quote)
+    separators = (ord(parse_options.delimiter), ord("\r"), ord("\n"))
+    double_quote = parse_options.double_quote
+    toggled = False
+    end = len(lines)
+    while end:
+        start = max(0, end - _QUOTE_SCAN_BUFFER_BYTES)
+        block = lines[start:end].tobytes()
+        if quote not in block:
+            end = start
+            continue
+        if double_quote and quote not in block.replace(quote * 2, b""):
+            # Every quote run is even, so this buffer preserves quote state.
+            end = start
+            continue
+        position = len(block)
+        while position:
+            last = block.rfind(quote, 0, position)
+            if last < 0:
+                break
+            first = last
+            while first and block[first - 1] == quote_byte:
+                first -= 1
+            run_length = last - first + 1
+            crossed_buffer = False
+            # A quote run can cross the scan-buffer boundary. Read backwards
+            # until its start is known, without copying the whole chunk.
+            while first == 0 and start > 0 and lines[start - 1] == quote_byte:
+                end = start
+                start = max(0, end - _QUOTE_SCAN_BUFFER_BYTES)
+                block = lines[start:end].tobytes()
+                prefix = block.rstrip(quote)
+                run_length += len(block) - len(prefix)
+                first = len(prefix)
+                crossed_buffer = True
+            position = first
+            if double_quote and run_length % 2 == 0:
+                if crossed_buffer and quote not in block[:position].replace(
+                    quote * 2, b""
+                ):
+                    break
+                continue
+            if (not double_quote and run_length > 1) or (
+                start + first > 0 and lines[start + first - 1] not in separators
+            ):
+                # A non-opening quote leaves the parser outside a quoted field,
+                # whether it closes one or is literal data such as 5" pipe.
+                return toggled
+            toggled = not toggled
+        end = start
+    return toggled
 
 
 def invalid_csv_error(path: str, error: Exception) -> ValueError:
@@ -73,9 +154,7 @@ def invalid_csv_chunk_error(path: str, error: Exception) -> ValueError:
         message += (
             "The file is split at newline bytes, so a newline inside a quoted or "
             "escaped value that the piece can't see can cause a row with a "
-            "different number of columns: pass "
-            "parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True) to "
-            "read each file whole. "
+            f"different number of columns. {_MULTILINE_CSV_HINT} "
         )
     return ValueError(message + "See read_csv() documentation for more details.")
 
@@ -85,7 +164,8 @@ class CsvFileReader(LineChunkableFileReader):
 
     A chunk after the first has no header. It is parsed with its file's own
     column names, which ``CsvFileIndexer`` read while listing and stored in
-    the chunk's metadata.
+    the chunk's metadata. By default, the reader rejects chunks ending inside a
+    quoted value before parsing, since pyarrow can accept the incomplete row.
     """
 
     def __init__(
@@ -94,12 +174,14 @@ class CsvFileReader(LineChunkableFileReader):
         read_options: pcsv.ReadOptions,
         parse_options: pcsv.ParseOptions,
         convert_options: pcsv.ConvertOptions,
+        validate_chunk_boundaries: bool = True,
         **line_chunkable_kwargs: Any,
     ):
         super().__init__(FileFormat.CSV, **line_chunkable_kwargs)
         # Re-init invalid row handler: https://issues.apache.org/jira/browse/ARROW-17641
         if hasattr(parse_options, "invalid_row_handler"):
             parse_options.invalid_row_handler = parse_options.invalid_row_handler
+        self._validate_chunk_boundaries = validate_chunk_boundaries
         self._read_options = read_options
         self._parse_options = parse_options
         # pyarrow's dataset scan appends the projection to ``include_columns``,
@@ -150,6 +232,30 @@ class CsvFileReader(LineChunkableFileReader):
             if unit.id == unit.source:
                 raise invalid_csv_error(unit.source, e) from e
             raise invalid_csv_chunk_error(unit.source, e) from e
+
+    @override
+    def _read_chunk_lines(
+        self, fragment_to_read: ReadUnitFragment
+    ) -> Optional[memoryview]:
+        lines = super()._read_chunk_lines(fragment_to_read)
+        if lines is None:
+            return None
+        scan_lines = lines
+        if lines[: len(BOM_UTF8)] == BOM_UTF8:
+            if fragment_to_read.unit.index == 0:
+                scan_lines = lines[len(BOM_UTF8) :]
+            else:
+                # Arrow strips a BOM from every fragment. Supply a signature
+                # so the field's leading U+FEFF survives parsing.
+                lines = memoryview(BOM_UTF8 + lines)
+        if self._validate_chunk_boundaries and _chunk_ends_in_quoted_value(
+            scan_lines, self._parse_options
+        ):
+            raise ValueError(
+                f"A chunk of CSV file {fragment_to_read.unit.source!r} ends inside "
+                f"a quoted value. {_MULTILINE_CSV_HINT}"
+            )
+        return lines
 
     @override
     def _make_chunk_fragment(

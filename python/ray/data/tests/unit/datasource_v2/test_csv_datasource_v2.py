@@ -32,6 +32,8 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
     CsvFileIndexer,
 )
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
+    _QUOTE_SCAN_BUFFER_BYTES,
+    _chunk_ends_in_quoted_value,
     csv_file_format,
     invalid_csv_chunk_error,
 )
@@ -388,6 +390,131 @@ def test_hints_newlines_in_values_when_a_piece_fails_to_parse(tmp_path, monkeypa
 
     with pytest.raises(ValueError, match="newlines_in_values"):
         _read_all(CsvDatasourceV2([path]), [path])
+
+
+@pytest.mark.parametrize("quote_char", ['"', "'"])
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("double_quote", [True, False])
+@pytest.mark.parametrize("literal_quote", [False, True])
+def test_rejects_a_chunk_ending_inside_a_quoted_value(
+    tmp_path, monkeypatch, quote_char, newline, double_quote, literal_quote
+):
+    # Both pieces parse successfully in isolation, turning one quoted row into
+    # two rows. A quote in an unquoted field also defeats a quote-count check.
+    head = f"text{newline}"
+    if literal_quote:
+        head += f"5{quote_char} pipe{newline}"
+    head += f"{quote_char}first{newline}"
+    tail = f"second{quote_char}{newline}plain{newline}"
+    path = _write(tmp_path / "a.csv", head + tail)
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+    parse_options = pcsv.ParseOptions(quote_char=quote_char, double_quote=double_quote)
+
+    with pytest.raises(ValueError, match="newlines_in_values"):
+        _read_all(
+            CsvDatasourceV2([path], arrow_csv_args={"parse_options": parse_options}),
+            [path],
+        )
+
+    # The documented workaround must retain the original multi-line value.
+    parse_options.newlines_in_values = True
+    table = _read_all(
+        CsvDatasourceV2([path], arrow_csv_args={"parse_options": parse_options}),
+        [path],
+    )
+    expected = ([f"5{quote_char} pipe"] if literal_quote else []) + [
+        f"first{newline}second",
+        "plain",
+    ]
+    assert table.column("text").to_pylist() == expected
+
+
+@pytest.mark.parametrize(
+    "quote_char,values",
+    [
+        pytest.param('"', ['5" pipe', "5' pipe", "plain"], id="double_quotes"),
+        pytest.param("'", ['5" pipe', "5' pipe", "plain"], id="single_quotes"),
+        pytest.param(
+            False, ['5" pipe', "5' pipe", '"unfinished', "plain"], id="disabled"
+        ),
+    ],
+)
+def test_split_files_preserve_quotes_in_unquoted_values(
+    tmp_path, small_chunks, quote_char, values
+):
+    values = values * 40
+    path = _write(tmp_path / "a.csv", "text\n" + "\n".join(values))
+
+    table = _read_all(
+        CsvDatasourceV2(
+            [path],
+            arrow_csv_args={"parse_options": pcsv.ParseOptions(quote_char=quote_char)},
+        ),
+        [path],
+    )
+
+    assert table.column("text").to_pylist() == values
+
+
+@pytest.mark.parametrize(
+    "prefix,expected",
+    [
+        pytest.param(b"", False, id="unquoted"),
+        pytest.param(b"'", True, id="open_quote"),
+    ],
+)
+def test_quote_free_tail_respects_chunk_boundaries(prefix, expected):
+    # Both adjacent chunks contain a quote. Only the opening quote inside
+    # this chunk can make its final newline part of a field.
+    chunk = prefix + b"x" * _QUOTE_SCAN_BUFFER_BYTES + b"\n"
+    adjacent = b"'\n"
+    lines = memoryview(adjacent + chunk + adjacent)[len(adjacent) : -len(adjacent)]
+    assert (
+        _chunk_ends_in_quoted_value(lines, pcsv.ParseOptions(quote_char="'"))
+        == expected
+    )
+
+
+@pytest.mark.parametrize("delimiter", [",", ";"])
+def test_split_files_preserve_escaped_quotes(tmp_path, small_chunks, delimiter):
+    path = _write(
+        tmp_path / "a.csv",
+        f"id{delimiter}text\n"
+        + "".join(f'{i}{delimiter}"said ""hello"""\n' for i in range(40)),
+    )
+
+    table = _read_all(
+        CsvDatasourceV2(
+            [path],
+            arrow_csv_args={"parse_options": pcsv.ParseOptions(delimiter=delimiter)},
+        ),
+        [path],
+    )
+
+    assert table.column("text").to_pylist() == ['said "hello"'] * 40
+
+
+@pytest.mark.parametrize("newline", ["\n", "\r\n"])
+def test_rejects_a_cut_value_after_a_long_run_of_escaped_quotes(
+    tmp_path, monkeypatch, newline
+):
+    head = (
+        f"text{newline}" + '"' * (2 * _QUOTE_SCAN_BUFFER_BYTES + 1) + f"first{newline}"
+    )
+    path = _write(tmp_path / "a.csv", head + f'second"{newline}')
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", str(len(head)))
+
+    with pytest.raises(ValueError, match="newlines_in_values"):
+        _read_all(CsvDatasourceV2([path]), [path])
+
+
+def test_split_files_preserve_many_empty_quoted_values(tmp_path, monkeypatch):
+    path = _write(tmp_path / "a.csv", "text\n" + '""\n' * 100000)
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", "131072")
+
+    table = _read_all(CsvDatasourceV2([path]), [path])
+
+    assert table.num_rows == 100000
 
 
 @pytest.mark.parametrize(

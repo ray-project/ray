@@ -219,6 +219,7 @@ class CsvScanner(ArrowFileScanner):
     read_options: Optional[pcsv.ReadOptions] = None
     parse_options: Optional[pcsv.ParseOptions] = None
     convert_options: Optional[pcsv.ConvertOptions] = None
+    validate_chunk_boundaries: bool = True
 
     @override
     def push_filters(
@@ -237,6 +238,7 @@ class CsvScanner(ArrowFileScanner):
             read_options=self.read_options,
             parse_options=self.parse_options,
             convert_options=self.convert_options,
+            validate_chunk_boundaries=self.validate_chunk_boundaries,
             chunk_size=self.chunk_size,
             batch_size=self.batch_size or _ARROW_DEFAULT_BATCH_SIZE,
             columns=list(self.columns) if self.columns is not None else None,
@@ -257,7 +259,8 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
     Splits a large uncompressed file into byte-range chunks unless the parse
     options let a row span lines (``newlines_in_values`` or
     ``escape_char``), skip rows at the start of each file, or use a non-UTF-8
-    encoding.
+    encoding. For split reads, ``validate_chunk_boundaries`` (default True)
+    checks that chunks end outside quoted fields.
     """
 
     _FORMAT_NAME = "CSV"
@@ -267,9 +270,11 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
         paths: List[str],
         *,
         arrow_csv_args: Optional[Dict[str, Any]] = None,
+        validate_chunk_boundaries: bool = True,
         **line_chunkable_kwargs: Any,
     ):
         super().__init__(paths, name="CsvV2", **line_chunkable_kwargs)
+        self._validate_chunk_boundaries = validate_chunk_boundaries
         arrow_csv_args = dict(arrow_csv_args or {})
         assert set(arrow_csv_args) <= CSV_V2_ARGS, sorted(arrow_csv_args)
         self._read_options: pcsv.ReadOptions = arrow_csv_args.get(
@@ -337,4 +342,5 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
             read_options=self._read_options,
             parse_options=self._parse_options,
             convert_options=self._convert_options,
+            validate_chunk_boundaries=self._validate_chunk_boundaries,
         )
