@@ -250,7 +250,7 @@ class TuneReporterBase(ProgressReporter):
         self._total_samples = total_samples
 
     def set_start_time(self, timestamp: Optional[float] = None):
-        if timestamp is not None:
+        if timestamp is None:
             self._start_time = time.time()
         else:
             self._start_time = timestamp
