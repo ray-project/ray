@@ -224,7 +224,7 @@ class DiskShuffleWriteFn:
 
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _disk_shuffle_reduce_task(
-    *entries_by_input: Dict[str, Any],
+    *tables_by_input: Dict[str, Any],
     partition_id: int,
     reduce_fn: ReduceFn,
     fetch_threads: int,
@@ -246,11 +246,10 @@ def _disk_shuffle_reduce_task(
     its future completes.
 
     Args:
-        *entries_by_input: One regroup entry per upstream input (one for
-            repartition/sort/aggregate, two for join): the input's shared
-            node table plus this partition's per-node file sizes (see
-            ``_partition_input``). ``tables_by_input`` passed to
-            ``reduce_fn`` is aligned with this order.
+        *tables_by_input: One node table per upstream input (one for
+            repartition/sort/aggregate, two for join), shared by every
+            partition; see ``_partition_input``. The table lists passed to
+            ``reduce_fn`` are aligned with this order.
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
         fetch_threads: Concurrent per-file-server fetch threads.
@@ -266,8 +265,8 @@ def _disk_shuffle_reduce_task(
     """
     start_time_s = time.perf_counter()
 
-    num_inputs = len(entries_by_input)
-    inputs = [_partition_input(entry, partition_id) for entry in entries_by_input]
+    num_inputs = len(tables_by_input)
+    inputs = [_partition_input(table, partition_id) for table in tables_by_input]
     sources_by_input: List[List[Any]] = [inp.sources for inp in inputs]
     schemas_by_input: List[Optional[pa.Schema]] = [inp.schema for inp in inputs]
     output_schema: Optional[pa.Schema] = next(

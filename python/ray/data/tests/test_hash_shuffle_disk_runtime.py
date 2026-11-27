@@ -650,17 +650,15 @@ def test_partition_input():
     file of that partition and its whole size; empty files are skipped."""
     import numpy as np
 
+    sizes = np.zeros((2, 8), dtype=np.int64)
+    sizes[:, 7] = [26, 0]
     table = {
         "nodes": [("s", "node-1", "/a/node"), ("s", "node-2", "/b/node")],
         "committed_attempts": {0: 5, 1: 6},
-    }
-    entry = {
-        "node_table": "ref",
-        "sizes": np.array([26, 0], dtype=np.int64),
+        "sizes": sizes,
         "schema": "schema",
     }
-    with patch.object(_runtime.ray, "get", side_effect=lambda ref: table):
-        inp = _partition_input(entry, partition_id=7)
+    inp = _partition_input(table, partition_id=7)
     assert inp.schema == "schema"
     assert inp.committed_attempts == {0: 5, 1: 6}
     assert [(s.node_id, s.file.path, s.file.ranges) for s in inp.sources] == [

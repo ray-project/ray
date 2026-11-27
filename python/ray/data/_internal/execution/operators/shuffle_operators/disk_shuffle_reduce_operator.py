@@ -79,12 +79,13 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
     ``ShuffleMapOp`` does for the object-store reduce. The reduce then submits
     one task per ``add_input``, which the executor's backpressure paces.
 
-    A partition's bundle holds one block entry per input: the input's node
-    table (one object shared by every partition: each node's file server,
-    node-file prefix, and the committed attempt token per map task) plus
-    the ``[N]`` sizes of the nodes' files for this partition. The entry's
-    metadata carries the partition's rows and decoded bytes from that
-    input. Bookkeeping here and per reducer is per node, not per map task.
+    A partition's bundle holds one block entry per input: a ref to the
+    input's node table, one object shared by every partition that names
+    each node's file server and node-file prefix, the committed attempt
+    token per map task, and the ``[N, P]`` sizes of the nodes' partition
+    files. The entry's metadata carries the partition's rows and decoded
+    bytes from that input. Bookkeeping here and per reducer is per node,
+    not per map task.
 
     The op also owns the per-node ``ShuffleFileServer`` actors: it creates one
     per (shuffle_id, node_id) the first time a mapper handle from that node
@@ -227,40 +228,37 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         self._emit_file_sizes()
 
     def _emit_file_sizes(self) -> None:
-        """Emit one bundle per partition: per input, the shared node table
-        plus the ``[N]`` sizes of the nodes' files for that partition.
+        """Put one node table per input and emit one bundle per partition
+        whose entries all point at those tables (``_partition_input`` slices
+        out the partition).
 
         A node's file for a partition holds only that partition, so the
         reducer reads it whole up to the size recorded here. Records of a
         map task attempt that died after appending may sit inside;
         ``_decode_records`` drops them by attempt token.
         """
-        tables, sizes = [], []
-        for nodes, sizes_by_node, committed_attempts in zip(
-            self._node_index_by_input,
-            self._file_sizes_by_input,
-            self._committed_attempts_by_input,
-        ):
-            tables.append(
-                ray.put(
-                    {"nodes": list(nodes), "committed_attempts": committed_attempts}
-                )
+        tables = [
+            ray.put(
+                {
+                    "nodes": list(nodes),
+                    "committed_attempts": committed_attempts,
+                    "sizes": np.stack(sizes_by_node)
+                    if sizes_by_node
+                    else np.zeros((0, self._num_partitions), np.int64),
+                    "schema": schema,
+                }
             )
-            sizes.append(
-                np.stack(sizes_by_node)
-                if sizes_by_node
-                else np.zeros((0, self._num_partitions), np.int64)
+            for nodes, sizes_by_node, committed_attempts, schema in zip(
+                self._node_index_by_input,
+                self._file_sizes_by_input,
+                self._committed_attempts_by_input,
+                self._schema_by_input,
             )
+        ]
         for partition_id in range(self._num_partitions):
             entries = tuple(
                 BlockEntry(
-                    ref=ray.put(  # pyrefly: ignore[bad-argument-type]
-                        {
-                            "node_table": table_ref,
-                            "sizes": np.ascontiguousarray(size[:, partition_id]),
-                            "schema": schema,
-                        }
-                    ),
+                    ref=table_ref,  # pyrefly: ignore[bad-argument-type]
                     metadata=BlockMetadata(
                         num_rows=int(rows[partition_id]),
                         size_bytes=int(nbytes[partition_id]),
@@ -268,10 +266,8 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
                         input_files=make_partition_sentinel(partition_id),
                     ),
                 )
-                for table_ref, size, schema, rows, nbytes in zip(
+                for table_ref, rows, nbytes in zip(
                     tables,
-                    sizes,
-                    self._schema_by_input,
                     self._partition_rows_by_input,
                     self._partition_bytes_by_input,
                 )

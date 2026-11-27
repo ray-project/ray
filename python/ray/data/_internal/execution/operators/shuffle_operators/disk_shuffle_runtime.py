@@ -794,7 +794,7 @@ def handle_from_block(block: pa.Table) -> "ShuffleHandle":
 
 
 class _PartitionInput(NamedTuple):
-    """One upstream input's share of a partition, from its regroup entry."""
+    """One upstream input's share of a partition, from its node table."""
 
     # One source per node with records for the partition: its whole file.
     sources: List[_SourceRef]
@@ -804,19 +804,18 @@ class _PartitionInput(NamedTuple):
     schema: Optional[pa.Schema]
 
 
-def _partition_input(entry: Dict[str, Any], partition_id: int) -> _PartitionInput:
-    """Turn a regroup entry into the sources, committed attempts and schema
-    for ``partition_id``.
+def _partition_input(table: Dict[str, Any], partition_id: int) -> _PartitionInput:
+    """Slice ``partition_id`` out of an input's node table: its sources,
+    committed attempts and schema.
 
-    ``entry["sizes"]`` is ``[N]``: the size of each node's
-    ``node_p{partition_id}.shf`` up to its last committed record; a node
-    with 0 wrote nothing and gets no source. ``entry["node_table"]`` is one
-    shared object per input: each node's file server and file prefix, plus
-    the committed attempt token per map task.
+    The table is one object per input, shared by every partition: ``nodes``
+    names each node's file server and file prefix, ``committed_attempts``
+    maps map id to the committed attempt token, and ``sizes`` is ``[N, P]``,
+    the size of each node's ``node_p{p}.shf`` up to its last committed
+    record. A node with size 0 wrote nothing for ``p`` and gets no source.
     """
-    table: Dict[str, Any] = ray.get(entry["node_table"])
     nodes = table["nodes"]
-    sizes = entry["sizes"]
+    sizes = table["sizes"][:, partition_id]
     sources: List[_SourceRef] = []
     for i in np.flatnonzero(sizes > 0).tolist():
         shuffle_id, node_id, prefix = nodes[i]
@@ -830,7 +829,7 @@ def _partition_input(entry: Dict[str, Any], partition_id: int) -> _PartitionInpu
                 ),
             )
         )
-    return _PartitionInput(sources, table["committed_attempts"], entry.get("schema"))
+    return _PartitionInput(sources, table["committed_attempts"], table.get("schema"))
 
 
 def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:

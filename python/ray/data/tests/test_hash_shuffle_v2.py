@@ -795,16 +795,17 @@ def test_disk_regroup_folds_handles_into_node_file_sizes(
             )
     regroup_op.all_inputs_done()
 
-    entries = [ray.get(regroup_op.get_next().blocks[0].ref) for _ in range(2)]
-    table = ray.get(entries[0]["node_table"])
+    # Every partition's entry is the same shared node table.
+    refs = [regroup_op.get_next().blocks[0].ref for _ in range(2)]
+    assert refs[0] == refs[1]
+    table = ray.get(refs[0])
     assert table["nodes"] == [
         ("shuffle-0", "node-0", "/node-0/node"),
         ("shuffle-0", "node-1", "/node-1/node"),
     ]
     assert table["committed_attempts"] == {0: 100, 1: 101, 2: 102}
-    # One size per node: the end of the last of its map tasks' records.
-    assert entries[0]["sizes"].tolist() == [12, 9]
-    assert entries[1]["sizes"].tolist() == [8, 0]
+    # [node, partition] sizes: the end of the last of the node's records.
+    assert table["sizes"].tolist() == [[12, 8], [9, 0]]
 
 
 def test_disk_shuffle_reduce_op_emits_partitions_in_order(restore_data_context):
