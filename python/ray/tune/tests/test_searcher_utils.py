@@ -277,7 +277,15 @@ def test_batch_limiter():
 
     limiter.on_trial_complete("test_1", {"result": 3})
     assert limiter.suggest("test_3") is None
-    limiter.on_trial_complete("test_2", {"result": 3})
+    # Duplicate completion of an already-finished trial in the batch must not
+    # prematurely decrement num_unfinished_live_trials or flush partial results.
+    limiter.on_trial_complete("test_1", {"result": 99})
+    assert limiter.num_unfinished_live_trials == 1
+    assert not limiter.searcher.returned_result
+    assert limiter.suggest("test_3") is None
+
+    limiter.on_trial_complete("test_2", {"result": 5})
+    assert limiter.searcher.returned_result == [{"result": 3}, {"result": 5}]
     assert limiter.suggest("test_3") is not None
 
 
@@ -359,6 +367,16 @@ def test_set_max_concurrency():
     assert limiter.suggest("test_1")["score"] == 1
     assert limiter.suggest("test_2")["score"] == 2
     assert limiter.suggest("test_3")["score"] == 3
+
+    limiter.set_max_concurrency(5)
+    assert limiter.max_concurrent == 5
+    assert limiter.searcher._max_concurrent == 5
+
+    for invalid_value in (0, -1, True, False, 1.5, "2", None):
+        with pytest.raises(ValueError, match="max_concurrent"):
+            ConcurrencyLimiter(searcher, max_concurrent=invalid_value)
+        with pytest.raises(ValueError, match="max_concurrent"):
+            limiter.set_max_concurrency(invalid_value)
 
 
 if __name__ == "__main__":

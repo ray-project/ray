@@ -497,7 +497,7 @@ class ConcurrencyLimiter(Searcher):
     """
 
     def __init__(self, searcher: Searcher, max_concurrent: int, batch: bool = False):
-        assert isinstance(max_concurrent, int) and max_concurrent > 0
+        self._validate_max_concurrent(max_concurrent)
         self.searcher = searcher
         self.max_concurrent = max_concurrent
         self.batch = batch
@@ -519,6 +519,17 @@ class ConcurrencyLimiter(Searcher):
             metric=self.searcher.metric, mode=self.searcher.mode
         )
 
+    @staticmethod
+    def _validate_max_concurrent(max_concurrent: int):
+        if (
+            not isinstance(max_concurrent, int)
+            or isinstance(max_concurrent, bool)
+            or max_concurrent <= 0
+        ):
+            raise ValueError(
+                f"`max_concurrent` must be a positive integer, got {max_concurrent!r}."
+            )
+
     def _set_searcher_max_concurrency(self):
         # If the searcher has special logic for handling max concurrency,
         # we do not do anything inside the ConcurrencyLimiter
@@ -527,9 +538,9 @@ class ConcurrencyLimiter(Searcher):
         )
 
     def set_max_concurrency(self, max_concurrent: int) -> bool:
-        # Determine if this behavior is acceptable, or if it should
-        # raise an exception.
+        self._validate_max_concurrent(max_concurrent)
         self.max_concurrent = max_concurrent
+        self._set_searcher_max_concurrency()
         return True
 
     def set_search_properties(
@@ -571,16 +582,21 @@ class ConcurrencyLimiter(Searcher):
         if trial_id not in self.live_trials:
             return
         elif self.batch:
+            if trial_id in self.cached_results:
+                return
             self.cached_results[trial_id] = (result, error)
             self.num_unfinished_live_trials -= 1
             if self.num_unfinished_live_trials <= 0:
                 # Update the underlying searcher once the
                 # full batch is completed.
-                for trial_id, (result, error) in self.cached_results.items():
+                for cached_trial_id, (
+                    cached_result,
+                    cached_error,
+                ) in self.cached_results.items():
                     self.searcher.on_trial_complete(
-                        trial_id, result=result, error=error
+                        cached_trial_id, result=cached_result, error=cached_error
                     )
-                    self.live_trials.remove(trial_id)
+                    self.live_trials.remove(cached_trial_id)
                 self.cached_results = {}
                 self.num_unfinished_live_trials = 0
             else:
