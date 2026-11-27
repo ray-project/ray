@@ -38,6 +38,7 @@ helm-chart-rbac
 tls
 network-policy
 mtls
+multi-cluster-raycluster
 k8s-autoscaler
 kubectl-plugin
 auth
@@ -81,6 +82,7 @@ To learn the basics of Ray on Kubernetes, we recommend taking a look at the {ref
 * {ref}`kuberay-tls`
 * {ref}`kuberay-network-policy`
 * {ref}`kuberay-mtls`
+* {ref}`kuberay-multi-cluster-raycluster`
 * {ref}`kuberay-gke-bucket`
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`kubectl-plugin`
