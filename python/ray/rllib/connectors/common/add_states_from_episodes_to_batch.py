@@ -246,6 +246,10 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     convert_to_numpy(sa_module.get_initial_state())
                     if sa_episode.t_started == 0
                     or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
+                    # `MultiAgentEpisode.cut()` measures its lookback in env
+                    # timesteps. If agents act in turns, the previous STATE_OUT may
+                    # lie outside of it -> Fall back to the initial state, too.
+                    or sa_episode.extra_model_outputs[Columns.STATE_OUT].lookback == 0
                     # Episode starts somewhere in the middle (is a cut
                     # continuation chunk) -> Use previous chunk's last
                     # STATE_OUT as initial state.
