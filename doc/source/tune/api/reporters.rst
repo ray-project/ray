@@ -7,7 +7,13 @@
 Tune Console Output (Reporters)
 ===============================
 
-By default, Tune reports experiment progress periodically to the command-line as follows.
+With the legacy output engine, Tune reports experiment progress periodically to the command line as follows.
+
+.. note::
+
+    In command-line runs, custom progress reporters require the legacy output engine.
+    Set ``RAY_AIR_NEW_OUTPUT=0`` in the driver environment before calling ``Tuner.fit()``.
+    Otherwise, Tune ignores ``RunConfig.progress_reporter``.
 
 .. code-block:: bash
 
@@ -34,8 +40,16 @@ Here's an example:
 
 .. code-block:: python
 
-    import ray.tune
+    import os
+
+    import ray
+    from ray import tune
     from ray.tune import CLIReporter
+
+    os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
+
+    def my_trainable(config):
+        tune.report({"custom_metric": 1})
 
     # Limit the number of rows.
     reporter = CLIReporter(max_progress_rows=10)
