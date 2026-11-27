@@ -24,6 +24,7 @@ from ray.train.v2._internal.constants import is_v2_enabled
 
 if is_v2_enabled():
     from ray.train.v2.torch.torch_trainer import TorchTrainer  # noqa: F811
+    from ray.train.v2.torch.torchft_config import TorchftConfig  # noqa: F401
     from ray.train.v2.torch.train_loop_utils import (  # noqa: F811
         accelerate,
         backward,
@@ -49,6 +50,14 @@ __all__ = [
     "backward",
     "enable_reproducibility",
 ]
+
+# TODO: consider implementing these in v1 and raising ImportError instead.
+if is_v2_enabled():
+    __all__.extend(
+        [
+            "TorchftConfig",
+        ]
+    )
 
 
 # DO NOT ADD ANYTHING AFTER THIS LINE.

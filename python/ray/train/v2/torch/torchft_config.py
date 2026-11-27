@@ -10,19 +10,66 @@ from ray.train.torch.config import (
 )
 from ray.train.v2._internal.constants import TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR
 from ray.train.v2._internal.execution.worker_group import ReplicaGroup, WorkerGroup
+from ray.util.annotations import PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 
+@PublicAPI(stability="alpha")
 class TorchftConfig(TorchConfig):
-    """Configuration for torchft-based fault tolerant training.
+    """Configuration for fault-tolerant training with torchft.
 
-    See https://github.com/meta-pytorch/torchft for more info.
+    Pass this as the ``torch_config`` of a
+    :class:`~ray.train.torch.TorchTrainer` to train with
+    `torchft <https://github.com/meta-pytorch/torchft>`_. Ray Train then
+    starts the torchft Lighthouse server as an actor on the node that runs
+    the Ray Train controller, which is usually the head node. It sets the
+    ``TORCHFT_LIGHTHOUSE`` environment variable on every training worker
+    and creates one process group per replica group instead of one
+    process group across all workers. Each Ray Train worker is its own
+    replica group. When a worker fails, Ray Train replaces only that
+    replica group instead of restarting the whole worker group, and the
+    replacement recovers model and optimizer state from a live peer
+    through torchft.
+
+    Your training function must also create a ``torchft.Manager`` and
+    wrap the model and optimizer with the torchft primitives. See
+    :ref:`train-torchft` for a complete example.
+
+    Example:
+
+        .. testcode::
+            :skipif: True
+
+            from ray.train import FailureConfig, RunConfig, ScalingConfig
+            from ray.train.torch import TorchftConfig, TorchTrainer
+
+            trainer = TorchTrainer(
+                train_func,
+                scaling_config=ScalingConfig(num_workers=2),
+                torch_config=TorchftConfig(
+                    lighthouse_kwargs={"min_replicas": 1},
+                    backend="gloo",
+                ),
+                run_config=RunConfig(
+                    failure_config=FailureConfig(max_failures=3),
+                ),
+            )
 
     Args:
-        lighthouse_kwargs: Keyword arguments to pass to the torchft.Lighthouse constructor.
-        **kwargs: Additional keyword arguments to pass to the TorchConfig constructor.
+        lighthouse_kwargs: Keyword arguments for the
+            ``torchft.coordination.LighthouseServer`` constructor.
+            ``min_replicas`` is required: the minimum number of replica
+            groups that must be alive to form a quorum and keep training.
+            ``bind`` defaults to ``"[::]:0"``, which binds the Lighthouse
+            to a free port on the Lighthouse's node. The torchft version you
+            install defines the remaining keys, such as
+            ``join_timeout_ms``, ``quorum_tick_ms``, and
+            ``heartbeat_timeout_ms``.
+        **kwargs: Additional keyword arguments for the
+            :class:`~ray.train.torch.TorchConfig` constructor, such as
+            ``backend="gloo"`` or ``backend="nccl"``.
     """
 
     def __init__(self, lighthouse_kwargs: Dict[str, Any], **kwargs):

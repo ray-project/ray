@@ -412,6 +412,9 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
         "source/train/doc_code/asynchronous_validation.py",  # pseudocode snippets, not runnable
+        # torchft is only installed in the torchft CI image, not the doctest image.
+        # The equivalent script is tested by test_torch_trainer.py in that image.
+        "source/train/doc_code/torchft_fault_tolerance.py",
     ],
     extra_srcs = [],
     tags = [

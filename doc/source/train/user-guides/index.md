@@ -20,6 +20,7 @@ asynchronous-validation
 experiment-tracking
 results
 fault-tolerance
+torchft-fault-tolerance
 elastic-training
 nccl-hang-detection
 debugging

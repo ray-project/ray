@@ -17,8 +17,7 @@ from torchft.checkpointing.pg_transport import PGTransport
 
 import ray.train
 from ray.train import RunConfig, ScalingConfig
-from ray.train.torch import TorchTrainer
-from ray.train.v2.torch.torchft_config import TorchftConfig
+from ray.train.torch import TorchftConfig, TorchTrainer
 
 
 class LinearDataset(torch.utils.data.Dataset):

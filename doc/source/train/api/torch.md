@@ -23,6 +23,7 @@ The `ray.train.torch` module runs distributed PyTorch training. `TorchXLAConfig`
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
+    ~train.torch.TorchftConfig
     ~train.torch.xla.TorchXLAConfig
 ```
 
