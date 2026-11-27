@@ -4377,6 +4377,7 @@ def read_sql(
         For examples of reading from larger databases like MySQL and PostgreSQL, see
         :ref:`Read SQL databases <reading_sql>`.
 
+        >>> import builtins
         >>> import hashlib
         >>> import os
         >>> import sqlite3
@@ -4399,7 +4400,7 @@ def read_sql(
         >>> _ = connection.execute("CREATE TABLE movie_catalog(title)")
         >>> _ = connection.executemany(
         ...     "INSERT INTO movie_catalog VALUES (?)",
-        ...     [(f"Movie {i}",) for i in range(100)],
+        ...     [(f"Movie {i}",) for i in builtins.range(100)],
         ... )
         >>> connection.commit()
         >>> connection.close()
