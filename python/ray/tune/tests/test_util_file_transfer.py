@@ -9,6 +9,8 @@ import pytest
 import ray.util
 from ray.exceptions import RayTaskError
 from ray.tune.utils.file_transfer import (
+    _copy_dir,
+    _pack_dir,
     _sync_dir_between_different_nodes,
     _sync_dir_on_same_node,
 )
@@ -239,6 +241,80 @@ def test_max_size_exceeded(ray_start_2_cpus, temp_data_dirs):
             target_path=tmp_target,
             max_size_bytes=2,
         )
+
+
+def test_pack_dir_excludes_directories_and_handles_missing_files(
+    temp_data_dirs, monkeypatch
+):
+    tmp_source, _ = temp_data_dirs
+    lstat_paths = []
+    orig_lstat = os.lstat
+
+    def tracking_lstat(path, *args, **kwargs):
+        lstat_paths.append(path)
+        return orig_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "lstat", tracking_lstat)
+    stream = _pack_dir(
+        tmp_source,
+        exclude=["subdir_exclude", "*_exclude.txt"],
+    )
+    stream.seek(0)
+    with tarfile.open(fileobj=stream) as tar:
+        names = tar.getnames()
+    assert not any("subdir_exclude" in name for name in names)
+    assert not any(name.endswith("_exclude.txt") for name in names)
+    assert not any("subdir_exclude" in p for p in lstat_paths)
+
+    def disappearing_lstat(path, *args, **kwargs):
+        if path.endswith("level1.txt"):
+            raise FileNotFoundError(path)
+        return orig_lstat(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, "lstat", disappearing_lstat)
+    stream_missing = _pack_dir(tmp_source, files_stats={"./level0.txt": (0.0, 0)})
+    stream_missing.seek(0)
+    with tarfile.open(fileobj=stream_missing) as tar:
+        names_missing = tar.getnames()
+    assert "./level0.txt" in names_missing
+    assert "subdir/level1.txt" not in names_missing
+
+
+def test_copy_dir_retry_preserves_exclude(temp_data_dirs, monkeypatch):
+    tmp_source, tmp_target = temp_data_dirs
+    shutil.rmtree(tmp_target)
+
+    import ray.tune.utils.file_transfer as ft
+
+    calls = []
+    orig_lock = ft.TempFileLock
+
+    class FirstAttemptTimeoutLock:
+        def __init__(self, path, **kwargs):
+            self._timeout = kwargs.get("timeout")
+            calls.append(self._timeout)
+            self._lock = orig_lock(path, **kwargs)
+
+        def __enter__(self):
+            if self._timeout == 0 and len(calls) == 1:
+                raise TimeoutError("Simulated lock contention")
+            return self._lock.__enter__()
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            return self._lock.__exit__(exc_type, exc_val, exc_tb)
+
+    monkeypatch.setattr(ft, "TempFileLock", FirstAttemptTimeoutLock)
+    _copy_dir(
+        tmp_source,
+        tmp_target,
+        exclude=["subdir_exclude", "level0_exclude.txt", "subdir/*"],
+    )
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(False, tmp_target, "level0_exclude.txt")
+    assert_file(False, tmp_target, "subdir/level1.txt")
+    assert_file(False, tmp_target, "subdir_exclude")
+    assert_file(False, tmp_target, "subdir_exclude/something/somewhere.txt")
 
 
 if __name__ == "__main__":
