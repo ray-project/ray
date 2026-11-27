@@ -64,6 +64,13 @@ message RaySyncMessage {
 message RaySyncMessageBatch {
   // Batch of RaySyncMessages.
   repeated RaySyncMessage messages = 1;
+  // Message types the sender starts receiving from now on. A node names a type here
+  // only if it opted out of that type when it connected, through the
+  // "lazy_message_types" stream metadata.
+  repeated MessageType subscribe = 2;
+  // Message types for which the sender has now sent every message it held when it
+  // handled the receiver's `subscribe`. This batch and the earlier ones carry them.
+  repeated MessageType subscribe_done = 3;
 }
 
 service RaySyncer {

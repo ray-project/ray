@@ -2203,6 +2203,72 @@ TEST_F(ClusterLeaseManagerTest, TestInfeasibleLeaseWarning) {
   AssertNoLeaks();
 }
 
+TEST_F(ClusterLeaseManagerTest, WaitsForClusterViewToScheduleRemotely) {
+  bool has_cluster_view = false;
+  int cluster_view_requests = 0;
+  ClusterLeaseManager lease_manager(
+      id_,
+      *scheduler_,
+      /*get_node_info=*/
+      [this](const NodeID &node_id) -> std::optional<rpc::GcsNodeAddressAndLiveness> {
+        if (node_info_.count(node_id) != 0) {
+          return std::optional((node_info_[node_id]));
+        }
+        return std::nullopt;
+      },
+      /*announce_infeasible_lease=*/
+      [this](const RayLease &lease) { announce_infeasible_lease_calls_++; },
+      *local_lease_manager_,
+      /*request_cluster_view=*/
+      [&]() {
+        cluster_view_requests++;
+        return has_cluster_view;
+      });
+
+  // The local node can't run this lease. Without the cluster view, it stays queued
+  // instead of being found infeasible.
+  RayLease lease = CreateLease({{ray::kCPU_ResourceLabel, 12}});
+  rpc::RequestWorkerLeaseReply reply;
+  bool callback_occurred = false;
+  lease_manager.QueueAndScheduleLease(
+      lease,
+      /*grant_or_reject=*/false,
+      /*is_selected_based_on_locality=*/false,
+      {internal::ReplyCallback(
+          [&](Status, std::function<void()>, std::function<void()>) {
+            callback_occurred = true;
+          },
+          &reply)});
+  ASSERT_GT(cluster_view_requests, 0);
+  ASSERT_FALSE(callback_occurred);
+  ASSERT_EQ(announce_infeasible_lease_calls_, 0);
+  ASSERT_EQ(lease_manager.GetInfeasibleQueueSize(), 0);
+
+  // The view arrives with a node that fits, so the lease spills back to it.
+  auto remote_node_id = NodeID::FromRandom();
+  AddNode(remote_node_id, 12);
+  has_cluster_view = true;
+  lease_manager.ScheduleAndGrantLeases();
+  ASSERT_TRUE(callback_occurred);
+  ASSERT_EQ(reply.retry_at_raylet_address().node_id(), remote_node_id.Binary());
+  ASSERT_EQ(announce_infeasible_lease_calls_, 0);
+
+  // With the view, a lease no node can run is infeasible right away.
+  RayLease infeasible_lease = CreateLease({{ray::kCPU_ResourceLabel, 16}});
+  rpc::RequestWorkerLeaseReply infeasible_reply;
+  lease_manager.QueueAndScheduleLease(
+      infeasible_lease,
+      /*grant_or_reject=*/false,
+      /*is_selected_based_on_locality=*/false,
+      {internal::ReplyCallback(
+          [](Status, std::function<void()>, std::function<void()>) {},
+          &infeasible_reply)});
+  ASSERT_EQ(announce_infeasible_lease_calls_, 1);
+  ASSERT_EQ(lease_manager.GetInfeasibleQueueSize(), 1);
+  ASSERT_TRUE(
+      lease_manager.CancelLease(infeasible_lease.GetLeaseSpecification().LeaseId()));
+}
+
 TEST_F(ClusterLeaseManagerTest, TestMultipleInfeasibleLeasesWarnOnce) {
   /*
     Test infeasible warning is printed only once when the same shape is queued again.

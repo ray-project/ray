@@ -17,7 +17,10 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 namespace ray::syncer {
@@ -31,16 +34,26 @@ RayClientBidiReactor::RayClientBidiReactor(
     std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
     std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
     size_t max_batch_size,
-    uint64_t max_batch_delay_ms)
+    uint64_t max_batch_delay_ms,
+    const std::vector<MessageType> &lazy_message_types,
+    SubscriptionHandlers subscription_handlers)
     : RaySyncerBidiReactorBase<ClientBidiReactor>(
           io_context,
           remote_node_id,
           std::move(message_processor),
           /* max_batch_size */ max_batch_size,
-          /* max_batch_delay_ms */ max_batch_delay_ms),
+          /* max_batch_delay_ms */ max_batch_delay_ms,
+          std::move(subscription_handlers)),
       cleanup_cb_(std::move(cleanup_cb)),
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
+  if (!lazy_message_types.empty()) {
+    client_context_.AddMetadata(
+        kLazyMessageTypesMetadataKey,
+        absl::StrJoin(lazy_message_types, ",", [](std::string *out, MessageType type) {
+          absl::StrAppend(out, static_cast<int>(type));
+        }));
+  }
   // Add authentication token if token authentication is enabled
   auto auth_token = ray::rpc::AuthenticationTokenLoader::instance().GetToken();
   if (auth_token && !auth_token->empty()) {

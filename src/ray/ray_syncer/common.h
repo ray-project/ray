@@ -46,4 +46,8 @@ inline bool IsValidMessageType(int message_type) {
 // applied.
 using MessagesReceivedCallback = std::function<void(const NodeID &)>;
 
+/// Stream metadata key a client uses to list the message types it does not want to
+/// receive until it subscribes to them, as comma-separated MessageType numbers.
+inline constexpr char kLazyMessageTypesMetadataKey[] = "lazy_message_types";
+
 }  // namespace ray::syncer

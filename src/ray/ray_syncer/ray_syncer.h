@@ -17,6 +17,8 @@
 #include <grpcpp/server.h>
 #include <gtest/gtest_prod.h>
 
+#include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -29,6 +31,7 @@
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/id.h"
 #include "ray/ray_syncer/common.h"
+#include "ray/ray_syncer/ray_syncer_bidi_reactor.h"
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/authentication/authentication_token_validator.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
@@ -104,12 +107,15 @@ class RaySyncer {
   /// \param max_batch_size The max number of messages to be sent in a batch.
   /// \param max_batch_delay_ms The max delay in milliseconds to wait before sending a
   /// batch.
+  /// \param lazy_message_types Message types this syncer receives from the nodes it
+  ///     connects to only after Subscribe is called for them. It still sends them.
   RaySyncer(instrumented_io_context &io_context,
             std::shared_ptr<PeriodicalRunnerInterface> periodical_runner,
             const std::string &node_id,
             size_t max_batch_size,
             uint64_t max_batch_delay_ms,
-            MessagesReceivedCallback on_messages_received = {});
+            MessagesReceivedCallback on_messages_received = {},
+            std::vector<MessageType> lazy_message_types = {});
   ~RaySyncer();
 
   /// Connect to a node.
@@ -167,8 +173,31 @@ class RaySyncer {
 
   std::vector<std::string> GetAllConnectedNodeIDs() const;
 
+  /// Start receiving messages of a lazy message type from the nodes this syncer
+  /// connects to, now and on every later connection. Calls after the first are no-ops.
+  /// Must be called on the io context.
+  ///
+  /// \param message_type One of the lazy message types given to the constructor.
+  /// \param on_subscribe_done Called on the io context each time a connected node has
+  ///     sent every message of this type it held when it handled the subscription,
+  ///     including after reconnects.
+  void Subscribe(MessageType message_type, std::function<void()> on_subscribe_done);
+
  private:
   void Connect(std::shared_ptr<RaySyncerBidiReactor> connection);
+
+  /// The SubscriptionHandlers given to every reactor this syncer creates.
+  SubscriptionHandlers MakeSubscriptionHandlers();
+
+  /// Send the remote node of `reactor` every message of `message_type` this node holds,
+  /// then a subscribe_done.
+  void HandleRemoteSubscribe(RaySyncerBidiReactor &reactor, MessageType message_type);
+
+  /// The lazy message types given to the constructor.
+  const std::vector<MessageType> lazy_message_types_;
+
+  /// The lazy message types Subscribe was called for, and the callbacks it was given.
+  std::array<std::function<void()>, kComponentArraySize> on_subscribe_done_;
 
   std::shared_ptr<bool> stopped_;
 
@@ -209,6 +238,7 @@ class RaySyncer {
   FRIEND_TEST(SyncerTest, Test1ToN);
   FRIEND_TEST(SyncerTest, TestMToN);
   FRIEND_TEST(SyncerTest, Reconnect);
+  FRIEND_TEST(SyncerTest, LazySubscription);
 };
 
 using SyncStreamReactor =

@@ -16,6 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <array>
+#include <functional>
 #include <memory>
 #include <string>
 #include <utility>
@@ -67,6 +69,20 @@ using ray::rpc::syncer::ResourceViewSyncMessage;
 /// | StartWrite | <--> | OnWriteDone | ------------------------------------------------------------------+
 /// +------------+      +-------------+
 // clang-format on
+class RaySyncerBidiReactor;
+
+/// Handlers for the subscribe and subscribe_done entries a reactor reads. They run on
+/// the io context, after the messages read along with them are applied. A reactor
+/// starts reading when it is constructed, so it takes them as constructor arguments.
+struct SubscriptionHandlers {
+  /// Called when the remote node subscribes to a message type.
+  std::function<void(RaySyncerBidiReactor &reactor, MessageType message_type)>
+      on_subscribe;
+  /// Called when the remote node has sent every message of a type this node
+  /// subscribed to.
+  std::function<void(MessageType message_type)> on_subscribe_done;
+};
+
 class RaySyncerBidiReactor {
  public:
   explicit RaySyncerBidiReactor(std::string remote_node_id)
@@ -83,6 +99,24 @@ class RaySyncerBidiReactor {
   ///
   /// \return true if push to queue successfully.
   virtual bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) = 0;
+
+  /// Ask the remote node to start sending messages of a type this node opted out of
+  /// when connecting. The remote node sends what it holds, then a subscribe_done.
+  virtual void SendSubscribe(MessageType message_type) = 0;
+
+  /// Tell the remote node that every message of `message_type` this node held when it
+  /// handled the remote node's subscribe has been sent.
+  virtual void SendSubscribeDone(MessageType message_type) = 0;
+
+  /// Whether the remote node wants messages of `message_type`. A node that opts out of
+  /// a type when connecting gets none of it until it subscribes.
+  bool IsRemoteSubscribed(MessageType message_type) const {
+    return remote_subscribed_[message_type];
+  }
+
+  void SetRemoteSubscribed(MessageType message_type, bool subscribed) {
+    remote_subscribed_[message_type] = subscribed;
+  }
 
   /// Return the remote node id of this connection.
   const std::string &GetRemoteNodeID() const { return remote_node_id_; }
@@ -127,6 +161,15 @@ class RaySyncerBidiReactor {
  private:
   virtual void DoDisconnect() = 0;
   std::shared_ptr<bool> disconnected_ = std::make_shared<bool>(false);
+
+  /// See IsRemoteSubscribed.
+  std::array<bool, kComponentArraySize> remote_subscribed_ = MakeAllSubscribed();
+
+  static std::array<bool, kComponentArraySize> MakeAllSubscribed() {
+    std::array<bool, kComponentArraySize> subscribed;
+    subscribed.fill(true);
+    return subscribed;
+  }
 
   FRIEND_TEST(SyncerReactorTest, TestReactorFailure);
 };

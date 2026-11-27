@@ -541,7 +541,8 @@ struct SyncerServerTest {
 
   SyncerServerTest(std::string port,
                    NodeID node_id,
-                   MessagesReceivedCallback on_messages_received)
+                   MessagesReceivedCallback on_messages_received,
+                   std::vector<MessageType> lazy_message_types = {})
       : work_guard(io_context.get_executor()) {
     this->server_port = port;
     // Setup io context
@@ -554,7 +555,8 @@ struct SyncerServerTest {
                                          node_id.Binary(),
                                          1,
                                          0,
-                                         std::move(on_messages_received));
+                                         std::move(on_messages_received),
+                                         std::move(lazy_message_types));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = BuildAddress("0.0.0.0", port);
@@ -778,6 +780,16 @@ class SyncerTest : public ::testing::Test {
     return *servers.back();
   }
 
+  SyncerServerTest &MakeLazyServer(std::string port,
+                                   std::vector<MessageType> lazy_message_types) {
+    servers.emplace_back(
+        std::make_unique<SyncerServerTest>(port,
+                                           NodeID::FromRandom(),
+                                           /*on_messages_received=*/nullptr,
+                                           std::move(lazy_message_types)));
+    return *servers.back();
+  }
+
  protected:
   void TearDown() override {
     for (auto &s : servers) {
@@ -940,6 +952,75 @@ TEST_F(SyncerTest, Reconnect) {
       [&s2, node_id = s1.syncer->GetLocalNodeID()]() {
         return s2.received_versions[node_id][0] == 1;
       },
+      5));
+}
+
+TEST_F(SyncerTest, LazySubscription) {
+  // `hub` plays the GCS: `lazy` and `eager` both connect to it, and only `lazy`
+  // defers receiving RESOURCE_VIEW.
+  auto &hub = MakeServer("19990");
+  auto &lazy = MakeLazyServer("19991", {MessageType::RESOURCE_VIEW});
+  auto &eager = MakeServer("19992");
+  const auto &lazy_id = lazy.syncer->GetLocalNodeID();
+  const auto &eager_id = eager.syncer->GetLocalNodeID();
+
+  lazy.local_versions[MessageType::RESOURCE_VIEW] = 5;
+  eager.local_versions[MessageType::RESOURCE_VIEW] = 5;
+  lazy.syncer->Connect(hub.syncer->GetLocalNodeID(), MakeChannel("19990"));
+  eager.syncer->Connect(hub.syncer->GetLocalNodeID(), MakeChannel("19990"));
+
+  // Fan-in is unchanged: the hub gets the lazy node's view.
+  ASSERT_TRUE(hub.WaitUntil(
+      [&]() {
+        return hub.received_versions[lazy_id][MessageType::RESOURCE_VIEW] == 5 &&
+               hub.received_versions[eager_id][MessageType::RESOURCE_VIEW] == 5;
+      },
+      5));
+  // The eager node gets the lazy node's view through the hub; the lazy node gets none.
+  ASSERT_TRUE(eager.WaitUntil(
+      [&]() { return eager.received_versions[lazy_id][MessageType::RESOURCE_VIEW] == 5; },
+      5));
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
+  ASSERT_TRUE(lazy.WaitUntil(
+      [&]() {
+        // The receiver also sees this node's own messages; skip those.
+        for (const auto &[node_id, _] : lazy.received_versions) {
+          if (node_id != lazy_id) {
+            return false;
+          }
+        }
+        return true;
+      },
+      0));
+
+  std::atomic<int> subscribe_done_calls = 0;
+  lazy.io_context.post(
+      [&]() {
+        lazy.syncer->Subscribe(MessageType::RESOURCE_VIEW,
+                               [&]() { ++subscribe_done_calls; });
+      },
+      "TEST");
+  // Subscribing sends what the hub already holds, then subscribe_done.
+  ASSERT_TRUE(lazy.WaitUntil(
+      [&]() {
+        return subscribe_done_calls == 1 &&
+               lazy.received_versions[eager_id][MessageType::RESOURCE_VIEW] == 5;
+      },
+      5));
+
+  // Later updates stream in.
+  eager.local_versions[MessageType::RESOURCE_VIEW] = 6;
+  ASSERT_TRUE(lazy.WaitUntil(
+      [&]() { return lazy.received_versions[eager_id][MessageType::RESOURCE_VIEW] == 6; },
+      5));
+
+  // A new connection subscribes again and gets a new subscribe_done.
+  lazy.syncer->Disconnect(hub.syncer->GetLocalNodeID());
+  lazy.syncer->Connect(hub.syncer->GetLocalNodeID(), MakeChannel("19990"));
+  ASSERT_TRUE(lazy.WaitUntil([&]() { return subscribe_done_calls == 2; }, 5));
+  eager.local_versions[MessageType::RESOURCE_VIEW] = 7;
+  ASSERT_TRUE(lazy.WaitUntil(
+      [&]() { return lazy.received_versions[eager_id][MessageType::RESOURCE_VIEW] == 7; },
       5));
 }
 

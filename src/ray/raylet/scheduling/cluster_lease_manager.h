@@ -47,11 +47,19 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
   /// \param announce_infeasible_lease: Callback that informs the user if a lease
   ///                                  is infeasible.
   /// \param local_lease_manager: Manages local leases.
+  /// \param request_cluster_view: Returns whether this node has the other nodes'
+  ///                              resource views. If it returns false, it starts
+  ///                              fetching them and calls ScheduleAndGrantLeases once
+  ///                              they arrive. Until then, a lease this node can't
+  ///                              grant stays queued instead of being found infeasible
+  ///                              or unschedulable. If null, the views are always
+  ///                              there.
   ClusterLeaseManager(const NodeID &self_node_id,
                       ClusterResourceScheduler &cluster_resource_scheduler,
                       internal::NodeInfoGetter get_node_info,
                       std::function<void(const RayLease &)> announce_infeasible_lease,
-                      LocalLeaseManagerInterface &local_lease_manager);
+                      LocalLeaseManagerInterface &local_lease_manager,
+                      std::function<bool()> request_cluster_view = nullptr);
 
   /// Queue lease and schedule. This happens when processing the worker lease request.
   ///
@@ -204,6 +212,8 @@ class ClusterLeaseManager : public ClusterLeaseManagerInterface {
   internal::NodeInfoGetter get_node_info_;
   /// Function to announce infeasible lease to GCS.
   std::function<void(const RayLease &)> announce_infeasible_lease_;
+  /// See the constructor.
+  const std::function<bool()> request_cluster_view_;
 
   LocalLeaseManagerInterface &local_lease_manager_;
 

@@ -47,16 +47,19 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   ///     the environment.
   /// \param max_batch_size The maximum number of messages in a batch.
   /// \param max_batch_delay_ms The maximum delay time to wait before sending a batch.
+  /// \param subscription_handlers See SubscriptionHandlers.
   RaySyncerBidiReactorBase(
       instrumented_io_context &io_context,
       std::string remote_node_id,
       std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
           message_processor,
       size_t max_batch_size,
-      uint64_t max_batch_delay_ms)
+      uint64_t max_batch_delay_ms,
+      SubscriptionHandlers subscription_handlers = {})
       : RaySyncerBidiReactor(std::move(remote_node_id)),
         io_context_(io_context),
         message_processor_(std::move(message_processor)),
+        subscription_handlers_(std::move(subscription_handlers)),
         max_batch_size_(max_batch_size),
         max_batch_delay_ms_(std::chrono::milliseconds(max_batch_delay_ms)),
         batch_timer_(io_context),
@@ -80,6 +83,11 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     if (!IsValidMessageType(message_type)) {
       RAY_LOG_EVERY_MS(WARNING, 1000)
           << "Dropping sync message with invalid message type " << message_type;
+      return false;
+    }
+
+    // Leave the version unrecorded, so subscribing later sends this node's view.
+    if (!IsRemoteSubscribed(static_cast<MessageType>(message_type))) {
       return false;
     }
 
@@ -129,6 +137,24 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     return true;
   }
 
+  void SendSubscribe(MessageType message_type) override {
+    if (*IsDisconnected()) {
+      return;
+    }
+    pending_subscribe_.push_back(message_type);
+    StartSend();
+  }
+
+  void SendSubscribeDone(MessageType message_type) override {
+    if (*IsDisconnected()) {
+      return;
+    }
+    // Messages already buffered go in the same batch, so subscribe_done always
+    // follows the messages pushed before it.
+    pending_subscribe_done_.push_back(message_type);
+    StartSend();
+  }
+
   virtual ~RaySyncerBidiReactorBase() {
     if (batch_timer_active_) {
       batch_timer_.cancel();
@@ -148,9 +174,13 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
  private:
   void ProcessBufferedSyncMessages() {
     ReceivedBuffer buffer;
+    std::vector<MessageType> subscribe;
+    std::vector<MessageType> subscribe_done;
     {
       absl::MutexLock lock(&received_mutex_);
       buffer.swap(received_buffer_);
+      subscribe.swap(received_subscribe_);
+      subscribe_done.swap(received_subscribe_done_);
     }
     RAY_LOG(DEBUG) << absl::StrFormat("Processing %d buffered messages from %s",
                                       buffer.size(),
@@ -182,6 +212,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     if (!accepted.empty()) {
       message_processor_(std::move(accepted));
     }
+    for (MessageType message_type : subscribe) {
+      if (subscription_handlers_.on_subscribe) {
+        subscription_handlers_.on_subscribe(*this, message_type);
+      }
+    }
+    for (MessageType message_type : subscribe_done) {
+      if (subscription_handlers_.on_subscribe_done) {
+        subscription_handlers_.on_subscribe_done(message_type);
+      }
+    }
   }
 
   void SendNext() {
@@ -190,7 +230,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   }
 
   void StartSend() {
-    if (sending_ || sending_buffer_.empty()) {
+    if (sending_ || (sending_buffer_.empty() && pending_subscribe_.empty() &&
+                     pending_subscribe_done_.empty())) {
       return;
     }
 
@@ -211,7 +252,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     RAY_LOG(DEBUG) << "Created message batch containing "
                    << message_batch->messages_size() << " messages";
 
+    for (MessageType message_type : pending_subscribe_) {
+      message_batch->add_subscribe(message_type);
+    }
+    for (MessageType message_type : pending_subscribe_done_) {
+      message_batch->add_subscribe_done(message_type);
+    }
+
     sending_buffer_.clear();
+    pending_subscribe_.clear();
+    pending_subscribe_done_.clear();
     Send(std::move(message_batch));
     sending_ = true;
   }
@@ -263,7 +313,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     }
 
     // Real peers never send an empty batch, so it doesn't count as liveness.
-    if (receiving_message_batch_.messages().empty()) {
+    if (receiving_message_batch_.messages().empty() &&
+        receiving_message_batch_.subscribe().empty() &&
+        receiving_message_batch_.subscribe_done().empty()) {
       RAY_LOG_EVERY_MS(WARNING, 1000) << "Dropping empty sync message batch from node "
                                       << NodeID::FromBinary(GetRemoteNodeID());
       StartPull();
@@ -273,7 +325,8 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
     bool buffer_was_empty = false;
     {
       absl::MutexLock lock(&received_mutex_);
-      buffer_was_empty = received_buffer_.empty();
+      buffer_was_empty = received_buffer_.empty() && received_subscribe_.empty() &&
+                         received_subscribe_done_.empty();
       for (auto &message : *receiving_message_batch_.mutable_messages()) {
         // Skip unknown types instead of disconnecting; a newer peer may send them.
         const int message_type = static_cast<int>(message.message_type());
@@ -295,6 +348,16 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
             std::make_pair(message.node_id(), message.message_type()));
         if (inserted || it->second.version() < message.version()) {
           it->second = std::move(message);
+        }
+      }
+      for (int message_type : receiving_message_batch_.subscribe()) {
+        if (IsValidMessageType(message_type)) {
+          received_subscribe_.push_back(static_cast<MessageType>(message_type));
+        }
+      }
+      for (int message_type : receiving_message_batch_.subscribe_done()) {
+        if (IsValidMessageType(message_type)) {
+          received_subscribe_done_.push_back(static_cast<MessageType>(message_type));
         }
       }
     }
@@ -342,6 +405,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   const std::function<void(std::vector<std::shared_ptr<const RaySyncMessage>>)>
       message_processor_;
 
+  /// See SubscriptionHandlers.
+  const SubscriptionHandlers subscription_handlers_;
+
  private:
   /// Buffering all the updates. Sending will be done in an async way.
   absl::flat_hash_map<std::pair<std::string, MessageType>,
@@ -356,6 +422,10 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
   bool sending_ = false;
 
+  /// subscribe and subscribe_done entries for the next batch.
+  std::vector<MessageType> pending_subscribe_;
+  std::vector<MessageType> pending_subscribe_done_;
+
   /// Messages read from the remote but not yet applied, one per (node, message type)
   /// with the newest version winning, like sending_buffer_. Filled on the gRPC thread,
   /// drained on the io context; see the note on MessageType in ray_syncer.proto.
@@ -363,6 +433,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
       absl::flat_hash_map<std::pair<std::string, MessageType>, RaySyncMessage>;
   absl::Mutex received_mutex_;
   ReceivedBuffer received_buffer_ ABSL_GUARDED_BY(received_mutex_);
+  /// subscribe and subscribe_done entries read but not yet handled.
+  std::vector<MessageType> received_subscribe_ ABSL_GUARDED_BY(received_mutex_);
+  std::vector<MessageType> received_subscribe_done_ ABSL_GUARDED_BY(received_mutex_);
 
   /// Batch configuration
   const size_t max_batch_size_;
