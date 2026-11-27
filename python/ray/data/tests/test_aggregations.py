@@ -132,6 +132,82 @@ class TestMissingValuePercentage:
 
         assert abs(result["missing_pct(value)"] - expected) < 0.01
 
+    @pytest.mark.parametrize(
+        "empty_block",
+        [
+            pa.table({"value": pa.array([], type=pa.int64())}),
+            pd.DataFrame({"value": pd.Series([], dtype="float64")}),
+        ],
+    )
+    def test_missing_value_percentage_empty_block(self, empty_block):
+        """Empty blocks must return [0, 0] rather than [None, 0] so combine succeeds."""
+        agg = MissingValuePercentage(on="value")
+        empty_acc = agg.aggregate_block(empty_block)
+        assert empty_acc == [0, 0]
+
+        non_empty = pa.table({"value": [1, None, 3, None]})
+        combined = agg.combine(empty_acc, agg.aggregate_block(non_empty))
+        assert combined == [2, 4]
+        assert agg.finalize(combined) == 50.0
+
+    @pytest.mark.parametrize(
+        "series,expected_acc",
+        [
+            pytest.param(
+                pd.Series(["a", np.nan, None, "b"], dtype=object),
+                [2, 4],
+                id="object_strings_with_nan_and_none",
+            ),
+            pytest.param(
+                pd.Series([1, pd.NA, 3, None], dtype="Int64"),
+                [2, 4],
+                id="nullable_int64_with_pd_na",
+            ),
+            pytest.param(
+                pd.Series(["x", pd.NA, "y"], dtype="string"),
+                [1, 3],
+                id="nullable_string_with_pd_na",
+            ),
+        ],
+    )
+    def test_missing_value_percentage_pandas_mixed_and_nullable_dtypes(
+        self, series, expected_acc
+    ):
+        """Pandas object columns with np.nan and nullable extension dtypes with pd.NA."""
+        from ray.data.block import BlockAccessor
+
+        agg = MissingValuePercentage(on="value")
+        block = pd.DataFrame({"value": series})
+        assert agg.aggregate_block(block) == expected_acc
+        assert (
+            agg.aggregate_block(BlockAccessor.for_block(block).to_arrow())
+            == expected_acc
+        )
+
+    def test_missing_value_percentage_combine_column_and_output_field(self):
+        """Vectorized _combine_column must match pairwise combine and handle nulls."""
+        agg = MissingValuePercentage(on="value")
+        partials = [
+            agg.aggregate_block(pa.table({"value": [1, None, 3]})),
+            agg.aggregate_block(pa.table({"value": pa.array([], type=pa.int64())})),
+            agg.aggregate_block(pa.table({"value": [None, None, 6, 7]})),
+        ]
+        col = pa.chunked_array(
+            [pa.array([partials[0], None, partials[1], partials[2]])]
+        )
+        merged = agg._combine_column(col)
+        assert merged == [3, 7]
+
+        # Re-combining partial results (multi-stage compaction)
+        compacted = agg._combine_column(pa.chunked_array([pa.array([merged, [1, 3]])]))
+        assert compacted == [4, 10]
+        assert agg.finalize(compacted) == 40.0
+
+        schema = pa.schema([pa.field("value", pa.int64())])
+        assert agg.output_field(schema) == pa.field(
+            "missing_pct(value)", pa.float64(), nullable=True
+        )
+
 
 class TestZeroPercentage:
     """Test cases for ZeroPercentage aggregation."""
@@ -287,6 +363,66 @@ class TestZeroPercentage:
         expected = 40.0  # 2 zeros out of 5 total = 40%
 
         assert result["zero_pct(value)"] == expected
+
+    @pytest.mark.parametrize(
+        "series,ignore_nulls,expected_acc",
+        [
+            pytest.param(
+                pd.Series([0, pd.NA, 1, 0], dtype="Int64"),
+                True,
+                [2, 3],
+                id="nullable_int64_ignore_nulls_true",
+            ),
+            pytest.param(
+                pd.Series([0, pd.NA, 1, 0], dtype="Int64"),
+                False,
+                [2, 4],
+                id="nullable_int64_ignore_nulls_false",
+            ),
+            pytest.param(
+                pd.Series([0.0, pd.NA, 2.5, 0.0], dtype="Float64"),
+                True,
+                [2, 3],
+                id="nullable_float64_with_pd_na",
+            ),
+            pytest.param(
+                pd.Series([False, pd.NA, True, False], dtype="boolean"),
+                True,
+                [2, 3],
+                id="nullable_boolean_with_pd_na",
+            ),
+        ],
+    )
+    def test_zero_percentage_pandas_nullable_dtypes(
+        self, series, ignore_nulls, expected_acc
+    ):
+        """Pandas nullable extension dtypes with pd.NA must convert cleanly."""
+        agg = ZeroPercentage(on="value", ignore_nulls=ignore_nulls)
+        block = pd.DataFrame({"value": series})
+        assert agg.aggregate_block(block) == expected_acc
+
+    def test_zero_percentage_combine_column_and_output_field(self):
+        """Vectorized _combine_column must match pairwise combine and handle nulls."""
+        agg = ZeroPercentage(on="value")
+        partials = [
+            agg.aggregate_block(pa.table({"value": [0, 1, None, 0]})),
+            agg.aggregate_block(pa.table({"value": pa.array([], type=pa.int64())})),
+            agg.aggregate_block(pa.table({"value": [2, 0, 3]})),
+        ]
+        col = pa.chunked_array(
+            [pa.array([partials[0], None, partials[1], partials[2]])]
+        )
+        merged = agg._combine_column(col)
+        assert merged == [3, 6]
+
+        compacted = agg._combine_column(pa.chunked_array([pa.array([merged, [1, 4]])]))
+        assert compacted == [4, 10]
+        assert agg.finalize(compacted) == 40.0
+
+        schema = pa.schema([pa.field("value", pa.int64())])
+        assert agg.output_field(schema) == pa.field(
+            "zero_pct(value)", pa.float64(), nullable=True
+        )
 
 
 class TestApproximateQuantile:

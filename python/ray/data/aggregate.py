@@ -33,6 +33,7 @@ from ray.data._internal.arrow_aggregation import (
     sum_spec,
     zero_pct_spec,
 )
+from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import is_null
 from ray.data.block import (
     AggType,
@@ -1657,8 +1658,33 @@ def _null_safe_combine(
     return _safe_combine
 
 
+def _combine_two_element_accumulator_column(
+    accumulator_col: BlockColumn,
+    combine_fn: Callable[[List[int], List[int]], List[int]],
+) -> List[int]:
+    if isinstance(accumulator_col, (pa.Array, pa.ChunkedArray)):
+        non_null = (
+            pc.drop_null(accumulator_col)
+            if accumulator_col.null_count
+            else accumulator_col
+        )
+        if len(non_null) == 0:
+            return [0, 0]
+        flat = pc.list_flatten(non_null).to_numpy(zero_copy_only=False)
+        if len(flat) == 0:
+            return [0, 0]
+        totals = flat.reshape(-1, 2).sum(axis=0)
+        return [int(totals[0]), int(totals[1])]
+
+    merged_accumulator = [0, 0]
+    for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+        if accumulator is not None:
+            merged_accumulator = combine_fn(merged_accumulator, accumulator)
+    return merged_accumulator
+
+
 @PublicAPI(stability="alpha")
-class MissingValuePercentage(AggregateFnV2[List[int], float]):
+class MissingValuePercentage(VectorizedAggregateFnV2[List[int], float]):
     """Calculates the percentage of null values in a column.
 
     This aggregation computes the percentage of null (missing) values in a dataset column.
@@ -1708,16 +1734,24 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
     def aggregate_block(self, block: Block) -> List[int]:
         column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
 
-        total_count = column_accessor.count(ignore_nulls=False)
+        total_count = int(column_accessor.count(ignore_nulls=False) or 0)
+        if total_count == 0:
+            return [0, 0]
 
-        null_count = pc.sum(
-            pc.is_null(
-                column_accessor._to_arrow_compatible_container(), nan_is_null=True
-            )
-        ).as_py()
+        arrow_compatible = column_accessor._to_arrow_compatible_container()
+        if isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
+            if isinstance(arrow_compatible.type, ArrowPythonObjectType):
+                null_count = int(arrow_compatible.to_pandas().isna().sum())
+            else:
+                null_count = (
+                    pc.sum(pc.is_null(arrow_compatible, nan_is_null=True)).as_py() or 0
+                )
+        else:
+            non_null_count = int(column_accessor.count(ignore_nulls=True) or 0)
+            null_count = total_count - non_null_count
 
         # Return our accumulator
-        return [null_count, total_count]
+        return [int(null_count), total_count]
 
     def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
         # Merge two accumulators by summing their components
@@ -1726,6 +1760,9 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
             current_accumulator[0] + new[0],  # Sum null counts
             current_accumulator[1] + new[1],  # Sum total counts
         ]
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> List[int]:
+        return _combine_two_element_accumulator_column(accumulator_col, self.combine)
 
     def finalize(self, accumulator: List[int]) -> Optional[float]:
         # Calculate the final percentage
@@ -1741,7 +1778,7 @@ class MissingValuePercentage(AggregateFnV2[List[int], float]):
 
 
 @PublicAPI(stability="alpha")
-class ZeroPercentage(AggregateFnV2[List[int], float]):
+class ZeroPercentage(VectorizedAggregateFnV2[List[int], float]):
     """Calculates the percentage of zero values in a numeric column.
 
     This aggregation computes the percentage of zero values in a numeric dataset column.
@@ -1802,17 +1839,23 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         )
 
     def aggregate_block(self, block: Block) -> List[int]:
-        column_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
+        column = block[self._target_col_name]
+        column_accessor = BlockColumnAccessor.for_column(column)
 
-        count = column_accessor.count(ignore_nulls=self._ignore_nulls)
+        count = int(column_accessor.count(ignore_nulls=self._ignore_nulls) or 0)
 
         if count == 0:
             return [0, 0]
 
-        arrow_compatible = column_accessor._to_arrow_compatible_container()
-        if not isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
-            # The pandas accessor returns a plain Python list.
-            arrow_compatible = pa.array(arrow_compatible)
+        if isinstance(column, (pa.Array, pa.ChunkedArray)):
+            arrow_compatible = column
+        else:
+            try:
+                arrow_compatible = pa.Array.from_pandas(column)
+            except (TypeError, pa.ArrowInvalid, pa.ArrowTypeError):
+                arrow_compatible = column_accessor._to_arrow_compatible_container()
+                if not isinstance(arrow_compatible, (pa.Array, pa.ChunkedArray)):
+                    arrow_compatible = pa.array(arrow_compatible)
         if is_boolean_arrow_type(arrow_compatible.type):
             # `equal(bool, int)` has no kernel; treat booleans as 0/1.
             arrow_compatible = pc.cast(arrow_compatible, pa.int8())
@@ -1823,13 +1866,16 @@ class ZeroPercentage(AggregateFnV2[List[int], float]):
         # Sum the boolean mask to get count of True values (zeros)
         zero_count = pc.sum(zero_mask).as_py() or 0
 
-        return [zero_count, count]
+        return [int(zero_count), count]
 
     def combine(self, current_accumulator: List[int], new: List[int]) -> List[int]:
         return [
             current_accumulator[0] + new[0],  # Sum zero counts
             current_accumulator[1] + new[1],  # Sum non-null counts
         ]
+
+    def _combine_column(self, accumulator_col: BlockColumn) -> List[int]:
+        return _combine_two_element_accumulator_column(accumulator_col, self.combine)
 
     def finalize(self, accumulator: List[int]) -> Optional[float]:
         if accumulator[1] == 0:
