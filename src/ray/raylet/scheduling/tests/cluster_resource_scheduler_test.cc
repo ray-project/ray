@@ -581,6 +581,88 @@ TEST_F(ClusterResourceSchedulerTest, SchedulingWithPreferredNodeTest) {
   ASSERT_EQ(node_id_4, remote_node_id);
 }
 
+TEST_F(ClusterResourceSchedulerTest, PreferredLocalNodeMustMatchHardLabelExpression) {
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(PeriodicalRunner::Create(io_context),
+                                              local_node_id,
+                                              {{"CPU", 1}},
+                                              is_node_available_fn_,
+                                              fake_gauge_,
+                                              clock_);
+  auto &resource_manager = resource_scheduler.GetClusterResourceManager();
+  resource_manager.AddOrUpdateNode(remote_node_id, {{"CPU", 1}}, {{"CPU", 1}});
+  resource_manager.SetNodeLabels(local_node_id, {{"region", "us-east"}});
+  resource_manager.SetNodeLabels(remote_node_id, {{"region", "us-west"}});
+
+  rpc::LeaseSpec lease;
+  lease.set_type(rpc::TaskType::NORMAL_TASK);
+  (*lease.mutable_required_resources())["CPU"] = 1;
+  auto *expression = lease.mutable_scheduling_strategy()
+                         ->mutable_node_label_scheduling_strategy()
+                         ->mutable_hard()
+                         ->add_expressions();
+  expression->set_key("region");
+  expression->mutable_operator_()->mutable_label_in()->add_values("us-west");
+  LeaseSpecification lease_spec(std::move(lease));
+
+  const auto schedule = [&] {
+    return resource_scheduler.GetBestSchedulableNode(
+        lease_spec, local_node_id.Binary(), false, false);
+  };
+  EXPECT_EQ(schedule().node_id, remote_node_id);
+
+  // Even when both nodes are busy, only the remote node can run the lease.
+  resource_manager.AddOrUpdateNode(local_node_id, {{"CPU", 1}}, {{"CPU", 0}});
+  resource_manager.AddOrUpdateNode(remote_node_id, {{"CPU", 1}}, {{"CPU", 0}});
+  resource_manager.SetNodeLabels(local_node_id, {{"region", "us-east"}});
+  resource_manager.SetNodeLabels(remote_node_id, {{"region", "us-west"}});
+  EXPECT_EQ(schedule().node_id, remote_node_id);
+}
+
+TEST_F(ClusterResourceSchedulerTest, PreferredLocalNodeRespectsAffinityAndSpread) {
+  auto local_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  auto remote_node_id = scheduling::NodeID(NodeID::FromRandom().Binary());
+  instrumented_io_context io_context;
+  ClusterResourceScheduler resource_scheduler(PeriodicalRunner::Create(io_context),
+                                              local_node_id,
+                                              {{"CPU", 1}},
+                                              is_node_available_fn_,
+                                              fake_gauge_,
+                                              clock_);
+  auto &resource_manager = resource_scheduler.GetClusterResourceManager();
+  resource_manager.AddOrUpdateNode(remote_node_id, {{"CPU", 1}}, {{"CPU", 1}});
+
+  rpc::LeaseSpec lease;
+  lease.set_type(rpc::TaskType::NORMAL_TASK);
+  (*lease.mutable_required_resources())["CPU"] = 1;
+  const auto schedule = [&](const LeaseSpecification &lease_spec) {
+    return resource_scheduler
+        .GetBestSchedulableNode(lease_spec, local_node_id.Binary(), false, false)
+        .node_id;
+  };
+
+  auto *strategy = lease.mutable_scheduling_strategy();
+  strategy->mutable_spread_scheduling_strategy();
+  const LeaseSpecification spread_lease(lease);
+  const auto first_node = schedule(spread_lease);
+  const auto second_node = schedule(spread_lease);
+  EXPECT_EQ((std::set<scheduling::NodeID>{first_node, second_node}),
+            (std::set<scheduling::NodeID>{local_node_id, remote_node_id}));
+
+  auto *affinity = strategy->mutable_node_affinity_scheduling_strategy();
+  affinity->set_node_id(remote_node_id.Binary());
+  affinity->set_soft(false);
+  const LeaseSpecification affinity_lease(std::move(lease));
+  EXPECT_EQ(schedule(affinity_lease), remote_node_id);
+
+  // Hard affinity must still win when both nodes are busy.
+  resource_manager.AddOrUpdateNode(local_node_id, {{"CPU", 1}}, {{"CPU", 0}});
+  resource_manager.AddOrUpdateNode(remote_node_id, {{"CPU", 1}}, {{"CPU", 0}});
+  EXPECT_EQ(schedule(affinity_lease), remote_node_id);
+}
+
 TEST_F(ClusterResourceSchedulerTest, SchedulingUpdateAvailableResourcesTest) {
   // Create cluster resources.
   NodeResources node_resources = CreateNodeResources({{ResourceID::CPU(), 10},
