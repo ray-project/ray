@@ -33,6 +33,7 @@ namespace ray {
 namespace core {
 
 using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
+using OnObjectFreedCallback = std::function<void(const ObjectID &)>;
 using SetDirectTransportMetadata = std::function<void(
     const ObjectID &object_id, const std::string &direct_transport_metadata)>;
 
@@ -89,6 +90,7 @@ struct CoreWorkerOptions {
         node_manager_port(0),
         task_execution_callback(nullptr),
         free_actor_object_callback(nullptr),
+        on_object_freed_callback(nullptr),
         set_direct_transport_metadata(nullptr),
         check_signals(nullptr),
         initialize_thread_callback(nullptr),
@@ -138,6 +140,8 @@ struct CoreWorkerOptions {
   TaskExecutionCallback task_execution_callback;
   /// Callback to free RDT object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback;
+  /// Callback to run the actor's `__on_object_freed__` hook for a freed object.
+  OnObjectFreedCallback on_object_freed_callback;
   /// Callback to set the direct transport metadata for an RDT object.
   SetDirectTransportMetadata set_direct_transport_metadata;
   /// Application-language callback to check for signals that have been received
