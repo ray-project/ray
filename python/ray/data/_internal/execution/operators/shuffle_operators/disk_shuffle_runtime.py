@@ -14,11 +14,12 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import (
-    BinaryIO,
+    Any,
     Dict,
     Iterable,
     List,
     Literal,
+    Mapping,
     NamedTuple,
     Optional,
     Tuple,
@@ -41,9 +42,6 @@ logger = logging.getLogger(__name__)
 
 # ShuffleFileServer actor identity. Name is deterministic in (shuffle_id, node_id).
 _SHUFFLE_FILE_SERVER_NAMESPACE = "ray_data_shuffle_disk"
-
-# Materialized handle metadata per reduce resolve batch.
-_DEFAULT_HANDLE_BATCH_BYTES = 64 * MiB
 
 # pyarrow-supported shard codecs (``"none"``/``None`` = uncompressed). Rides
 # ``data_context.shuffle_compression``.
@@ -131,12 +129,20 @@ class ShuffleHandle(TypedDict, total=False):
     when emitting partition wrappers.
     """
 
+    # Node-file prefix: this task's record for partition ``p`` is in
+    # ``{path}_p{p}.shf``, shared by every map task on the node.
     path: str
-    # Index of the map task that wrote this file; the regroup orders handles
-    # by it so every reducer sees shards in the same order.
+    # Index of the map task; stamped into each record so the reducer can
+    # restore map task order whatever the append order.
     map_id: int
+    # Random 64-bit token of this task attempt, stamped into each record.
+    # The regroup commits the token of the attempt that returned this
+    # handle; the reducer skips records with any other token (a dead
+    # attempt's).
+    attempt_token: int
     # Dense per-partition range index (see _build_range_index): row ``p`` is
-    # ``(offset, length)`` of partition ``p``'s on-disk IPC frame.
+    # ``(offset, length)`` of this task's record (header included) in
+    # ``{path}_p{p}.shf``.
     # ``length == 0`` => this mapper wrote no frame for ``p`` (reducer skips
     # the fetch). Not the same as decoded ``nbytes`` or ``num_rows``.
     index_ranges: "np.ndarray"  # shape [num_partitions, 2], int64
@@ -230,7 +236,7 @@ def _build_range_index(index, num_partitions):
     return ranges
 
 
-def _counts_to_array(counts, num_partitions):
+def _counts_to_array(counts: Dict[int, int], num_partitions: int) -> "np.ndarray":
     """Dense per-partition int64 counts, indexed by partition_id.
 
     Absent partitions stay 0. Used for both ``num_rows`` (``tbl.num_rows``)
@@ -242,18 +248,91 @@ def _counts_to_array(counts, num_partitions):
     return arr
 
 
-class _PartitionWriter:
-    """Per-partition shard buffer, sealed to disk one IPC frame per partition.
+# Record header in a node partition file: (frame length excluding the
+# header, map task id, attempt token), three big-endian u64. The map id
+# orders records in the reducer; the token picks the committed attempt's.
+_RECORD_HEADER = struct.Struct(">QQQ")
 
-    ``add_shard(partition_id, shard)`` buffers a shard into partition ``partition_id``'s list;
-    ``flush_all()`` concatenates each partition's shards, IPC-encodes them
-    into one whole-frame, writes it to the output file, and records the
-    (offset, length) range in ``index``.
+
+def _append_record(
+    path: str, map_id: int, attempt_token: int, buf: "pa.Buffer"
+) -> Tuple[int, int]:
+    """Append one ``[header][frame]`` record to ``path`` and return its
+    ``(offset, length)``, header included.
+
+    - No coordination between writers: ``O_APPEND`` makes the kernel place
+      each ``writev`` at end-of-file under the inode lock, and the offset is
+      the descriptor's position after the write minus the record length.
+      This holds on a local filesystem (Ray's temp dir), not NFS.
+    - A short write (disk full, or a frame over the 2 GiB one ``writev``
+      takes) raises, so the task fails instead of publishing a truncated
+      record; nothing references the partial bytes.
+    """
+    size = _RECORD_HEADER.size + buf.size
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
+    try:
+        written = os.writev(
+            fd, [_RECORD_HEADER.pack(buf.size, map_id, attempt_token), memoryview(buf)]
+        )
+        end = os.lseek(fd, 0, os.SEEK_CUR)
+    finally:
+        os.close(fd)
+    if written != size:
+        raise RuntimeError(f"short write to {path}: {written} of {size} bytes")
+    return end - size, size
+
+
+def _decode_records(
+    fd: int,
+    base: int,
+    size: int,
+    committed_attempts: Mapping[int, int],
+    compression: Optional[str],
+) -> List[Tuple[int, pa.Table]]:
+    """Return ``(map_id, table)`` for every committed record in
+    ``[base, base + size)`` of the file behind ``fd``, in file order.
+
+    - A record is kept iff ``committed_attempts[map_id]`` equals its attempt
+      token. Other records are a dead attempt's (its retry appended again)
+      and are skipped without reading their frame.
+    - A record running past ``base + size`` raises: it is a torn write,
+      which only a disk error leaves behind, and decoding on would desync.
+    """
+    out: List[Tuple[int, pa.Table]] = []
+    pos, end = base, base + size
+    header_size = _RECORD_HEADER.size
+    while pos < end:
+        if pos + header_size > end:
+            raise RuntimeError(f"torn record header at {pos} (region ends at {end})")
+        length, map_id, attempt_token = _RECORD_HEADER.unpack(
+            os.pread(fd, header_size, pos)
+        )
+        if pos + header_size + length > end:
+            raise RuntimeError(
+                f"torn record at {pos}: {length} bytes run past region end {end}"
+            )
+        if committed_attempts.get(map_id) == attempt_token:
+            ipc_buf = os.pread(fd, length, pos + header_size)
+            out.append((map_id, _read_ipc(ipc_buf, compression)))
+        pos += header_size + length
+    return out
+
+
+class _PartitionWriter:
+    """Buffer shards per partition and seal each partition to disk as one
+    record.
+
+    ``add_shard`` buffers; ``flush_all`` concatenates each partition's
+    shards, encodes one IPC frame, appends it to ``{node_prefix}_p{p}.shf``
+    (``_append_record``) and stores the record's ``(offset, length)`` in
+    ``index``. Frames are written as soon as encoded, so at most one is
+    held in memory.
     """
 
     __slots__ = (
-        "_out_file",
+        "_node_prefix",
         "_map_id",
+        "_attempt_token",
         "_compression",
         "_staging",
         "_index",
@@ -264,12 +343,14 @@ class _PartitionWriter:
 
     def __init__(
         self,
-        out_file: BinaryIO,
+        node_prefix: str,
         map_id: int,
+        attempt_token: int,
         compression: Optional[str],
     ):
-        self._out_file = out_file
+        self._node_prefix = node_prefix
         self._map_id = map_id
+        self._attempt_token = attempt_token
         # Codec from data_context.shuffle_compression (same field the reduce reads).
         self._compression = compression
         self._staging: Dict[int, List[pa.Table]] = {}
@@ -303,14 +384,15 @@ class _PartitionWriter:
         buf = _encode_shard(tbl, self._compression, self._combine_native_ok)
         if buf.size > _MAX_RANGE_BYTES:
             raise RuntimeError(
-                f"map_{self._map_id}.shf partition {partition_id}: IPC frame is "
+                f"map task {self._map_id} partition {partition_id}: IPC frame is "
                 f"{buf.size} bytes, exceeding the u64 wire-protocol "
                 f"per-range limit ({_MAX_RANGE_BYTES}). Increase "
                 f"``num_partitions`` or reduce the upstream block size."
             )
-        off = self._out_file.tell()
-        self._out_file.write(memoryview(buf))
-        self._index.setdefault(partition_id, []).append((off, buf.size))
+        path = f"{self._node_prefix}_p{partition_id}.shf"
+        self._index[partition_id] = [
+            _append_record(path, self._map_id, self._attempt_token, buf)
+        ]
         self._staging[partition_id] = []
 
     def add_shard(self, partition_id: int, shard: pa.Table) -> None:
@@ -355,45 +437,45 @@ def _grpc_location(host: str, port) -> str:
 
 
 def _make_flight_server(host: str, base_dir: str):
-    """Arrow Flight server serving shuffle byte-ranges via DoAction. Each range
-    is framed as ``[u64 length][frame bytes]``."""
+    """Build the Arrow Flight server that streams byte ranges of this node's
+    partition files on ``DoAction("fetch")``.
+
+    Ranges are served verbatim (records are self-framed, ``_RECORD_HEADER``)
+    and packed into ``Result``s of about ``_FLIGHT_CHUNK`` bytes. A range
+    the file cannot fill raises instead of sending short: a short body
+    would desync every later record at the client.
+    """
     import pyarrow.flight as flight
 
     class _ShuffleFlightServer(flight.FlightServerBase):
         def do_action(self, context, action):
             req = json.loads(action.body.to_pybytes())
+            out = bytearray()
             for path, ranges in req["s"]:
                 fpath = os.path.join(base_dir, os.path.basename(path))
-                with open(fpath, "rb") as f:
+                fd = os.open(fpath, os.O_RDONLY)
+                try:
                     for off, length in ranges:
-                        # Empty ranges still emit a u64(0) header so the client's
-                        # framed stream stays aligned with _compute_prefetch_layout
-                        # (which reserves 8 bytes per range including length==0).
-                        if length == 0:
-                            yield flight.Result(pa.py_buffer(struct.pack(">Q", 0)))
-                            continue
-                        f.seek(off)
-                        # Chunk the frame so no single Result materializes a whole
-                        # large frame in the server's RAM. The u64 length header
-                        # rides in the first chunk only (its own Result would pay a
-                        # full gRPC message's overhead for 8 bytes).
-                        remaining = length
-                        first = True
-                        while remaining:
-                            buf = f.read(min(remaining, _FLIGHT_CHUNK))
+                        pos, end = off, off + length
+                        while pos < end:
+                            buf = os.pread(fd, min(end - pos, _FLIGHT_CHUNK), pos)
                             if not buf:
-                                # File shorter than the index says (truncated /
-                                # stale offset). A short send silently desyncs
-                                # every later frame at the client (SPARK-34534).
+                                # Never send short: the client would desync
+                                # on every later record.
                                 raise ValueError(
                                     f"short read: {fpath} @{off}+{length}, "
-                                    f"got {length - remaining}"
+                                    f"got {pos - off}"
                                 )
-                            remaining -= len(buf)
-                            if first:
-                                buf = struct.pack(">Q", length) + buf
-                                first = False
-                            yield flight.Result(pa.py_buffer(buf))
+                            pos += len(buf)
+                            out += buf
+                            # Bound the server's per-Result memory.
+                            if len(out) >= _FLIGHT_CHUNK:
+                                yield flight.Result(pa.py_buffer(bytes(out)))
+                                out.clear()
+                finally:
+                    os.close(fd)
+            if out:
+                yield flight.Result(pa.py_buffer(bytes(out)))
 
     return _ShuffleFlightServer(_grpc_location(host, 0))
 
@@ -507,8 +589,6 @@ class _NodeGroup:
     shuffle_id: str
     node_id: str
     members: List[_FileRanges] = field(default_factory=list)
-    # Position of each member in the reducer's source list (map task order).
-    source_idxs: List[int] = field(default_factory=list)
 
 
 class _PwriteSink:
@@ -553,21 +633,23 @@ class _PwriteSink:
 def _stream_members_flight(
     endpoint: _Endpoint,
     members: List[_FileRanges],
-    max_bytes: int,
     sink: _PwriteSink,
 ) -> None:
-    """Arrow Flight DoAction: one client, batched fetch requests. Response
-    ``Result`` bodies carry ``[u64 len][frame]`` framing, so they stream verbatim
-    into the sink."""
+    """Fetch ``members`` from ``endpoint`` in one Flight ``DoAction``,
+    writing the result bodies straight into ``sink``.
+
+    Bodies are the files' self-framed records, so nothing is re-framed. The
+    server streams them in ``_FLIGHT_CHUNK`` pieces, so request size does
+    not bound memory on either side.
+    """
     import pyarrow.flight as flight
 
     host, port, _incarnation = endpoint
+    sources = [(m.path, m.ranges) for m in members]
+    body = json.dumps({"s": sources}).encode("utf-8")
     with flight.connect(_grpc_location(host, port)) as client:
-        for batch in _chunk_members_by_bytes(members, max_bytes):
-            sources = [(m.path, m.ranges) for m in batch]
-            body = json.dumps({"s": sources}).encode("utf-8")
-            for result in client.do_action(flight.Action("fetch", body)):
-                sink.write(result.body)
+        for result in client.do_action(flight.Action("fetch", body)):
+            sink.write(result.body)
 
 
 def _fetch_from_file_server(
@@ -575,10 +657,9 @@ def _fetch_from_file_server(
     shuffle_id: str,
     node_id: str,
     members: List[_FileRanges],
-    max_bytes_per_fetch: int,
 ) -> None:
-    """Stream every member's shards into ``out_file_obj`` over ONE Flight
-    client, batched into DoAction requests of ≤ ``max_bytes_per_fetch``.
+    """Stream every member's records into ``out_file_obj`` over ONE Flight
+    client in one DoAction request.
 
     Retry only transport faults; propagate everything else. The retriable errors
     are all FlightError and share the single ``except flight.FlightError`` (so
@@ -653,7 +734,7 @@ def _fetch_from_file_server(
     while True:
         endpoint = _resolve()
         try:
-            _stream_members_flight(endpoint, members, max_bytes_per_fetch, out_file_obj)
+            _stream_members_flight(endpoint, members, out_file_obj)
             return
         except flight.FlightServerError:
             raise  # terminal: server alive, refused the request (see docstring)
@@ -684,37 +765,6 @@ def _fetch_from_file_server(
             ) from e
 
 
-def _chunk_members_by_bytes(
-    members: List[_FileRanges],
-    max_bytes: int,
-) -> Iterable[List[_FileRanges]]:
-    """Yield sub-batches of members whose total requested bytes ≤ ``max_bytes``.
-
-    A source's ranges MAY be split across batches: the source appears as
-    multiple pseudo-members with the same ``path`` but disjoint range
-    subsets, in the original range order. Individual ranges are NEVER
-    split as each range is one Arrow IPC frame at the mapper, so a
-    sub-range cut would break the reducer's decode.
-    """
-    batch: List[_FileRanges] = []
-    batch_bytes = 0
-    for member in members:
-        pending: List[Tuple[int, int]] = []
-        for off, length in member.ranges:
-            if (batch or pending) and batch_bytes + length > max_bytes:
-                if pending:
-                    batch.append(_FileRanges(path=member.path, ranges=pending))
-                    pending = []
-                yield batch
-                batch, batch_bytes = [], 0
-            pending.append((off, length))
-            batch_bytes += length
-        if pending:
-            batch.append(_FileRanges(path=member.path, ranges=pending))
-    if batch:
-        yield batch
-
-
 def disk_shuffle_dirs(shuffle_id: str) -> Tuple[str, str]:
     prefix = os.path.join(tempfile.gettempdir(), f"ray_shuffle_disk_{shuffle_id}")
     return f"{prefix}_map", f"{prefix}_reduce"
@@ -743,73 +793,49 @@ def handle_from_block(block: pa.Table) -> "ShuffleHandle":
     return pickle.loads(block.column(0)[0].as_py())
 
 
-def _handle_batch_size(handles: List["ray.ObjectRef"], batch_bytes: int) -> int:
-    """#handles to resolve per batch so materialized metadata stays ≈ batch_bytes.
+class _PartitionInput(NamedTuple):
+    """One upstream input's share of a partition, from its node table."""
 
-    Peeks one handle for ``num_partitions`` (each handle ≈ num_partitions × 32
-    bytes of dense arrays: ``index_ranges`` is ``[P, 2]`` int64;
-    ``num_rows`` and ``decoded_bytes`` are ``[P]`` int64), so in-flight
-    handle memory stays constant regardless of #mappers/#partitions.
+    # One source per node with records for the partition: its whole file.
+    sources: List[_SourceRef]
+    # map_id -> attempt token the regroup committed; ``_decode_records``
+    # keeps only records carrying it.
+    committed_attempts: Mapping[int, int]
+    schema: Optional[pa.Schema]
+
+
+def _partition_input(table: Dict[str, Any], partition_id: int) -> _PartitionInput:
+    """Slice ``partition_id`` out of an input's node table: its sources,
+    committed attempts and schema.
+
+    The table is one object per input, shared by every partition: ``nodes``
+    names each node's file server and file prefix, ``committed_attempts``
+    maps map id to the committed attempt token, and ``sizes`` is ``[N, P]``,
+    the size of each node's ``node_p{p}.shf`` up to its last committed
+    record. A node with size 0 wrote nothing for ``p`` and gets no source.
     """
-    if not handles:
-        return 1
-    probe = handle_from_block(ray.get(handles[0]))
-    try:
-        npart = int(probe.get("num_partitions") or len(probe["index_ranges"]))
-    except Exception:
-        npart = 1
-    per_handle = max(1, npart * 32)
-    return max(1, min(len(handles), batch_bytes // per_handle))
-
-
-def _handles_to_sources(
-    handles: List["ray.ObjectRef"],
-    partition_id: int,
-    batch_bytes: int = _DEFAULT_HANDLE_BATCH_BYTES,
-) -> Tuple[List[_SourceRef], Optional[pa.Schema]]:
-    """Extract per-partition source refs from a reducer's input handle blocks.
-
-    Resolves handle-block refs in ≈``batch_bytes`` batches, reads this partition's row
-    out of each handle's dense range index, then frees the batch — so in-flight
-    handle memory stays constant, not O(maps × partitions). Skips handles with
-    ``index_ranges[p].length == 0`` (no on-disk frame); picks the first
-    non-None schema.
-    """
+    nodes = table["nodes"]
+    sizes = table["sizes"][:, partition_id]
     sources: List[_SourceRef] = []
-    output_schema: Optional[pa.Schema] = None
-    if not handles:
-        return sources, output_schema
-
-    batch_size = _handle_batch_size(handles, batch_bytes)
-    for start in range(0, len(handles), batch_size):
-        batch = handles[start : start + batch_size]
-        # pyrefly: ignore[no-matching-overload]
-        for block in ray.get(batch):
-            handle = handle_from_block(block)
-            if output_schema is None:
-                output_schema = handle.get("schema")
-            # Dense index: partition_id is the row; only this row materializes
-            # as a Python range, the rest stay as (zero-copy) numpy buffers.
-            off, length = handle["index_ranges"][partition_id]
-            length = int(length)
-            if length > 0:
-                sources.append(
-                    _SourceRef(
-                        shuffle_id=handle["shuffle_id"],
-                        node_id=handle["node_id"],
-                        file=_FileRanges(
-                            path=handle["path"],
-                            ranges=[(int(off), length)],
-                        ),
-                    )
-                )
-    return sources, output_schema
+    for i in np.flatnonzero(sizes > 0).tolist():
+        shuffle_id, node_id, prefix = nodes[i]
+        sources.append(
+            _SourceRef(
+                shuffle_id=shuffle_id,
+                node_id=node_id,
+                file=_FileRanges(
+                    path=f"{prefix}_p{partition_id}.shf",
+                    ranges=[(0, int(sizes[i]))],
+                ),
+            )
+        )
+    return _PartitionInput(sources, table["committed_attempts"], table.get("schema"))
 
 
 def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
     """Collapse sources by file server so each file server gets ONE Flight connection."""
     by_key: Dict[Tuple[str, str], _NodeGroup] = {}
-    for source_idx, source in enumerate(sources):
+    for source in sources:
         key = (source.shuffle_id, source.node_id)
         group = by_key.get(key)
         if group is None:
@@ -820,27 +846,21 @@ def _group_by_server(sources: List[_SourceRef]) -> List[_NodeGroup]:
             )
             by_key[key] = group
         group.members.append(source.file)
-        group.source_idxs.append(source_idx)
     return list(by_key.values())
 
 
-def _order_tables_by_source(
-    groups: List[_NodeGroup], tables_by_group: List[List[pa.Table]]
+def _order_by_map_id(
+    records_by_group: Iterable[List[Tuple[int, pa.Table]]],
 ) -> List[pa.Table]:
-    """Return the decoded tables of ``groups`` in source (map task) order.
+    """Return every group's decoded tables sorted by map id.
 
-    Grouping by file server orders sources by node, which follows where the
-    scheduler placed each map task; ``source_idxs`` undoes that so the reduce
-    input is the same on every run.
+    Fetch groups follow scheduler placement and records within a file follow
+    append order, so without this sort the reduce input would differ run to
+    run.
     """
-    by_source: Dict[int, List[pa.Table]] = {}
-    for group, tables in zip(groups, tables_by_group):
-        pos = 0
-        for source_idx, member in zip(group.source_idxs, group.members):
-            end = pos + len(member.ranges)
-            by_source[source_idx] = tables[pos:end]
-            pos = end
-    return [table for idx in sorted(by_source) for table in by_source[idx]]
+    records = [rec for group in records_by_group for rec in group]
+    records.sort(key=lambda rec: rec[0])
+    return [table for _, table in records]
 
 
 def _compute_prefetch_layout(
@@ -848,14 +868,12 @@ def _compute_prefetch_layout(
 ) -> Tuple[int, List[int], List[int]]:
     """Assign each group a contiguous byte region in the reducer's prefetch file.
 
-    Returns ``(total_size, base_offsets, per_group_sizes)`` where sizes are the
-    ``8 + length`` framed byte totals (u64 len prefix + IPC bytes per range),
-    base offsets are running cumulative sums. Fetch threads then pwrite each
-    group's fetched frames at DISJOINT offsets.
+    Returns ``(total_size, base_offsets, per_group_sizes)``: a group's size
+    is the byte total of its ranges, and base offsets are the running sum,
+    so fetch threads pwrite at disjoint offsets without locking.
     """
     sizes = [
-        sum(8 + length for m in g.members for (_off, length) in m.ranges)
-        for g in groups
+        sum(length for m in g.members for (_off, length) in m.ranges) for g in groups
     ]
     base_offsets: List[int] = []
     acc = 0
