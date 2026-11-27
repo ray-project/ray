@@ -1,6 +1,9 @@
+import contextlib
+import errno
 import logging
 import os
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, NoReturn, Optional, Tuple
 from unittest import mock
@@ -38,12 +41,44 @@ class _Exec(Exception):
     pass
 
 
-def _launch(
+def _fake_memfd_create(name: str, flags: int = 0) -> int:
+    with tempfile.TemporaryFile() as f:
+        return os.dup(f.fileno())
+
+
+def _memfd_oserror(name: str, flags: int = 0) -> int:
+    raise OSError(errno.ENOSYS, "memfd_create is blocked")
+
+
+@contextlib.contextmanager
+def _memfd(mode: str):
+    """Makes os.memfd_create work, raise OSError or be missing, on any platform."""
+    saved = getattr(os, "memfd_create", None)
+    if mode == "missing":
+        if saved is not None:
+            del os.memfd_create
+    else:
+        os.memfd_create = _fake_memfd_create if mode == "ok" else _memfd_oserror
+    try:
+        yield
+    finally:
+        if saved is not None:
+            os.memfd_create = saved
+        elif hasattr(os, "memfd_create"):
+            del os.memfd_create
+
+
+def _launch_with_env_file(
     context: Optional[RuntimeEnvContext] = None,
     run_options: Optional[List[str]] = None,
     ray_tmp_dir: str = "/tmp/ray",
-) -> Tuple[List[str], Dict[str, str]]:
-    """Returns the argv and env the worker launcher would be exec'd with."""
+    memfd: str = "missing",
+) -> Tuple[List[str], Dict[str, str], Optional[str]]:
+    """Returns the argv and env the worker launcher would be exec'd with, and
+    the content of the --env-file it passes, if any.
+
+    memfd is "ok", "oserror" or "missing", for how os.memfd_create behaves.
+    """
     context = context or RuntimeEnvContext()
     _modify_context_impl(
         "fake-image",
@@ -58,7 +93,14 @@ def _launch(
     context = RuntimeEnvContext.deserialize(context.serialize())
 
     def fake_execvpe(file: str, args: List[str], env: Dict[str, str]) -> NoReturn:
-        raise _Exec(args, env)
+        # What podman would read from the inherited fd.
+        env_file = None
+        for arg in args:
+            if arg.startswith("--env-file=/dev/fd/"):
+                fd = int(arg.rsplit("/", 1)[1])
+                assert os.get_inheritable(fd)
+                env_file = os.pread(fd, 1 << 20, 0).decode()
+        raise _Exec(args, env, env_file)
 
     def shell_launch(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("container worker launched through a shell")
@@ -67,10 +109,23 @@ def _launch(
         os, "execvpe", fake_execvpe
     ), mock.patch.object(os, "execvp", shell_launch), mock.patch(
         "subprocess.Popen", shell_launch
+    ), _memfd(
+        memfd
     ):
         with pytest.raises(_Exec) as exec_call:
             context.exec_worker(["/host/default_worker.py"], Language.PYTHON)
     return exec_call.value.args
+
+
+def _launch(
+    context: Optional[RuntimeEnvContext] = None,
+    run_options: Optional[List[str]] = None,
+    ray_tmp_dir: str = "/tmp/ray",
+) -> Tuple[List[str], Dict[str, str]]:
+    """Returns the argv and env the worker launcher would be exec'd with, when
+    os.memfd_create is missing, so the job's env_vars are --env arguments."""
+    argv, env, _ = _launch_with_env_file(context, run_options, ray_tmp_dir)
+    return argv, env
 
 
 def _container_command(
@@ -328,6 +383,135 @@ def test_launch_runs_without_shell_and_keeps_job_env_in_container(auth_env):
         "fake-image",
         "/fake/default_worker.py",
     ]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses /dev/fd and os.pread.")
+def test_job_env_vars_go_in_env_file_not_argv(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    auth_env.setenv("RAY_RAYLET_PID", "1234")
+    context = RuntimeEnvContext(
+        env_vars={
+            "DB_PASSWORD": "s3cret-VALUE-123",
+            "SPACED": "a b=c #d",
+            "EMPTY": "",
+            "OVERRIDE": "file",
+        }
+    )
+
+    argv, launcher_env, env_file = _launch_with_env_file(
+        context,
+        run_options=["--env=OVERRIDE=run_options"],
+        memfd="ok",
+    )
+
+    assert env_file == (
+        "DB_PASSWORD=s3cret-VALUE-123\nSPACED=a b=c #d\nEMPTY=\nOVERRIDE=file\n"
+    )
+    assert "s3cret-VALUE-123" not in " ".join(argv)
+    assert "DB_PASSWORD" not in " ".join(argv)
+    assert "DB_PASSWORD" not in launcher_env
+    # The env file comes before the --env flags and run_options, so those win.
+    env_file_index = [i for i, a in enumerate(argv) if a.startswith("--env-file=")]
+    assert len(env_file_index) == 1
+    assert env_file_index[0] < argv.index("RAY_RAYLET_PID")
+    assert env_file_index[0] < argv.index("--env=OVERRIDE=run_options")
+    # RAY_* vars are still passed by name.
+    assert argv[argv.index("RAY_RAYLET_PID") - 1] == "--env"
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses /dev/fd and os.pread.")
+def test_job_ray_var_in_env_file_beats_host_var(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    auth_env.setenv("RAY_RAYLET_PID", "1234")
+    context = RuntimeEnvContext(env_vars={"RAY_RAYLET_PID": "from-job"})
+
+    argv, _, env_file = _launch_with_env_file(context, memfd="ok")
+
+    # A by-name --env after the env file would otherwise put the host value
+    # in the container.
+    assert env_file == "RAY_RAYLET_PID=from-job\n"
+    assert "RAY_RAYLET_PID" not in argv
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses /dev/fd.")
+def test_env_file_fd_is_closed_when_exec_fails(auth_env):
+    auth_env.setenv("RAY_AUTH_MODE", "disabled")
+    reset_auth_token_state()
+    context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
+    _modify_context_impl(
+        "fake-image",
+        "/fake/default_worker.py",
+        [],
+        context,
+        logging.getLogger(__name__),
+        "/tmp/ray",
+    )
+    fds = []
+
+    def failing_execvpe(file: str, args: List[str], env: Dict[str, str]) -> NoReturn:
+        fds.extend(int(a.rsplit("/", 1)[1]) for a in args if "--env-file=" in a)
+        raise FileNotFoundError(errno.ENOENT, "podman", file)
+
+    with _memfd("ok"), mock.patch.object(os, "execvpe", failing_execvpe):
+        with pytest.raises(FileNotFoundError):
+            context.exec_worker(["/host/default_worker.py"], Language.PYTHON)
+
+    assert len(fds) == 1
+    with pytest.raises(OSError):
+        os.fstat(fds[0])
+
+
+def test_no_env_file_without_job_env_vars(auth_env):
+    argv, _, env_file = _launch_with_env_file(memfd="ok")
+
+    assert env_file is None
+    assert not any(a.startswith("--env-file") for a in argv)
+
+
+@pytest.mark.parametrize("memfd", ["missing", "oserror"])
+def test_env_vars_fall_back_to_argv_without_memfd(
+    auth_env, caplog, propagate_logs, memfd
+):
+    context = RuntimeEnvContext(env_vars={"API_KEY": "user-secret"})
+
+    with caplog.at_level(logging.WARNING):
+        argv, _, env_file = _launch_with_env_file(context, memfd=memfd)
+
+    assert env_file is None
+    assert "API_KEY=user-secret" in argv
+    assert not any(a.startswith("--env-file") for a in argv)
+    assert "will appear on the container worker's command line" in caplog.text
+    assert "user-secret" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "env_vars,bad_name",
+    [
+        ({"PEM": "-----BEGIN-----\nabc"}, "PEM"),
+        ({"WIN": "a\r\nb"}, "WIN"),
+        ({"NUL": "a\0b"}, "NUL"),
+        ({"A=B": "x"}, "A=B"),
+        ({"A B": "x"}, "A B"),
+        ({"#COMMENT": "x"}, "#COMMENT"),
+        ({"": "x"}, "''"),
+    ],
+)
+def test_unsupported_env_vars_fail_setup(auth_env, env_vars, bad_name):
+    # Fails in runtime env setup, before any worker launch is attempted.
+    with pytest.raises(ValueError, match="env_vars") as error:
+        _modify_context_impl(
+            "fake-image",
+            "/fake/default_worker.py",
+            [],
+            RuntimeEnvContext(env_vars=env_vars),
+            logging.getLogger(__name__),
+            "/tmp/ray",
+        )
+    assert bad_name in str(error.value)
+    # The message names the variable but never echoes a value.
+    assert "abc" not in str(error.value)
 
 
 if __name__ == "__main__":
