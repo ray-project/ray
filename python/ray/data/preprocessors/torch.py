@@ -180,6 +180,7 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
         """
         return self._output_columns
 
+    @classmethod
     def preferred_batch_format(cls) -> BatchFormat:
         """Return the batch format this preprocessor prefers.
 
