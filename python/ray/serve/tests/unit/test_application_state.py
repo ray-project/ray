@@ -7,7 +7,6 @@ from unittest.mock import Mock, PropertyMock, patch
 import cloudpickle
 import pytest
 from fastapi import FastAPI
-from pydantic import ValidationError
 
 from ray import serve
 from ray.exceptions import RayTaskError
@@ -2217,14 +2216,13 @@ class TestOverrideDeploymentInfo:
         assert gang_config.gang_placement_strategy.value == "SPREAD"
         assert updated_info.deployment_config.num_replicas == 4
 
-    def test_override_num_replicas_rejects_invalid_gang_multiple(self):
-        """Test that changing num_replicas to a value not divisible by the
-        existing gang_size is rejected."""
+    def test_override_num_replicas_is_gangs(self):
+        """Overriding num_replicas keeps it as a gang count."""
         initial_info = DeploymentInfo(
             route_prefix="/",
             version="123",
             deployment_config=DeploymentConfig(
-                num_replicas=4,
+                num_replicas=2,
                 gang_scheduling_config=GangSchedulingConfig(gang_size=2),
             ),
             replica_config=ReplicaConfig.create(lambda x: x),
@@ -2243,8 +2241,68 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        with pytest.raises(ValidationError, match="must be a multiple of gang_size"):
-            override_deployment_info({"A": initial_info}, config)
+        updated_info = override_deployment_info({"A": initial_info}, config)["A"]
+        assert updated_info.deployment_config.num_replicas == 5
+        assert updated_info.deployment_config.gang_scheduling_config.gang_size == 2
+
+    def test_override_gang_config_accepts_code_bounds(self):
+        """Code autoscaling bounds are gang counts when YAML enables gangs."""
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=None,
+                autoscaling_config=AutoscalingConfig(min_replicas=3, max_replicas=9),
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    gang_scheduling_config={"gang_size": 4},
+                )
+            ],
+        )
+
+        updated_info = override_deployment_info({"A": initial_info}, config)["A"]
+        assert updated_info.deployment_config.gang_scheduling_config.gang_size == 4
+        assert updated_info.deployment_config.autoscaling_config.min_replicas == 3
+        assert updated_info.deployment_config.autoscaling_config.max_replicas == 9
+
+    def test_override_autoscaling_bounds_are_gangs(self):
+        """Bounds from YAML are kept as gang counts."""
+        initial_info = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(
+                num_replicas=1,
+                gang_scheduling_config=GangSchedulingConfig(gang_size=4),
+            ),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+        def make_config(bounds):
+            return ServeApplicationSchema(
+                name="default",
+                import_path="test.import.path",
+                deployments=[DeploymentSchema(name="A", autoscaling_config=bounds)],
+            )
+
+        updated_info = override_deployment_info(
+            {"A": initial_info},
+            make_config({"min_replicas": 3, "max_replicas": 8}),
+        )["A"]
+        autoscaling_config = updated_info.deployment_config.autoscaling_config
+        assert autoscaling_config.min_replicas == 3
+        assert autoscaling_config.max_replicas == 8
 
     def test_override_deployment_info_injects_serialized_deployment_actors(self):
         """Config-only deployment actors: serialized bytes from build task are

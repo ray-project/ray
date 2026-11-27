@@ -1316,7 +1316,7 @@ def test_gang_rolling_update_stops_after_failed_gangs(serve_instance, gang_size)
     try:
         healthy = {
             "name": "FailOnFlag",
-            "num_replicas": 3 * gang_size,
+            "num_replicas": 3,
             "gang_scheduling_config": {"gang_size": gang_size},
             "ray_actor_options": {"num_cpus": 0.1},
         }

@@ -18,7 +18,6 @@ from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.utils.lora_serve_utils import LoraModelLoader
 from ray.llm._internal.serve.utils.pg_utils import get_bundle_indices_sorted_by_node
 from ray.serve.config import (
-    AutoscalingConfig,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
@@ -253,31 +252,9 @@ class DPServer(LLMServer):
             has_autoscaling = num_replicas == "auto" or (
                 num_replicas is None and "autoscaling_config" in deployment_options
             )
-            if has_autoscaling:
-                autoscaling_config = AutoscalingConfig.default().dict()
-                user_config = deployment_options.get("autoscaling_config")
-                if user_config is not None:
-                    autoscaling_config.update(user_config)
-
-                logger.warning(
-                    "In DP deployment, a replica refers to a DP group. "
-                    "Multiplying autoscaling_config's min_replicas, max_replicas, and "
-                    f"initial_replicas by data_parallel_size ({dp_size})."
-                )
-                for key in ["min_replicas", "max_replicas", "initial_replicas"]:
-                    if autoscaling_config.get(key) is not None:
-                        autoscaling_config[key] *= dp_size
-
-                deployment_options["autoscaling_config"] = autoscaling_config
-            elif num_replicas is not None:
-                logger.warning(
-                    "In DP deployment, num_replicas refers to the number of DP groups. "
-                    f"Multiplying num_replicas ({num_replicas}) by data_parallel_size ({dp_size}) "
-                    f"to get the total number of serve replicas ({num_replicas * dp_size})."
-                )
-                deployment_options["num_replicas"] = num_replicas * dp_size
-            else:
-                deployment_options["num_replicas"] = dp_size
+            if not has_autoscaling and num_replicas is None:
+                # Default to a single DP gang.
+                deployment_options["num_replicas"] = 1
 
             deployment_options["gang_scheduling_config"] = GangSchedulingConfig(
                 gang_size=dp_size,

@@ -47,10 +47,10 @@ class TestGetDeploymentOptions:
         opts = DPServer.get_deployment_options(llm_config)
         dp_size = data_parallel_size or 1
         if dp_size > 1:
-            expected_replicas = (
-                num_replicas * dp_size if num_replicas is not None else dp_size
+            # With gang scheduling, num_replicas counts gangs, not replicas.
+            assert opts["num_replicas"] == (
+                num_replicas if num_replicas is not None else 1
             )
-            assert opts["num_replicas"] == expected_replicas
             assert isinstance(opts["gang_scheduling_config"], GangSchedulingConfig)
             assert opts["gang_scheduling_config"].gang_size == dp_size
             assert (
@@ -80,12 +80,12 @@ class TestGetDeploymentOptions:
         opts = DPServer.get_deployment_options(llm_config)
         assert isinstance(opts["gang_scheduling_config"], GangSchedulingConfig)
         assert opts["gang_scheduling_config"].gang_size == 4
-        # Autoscaling config should have min/max/initial replicas multiplied by dp_size
+        # Bounds count gangs, so they are passed through unchanged.
         autoscaling_config = opts["autoscaling_config"]
         assert autoscaling_config["target_ongoing_requests"] == 10
-        assert autoscaling_config["min_replicas"] == 2 * 4
-        assert autoscaling_config["max_replicas"] == 8 * 4
-        assert autoscaling_config["initial_replicas"] == 3 * 4
+        assert autoscaling_config["min_replicas"] == 2
+        assert autoscaling_config["max_replicas"] == 8
+        assert autoscaling_config["initial_replicas"] == 3
 
 
 class TestGangMasterInfoRegistry:
