@@ -80,7 +80,9 @@ class Concatenator(SerializablePreprocessorBase):
         dtype: The ``dtype`` to convert the output tensors to. If unspecified,
             the ``dtype`` is determined by standard coercion rules.
         raise_if_missing: If ``True``, an error is raised if any
-            of the columns in ``columns`` don't exist.
+            of the columns in ``columns`` don't exist. If ``False``, missing
+            columns are logged as a warning and filled with ``NaN`` at their
+            corresponding positions in the output tensor.
             Defaults to ``False``.
         flatten: If ``True``, nested vectors in the columns will be flattened during
             concatenation. Defaults to ``False``.
@@ -159,31 +161,56 @@ class Concatenator(SerializablePreprocessorBase):
         Converting each column on its own avoids the fallback: a single
         Arrow-backed column converts to its natural NumPy dtype, widening to
         ``float64`` and using ``np.nan`` if it contains nulls, exactly as a
-        NumPy-backed column would.
+        NumPy-backed column would. Missing columns (when ``raise_if_missing=False``)
+        are filled with ``np.nan`` to preserve column width and feature positions.
         """
-        columns = [df[column].to_numpy(dtype=dtype) for column in self._columns]
-        return np.column_stack(columns)
+        if len(self._columns) == 0:
+            return np.empty((len(df), 0), dtype=dtype or np.float64)
+        if (
+            dtype is not None
+            and any(col not in df.columns for col in self._columns)
+            and not np.issubdtype(np.dtype(dtype), np.inexact)
+            and np.dtype(dtype) != np.dtype(object)
+        ):
+            dtype = np.float64
+        stacked = [
+            df[column].to_numpy(dtype=dtype)
+            if column in df.columns
+            else np.full(len(df), np.nan, dtype=dtype or np.float64)
+            for column in self._columns
+        ]
+        return np.column_stack(stacked)
 
     def _transform_pandas(self, df: pd.DataFrame):
         self._validate(df)
 
-        if self._flatten:
+        present_columns = [col for col in self._columns if col in df.columns]
+        dtype = self._dtype
+        if (
+            dtype is not None
+            and len(present_columns) < len(self._columns)
+            and not np.issubdtype(np.dtype(dtype), np.inexact)
+            and np.dtype(dtype) != np.dtype(object)
+        ):
+            dtype = np.float64
+
+        if self._flatten and len(self._columns) > 0:
             concatenated = self._stack_columns(df)
             concatenated = [
                 np.concatenate(
                     [
                         np.atleast_1d(elem)
-                        if self._dtype is None
-                        else np.atleast_1d(elem).astype(self._dtype)
+                        if dtype is None
+                        else np.atleast_1d(elem).astype(dtype)
                         for elem in row
                     ]
                 )
                 for row in concatenated
             ]
         else:
-            concatenated = self._stack_columns(df, dtype=self._dtype)
+            concatenated = self._stack_columns(df, dtype=dtype)
 
-        df = df.drop(columns=self._columns)
+        df = df.drop(columns=present_columns)
         # Use a Pandas Series for column assignment to get more consistent
         # behavior across Pandas versions.
         df.loc[:, self._output_column_name] = pd.Series(
