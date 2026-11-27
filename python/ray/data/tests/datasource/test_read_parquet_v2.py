@@ -1428,7 +1428,7 @@ def test_merge_schema_prelisted_chunks_preserve_arrow_buffers(
     monkeypatch.setattr(listing_utils, "sample_files", capture_discovered_file_infos)
 
     restore_ctx.use_datasource_v2 = True
-    ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True)
+    ds = ray.data.read_parquet([str(first), str(second)], merge_schema=True, num_cpus=0)
     list_files = ds._logical_plan.dag.input_dependencies[0]
     assert isinstance(list_files, ListFiles)
     assert list_files.prelisted_file_infos is not None

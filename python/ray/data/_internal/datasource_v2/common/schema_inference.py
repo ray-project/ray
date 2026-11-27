@@ -1,8 +1,10 @@
-"""Ordered, bounded schema discovery shared by file datasources."""
+"""Ordered, bounded schema and metadata discovery shared by file datasources."""
 
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
+from functools import partial
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pyarrow as pa
@@ -41,72 +43,140 @@ _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY = env_integer(
     "RAY_DATA_FULL_SCHEMA_INFERENCE_IO_CONCURRENCY", 4
 )
 _FULL_SCHEMA_INFERENCE_FIRST_RESULT_TIMEOUT_S = 30
+_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT = env_integer(
+    "RAY_DATA_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT", 1
+)
 logger = logging.getLogger(__name__)
+
+
+def _metadata_cache_enabled() -> bool:
+    return bool(_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT)
+
+
+@dataclass
+class FullSchemaInferenceResult:
+    """Schema and optional total row count for the same candidates."""
+
+    schema: pa.Schema
+    num_rows: Optional[int] = None
+
+
+@dataclass
+class _SchemaBatchResult:
+    schemas: List[Tuple[int, bytes, bool]]
+    num_rows: Optional[int]
+
+
+def _add_unique_schema(
+    unique: Dict[bytes, Tuple[int, bytes, bool]],
+    index: int,
+    schema: pa.Schema,
+    value: bytes,
+    read_original_metadata: Optional[Callable[[], bytes]] = None,
+) -> None:
+    if value in unique:
+        return
+    decoded = pa.ipc.read_schema(pa.BufferReader(value))
+    if schema.equals(decoded, check_metadata=True):
+        unique[value] = (index, value, False)
+        return
+    import pyarrow.parquet as pq
+
+    try:
+        output = pa.BufferOutputStream()
+        pq.write_metadata(schema, output)
+        encoded = output.getvalue().to_pybytes()
+        restored = pq.read_schema(pa.BufferReader(encoded))
+        if not schema.equals(restored, check_metadata=True):
+            raise pa.ArrowInvalid(
+                "Unable to preserve schema through IPC or Parquet metadata"
+            )
+    except (pa.ArrowInvalid, pa.ArrowTypeError, pa.ArrowNotImplementedError):
+        if read_original_metadata is None:
+            raise
+        encoded = read_original_metadata()
+        restored = pq.read_schema(pa.BufferReader(encoded))
+        if not schema.equals(restored, check_metadata=True):
+            raise pa.ArrowInvalid(
+                "Unable to preserve schema through original Parquet metadata"
+            )
+    unique[value] = (index, encoded, True)
+
+
+def _decode_schema(value: bytes, parquet_encoded: bool) -> pa.Schema:
+    if parquet_encoded:
+        import pyarrow.parquet as pq
+
+        return pq.read_schema(pa.BufferReader(value))
+    return pa.ipc.read_schema(pa.BufferReader(value))
 
 
 def _read_schema_batch(
     paths: List[str],
     sizes: List[Optional[int]],
     filesystem: FileSystem,
-    read_schema: Callable,
+    read_schema: Optional[Callable],
     format_name: str,
     context: DataContext,
     io_concurrency: int,
     read_schema_metadata: Optional[Callable] = None,
-) -> List[Tuple[int, bytes, bool]]:
-    """Read distinct schemas and encode them without losing metadata.
+    *,
+    read_metadata: Optional[Callable] = None,
+) -> _SchemaBatchResult:
+    """Read distinct schemas and optionally sum per-file row counts.
 
     Use IPC when lossless; otherwise try generated or original Parquet metadata.
     """
     DataContext._set_current(context)
+    assert read_schema is not None or read_metadata is not None
+    if read_metadata is not None and format_name != "Parquet":
+        raise ValueError(f"Unsupported schema format: {format_name}")
 
-    def read_file(item: Tuple[str, Optional[int]]) -> Tuple[pa.Schema, bytes]:
-        path, size = item
+    def read_file(item: Tuple[int, str]):
+        index, path = item
+        size = sizes[index]
         try:
-            schema = read_schema(path, filesystem, size)
-            return schema, schema.serialize().to_pybytes()
+            metadata = None
+            parquet_metadata = None
+            if read_metadata is None:
+                assert read_schema is not None
+                schema = read_schema(path, filesystem, size)
+            else:
+                parquet_metadata = read_metadata(
+                    path, filesystem, size, retried_io_errors=context.retried_io_errors
+                )
+                schema = parquet_metadata.schema.to_arrow_schema()
+                metadata = parquet_metadata.num_rows
+            return schema, schema.serialize().to_pybytes(), metadata, parquet_metadata
         except (OSError, pa.ArrowInvalid, pa.ArrowTypeError) as error:
             raise type(error)(
                 f"Failed to read {format_name} schema from {path!r}: {error}"
             ) from error
 
-    with ThreadPoolExecutor(max_workers=min(io_concurrency, len(paths))) as executor:
-        values = executor.map(read_file, zip(paths, sizes))
-        unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
-        for index, (schema, value) in enumerate(values):
-            if value not in unique:
-                decoded = pa.ipc.read_schema(pa.BufferReader(value))
-                if schema.equals(decoded, check_metadata=True):
-                    unique[value] = (index, value, False)
-                else:
-                    import pyarrow.parquet as pq
+    def encode_original_metadata(metadata) -> bytes:
+        output = pa.BufferOutputStream()
+        metadata.write_metadata_file(output)
+        return output.getvalue().to_pybytes()
 
-                    try:
-                        output = pa.BufferOutputStream()
-                        pq.write_metadata(schema, output)
-                        encoded = output.getvalue().to_pybytes()
-                        restored = pq.read_schema(pa.BufferReader(encoded))
-                        if not schema.equals(restored, check_metadata=True):
-                            raise pa.ArrowInvalid(
-                                "Unable to preserve schema through IPC or Parquet metadata"
-                            )
-                    except (
-                        pa.ArrowInvalid,
-                        pa.ArrowTypeError,
-                        pa.ArrowNotImplementedError,
-                    ):
-                        if read_schema_metadata is None:
-                            raise
-                        encoded = read_schema_metadata(
-                            paths[index], filesystem, sizes[index]
-                        )
-                        restored = pq.read_schema(pa.BufferReader(encoded))
-                        if not schema.equals(restored, check_metadata=True):
-                            raise pa.ArrowInvalid(
-                                "Unable to preserve schema through original Parquet metadata"
-                            )
-                    unique[value] = (index, encoded, True)
-    return list(unique.values())
+    with ThreadPoolExecutor(max_workers=min(io_concurrency, len(paths))) as executor:
+        values = executor.map(read_file, enumerate(paths))
+        unique: Dict[bytes, Tuple[int, bytes, bool]] = {}
+        total_rows: Optional[int] = 0 if read_metadata is not None else None
+        for index, (schema, value, metadata, parquet_metadata) in enumerate(values):
+            if total_rows is not None:
+                total_rows = total_rows + metadata if metadata is not None else None
+            if parquet_metadata is not None:
+                read_original = partial(encode_original_metadata, parquet_metadata)
+            else:
+                read_original = (
+                    partial(
+                        read_schema_metadata, paths[index], filesystem, sizes[index]
+                    )
+                    if read_schema_metadata is not None
+                    else None
+                )
+            _add_unique_schema(unique, index, schema, value, read_original)
+    return _SchemaBatchResult(list(unique.values()), total_rows)
 
 
 def _schema_task_options(
@@ -152,25 +222,29 @@ def _schema_task_options(
     return {key: value for key, value in remote_args.items() if key in supported}
 
 
-def infer_full_schema_from_files(
+def _infer_full_schema_on_workers(
     sample: FileManifest,
     filesystem: FileSystem,
     *,
     format_name: str,
-    read_schema: Callable,
+    read_schema: Optional[Callable],
     ray_remote_args: Dict[str, Any],
     supports_distributed_reads: bool,
     read_schema_metadata: Optional[Callable] = None,
-) -> Optional[pa.Schema]:
-    """Read schemas on workers and merge once in candidate order on the driver.
+    read_metadata: Optional[Callable] = None,
+) -> Optional[FullSchemaInferenceResult]:
+    """Read schemas and optional row counts with bounded worker tasks.
 
-    Return None when the caller should use its existing driver inference.
+    Return None when worker planning is unavailable or times out.
     """
     context = DataContext.get_current()
     paths: List[str] = sample.paths.tolist()
     if not paths:
-        return pa.schema([])
-    if not supports_distributed_reads or len(paths) <= _FULL_SCHEMA_INFERENCE_MIN_FILES:
+        return FullSchemaInferenceResult(pa.schema([]))
+    eligible = (
+        supports_distributed_reads and len(paths) > _FULL_SCHEMA_INFERENCE_MIN_FILES
+    )
+    if not eligible:
         return None
     options = _schema_task_options(
         merge_label_selector(ray_remote_args, context.execution_options.label_selector),
@@ -197,7 +271,8 @@ def infer_full_schema_from_files(
     )
     sizes = sample.known_file_sizes
     schemas: List[Tuple[int, pa.Schema]] = []
-    pending: Dict[ObjectRef[List[Tuple[int, bytes, bool]]], int] = {}
+    pending: Dict[ObjectRef[_SchemaBatchResult], int] = {}
+    total_rows: Optional[int] = 0 if read_metadata is not None else None
     start = 0
     first_result = True
     try:
@@ -205,6 +280,9 @@ def infer_full_schema_from_files(
             while start < len(paths) and len(pending) < window:
                 # Let the first task report progress without reading a full batch.
                 stop = min(start + (1 if start == 0 else batch_size), len(paths))
+                metadata_args = {}
+                if read_metadata is not None:
+                    metadata_args = {"read_metadata": read_metadata}
                 ref = read_remote.remote(
                     paths[start:stop],
                     sizes[start:stop],
@@ -214,6 +292,7 @@ def infer_full_schema_from_files(
                     context,
                     _FULL_SCHEMA_INFERENCE_IO_CONCURRENCY,
                     read_schema_metadata,
+                    **metadata_args,
                 )
                 pending[ref] = start
                 start = stop
@@ -236,20 +315,24 @@ def infer_full_schema_from_files(
             first_result = False
             ref = ready[0]
             offset = pending.pop(ref)
-            for index, value, parquet_encoded in ray.get(ref):
+            result = ray.get(ref)
+            if total_rows is not None:
+                total_rows = (
+                    total_rows + result.num_rows
+                    if result.num_rows is not None
+                    else None
+                )
+            for index, value, parquet_encoded in result.schemas:
                 position = offset + index
-                if parquet_encoded:
-                    import pyarrow.parquet as pq
-
-                    schema = pq.read_schema(pa.BufferReader(value))
-                else:
-                    schema = pa.ipc.read_schema(pa.BufferReader(value))
-                schemas.append((position, schema))
+                schemas.append((position, _decode_schema(value, parquet_encoded)))
         schemas.sort(key=lambda item: item[0])
-        return _merge_file_schemas(
-            [paths[index] for index, _ in schemas],
-            [schema for _, schema in schemas],
-            format_name,
+        return FullSchemaInferenceResult(
+            _merge_file_schemas(
+                [paths[index] for index, _ in schemas],
+                [schema for _, schema in schemas],
+                format_name,
+            ),
+            total_rows,
         )
     finally:
         for ref in pending:
@@ -258,6 +341,52 @@ def infer_full_schema_from_files(
             except Exception:
                 logger.debug("Could not cancel schema task", exc_info=True)
         pending.clear()
+
+
+def infer_full_schema_from_files(
+    sample: FileManifest,
+    filesystem: FileSystem,
+    *,
+    format_name: str,
+    read_schema: Callable,
+    ray_remote_args: Dict[str, Any],
+    supports_distributed_reads: bool,
+    read_schema_metadata: Optional[Callable] = None,
+) -> Optional[pa.Schema]:
+    """Read schemas on workers or return None for driver inference."""
+    result = _infer_full_schema_on_workers(
+        sample,
+        filesystem,
+        format_name=format_name,
+        read_schema=read_schema,
+        ray_remote_args=ray_remote_args,
+        supports_distributed_reads=supports_distributed_reads,
+        read_schema_metadata=read_schema_metadata,
+    )
+    return result.schema if result is not None else None
+
+
+def infer_full_schema_with_metadata_from_files(
+    sample: FileManifest,
+    filesystem: FileSystem,
+    *,
+    format_name: str,
+    read_metadata: Callable,
+    ray_remote_args: Dict[str, Any],
+    supports_distributed_reads: bool,
+) -> Optional[FullSchemaInferenceResult]:
+    """Read schemas and a complete row count when worker planning succeeds."""
+    if not _metadata_cache_enabled():
+        return None
+    return _infer_full_schema_on_workers(
+        sample,
+        filesystem,
+        format_name=format_name,
+        read_schema=None,
+        ray_remote_args=ray_remote_args,
+        supports_distributed_reads=supports_distributed_reads,
+        read_metadata=read_metadata,
+    )
 
 
 def infer_schema_from_files(

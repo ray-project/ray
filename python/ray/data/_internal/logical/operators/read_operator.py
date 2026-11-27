@@ -270,6 +270,8 @@ class ReadFiles(
     scanner: "Scanner"
     schema: "pa.Schema"
     parallelism: int
+    # Complete input count from schema planning, or None when unavailable.
+    planned_num_rows: Optional[int] = field(default=None, kw_only=True)
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     compute: Optional[ComputeStrategy] = None
     # Optional post-read block transform. Used by ``read_parquet``'s
@@ -544,7 +546,7 @@ class ListFiles(LogicalOperator, SourceOperator):
     def output_data(self) -> Optional[list]:
         return None
 
-    def infer_schema(self) -> "pa.Schema":
+    def infer_schema(self) -> Optional["pa.Schema"]:
         # ``FileManifest`` columns are fixed: __path, __file_size.
         import pyarrow as pa
 
@@ -553,6 +555,9 @@ class ListFiles(LogicalOperator, SourceOperator):
             PATH_COLUMN_NAME,
         )
 
+        if self.prelisted_file_infos is not None:
+            # Listing output depends on the indexer, not the prelisted input.
+            return None
         return pa.schema(
             [
                 pa.field(PATH_COLUMN_NAME, pa.string()),

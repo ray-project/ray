@@ -4752,6 +4752,8 @@ class Dataset:
         For Datasets which only read Parquet files (created with
         :meth:`~ray.data.read_parquet`), this method reads the file metadata to
         efficiently count the number of rows without reading in the entire data.
+        A plain read with ``merge_schema=True`` may use row counts recorded
+        during planning; files changed or removed afterwards may not be reflected.
 
         Examples:
             >>> import ray
@@ -4770,6 +4772,31 @@ class Dataset:
         meta_count = self._meta_count()
         if meta_count is not None:
             return meta_count
+
+        from ray.data._internal.logical.operators.read_operator import (
+            ListFiles,
+            ReadFiles,
+        )
+
+        read = self._logical_plan.dag
+        if (
+            isinstance(read, ReadFiles)
+            and read.planned_num_rows is not None
+            and read.block_udf is None
+            and self.context.checkpoint_config is None
+            and read.scanner.metadata_row_count_is_exact()
+            and read.get_projection_map() is None
+            and isinstance(read.input_dependencies[0], ListFiles)
+        ):
+            listing = read.input_dependencies[0]
+            if (
+                listing.partition_filter is None
+                and listing.predicate is None
+                and listing.limit is None
+                and listing.partition_pruner is None
+                and listing.projected_columns is None
+            ):
+                return read.planned_num_rows
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count

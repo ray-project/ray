@@ -127,6 +127,15 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
     monkeypatch.setattr(inference, "cached_remote_fn", Mock(return_value=remote))
     distributed = Mock(wraps=module.infer_full_schema_from_files)
     monkeypatch.setattr(module, "infer_full_schema_from_files", distributed)
+    monkeypatch.setattr(
+        parquet_datasource_v2,
+        "infer_full_schema_with_metadata_from_files",
+        Mock(
+            return_value=inference.FullSchemaInferenceResult(
+                pa.schema([("other", pa.int64())])
+            )
+        ),
+    )
     sample = FileManifest.construct_manifest(
         paths=["unused"], sizes=[1], chunk_metadatas=[None]
     )
@@ -137,8 +146,21 @@ def test_full_schema_preserves_subclass_schema_hook(monkeypatch, module, source_
 
     assert source.infer_full_schema(sample, ray_remote_args={}) is custom_schema
     hook.assert_called_once_with(sample)
+    result = source.infer_full_schema_with_metadata(sample, ray_remote_args={})
+    assert result.schema is custom_schema and result.num_rows is None
+    assert hook.call_count == 2
     distributed.assert_not_called()
     remote.remote.assert_not_called()
+
+    full_hook = Mock(return_value=custom_schema)
+    full_type = type(
+        "FullSchemaSource", (source_type,), {"infer_full_schema": full_hook}
+    )
+    result = full_type(["unused"]).infer_full_schema_with_metadata(
+        sample, ray_remote_args={}
+    )
+    full_hook.assert_called_once_with(sample, ray_remote_args={})
+    assert result.schema is custom_schema and result.num_rows is None
 
     inherited_type = type("InheritedSource", (source_type,), {})
     inherited = inherited_type(["unused"], filesystem=pafs.LocalFileSystem())
@@ -294,7 +316,9 @@ def test_full_schema_orders_bounded_out_of_order_results(monkeypatch):
         ]
     )
     monkeypatch.setattr(ray, "wait", wait)
-    monkeypatch.setattr(ray, "get", lambda ref: payloads[ref])
+    monkeypatch.setattr(
+        ray, "get", lambda ref: inference._SchemaBatchResult(payloads[ref], None)
+    )
     cancel = Mock()
     monkeypatch.setattr(ray, "cancel", cancel)
     merge = Mock(wraps=inference.unify_schemas_with_validation)
@@ -393,7 +417,11 @@ def test_schema_failure_cancels_pending_tasks(monkeypatch, stage, error):
     monkeypatch.setattr(ray, "cluster_resources", lambda: {"CPU": 1})
     monkeypatch.setattr(ray, "wait", lambda *a, **k: ([refs[0]], [refs[1]]))
     monkeypatch.setattr(
-        ray, "get", lambda ref: [(0, b"invalid", stage == "parquet_decode")]
+        ray,
+        "get",
+        lambda ref: inference._SchemaBatchResult(
+            [(0, b"invalid", stage == "parquet_decode")], None
+        ),
     )
     if stage == "decode":
         monkeypatch.setattr(
@@ -440,11 +468,12 @@ def test_worker_returns_first_position_for_exact_payload():
         4,
         read_metadata,
     )
-    assert [index for index, _, _ in result] == [0, 1, 3]
-    assert [payload for _, payload, _ in result] == [
+    assert result.num_rows is None
+    assert [index for index, _, _ in result.schemas] == [0, 1, 3]
+    assert [payload for _, payload, _ in result.schemas] == [
         values[i].serialize().to_pybytes() for i in range(3)
     ]
-    assert all(not parquet_encoded for _, _, parquet_encoded in result)
+    assert all(not parquet_encoded for _, _, parquet_encoded in result.schemas)
     read_metadata.assert_not_called()
 
 
@@ -478,7 +507,8 @@ def test_worker_uses_original_metadata_only_for_encoding_failure(
         1,
         read_metadata,
     )
-    assert result == [(0, b"original metadata", True)]
+    assert result.schemas == [(0, b"original metadata", True)]
+    assert result.num_rows is None
     read_metadata.assert_called_once_with("test.parquet", filesystem, 123)
 
 

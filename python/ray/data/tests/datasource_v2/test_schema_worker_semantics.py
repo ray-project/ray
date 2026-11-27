@@ -28,18 +28,22 @@ def schema_files_dir(tmp_path):
 
 
 @pytest.mark.parametrize("empty_struct", [False, True])
+@pytest.mark.parametrize("schema_only", [False, True])
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
 def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     monkeypatch,
     tmp_path,
     schema_files_dir,
     ray_start_regular_shared_2_cpus,
+    datasource_v2,
     empty_struct,
+    schema_only,
 ):
     monkeypatch.delenv("RAY_SCHEMA_TEST", raising=False)
-    ctx = DataContext.get_current()
-    monkeypatch.setattr(ctx, "use_datasource_v2", True)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
     monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_BATCH_SIZE", 2)
+    if schema_only:
+        monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_REUSE_ROW_COUNT", 0)
     values = pa.array([[("key", "value")]], type=pa.map_(pa.string(), pa.string()))
     table = pa.table({"attrs": values}).replace_schema_metadata({b"source": b"map"})
     paths = [schema_files_dir / f"map{i}.parquet" for i in range(3)]
@@ -74,7 +78,7 @@ def test_worker_parquet_map_schema_preserves_ipc_lossy_fields(
     )
     records = _records(trace)
     assert Counter(r["path"] for r in records if r["pid"] != os.getpid()) == {
-        str(path): 1 + int(empty_struct and index < 2)
+        str(path): 1 + int(schema_only and empty_struct and index < 2)
         for index, path in enumerate(paths)
     }
     assert all(r["pid"] != os.getpid() for r in records)
@@ -147,6 +151,46 @@ def test_worker_schemas_preserve_driver_unifier(
         assert all(record["pid"] != os.getpid() for record in records)
     finally:
         pa.unregister_extension_type(custom.extension_name)
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_merge_schema_counts_duplicate_paths(
+    tmp_path, monkeypatch, ray_start_regular_shared_2_cpus, datasource_v2
+):
+    monkeypatch.setattr(inference, "_FULL_SCHEMA_INFERENCE_MIN_FILES", 0)
+    path = tmp_path / "data.parquet"
+    rows = list(range(1000))
+    pq.write_table(pa.table({"x": rows}), path, row_group_size=100)
+    trace = tmp_path / "duplicate-reads.jsonl"
+    dataset = ray.data.read_parquet(
+        [str(path)] * 3, merge_schema=True, filesystem=_filesystem(trace)
+    )
+    before = _records(trace)
+    assert len(before) == 3
+    assert dataset.count() == 3 * len(rows)
+    assert _records(trace) == before
+    assert sorted(row["x"] for row in dataset.take_all()) == sorted(rows * 3)
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_count_footer_reads_preserve_runtime_env(
+    tmp_path, monkeypatch, ray_start_regular_shared_2_cpus, datasource_v2
+):
+    path = tmp_path / "data.parquet"
+    pq.write_table(pa.table({"id": [1, 2, 3]}), path)
+    trace = tmp_path / "count-reads.jsonl"
+    monkeypatch.setenv("RAY_METADATA_ACCESS", "enabled")
+    dataset = ray.data.read_parquet(
+        str(path),
+        filesystem=_filesystem(trace, require_env="RAY_METADATA_ACCESS"),
+        runtime_env={"env_vars": {"RAY_METADATA_ACCESS": "enabled"}},
+    )
+    before = _records(trace)
+    monkeypatch.delenv("RAY_METADATA_ACCESS")
+
+    assert dataset.count() == 3
+    reads = _records(trace)[len(before) :]
+    assert reads and all(record["pid"] != os.getpid() for record in reads)
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 import json
 import os
+from typing import Any
 
 import pyarrow.fs as pafs
 from fsspec.implementations.local import LocalFileSystem
@@ -50,3 +51,11 @@ class RecordingLocalFileSystem(LocalFileSystem):
                     + "\n"
                 )
         return super()._open(path, mode, block_size=block_size, **kwargs)
+
+
+class UnknownSizeRecordingLocalFileSystem(RecordingLocalFileSystem):
+    def info(self, path, **kwargs):
+        result: dict[str, Any] = dict(super().info(path, **kwargs))
+        if result["type"] == "file":
+            result["size"] = None
+        return result

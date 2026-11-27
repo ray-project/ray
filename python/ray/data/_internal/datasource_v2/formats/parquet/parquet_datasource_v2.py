@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
 import pyarrow as pa
@@ -21,7 +22,10 @@ from ray.data._internal.datasource_v2.common.partitioning_utils import (
     resolve_partitioning,
 )
 from ray.data._internal.datasource_v2.common.schema_inference import (
+    FullSchemaInferenceResult,
+    _metadata_cache_enabled,
     infer_full_schema_from_files,
+    infer_full_schema_with_metadata_from_files,
     infer_schema_from_files,
 )
 from ray.data._internal.datasource_v2.common.synthesized_columns import (
@@ -70,7 +74,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[int]):
+def _read_parquet_metadata(
+    path: str,
+    filesystem: "FileSystem",
+    size: Optional[int],
+    *,
+    retried_io_errors: Optional[List[str]] = None,
+):
     import pyarrow.dataset as pds
     import pyarrow.parquet as pq
 
@@ -83,7 +93,11 @@ def _read_parquet_metadata(path: str, filesystem: "FileSystem", size: Optional[i
     return call_with_retry(
         lambda: fragment.metadata,
         description=f"read Parquet footer for {path}",
-        match=DataContext.get_current().retried_io_errors,
+        match=(
+            DataContext.get_current().retried_io_errors
+            if retried_io_errors is None
+            else retried_io_errors
+        ),
     )
 
 
@@ -359,6 +373,67 @@ class ParquetDatasourceV2(FileDataSourceV2):
         if schema is None:
             return self.infer_schema(sample)
         return self._augment_schema(schema, sample)
+
+    @property
+    def _retain_planning_metadata(self) -> bool:
+        return (
+            type(self).infer_full_schema is ParquetDatasourceV2.infer_full_schema
+            and type(self).infer_schema is ParquetDatasourceV2.infer_schema
+            and self._user_schema is None
+            and _metadata_cache_enabled()
+        )
+
+    def _infer_schema_and_row_count(
+        self, sample: FileManifest
+    ) -> FullSchemaInferenceResult:
+        """Read each driver-side footer once for schema and row count."""
+        paths = sample.paths.tolist()
+        sizes = dict(zip(paths, sample.known_file_sizes))
+        retried_io_errors = DataContext.get_current().retried_io_errors
+        total_rows: Optional[int] = 0
+        lock = Lock()
+
+        def read_schema(path: str) -> pa.Schema:
+            nonlocal total_rows
+            metadata = _read_parquet_metadata(
+                path, self._filesystem, sizes[path], retried_io_errors=retried_io_errors
+            )
+            with lock:
+                if total_rows is not None:
+                    total_rows = (
+                        total_rows + metadata.num_rows
+                        if metadata.num_rows is not None
+                        else None
+                    )
+            return metadata.schema.to_arrow_schema()
+
+        schema = infer_schema_from_files(paths, read_schema, format_name="Parquet")
+        return FullSchemaInferenceResult(
+            self._augment_schema(schema, sample), total_rows
+        )
+
+    @override
+    def infer_full_schema_with_metadata(
+        self, sample: FileManifest, *, ray_remote_args: Dict[str, Any]
+    ) -> FullSchemaInferenceResult:
+        # Cache settings must not bypass a subclass's schema hook.
+        if not self._retain_planning_metadata or not len(sample):
+            return super().infer_full_schema_with_metadata(
+                sample, ray_remote_args=ray_remote_args
+            )
+        result = infer_full_schema_with_metadata_from_files(
+            sample,
+            self._filesystem,
+            format_name="Parquet",
+            read_metadata=_read_parquet_metadata,
+            ray_remote_args=ray_remote_args,
+            supports_distributed_reads=self.supports_distributed_reads,
+        )
+        if result is None:
+            return self._infer_schema_and_row_count(sample)
+        return FullSchemaInferenceResult(
+            self._augment_schema(result.schema, sample), result.num_rows
+        )
 
     def _augment_schema(self, schema: pa.Schema, sample: FileManifest) -> pa.Schema:
         resolved_partitioning = self.resolve_partitioning(sample)

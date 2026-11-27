@@ -652,9 +652,14 @@ def _read_datasource_v2(
         time.perf_counter() - listing_started if listing_started is not None else None
     )
     schema_started = time.perf_counter() if sample_all_files_for_schema else None
+    planning_num_rows = None
     if sample_all_files_for_schema and isinstance(datasource, FileDataSourceV2):
         assert sample is not None
-        schema = datasource.infer_full_schema(sample, ray_remote_args=ray_remote_args)
+        inference = datasource.infer_full_schema_with_metadata(
+            sample, ray_remote_args=ray_remote_args
+        )
+        schema = inference.schema
+        planning_num_rows = inference.num_rows
     else:
         schema = datasource.infer_schema(sample)
     schema_elapsed = (
@@ -760,6 +765,7 @@ def _read_datasource_v2(
         scanner=scanner,
         schema=schema,
         parallelism=parallelism,
+        planned_num_rows=planning_num_rows,
         ray_remote_args=ray_remote_args,
         compute=compute_strategy,
         block_udf=block_udf,
@@ -1878,8 +1884,10 @@ def read_parquet(
 
         ``merge_schema=True`` lists all eligible files and reads every footer during
         planning, which can be expensive for large or remote datasets. Larger
-        eligible reads distribute schema I/O across Ray tasks. Execution reads
-        footer metadata again.
+        eligible reads distribute schema I/O across Ray tasks. A plain count may
+        use row counts recorded during planning. Input files must remain stable:
+        files changed or removed after planning may not be reflected in count.
+        Other counts and row-group indexing read footer metadata during execution.
         With more than 10,000 candidate files, the reader warns before schema
         merging. Retained path and size metadata adds O(files) data to serialized
         lineage.

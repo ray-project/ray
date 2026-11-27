@@ -66,7 +66,7 @@ def test_hash_shuffle_v2_strategy_alias():
     """`hash_shuffle_v2` remains a deprecated alias of `shuffle_v2`."""
 
     assert ShuffleStrategy.SHUFFLE_V2.value == "shuffle_v2"
-    assert ShuffleStrategy.HASH_SHUFFLE_V2 is ShuffleStrategy.SHUFFLE_V2
+    assert ShuffleStrategy.__members__["HASH_SHUFFLE_V2"] is ShuffleStrategy.SHUFFLE_V2
     assert "hash_shuffle_v2" not in [s.value for s in ShuffleStrategy]
 
     # Deprecated value resolves to the current strategy
