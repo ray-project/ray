@@ -1018,12 +1018,14 @@ int main(int argc, char *argv[]) {
         scheduler_metrics,
         clock);
 
-    cluster_lease_manager =
-        std::make_unique<ray::raylet::ClusterLeaseManager>(raylet_node_id,
-                                                           *cluster_resource_scheduler,
-                                                           get_node_info_func,
-                                                           announce_infeasible_lease,
-                                                           *local_lease_manager);
+    cluster_lease_manager = std::make_unique<ray::raylet::ClusterLeaseManager>(
+        raylet_node_id,
+        *cluster_resource_scheduler,
+        get_node_info_func,
+        announce_infeasible_lease,
+        *local_lease_manager,
+        /*request_cluster_view=*/
+        [&]() { return node_manager->RequestClusterResourceView(); });
 
     auto raylet_client_factory = [&](const ray::NodeID &id) {
       auto node_info = gcs_client->Nodes().GetNodeAddressAndLiveness(id);

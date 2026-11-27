@@ -662,6 +662,12 @@ RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1
 /// Refer to https://tinyurl.com/n6kvsp87 for more details
 RAY_CONFIG(int64_t, ray_syncer_message_refresh_interval_ms, 3000)
 
+/// If true, a raylet gets other nodes' resource views from the GCS only after it first
+/// needs them, which is when it has a lease it can't grant locally right away. Until
+/// then, the GCS doesn't send it resource views. Raylets still report their own
+/// resource view to the GCS either way.
+RAY_CONFIG(bool, raylet_lazy_resource_view_subscription, false)
+
 /// The batch size for metrics export.
 /// Normally each time-series << 1Kb. Batch size of 10_000 means expected payload
 /// will be under 10Mb.

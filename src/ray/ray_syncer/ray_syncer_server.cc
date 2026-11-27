@@ -18,7 +18,11 @@
 #include <cctype>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/numbers.h"
+#include "absl/strings/str_split.h"
+#include "absl/strings/string_view.h"
 #include "ray/common/constants.h"
 #include "ray/rpc/authentication/authentication_mode.h"
 
@@ -41,6 +45,25 @@ std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_conte
   return NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
 }
 
+/// Parse the client's lazy message types, skipping entries that aren't one.
+std::vector<MessageType> GetLazyMessageTypesFromServerContext(
+    grpc::CallbackServerContext *server_context) {
+  std::vector<MessageType> lazy_message_types;
+  const auto &metadata = server_context->client_metadata();
+  auto iter = metadata.find(kLazyMessageTypesMetadataKey);
+  if (iter == metadata.end()) {
+    return lazy_message_types;
+  }
+  for (absl::string_view entry : absl::StrSplit(
+           absl::string_view(iter->second.data(), iter->second.length()), ',')) {
+    int message_type = 0;
+    if (absl::SimpleAtoi(entry, &message_type) && IsValidMessageType(message_type)) {
+      lazy_message_types.push_back(static_cast<MessageType>(message_type));
+    }
+  }
+  return lazy_message_types;
+}
+
 }  // namespace
 
 RayServerBidiReactor::RayServerBidiReactor(
@@ -53,13 +76,15 @@ RayServerBidiReactor::RayServerBidiReactor(
     std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
     ray::rpc::AuthenticationTokenValidator &auth_token_validator,
     size_t max_batch_size,
-    uint64_t max_batch_delay_ms)
+    uint64_t max_batch_delay_ms,
+    SubscriptionHandlers subscription_handlers)
     : RaySyncerBidiReactorBase<ServerBidiReactor>(
           io_context,
           GetNodeIDFromServerContext(server_context),
           std::move(message_processor),
           max_batch_size,
-          max_batch_delay_ms),
+          max_batch_delay_ms,
+          std::move(subscription_handlers)),
       cleanup_cb_(std::move(cleanup_cb)),
       server_context_(server_context),
       auth_token_(std::move(auth_token)),
@@ -98,6 +123,10 @@ RayServerBidiReactor::RayServerBidiReactor(
     Finish(
         grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "Missing or malformed node_id"));
     return;
+  }
+
+  for (MessageType message_type : GetLazyMessageTypesFromServerContext(server_context)) {
+    SetRemoteSubscribed(message_type, false);
   }
 
   // Send the local node id to the remote

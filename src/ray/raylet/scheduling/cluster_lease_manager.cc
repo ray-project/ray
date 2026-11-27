@@ -32,11 +32,13 @@ ClusterLeaseManager::ClusterLeaseManager(
     ClusterResourceScheduler &cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayLease &)> announce_infeasible_lease,
-    LocalLeaseManagerInterface &local_lease_manager)
+    LocalLeaseManagerInterface &local_lease_manager,
+    std::function<bool()> request_cluster_view)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(std::move(get_node_info)),
       announce_infeasible_lease_(std::move(announce_infeasible_lease)),
+      request_cluster_view_(std::move(request_cluster_view)),
       local_lease_manager_(local_lease_manager),
       scheduler_resource_reporter_(
           leases_to_schedule_, infeasible_leases_, local_lease_manager_),
@@ -221,6 +223,14 @@ void ClusterLeaseManager::ScheduleAndGrantLeases() {
       // There is no node that has available resources to run the request.
       // Move on to the next shape.
       if (!result.IsScheduled()) {
+        if (request_cluster_view_ && !request_cluster_view_()) {
+          // Another node may be able to run it, so keep the shape queued until the
+          // cluster view arrives, which calls this again.
+          RAY_LOG(DEBUG) << "Waiting for the cluster resource view to schedule lease "
+                         << lease.GetLeaseSpecification().LeaseId();
+          is_infeasible = false;
+          break;
+        }
         RAY_LOG(DEBUG) << "No node found to schedule a lease "
                        << lease.GetLeaseSpecification().LeaseId() << " is infeasible?"
                        << is_infeasible;

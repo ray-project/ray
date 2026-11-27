@@ -39,7 +39,9 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
       std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
       std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub,
       size_t max_batch_size,
-      uint64_t max_batch_delay_ms);
+      uint64_t max_batch_delay_ms,
+      const std::vector<MessageType> &lazy_message_types = {},
+      SubscriptionHandlers subscription_handlers = {});
 
   ~RayClientBidiReactor() override = default;
 

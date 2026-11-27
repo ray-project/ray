@@ -259,7 +259,17 @@ NodeManager::NodeManager(
                                                std::chrono::milliseconds(delay_ms)));
                     }),
       runtime_env_agent_port_(config.runtime_env_agent_port),
-      ray_syncer_(io_service_, periodical_runner, self_node_id_.Binary(), 1, 0),
+      ray_syncer_(
+          io_service_,
+          periodical_runner,
+          self_node_id_.Binary(),
+          1,
+          0,
+          /*on_messages_received=*/{},
+          /*lazy_message_types=*/
+          RayConfig::instance().raylet_lazy_resource_view_subscription()
+              ? std::vector<syncer::MessageType>{syncer::MessageType::RESOURCE_VIEW}
+              : std::vector<syncer::MessageType>{}),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            IsLocalhost(config.node_manager_address)),
@@ -3167,6 +3177,22 @@ void NodeManager::ConsumeSyncMessages(
       }
     }
   }
+}
+
+bool NodeManager::RequestClusterResourceView() {
+  if (!RayConfig::instance().raylet_lazy_resource_view_subscription() ||
+      cluster_resource_view_received_) {
+    return true;
+  }
+  ray_syncer_.Subscribe(syncer::MessageType::RESOURCE_VIEW, [this]() {
+    if (cluster_resource_view_received_) {
+      return;
+    }
+    RAY_LOG(INFO) << "Received the cluster resource view.";
+    cluster_resource_view_received_ = true;
+    cluster_lease_manager_.ScheduleAndGrantLeases();
+  });
+  return false;
 }
 
 std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(

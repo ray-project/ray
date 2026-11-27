@@ -253,6 +253,12 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::optional<syncer::RaySyncMessage> CreateSyncMessage(
       int64_t after_version, syncer::MessageType message_type) const override;
 
+  /// Return whether this node has the other nodes' resource views. With
+  /// raylet_lazy_resource_view_subscription, it doesn't until this is first called:
+  /// that call subscribes to them, returns false, and schedules leases again once they
+  /// all arrive.
+  bool RequestClusterResourceView();
+
   /// Setup global GC to be triggered at the next gc check, so that references to actors
   /// or object ids can be freed up across the cluster.
   void SetShouldGlobalGC();
@@ -912,6 +918,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
+
+  /// Whether the GCS has sent every other node's resource view, under
+  /// raylet_lazy_resource_view_subscription. See RequestClusterResourceView.
+  bool cluster_resource_view_received_ = false;
 
   /// Owns the RaySyncer stream handler; must outlive node_manager_server_ which holds
   /// a raw reference to it.

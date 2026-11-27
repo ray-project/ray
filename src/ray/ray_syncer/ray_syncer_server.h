@@ -46,7 +46,8 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       std::shared_ptr<const ray::rpc::AuthenticationToken> auth_token,
       ray::rpc::AuthenticationTokenValidator &auth_token_validator,
       size_t max_batch_size,
-      uint64_t max_batch_delay_ms);
+      uint64_t max_batch_delay_ms,
+      SubscriptionHandlers subscription_handlers = {});
 
   ~RayServerBidiReactor() override = default;
 

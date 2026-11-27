@@ -14,6 +14,7 @@
 
 #include "ray/ray_syncer/ray_syncer.h"
 
+#include <algorithm>
 #include <functional>
 #include <memory>
 #include <string>
@@ -33,8 +34,10 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id,
                      size_t max_batch_size,
                      uint64_t max_batch_delay_ms,
-                     MessagesReceivedCallback on_messages_received)
-    : io_context_(io_context),
+                     MessagesReceivedCallback on_messages_received,
+                     std::vector<MessageType> lazy_message_types)
+    : lazy_message_types_(std::move(lazy_message_types)),
+      io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
       periodical_runner_(std::move(periodical_runner)),
@@ -121,12 +124,62 @@ void RaySyncer::Connect(const std::string &node_id,
             },
             /* stub */ std::move(stub),
             /* max_batch_size */ max_batch_size_,
-            /* max_batch_delay_ms */ max_batch_delay_ms_);
+            /* max_batch_delay_ms */ max_batch_delay_ms_,
+            /* lazy_message_types */ lazy_message_types_,
+            /* subscription_handlers */ MakeSubscriptionHandlers());
         reactor->SetSelfRef(reactor);
         Connect(reactor);
         reactor->StartCall();
+        // Every connection starts unsubscribed from the lazy types, so subscribe again.
+        for (MessageType message_type : lazy_message_types_) {
+          if (on_subscribe_done_[message_type]) {
+            reactor->SendSubscribe(message_type);
+          }
+        }
       }))
       .get();
+}
+
+SubscriptionHandlers RaySyncer::MakeSubscriptionHandlers() {
+  return SubscriptionHandlers{
+      /*on_subscribe=*/[this](RaySyncerBidiReactor &reactor, MessageType message_type) {
+        HandleRemoteSubscribe(reactor, message_type);
+      },
+      /*on_subscribe_done=*/
+      [this](MessageType message_type) {
+        if (on_subscribe_done_[message_type]) {
+          on_subscribe_done_[message_type]();
+        }
+      }};
+}
+
+void RaySyncer::HandleRemoteSubscribe(RaySyncerBidiReactor &reactor,
+                                      MessageType message_type) {
+  if (!reactor.IsRemoteSubscribed(message_type)) {
+    reactor.SetRemoteSubscribed(message_type, true);
+    for (const auto &[_, messages] : node_state_->GetClusterView()) {
+      if (messages[message_type]) {
+        reactor.PushToSendingQueue(messages[message_type]);
+      }
+    }
+  }
+  reactor.SendSubscribeDone(message_type);
+}
+
+void RaySyncer::Subscribe(MessageType message_type,
+                          std::function<void()> on_subscribe_done) {
+  RAY_CHECK(on_subscribe_done);
+  RAY_CHECK(std::find(lazy_message_types_.begin(),
+                      lazy_message_types_.end(),
+                      message_type) != lazy_message_types_.end())
+      << "Message type " << message_type << " is not lazy.";
+  if (on_subscribe_done_[message_type]) {
+    return;
+  }
+  on_subscribe_done_[message_type] = std::move(on_subscribe_done);
+  for (auto &[_, reactor] : sync_reactors_) {
+    reactor->SendSubscribe(message_type);
+  }
 }
 
 void RaySyncer::Connect(std::shared_ptr<RaySyncerBidiReactor> reactor) {
@@ -258,7 +311,8 @@ SyncStreamReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       /*auth_token=*/auth_token_,
       /*auth_token_validator=*/auth_token_validator_,
       /*max_batch_size=*/syncer_.max_batch_size_,
-      /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_);
+      /*max_batch_delay_ms=*/syncer_.max_batch_delay_ms_,
+      /*subscription_handlers=*/syncer_.MakeSubscriptionHandlers());
   RAY_LOG(DEBUG).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
 
