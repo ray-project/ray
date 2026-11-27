@@ -149,6 +149,10 @@ cdef class Config:
         return RayConfig.instance().task_events_max_num_task_in_gcs()
 
     @staticmethod
+    def task_events_max_num_bytes_in_gcs():
+        return RayConfig.instance().task_events_max_num_bytes_in_gcs()
+
+    @staticmethod
     def task_events_max_num_profile_events_per_task():
         return RayConfig.instance().task_events_max_num_profile_events_per_task()
 
