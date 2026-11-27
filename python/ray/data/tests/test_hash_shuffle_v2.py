@@ -21,6 +21,7 @@ from ray.data._internal.execution.operators.input_data_buffer import InputDataBu
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_reduce_operator import (  # noqa: E501
     DiskHashShuffleReduceOp,
+    DiskHashShuffleRegroupOp,
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
     handle_from_block,
@@ -126,7 +127,18 @@ def _num_reduce_tasks(ds) -> int:
 
 
 def _handle_bundle(handle) -> RefBundle:
-    """What the disk-shuffle writer emits per task: one handle block."""
+    """What the disk-shuffle writer emits per task: one handle block. Tests
+    pass the fields they care about; the fetch fields the regroup requires
+    get placeholders."""
+    handle = {
+        "shuffle_id": "shuffle-0",
+        "node_id": "node-0",
+        "path": "/shuffle/node",
+        "map_id": 0,
+        "attempt_token": 0,
+        "index_ranges": np.zeros((len(handle.get("num_rows", [])), 2), np.int64),
+        **handle,
+    }
     block = handle_to_block(handle)
     return RefBundle(
         (BlockEntry(ray.put(block), BlockAccessor.for_block(block).get_metadata()),),
@@ -743,31 +755,56 @@ def test_disk_shuffle_write_fn_caps_polars_threads_in_task(monkeypatch):
     assert os.environ["POLARS_MAX_THREADS"] == "1"
 
 
-def test_disk_regroup_orders_handles_by_map_id(ray_start_regular_shared_2_cpus):
+def test_disk_regroup_folds_handles_into_node_file_sizes(
+    ray_start_regular_shared_2_cpus,
+):
     ctx = DataContext.get_current()
     writer = plan_disk_hash_shuffle_map(
-        InputDataBuffer(ctx, []), ctx, num_partitions=1, partition_fn=lambda t: {}
+        InputDataBuffer(ctx, []), ctx, num_partitions=2, partition_fn=lambda t: {}
     )
     reduce_op = plan_disk_hash_shuffle_reduce(
-        writer, ctx, num_partitions=1, reduce_fn=lambda *args: []
+        writer, ctx, num_partitions=2, reduce_fn=lambda *args: []
     )
     regroup_op = reduce_op.input_dependencies[0]
     regroup_op.start(ExecutionOptions(), BlockRefCounter())
 
-    # Writers finish last-first; the published handles must still be in map
-    # task order so every reducer concatenates shards the same way.
-    for map_id in (2, 0, 1):
-        regroup_op.add_input(
-            _handle_bundle({"map_id": map_id, "num_rows": np.array([1])}), 0
-        )
+    # Map tasks 0 and 2 ran on node-0 and appended back to back to its
+    # partition files (task 2 first); task 1 ran on node-1 and wrote nothing
+    # for partition 1. Handles arrive in any order.
+    handles = [
+        (2, "node-0", [[7, 5], [0, 4]]),
+        (1, "node-1", [[0, 9], [0, 0]]),
+        (0, "node-0", [[0, 7], [4, 4]]),
+    ]
+    with patch.object(
+        DiskHashShuffleRegroupOp, "_create_file_server", return_value=MagicMock()
+    ):
+        for map_id, node_id, index_ranges in handles:
+            regroup_op.add_input(
+                _handle_bundle(
+                    {
+                        "map_id": map_id,
+                        "attempt_token": 100 + map_id,
+                        "num_rows": np.array([1, 1]),
+                        "node_id": node_id,
+                        "path": f"/{node_id}/node",
+                        "index_ranges": np.array(index_ranges),
+                    }
+                ),
+                0,
+            )
     regroup_op.all_inputs_done()
 
-    handle_refs = ray.get(regroup_op.get_next().blocks[0].ref)
-    assert [handle_from_block(ray.get(ref))["map_id"] for ref in handle_refs] == [
-        0,
-        1,
-        2,
+    entries = [ray.get(regroup_op.get_next().blocks[0].ref) for _ in range(2)]
+    table = ray.get(entries[0]["node_table"])
+    assert table["nodes"] == [
+        ("shuffle-0", "node-0", "/node-0/node"),
+        ("shuffle-0", "node-1", "/node-1/node"),
     ]
+    assert table["committed_attempts"] == {0: 100, 1: 101, 2: 102}
+    # One size per node: the end of the last of its map tasks' records.
+    assert entries[0]["sizes"].tolist() == [12, 9]
+    assert entries[1]["sizes"].tolist() == [8, 0]
 
 
 def test_disk_shuffle_reduce_op_emits_partitions_in_order(restore_data_context):
@@ -940,10 +977,13 @@ def test_disk_regroup_emits_one_bundle_per_partition(
     regroup_op.start(ExecutionOptions(), BlockRefCounter())
     reduce_op.start(ExecutionOptions(), BlockRefCounter())
     schema = pa.schema([("id", pa.int64())])
-    for rows in ([5, 0, 3], [2, 0, 0]):
-        regroup_op.add_input(
-            _handle_bundle({"num_rows": np.array(rows), "schema": schema}), 0
-        )
+    with patch.object(
+        DiskHashShuffleRegroupOp, "_create_file_server", return_value=MagicMock()
+    ):
+        for rows in ([5, 0, 3], [2, 0, 0]):
+            regroup_op.add_input(
+                _handle_bundle({"num_rows": np.array(rows), "schema": schema}), 0
+            )
     assert not regroup_op.has_next()
 
     regroup_op.all_inputs_done()
@@ -1070,12 +1110,18 @@ def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_c
     # ingested the last handle and handed its bundles to the reduce. Both
     # partitions are empty, so the reduce emits typed empty blocks on the
     # driver and launches no task.
-    regroup_op.add_input(
-        _handle_bundle(
-            {"num_rows": np.array([0, 0]), "schema": pa.schema([("id", pa.int64())])}
-        ),
-        0,
-    )
+    with patch.object(
+        DiskHashShuffleRegroupOp, "_create_file_server", return_value=MagicMock()
+    ):
+        regroup_op.add_input(
+            _handle_bundle(
+                {
+                    "num_rows": np.array([0, 0]),
+                    "schema": pa.schema([("id", pa.int64())]),
+                }
+            ),
+            0,
+        )
     writer.mark_execution_finished()
     regroup_op.all_inputs_done()
     while regroup_op.has_next():

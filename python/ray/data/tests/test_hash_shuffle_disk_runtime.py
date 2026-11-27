@@ -7,7 +7,6 @@ the shard codec, prefetch layout, and error classification.
 import contextlib
 import os
 import socket
-import struct
 from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
@@ -20,13 +19,15 @@ from ray.data._internal.execution.operators.shuffle_operators import (
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (  # noqa: E501
     _ENDPOINT_CACHE,
     _ENDPOINT_CACHE_LOCK,
+    _RECORD_HEADER,
     _SHUFFLE_FILE_SERVER_NAMESPACE,
     ShuffleDiskError,
     ShuffleFileServer,
     ShuffleFileServerAnomalyError,
-    _chunk_members_by_bytes,
+    _append_record,
     _compute_prefetch_layout,
     _counts_to_array,
+    _decode_records,
     _encode_shard,
     _Endpoint,
     _fetch_from_file_server,
@@ -35,7 +36,8 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
     _group_by_server,
     _make_flight_server,
     _NodeGroup,
-    _order_tables_by_source,
+    _order_by_map_id,
+    _partition_input,
     _PartitionWriter,
     _PwriteSink,
     _read_ipc,
@@ -145,7 +147,6 @@ def test_fetch_unregistered_name_is_anomaly(ray_start_regular_shared_2_cpus, tmp
                 shuffle_id,
                 node_id,
                 [_FileRanges(path="x.bin", ranges=[(0, 4)])],
-                max_bytes_per_fetch=1 << 20,
             )
     finally:
         os.close(fd)
@@ -179,7 +180,6 @@ def test_fetch_killed_actor_is_anomaly(ray_start_regular_shared_2_cpus, tmp_path
                 shuffle_id,
                 node_id,
                 [_FileRanges(path="x.bin", ranges=[(0, 4)])],
-                max_bytes_per_fetch=1 << 20,
             )
     finally:
         os.close(fd)
@@ -220,12 +220,8 @@ def test_fetch_restart_retry(ray_start_regular_shared_2_cpus, tmp_path):
             shuffle_id,
             node_id,
             [_FileRanges(path="s.bin", ranges=[(0, 24), (24, 24)])],
-            max_bytes_per_fetch=1 << 20,
         )
-        assert struct.unpack(">Q", os.pread(fd, 8, 0))[0] == 24
-        assert os.pread(fd, 24, 8) == payload[0:24]
-        assert struct.unpack(">Q", os.pread(fd, 8, 32))[0] == 24
-        assert os.pread(fd, 24, 40) == payload[24:48]
+        assert os.pread(fd, 48, 0) == payload
     finally:
         _clear_endpoint_cache(shuffle_id, node_id)
         os.close(fd)
@@ -241,7 +237,7 @@ def test_fetch_same_incarnation_escalate(tmp_path):
     _clear_endpoint_cache(shuffle_id, node_id)
     stream_calls = {"n": 0}
 
-    def fake_stream(endpoint, members, max_bytes, sink):
+    def fake_stream(endpoint, members, sink):
         stream_calls["n"] += 1
         raise flight.FlightUnavailableError("down")
 
@@ -251,17 +247,14 @@ def test_fetch_same_incarnation_escalate(tmp_path):
     fd, sink = _open_sink(tmp_path)
     members = [_FileRanges(path="x.bin", ranges=[(0, 4)])]
     try:
-        with patch.object(
-            _runtime, "_stream_members_flight", fake_stream
-        ), patch.object(
-            _runtime.ray, "get_actor", return_value=MagicMock()
-        ), patch.object(
-            _runtime.ray, "get", side_effect=fake_ray_get
-        ), patch.object(
-            _runtime.time, "sleep"
+        with (
+            patch.object(_runtime, "_stream_members_flight", fake_stream),
+            patch.object(_runtime.ray, "get_actor", return_value=MagicMock()),
+            patch.object(_runtime.ray, "get", side_effect=fake_ray_get),
+            patch.object(_runtime.time, "sleep"),
         ):
             with pytest.raises(ShuffleFileServerAnomalyError):
-                _fetch_from_file_server(sink, shuffle_id, node_id, members, 1 << 20)
+                _fetch_from_file_server(sink, shuffle_id, node_id, members)
         assert stream_calls["n"] == 2
     finally:
         _clear_endpoint_cache(shuffle_id, node_id)
@@ -280,9 +273,10 @@ def test_fetch_same_incarnation_escalate(tmp_path):
     ],
 )
 def test_layout_vs_wire(tmp_path, members_spec):
-    # _compute_prefetch_layout predicts framed bytes written into a group's
+    # _compute_prefetch_layout predicts the bytes written into a group's
     # region; stream the same group via Flight and assert bytes-written matches
-    # (and that the wire bytes are [u64 len][payload] in request order).
+    # (and that the wire bytes are the requested ranges verbatim, in request
+    # order: the files' records are self-framed, so nothing is added).
     file_bytes = {}
     members = []
     for path, ranges in members_spec:
@@ -295,7 +289,7 @@ def test_layout_vs_wire(tmp_path, members_spec):
     group = _NodeGroup("shuffle-0", "node-1", members=members)
     total, _base_offsets, sizes = _compute_prefetch_layout([group])
     expected = b"".join(
-        struct.pack(">Q", length) + file_bytes[path][off : off + length]
+        file_bytes[path][off : off + length]
         for path, ranges in members_spec
         for off, length in ranges
     )
@@ -307,7 +301,6 @@ def test_layout_vs_wire(tmp_path, members_spec):
             _stream_members_flight(
                 endpoint,
                 members,
-                max_bytes=1 << 20,
                 sink=sink,
             )
         written = sink._pos - sink._base_offset
@@ -333,7 +326,6 @@ def test_flight_unreachable_raises_transport_error(tmp_path):
                 _stream_members_flight(
                     _Endpoint("127.0.0.1", port, "test-incarnation"),
                     [_FileRanges(path="x.bin", ranges=[(0, 4)])],
-                    max_bytes=1 << 20,
                     sink=sink,
                 )
         finally:
@@ -359,7 +351,6 @@ def test_flight_short_read_fails(tmp_path):
                 _stream_members_flight(
                     endpoint,
                     [_FileRanges(path="s.bin", ranges=[(0, 64)])],  # asks for 64
-                    max_bytes=1 << 20,
                     sink=sink,
                 )
     finally:
@@ -386,16 +377,12 @@ def test_fetch_from_file_server(tmp_path):
                     shuffle_id,
                     node_id,
                     [_FileRanges(path="s.bin", ranges=[(0, 24), (24, 24)])],
-                    max_bytes_per_fetch=1 << 20,
                 )
             finally:
                 with _ENDPOINT_CACHE_LOCK:
                     _ENDPOINT_CACHE.pop(key, None)
-        # Two records back-to-back: [u64(24)][payload[:24]], [u64(24)][payload[24:]].
-        assert struct.unpack(">Q", os.pread(fd, 8, 0))[0] == 24
-        assert os.pread(fd, 24, 8) == payload[0:24]
-        assert struct.unpack(">Q", os.pread(fd, 8, 32))[0] == 24
-        assert os.pread(fd, 24, 40) == payload[24:48]
+        # The two ranges land back to back, verbatim.
+        assert os.pread(fd, 48, 0) == payload
     finally:
         os.close(fd)
 
@@ -420,7 +407,6 @@ def test_fetch_server_error_is_terminal(tmp_path):
                         shuffle_id,
                         node_id,
                         [_FileRanges(path="missing.bin", ranges=[(0, 4)])],
-                        max_bytes_per_fetch=1 << 20,
                     )
             finally:
                 with _ENDPOINT_CACHE_LOCK:
@@ -430,29 +416,6 @@ def test_fetch_server_error_is_terminal(tmp_path):
 
 
 # --------------------------- reducer helpers (no Ray and no sockets)
-def test_chunk_members_by_bytes():
-    # Cover the three interesting shapes: fits-in-one, split-across-batches,
-    # and single-range-larger-than-budget (must stand alone as its own batch).
-    m1 = _FileRanges(path="a", ranges=[(0, 10), (10, 10)])  # 20 total
-    m2 = _FileRanges(path="b", ranges=[(0, 30)])  # 30 total
-    m3 = _FileRanges(path="c", ranges=[(0, 5), (5, 5)])  # 10 total
-
-    # Budget 100 -> everything fits in one batch.
-    batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=100))
-    assert len(batches) == 1 and batches[0] == [m1, m2, m3]
-
-    # Budget 25 -> splits: {m1(20)}, {m2's 30-byte range alone}, {m3(10)}.
-    # Single range never splits, even if it exceeds the budget.
-    batches = list(_chunk_members_by_bytes([m1, m2, m3], max_bytes=25))
-    assert len(batches) == 3
-    assert batches[0] == [m1]
-    assert batches[1] == [_FileRanges(path="b", ranges=[(0, 30)])]
-    assert batches[2] == [m3]
-
-    # Empty input -> no batches.
-    assert list(_chunk_members_by_bytes([], max_bytes=100)) == []
-
-
 def test_group_by_server():
     # Same (shuffle_id, node_id) collapses; distinct pairs stay separate.
     s0 = _SourceRef("shuffle-0", "node-1", _FileRanges("a", [(0, 4)]))
@@ -468,43 +431,40 @@ def test_group_by_server():
     assert [m.path for m in by_node["node-2"].members] == ["b"]
 
 
-def test_order_tables_by_source_undoes_node_grouping():
+def test_order_by_map_id_undoes_node_grouping():
     import pyarrow as pa
 
-    # Tasks 0 and 2 on node-1, task 1 (two ranges) on node-2: the fetch groups
-    # decode as [t0, t2], [t1a, t1b] but the reducer must see task order.
-    s0 = _SourceRef("shuffle-0", "node-1", _FileRanges("a", [(0, 4)]))
-    s1 = _SourceRef("shuffle-0", "node-2", _FileRanges("b", [(0, 8), (8, 8)]))
-    s2 = _SourceRef("shuffle-0", "node-1", _FileRanges("c", [(0, 2)]))
-    groups = _group_by_server([s0, s1, s2])
-    t0, t1a, t1b, t2 = [pa.table({"v": [i]}) for i in range(4)]
+    # Tasks 0 and 2 landed on node-1, task 1 on node-2: the fetch groups decode
+    # as [t2, t0], [t1] (append order within a node file is arbitrary) but the
+    # reducer must see map task order.
+    t0, t1, t2 = [pa.table({"v": [i]}) for i in range(3)]
 
-    ordered = _order_tables_by_source(groups, [[t0, t2], [t1a, t1b]])
+    ordered = _order_by_map_id([[(2, t2), (0, t0)], [(1, t1)]])
 
-    assert ordered == [t0, t1a, t1b, t2]
+    assert ordered == [t0, t1, t2]
 
 
 def test_compute_prefetch_layout():
-    # Each range contributes 8 (u64 len prefix) + range_length to the group's
-    # size. base_offsets are the running cumulative sum.
+    # Each range contributes its length to the group's size (records are
+    # streamed verbatim). base_offsets are the running cumulative sum.
     g0 = _NodeGroup(
         "shuffle-0",
         "node-1",
         members=[
-            _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # (8+10)*2 = 36
+            _FileRanges(path="a", ranges=[(0, 10), (10, 10)]),  # 20
         ],
     )
     g1 = _NodeGroup(
         "shuffle-0",
         "node-2",
         members=[
-            _FileRanges(path="b", ranges=[(0, 100)]),  # 8+100 = 108
+            _FileRanges(path="b", ranges=[(0, 100)]),  # 100
         ],
     )
     total, base_offsets, sizes = _compute_prefetch_layout([g0, g1])
-    assert sizes == [36, 108]
-    assert base_offsets == [0, 36]
-    assert total == 144
+    assert sizes == [20, 100]
+    assert base_offsets == [0, 20]
+    assert total == 120
 
     # Empty layout.
     assert _compute_prefetch_layout([]) == (0, [], [])
@@ -525,19 +485,31 @@ def test_encode_read_ipc_roundtrip():
     assert _read_ipc(buf).equals(t.combine_chunks())
 
 
-def test_partition_writer_combine_path():
+def _read_record(prefix, partition_id, off, length, map_id=None):
+    """Return the IPC frame of the record at ``off`` (``_RECORD_HEADER``)."""
+    with open(f"{prefix}_p{partition_id}.shf", "rb") as f:
+        f.seek(off)
+        record = f.read(length)
+    frame_len, rec_map_id, _attempt_token = _RECORD_HEADER.unpack(
+        record[: _RECORD_HEADER.size]
+    )
+    assert frame_len == length - _RECORD_HEADER.size
+    if map_id is not None:
+        assert rec_map_id == map_id
+    return record[_RECORD_HEADER.size :]
+
+
+def test_partition_writer_combine_path(tmp_path):
     # Writer decides combine path once per map from the schema: native (fast) for
     # plain columns, extension-safe (transform) when any column is an extension.
-    import io
-
     import numpy as np
     import pyarrow as pa
 
     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
+    prefix = str(tmp_path / "node")
     # (1) non-extension -> native; frame round-trips to the combined table.
-    buf = io.BytesIO()
-    w = _PartitionWriter(buf, map_id=0, compression="lz4")
+    w = _PartitionWriter(prefix, map_id=0, attempt_token=11, compression="lz4")
     w.add_shard(0, pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}))
     w.add_shard(0, pa.table({"a": [4, 5], "b": ["p", "q"]}))
     w.flush_all()
@@ -549,11 +521,11 @@ def test_partition_writer_combine_path():
             pa.table({"a": [4, 5], "b": ["p", "q"]}),
         ]
     ).combine_chunks()
-    assert _read_ipc(buf.getvalue()[off : off + length]).equals(expected)
+    assert _read_ipc(_read_record(prefix, 0, off, length)).equals(expected)
 
     # (2) extension (tensor) column -> transform-safe path, still writes a frame.
     ext = pa.table({"t": ArrowTensorArray.from_numpy(np.arange(12.0).reshape(3, 4))})
-    w2 = _PartitionWriter(io.BytesIO(), map_id=0, compression="zstd")
+    w2 = _PartitionWriter(prefix, map_id=1, attempt_token=12, compression="zstd")
     w2.add_shard(0, ext)
     w2.add_shard(0, ext)
     w2.flush_all()
@@ -561,20 +533,19 @@ def test_partition_writer_combine_path():
     assert w2.index[0][0][1] > 0
 
 
-def test_decoded_stats_tracks_rows_when_nbytes_zero():
+def test_decoded_stats_tracks_rows_when_nbytes_zero(tmp_path):
     """A null-typed table has rows with tbl.nbytes == 0. num_rows must
     record those rows; decoded_bytes stays nbytes-only.
     """
-    import io
-
     import pyarrow as pa
 
     tbl = pa.table({"k": pa.nulls(10)})
     assert tbl.num_rows == 10
     assert tbl.nbytes == 0
 
-    buf = io.BytesIO()
-    w = _PartitionWriter(buf, map_id=0, compression="none")
+    w = _PartitionWriter(
+        str(tmp_path / "node"), map_id=0, attempt_token=0, compression="none"
+    )
     w.add_shard(0, tbl)
     w.flush_all()
 
@@ -582,10 +553,119 @@ def test_decoded_stats_tracks_rows_when_nbytes_zero():
     nbytes = _counts_to_array(w.decoded_bytes_per_partition, num_partitions=4)
     assert rows.shape == (4,)
     assert rows[0] == 10
-    assert (rows[1:] == 0).all()
+    assert not rows[1:].any()
     assert nbytes.shape == (4,)
     assert nbytes[0] == 0
-    assert (nbytes[1:] == 0).all()
+    assert not nbytes[1:].any()
+
+
+def test_append_record_concurrent_writers_stay_contiguous(tmp_path):
+    """Map tasks on one node append to the same partition file concurrently.
+    Every (offset, length) a writer gets back must cover exactly its own
+    record: no interleaving, no two writers sharing bytes, and the records
+    pack the file with no gaps."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    import pyarrow as pa
+
+    prefix = str(tmp_path / "node")
+    n_writers, n_records = 8, 40
+
+    def write_all(writer_id):
+        out = []
+        for i in range(n_records):
+            w = _PartitionWriter(
+                prefix, map_id=writer_id, attempt_token=i, compression="lz4"
+            )
+            # Varying sizes so records do not line up by accident.
+            w.add_shard(0, pa.table({"w": [writer_id] * (i + 1), "i": [i] * (i + 1)}))
+            w.flush_all()
+            out.append((writer_id, i, w.index[0][0]))
+        return out
+
+    with ThreadPoolExecutor(n_writers) as ex:
+        records = [r for rs in ex.map(write_all, range(n_writers)) for r in rs]
+
+    size = os.path.getsize(f"{prefix}_p0.shf")
+    ranges = sorted(rng for _, _, rng in records)
+    assert ranges[0][0] == 0
+    assert all(sum(a) == b[0] for a, b in zip(ranges, ranges[1:]))
+    assert sum(ranges[-1]) == size
+    for writer_id, i, (off, length) in records:
+        tbl = _read_ipc(_read_record(prefix, 0, off, length, map_id=writer_id))
+        assert tbl.column("w").to_pylist() == [writer_id] * (i + 1)
+        assert tbl.column("i").to_pylist() == [i] * (i + 1)
+
+
+def test_append_record_offsets_are_record_relative(tmp_path):
+    path = str(tmp_path / "node_p3.shf")
+    import pyarrow as pa
+
+    r0 = _append_record(path, 4, 100, pa.py_buffer(b"abc"))
+    r1 = _append_record(path, 9, 200, pa.py_buffer(b"defgh"))
+    assert r0 == (0, _RECORD_HEADER.size + 3)
+    assert r1 == (r0[1], _RECORD_HEADER.size + 5)
+    with open(path, "rb") as f:
+        assert f.read() == (
+            _RECORD_HEADER.pack(3, 4, 100)
+            + b"abc"
+            + _RECORD_HEADER.pack(5, 9, 200)
+            + b"defgh"
+        )
+
+
+def test_decode_records_keeps_committed_attempts_in_file_order(tmp_path):
+    """A node file can hold records of a map task attempt that died after
+    appending; only the attempt the regroup published is decoded."""
+    import pyarrow as pa
+
+    path = str(tmp_path / "node_p0.shf")
+    frames = {
+        (1, 10): pa.table({"v": [1]}),
+        (0, 20): pa.table({"v": [0]}),  # dead attempt of map 0
+        (0, 21): pa.table({"v": [100]}),  # its retry
+    }
+    for (map_id, attempt_token), tbl in frames.items():
+        _append_record(path, map_id, attempt_token, _encode_shard(tbl, "lz4"))
+    size = os.path.getsize(path)
+
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        records = _decode_records(fd, 0, size, {0: 21, 1: 10}, "lz4")
+        assert [(m, t.column("v").to_pylist()) for m, t in records] == [
+            (1, [1]),
+            (0, [100]),
+        ]
+        # A region ending inside a record is a torn write: fail, never desync.
+        with pytest.raises(RuntimeError, match="torn record"):
+            _decode_records(fd, 0, size - 1, {0: 21, 1: 10}, "lz4")
+        with pytest.raises(RuntimeError, match="torn record header"):
+            _decode_records(fd, 0, _RECORD_HEADER.size - 1, {}, "lz4")
+    finally:
+        os.close(fd)
+
+
+def test_partition_input():
+    """One source per node with records for this partition, naming the node
+    file of that partition and its whole size; empty files are skipped."""
+    import numpy as np
+
+    table = {
+        "nodes": [("s", "node-1", "/a/node"), ("s", "node-2", "/b/node")],
+        "committed_attempts": {0: 5, 1: 6},
+    }
+    entry = {
+        "node_table": "ref",
+        "sizes": np.array([26, 0], dtype=np.int64),
+        "schema": "schema",
+    }
+    with patch.object(_runtime.ray, "get", side_effect=lambda ref: table):
+        inp = _partition_input(entry, partition_id=7)
+    assert inp.schema == "schema"
+    assert inp.committed_attempts == {0: 5, 1: 6}
+    assert [(s.node_id, s.file.path, s.file.ranges) for s in inp.sources] == [
+        ("node-1", "/a/node_p7.shf", [(0, 26)]),
+    ]
 
 
 # --------------------------------------------------- error class sanity checks

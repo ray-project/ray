@@ -1,16 +1,18 @@
 import os
 import pickle
 import random
-import struct
+import secrets
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (
     Any,
+    Dict,
     Generator,
     Iterable,
     Iterator,
     List,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -28,14 +30,14 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
     _build_range_index,
     _compute_prefetch_layout,
     _counts_to_array,
+    _decode_records,
     _fetch_from_file_server,
     _group_by_server,
-    _handles_to_sources,
     _is_disk_exhausted,
-    _order_tables_by_source,
+    _order_by_map_id,
+    _partition_input,
     _PartitionWriter,
     _PwriteSink,
-    _read_ipc,
     disk_shuffle_dirs,
     handle_to_block,
 )
@@ -66,7 +68,6 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 
-_DEFAULT_MAX_BYTES_PER_FETCH = 256 * 1024 * 1024  # 256 MiB per FETCH frame
 # CAP on fetch connections per reducer: n_threads = min(#file-servers, this).
 _DEFAULT_FETCH_THREADS = 16
 
@@ -82,22 +83,24 @@ def _write_disk_shuffle_file(
     compression: Optional[str],
     block_transformer: Optional[BlockTransformer],
 ) -> ShuffleHandle:
-    """Partition ``blocks`` and seal them into ``out_dir/map_{map_id}.shf``,
-    returning the ``ShuffleHandle`` reducers fetch from (on-disk path +
-    ``index_ranges`` + per-partition ``num_rows`` / ``decoded_bytes`` +
-    ``shuffle_id`` / ``node_id``). Shuffle bytes never enter the Ray object
-    store.
+    """Partition ``blocks``, append each partition's IPC frame to this node's
+    file for it (``out_dir/node_p{p}.shf``) and return the ``ShuffleHandle``
+    reducers fetch from. Shuffle bytes never enter the object store.
 
-    The output file is sealed via atomic ``rename``: writes land in
-    ``map_{i}.shf.tmp``, then flush + size sanity check against the index,
-    then ``os.rename`` to the published path. Readers see either no file or
-    a complete, size-validated one.
+    - Every map task on a node appends to the same per-partition files, in
+      one ``O_APPEND`` ``writev`` per record (``_append_record``), so there
+      is no coordinator and a reducer fetches one file per node.
+    - Records carry the map id and a per-attempt token. A failed attempt's
+      records stay in the files with a token the regroup never commits;
+      reducers skip them.
+    - Files are removed with the shuffle directory in
+      ``teardown_disk_shuffle``.
 
     Args:
         blocks: Input blocks to partition.
         partition_fn: Hash partitioner returning ``Dict[partition_id, Table]``.
         num_partitions: Total downstream partitions M.
-        out_dir: Directory to write ``map_{i}.shf`` into.
+        out_dir: This node's directory for the shuffle's ``node_p{p}.shf`` files.
         map_id: This map task's index.
         shuffle_id: Unique per-shuffle id; part of the file server's actor name.
         compression: Arrow IPC codec name (e.g. "lz4", "zstd") or None.
@@ -106,7 +109,7 @@ def _write_disk_shuffle_file(
             aggregation). May change the block schema.
 
     Returns:
-        ShuffleHandle describing the on-disk shards for reducers to fetch.
+        ShuffleHandle describing the on-disk records for reducers to fetch.
     """
     if block_transformer is not None:
         # The transformer (map-side combiner) needs the whole input at once.
@@ -127,73 +130,43 @@ def _write_disk_shuffle_file(
     node_id = ray.get_runtime_context().get_node_id()
 
     os.makedirs(out_dir, exist_ok=True)
-    final_path = os.path.join(out_dir, f"map_{map_id}.shf")
-    # Write to a temp file first; only ``rename`` once we've verified the full file.
-    tmp_path = final_path + ".tmp"
+    prefix = os.path.join(out_dir, "node")
+    # Tells this attempt's records from those a dead earlier attempt of the
+    # same map task left in the files.
+    attempt_token = secrets.randbits(64)
+    writer = _PartitionWriter(prefix, map_id, attempt_token, compression)
+    partition_fn = resolve_partition_fn(partition_fn, map_id)
     output_schema: Optional[pa.Schema] = None
+    for block in blocks:
+        # Accept any Ray Data Block (Arrow / pandas / ...) at the boundary and
+        # normalize to ``pa.Table`` here. Downstream (partition_fn, IPC
+        # serialize) is Arrow-only. No-op when already Arrow.
+        if not isinstance(block, pa.Table):
+            block = BlockAccessor.for_block(block).to_arrow()
+        if output_schema is None:
+            # First-seen schema; reducer uses it to type empty partitions
+            # (ShuffleHandle["schema"]).
+            output_schema = getattr(block, "schema", None)
+        if block.num_rows == 0:
+            continue
+        for partition_id, shard in partition_fn(block).items():
+            writer.add_shard(partition_id, shard)
+    writer.flush_all()
 
-    final_size_on_close = -1
-    try:
-        with open(tmp_path, "wb") as out_file:
-            writer = _PartitionWriter(out_file, map_id, compression)
-            partition_fn = resolve_partition_fn(partition_fn, map_id)
-            for block in blocks:
-                # Accept any Ray Data Block (Arrow / pandas / ...) at the
-                # boundary and normalize to ``pa.Table`` here. Downstream
-                # (partition_fn, IPC serialize) is Arrow-only. No-op when
-                # already Arrow.
-                if not isinstance(block, pa.Table):
-                    block = BlockAccessor.for_block(block).to_arrow()
-                if output_schema is None:
-                    # First-seen schema; reducer uses it to type empty
-                    # partitions (ShuffleHandle["schema"]).
-                    output_schema = getattr(block, "schema", None)
-                if block.num_rows == 0:
-                    continue
-                for partition_id, shard in partition_fn(block).items():
-                    writer.add_shard(partition_id, shard)
-            writer.flush_all()
-
-            # Flush userspace to page cache, then sanity-check the file size
-            # matches the index. Mismatch = logic bug or silent short write;
-            # refuse to publish (the except below unlinks tmp).
-            out_file.flush()
-            final_size_on_close = out_file.tell()
-            if writer.index:
-                expected_size = max(
-                    off + length
-                    for ranges in writer.index.values()
-                    for off, length in ranges
-                )
-            else:
-                expected_size = 0
-            assert final_size_on_close == expected_size, (
-                f"map_{map_id}.shf: file size mismatch, wrote "
-                f"{final_size_on_close} bytes, index implies {expected_size}"
-            )
-
-        # Atomic publish: .tmp → .shf.
-        os.rename(tmp_path, final_path)
-    except Exception:
-        # Don't leak a half-written .tmp in out_dir; Ray retries the task.
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
-
-    _idx_ranges = _build_range_index(writer.index, num_partitions)
     return {
-        "path": os.path.realpath(final_path),
+        "path": prefix,
         # Dense per-partition range index (see _build_range_index): row ``p`` is
-        # ``(offset, length)`` of partition ``p``'s frame.
-        "index_ranges": _idx_ranges,
+        # ``(offset, length)`` of this task's record in ``node_p{p}.shf``.
+        "index_ranges": _build_range_index(writer.index, num_partitions),
         "shuffle_id": shuffle_id,
         "node_id": node_id,
         "map_id": map_id,
+        "attempt_token": attempt_token,
         "num_partitions": num_partitions,
-        # Total bytes written to the output file, post-seal.
-        "total_bytes": final_size_on_close,
+        # Total bytes this task appended across its partition files.
+        "total_bytes": sum(
+            length for ranges in writer.index.values() for _, length in ranges
+        ),
         "compression": compression,
         # Dense [num_partitions] row counts; empty-gating uses this, not nbytes.
         "num_rows": _counts_to_array(writer.rows_per_partition, num_partitions),
@@ -207,8 +180,8 @@ def _write_disk_shuffle_file(
 
 class DiskShuffleWriteFn:
     """Block transform that closes a disk-shuffle map task: partition the
-    task's blocks, seal them into one ``map_{task_idx}.shf`` file, and yield
-    the handle block (``handle_to_block``).
+    task's blocks, append them to the node's per-partition ``node_p{p}.shf``
+    files, and yield the handle block (``handle_to_block``).
     """
 
     def __init__(
@@ -251,10 +224,9 @@ class DiskShuffleWriteFn:
 
 @ray.remote  # pyrefly: ignore[no-matching-overload]
 def _disk_shuffle_reduce_task(
-    *handles_by_input: List["ray.ObjectRef"],
+    *entries_by_input: Dict[str, Any],
     partition_id: int,
     reduce_fn: ReduceFn,
-    max_bytes_per_fetch: int,
     fetch_threads: int,
     target_max_block_size: Optional[int],
     map_transformer: Optional[Any],
@@ -274,13 +246,13 @@ def _disk_shuffle_reduce_task(
     its future completes.
 
     Args:
-        *handles_by_input: One handle list per upstream input (one for
-            repartition/sort/aggregate, two for join), each holding one
-            ``ShuffleHandle`` per mapper. ``tables_by_input`` passed to
+        *entries_by_input: One regroup entry per upstream input (one for
+            repartition/sort/aggregate, two for join): the input's shared
+            node table plus this partition's per-node file sizes (see
+            ``_partition_input``). ``tables_by_input`` passed to
             ``reduce_fn`` is aligned with this order.
         partition_id: Partition this reducer owns.
         reduce_fn: User-supplied reduce callable.
-        max_bytes_per_fetch: Per-FETCH-frame payload cap.
         fetch_threads: Concurrent per-file-server fetch threads.
         target_max_block_size: Output block size cap. None emits as-is.
         map_transformer: Fused downstream map applied to the full reduce
@@ -294,13 +266,10 @@ def _disk_shuffle_reduce_task(
     """
     start_time_s = time.perf_counter()
 
-    num_inputs = len(handles_by_input)
-    sources_by_input: List[List[Any]] = []
-    schemas_by_input: List[Optional[pa.Schema]] = []
-    for handles in handles_by_input:
-        sources, schema = _handles_to_sources(handles, partition_id)
-        sources_by_input.append(sources)
-        schemas_by_input.append(schema)
+    num_inputs = len(entries_by_input)
+    inputs = [_partition_input(entry, partition_id) for entry in entries_by_input]
+    sources_by_input: List[List[Any]] = [inp.sources for inp in inputs]
+    schemas_by_input: List[Optional[pa.Schema]] = [inp.schema for inp in inputs]
     output_schema: Optional[pa.Schema] = next(
         (s for s in schemas_by_input if s is not None), None
     )
@@ -387,6 +356,12 @@ def _disk_shuffle_reduce_task(
 
         groups_by_input = [_group_by_server(srcs) for srcs in sources_by_input]
         flat_groups = [group for groups in groups_by_input for group in groups]
+        # Committed attempt token per map id, per fetch group's input.
+        committed_attempts_by_group = [
+            inp.committed_attempts
+            for inp, groups in zip(inputs, groups_by_input)
+            for _ in groups
+        ]
 
         try:
             # Fetch each source region in parallel, pwrite at pre-assigned offsets
@@ -395,8 +370,10 @@ def _disk_shuffle_reduce_task(
             total_size, base_offsets, node_sizes = _compute_prefetch_layout(flat_groups)
 
             # One slot per fetch group so regions decode as they land;
-            # _order_tables_by_source restores map task order afterwards.
-            tables_by_group: List[List[pa.Table]] = [[] for _ in flat_groups]
+            # _order_by_map_id restores map task order afterwards.
+            records_by_group: List[List[Tuple[int, pa.Table]]] = [
+                [] for _ in flat_groups
+            ]
             output_buffer: Optional[BlockOutputBuffer] = None
             # Codec from data_context.shuffle_compression (same field the map used).
             _compression = (
@@ -432,7 +409,9 @@ def _disk_shuffle_reduce_task(
                 try:
                     if total_size > 0:
                         try:
-                            os.posix_fallocate(fd, 0, total_size)  # Linux only
+                            os.posix_fallocate(  # pyrefly: ignore[missing-attribute]
+                                fd, 0, total_size
+                            )  # Linux only
                         except AttributeError:
                             # posix_fallocate not on this platform (macOS /
                             # Windows / minimal Python). Fall back to sparse
@@ -462,16 +441,6 @@ def _disk_shuffle_reduce_task(
                     if work:
                         random.Random(partition_id).shuffle(work)
 
-                    def _decode_region(base: int, size: int, accum: List[pa.Table]):
-                        """Decode one staging-file region's IPC frames into ``accum_tables``."""
-                        pos = base
-                        end = base + size
-                        while pos < end:
-                            length = struct.unpack(">Q", os.pread(fd, 8, pos))[0]
-                            ipc_buf = os.pread(fd, length, pos + 8)
-                            pos += 8 + length
-                            accum.append(_read_ipc(ipc_buf, _compression))
-
                     with ThreadPoolExecutor(max_workers=n_threads) as ex:
                         futs = {
                             ex.submit(
@@ -480,7 +449,6 @@ def _disk_shuffle_reduce_task(
                                 group.shuffle_id,
                                 group.node_id,
                                 group.members,
-                                max_bytes_per_fetch,
                             ): (base, size, group_idx)
                             for group_idx, base, size, group in work
                         }
@@ -488,14 +456,20 @@ def _disk_shuffle_reduce_task(
                             fut.result()
                             base, size, group_idx = futs[fut]
                             if size > 0:
-                                _decode_region(base, size, tables_by_group[group_idx])
+                                records_by_group[group_idx] = _decode_records(
+                                    fd,
+                                    base,
+                                    size,
+                                    committed_attempts_by_group[group_idx],
+                                    _compression,
+                                )
 
                     accum_tables_by_input: List[List[pa.Table]] = []
                     start = 0
                     for groups in groups_by_input:
                         end = start + len(groups)
                         accum_tables_by_input.append(
-                            _order_tables_by_source(groups, tables_by_group[start:end])
+                            _order_by_map_id(records_by_group[start:end])
                         )
                         start = end
                     if any(accum_tables_by_input):

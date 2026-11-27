@@ -36,7 +36,6 @@ from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runti
 )
 from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_tasks import (  # noqa: E501
     _DEFAULT_FETCH_THREADS,
-    _DEFAULT_MAX_BYTES_PER_FETCH,
     ReduceFn,
     _disk_shuffle_reduce_task,
 )
@@ -63,7 +62,6 @@ from ray.data._internal.stats import StatsDict
 from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.data.block import BlockAccessor, BlockMetadata, BlockStats, TaskExecWorkerStats
 from ray.data.context import DataContext
-from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
@@ -81,9 +79,12 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
     ``ShuffleMapOp`` does for the object-store reduce. The reduce then submits
     one task per ``add_input``, which the executor's backpressure paces.
 
-    A partition's bundle holds one block entry per input: a ref to that
-    input's list of handle refs (shared by all partitions), with the
-    partition's rows and decoded bytes from that input as its metadata.
+    A partition's bundle holds one block entry per input: the input's node
+    table (one object shared by every partition: each node's file server,
+    node-file prefix, and the committed attempt token per map task) plus
+    the ``[N]`` sizes of the nodes' files for this partition. The entry's
+    metadata carries the partition's rows and decoded bytes from that
+    input. Bookkeeping here and per reducer is per node, not per map task.
 
     The op also owns the per-node ``ShuffleFileServer`` actors: it creates one
     per (shuffle_id, node_id) the first time a mapper handle from that node
@@ -109,9 +110,16 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         )
         self._num_partitions: int = num_partitions
         self._handle_bundles: List[RefBundle] = []
-        self._handle_refs_by_input: List[List[ObjectRef]] = [[] for _ in input_ops]
-        # Map task index of each handle, parallel to ``_handle_refs_by_input``.
-        self._handle_map_ids_by_input: List[List[int]] = [[] for _ in input_ops]
+        # Per input: (shuffle_id, node_id, node-file prefix) -> node index,
+        # and per node the [P] sizes of its partition files (end of the last
+        # committed record in each).
+        self._node_index_by_input: List[Dict[tuple, int]] = [{} for _ in input_ops]
+        self._file_sizes_by_input: List[List[np.ndarray]] = [[] for _ in input_ops]
+        # Per input: map task index -> attempt token of the attempt whose
+        # handle arrived. Only its records count (``_decode_records``).
+        self._committed_attempts_by_input: List[Dict[int, int]] = [
+            {} for _ in input_ops
+        ]
         self._partition_rows_by_input: List[np.ndarray] = [
             np.zeros(num_partitions, dtype=np.int64) for _ in input_ops
         ]
@@ -145,14 +153,36 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         handle_refs = [entry.ref for entry in refs.blocks]
         handle_blocks = ray.get(handle_refs)  # pyrefly: ignore[no-matching-overload]
-        for ref, handle_block in zip(handle_refs, handle_blocks):
+        for handle_block in handle_blocks:
             handle = handle_from_block(handle_block)
             self._record_handle(handle, input_index)
-            self._handle_refs_by_input[input_index].append(ref)
-            self._handle_map_ids_by_input[input_index].append(
-                handle.get("map_id", len(self._handle_map_ids_by_input[input_index]))
-            )
+            self._fold_file_sizes(handle, input_index)
         self._handle_bundles.append(refs)
+
+    def _fold_file_sizes(self, handle: Mapping[str, Any], input_index: int) -> None:
+        """Record ``handle``: grow its node's per-partition file sizes to its
+        records' ends and store its attempt token as the committed one for
+        its map id.
+
+        Ray returns one result per task, so each map id is recorded once,
+        from the attempt that finished; a dead attempt's records are then
+        skipped by the reducer.
+        """
+        key = (handle["shuffle_id"], handle["node_id"], handle["path"])
+        nodes = self._node_index_by_input[input_index]
+        sizes_by_node = self._file_sizes_by_input[input_index]
+        node = nodes.get(key)
+        if node is None:
+            node = nodes[key] = len(sizes_by_node)
+            sizes_by_node.append(np.zeros(self._num_partitions, np.int64))
+        ranges = np.asarray(handle["index_ranges"], dtype=np.int64)
+        sizes = sizes_by_node[node]
+        np.maximum(
+            sizes, ranges[:, 0] + ranges[:, 1], out=sizes, where=ranges[:, 1] > 0
+        )
+        self._committed_attempts_by_input[input_index][int(handle["map_id"])] = int(
+            handle["attempt_token"]
+        )
 
     def _record_handle(self, handle: Mapping[str, Any], input_index: int) -> None:
         for key, tallies in (
@@ -192,20 +222,45 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        if not any(self._handle_refs_by_input):
+        if not any(self._node_index_by_input):
             return
-        # Writers finish in any order; publish handles in map task order so a
-        # reducer's input, and so its output, is the same on every run.
-        shared_handles = [
-            ray.put([ref for _, ref in sorted(zip(map_ids, refs), key=lambda t: t[0])])
-            for map_ids, refs in zip(
-                self._handle_map_ids_by_input, self._handle_refs_by_input
+        self._emit_file_sizes()
+
+    def _emit_file_sizes(self) -> None:
+        """Emit one bundle per partition: per input, the shared node table
+        plus the ``[N]`` sizes of the nodes' files for that partition.
+
+        A node's file for a partition holds only that partition, so the
+        reducer reads it whole up to the size recorded here. Records of a
+        map task attempt that died after appending may sit inside;
+        ``_decode_records`` drops them by attempt token.
+        """
+        tables, sizes = [], []
+        for nodes, sizes_by_node, committed_attempts in zip(
+            self._node_index_by_input,
+            self._file_sizes_by_input,
+            self._committed_attempts_by_input,
+        ):
+            tables.append(
+                ray.put(
+                    {"nodes": list(nodes), "committed_attempts": committed_attempts}
+                )
             )
-        ]
+            sizes.append(
+                np.stack(sizes_by_node)
+                if sizes_by_node
+                else np.zeros((0, self._num_partitions), np.int64)
+            )
         for partition_id in range(self._num_partitions):
             entries = tuple(
                 BlockEntry(
-                    ref=shared,  # pyrefly: ignore[bad-argument-type]
+                    ref=ray.put(  # pyrefly: ignore[bad-argument-type]
+                        {
+                            "node_table": table_ref,
+                            "sizes": np.ascontiguousarray(size[:, partition_id]),
+                            "schema": schema,
+                        }
+                    ),
                     metadata=BlockMetadata(
                         num_rows=int(rows[partition_id]),
                         size_bytes=int(nbytes[partition_id]),
@@ -213,8 +268,10 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
                         input_files=make_partition_sentinel(partition_id),
                     ),
                 )
-                for shared, rows, nbytes in zip(
-                    shared_handles,
+                for table_ref, size, schema, rows, nbytes in zip(
+                    tables,
+                    sizes,
+                    self._schema_by_input,
                     self._partition_rows_by_input,
                     self._partition_bytes_by_input,
                 )
@@ -268,19 +325,19 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
         self._handle_bundles.clear()
-        self._handle_refs_by_input = [[] for _ in range(self.num_inputs)]
-        self._handle_map_ids_by_input = [[] for _ in range(self.num_inputs)]
+        self._node_index_by_input = [{} for _ in range(self.num_inputs)]
+        self._file_sizes_by_input = [[] for _ in range(self.num_inputs)]
+        self._committed_attempts_by_input = [{} for _ in range(self.num_inputs)]
 
 
 class DiskHashShuffleReduceOp(PhysicalOperator):
     """Disk-shuffle reduce operator.
 
     Consumes a ``DiskHashShuffleRegroupOp``: one bundle per partition in via
-    ``_add_input_inner``, one reduce task per partition out. The bundle refs
-    each input's mapper handles, which name the mapper's on-disk file and its
-    per-partition byte ranges; ``_disk_shuffle_reduce_task`` uses them to
-    fetch its partition over Arrow Flight from each mapper's
-    ``ShuffleFileServer``.
+    ``_add_input_inner``, one reduce task per partition out. The bundle
+    carries, per input, the node table and the size of each node's file for
+    this partition; ``_disk_shuffle_reduce_task`` fetches the files over
+    Arrow Flight from each node's ``ShuffleFileServer``.
 
     Supports one or more co-partitioned inputs. With multiple inputs (e.g.
     join) every input must be partitioned into the same ``num_partitions``;
@@ -367,7 +424,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         self._reduce_metrics = self._phase_metrics.phase_metrics["reduce"]
 
         # _disk_shuffle_reduce_task tuning (internal defaults, not exposed):
-        self._max_bytes_per_fetch: int = _DEFAULT_MAX_BYTES_PER_FETCH
         self._fetch_threads: int = _DEFAULT_FETCH_THREADS
 
     def set_emit_whole_partitions(self) -> None:
@@ -460,7 +516,6 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             *handles_refs,  # pyrefly: ignore[bad-argument-type]
             partition_id=partition_id,
             reduce_fn=self._reduce_fn,
-            max_bytes_per_fetch=self._max_bytes_per_fetch,
             fetch_threads=self._fetch_threads,
             target_max_block_size=target_max_block_size,
             map_transformer=self._fused_output_map_transformer,
