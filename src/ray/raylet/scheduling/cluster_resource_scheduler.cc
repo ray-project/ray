@@ -267,6 +267,14 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
     const std::string &preferred_node_id,
     bool exclude_local_node,
     bool requires_object_store_memory) {
+  const auto &scheduling_strategy = lease_spec.GetSchedulingStrategy();
+  // Local preference must not override node labels, node affinity, or spread.
+  const bool prefer_local_node =
+      preferred_node_id == local_node_id_.Binary() &&
+      !scheduling_strategy.has_node_label_scheduling_strategy() &&
+      !scheduling_strategy.has_node_affinity_scheduling_strategy() &&
+      !scheduling_strategy.has_spread_scheduling_strategy();
+
   // Construct list of references to all LabelSelectors, from both the `label_selector`
   // and `fallback_strategy` arguments.
   std::vector<std::reference_wrapper<const LabelSelector>> label_selectors;
@@ -286,7 +294,7 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
 
     // If the local node is available, we should directly return it instead of
     // going through the full hybrid policy since we don't want spillback.
-    if (preferred_node_id == local_node_id_.Binary() && !exclude_local_node &&
+    if (prefer_local_node && !exclude_local_node &&
         IsSchedulableOnNode(local_node_id_,
                             lease_spec.GetRequiredPlacementResources().GetResourceMap(),
                             label_selector,
@@ -298,7 +306,7 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
     const auto result = GetBestSchedulableNode(
         lease_spec.GetRequiredPlacementResources().GetResourceMap(),
         label_selector,
-        lease_spec.GetMessage().scheduling_strategy(),
+        scheduling_strategy,
         requires_object_store_memory,
         lease_spec.IsActorCreationTask(),
         exclude_local_node,
@@ -337,7 +345,7 @@ NodeSchedulingResult ClusterResourceScheduler::GetBestSchedulableNode(
 
   // If the all best nodes found are not available but the local node is feasible,
   // wait on the local node.
-  if ((preferred_node_id == local_node_id_.Binary()) && NodeAvailable(local_node_id_)) {
+  if (prefer_local_node && NodeAvailable(local_node_id_)) {
     auto resource_request = ResourceMapToResourceRequest(
         lease_spec.GetRequiredPlacementResources().GetResourceMap(),
         requires_object_store_memory);
