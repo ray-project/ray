@@ -10,6 +10,7 @@ from typing import Any, Dict, Generator, List, Tuple, Type
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.parquet as pq
 import pytest
 from pyiceberg import (
     catalog as pyi_catalog,
@@ -3363,10 +3364,11 @@ def _walk(op):
 class TestIcebergDatasourceV2:
     """Tests for the V2-only machinery, which has no V1 counterpart.
 
-    The parity tests above cover behavior shared with V1; these cover the two
+    The parity tests above cover behavior shared with V1; these cover the three
     pieces V2 adds: the manifest that carries per-file Iceberg state from the
-    listing task to the read tasks, and the bin packing that decides how many
-    read tasks there are.
+    listing task to the read tasks, the bin packing that decides how many read
+    tasks there are, and the ``count()`` that is answered from that manifest
+    instead of by reading.
     """
 
     @staticmethod
@@ -3621,6 +3623,97 @@ class TestIcebergDatasourceV2:
         assert ServerSidePlanning.for_table(rest_table) is None
         assert ServerSidePlanning.for_table(self._load_table()) is None
 
+    @_requires_server_side_planning
+    def test_count_matches_the_read_when_the_server_plans(
+        self, fake_rest_catalog, restore_data_context
+    ):
+        """A filtered ``count()`` agrees with the read when the server plans.
+
+        The fake server sends no residual, which PyIceberg reads as
+        ``AlwaysTrue``.
+        """
+        restore_data_context._use_iceberg_datasource_v2 = True
+        path = fake_rest_catalog.planned_path.removeprefix("file://")
+        values = sorted(
+            pq.ParquetFile(path).read(columns=["col_a"])["col_a"].to_pylist()
+        )
+        row_filter = pyi_expr.GreaterThanOrEqual("col_a", values[len(values) // 2])
+
+        def read():
+            return read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs={
+                    "name": "fake_rest",
+                    "type": "rest",
+                    "uri": fake_rest_catalog.uri,
+                    **_SERVER_SIDE_PLANNING_ON,
+                },
+                row_filter=row_filter,
+            )
+
+        # A fresh Dataset each time: one that has been read counts its rows.
+        assert read().count() == len(read().take_all())
+
+    @pytest.mark.parametrize(
+        "row_filter, day, every_row_matches",
+        [
+            ("ts >= '2026-11-02T12:00:00'", "2026-11-03", True),
+            ("ts >= '2026-11-02T12:00:00'", "2026-11-02", False),
+            ("ts != '2026-11-02T11:00:00'", "2026-11-02", False),
+        ],
+    )
+    def test_server_planned_residual_comes_from_the_partition(
+        self, row_filter, day, every_row_matches
+    ):
+        """A server-planned file's residual comes from its partition values.
+
+        The REST spec sends a ``day(ts)`` value as a string, which PyIceberg
+        compares as days since 1970.
+        """
+        from pyiceberg.expressions.parser import parse
+        from pyiceberg.io import load_file_io
+        from pyiceberg.manifest import DataFileContent
+        from pyiceberg.table import DataScan
+        from pyiceberg.table.metadata import new_table_metadata
+        from pyiceberg.table.sorting import UNSORTED_SORT_ORDER
+        from pyiceberg.transforms import DayTransform
+        from pyiceberg.typedef import Record
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            _residual_from_partition,
+        )
+
+        metadata = new_table_metadata(
+            pyi_schema.Schema(
+                pyi_types.NestedField(
+                    1, "ts", pyi_types.TimestampType(), required=False
+                )
+            ),
+            PartitionSpec(
+                PartitionField(
+                    source_id=1, field_id=1000, transform=DayTransform(), name="ts_day"
+                )
+            ),
+            UNSORTED_SORT_ORDER,
+            "file:///unused",
+        )
+        data_file = DataFile.from_args(
+            content=DataFileContent.DATA,
+            file_path="file:///unused/f.parquet",
+            file_format=FileFormat.PARQUET,
+            partition=Record(day),
+            record_count=1,
+            file_size_in_bytes=1,
+        )
+        data_file.spec_id = metadata.default_spec_id
+        scan = DataScan(
+            table_metadata=metadata, io=load_file_io(), row_filter=parse(row_filter)
+        )
+
+        residual = _residual_from_partition(scan, FileScanTask(data_file))
+
+        assert isinstance(residual, pyi_expr.AlwaysTrue) == every_row_matches
+
     def test_select_columns_keeps_the_requested_order(self, restore_data_context):
         """Rows come back in the order ``select_columns`` asked for.
 
@@ -3691,38 +3784,193 @@ class TestIcebergDatasourceV2:
         assert datasource.infer_schema(None).names == ["col_a", "col_b", "col_c"]
         assert datasource.resolve_partitioning(None) is None
 
-    def test_count_declines_the_metadata_pushdown(self, restore_data_context):
-        """Iceberg answers neither count hook yet, so the rule declines.
+    def test_count_is_answered_from_iceberg_metadata(self, restore_data_context):
+        """``count()`` must read no data when nothing can reduce the row count.
 
-        ``PushdownCountFiles`` asks two questions -- is the metadata row count
-        exact under this scan, and can the listing emit one row per file -- and
-        both default to "no". Neither ``IcebergScanner`` nor
-        ``IcebergFileIndexer`` overrides them, so ``count()`` keeps its
-        ``ReadFiles`` and gets the answer by reading. That is the fail-closed
-        default doing its job with a real datasource behind it rather than a
-        stub, and it is what a later change deliberately flips.
+        Iceberg writes each data file's ``record_count`` into its own
+        manifests, so the whole answer is already in the listing task's output
+        -- unlike the Parquet path, which still has to fetch a footer per file.
         """
-        from ray.data._internal.logical.operators.read_operator import ReadFiles
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            IcebergFileIndexer,
+        )
+        from ray.data._internal.logical.operators.map_operator import MapBatches
+        from ray.data._internal.logical.operators.read_operator import (
+            ListFiles,
+            ReadFiles,
+        )
 
         restore_data_context._use_iceberg_datasource_v2 = True
+        expected = len(self._load_table().scan().to_arrow())
 
         ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
         )
-        plan = _optimized_count_plan(ds)
-        assert any(isinstance(op, ReadFiles) for op in _walk(plan.dag)), (
-            "the count must still go through a read, got operators: "
-            f"{_get_operator_types(plan)}"
-        )
-        # The fixture deletes rows after writing them, so the count must reflect
-        # the delete.
-        catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-        expected = len(
-            catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}").scan().to_arrow()
-        )
+        dag = _optimized_count_plan(ds).dag
+
+        assert isinstance(dag, MapBatches)
+        assert not any(isinstance(op, ReadFiles) for op in _walk(dag))
+
+        # The rule rebuilds ``ListFiles`` with whatever ``as_whole_file_indexer``
+        # returns. For Parquet that is a *different*, plainer indexer, because
+        # the footer one bin-packs row groups and can emit a file once per bin.
+        # Ours must survive intact: it plans the table, and a plain path-walking
+        # indexer has nothing to walk.
+        (list_files,) = [op for op in _walk(dag) if isinstance(op, ListFiles)]
+        assert isinstance(list_files.file_indexer, IcebergFileIndexer)
+        assert list_files.file_partitioner is None
+
+        # The fixture's delete rewrote its files, so their ``record_count``
+        # already excludes the deleted rows.
         assert expected < len(create_pa_table())
         assert ds.count() == expected
+
+    def test_count_pushdown_declines_a_limit(self, restore_data_context):
+        """A limit is applied while reading; no metadata says where it stops."""
+        from ray.data._internal.logical.operators.read_operator import ReadFiles
+
+        restore_data_context._use_iceberg_datasource_v2 = True
+        ds = read_iceberg(
+            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+            catalog_kwargs=_CATALOG_KWARGS.copy(),
+        ).limit(7)
+
+        assert any(
+            isinstance(op, ReadFiles) for op in _walk(_optimized_count_plan(ds).dag)
+        )
+        assert ds.count() == 7
+
+    @pytest.mark.parametrize(
+        "row_filter",
+        [
+            pyi_expr.NotEqualTo("col_c", 3),
+            pyi_expr.Not(pyi_expr.EqualTo("col_c", 3)),
+        ],
+        ids=["not_equal", "not_of_equal"],
+    )
+    def test_count_agrees_with_the_read_on_a_null_partition(
+        self, restore_data_context, clean_table, row_filter
+    ):
+        """``count()`` doesn't take ``record_count`` for a null partition under ``!=``.
+
+        Iceberg gives that file an ``AlwaysTrue`` residual, but ``ArrowScan``
+        drops its row, since ``null != 3`` is null in PyArrow.
+        """
+        _, table = clean_table
+        _append_files(
+            table,
+            [
+                {"col_a": 1, "col_b": "a", "col_c": 3},
+                {"col_a": 2, "col_b": "b", "col_c": None},
+                {"col_a": 3, "col_b": "c", "col_c": 4},
+            ],
+        )
+        restore_data_context._use_iceberg_datasource_v2 = True
+
+        def read():
+            return read_iceberg(
+                table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+                catalog_kwargs=_CATALOG_KWARGS.copy(),
+                row_filter=row_filter,
+            )
+
+        assert len(read().take_all()) == 1
+        assert read().count() == 1
+
+    def test_read_metadata_subtracts_deleted_rows(self, tmp_path):
+        """A file with delete files is counted by reading it, not by metadata.
+
+        ``record_count`` counts rows the file holds, including ones a delete
+        file removes, so trusting it on a merge-on-read table would over-report.
+        This is the one branch of ``read_metadata`` that touches data, and it is
+        the branch PyIceberg's own ``count()`` takes for the same reason.
+        """
+        from pyiceberg.manifest import DataFileContent
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (  # noqa: E501
+            IcebergFileReader,
+        )
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_manifest import (
+            manifest_from_scan_tasks,
+            scan_tasks_from_manifest,
+        )
+
+        table = self._load_table()
+        task = list(table.scan().plan_files())[0]
+        reader = IcebergFileReader(
+            table_metadata=table.metadata,
+            io=table.io,
+            projected_schema=table.scan().projection(),
+            row_filter=pyi_expr.AlwaysTrue(),
+        )
+
+        def count(scan_task) -> int:
+            manifest = manifest_from_scan_tasks([scan_task])
+            (metadata,) = reader.read_metadata(manifest)
+            return metadata.num_rows
+
+        clean_count = count(task)
+        assert clean_count == task.file.record_count
+
+        deleted_positions = [0, 2]
+        delete_path = tmp_path / "count-pos-deletes.parquet"
+        pq.write_table(
+            pa.table(
+                {
+                    "file_path": pa.array(
+                        [task.file.file_path] * len(deleted_positions), pa.string()
+                    ),
+                    "pos": pa.array(deleted_positions, pa.int64()),
+                }
+            ),
+            delete_path,
+        )
+        delete_file = DataFile.from_args(
+            content=DataFileContent.POSITION_DELETES,
+            file_path=f"file://{delete_path}",
+            file_format=FileFormat.PARQUET,
+            partition=task.file.partition,
+            record_count=len(deleted_positions),
+            file_size_in_bytes=delete_path.stat().st_size,
+        )
+        dirty = FileScanTask(task.file, delete_files={delete_file})
+
+        assert count(dirty) == clean_count - len(deleted_positions)
+        # The carried task still has the pre-delete number, so the subtraction
+        # is the reader's doing, not the encoder's.
+        (carried,) = scan_tasks_from_manifest(manifest_from_scan_tasks([dirty]))
+        assert carried.file.record_count == clean_count
+
+    def test_reader_declines_metadata_under_a_limit(self):
+        """The reader's own guard, independent of the scanner's.
+
+        ``metadata_row_count_is_exact`` already stops the rule from asking, so
+        this is the second of two fail-closed layers: a caller that reaches
+        ``read_metadata`` another way still cannot be handed a partial count.
+        A row filter is deliberately *not* refused here -- ``read_metadata``
+        accounts for one per file.
+        """
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_reader import (  # noqa: E501
+            IcebergFileReader,
+        )
+        from ray.data._internal.datasource_v2.interfaces.supports_metadata import (
+            MetadataType,
+        )
+
+        table = self._load_table()
+        kwargs = {
+            "table_metadata": table.metadata,
+            "io": table.io,
+            "projected_schema": table.scan().projection(),
+        }
+        limited = IcebergFileReader(**kwargs, row_filter=pyi_expr.AlwaysTrue(), limit=5)
+        assert limited.available_metadata() == set()
+
+        filtered = IcebergFileReader(
+            **kwargs, row_filter=pyi_expr.LessThan("col_a", 50)
+        )
+        assert filtered.available_metadata() == {MetadataType.NUM_ROWS}
 
 
 if __name__ == "__main__":

@@ -16,6 +16,8 @@ When the table's REST catalog plans scans on its server, the task rebuilds the
 catalog from the properties the driver resolved (``ServerSidePlanning``) and
 gives it to the ``DataScan``, so PyIceberg asks the server for the file list
 instead of reading the manifests itself, as ``Table.scan`` does on the driver.
+The server may leave a file's residual out, so the listing works it out from
+the file's partition values, as local planning does.
 """
 
 from __future__ import annotations
@@ -51,8 +53,9 @@ if TYPE_CHECKING:
     from pyiceberg.catalog.rest import RestCatalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
-    from pyiceberg.table import FileScanTask, Table
+    from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
+    from pyiceberg.types import IcebergType
 
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
     from ray.data.block import BlockColumn
@@ -139,6 +142,24 @@ class IcebergFileIndexer(FileIndexer):
         self._server_side_planning = server_side_planning
 
     @override
+    def as_whole_file_indexer(self) -> "IcebergFileIndexer":
+        """This indexer, unchanged -- it already emits each file exactly once.
+
+        The base class defaults to ``None`` because an indexer may emit one
+        manifest row per *chunk* of a file, which would over-count it: that is
+        the footer-based Parquet indexer, where one file's row groups become
+        several rows. An Iceberg scan task names a whole file and is never
+        split -- the manifest's chunk-metadata column is all null -- so one
+        file is always one row here. The other half of the default, "does no
+        per-file IO while listing", holds too: planning reads table metadata
+        only.
+
+        Returns:
+            ``self``.
+        """
+        return self
+
+    @override
     def list_files(
         self,
         paths: "BlockColumn",
@@ -213,4 +234,71 @@ class IcebergFileIndexer(FileIndexer):
             self._snapshot_id,
             self._row_filter,
         )
-        return iter(scan.plan_files())
+        tasks = list(scan.plan_files())
+        if self._server_side_planning is not None:
+            for task in tasks:
+                task.residual = _residual_from_partition(scan, task)
+        return iter(tasks)
+
+
+def _residual_from_partition(
+    scan: "DataScan", task: "FileScanTask"
+) -> "BooleanExpression":
+    """The residual local planning gives ``task``, from its partition values.
+
+    PyIceberg reads a residual the REST server left out as ``AlwaysTrue``,
+    which would make ``record_count`` look exact. Falls back to the whole
+    filter.
+    """
+    from pyiceberg.expressions.visitors import residual_evaluator_of
+    from pyiceberg.typedef import Record
+
+    schema = scan.table_metadata.schema()
+    try:
+        spec = scan.table_metadata.specs()[task.file.spec_id]
+        fields = spec.partition_type(schema).fields
+        if len(task.file.partition) != len(fields):
+            return scan.row_filter
+        partition = Record(
+            *(
+                _partition_value(field.field_type, task.file.partition[i])
+                for i, field in enumerate(fields)
+            )
+        )
+        return residual_evaluator_of(
+            spec=spec,
+            expr=scan.row_filter,
+            case_sensitive=scan.case_sensitive,
+            schema=schema,
+        ).residual_for(partition)
+    except Exception:
+        logger.debug("No residual for %s", task.file.file_path, exc_info=True)
+        return scan.row_filter
+
+
+def _partition_value(field_type: "IcebergType", value: Any) -> Any:
+    """A REST partition value as PyIceberg keeps it.
+
+    The REST spec sends dates, times and timestamps as strings; PyIceberg keeps
+    them as days and microseconds.
+    """
+    from datetime import date, datetime, time
+
+    from pyiceberg.conversions import from_json
+    from pyiceberg.utils.datetime import (
+        date_to_days,
+        datetime_to_micros,
+        time_to_micros,
+    )
+
+    if value is None:
+        return None
+    value = from_json(field_type, value)
+    # A ``datetime`` is also a ``date``, so it goes first.
+    if isinstance(value, datetime):
+        return datetime_to_micros(value)
+    if isinstance(value, date):
+        return date_to_days(value)
+    if isinstance(value, time):
+        return time_to_micros(value)
+    return value
