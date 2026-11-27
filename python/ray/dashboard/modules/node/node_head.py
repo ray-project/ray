@@ -148,6 +148,14 @@ def _actor_table_data_to_dict(message):
     return light_message
 
 
+def _remove_actor_from_node(node_id: str, actor_id: str) -> None:
+    actors = DataSource.node_actors.get(node_id)
+    if actors is not None:
+        actors.pop(actor_id, None)
+        if not actors:
+            del DataSource.node_actors[node_id]
+
+
 class NodeHead(SubprocessModule):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -680,6 +688,9 @@ class NodeHead(SubprocessModule):
         # states related fields.
         actor = DataSource.actors.get(actor_id)
 
+        # The merge below updates the cached actor in place.
+        previous_node_id = (actor.get("address") or {}).get("nodeId") if actor else None
+
         if actor and actor_table_data["state"] != "DEPENDENCIES_UNREADY":
             for k in ACTOR_TABLE_STATE_COLUMNS:
                 if k in actor_table_data:
@@ -688,6 +699,9 @@ class NodeHead(SubprocessModule):
 
         actor_id = actor_table_data["actorId"]
         node_id = actor_table_data["address"]["nodeId"]
+
+        if previous_node_id and previous_node_id != node_id:
+            _remove_actor_from_node(previous_node_id, actor_id)
 
         if actor_table_data["state"] == "DEAD":
             self._destroyed_actors_queue.append(actor_id)
@@ -722,9 +736,9 @@ class NodeHead(SubprocessModule):
                     actor_id = self._destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
-                        node_id = actor["address"].get("nodeId")
+                        node_id = (actor.get("address") or {}).get("nodeId")
                         if node_id and node_id != actor_consts.NIL_NODE_ID:
-                            del DataSource.node_actors[node_id][actor_id]
+                            _remove_actor_from_node(node_id, actor_id)
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")

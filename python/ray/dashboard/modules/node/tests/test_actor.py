@@ -14,6 +14,7 @@ from ray._private.test_utils import (
 )
 from ray.dashboard.modules.node import actor_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
+from ray.dashboard.modules.node.node_head import NodeHead
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.util.placement_group import placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -58,6 +59,40 @@ def test_actor_info_associates_npus_by_pid(monkeypatch):
 
     assert actor_info["npus"] == [matching_npu]
     assert actor_info["processStats"] == process_stats
+
+
+@pytest.mark.parametrize("new_node", ["node-b", actor_consts.NIL_NODE_ID])
+def test_actor_leaves_previous_node(
+    monkeypatch: pytest.MonkeyPatch, new_node: str
+) -> None:
+    # A full update can supply an address missing from the cached record.
+    monkeypatch.setattr(DataSource, "actors", {"staying": {"actorId": "staying"}})
+    monkeypatch.setattr(DataSource, "node_actors", {})
+    head = NodeHead.__new__(NodeHead)
+
+    def update(actor_id: str, node_id: str, state: str) -> None:
+        head._process_updated_actor_table(
+            actor_id,
+            {"actorId": actor_id, "address": {"nodeId": node_id}, "state": state},
+        )
+
+    update("staying", "node-a", "ALIVE")
+    update("moving", "node-a", "ALIVE")
+    update("moving", new_node, "RESTARTING")
+    assert set(DataSource.node_actors["node-a"]) == {"staying"}
+    assert DataSource.actors["moving"]["address"]["nodeId"] == new_node
+    if new_node == actor_consts.NIL_NODE_ID:
+        assert new_node not in DataSource.node_actors
+    else:
+        assert set(DataSource.node_actors[new_node]) == {"moving"}
+    update("moving", "node-b", "ALIVE")
+    head._process_updated_actor_table("moving", {"state": "ALIVE", "pid": 123})
+    assert DataSource.node_actors["node-b"]["moving"]["pid"] == 123
+    assert DataSource.actors["staying"]["address"]["nodeId"] == "node-a"
+
+    update("staying", "node-b", "ALIVE")
+    assert "node-a" not in DataSource.node_actors
+    assert set(DataSource.node_actors["node-b"]) == {"moving", "staying"}
 
 
 def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
