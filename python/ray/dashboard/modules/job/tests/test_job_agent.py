@@ -74,6 +74,15 @@ class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
         ] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"  # noqa: E501
 
 
+@pytest.mark.asyncio
+async def test_job_agent_submission_client_separates_stream_session():
+    client = JobAgentSubmissionClient("http://localhost")
+    try:
+        assert client._session.connector is not client._stream_session.connector
+    finally:
+        await client.close()
+
+
 @pytest_asyncio.fixture
 async def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
