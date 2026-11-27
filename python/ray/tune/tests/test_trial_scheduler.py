@@ -2642,6 +2642,46 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
         self._test_metrics(result2, "mean_loss", "min")
 
+    def testAsyncHBCompleteMissingMetricCleansTrialInfo(self):
+        scheduler = AsyncHyperBandScheduler(
+            metric="episode_reward_mean", mode="max", max_t=10, brackets=1
+        )
+        t1 = Trial(MOCK_TRAINABLE_NAME)
+        scheduler.on_trial_add(None, t1)
+        self.assertIn(t1.trial_id, scheduler._trial_info)
+
+        # Completing without the configured metric or time_attr must still
+        # clean up _trial_info and allow idempotent removal.
+        scheduler.on_trial_complete(None, t1, {"training_iteration": 5})
+        self.assertNotIn(t1.trial_id, scheduler._trial_info)
+        scheduler.on_trial_remove(None, t1)
+
+    def testAsyncHBRungFloatPrecision(self):
+        # Exact powers such as 3**5 = 243 and 10**3 = 1000 suffer from
+        # np.log(max_t) / np.log(rf) < k in IEEE-754 float64, which previously
+        # truncated MAX_RUNGS by 1 and dropped the top rung.
+        scheduler_rf3 = AsyncHyperBandScheduler(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=243,
+            reduction_factor=3,
+            brackets=1,
+        )
+        rungs_rf3 = [r[0] for r in scheduler_rf3._brackets[0]._rungs]
+        self.assertEqual(rungs_rf3, [243, 81, 27, 9, 3, 1])
+
+        scheduler_rf10 = AsyncHyperBandScheduler(
+            metric="episode_reward_mean",
+            mode="max",
+            grace_period=1,
+            max_t=1000,
+            reduction_factor=10,
+            brackets=1,
+        )
+        rungs_rf10 = [r[0] for r in scheduler_rf10._brackets[0]._rungs]
+        self.assertEqual(rungs_rf10, [1000, 100, 10, 1])
+
     def _testAnonymousMetricEndToEnd(self, scheduler_cls, searcher=None):
         def train_fn(config):
             return config["value"]

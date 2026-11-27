@@ -166,15 +166,16 @@ class AsyncHyperBandScheduler(FIFOScheduler):
         self, tune_controller: "TuneController", trial: Trial, result: Dict
     ):
         if self._time_attr not in result or self._metric not in result:
+            self._trial_info.pop(trial.trial_id, None)
             return
-        bracket = self._trial_info[trial.trial_id]
-        bracket.on_result(
-            trial, result[self._time_attr], self._metric_op * result[self._metric]
-        )
-        del self._trial_info[trial.trial_id]
+        bracket = self._trial_info.pop(trial.trial_id, None)
+        if bracket is not None:
+            bracket.on_result(
+                trial, result[self._time_attr], self._metric_op * result[self._metric]
+            )
 
     def on_trial_remove(self, tune_controller: "TuneController", trial: Trial):
-        del self._trial_info[trial.trial_id]
+        self._trial_info.pop(trial.trial_id, None)
 
     def debug_string(self) -> str:
         out = "Using AsyncHyperBand: num_stopped={}".format(self._num_stopped)
@@ -231,7 +232,9 @@ class _Bracket:
                 to still be stopped by the bracket.
         """
         self.rf = reduction_factor
-        MAX_RUNGS = int(np.log(max_t / min_t) / np.log(self.rf) - s + 1)
+        MAX_RUNGS = max(
+            0, int(np.round(np.log(max_t / min_t) / np.log(self.rf), 12)) - s + 1
+        )
         self._rungs = [
             (min_t * self.rf ** (k + s), {}) for k in reversed(range(MAX_RUNGS))
         ]
