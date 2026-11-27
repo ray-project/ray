@@ -10,6 +10,7 @@ from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.search import BasicVariantGenerator, grid_search
 from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
+    _count_variants,
     _resolve_nested_dict,
 )
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
@@ -342,6 +343,32 @@ class VariantGeneratorTest(unittest.TestCase):
         resolved = _resolve_nested_dict(config)
         for k, v in [(("a", "b"), 1), (("a", "c"), 2), (("b", "a"), 3)]:
             self.assertEqual(resolved.get(k), v)
+
+    def test_count_variants_presets(self):
+        spec = {
+            "num_samples": 2,
+            "config": {
+                "sub_choice": tune.choice([{"x": 1}, {"x": 2}]),
+                "sub_grid": grid_search([{"a": 1}, {"a": 2}]),
+                "other": grid_search([10, 20]),
+                "sub_eval": {"eval": "spec.config.other * 2"},
+            },
+        }
+        self.assertEqual(_count_variants(spec), 8)
+        self.assertEqual(
+            _count_variants(
+                spec,
+                presets=[
+                    {
+                        "sub_choice": {"x": 1},
+                        "sub_grid": {"a": 1},
+                        "sub_eval": {"x": 1},
+                    }
+                ],
+            ),
+            6,
+        )
+        self.assertEqual(_count_variants({"num_samples": 1}, presets=[{"x": 1}]), 1)
 
     def testRecursiveDep(self):
         try:
