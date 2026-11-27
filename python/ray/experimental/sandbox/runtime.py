@@ -412,6 +412,7 @@ class SandboxRuntime:
         checkpoint_path: Optional[str] = None,
         leave_running: bool = True,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> str:
         """Create a checkpoint of the running sandbox.
@@ -422,6 +423,8 @@ class SandboxRuntime:
                 If None, a default directory inside the sandbox storage root is used.
             leave_running: If True, keep the sandbox running after checkpointing.
             timeout_seconds: Timeout for the checkpoint operation.
+            remote: If True, mark checkpoint as remote/shared across VM nodes.
+                Requires a ``checkpoint_path`` on storage that every node mounts.
             **kwargs: Backend-specific arguments.
 
         Returns:
@@ -431,6 +434,7 @@ class SandboxRuntime:
             sandbox_id=instance_id,
             checkpoint_path=checkpoint_path,
             leave_running=leave_running,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
@@ -450,6 +454,7 @@ class SandboxRuntime:
         memory: Optional[Union[str, int, float]] = None,
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
+        remote: Optional[bool] = None,
         **kwargs,
     ) -> str:
         """Restore a sandbox instance from a previously saved checkpoint.
@@ -465,6 +470,8 @@ class SandboxRuntime:
             memory: Memory allocation override.
             ttl_seconds: Optional time-to-live for the restored sandbox.
             timeout_seconds: Timeout for the restore operation.
+            remote: If True, allow restore on a different VM node than where the
+                checkpoint was taken. If None, inherits from checkpoint manifest.
             **kwargs: Backend-specific arguments. The removed ``readonly``
                 option is handled as in ``create``.
 
@@ -476,6 +483,7 @@ class SandboxRuntime:
             checkpoint_path=checkpoint_path,
             cpu=cpu,
             memory=memory,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
