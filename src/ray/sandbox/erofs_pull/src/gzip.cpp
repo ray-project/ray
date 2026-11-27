@@ -132,6 +132,12 @@ void *erofs_pull_gzip_open(int fd,
         chunk_size);
     // gzip's own CRC-32 and size checks, on top of the layer's digest.
     reader->setCRC32Enabled(true);
+    // Memory: the decoded chunks rapidgzip holds at a time are most of
+    // erofs-pull's. Split a chunk that decodes to more than 8 times its size
+    // (rapidgzip's default is 20), and drop each chunk's window once it's
+    // read, as the layer is read once, front to back, and never seeked in.
+    reader->setMaxDecompressedChunkSize(8 * chunk_size);
+    reader->setKeepIndex(false);
     return reader.release();
   } catch (const std::exception &e) {
     set_error(error, error_len, e.what());

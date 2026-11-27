@@ -1366,9 +1366,10 @@ _EROFS_PULL_PACKAGED = os.path.join(
 
 
 # rapidgzip's decoding threads per erofs-pull: one per CPU up to this many.
-# More use more memory without making pulls faster (pytorch/pytorch peaked at
-# 1.1 GB on 32 threads and 0.8 GB on 16, in the same time).
-_EROFS_PULL_MAX_GZIP_THREADS = 16
+# Each holds a few decoded chunks, so memory grows with threads. 8 decode a
+# PyTorch image's layers at about 800 MB/s, faster than a fast node downloaded
+# them (540 MB/s); fewer were much slower.
+_EROFS_PULL_MAX_GZIP_THREADS = 8
 # How many erofs-pull builds a node runs at once, by default max(2, CPUs / 8);
 # set to change it. Other pulls wait for a slot.
 _EROFS_PULL_MAX_CONCURRENT_ENV = "RAY_SANDBOX_EROFS_PULL_MAX_CONCURRENT"

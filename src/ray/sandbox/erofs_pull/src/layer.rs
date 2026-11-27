@@ -75,7 +75,8 @@ struct Pipe {
 
 impl Pipe {
     fn spawn(mut src: impl Read + Send + 'static) -> Pipe {
-        let (tx, rx) = std::sync::mpsc::sync_channel(16);
+        // A few buffers ahead keep the decoder busy; more only hold memory.
+        let (tx, rx) = std::sync::mpsc::sync_channel(4);
         std::thread::spawn(move || loop {
             let mut buf = vec![0u8; 1 << 20];
             let mut filled = 0;

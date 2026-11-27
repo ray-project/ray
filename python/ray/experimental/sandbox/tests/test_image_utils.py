@@ -1,4 +1,5 @@
 import contextlib
+import gzip
 import hashlib
 import http.server
 import io
@@ -2356,6 +2357,45 @@ def test_erofs_pull_dies_with_its_worker(tmp_path, erofs_pull, monkeypatch):
         finally:
             stalled.set()
             worker.kill()
+
+
+def test_erofs_pull_memory_does_not_grow_with_the_layer(
+    tmp_path, erofs_pull, monkeypatch
+):
+    """erofs-pull holds a few decoded chunks of a layer at a time: a 1 GiB
+    file that compresses 15:1 builds in well under 512 MiB."""
+    block = (os.urandom(4096) + bytes(61440)) * 256  # 16 MiB
+    count = 64
+    header = tarfile.TarInfo("big")
+    header.size = len(block) * count
+    # Gzip members back to back decode as one stream, so the block is
+    # compressed once.
+    layer = (
+        gzip.compress(header.tobuf(tarfile.USTAR_FORMAT))
+        + gzip.compress(block, compresslevel=1) * count
+        + gzip.compress(bytes(1024))
+    )
+    with _serve_image(monkeypatch, [layer]) as image:
+        # A worker of its own, whose only big child is erofs-pull.
+        worker = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import resource, sys; from ray.experimental.sandbox._internal import image_utils;"
+                # Only erofs-pull can build it.
+                "image_utils.mkfs_erofs_path = lambda: None;"
+                "image_utils.pull_and_extract_container_image(sys.argv[1], images_dir=sys.argv[2]);"
+                "print(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)",
+                image,
+                str(tmp_path / "images"),
+            ],
+            cwd=tmp_path,
+            capture_output=True,
+            text=True,
+        )
+    assert worker.returncode == 0, worker.stderr
+    peak = int(worker.stdout) >> 10
+    assert peak < 512, f"erofs-pull peaked at {peak} MiB"
 
 
 def test_erofs_pull_slots_limit_concurrent_builds(tmp_path, monkeypatch):

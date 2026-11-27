@@ -28,8 +28,9 @@ extern "C" {
     fn erofs_pull_gzip_close(reader: *mut c_void);
 }
 
-/// rapidgzip's chunk size: 4 MiB of compressed input, its default.
-const CHUNK_SIZE: u64 = 4 << 20;
+/// rapidgzip's chunk size in compressed input. Its default, 4 MiB, holds 4
+/// times the decoded data in flight, to decode only a little faster.
+const CHUNK_SIZE: u64 = 1 << 20;
 
 /// Called from rapidgzip's threads before they read: waits for the bytes to
 /// arrive. `context` is the blob a GzipReader keeps alive.
