@@ -651,8 +651,18 @@ class _WrappedDataLoader(DataLoader):
         with self.device_manager.get_stream_context(self._memcpy_stream):
             if isinstance(item, collections.abc.Mapping):
                 item_on_device = {k: self._move_to_device(v) for k, v in item.items()}
+            elif isinstance(item, torch.nn.utils.rnn.PackedSequence):
+                # A namedtuple too, but its constructor requires `batch_sizes`
+                # to stay on CPU, which its own `to()` takes care of.
+                item_on_device = try_move_device(item)
             elif isinstance(item, tuple):
-                item_on_device = tuple(self._move_to_device(i) for i in item)
+                moved = [self._move_to_device(i) for i in item]
+                # Rebuild namedtuples with their own type so field access
+                # (e.g. `batch.x`) keeps working, as torch's default_collate does.
+                if hasattr(item, "_fields"):
+                    item_on_device = type(item)(*moved)
+                else:
+                    item_on_device = tuple(moved)
             elif isinstance(item, list):
                 item_on_device = [self._move_to_device(i) for i in item]
             elif isinstance(item, torch.Tensor):
