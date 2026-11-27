@@ -7,6 +7,7 @@ from ray.serve._private.proxy_response_generator import (
     swallow_cancelled,
 )
 from ray.serve._private.utils import calculate_remaining_timeout
+from ray.serve.exceptions import RequestCancelledError
 
 
 class ReplicaResponseGenerator(_ProxyResponseGeneratorBase):
@@ -52,6 +53,24 @@ class ReplicaResponseGenerator(_ProxyResponseGeneratorBase):
     async def _await_response_anext(self) -> Any:
         return await self._async_generator.__anext__()
 
+    async def _cancel_next_result_task(self, next_result_task: asyncio.Task) -> None:
+        """Cancel the pending `__anext__` task and wait for it to exit so that
+        a subsequent `await async_generator.aclose()` by the caller does not
+        fail with `RuntimeError: aclose(): asynchronous generator is already running`.
+        """
+        if not next_result_task.done():
+            next_result_task.cancel()
+        try:
+            await next_result_task
+        except (RequestCancelledError, StopAsyncIteration):
+            pass
+        except asyncio.CancelledError:
+            if not next_result_task.done():
+                raise
+        finally:
+            if not next_result_task.done():
+                next_result_task.add_done_callback(swallow_cancelled)
+
     async def _get_next_result(self) -> Any:
         """Get the next result from the async generator with disconnect detection."""
         # If there's no disconnect detection needed, use direct await to preserve
@@ -72,20 +91,22 @@ class ReplicaResponseGenerator(_ProxyResponseGeneratorBase):
         next_result_task = asyncio.create_task(self._await_response_anext())
         tasks = [next_result_task, self._disconnected_task]
 
-        done, _ = await asyncio.wait(
-            tasks,
-            return_when=asyncio.FIRST_COMPLETED,
-            timeout=remaining_timeout,
-        )
+        try:
+            done, _ = await asyncio.wait(
+                tasks,
+                return_when=asyncio.FIRST_COMPLETED,
+                timeout=remaining_timeout,
+            )
+        except asyncio.CancelledError:
+            await self._cancel_next_result_task(next_result_task)
+            raise
 
         if next_result_task in done:
             return next_result_task.result()
         elif self._disconnected_task in done:
-            next_result_task.cancel()
-            next_result_task.add_done_callback(swallow_cancelled)
+            await self._cancel_next_result_task(next_result_task)
             raise asyncio.CancelledError()
         else:
             # Timeout occurred
-            next_result_task.cancel()
-            next_result_task.add_done_callback(swallow_cancelled)
+            await self._cancel_next_result_task(next_result_task)
             raise TimeoutError()
