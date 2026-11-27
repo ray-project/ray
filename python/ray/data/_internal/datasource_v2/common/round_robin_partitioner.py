@@ -33,6 +33,9 @@ class RoundRobinPartitioner(FilePartitioner):
     This algorithm ensures that each block contains [min_bucket_size, max_bucket_size]
     worth of files.  It's a deterministic algorithm, but it doesn't maintain the order
     of the input paths.
+
+    Files without a size estimate are emitted immediately, one per partition,
+    rather than buffering unbounded work until listing finishes.
     """
 
     def __init__(
@@ -46,6 +49,7 @@ class RoundRobinPartitioner(FilePartitioner):
             min_bucket_size=hints.min_bucket_size,
             max_bucket_size=hints.max_bucket_size,
             num_buckets=hints.num_buckets,
+            isolate_unknown_weights=True,
         )
 
     def add_input(self, input_manifest: FileManifest):
@@ -69,9 +73,9 @@ class RoundRobinPartitioner(FilePartitioner):
             in_memory_size_estimates,
         ):
             # A file of unknown size has a ``NaN`` (or ``None``) estimate.
-            # Passing ``None`` spreads such files across buckets instead of
-            # counting them as zero bytes, which would pile them all into one
-            # read task. ``x != x`` is true only for ``NaN``.
+            # Passing ``None`` isolates it in its own read task instead of
+            # accumulating unbounded work with zero weight. ``x != x`` is true
+            # only for ``NaN``.
             self._partitioner.add_item(
                 (file_path, file_size, file_chunk_metadata),
                 None
