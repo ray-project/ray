@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/task_execution/unordered_actor_task_execution_queue.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <thread>
@@ -66,7 +67,7 @@ void UnorderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &m
 
   while (!queued_actor_tasks_.empty()) {
     auto it = queued_actor_tasks_.begin();
-    cancel_task_(it->second, status);
+    cancel_task_(it->second.task, status);
     pending_task_id_to_is_canceled.erase(it->first);
     queued_actor_tasks_.erase(it);
   }
@@ -99,6 +100,9 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   std::optional<TaskToExecute> task_to_cancel;
   {
     absl::MutexLock lock(&mu_);
+    auto watermark_it =
+        client_processed_up_to_.try_emplace(task.ConcurrencyGroupName(), -1).first;
+    watermark_it->second = std::max(watermark_it->second, client_processed_up_to);
     if (pending_task_id_to_is_canceled.contains(task_id)) {
       // There is a previous attempt of the same task running,
       // queue the current attempt.
@@ -108,19 +112,20 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       if (it != queued_actor_tasks_.end()) {
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
-        RAY_CHECK_NE(it->second.AttemptNumber(), task.AttemptNumber());
-        if (it->second.AttemptNumber() > task.AttemptNumber()) {
+        RAY_CHECK_NE(it->second.task.AttemptNumber(), task.AttemptNumber());
+        if (it->second.task.AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
           // TODO(karticam): This attempt's args-fetch IPC is in flight; its
           // eventual MarkReady will be stored in the waiter, but will never be
           // consumed. Fix the small memory leak.
           task_to_cancel = std::move(task);
         } else {
-          task_to_cancel = std::move(it->second);
-          queued_actor_tasks_.insert_or_assign(task_id, std::move(task));
+          task_to_cancel = std::move(it->second.task);
+          queued_actor_tasks_.insert_or_assign(task_id,
+                                               SequencedTask{seq_no, std::move(task)});
         }
       } else {
-        queued_actor_tasks_.emplace(task_id, std::move(task));
+        queued_actor_tasks_.emplace(task_id, SequencedTask{seq_no, std::move(task)});
       }
     } else {
       pending_task_id_to_is_canceled.emplace(task_id, false);
@@ -129,7 +134,7 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
 
   if (run_task) {
-    RunRequest(std::move(task));
+    RunRequest(seq_no, std::move(task));
   }
 
   if (task_to_cancel.has_value()) {
@@ -152,15 +157,14 @@ bool UnorderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
 }
 
 void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
-    TaskToExecute request) {
+    int64_t seq_no, TaskToExecute request) {
   RAY_CHECK(request.DependenciesResolved());
-  const auto task_id = request.TaskID();
   if (is_asyncio_) {
     // Process async actor task.
     auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                                    request.FunctionDescriptor());
-    fiber->EnqueueFiber([this, request = std::move(request), task_id]() mutable {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
+    fiber->EnqueueFiber([this, request = std::move(request), seq_no]() mutable {
+      AcceptRequestOrRejectIfCanceled(seq_no, request);
     });
   } else {
     // Process actor tasks.
@@ -168,16 +172,16 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
                                            request.FunctionDescriptor());
     if (pool == nullptr) {
-      AcceptRequestOrRejectIfCanceled(task_id, request);
+      AcceptRequestOrRejectIfCanceled(seq_no, request);
     } else {
-      pool->Post([this, request = std::move(request), task_id]() mutable {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
+      pool->Post([this, request = std::move(request), seq_no]() mutable {
+        AcceptRequestOrRejectIfCanceled(seq_no, request);
       });
     }
   }
 }
 
-void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
+void UnorderedActorTaskExecutionQueue::RunRequest(int64_t seq_no, TaskToExecute request) {
   const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
@@ -199,32 +203,33 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_event_buffer_.GetNodeID(),
         /*include_task_info=*/false);
     const TaskAttempt task_attempt{task_spec.TaskId(), task_spec.AttemptNumber()};
-    waiter_.OnArgsReady(task_attempt, [this, request = std::move(request)]() mutable {
-      RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
+    waiter_.OnArgsReady(task_attempt,
+                        [this, request = std::move(request), seq_no]() mutable {
+                          RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
-      const TaskSpecification &task = request.TaskSpec();
-      RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-          task.TaskId(),
-          task.JobId(),
-          task.AttemptNumber(),
-          task,
-          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-          /* include_task_info */ false));
-      worker::RecordTaskStatusEventToRecorderIfNeeded(
-          ray_task_event_recorder_,
-          task.TaskId(),
-          task.JobId(),
-          task.AttemptNumber(),
-          task,
-          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-          task_event_buffer_.GetCurrentTimestampNanos(),
-          task_event_buffer_.GetSessionName(),
-          task_event_buffer_.GetNodeID(),
-          /*include_task_info=*/false);
+                          const TaskSpecification &task = request.TaskSpec();
+                          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                              task.TaskId(),
+                              task.JobId(),
+                              task.AttemptNumber(),
+                              task,
+                              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                              /* include_task_info */ false));
+                          worker::RecordTaskStatusEventToRecorderIfNeeded(
+                              ray_task_event_recorder_,
+                              task.TaskId(),
+                              task.JobId(),
+                              task.AttemptNumber(),
+                              task,
+                              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                              task_event_buffer_.GetCurrentTimestampNanos(),
+                              task_event_buffer_.GetSessionName(),
+                              task_event_buffer_.GetNodeID(),
+                              /*include_task_info=*/false);
 
-      request.MarkDependenciesResolved();
-      RunRequestWithResolvedDependencies(std::move(request));
-    });
+                          request.MarkDependenciesResolved();
+                          RunRequestWithResolvedDependencies(seq_no, std::move(request));
+                        });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
@@ -245,30 +250,40 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_event_buffer_.GetNodeID(),
         /*include_task_info=*/false);
     request.MarkDependenciesResolved();
-    RunRequestWithResolvedDependencies(std::move(request));
+    RunRequestWithResolvedDependencies(seq_no, std::move(request));
   }
 }
 
 void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
-    TaskID task_id, TaskToExecute &request) {
+    int64_t seq_no, TaskToExecute &request) {
+  const auto task_id = request.TaskID();
   bool is_canceled = false;
+  bool is_stale = false;
   {
     absl::MutexLock lock(&mu_);
     auto it = pending_task_id_to_is_canceled.find(task_id);
     if (it != pending_task_id_to_is_canceled.end()) {
       is_canceled = it->second;
     }
+    const auto watermark_it =
+        client_processed_up_to_.find(request.ConcurrencyGroupName());
+    is_stale = seq_no != -1 && watermark_it != client_processed_up_to_.end() &&
+               seq_no <= watermark_it->second;
   }
 
   // Accept can be very long, and we shouldn't hold a lock.
   if (is_canceled) {
     cancel_task_(request,
                  Status::SchedulingCancelled("Task is canceled before it is scheduled."));
+  } else if (is_stale) {
+    cancel_task_(request,
+                 Status::Invalid("Task canceled due to stale sequence number. The client "
+                                 "intentionally discarded this task."));
   } else {
     execute_task_(request);
   }
 
-  std::optional<TaskToExecute> request_to_run;
+  std::optional<SequencedTask> request_to_run;
   {
     absl::MutexLock lock(&mu_);
     auto it = queued_actor_tasks_.find(task_id);
@@ -283,7 +298,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   if (request_to_run.has_value()) {
     task_execution_service_.post(
         [this, request = std::move(*request_to_run)]() mutable {
-          RunRequest(std::move(request));
+          RunRequest(request.seq_no, std::move(request.task));
         },
         "UnorderedActorTaskExecutionQueue.RunRequest");
   }
