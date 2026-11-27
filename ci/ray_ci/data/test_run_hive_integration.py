@@ -218,7 +218,6 @@ def test_tls_mode_reuses_fixture_and_passes_only_public_ca(run_script):
     assert "RAY_HIVE_TEST_USE_SSL=true" in envs
     assert "RAY_HIVE_TLS_SUITE=1" not in envs
     assert "RAY_HIVE_TEST_WRONG_HOST=wrong-hiveserver2" in envs
-    assert "RAY_AUTH_MODE=disabled" in envs
     assert any(value.startswith("RAY_HIVE_CA_PEM_B64=") for value in envs)
     assert not any(value.startswith("HIVE_TLS_PASSWORD") for value in envs)
     assert any(

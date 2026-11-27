@@ -94,5 +94,4 @@ bazel run //ci/ray_ci:test_in_docker -- \
   --test-env RAY_HIVE_TEST_USER=hive \
   --test-env HIVE_TEST_PASSWORD=hive \
   --test-env RAY_HIVE_TEST_USE_SSL=true \
-  --test-env RAY_AUTH_MODE=disabled \
   --test-env "RAY_HIVE_CA_PEM_B64=${ca_pem}"
