@@ -588,6 +588,21 @@ class SearchSpaceTest(unittest.TestCase):
             all((x, type(x)) in [(1.0, float), ("str", str)] for x in sample)
         )
 
+    def testGridSampleRaisesRuntimeError(self):
+        domain = ray.tune.search.sample.Categorical([1, 2, 3]).grid()
+        self.assertTrue(domain.is_grid())
+        with self.assertRaisesRegex(
+            RuntimeError, "Do not call `sample\\(\\)` on grid\\."
+        ):
+            domain.sample()
+
+        float_domain = ray.tune.search.sample.Float(0.0, 1.0)
+        float_domain.set_sampler(ray.tune.search.sample.Grid())
+        with self.assertRaisesRegex(
+            RuntimeError, "Do not call `sample\\(\\)` on grid\\."
+        ):
+            float_domain.sample()
+
     def testCategoricalSeedInTrainingLoop(self):
         def train_fn(config):
             return 0

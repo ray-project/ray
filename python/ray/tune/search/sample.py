@@ -190,7 +190,7 @@ class Grid(Sampler):
         size: int = 1,
         random_state: "RandomState" = None,
     ):
-        return RuntimeError("Do not call `sample()` on grid.")
+        raise RuntimeError("Do not call `sample()` on grid.")
 
 
 @DeveloperAPI
