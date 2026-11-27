@@ -26,7 +26,7 @@ from ray.tune.search.sample import (
     Uniform,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_list_dict
+from ray.tune.utils.util import flatten_dict, is_nan_or_inf, unflatten_list_dict
 
 try:
     import ConfigSpace
@@ -160,7 +160,7 @@ class TuneBOHB(Searcher):
         self.paused = set()
 
         self._max_concurrent = max_concurrent
-        self._points_to_evaluate = points_to_evaluate
+        self._points_to_evaluate = copy.deepcopy(points_to_evaluate)
 
         super(TuneBOHB, self).__init__(
             metric=self._metric,
@@ -242,6 +242,8 @@ class TuneBOHB(Searcher):
         return unflatten_list_dict(config)
 
     def on_trial_result(self, trial_id: str, result: Dict):
+        if trial_id not in self.trial_to_params:
+            return
         if trial_id not in self.paused:
             self.running.add(trial_id)
         if "hyperband_info" not in result:
@@ -249,14 +251,19 @@ class TuneBOHB(Searcher):
                 "BOHB Info not detected in result. Are you using "
                 "HyperBandForBOHB as a scheduler?"
             )
-        elif "budget" in result.get("hyperband_info", {}):
+        elif (
+            "budget" in (result.get("hyperband_info") or {})
+            and self.metric in result
+            and isinstance(result[self.metric], (int, float))
+            and not is_nan_or_inf(result[self.metric])
+        ):
             hbs_wrapper = self.to_wrapper(trial_id, result)
             self.bohber.new_result(hbs_wrapper)
 
     def on_trial_complete(
         self, trial_id: str, result: Optional[Dict] = None, error: bool = False
     ):
-        del self.trial_to_params[trial_id]
+        self.trial_to_params.pop(trial_id, None)
         self.paused.discard(trial_id)
         self.running.discard(trial_id)
 

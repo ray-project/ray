@@ -1739,6 +1739,91 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(TuneBOHB, config)
 
+    def testTuneBOHBPointsToEvaluateAndGuards(self):
+        import types
+
+        import ray.tune.search.bohb.bohb_search as bohb_mod
+        from ray.tune.search.bohb.bohb_search import TuneBOHB
+
+        recorded = []
+
+        class _DummyBOHB:
+            def __init__(self, space, **kwargs):
+                self.space = space
+
+            def get_config(self, budget):
+                return {"a": 99}, {}
+
+            def new_result(self, job):
+                recorded.append(job)
+
+        fake_hpbandster = types.ModuleType("hpbandster")
+        fake_opt = types.ModuleType("hpbandster.optimizers")
+        fake_cg = types.ModuleType("hpbandster.optimizers.config_generators")
+        fake_bohb_mod = types.ModuleType("hpbandster.optimizers.config_generators.bohb")
+        fake_bohb_mod.BOHB = _DummyBOHB
+
+        points = [{"a": 1}, {"a": 2}]
+        with patch.object(bohb_mod, "BOHB", _DummyBOHB), patch.dict(
+            sys.modules,
+            {
+                "hpbandster": fake_hpbandster,
+                "hpbandster.optimizers": fake_opt,
+                "hpbandster.optimizers.config_generators": fake_cg,
+                "hpbandster.optimizers.config_generators.bohb": fake_bohb_mod,
+            },
+        ):
+            searcher = TuneBOHB(
+                space=object(),
+                metric="loss",
+                mode="min",
+                points_to_evaluate=points,
+            )
+            self.assertEqual(searcher.suggest("trial_1"), {"a": 1})
+            self.assertEqual(searcher.suggest("trial_2"), {"a": 2})
+            # Caller's list must not be mutated in-place by suggest().
+            self.assertEqual(points, [{"a": 1}, {"a": 2}])
+            self.assertIsNot(points[0], searcher.trial_to_params["trial_1"])
+
+            # Unknown trial_id in on_trial_result must be ignored without
+            # polluting running.
+            searcher.on_trial_result(
+                "unknown_trial", {"loss": 1.0, "hyperband_info": {"budget": 1}}
+            )
+            self.assertNotIn("unknown_trial", searcher.running)
+            self.assertEqual(len(recorded), 0)
+
+            # Missing/None hyperband_info, missing/non-numeric metric, and
+            # NaN/inf metric must be skipped in on_trial_result.
+            searcher.on_trial_result("trial_1", {"loss": 0.5, "hyperband_info": None})
+            searcher.on_trial_result("trial_1", {"hyperband_info": {"budget": 1}})
+            searcher.on_trial_result(
+                "trial_1", {"loss": None, "hyperband_info": {"budget": 1}}
+            )
+            searcher.on_trial_result(
+                "trial_1", {"loss": "invalid", "hyperband_info": {"budget": 1}}
+            )
+            searcher.on_trial_result(
+                "trial_1", {"loss": float("nan"), "hyperband_info": {"budget": 1}}
+            )
+            searcher.on_trial_result(
+                "trial_1", {"loss": float("inf"), "hyperband_info": {"budget": 1}}
+            )
+            self.assertEqual(len(recorded), 0)
+
+            # Valid metric with budget reports to bohber.new_result.
+            searcher.on_trial_result(
+                "trial_1", {"loss": 0.5, "hyperband_info": {"budget": 1}}
+            )
+            self.assertEqual(len(recorded), 1)
+            self.assertEqual(recorded[0].result["loss"], 0.5)
+
+            # Duplicate or unknown on_trial_complete must not raise KeyError.
+            searcher.on_trial_complete("trial_1")
+            searcher.on_trial_complete("trial_1")
+            searcher.on_trial_complete("unknown_trial")
+            self.assertNotIn("trial_1", searcher.running)
+
     def testPointsToEvaluateHyperOpt(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
