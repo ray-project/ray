@@ -1520,18 +1520,30 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    def testConvertOptunaQuantizedInteger(self):
+        from ray.tune.search.optuna import OptunaSearch
+
+        # The converted space must hold the values Tune samples from.
+        for domain in (
+            tune.qrandint(1, 21, 5),
+            tune.qrandint(-7, 12, 4),
+            tune.qrandint(1, 10, 1),
+        ):
+            dist = OptunaSearch.convert_search_space({"a": domain})["a"]
+            optuna_values = set(range(dist.low, dist.high + 1, dist.step))
+            tune_values = set(domain.sample(size=2000))
+            self.assertEqual(optuna_values, tune_values)
+
     def testSampleBoundsOptuna(self):
         from ray.tune.search.optuna import OptunaSearch
 
         # Quantization and log does not seem to work with Optuna
-        # Also, qrandint works differently in Optuna (it moves the boundaries)
         ignore = [
             "func",
             "randn",
             "qrandn",
             "qloguniform",
             "qlograndint",
-            "qrandint_q3",
         ]
 
         config = self.config.copy()
