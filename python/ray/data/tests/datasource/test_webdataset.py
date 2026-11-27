@@ -348,6 +348,24 @@ def test_webdataset_write(ray_start_2_cpus, tmp_path):
     assert_archive(chained_path, lambda i: f"encoded-prefixed-{i}")
 
 
+def test_webdataset_preserves_single_element_list_without_expand_json(
+    ray_start_2_cpus, tmp_path
+):
+    import json
+
+    path = os.path.join(tmp_path, "list_000000.tar")
+    with TarWriter(path) as tf:
+        tf.write("0.json", json.dumps(["only_item"]).encode("utf-8"))
+        tf.write("1.json", json.dumps(["first", "second"]).encode("utf-8"))
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], override_num_blocks=1, expand_json=False
+    )
+    records = sorted(ds.take_all(), key=lambda r: r["__key__"])
+    assert list(records[0]["json"]) == ["only_item"]
+    assert list(records[1]["json"]) == ["first", "second"]
+
+
 def custom_decoder(sample):
     for key, value in sample.items():
         if key == "png":
@@ -373,6 +391,8 @@ def test_webdataset_coding(
     sample = {
         "__key__": "foo",
         "jpg": image,
+        "jpeg": image,
+        "PHOTO.JPG": image,
         "gray.png": gray,
         "mp": dstruct,
         "json": dstruct,
@@ -399,6 +419,10 @@ def test_webdataset_coding(
         assert sample["__key__"] == "foo"
         assert isinstance(sample["jpg"], np.ndarray)
         assert sample["jpg"].shape == (100, 100, 3)
+        assert isinstance(sample["jpeg"], np.ndarray)
+        assert sample["jpeg"].shape == (100, 100, 3)
+        assert isinstance(sample["PHOTO.JPG"], np.ndarray)
+        assert sample["PHOTO.JPG"].shape == (100, 100, 3)
         assert isinstance(sample["gray.png"], np.ndarray)
         # V2 returns grayscale images with a channel axis, like color images.
         expected_gray_shape = (100, 100, 1) if use_datasource_v2 else (100, 100)
@@ -477,7 +501,7 @@ def test_write_min_rows_per_file(tmp_path, ray_start_2_cpus, min_rows_per_file):
 
 @pytest.mark.parametrize(
     "filename",
-    ["000000.pkl", "000000.pickle", "000000.pt", "000000.pth"],
+    ["000000.pkl", "000000.PKL", "000000.pickle", "000000.pt", "000000.pth"],
 )
 def test_default_decoder_rejects_unsafe_extensions(
     ray_start_2_cpus, tmp_path, filename, use_datasource_v2

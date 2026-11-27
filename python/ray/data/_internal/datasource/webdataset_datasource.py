@@ -44,10 +44,10 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
     """
     sample = dict(sample)
     for key, value in sample.items():
-        extension = key.split(".")[-1]
         if key.startswith("__"):
             continue
-        elif extension in ["txt"]:
+        extension = key.split(".")[-1].lower()
+        if extension in ["txt", "text"]:
             sample[key] = value.encode("utf-8")
         elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
@@ -62,9 +62,7 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
                 value = PIL.Image.fromarray(value)
             assert isinstance(value, PIL.Image.Image)
             stream = io.BytesIO()
-            value.save(
-                stream, format=extension_to_format.get(extension.lower(), extension)
-            )
+            value.save(stream, format=extension_to_format.get(extension, extension))
             sample[key] = stream.getvalue()
         elif extension == "json":
             sample[key] = json.dumps(value).encode("utf-8")
@@ -105,6 +103,50 @@ def _make_iterable(block: BlockAccessor):
         Iterable[Dict[str,Any]]: Iterable of samples
     """
     return block.iter_rows(public_row_format=False)
+
+
+_wds_default_decoder = _default_decoder
+
+
+def _default_decoder(
+    sample: Dict[str, Any],
+    format: Optional[Union[bool, str]] = True,
+    allow_unsafe: bool = False,
+    expand_grayscale: bool = False,
+):
+    normalized = {}
+    key_map = {}
+    for key, value in sample.items():
+        if key.startswith("__"):
+            normalized[key] = value
+            continue
+        raw_ext = key.split(".")[-1]
+        ext = raw_ext.lower()
+        if ext == "jpeg":
+            ext = "jpg"
+        if ext != raw_ext:
+            norm_key = f"_wds_norm_{len(key_map)}_{key}.{ext}"
+            key_map[norm_key] = key
+            normalized[norm_key] = value
+        else:
+            normalized[key] = value
+    decoded = _wds_default_decoder(
+        normalized,
+        format=format,
+        allow_unsafe=allow_unsafe,
+        expand_grayscale=expand_grayscale,
+    )
+    for norm_key, orig_key in key_map.items():
+        if norm_key in decoded:
+            decoded[orig_key] = decoded.pop(norm_key)
+    return decoded
+
+
+from ray.data._internal.datasource_v2.formats.webdataset import (  # noqa: E402
+    webdataset_utils as _wds_utils,
+)
+
+_wds_utils._default_decoder = _default_decoder
 
 
 class WebDatasetDatasource(FileBasedDatasource):
@@ -178,7 +220,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=default_decoder)
-            if self.expand_json:
+            if self.expand_json and "json" in sample:
                 if isinstance(sample["json"], bytes):
                     parsed_json = json.loads(sample["json"].decode("utf-8"))
                 elif isinstance(sample["json"], str):
@@ -189,16 +231,15 @@ class WebDatasetDatasource(FileBasedDatasource):
                     raise TypeError(
                         f"Unsupported data type" f" {type(sample['json'])} for sample"
                     )
+                if not isinstance(parsed_json, dict):
+                    raise TypeError(
+                        f"Expected a JSON object (dict) for expand_json, "
+                        f"but got {type(parsed_json)}"
+                    )
                 for k, v in parsed_json.items():
                     if k not in sample:
-                        sample[k] = []
-                    sample[k].append(v)
-            rows.append(
-                {
-                    k: v[0] if isinstance(v, list) and len(v) == 1 else v
-                    for k, v in sample.items()
-                }
-            )
+                        sample[k] = v
+            rows.append(sample)
             if len(rows) >= WEBDATASET_READ_CHUNK_SIZE:
                 yield pd.DataFrame.from_records(rows)
                 rows = []
