@@ -1,6 +1,9 @@
+import json
 import os
 import random
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from typing import Any, Dict, Generator, List, Tuple, Type
 
@@ -15,6 +18,7 @@ from pyiceberg import (
     types as pyi_types,
 )
 from pyiceberg.catalog import Catalog
+from pyiceberg.catalog.rest import RestCatalog
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.manifest import DataFile, FileFormat
 from pyiceberg.partitioning import PartitionField, PartitionSpec
@@ -3021,6 +3025,109 @@ def test_write_retry_on_transient_error(pyiceberg_table, fast_retry_config):
     assert len(result.data_files) > 0, "Expected data files in result"
 
 
+# Older PyIceberg releases have no way to turn server-side planning on.
+_requires_server_side_planning = pytest.mark.skipif(
+    not hasattr(RestCatalog, "supports_server_side_planning"),
+    reason="This PyIceberg can't plan scans on a REST server.",
+)
+
+# Turns server-side planning on: PyIceberg 0.11 reads the first key and 0.12
+# the second; each ignores the other.
+_SERVER_SIDE_PLANNING_ON = {
+    "rest-scan-planning-enabled": "true",
+    "scan-planning-mode": "server",
+}
+
+
+@pytest.fixture
+def fake_rest_catalog(pyiceberg_table):
+    """A minimal Iceberg REST catalog serving the fixture table.
+
+    It offers server-side scan planning and records every request. Its plan is
+    the table's first file only, unlike local planning, so the files a scan
+    lists show whose plan it used.
+    """
+    from pyiceberg.catalog.rest import DEFAULT_ENDPOINTS, Capability
+
+    table = pyi_catalog.load_catalog(**_CATALOG_KWARGS).load_table(
+        f"{_DB_NAME}.{_TABLE_NAME}"
+    )
+    with open(table.metadata_location.removeprefix("file://")) as f:
+        metadata = json.load(f)
+    planned = min(table.scan().plan_files(), key=lambda task: task.file.file_path)
+    endpoints = {str(e) for e in DEFAULT_ENDPOINTS}
+    endpoints.add(str(Capability.V1_SUBMIT_TABLE_SCAN_PLAN))
+    table_path = f"/v1/namespaces/{_DB_NAME}/tables/{_TABLE_NAME}"
+    responses = {
+        ("GET", "/v1/config"): {
+            "defaults": {},
+            "overrides": {},
+            "endpoints": sorted(endpoints),
+        },
+        ("GET", table_path): {
+            "metadata-location": table.metadata_location,
+            "metadata": metadata,
+            "config": {},
+        },
+        ("POST", f"{table_path}/plan"): {
+            "status": "completed",
+            "plan-id": "plan-1",
+            "file-scan-tasks": [
+                {
+                    "data-file": {
+                        "spec-id": planned.file.spec_id,
+                        "partition": list(planned.file.partition),
+                        "content": "data",
+                        "file-path": planned.file.file_path,
+                        "file-format": "PARQUET",
+                        "file-size-in-bytes": planned.file.file_size_in_bytes,
+                        "record-count": planned.file.record_count,
+                    }
+                }
+            ],
+            "delete-files": [],
+        },
+    }
+    requests = []
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def _respond(self, method):
+            path = self.path.split("?")[0]
+            length = int(self.headers.get("Content-Length") or 0)
+            requests.append((method, path, json.loads(self.rfile.read(length) or "{}")))
+            response = responses.get((method, path))
+            code = 200 if response is not None else 404
+            if response is None:
+                response = {
+                    "error": {"message": path, "type": "NotFound", "code": code}
+                }
+            body = json.dumps(response).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            self._respond("GET")
+
+        def do_POST(self):
+            self._respond("POST")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    yield SimpleNamespace(
+        uri=f"http://127.0.0.1:{server.server_address[1]}",
+        planned_path=planned.file.file_path,
+        requests=requests,
+    )
+    server.shutdown()
+    server.server_close()
+
+
 class TestIcebergDatasourceV2:
     """Tests for the V2-only machinery, which has no V1 counterpart."""
 
@@ -3204,6 +3311,77 @@ class TestIcebergDatasourceV2:
             for path in manifest.paths.tolist()
         ]
         assert sorted(remaining) == sorted(listed[1:])
+
+    @staticmethod
+    def _rest_table(uri: str, **properties: str) -> Table:
+        return pyi_catalog.load_catalog(
+            "fake_rest", type="rest", uri=uri, **properties
+        ).load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+
+    @_requires_server_side_planning
+    def test_listing_lists_the_rest_catalogs_plan(self, fake_rest_catalog):
+        """With server-side planning on, the listing task asks the server.
+
+        The indexer goes through a pickle round trip, as on its way to the
+        listing task, and the server gets the driver's snapshot and filter.
+        """
+        import cloudpickle
+        from pyiceberg.catalog.rest.scan_planning import PlanTableScanRequest
+        from pyiceberg.expressions.parser import parse
+
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            IcebergFileIndexer,
+            ServerSidePlanning,
+        )
+
+        table = self._rest_table(
+            fake_rest_catalog.uri, token="secret-token", **_SERVER_SIDE_PLANNING_ON
+        )
+        server_side_planning = ServerSidePlanning.for_table(table)
+        assert server_side_planning is not None
+        assert "secret-token" not in repr(server_side_planning)
+        snapshot_id = table.current_snapshot().snapshot_id
+        row_filter = parse("col_a >= 0")
+        indexer = cloudpickle.loads(
+            cloudpickle.dumps(
+                IcebergFileIndexer(
+                    table_metadata=table.metadata,
+                    io=table.io,
+                    scan_kwargs={},
+                    snapshot_id=snapshot_id,
+                    row_filter=row_filter,
+                    server_side_planning=server_side_planning,
+                )
+            )
+        )
+        fake_rest_catalog.requests.clear()
+
+        listed = [
+            path
+            for manifest in indexer.list_files(None, filesystem=None)
+            for path in manifest.paths.tolist()
+        ]
+
+        assert listed == [fake_rest_catalog.planned_path]
+        plans = [
+            PlanTableScanRequest.model_validate(body)
+            for method, path, body in fake_rest_catalog.requests
+            if method == "POST" and path.endswith("/plan")
+        ]
+        assert len(plans) == 1
+        assert plans[0].snapshot_id == snapshot_id
+        assert plans[0].filter == row_filter
+
+    @_requires_server_side_planning
+    def test_no_server_side_planning_unless_the_catalog_plans(self, fake_rest_catalog):
+        """Listing plans locally for a REST catalog with planning off, or a SQL one."""
+        from ray.data._internal.datasource_v2.formats.iceberg.iceberg_file_indexer import (  # noqa: E501
+            ServerSidePlanning,
+        )
+
+        rest_table = self._rest_table(fake_rest_catalog.uri)
+        assert ServerSidePlanning.for_table(rest_table) is None
+        assert ServerSidePlanning.for_table(self._load_table()) is None
 
 
 if __name__ == "__main__":
