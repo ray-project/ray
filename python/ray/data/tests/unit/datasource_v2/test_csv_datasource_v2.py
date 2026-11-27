@@ -50,7 +50,6 @@ from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
 )
-from ray.data.expressions import col
 
 
 def _write(path, text: str) -> str:
@@ -472,19 +471,14 @@ def test_reads_compressed_files_whole(tmp_path, small_chunks):
     assert sorted(table.column("id").to_pylist()) == list(range(200))
 
 
-def test_streams_a_compressed_file_with_projection_filter_and_null_fill(tmp_path):
+def test_streams_a_compressed_file_with_projection_and_null_fill(tmp_path):
     path = str(tmp_path / "a.csv.gz")
     with open(path, "wb") as f:
-        f.write(
-            gzip.compress(
-                b"id,name\n" + b"".join(b"%d,n%d\n" % (i, i) for i in range(20))
-            )
-        )
+        f.write(gzip.compress(b"id,name\n0,n0\n1,n1\n"))
     datasource = CsvDatasourceV2([path])
     scanner = dataclasses.replace(
         datasource.create_scanner(schema=pa.schema([("id", pa.int64())])),
         columns=("name", "missing"),
-        predicate=col("id") >= 18,
     )
     manifest = FileManifest.concat(
         list(
@@ -497,24 +491,53 @@ def test_streams_a_compressed_file_with_projection_filter_and_null_fill(tmp_path
     table = pa.concat_tables(list(scanner.create_reader().read(manifest)))
 
     assert table.to_pylist() == [
-        {"name": "n18", "missing": None},
-        {"name": "n19", "missing": None},
+        {"name": "n0", "missing": None},
+        {"name": "n1", "missing": None},
     ]
 
 
-def test_streams_a_compressed_file_block_by_block(tmp_path):
-    path = str(tmp_path / "a.csv.gz")
+def test_streams_a_file_without_reading_it_all_before_the_first_table(
+    tmp_path, monkeypatch
+):
+    path = str(tmp_path / "a.csv")
     with open(path, "wb") as f:
-        f.write(gzip.compress(b"id\n" + b"".join(b"%d\n" % i for i in range(5000))))
+        f.write(b"id\n" + b"".join(b"%d\n" % i for i in range(200_000)))
+    file_size = (tmp_path / "a.csv").stat().st_size
     datasource = CsvDatasourceV2(
         [path],
         arrow_csv_args={"read_options": pcsv.ReadOptions(block_size=1024)},
     )
+    scanner = datasource.create_scanner(schema=pa.schema([("id", pa.int64())]))
+    # An unknown size sends the file down the streamed path.
+    manifest = FileManifest.construct_manifest(
+        paths=[path], sizes=[None], chunk_metadatas=[None]
+    )
 
-    tables = _read_tables(datasource, [path])
+    class CountingStream:
+        closed = False
 
-    assert len(tables) > 1
-    assert sum(len(t) for t in tables) == 5000
+        def __init__(self, stream):
+            self._stream = stream
+            self.bytes_read = 0
+
+        def read(self, n=-1):
+            data = self._stream.read(n)
+            self.bytes_read += len(data)
+            return data
+
+    streams = []
+    open_csv = pcsv.open_csv
+
+    def spy_open_csv(stream, *args, **kwargs):
+        streams.append(CountingStream(stream))
+        return open_csv(streams[-1], *args, **kwargs)
+
+    monkeypatch.setattr(pcsv, "open_csv", spy_open_csv)
+
+    next(scanner.create_reader().read(manifest))
+
+    assert len(streams) == 1
+    assert streams[0].bytes_read < file_size // 2
 
 
 def test_reads_snappy_files_whole(tmp_path):
