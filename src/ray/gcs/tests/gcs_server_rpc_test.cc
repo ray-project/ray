@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "gtest/gtest.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
@@ -30,13 +32,16 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs/gcs_table_storage.h"
+#include "ray/gcs/leader_election/leader_election_client_interface.h"
 #include "ray/gcs/metrics.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/gcs/store_client_kv.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/clock.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
+#include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 extern "C" {
 #include "hiredis/hiredis.h"
@@ -707,8 +712,97 @@ class GcsServerWithThread {
   std::unique_ptr<std::thread> thread_;
 };
 
-gcs::GcsServerConfig MakeGcsServerConfig(const std::string &name, bool leader_elect) {
+// A lease always held by another head, so the GCS stays passive until a test promotes it.
+class HeldElsewhereLeaseClient : public gcs::LeaderLeaseClientInterface {
+ public:
+  Status TryAcquire(const std::string &, int, std::string &current_leader) override {
+    current_leader = "another-head";
+    return Status::OK();
+  }
+  Status Renew(const std::string &, int, std::string &current_leader) override {
+    current_leader = "another-head";
+    return Status::OK();
+  }
+  void Release(const std::string &) override {}
+};
+
+// One lease shared by every GCS in a test, standing in for the Kubernetes Lease.
+class InMemoryLeaseClient : public gcs::LeaderLeaseClientInterface {
+ public:
+  Status TryAcquire(const std::string &holder_id,
+                    int ttl_seconds,
+                    std::string &current_leader) override {
+    absl::MutexLock lock(&mutex_);
+    if (unreachable_) {
+      return Status::IOError("Lease store unreachable.");
+    }
+    auto now = absl::Now();
+    if (holder_.empty() || holder_ == holder_id || now >= expires_at_) {
+      holder_ = holder_id;
+      expires_at_ = now + absl::Seconds(ttl_seconds);
+    }
+    current_leader = holder_;
+    return Status::OK();
+  }
+
+  Status Renew(const std::string &holder_id,
+               int ttl_seconds,
+               std::string &current_leader) override {
+    absl::MutexLock lock(&mutex_);
+    if (unreachable_) {
+      return Status::IOError("Lease store unreachable.");
+    }
+    if (holder_ == holder_id) {
+      expires_at_ = absl::Now() + absl::Seconds(ttl_seconds);
+    }
+    current_leader = holder_;
+    return Status::OK();
+  }
+
+  void Release(const std::string &holder_id) override {
+    absl::MutexLock lock(&mutex_);
+    if (holder_ == holder_id) {
+      holder_.clear();
+    }
+  }
+
+  std::string Holder() {
+    absl::MutexLock lock(&mutex_);
+    return holder_;
+  }
+
+  // Another head takes the lease, as it would once this holder's lease expired.
+  void TakeOver(const std::string &holder_id) {
+    absl::MutexLock lock(&mutex_);
+    holder_ = holder_id;
+    expires_at_ = absl::InfiniteFuture();
+  }
+
+  void SetUnreachable(bool unreachable) {
+    absl::MutexLock lock(&mutex_);
+    unreachable_ = unreachable;
+  }
+
+ private:
+  absl::Mutex mutex_;
+  std::string holder_ ABSL_GUARDED_BY(mutex_);
+  absl::Time expires_at_ ABSL_GUARDED_BY(mutex_) = absl::InfinitePast();
+  bool unreachable_ ABSL_GUARDED_BY(mutex_) = false;
+};
+
+// With leader election on and no `lease_client`, the lease is held elsewhere.
+gcs::GcsServerConfig MakeGcsServerConfig(
+    const std::string &name,
+    bool leader_elect,
+    std::shared_ptr<gcs::LeaderLeaseClientInterface> lease_client = nullptr) {
   gcs::GcsServerConfig config;
+  // Distinct per server, since the leader election holder ID is derived from it.
+  config.node_id = NodeID::FromRandom().Hex();
+  if (leader_elect) {
+    config.lease_client = lease_client != nullptr
+                              ? std::move(lease_client)
+                              : std::make_shared<HeldElsewhereLeaseClient>();
+  }
   config.grpc_server_port = 0;
   config.grpc_server_name = name;
   config.grpc_server_thread_num = 1;
@@ -784,17 +878,21 @@ class GcsLeaderElectionTestBase : public GcsServerTest {
  protected:
   // Started but not waited on: a passive GCS does not finish starting until some leader
   // has written the cluster ID.
-  std::unique_ptr<GcsServerWithThread> MakePassiveServer(const std::string &name) {
+  std::unique_ptr<GcsServerWithThread> MakePassiveServer(
+      const std::string &name,
+      std::shared_ptr<gcs::LeaderLeaseClientInterface> lease_client = nullptr) {
     auto server = std::make_unique<GcsServerWithThread>(
-        MakeGcsServerConfig(name, /*leader_elect=*/true), fake_metrics_);
+        MakeGcsServerConfig(name, /*leader_elect=*/true, std::move(lease_client)),
+        fake_metrics_);
     server->Start();
     return server;
   }
 
   // For storage that already has a cluster ID, so the passive GCS can finish starting.
   std::unique_ptr<GcsServerWithThread> StartPassiveServer(
-      const std::string &name = "MockedPassiveGcsServer") {
-    auto server = MakePassiveServer(name);
+      const std::string &name = "MockedPassiveGcsServer",
+      std::shared_ptr<gcs::LeaderLeaseClientInterface> lease_client = nullptr) {
+    auto server = MakePassiveServer(name, std::move(lease_client));
     EXPECT_TRUE(server->WaitForStarted(std::chrono::seconds(30)));
     return server;
   }
@@ -814,6 +912,22 @@ class GcsLeaderElectionTestBase : public GcsServerTest {
 
   void Promote(GcsServerWithThread &server) {
     Promote(server.server(), server.io_service());
+  }
+
+  // Stops the server and then promotes it, in one handler on its io context, the way the
+  // SIGTERM handler stops the GCS. The io context stops too, so no timer left behind by
+  // the stopped server can fire. Returns whether the server became the leader.
+  bool StopThenPromote(GcsServerWithThread &server) {
+    std::promise<bool> is_leader;
+    server.io_service().post(
+        [&server, &is_leader] {
+          server.io_service().stop();
+          server.server().Stop();
+          server.server().PromoteToLeader();
+          is_leader.set_value(server.server().IsLeader());
+        },
+        "test.StopThenPromote");
+    return is_leader.get_future().get();
   }
 
   // Promotion loads the GCS tables asynchronously and only then flips is_leader_.
@@ -979,6 +1093,358 @@ TEST_F(GcsLeaderElectionTestBase, TestColdStartPromotionBootsWinnerAndLoser) {
   EXPECT_TRUE(loser->WaitForStarted(std::chrono::seconds(30)));
   EXPECT_FALSE(loser->server().IsLeader());
   EXPECT_EQ(loser->server().GetClusterId(), winner->server().GetClusterId());
+}
+
+// The cold start driven by the elector instead of the test: both heads compete for one
+// lease, and exactly the winner is promoted.
+TEST_F(GcsLeaderElectionTestBase, TestElectorPromotesExactlyOneHead) {
+  const std::string cluster_id_ns = "cluster";
+  auto lease = std::make_shared<InMemoryLeaseClient>();
+  auto first = MakePassiveServer("MockedFirstGcsServer", lease);
+  auto second = MakePassiveServer("MockedSecondGcsServer", lease);
+
+  ASSERT_TRUE(WaitForCondition(
+      [&first, &second]() {
+        return first->server().IsLeader() || second->server().IsLeader();
+      },
+      /*timeout_ms=*/30000));
+  GcsServerWithThread &leader = first->server().IsLeader() ? *first : *second;
+  GcsServerWithThread &standby = first->server().IsLeader() ? *second : *first;
+  const std::string winner = lease->Holder();
+  EXPECT_FALSE(winner.empty());
+
+  // The winner wrote the cluster ID, so the standby finishes starting and stays passive.
+  EXPECT_TRUE(leader.WaitForStarted(std::chrono::seconds(30)));
+  EXPECT_TRUE(standby.WaitForStarted(std::chrono::seconds(30)));
+  EXPECT_FALSE(standby.server().IsLeader());
+  EXPECT_EQ(standby.server().GetClusterId(), leader.server().GetClusterId());
+  EXPECT_EQ(lease->Holder(), winner);
+
+  // The stored cluster ID is the one both heads adopted, and the winner wrote the
+  // active-only keys it skipped while it was still a candidate.
+  EXPECT_EQ(StorageGet(cluster_id_ns, kClusterIdKey),
+            leader.server().GetClusterId().Binary());
+  const auto expected_v2_flag =
+      std::to_string(static_cast<int>(RayConfig::instance().enable_autoscaler_v2()));
+  EXPECT_TRUE(WaitForCondition(
+      [this, &expected_v2_flag]() {
+        return StorageGet("", kGcsPidKey) == std::to_string(getpid()) &&
+               StorageGet(kGcsAutoscalerStateNamespace, kGcsAutoscalerV2EnabledKey) ==
+                   expected_v2_flag;
+      },
+      /*timeout_ms=*/30000));
+}
+
+// Stopping the leader releases the lease, so the standby takes over well before the
+// lease would have expired.
+TEST_F(GcsLeaderElectionTestBase, TestStoppedLeaderHandsOverToStandby) {
+  const std::string cluster_id_ns = "cluster";
+  auto lease = std::make_shared<InMemoryLeaseClient>();
+  auto leader = MakePassiveServer("MockedLeaderGcsServer", lease);
+  ASSERT_TRUE(WaitForLeader(*leader, std::chrono::seconds(30)));
+  const std::string leader_holder = lease->Holder();
+
+  // Both heads run in this process, so their real pids match; a sentinel makes the
+  // takeover's rewrite observable. Wait for the leader's own write first so it cannot
+  // land after the sentinel.
+  ASSERT_TRUE(WaitForCondition(
+      [this]() { return StorageGet("", kGcsPidKey) == std::to_string(getpid()); },
+      /*timeout_ms=*/30000));
+  PutInStorage("", kGcsPidKey, "old-leader-pid");
+
+  // State the new leader must load back from storage rather than inherit in memory.
+  auto seeded_node = GenNodeInfo(1, "127.0.0.1", "seeded_node");
+  ASSERT_TRUE(RegisterNodeOn(leader->Client(), *seeded_node).ok());
+  ASSERT_TRUE(NodesInStorage().contains(NodeID::FromBinary(seeded_node->node_id())));
+
+  auto standby = StartPassiveServer("MockedStandbyGcsServer", lease);
+  EXPECT_FALSE(standby->server().IsLeader());
+  const ClusterID cluster_id = leader->server().GetClusterId();
+  EXPECT_EQ(StorageGet("", kGcsPidKey), "old-leader-pid");
+
+  leader->Stop();
+  EXPECT_TRUE(WaitForLeader(
+      *standby,
+      std::chrono::seconds(RayConfig::instance().gcs_leader_election_lease_duration_s() -
+                           1)));
+  EXPECT_NE(lease->Holder(), leader_holder);
+  EXPECT_FALSE(lease->Holder().empty());
+  EXPECT_EQ(standby->server().GetClusterId(), cluster_id);
+
+  // The cluster ID is untouched, the active-only keys now belong to the new leader, and
+  // the node the old leader persisted is visible through the new one.
+  EXPECT_EQ(StorageGet(cluster_id_ns, kClusterIdKey), cluster_id.Binary());
+  EXPECT_TRUE(WaitForCondition(
+      [this]() { return StorageGet("", kGcsPidKey) == std::to_string(getpid()); },
+      /*timeout_ms=*/30000));
+  auto nodes = GetAllNodeInfoFrom(standby->Client());
+  ASSERT_EQ(nodes.size(), 1);
+  EXPECT_EQ(nodes[0].node_id(), seeded_node->node_id());
+}
+
+// A leader that finds another head holding the lease must exit at once, since the new
+// leader may already be writing to storage.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderExitsWhenLeaseIsTakenOver) {
+  EXPECT_DEATH(
+      {
+        auto lease = std::make_shared<InMemoryLeaseClient>();
+        auto leader = MakePassiveServer("MockedLeaderGcsServer", lease);
+        RAY_CHECK(WaitForLeader(*leader, std::chrono::seconds(30)));
+        lease->TakeOver("another-head");
+        // The next renewal, one retry period away, sees the new holder.
+        std::this_thread::sleep_for(std::chrono::seconds(
+            RayConfig::instance().gcs_leader_election_lease_duration_s()));
+      },
+      "GCS lost the leader lease");
+}
+
+// A leader that cannot renew must exit before its lease can expire, because it cannot
+// tell an API server outage from its own network partition.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderExitsWhenRenewalsKeepFailing) {
+  EXPECT_DEATH(
+      {
+        // Short timings so the watchdog fires quickly; this runs in the forked child
+        // only.
+        RayConfig::instance().gcs_leader_election_lease_duration_s() = 3;
+        RayConfig::instance().gcs_leader_election_renew_deadline_s() = 2;
+        RayConfig::instance().gcs_leader_election_retry_period_s() = 1;
+        auto lease = std::make_shared<InMemoryLeaseClient>();
+        auto leader = MakePassiveServer("MockedLeaderGcsServer", lease);
+        RAY_CHECK(WaitForLeader(*leader, std::chrono::seconds(30)));
+        lease->SetUnreachable(true);
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+      },
+      "GCS lost the leader lease");
+}
+
+// A lease lost while promotion is in flight must abort it, even before the process exits:
+// another head may already be writing as the leader.
+TEST_F(GcsLeaderElectionTestBase, TestLeaseLostDuringPromotionAbortsIt) {
+  EXPECT_DEATH(
+      {
+        PutInStorage("cluster", kClusterIdKey, ClusterID::FromRandom().Binary());
+        PutInStorage("", kGcsPidKey, "leader-pid");
+        // Faster acquire and renew attempts; this runs in the forked child only.
+        RayConfig::instance().gcs_leader_election_retry_period_s() = 1;
+        auto lease = std::make_shared<InMemoryLeaseClient>();
+        lease->TakeOver("another-head");
+        auto passive = StartPassiveServer("MockedPassiveGcsServer", lease);
+
+        // Hold the exit on lease loss until the aborted promotion has been checked.
+        std::promise<void> lost;
+        std::promise<void> checked;
+        auto checked_future = checked.get_future().share();
+        RayLog::AddFatalLogCallbacks(
+            {[&lost, checked_future](const std::string &, const std::string &) {
+              lost.set_value();
+              checked_future.wait();
+            }});
+
+        // Block the io context so the promotion stays queued until the lease is lost.
+        std::promise<void> blocked;
+        std::promise<void> release;
+        auto release_future = release.get_future();
+        passive->io_service().post(
+            [&blocked, &release_future] {
+              blocked.set_value();
+              release_future.wait();
+            },
+            "test.BlockIoContext");
+        blocked.get_future().wait();
+
+        lease->Release("another-head");
+        RAY_CHECK(WaitForCondition(
+            [&lease]() {
+              auto holder = lease->Holder();
+              return !holder.empty() && holder != "another-head";
+            },
+            /*timeout_ms=*/10000));
+        lease->TakeOver("another-head");
+        RAY_CHECK(lost.get_future().wait_for(std::chrono::seconds(10)) ==
+                  std::future_status::ready);
+
+        release.set_value();
+        RAY_CHECK(!WaitForLeader(*passive, std::chrono::seconds(3)));
+        RAY_CHECK(StorageGet("", kGcsPidKey) == "leader-pid");
+        std::cerr << "Promotion aborted after lease loss." << std::endl;
+        checked.set_value();
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+      },
+      "Promotion aborted after lease loss");
+}
+
+// The same during startup: a GCS that won and then lost the lease before it finished
+// starting must not mint a cluster ID or boot as the leader.
+TEST_F(GcsLeaderElectionTestBase, TestLeaseLostDuringStartupPromotionAbortsIt) {
+  EXPECT_DEATH(
+      {
+        // Faster acquire and renew attempts; this runs in the forked child only.
+        RayConfig::instance().gcs_leader_election_retry_period_s() = 1;
+        auto lease = std::make_shared<InMemoryLeaseClient>();
+        lease->TakeOver("another-head");
+        // Empty storage, so it stays parked on the cluster-ID wait.
+        auto passive = MakePassiveServer("MockedPassiveGcsServer", lease);
+        RAY_CHECK(!passive->WaitForStarted(std::chrono::seconds(2)));
+
+        std::promise<void> lost;
+        std::promise<void> checked;
+        auto checked_future = checked.get_future().share();
+        RayLog::AddFatalLogCallbacks(
+            {[&lost, checked_future](const std::string &, const std::string &) {
+              lost.set_value();
+              checked_future.wait();
+            }});
+
+        std::promise<void> blocked;
+        std::promise<void> release;
+        auto release_future = release.get_future();
+        passive->io_service().post(
+            [&blocked, &release_future] {
+              blocked.set_value();
+              release_future.wait();
+            },
+            "test.BlockIoContext");
+        blocked.get_future().wait();
+
+        lease->Release("another-head");
+        RAY_CHECK(WaitForCondition(
+            [&lease]() {
+              auto holder = lease->Holder();
+              return !holder.empty() && holder != "another-head";
+            },
+            /*timeout_ms=*/10000));
+        lease->TakeOver("another-head");
+        RAY_CHECK(lost.get_future().wait_for(std::chrono::seconds(10)) ==
+                  std::future_status::ready);
+
+        release.set_value();
+        // The cluster-ID wait retries every second, so this covers several attempts.
+        RAY_CHECK(!passive->WaitForStarted(std::chrono::seconds(3)));
+        RAY_CHECK(!passive->server().IsLeader());
+        RAY_CHECK(!StorageHas("cluster", kClusterIdKey));
+        std::cerr << "Startup promotion aborted after lease loss." << std::endl;
+        checked.set_value();
+        std::this_thread::sleep_for(std::chrono::seconds(10));
+      },
+      "Startup promotion aborted after lease loss");
+}
+
+// A promotion that arrives after Stop() released the lease must not make a GCS that never
+// finished starting the leader: it would then mint a cluster ID as if it held the lease.
+TEST_F(GcsLeaderElectionTestBase, TestPromotionAfterStopBeforeStartupIsIgnored) {
+  const std::string cluster_id_ns = "cluster";
+  auto passive = MakePassiveServer("MockedPassiveGcsServer");
+  // Empty storage, so it stays parked on the cluster-ID wait.
+  ASSERT_FALSE(passive->WaitForStarted(std::chrono::seconds(2)));
+
+  EXPECT_FALSE(StopThenPromote(*passive));
+  EXPECT_FALSE(StorageHas(cluster_id_ns, kClusterIdKey));
+}
+
+// Stop() resets the KV manager, so the cluster-ID retry must not run after it. The io
+// context keeps running here, unlike in the GCS binary, so the 1s retry timer does fire.
+TEST_F(GcsLeaderElectionTestBase, TestStopDuringClusterIdWaitStopsRetrying) {
+  auto passive = MakePassiveServer("MockedPassiveGcsServer");
+  // Empty storage, so it stays parked on the cluster-ID wait.
+  ASSERT_FALSE(passive->WaitForStarted(std::chrono::seconds(2)));
+
+  std::promise<void> stopped;
+  passive->io_service().post(
+      [&passive, &stopped] {
+        passive->server().Stop();
+        stopped.set_value();
+      },
+      "test.StopDuringClusterIdWait");
+  stopped.get_future().wait();
+
+  // Covers several retry attempts.
+  std::this_thread::sleep_for(std::chrono::seconds(3));
+  EXPECT_FALSE(passive->server().IsStarted());
+  EXPECT_FALSE(StorageHas("cluster", kClusterIdKey));
+}
+
+// Leader election needs a node ID: the holder ID is derived from it, and without it two
+// heads on one host would compete under the same identity.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresNodeId) {
+  gcs::GcsServerConfig config =
+      MakeGcsServerConfig("MockedGcsServerWithoutNodeId", /*leader_elect=*/true);
+  config.node_id = "";
+  EXPECT_DEATH(
+      {
+        instrumented_io_context io_service;
+        gcs::GcsServer server(config, fake_metrics_, io_service);
+      },
+      "GCS leader election requires a node ID");
+}
+
+// Without a test lease the GCS uses the Kubernetes one, which needs a lease name.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresLeaseName) {
+  gcs::GcsServerConfig config =
+      MakeGcsServerConfig("MockedGcsServerWithoutLease", /*leader_elect=*/true);
+  config.lease_client = nullptr;
+  EXPECT_DEATH(
+      {
+        RayConfig::instance().gcs_leader_election_lease_name() = "";
+        instrumented_io_context io_service;
+        gcs::GcsServer server(config, fake_metrics_, io_service);
+      },
+      "gcs_leader_election_lease_name must be set");
+}
+
+// The heads only agree on a leader's writes through storage they share. In-memory and
+// RocksDB storage are both local to one head.
+TEST_F(GcsLeaderElectionTestBase, TestLeaderElectionRequiresRedisStorage) {
+  gcs::GcsServerConfig config =
+      MakeGcsServerConfig("MockedGcsServerWithoutRedis", /*leader_elect=*/true);
+  config.redis_address = "";
+  EXPECT_DEATH(
+      {
+        RayConfig::instance().gcs_storage() = gcs::GcsServer::kInMemoryStorage;
+        instrumented_io_context io_service;
+        gcs::GcsServer server(config, fake_metrics_, io_service);
+      },
+      "GCS leader election requires Redis storage");
+#if defined(__linux__)
+  EXPECT_DEATH(
+      {
+        RayConfig::instance().gcs_storage() = gcs::GcsServer::kRocksDbStorage;
+        RayConfig::instance().gcs_storage_path() = ::testing::TempDir();
+        instrumented_io_context io_service;
+        gcs::GcsServer server(config, fake_metrics_, io_service);
+      },
+      "GCS leader election requires Redis storage");
+#endif
+}
+
+// Stop() must return, and release the lease, while a raylet still holds a RaySyncer
+// stream open. Cancelling the stream finishes it on the syncer's io context, so that io
+// context has to outlive the gRPC shutdown.
+TEST_F(GcsLeaderElectionTestBase, TestStopWithOpenSyncerStreamReleasesLease) {
+  auto lease = std::make_shared<InMemoryLeaseClient>();
+  auto leader = MakePassiveServer("MockedLeaderGcsServer", lease);
+  ASSERT_TRUE(WaitForLeader(*leader, std::chrono::seconds(30)));
+  ASSERT_TRUE(leader->WaitForStarted(std::chrono::seconds(30)));
+  ASSERT_FALSE(lease->Holder().empty());
+
+  auto channel =
+      grpc::CreateChannel("localhost:" + std::to_string(leader->server().GetPort()),
+                          grpc::InsecureChannelCredentials());
+  auto stub = rpc::syncer::RaySyncer::NewStub(channel);
+  grpc::ClientContext context;
+  context.AddMetadata("node_id", NodeID::FromRandom().Hex());
+  auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
+  if (auth_token && !auth_token->empty()) {
+    auth_token->SetMetadata(context);
+  }
+  auto stream = stub->StartSync(&context);
+  // The server answers with its own node ID once its side of the stream is up.
+  stream->WaitForInitialMetadata();
+  ASSERT_EQ(context.GetServerInitialMetadata().count("node_id"), 1);
+
+  // If Stop() hangs, so does this future's destructor, and the test times out.
+  auto stopped = std::async(std::launch::async, [&leader]() { leader->Stop(); });
+  ASSERT_EQ(stopped.wait_for(std::chrono::seconds(30)), std::future_status::ready);
+  EXPECT_TRUE(lease->Holder().empty());
 }
 
 // Adds a promoted leader, for the cases that need a standing leader to observe or to
@@ -1217,6 +1683,41 @@ TEST_F(GcsLeaderElectionTest, TestPromotionAfterARedisReconnectTakesOverTheWater
   EXPECT_NE(incarnation, leader_incarnation);
 
   passive->Stop();
+}
+
+// A promotion that arrives after Stop() released the lease must be ignored: the next
+// leader may already hold the lease, so this GCS must not load tables or write the
+// active-only keys.
+TEST_F(GcsLeaderElectionTest, TestPromotionAfterStopIsIgnored) {
+  PutInStorage("", kGcsPidKey, "leader-pid");
+  auto passive = StartPassiveServer();
+  ASSERT_FALSE(passive->server().IsLeader());
+
+  EXPECT_FALSE(StopThenPromote(*passive));
+  EXPECT_EQ(StorageGet("", kGcsPidKey), "leader-pid");
+}
+
+// A Stop() that lands while promotion is still loading tables must abort the promotion:
+// the lease is released by then, so finishing it could overlap the next leader.
+TEST_F(GcsLeaderElectionTest, TestStopDuringPromotionAbortsIt) {
+  PutInStorage("", kGcsPidKey, "leader-pid");
+  auto passive = StartPassiveServer();
+  ASSERT_FALSE(passive->server().IsLeader());
+
+  // Same handler, so the table load cannot complete before Stop(). The io context keeps
+  // running, so the load's continuation does run afterwards.
+  std::promise<void> posted;
+  passive->io_service().post(
+      [&passive, &posted] {
+        passive->server().PromoteToLeader();
+        passive->server().Stop();
+        posted.set_value();
+      },
+      "test.PromoteThenStop");
+  posted.get_future().wait();
+
+  EXPECT_FALSE(WaitForLeader(*passive, std::chrono::seconds(3)));
+  EXPECT_EQ(StorageGet("", kGcsPidKey), "leader-pid");
 }
 
 // Promotion must tolerate being driven more than once: the elector re-invokes

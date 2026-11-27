@@ -15,10 +15,16 @@ ray_cc_library(
         "leader_election_client_interface.h",
         "leader_elector.h",
     ],
+    visibility = [
+        "//src/ray/gcs:__pkg__",
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc/authentication:k8s_constants",
         "//src/ray/rpc/authentication:k8s_util",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@nlohmann_json",
     ],
@@ -35,6 +41,21 @@ ray_cc_test(
     ],
     deps = [
         ":leader_election",
+    ],
+)
+
+ray_cc_test(
+    name = "leader_election_client_factory_test",
+    srcs = [
+        "leader_election_client_factory_test.cc",
+    ],
+    tags = [
+        "small",
+        "team:core",
+    ],
+    deps = [
+        ":leader_election",
+        "//src/ray/util:env",
     ],
 )
 

@@ -78,6 +78,7 @@ ray_cc_test(
         "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
         "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
     },
+    shard_count = 4,
     tags = [
         "no_tsan",
         "no_windows",
@@ -89,9 +90,14 @@ ray_cc_test(
         "//src/ray/common:ray_config",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
+        "//src/ray/gcs/leader_election",
         "//src/ray/observability:fake_metric",
+        "//src/ray/protobuf:ray_syncer_cc_grpc",
+        "//src/ray/rpc/authentication:authentication_token_loader",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_cc_grpc",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
