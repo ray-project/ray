@@ -496,6 +496,44 @@ def test_streams_a_compressed_file_with_projection_and_null_fill(tmp_path):
     ]
 
 
+@pytest.fixture
+def converted_columns(monkeypatch):
+    """The non-empty ``include_columns`` each ``pcsv.open_csv`` call receives."""
+    seen = []
+    open_csv = pcsv.open_csv
+
+    def spy_open_csv(*args, **kwargs):
+        if kwargs["convert_options"].include_columns:
+            seen.append(kwargs["convert_options"].include_columns)
+        return open_csv(*args, **kwargs)
+
+    monkeypatch.setattr(pcsv, "open_csv", spy_open_csv)
+    return seen
+
+
+@pytest.mark.parametrize("partitioned", [False, True], ids=["plain", "hive"])
+def test_streams_a_compressed_file_converting_only_the_projected_columns(
+    tmp_path, converted_columns, partitioned
+):
+    directory = tmp_path / "country=US" if partitioned else tmp_path
+    directory.mkdir(exist_ok=True)
+    path = str(directory / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b"id,name,extra\n1,a,x\n"))
+    datasource = CsvDatasourceV2(
+        [path], partitioning=Partitioning(PartitionStyle.HIVE) if partitioned else None
+    )
+    columns = ("name", "missing") + (("country",) if partitioned else ())
+
+    table = _read_all(datasource, [path], columns=columns)
+
+    assert converted_columns == [["name", "missing"]]
+    expected = {"name": "a", "missing": None}
+    assert table.to_pylist() == [
+        {**expected, "country": "US"} if partitioned else expected
+    ]
+
+
 def test_streams_a_file_without_reading_it_all_before_the_first_table(
     tmp_path, monkeypatch
 ):
