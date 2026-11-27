@@ -23,6 +23,7 @@ from ray.train._internal.data_config import DataConfig
 
 if TYPE_CHECKING:
     from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
+    from ray.data.checkpoint.interfaces import DatasetCheckpointConfig
 
 
 class PushBasedDataConfig(DataConfig):
@@ -35,6 +36,9 @@ class PushBasedDataConfig(DataConfig):
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
+        dataset_checkpoint_configs: Optional[
+            Dict[str, "DatasetCheckpointConfig"]
+        ] = None,
     ):
         """Construct a PushBasedDataConfig.
 
@@ -42,11 +46,13 @@ class PushBasedDataConfig(DataConfig):
             datasets_to_split: Same as :class:`~ray.train.DataConfig`.
             execution_options: Same as :class:`~ray.train.DataConfig`.
             enable_shard_locality: Same as :class:`~ray.train.DataConfig`.
+            dataset_checkpoint_configs: Same as :class:`~ray.train.DataConfig`.
         """
         super().__init__(
             datasets_to_split=datasets_to_split,
             execution_options=execution_options,
             enable_shard_locality=enable_shard_locality,
+            dataset_checkpoint_configs=dataset_checkpoint_configs,
         )
 
     def configure(
