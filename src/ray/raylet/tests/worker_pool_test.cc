@@ -468,7 +468,9 @@ class WorkerPoolTest : public ::testing::Test {
 
   void TearDown() override {
     io_service_.stop();
-    thread_io_service_->join();
+    if (thread_io_service_->joinable()) {
+      thread_io_service_->join();
+    }
     AssertNoLeaks();
     runtime_env_reference.clear();
     worker_pool_->all_jobs_.clear();
@@ -2566,6 +2568,94 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   };
   RAY_CHECK_OK(worker_pool_->RegisterDriver(driver, rpc::JobConfig(), callback));
   ASSERT_TRUE(callback_called);
+}
+
+// Keep registration and timer callbacks on one thread, as in raylet.
+class WorkerPoolPrestartTest : public WorkerPoolTest,
+                               public ::testing::WithParamInterface<int> {
+ public:
+  void SetUp() override {
+    WorkerPoolTest::SetUp();
+    io_service_.stop();
+    thread_io_service_->join();
+    io_service_.restart();
+  }
+
+  void StartWorkers(int count) {
+    for (int i = 0; i < count; ++i) {
+      worker_pool_->OnWorkerStarted(worker_pool_->CreateWorker(
+          WorkerID::FromRandom(), std::make_unique<FakeProcess>(), Language::PYTHON));
+    }
+  }
+
+  auto RegisterWaitingDriver(int &replies) {
+    auto driver = worker_pool_->CreateWorker(WorkerID::FromRandom(),
+                                             std::make_unique<FakeProcess>(),
+                                             Language::PYTHON,
+                                             JOB_ID);
+    RAY_CHECK_OK(worker_pool_->RegisterDriver(
+        driver, rpc::JobConfig(), [&replies](Status status, int) {
+          EXPECT_TRUE(status.ok());
+          ++replies;
+        }));
+    return driver;
+  }
+};
+
+TEST_P(WorkerPoolPrestartTest, CompletesOnceWithMissingWorkers) {
+  int replies = 0;
+  RegisterWaitingDriver(replies);
+  // A later driver's disconnect must not cancel the first driver's wait.
+  worker_pool_->DisconnectDriver(RegisterDriver(Language::PYTHON, JOB_ID_2));
+  StartWorkers(GetParam());
+  EXPECT_EQ(replies, GetParam() == PYTHON_PRESTART_WORKERS ? 1 : 0);
+  io_service_.run_for(std::chrono::milliseconds(1100));
+  EXPECT_EQ(replies, 1);
+  // Late registrations after timeout or cancellation cannot send another reply.
+  StartWorkers(PYTHON_PRESTART_WORKERS);
+  io_service_.restart();
+  io_service_.poll();
+  EXPECT_EQ(replies, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(PrestartWorkers,
+                         WorkerPoolPrestartTest,
+                         ::testing::Values(0,
+                                           PYTHON_PRESTART_WORKERS - 1,
+                                           PYTHON_PRESTART_WORKERS));
+
+TEST_F(WorkerPoolPrestartTest, NonPositiveTimeoutCompletesRegistration) {
+  for (int timeout : {0, -1}) {
+    RayConfig::instance().initialize(
+        R"({"enable_worker_prestart": true, "worker_register_timeout_seconds": )" +
+        std::to_string(timeout) + "}");
+    SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}}});
+    int replies = 0;
+    RegisterWaitingDriver(replies);
+    io_service_.restart();
+    io_service_.poll();
+    EXPECT_EQ(replies, 1);
+  }
+}
+
+TEST_F(WorkerPoolPrestartTest, DisconnectCancelsRegistration) {
+  int replies = 0;
+  auto driver = RegisterWaitingDriver(replies);
+  worker_pool_->DisconnectDriver(driver);
+  StartWorkers(PYTHON_PRESTART_WORKERS);
+  io_service_.run_for(std::chrono::milliseconds(1100));
+  EXPECT_EQ(replies, 0);
+}
+
+TEST_F(WorkerPoolPrestartTest, DestroyCancelsQueuedRegistration) {
+  RayConfig::instance().initialize(
+      R"({"enable_worker_prestart": true, "worker_register_timeout_seconds": 0})");
+  int replies = 0;
+  RegisterWaitingDriver(replies);
+  worker_pool_.reset();
+  io_service_.poll();
+  EXPECT_EQ(replies, 0);
+  SetWorkerCommands({{Language::PYTHON, {"dummy_py_worker_command"}}});
 }
 
 // Tests for the worker port pool that raylet hands ports out from.

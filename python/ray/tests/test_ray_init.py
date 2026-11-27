@@ -58,6 +58,44 @@ def test_ray_init_no_local_instance(shutdown_only, address):
             ray.init(address=address)
 
 
+def test_ray_init_after_prestart_worker_failure(ray_start_cluster, tmp_path):
+    marker = tmp_path / "worker_failed"
+    worker_path = tmp_path / "fail_first_worker.py"
+    worker_path.write_text(
+        "import os, runpy\n"
+        "try:\n"
+        f"    fd = os.open({str(marker)!r}, os.O_CREAT | os.O_EXCL | os.O_WRONLY)\n"
+        "except FileExistsError:\n"
+        "    runpy.run_module('ray._private.workers.default_worker', run_name='__main__')\n"
+        "else:\n"
+        "    os.close(fd)\n"
+        "    os._exit(1)\n"
+    )
+    node = ray_start_cluster.add_node(
+        num_cpus=1,
+        include_dashboard=False,
+        worker_path=str(worker_path),
+        _system_config={
+            "enable_worker_prestart": True,
+            "worker_register_timeout_seconds": 5,
+        },
+    )
+    # A subprocess gives the blocking registration call a finite test deadline.
+    script = (
+        "import ray\n"
+        f"ray.init(address={ray_start_cluster.address!r})\n"
+        "@ray.remote\n"
+        "def ready():\n"
+        "    return 42\n"
+        "assert ray.get(ready.remote(), timeout=20) == 42\n"
+        "ray.shutdown()\n"
+    )
+    subprocess.run([sys.executable, "-c", script], check=True, timeout=45)
+    assert marker.exists()
+    raylet_log = Path(node.get_logs_dir_path()) / "raylet.out"
+    assert "Timed out waiting for prestarted Python workers" in raylet_log.read_text()
+
+
 @pytest.mark.skipif(
     os.environ.get("CI") and sys.platform == "win32",
     reason="Flaky when run on windows CI",
