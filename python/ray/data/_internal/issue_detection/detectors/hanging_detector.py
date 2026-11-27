@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, DefaultDict, Dict, List, Optional, Union
 import requests
 
 import ray
+from ray.data._internal.execution.interfaces.common import OperatorId, TaskIndex
 from ray.data._internal.execution.interfaces.op_runtime_metrics import RunningTaskInfo
 from ray.data._internal.issue_detection.issue_detector import (
     Issue,
@@ -33,10 +34,8 @@ DEFAULT_DETECTION_TIME_INTERVAL_S = 30.0
 
 logger = logging.getLogger(__name__)
 
-OpId = str
-TaskIdx = int
 # Map of operator id -> task index -> hanging execution state.
-HangingOpTasks = DefaultDict[OpId, Dict[TaskIdx, "HangingExecutionState"]]
+HangingOpTasks = DefaultDict[OperatorId, Dict[TaskIndex, "HangingExecutionState"]]
 
 
 def _format_timestamp(epoch: float) -> str:
@@ -65,8 +64,8 @@ class TaskMetadata:
 
 @dataclass
 class HangingExecutionState:
-    operator_id: OpId
-    task_idx: TaskIdx
+    operator_id: OperatorId
+    task_idx: TaskIndex
     task_id: ray.TaskID
     task_metadata: Optional[TaskMetadata]
     bytes_output: int
@@ -169,7 +168,7 @@ class HangingExecutionIssueDetector(IssueDetector):
     def _refresh_state(
         self,
         operator: "PhysicalOperator",
-        task_idx: TaskIdx,
+        task_idx: TaskIndex,
         old_state: Optional[HangingExecutionState],
         task_info: RunningTaskInfo,
     ) -> HangingExecutionState:

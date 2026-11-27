@@ -41,6 +41,11 @@ logger = logging.getLogger(__name__)
 def _pa_is_in(left: Any, right: Any) -> Any:
     if not isinstance(right, (pa.Array, pa.ChunkedArray)):
         right = pa.array(right.as_py() if isinstance(right, pa.Scalar) else right)
+    if isinstance(left, (pa.Array, pa.ChunkedArray)) and pa.types.is_null(left.type):
+        # An all-None pandas column converts to a null-typed Arrow array, and
+        # `pc.is_in` rejects a null-typed array against a non-null value set.
+        # Casting nulls to the value set's type doesn't change the result.
+        left = left.cast(right.type)
     return pc.is_in(left, right)
 
 
@@ -133,6 +138,53 @@ def _pa_add_or_concat(left: Any, right: Any) -> Any:
     return pc.add(left, right)
 
 
+def _is_integer_operand(x: Any) -> bool:
+    """Whether ``x`` is a Python int or an Arrow integer array / scalar."""
+    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+        return pa.types.is_integer(x.type)
+    return isinstance(x, (int, np.integer)) and not isinstance(x, (bool, np.bool_))
+
+
+def _to_arrow(x: Any) -> Any:
+    if isinstance(x, (pa.Array, pa.ChunkedArray, pa.Scalar)):
+        return x
+    return pa.scalar(x)
+
+
+def _as_float64(x: Any) -> Any:
+    if isinstance(x, pc.Expression):
+        return x.cast(pa.float64())
+    return pc.cast(_to_arrow(x), pa.float64())
+
+
+def _pa_floor_divide(left: Any, right: Any) -> Any:
+    """Floor division (``//``) with Python semantics.
+
+    ``pc.divide`` truncates toward zero for integers, so ``pc.floor`` of that
+    result rounds ``-7 // 2`` to ``-3`` instead of ``-4``. For two integer
+    operands, subtract one whenever the division was inexact and the operands
+    have opposite signs. Division by zero still raises, as ``pc.divide`` does.
+
+    ``pc.Expression`` operands (predicate pushdown) have no type until they are
+    bound to a schema, so the integer check can't be made. They are divided in
+    float64 instead, which floors correctly for integers below 2**53 and is a
+    no-op for floats. Unlike the integer path, this doesn't raise on a zero
+    divisor.
+    """
+    if isinstance(left, pc.Expression) or isinstance(right, pc.Expression):
+        return pc.floor(pc.divide(_as_float64(left), _as_float64(right)))
+    quotient = pc.divide(left, right)
+    if _is_integer_operand(left) and _is_integer_operand(right):
+        left_arrow, right_arrow = _to_arrow(left), _to_arrow(right)
+        remainder = pc.subtract(left_arrow, pc.multiply(quotient, right_arrow))
+        needs_adjust = pc.and_(
+            pc.not_equal(remainder, 0),
+            pc.not_equal(pc.less(left_arrow, 0), pc.less(right_arrow, 0)),
+        )
+        quotient = pc.subtract(quotient, pc.cast(needs_adjust, quotient.type))
+    return pc.floor(quotient)
+
+
 _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
@@ -141,9 +193,9 @@ _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M
-        pc.subtract(left, pc.multiply(pc.floor(pc.divide(left, right)), right))
+        pc.subtract(left, pc.multiply(_pa_floor_divide(left, right), right))
     ),
-    Operation.FLOORDIV: lambda left, right: pc.floor(pc.divide(left, right)),
+    Operation.FLOORDIV: _pa_floor_divide,
     Operation.GT: pc.greater,
     Operation.LT: pc.less,
     Operation.GE: pc.greater_equal,

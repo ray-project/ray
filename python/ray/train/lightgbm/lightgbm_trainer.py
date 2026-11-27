@@ -216,7 +216,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         # TODO: [Deprecated] Legacy LightGBMTrainer API
         label_column: Optional[str] = None,
         params: Optional[Dict[str, Any]] = None,
-        num_boost_round: Optional[int] = None,
+        num_boost_round: int = 10,
         **train_kwargs,
     ):
         # TODO: [Deprecated] Legacy LightGBMTrainer API
@@ -257,7 +257,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
         run_config: Optional[ray.train.RunConfig],
         datasets: Optional[Dict[str, GenDataset]],
         label_column: Optional[str],
-        num_boost_round: Optional[int],
+        num_boost_round: int = 10,
     ) -> Callable[[Dict], None]:
         """Get the training function for the legacy LightGBMTrainer API."""
 
@@ -277,12 +277,10 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
                 "This is the column name of the label in the dataset."
             )
 
-        num_boost_round = num_boost_round or 10
-
         _log_deprecation_warning(LEGACY_LIGHTGBM_TRAINER_DEPRECATION_MESSAGE)
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
-        callbacks = lightgbm_train_kwargs.get("callbacks", [])
+        callbacks = list(lightgbm_train_kwargs.get("callbacks") or [])
         user_supplied_callback = any(
             isinstance(callback, RayTrainReportCallback) for callback in callbacks
         )

@@ -234,6 +234,27 @@ def test_fake_actor_op_satisfies_the_actor_pool_protocol():
     )
 
 
+def test_prebuffer_estimate_treats_absent_backpressure_keys_as_disabled():
+    """Operators opted out of generator backpressure emit NO backpressure keys
+    (``generator_backpressure_disabled=True``); the prebuffer estimate must
+    read an absent key exactly like an explicit -1: disabled (-1)."""
+    op_absent = cast(Any, _make_op())
+    op_absent._ray_remote_args = {}
+    op_absent._ray_actor_task_remote_args = {}
+    assert num_prebuffered_objects(op=op_absent) == -1
+
+    op_disabled = cast(Any, _make_op())
+    op_disabled._ray_remote_args = {"_actor_generator_backpressure_num_objects": -1}
+    op_disabled._ray_actor_task_remote_args = {
+        "_generator_backpressure_num_objects": -1
+    }
+    assert num_prebuffered_objects(op=op_disabled) == -1
+
+    # And a real cap still converts (object count -> blocks, grouped yields).
+    op_capped = _make_op(prebuffered_outputs=3)
+    assert num_prebuffered_objects(op=op_capped) == 3
+
+
 def test_source_output_created_consumed_and_duplicate_consumption_is_idempotent():
     bank = ResourceBank()
     source_op = _make_op()
@@ -856,7 +877,9 @@ def test_live_object_store_total_bytes_sums_all_live_components():
     assert object_store.total_bytes() == 600
 
 
-def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol():
+def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+):
     """A protocol member no real operator implements makes ``isinstance``
     silently return False, turning the prebuffer term off everywhere instead of
     failing. Pin the real operator so it cannot drift from the fake."""
@@ -870,7 +893,10 @@ def test_real_actor_pool_operator_satisfies_the_actor_pool_protocol():
     assert isinstance(op, ActorPoolOperator)
     assert isinstance(op.actor_pool, ActorPoolAccounting)
     # And a task-based operator must NOT match, or it would be charged a
-    # prebuffer it has no actors to fill.
+    # prebuffer it has no actors to fill. The actor-only backend promotes every
+    # task pool to an actor pool (``maybe_promote_compute_strategy``), so this
+    # half only has a task operator to check with the backend switched off.
+    monkeypatch.delenv("RAY_DATA_ACTOR_ONLY_BACKEND", raising=False)
     task_op = MapOperator.create(
         map_transformer=MagicMock(),
         input_op=InputDataBuffer(data_context, input_data=MagicMock()),
@@ -1030,7 +1056,7 @@ def _all_scopes(bank: ResourceBank):
 
 
 def test_task_submitted_to_a_draining_actor_is_tracked():
-    """A downscaled actor is TERMINATING, not gone: it drains its in-flight
+    """A downscaled actor is DRAINING, not gone: it drains its in-flight
     work and can still be handed a task. Its row lives in the downscaled index,
     so every lookup has to go through ``get_actor_info``."""
     bank = ResourceBank()

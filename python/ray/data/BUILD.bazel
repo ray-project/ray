@@ -48,6 +48,10 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    extra_srcs = [
+        "tests/parquet_test_utils.py",
+        "tests/schema_planning_utils.py",
+    ],
     files = glob(["tests/datasource_v2/test_*.py"]),
     tags = [
         "exclusive",
@@ -114,7 +118,7 @@ py_test_module_list(
 
 # Tests for the actor-only backend (RAY_DATA_ACTOR_ONLY_BACKEND=1).
 py_test_module_list(
-    size = "small",
+    size = "medium",
     env = {
         "RAY_DATA_ACTOR_ONLY_BACKEND": "1",
     },
@@ -278,12 +282,45 @@ py_test(
 )
 
 py_test(
+    name = "test_hive_direct_integration",
+    size = "medium",
+    srcs = [
+        "tests/datasource/test_hive_direct_integration.py",
+        "tests/datasource/test_hive_integration.py",
+    ],
+    main = "tests/datasource/test_hive_direct_integration.py",
+    tags = [
+        "exclusive",
+        "manual",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_snowflake",
     size = "small",
     srcs = ["tests/datasource/test_snowflake.py"],
     tags = [
         "exclusive",
         "needs_credentials",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_snowflake_unit",
+    size = "small",
+    srcs = ["tests/datasource/test_snowflake_unit.py"],
+    tags = [
+        "exclusive",
         "team:data",
     ],
     deps = [
@@ -938,34 +975,6 @@ py_test(
     name = "test_hash_shuffle_disk_runtime",
     size = "small",
     srcs = ["tests/test_hash_shuffle_disk_runtime.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_hash_shuffle_disk_smoke",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_disk_smoke.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_hash_shuffle_disk_repartition",
-    size = "medium",
-    srcs = ["tests/test_hash_shuffle_disk_repartition.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -1972,9 +1981,65 @@ py_test(
 )
 
 py_test(
+    name = "test_random_shuffle_v2",
+    size = "medium",
+    srcs = ["tests/test_random_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_sort_shuffle_v2",
     size = "medium",
     srcs = ["tests/test_sort_shuffle_v2.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_execution",
+    size = "medium",
+    srcs = ["tests/test_top_n_execution.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_operator",
+    size = "medium",
+    srcs = ["tests/test_top_n_operator.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_top_n_rewrite",
+    size = "medium",
+    srcs = ["tests/test_top_n_rewrite.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2765,6 +2830,20 @@ py_test(
     name = "test_preserve_hash_shuffle_blocks",
     size = "medium",
     srcs = ["tests/test_preserve_hash_shuffle_blocks.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_shuffle_elimination",
+    size = "large",
+    srcs = ["tests/test_shuffle_elimination.py"],
     tags = [
         "exclusive",
         "team:data",

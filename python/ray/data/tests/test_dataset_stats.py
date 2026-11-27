@@ -1,11 +1,9 @@
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.util import rows_same
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.aggregate import (
     ApproximateQuantile,
     ApproximateTopK,
@@ -118,10 +116,6 @@ class TestDtypeAggregatorsForDataset:
 
         assert [type(agg) for agg in result.aggregators] == [Count, Mean]
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("14.0.0"),
-        reason="Requires pyarrow >= 14.0.0",
-    )
     def test_custom_dtype_mapping_pattern_precedence(self):
         """Test that specific custom mappings take precedence over default patterns."""
         import datetime
@@ -146,10 +140,6 @@ class TestDtypeAggregatorsForDataset:
         assert len(result.aggregators) == 1
         assert isinstance(result.aggregators[0], Count)
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("14.0.0"),
-        reason="Requires pyarrow >= 14.0.0",
-    )
     @pytest.mark.parametrize(
         "pa_type",
         [
@@ -218,10 +208,6 @@ class TestIndividualAggregatorFunctions:
 class TestDefaultDtypeAggregators:
     """Test suite for _default_dtype_aggregators function."""
 
-    @pytest.mark.skipif(
-        get_pyarrow_version() < parse_version("14.0.0"),
-        reason="Requires pyarrow >= 14.0.0",
-    )
     @pytest.mark.parametrize(
         "dtype_factory,expected_agg_types,uses_pattern_matching",
         [

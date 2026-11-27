@@ -163,8 +163,8 @@ def test_annotate_rejects_invalid_severity_on_every_rank(
 
 
 def test_annotate_no_op_without_train_context(monkeypatch, captured_annotations):
-    """Local mode (``ScalingConfig(num_workers=0)``) never initializes the
-    internal train context, so annotating is a silent no-op."""
+    """Without an initialized internal train context (outside a Train
+    worker), annotating is a silent no-op."""
     monkeypatch.setattr(
         ray.train.v2._internal.execution.train_fn_utils,
         "get_train_fn_utils",

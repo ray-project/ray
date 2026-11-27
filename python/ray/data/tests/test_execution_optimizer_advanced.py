@@ -122,10 +122,17 @@ def test_repartition_e2e(
                 prefix = "Disk" if context.use_disk_based_hash_shuffle else ""
                 num_partitions = ds._logical_plan.initial_num_blocks()
                 map_name = f"{prefix}SliceShuffleMap(partitions={num_partitions})"
+                if context.use_disk_based_hash_shuffle:
+                    # The disk writer is a map operator; the read fuses into it.
+                    map_name = f"ReadRange->{map_name}"
                 reduce_name = f"{prefix}SliceShuffleReduce(partitions={num_partitions})"
                 assert ds_stats.base_name == reduce_name
                 assert reduce_name in ds_stats.metadata
                 map_stats = ds_stats.parents[0]
+                if context.use_disk_based_hash_shuffle:
+                    # The disk reduce reads the writer through the regroup.
+                    assert map_stats.base_name == "DiskHashShuffleRegroup"
+                    map_stats = map_stats.parents[0]
                 assert map_stats.base_name == map_name
                 assert map_name in map_stats.metadata
                 return

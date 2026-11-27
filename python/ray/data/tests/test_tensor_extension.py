@@ -6,11 +6,9 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-from packaging.version import parse as parse_version
 
 from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.tensor_extensions.arrow import (
-    MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -21,10 +19,8 @@ from ray.data._internal.tensor_extensions.arrow import (
     FixedShapeTensorType,
     _are_contiguous_1d_views,
     _concat_ndarrays,
-    _extension_array_concat_supported,
     concat_tensor_arrays,
     create_arrow_fixed_shape_tensor_type,
-    fixed_shape_extension_scalar_to_ndarray,
     native_tensor_array_to_numpy,
     unify_tensor_arrays,
 )
@@ -38,7 +34,6 @@ from ray.data._internal.tensor_extensions.utils import (
     _should_convert_to_tensor,
     create_ragged_ndarray,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 
 
@@ -548,46 +543,21 @@ def test_arrow_tensor_array_getitem(chunked, tensor_format_context):
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = get_pyarrow_version()
+    for idx in range(outer_dim):
+        item = t_arr[idx]
+        # Returns native FixedShapeTensorScalar
+        np.testing.assert_array_equal(item.to_numpy(), arr[idx])
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
+        # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
+        #       implements `__array__` method therefore implementing Numpy
+        #       array protocol
+        if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
             np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            if pyarrow_version >= parse_version("16.0.0"):
-                # Returns native FixedShapeTensorScalar
-                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
-            else:
-                # Returns an ExtensionScalar, item.type: FixedShapeTensorType
-                np.testing.assert_array_equal(
-                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
-                )
-
-            # NOTE: In addition we verify that for existing ``ArrowTensorScalar``
-            #       implements `__array__` method therefore implementing Numpy
-            #       array protocol
-            if tensor_format != FixedShapeTensorFormat.ARROW_NATIVE:
-                np.testing.assert_array_equal(item, arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
-        if pyarrow_version >= parse_version("16.0.0"):
-            # Returns native FixedShapeTensorScalar
-            np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
-        else:
-            # Returns an ExtensionScalar
-            np.testing.assert_array_equal(
-                fixed_shape_extension_scalar_to_ndarray(t_subarr), subarr
-            )
+        # Returns native FixedShapeTensorScalar
+        np.testing.assert_array_equal(t_subarr.to_numpy(), subarr)
 
     # Test to_pylist.
     # Note: With tensor_format_context fixture, ARROW_NATIVE is only tested when
@@ -612,28 +582,10 @@ def test_arrow_tensor_array_getitem(chunked, tensor_format_context):
 
     np.testing.assert_array_equal(t_arr2_npy, arr[1:])
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-        and tensor_format != FixedShapeTensorFormat.ARROW_NATIVE
-    ):
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            if pyarrow_version >= parse_version("16.0.0"):
-                # Returns native FixedShapeTensorScalar
-                np.testing.assert_array_equal(item.to_numpy(), arr[idx])
-            else:
-                # Returns an ExtensionScalar
-                np.testing.assert_array_equal(
-                    fixed_shape_extension_scalar_to_ndarray(item), arr[idx]
-                )
+    for idx in range(1, outer_dim):
+        item = t_arr2[idx - 1]
+        # Returns native FixedShapeTensorScalar
+        np.testing.assert_array_equal(item.to_numpy(), arr[idx])
 
 
 @pytest.mark.parametrize("chunked", [False, True])
@@ -651,20 +603,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked, tensor_format_conte
     if chunked:
         t_arr = pa.chunked_array(t_arr)
 
-    pyarrow_version = get_pyarrow_version()
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(outer_dim):
-            item = t_arr[idx]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(outer_dim):
-            np.testing.assert_array_equal(t_arr[idx], arr[idx])
+    for idx in range(outer_dim):
+        np.testing.assert_array_equal(t_arr[idx], arr[idx])
 
     # Test __iter__.
     for t_subarr, subarr in zip(t_arr, arr):
@@ -690,19 +630,8 @@ def test_arrow_variable_shaped_tensor_array_getitem(chunked, tensor_format_conte
     for t_subarr, subarr in zip(t_arr2_npy, arr[1:]):
         np.testing.assert_array_equal(t_subarr, subarr)
 
-    if (
-        chunked
-        and pyarrow_version >= parse_version("8.0.0")
-        and pyarrow_version < parse_version("9.0.0")
-    ):
-        for idx in range(1, outer_dim):
-            item = t_arr2[idx - 1]
-            assert isinstance(item, pa.ExtensionScalar)
-            item = item.type._extension_scalar_to_ndarray(item)
-            np.testing.assert_array_equal(item, arr[idx])
-    else:
-        for idx in range(1, outer_dim):
-            np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
+    for idx in range(1, outer_dim):
+        np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
 @pytest.mark.parametrize(
@@ -811,6 +740,88 @@ def test_variable_shaped_tensor_array_chunked_concat(tensor_format_context):
         ta.to_numpy(), np.array([e for a in [a1, a2] for e in a], dtype=object)
     ):
         np.testing.assert_array_equal(arr, expected)
+
+
+@pytest.mark.parametrize("fixed_first", [True, False])
+def test_unify_fixed_shaped_with_lower_ndim_variable_shaped(
+    fixed_first, tensor_format_context
+):
+    # Unifying a fixed-shaped 2D tensor array with a variable-shaped 1D one
+    # requires padding the 1D shapes with a leading singleton axis.
+    fixed = np.arange(8).reshape((2, 2, 2))
+    ragged = [np.arange(2), np.arange(3)]
+    ta_fixed = ArrowTensorArray.from_numpy(fixed)
+    ta_ragged = ArrowVariableShapedTensorArray.from_numpy(ragged)
+
+    expected = list(fixed) + [r[np.newaxis] for r in ragged]
+    arrs = [ta_fixed, ta_ragged]
+    if not fixed_first:
+        arrs.reverse()
+        expected = expected[2:] + expected[:2]
+
+    ta = concat_tensor_arrays(unify_tensor_arrays(arrs))
+    assert isinstance(ta.type, ArrowVariableShapedTensorType)
+    assert ta.type.ndim == 2
+    assert len(ta) == len(expected)
+    for arr, exp in zip(ta.to_numpy(), expected):
+        np.testing.assert_array_equal(arr, exp)
+
+
+def test_unify_fixed_shaped_with_lower_ndim_variable_shaped_null_rows(
+    tensor_format_context,
+):
+    # Null rows must stay null after the shapes are padded.
+    ta_fixed = ArrowTensorArray.from_numpy(np.arange(8).reshape((2, 2, 2)))
+    ta_ragged = ArrowVariableShapedTensorArray.from_numpy(
+        [np.arange(2), np.arange(3), np.arange(4)]
+    ).take(pa.array([0, None, 1, 2], type=pa.int64()))
+    # Slice so the null mask has an offset.
+    ta_ragged = ta_ragged.slice(1)
+
+    ta = concat_tensor_arrays(unify_tensor_arrays([ta_fixed, ta_ragged]))
+    assert ta.type.ndim == 2
+    assert ta.is_null().to_pylist() == [False, False, True, False, False]
+    # Read rows one at a time: converting null tensor rows with to_numpy() is
+    # a separate issue.
+    expected = [*np.arange(8).reshape((2, 2, 2)), None, [np.arange(3)], [np.arange(4)]]
+    for i, exp in enumerate(expected):
+        row = ta[i].as_py()
+        if exp is None:
+            assert row is None
+        else:
+            np.testing.assert_array_equal(row, exp)
+
+
+@pytest.mark.parametrize("fixed_first", [True, False])
+@pytest.mark.parametrize("ragged_kind", ["all_null", "empty"])
+def test_unify_fixed_shaped_with_lower_ndim_variable_shaped_no_valid_rows(
+    ragged_kind, fixed_first, tensor_format_context
+):
+    # With no valid rows, pa.array() can't infer the shape type from the
+    # values, so it has to be passed explicitly.
+    fixed = np.arange(8).reshape((2, 2, 2))
+    ta_fixed = ArrowTensorArray.from_numpy(fixed)
+    ta_ragged = ArrowVariableShapedTensorArray.from_numpy([np.arange(2), np.arange(3)])
+    if ragged_kind == "all_null":
+        ta_ragged = ta_ragged.take(pa.array([None, None], type=pa.int64()))
+        expected = [*fixed, None, None]
+    else:
+        ta_ragged = ta_ragged.slice(0, 0)
+        expected = [*fixed]
+    arrs = [ta_fixed, ta_ragged]
+    if not fixed_first:
+        arrs.reverse()
+        expected = expected[2:] + expected[:2]
+
+    ta = concat_tensor_arrays(unify_tensor_arrays(arrs))
+    assert ta.type.ndim == 2
+    assert ta.is_null().to_pylist() == [exp is None for exp in expected]
+    for i, exp in enumerate(expected):
+        row = ta[i].as_py()
+        if exp is None:
+            assert row is None
+        else:
+            np.testing.assert_array_equal(row, exp)
 
 
 def test_variable_shaped_tensor_array_uniform_dim(tensor_format_context):
@@ -932,10 +943,6 @@ class TestCreateFixedShapeTensorType:
         assert tensor_type.value_type == dtype
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_arrow_fixed_shape_tensor_format_eq_with_concat(tensor_format_context):
     """Test that ArrowTensorType, ArrowTensorTypeV2, and native tensor type __eq__
     methods work correctly when concatenating Arrow arrays with the same tensor type."""
@@ -966,10 +973,6 @@ def test_arrow_fixed_shape_tensor_format_eq_with_concat(tensor_format_context):
     np.testing.assert_array_equal(concatenated.to_numpy_ndarray(), expected)
 
 
-@pytest.mark.skipif(
-    not _extension_array_concat_supported(),
-    reason="ExtensionArrays support concatenation only in Pyarrow >= 12.0",
-)
 def test_arrow_variable_shaped_tensor_type_eq_with_concat():
     """Test that ArrowVariableShapedTensorType __eq__ method works correctly
     when concatenating Arrow arrays with variable shaped tensors."""
@@ -1857,10 +1860,6 @@ def test_unify_tensor_arrays_with_all_null_chunk(restore_data_context, tensor_fo
     np.testing.assert_array_equal(column.to_pylist()[2], np.ones((3, 2), np.float32))
 
 
-@pytest.mark.skipif(
-    get_pyarrow_version() < MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
-    reason="pyarrow native fixed-shape tensors need pyarrow >= 16",
-)
 def test_native_tensor_array_to_numpy_with_null_rows():
     """A pyarrow native fixed-shape tensor array with a null row converts to
     one ndarray per row with None for the null row, instead of the zeros that
@@ -1977,6 +1976,107 @@ def test_tensor_column_with_null_rows_to_pandas_and_back():
     assert back.schema.field("x").type == tensors.type
     assert back["x"].null_count == 1
     assert _rows(back["x"].to_pylist()) == _rows(column.to_pylist())
+
+
+def _to_pandas_chunked(chunks) -> TensorArray:
+    """Convert a multi-chunk column, as a batch spanning several blocks does."""
+    column = pa.chunked_array(chunks)
+    return column.type.to_pandas_dtype().__from_arrow__(column)
+
+
+def test_variable_shaped_uniform_rows_multi_chunk_to_pandas_skips_per_row(
+    monkeypatch,
+):
+    """Uniform rows spread over several chunks are joined without per-row views.
+
+    A batch that spans two blocks reaches pandas as a two-chunk column. Each
+    chunk is dense on its own, so it is joined with one concatenation instead of
+    going through ``to_numpy``, which returns one view per row for the result to
+    be stacked from.
+    """
+    data = np.arange(24, dtype=np.float32).reshape(6, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    to_numpy_calls = []
+    original_to_numpy = ArrowVariableShapedTensorArray.to_numpy
+
+    def spy_to_numpy(self, *args, **kwargs):
+        to_numpy_calls.append(len(self))
+        return original_to_numpy(self, *args, **kwargs)
+
+    monkeypatch.setattr(ArrowVariableShapedTensorArray, "to_numpy", spy_to_numpy)
+
+    tensor_array = _to_pandas_chunked([arr.slice(0, 2), arr.slice(2)])
+
+    assert to_numpy_calls == []
+    assert tensor_array._tensor.dtype == np.float32
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+
+
+@pytest.mark.parametrize(
+    "chunk_rows",
+    [
+        # #66122 noted that a dense chunk can't be concatenated with a ragged one.
+        [np.ones((2, 4)), [np.ones(2), np.ones(5)]],
+        [[np.ones(2), np.ones(5)], np.ones((2, 4))],
+        # Each chunk is dense, but not with the same row shape.
+        [np.ones((2, 4)), np.zeros((3, 5))],
+    ],
+    ids=["dense_then_ragged", "ragged_then_dense", "dense_different_shapes"],
+)
+def test_variable_shaped_mixed_chunks_to_pandas(chunk_rows):
+    """Chunks that can't share one dense array fall back to one ndarray per row."""
+    chunks = [ArrowVariableShapedTensorArray.from_numpy(rows) for rows in chunk_rows]
+    expected = [row for rows in chunk_rows for row in rows]
+
+    tensor_array = _to_pandas_chunked(chunks)
+
+    assert tensor_array._tensor.dtype == object
+    assert len(tensor_array) == len(expected)
+    for actual_row, expected_row in zip(tensor_array.to_numpy(), expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
+
+
+def test_variable_shaped_zero_dim_mixed_chunks_to_pandas():
+    """0-d rows next to a null row still fall back to one ndarray per row.
+
+    A dense chunk of 0-d rows is 1-d, like a chunk of per-row ndarrays, so the
+    row shapes alone can't tell them apart.
+    """
+    # from_numpy can't build 0-d rows, so build the storage directly.
+    zero_dim = pa.ExtensionArray.from_storage(
+        ArrowVariableShapedTensorType(pa.float32(), 0),
+        pa.StructArray.from_arrays(
+            [
+                pa.array([[1.0], [2.0], [3.0]], pa.large_list(pa.float32())),
+                pa.array([[], [], []], pa.list_(pa.int64())),
+            ],
+            names=["data", "shape"],
+        ),
+    )
+    with_null = _with_null_row(zero_dim, "struct")
+    assert zero_dim._to_dense_numpy_or_none() is not None
+
+    tensor_array = _to_pandas_chunked([zero_dim, with_null])
+
+    expected = list(zero_dim.to_numpy()) + list(
+        with_null.to_numpy(zero_copy_only=False)
+    )
+    actual = tensor_array.to_numpy()
+    assert len(actual) == len(expected)
+    for actual_row, expected_row in zip(actual, expected):
+        np.testing.assert_array_equal(actual_row, expected_row)
+
+
+def test_variable_shaped_multi_chunk_with_empty_chunks_to_pandas_is_zero_copy():
+    """Empty chunks are skipped, so one remaining chunk is still a view."""
+    data = np.arange(12, dtype=np.float32).reshape(3, 4)
+    arr = ArrowVariableShapedTensorArray.from_numpy(data)
+
+    tensor_array = _to_pandas_chunked([arr.slice(0, 0), arr, arr.slice(0, 0)])
+
+    np.testing.assert_array_equal(tensor_array.to_numpy(), data)
+    assert np.shares_memory(tensor_array._tensor, _arrow_values_view(arr))
 
 
 if __name__ == "__main__":

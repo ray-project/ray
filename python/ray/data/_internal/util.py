@@ -23,6 +23,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -649,12 +650,20 @@ def get_compute_strategy(
         elif not is_callable_class and (
             compute == "actors" or isinstance(compute, ActorPoolStrategy)
         ):
-            raise ValueError(
-                f"You specified the function {fn} as your UDF with the compute "
-                f"{compute}, but Ray Data can't schedule regular functions with the actor "
-                f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
-                f"None to use the default compute strategy."
+            from ray.data._internal.execution.execution_flags import (
+                actor_only_backend_enabled,
             )
+
+            # Under the actor-only backend, all map ops run on actors regardless of
+            # UDF type, so an explicit ActorPoolStrategy must be passable downstream
+            # (e.g. to control pool size or prevent operator fusion).
+            if not actor_only_backend_enabled():
+                raise ValueError(
+                    f"You specified the function {fn} as your UDF with the compute "
+                    f"{compute}, but Ray Data can't schedule regular functions with the actor "
+                    f"pool strategy. To fix this error, pass a TaskPoolStrategy to compute or "
+                    f"None to use the default compute strategy."
+                )
         return compute
     elif concurrency is not None:
         # Legacy code path to support `concurrency` argument.
@@ -734,7 +743,10 @@ def get_compute_strategy_for_read_api(
     Returns:
         The `ComputeStrategy` for reading.
     """
-    from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
+    from ray.data._internal.compute import (
+        ComputeStrategy,
+        TaskPoolStrategy,
+    )
 
     # ``concurrency`` parameter takes precedence over the ``compute`` parameter.
     if concurrency is not None:
@@ -1598,17 +1610,17 @@ def filesystem_for_sized_opens(
     ``RetryingPyFileSystem`` opens a file by path alone, which drops a known
     size, so S3 sends a HEAD request to look it up again. That request is all
     the wrapper retries: the file it returns reads from S3 directly. Given the
-    size, ``S3FileSystem`` opens without any request, so it is returned
-    unwrapped. Other filesystems keep the wrapper.
+    size, ``S3FileSystem`` opens without any request, and so does a
+    ``SubTreeFileSystem`` over one (what a catalog's vended credentials give),
+    so these are returned unwrapped. Other filesystems keep the wrapper.
     """
+    if not isinstance(filesystem, RetryingPyFileSystem):
+        return filesystem
+    inner = filesystem.unwrap()
     # ``type_name``, not ``isinstance``: a pyarrow build without S3 support
     # raises ImportError on any reference to ``pyarrow.fs.S3FileSystem``.
-    if (
-        isinstance(filesystem, RetryingPyFileSystem)
-        and filesystem.unwrap().type_name == "s3"
-    ):
-        return filesystem.unwrap()
-    return filesystem
+    base = inner.base_fs if inner.type_name == "subtree" else inner
+    return inner if base.type_name == "s3" else filesystem
 
 
 def _annotate_exception_with_retry_context(
@@ -1644,6 +1656,15 @@ def _annotate_exception_with_retry_context(
     )
     add_exception_note(exc, suffix)
     return exc
+
+
+def is_retryable_error(error_str: str, match: Optional[Sequence[str]]) -> bool:
+    """Whether ``iterate_with_retry`` retries an error formatted as ``error_str``.
+
+    ``match`` holds patterns, each checked as a substring, then as a regex.
+    ``None`` retries any error.
+    """
+    return match is None or any(matches_error(pattern, error_str) for pattern in match)
 
 
 def iterate_with_retry(
@@ -1696,10 +1717,7 @@ def iterate_with_retry(
             return
         except Exception as e:
             error_str = format_exception(e, include_cause=unwrap_cause)
-            is_retryable = match is None or any(
-                matches_error(pattern, error_str) for pattern in match
-            )
-            if is_retryable and attempt + 1 < max_attempts:
+            if is_retryable_error(error_str, match) and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 total_backoff_s += backoff

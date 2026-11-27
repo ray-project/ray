@@ -7,6 +7,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     RandomShuffle,
     Repartition,
     Sort,
+    TopN,
 )
 from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.from_operators import (
@@ -23,6 +24,7 @@ from ray.data._internal.logical.operators.map_operator import (
     CSE_TEMP_COLUMN_PREFIX,
     AbstractMap,
     AbstractUDFMap,
+    DiskShuffleMap,
     Filter,
     FlatMap,
     MapBatches,
@@ -61,6 +63,7 @@ __all__ = [
     "CSE_TEMP_COLUMN_PREFIX",
     "Count",
     "Download",
+    "DiskShuffleMap",
     "Filter",
     "FlatMap",
     "FromArrow",
@@ -86,6 +89,7 @@ __all__ = [
     "ReadFiles",
     "Repartition",
     "Sort",
+    "TopN",
     "StreamingRepartition",
     "StreamingSplit",
     "Union",
