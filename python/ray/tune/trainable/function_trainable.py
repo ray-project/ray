@@ -228,7 +228,8 @@ def wrap_function(
             fn = partial(train_func, config)
 
             def handle_output(output):
-                if not output:
+                # Zero is a valid metric value, so only skip empty non-numbers.
+                if not output and not isinstance(output, Number):
                     return
                 elif isinstance(output, dict):
                     get_session().report(output)
