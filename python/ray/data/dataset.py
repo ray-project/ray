@@ -6288,8 +6288,12 @@ class Dataset:
             >>> db_dir.cleanup()
 
         Arguments:
-            sql: An ``INSERT INTO`` statement that specifies the table to write to. The
-                number of parameters must match the number of columns in the table.
+            sql: An ``INSERT INTO`` statement with one parameter per column, in the
+                dataset's known column order. Ray binds each block by column name
+                in that order. If the column order is unknown before execution,
+                all nonempty blocks must have the same column order. Use
+                :meth:`Dataset.select_columns` to set it explicitly. A mismatch
+                across write tasks is reported after those tasks may have committed.
             connection_factory: A function that takes no arguments and returns a
                 Python DB API2
                 `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
@@ -6300,7 +6304,11 @@ class Dataset:
                 total number of tasks run. By default, concurrency is dynamically
                 decided based on the available resources.
         """  # noqa: E501
-        datasink = SQLDatasink(sql=sql, connection_factory=connection_factory)
+        datasink = SQLDatasink(
+            sql=sql,
+            connection_factory=connection_factory,
+            column_names=self.columns(fetch_if_missing=False),
+        )
         self.write_datasink(
             datasink,
             ray_remote_args=ray_remote_args,
