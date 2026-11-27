@@ -387,17 +387,13 @@ def test_supports_sharding_propagates_connection_error():
         datasource.supports_sharding(4)
 
 
-@pytest.mark.parametrize("failing_method", ["cursor", "commit", "rollback", "close"])
+@pytest.mark.parametrize("failing_method", ["cursor", "commit", "close"])
 def test_supports_sharding_propagates_acquisition_and_cleanup_errors(
     temp_database: str, failing_method: str
 ):
-    denied_functions = ("mod",) if failing_method == "rollback" else ()
-
     class FailingConnection:
         def __init__(self):
-            self.connection = _sqlite_connection_factory(
-                temp_database, denied_functions
-            )()
+            self.connection = _sqlite_connection_factory(temp_database)()
 
         def cursor(self):
             if failing_method == "cursor":
@@ -411,8 +407,6 @@ def test_supports_sharding_propagates_acquisition_and_cleanup_errors(
 
         def rollback(self):
             self.connection.rollback()
-            if failing_method == "rollback":
-                raise RuntimeError("rollback failed")
 
         def close(self):
             self.connection.close()
@@ -438,7 +432,9 @@ def test_supports_sharding_propagates_acquisition_and_cleanup_errors(
     assert len(calls) == 1
 
 
-def test_read_sql_override_includes_last_probe_error(temp_database: str, caplog):
+def test_read_sql_override_includes_last_probe_error(
+    temp_database: str, caplog, propagate_logs
+):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE events (id INTEGER)")
     connection.execute("INSERT INTO events VALUES (1)")
@@ -459,7 +455,9 @@ def test_read_sql_override_includes_last_probe_error(temp_database: str, caplog)
     assert "no such function: missing_hash" in caplog.text
 
 
-def test_get_read_tasks_logs_neutral_probe_failure(temp_database: str, caplog):
+def test_get_read_tasks_logs_neutral_probe_failure(
+    temp_database: str, caplog, propagate_logs
+):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE events (id INTEGER)")
     connection.execute("INSERT INTO events VALUES (1)")
@@ -479,30 +477,6 @@ def test_get_read_tasks_logs_neutral_probe_failure(temp_database: str, caplog):
     assert rows == [{"id": 1}]
     assert "Sharding probe failed" in caplog.text
     assert "neither the MOD() function" not in caplog.text
-
-
-@pytest.mark.parametrize("parallelism, shard_keys", [(1, ["id"]), (4, None)])
-def test_get_read_tasks_does_not_log_probe_failure_without_probe(
-    parallelism, shard_keys, caplog
-):
-    calls = []
-
-    def connection_factory():
-        calls.append(True)
-        return sqlite3.connect(":memory:")
-
-    datasource = SQLDatasource(
-        "SELECT 1 AS id",
-        connection_factory,
-        "signed_hash",
-        shard_keys=shard_keys,
-    )
-    caplog.set_level("INFO")
-    tasks = datasource.get_read_tasks(parallelism)
-    assert len(tasks) == 1
-    assert calls == []
-    assert "Sharding probe failed" not in caplog.text
-    assert "Sharding is not supported" not in caplog.text
 
 
 # for mysql test

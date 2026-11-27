@@ -74,8 +74,6 @@ def _connect(connection_factory: Callable[[], Connection]) -> Iterator[Cursor]:
                 or e.__class__.__name__ == "NotSupportedError"
             ):
                 pass
-            else:
-                raise
         raise
     finally:
         connection.close()
@@ -161,10 +159,8 @@ class SQLDatasource(Datasource):
 
         Raises:
             Exception: Errors raised while establishing the database connection
-                or cursor, committing or closing the transaction, or rollback
-                failures not suppressed for optional rollback support are
-                propagated rather than treated as an unsupported sharding
-                operation.
+                or cursor, committing or closing the transaction, are propagated.
+                If rollback also fails, the original operation error is preserved.
         """
         self._modulo_syntax = None
         self._last_probe_error = None
