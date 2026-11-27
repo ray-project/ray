@@ -228,6 +228,33 @@ def test_count_vectorizer_serialization():
     assert "text" in result.columns
 
 
+def test_vectorizer_preserves_int_counts_with_missing_rows_and_empty_vocab():
+    """Ensure missing rows do not upcast integer counts to floats and empty vocab works."""
+    df = pd.DataFrame({"text": ["a b a", None, "b c"]})
+
+    hv = HashingVectorizer(columns=["text"], num_features=4)
+    hv_out = hv.transform_batch(df.copy())
+    assert hv_out["text"].iloc[1] is None
+    assert all(isinstance(x, int) for x in hv_out["text"].iloc[0])
+    assert all(isinstance(x, int) for x in hv_out["text"].iloc[2])
+
+    cv = CountVectorizer(columns=["text"])
+    cv.fit(ray.data.from_pandas(df))
+    cv_out = cv.transform_batch(df.copy())
+    assert cv_out["text"].iloc[0] == [2, 1, 0]
+    assert cv_out["text"].iloc[1] is None
+    assert cv_out["text"].iloc[2] == [0, 1, 1]
+    assert all(isinstance(x, int) for x in cv_out["text"].iloc[0])
+    assert all(isinstance(x, int) for x in cv_out["text"].iloc[2])
+
+    cv_empty = CountVectorizer(columns=["text"])
+    cv_empty.fit(
+        ray.data.from_pandas(pd.DataFrame({"text": pd.Series([None], dtype=object)}))
+    )
+    cv_empty_out = cv_empty.transform_batch(pd.DataFrame({"text": ["a", "b"]}))
+    assert cv_empty_out["text"].tolist() == [[], []]
+
+
 if __name__ == "__main__":
     import sys
 
