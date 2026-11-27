@@ -237,6 +237,7 @@ def ray_deps_setup():
         sha256 = "490d11425393eed068966a4990ead1ff07c658f823fd982fddac67006ccc44ab",
         patches = [
             "//thirdparty/patches:boost-headers.patch",
+            "//thirdparty/patches:boost-windows-arm64.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -257,6 +258,8 @@ def ray_deps_setup():
         name = "com_github_gflags_gflags",
         url = "https://github.com/gflags/gflags/archive/e171aa2d15ed9eb17054558e0b3a6a413bb01067.tar.gz",
         sha256 = "b20f58e7f210ceb0e768eb1476073d0748af9b19dfbbf53f4fd16e3fb49c5ac8",
+        patches = ["//thirdparty/patches:gflags-windows-arm64.patch"],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
@@ -288,6 +291,7 @@ def ray_deps_setup():
         patches = [
             "@io_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@io_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
+            "@io_ray//thirdparty/patches:opencensus-windows-arm64.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -340,6 +344,7 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:prometheus-windows-zlib.patch",
             "@io_ray//thirdparty/patches:prometheus-windows-pollfd.patch",
             "@io_ray//thirdparty/patches:prometheus-zlib-fdopen.patch",
+            "@io_ray//thirdparty/patches:prometheus-windows-arm64.patch",
         ],
     )
 
@@ -363,6 +368,7 @@ def ray_deps_setup():
         sha256 = "cd256d91781911d46a57506978b3979bfee45d5086a1b6668a3ae19c5e77f8dc",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            "@io_ray//thirdparty/patches:grpc-windows-arm64.patch",
             # gRPC turns on layering_check for its own packages, but its BUILD
             # files do not declare every header they use (e.g. the Apple-only
             # cf_event_engine includes absl/status/status.h without depending

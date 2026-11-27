@@ -1,0 +1,18 @@
+diff --git BUILD.bazel BUILD.bazel
+--- BUILD.bazel
++++ BUILD.bazel
+@@ -3,4 +3,4 @@
+ config_setting(
+     name = "windows",
+-    values = {"cpu": "x64_windows"},
++    constraint_values = ["@platforms//os:windows"],
+ )
+diff --git bazel/civetweb.BUILD bazel/civetweb.BUILD
+--- bazel/civetweb.BUILD
++++ bazel/civetweb.BUILD
+@@ -17,4 +17,4 @@
+ config_setting(
+     name = "windows",
+-    values = { "cpu": "x64_windows" },
++    constraint_values = ["@platforms//os:windows"],
+ )
