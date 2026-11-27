@@ -107,6 +107,24 @@ def test_receiver_reset_swaps_queue():
     assert isinstance(item, _BlockDelivery) and item.block == "new"
 
 
+def test_receiver_tracks_queued_bytes():
+    receiver = _PushReceiver()
+    receiver.begin_epoch(0)
+    # Out of order: seq 1 waits in the reorder buffer and isn't queued yet.
+    receiver.deliver(0, 1, _BlockPush(size_bytes=30, num_rows=3), block="b1")
+    assert receiver.queued_bytes == 0
+    receiver.deliver(0, 0, _BlockPush(size_bytes=10, num_rows=1), block="b0")
+    assert receiver.queued_bytes == 40
+
+    epoch_queue = receiver.queue
+    assert receiver.on_block_popped(epoch_queue, 10) == 30
+
+    # After a reset, a stale generator's pops don't change the new count.
+    receiver.reset()
+    assert receiver.queued_bytes == 0
+    assert receiver.on_block_popped(epoch_queue, 30) == 0
+
+
 # ---------------------------------------------------------------------------
 # End-to-end tests: a minimal consumer actor shaped like a Ray Train worker
 # (single-threaded actor, consume loop on a background thread).
@@ -150,6 +168,27 @@ class _Consumer(PushSplitReceiverMixin):
         self._thread = threading.Thread(target=_run, daemon=True)
         self._thread.start()
 
+    def start_materialize(self) -> None:
+        assert self._thread is None or not self._thread.is_alive()
+        self._result = None
+
+        def _run():
+            try:
+                materialized = self._it.materialize()
+                ids = [row["id"] for row in materialized.take_all()]
+                self._result = {"rows": len(ids), "ids": ids}
+            except BaseException as e:  # noqa: BLE001 - surfaced via epoch_result
+                self._result = e
+
+        self._thread = threading.Thread(target=_run, daemon=True)
+        self._thread.start()
+
+    def prefetched_bytes(self) -> int:
+        return self._it._iter_stats.iter_prefetched_bytes
+
+    def stats(self) -> str:
+        return self._it.stats()
+
     def epoch_result(self):
         """None while the epoch is still running; raises if it failed."""
         if self._thread is not None and self._thread.is_alive():
@@ -179,6 +218,10 @@ def _make_consumers(iterators) -> List[Any]:
 def _run_epochs(consumers, kwargs_list=None, timeout_s: float = 120.0):
     kwargs_list = kwargs_list or [{}] * len(consumers)
     ray.get([c.start_epoch.remote(**kw) for c, kw in zip(consumers, kwargs_list)])
+    return _wait_for_results(consumers, timeout_s)
+
+
+def _wait_for_results(consumers, timeout_s: float = 120.0):
     results = []
     for consumer in consumers:
         deadline = time.monotonic() + timeout_s
@@ -277,11 +320,80 @@ def test_push_split_flow_control_bounds_buffering(ray_start_regular_shared):
     _run_epochs(consumers)
 
 
-def test_push_split_materialize_not_supported(ray_start_regular_shared):
-    ds = ray.data.range(100)
+def test_push_split_materialize(ray_start_regular_shared):
+    ds = ray.data.range(1000, override_num_blocks=20)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
+    consumers = _make_consumers(iterators)
+
+    ray.get([c.start_materialize.remote() for c in consumers])
+    results = _wait_for_results(consumers)
+    assert [r["rows"] for r in results] == [500, 500]
+    assert sorted(results[0]["ids"] + results[1]["ids"]) == list(range(1000))
+    # materialize() ends the epoch itself: no receive state is left behind.
+    assert ray.get([c.num_receivers.remote() for c in consumers]) == [0, 0]
+
+    # A split can materialize one epoch and iterate batches in the next.
+    results = _run_epochs(consumers)
+    assert [r["rows"] for r in results] == [500, 500]
+
+
+def test_push_split_materialize_mixed_with_iter_batches(ray_start_regular_shared):
+    # One split materializes while the other iterates batches in the same
+    # epoch, as a train worker and a validation step may do.
+    ds = ray.data.range(1000, override_num_blocks=20)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
+    consumers = _make_consumers(iterators)
+
+    ray.get(
+        [consumers[0].start_materialize.remote(), consumers[1].start_epoch.remote()]
+    )
+    results = _wait_for_results(consumers)
+    assert [r["rows"] for r in results] == [500, 500]
+    assert sorted(results[0]["ids"] + results[1]["ids"]) == list(range(1000))
+
+
+def test_push_split_materialize_error_propagation(ray_start_regular_shared):
+    def _boom(row):
+        raise ValueError("boom")
+
+    ds = ray.data.range(100).map(_boom)
     iterators = streaming_split_push_based(ds, 1)
-    with pytest.raises(NotImplementedError, match="iter_batches"):
-        iterators[0].materialize()
+    consumers = _make_consumers(iterators)
+
+    ray.get(consumers[0].start_materialize.remote())
+
+    def _errored():
+        try:
+            return ray.get(consumers[0].epoch_result.remote()) is not None
+        except Exception:
+            return True
+
+    wait_for_condition(_errored, timeout=120)
+    with pytest.raises(Exception, match="boom"):
+        ray.get(consumers[0].epoch_result.remote())
+    assert ray.get(consumers[0].num_receivers.remote()) == 0
+
+
+def test_push_split_stats_match_pull_split(ray_start_regular_shared):
+    """The push split reports the iterator stats that the pull split
+    reports: prefetched bytes and the coordinator overhead time."""
+    num_rows, num_blocks = 2000, 40
+    ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
+    iterators = streaming_split_push_based(ds, 2, equal=True)
+    consumers = _make_consumers(iterators)
+
+    # A slow consumer lets the prefetch window fill the local queue.
+    ray.get([c.start_epoch.remote(delay_s=0.2) for c in consumers])
+    wait_for_condition(
+        lambda: all(ray.get([c.prefetched_bytes.remote() for c in consumers])),
+        timeout=120,
+    )
+    _wait_for_results(consumers)
+
+    # Nothing is prefetched once the epoch ends.
+    assert ray.get([c.prefetched_bytes.remote() for c in consumers]) == [0, 0]
+    for stats in ray.get([c.stats.remote() for c in consumers]):
+        assert "Streaming split coordinator overhead time" in stats
 
 
 def test_push_split_checkpointing_records_yielded_row_ids(ray_start_regular_shared):

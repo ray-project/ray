@@ -7,6 +7,7 @@ overview of the design.
 
 import logging
 import queue
+import sys
 import threading
 from dataclasses import dataclass
 from typing import (
@@ -22,6 +23,7 @@ from typing import (
 
 import ray
 from ray.data._internal.block_batching.interfaces import ResolvedBlock
+from ray.data._internal.execution.interfaces import BlockEntry, RefBundle
 from ray.data._internal.iterator.push_split_coordinator import (
     PushSplitCoordinator,
     ReceiverKey,
@@ -32,13 +34,14 @@ from ray.data._internal.iterator.push_split_coordinator import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_streaming_split_dataset
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.iterator import DataIterator, _BatchSource
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import NodeIdStr
     from ray.data.dataset import Dataset, Schema
+    from ray.types import ObjectRef
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +111,8 @@ class _PushReceiver:
     def __init__(self):
         self.queue: "queue.Queue[_QueueItem]" = queue.Queue()
         self.lock = threading.Lock()
+        # Bytes of the blocks in ``queue``: this split's prefetched bytes.
+        self.queued_bytes = 0
         self.cur_epoch: Optional[int] = None
         self.reorder_epoch: Optional[int] = None
         self.reorder_next_seq = 0
@@ -126,6 +131,7 @@ class _PushReceiver:
             self.reorder_next_seq = 0
             self.reorder_pending = {}
             self.queue = queue.Queue()
+            self.queued_bytes = 0
 
     def begin_epoch(self, epoch: int) -> None:
         with self.lock:
@@ -157,8 +163,21 @@ class _PushReceiver:
                 self.reorder_pending = {}
             self.reorder_pending[seq] = queue_item
             while self.reorder_next_seq in self.reorder_pending:
-                self.queue.put(self.reorder_pending.pop(self.reorder_next_seq))
+                released = self.reorder_pending.pop(self.reorder_next_seq)
+                if isinstance(released, _BlockDelivery):
+                    self.queued_bytes += released.size_bytes
+                self.queue.put(released)
                 self.reorder_next_seq += 1
+
+    def on_block_popped(self, epoch_queue: "queue.Queue[_QueueItem]", size: int) -> int:
+        """Record that the iterator took a block of ``size`` bytes from
+        ``epoch_queue``. Returns the bytes that remain queued."""
+        with self.lock:
+            # A stale generator pops from a queue that reset() replaced; its
+            # blocks are not part of the current count.
+            if epoch_queue is self.queue:
+                self.queued_bytes -= size
+            return self.queued_bytes
 
     def deliver_error(self, epoch_id: int, error: _ExecutorError) -> None:
         """Deliver an _ExecutorError immediately (fail fast, unsequenced)."""
@@ -250,19 +269,42 @@ class PushBasedDataIterator(DataIterator):
     def _receiver_key(self) -> ReceiverKey:
         return f"{self._coord_actor._actor_id.hex()}:{self._output_split_idx}"
 
-    def _to_ref_bundle_iterator(self):
-        # Blocks arrive by value, so there are no RefBundles to return;
-        # iter_batches goes through _create_batch_source instead.
-        raise NotImplementedError(
-            "Push-based streaming splits receive blocks by value and don't "
-            "support RefBundle-based APIs such as materialize(). Iterate the "
-            "split with iter_batches() instead."
-        )
+    def _to_ref_bundle_iterator(
+        self,
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], None]:
+        """RefBundles over this split's blocks, for ``materialize()``.
 
-    def _create_batch_source(self, **batch_iterator_kwargs) -> _BatchSource:
-        # Runs on the thread consuming batches (the block generator itself is
-        # pulled from a helper thread). A default actor runs its tasks on the
-        # main thread; blocking it would starve the delivery tasks and hang.
+        Blocks arrive by value, so this puts each one back into the object
+        store to get a reference. The caller wants every block, so the flow
+        window is unbounded: the coordinator pushes as fast as the executor
+        produces. ``iter_batches`` doesn't use this; it reads the blocks
+        directly through ``_create_batch_source``.
+        """
+        self._check_not_on_actor_task_thread()
+
+        def gen_ref_bundles() -> Iterator[RefBundle]:
+            try:
+                # materialize() adds each bundle's size to the prefetched
+                # bytes itself, like it does for the pull split.
+                for resolved in self._iter_blocks(
+                    target_rows=sys.maxsize, track_prefetched_bytes=False
+                ):
+                    accessor = BlockAccessor.for_block(resolved.block)
+                    block_ref = cast("ObjectRef[Block]", ray.put(resolved.block))
+                    entry = BlockEntry(block_ref, accessor.get_metadata())
+                    yield RefBundle(
+                        (entry,), owns_blocks=False, schema=accessor.schema()
+                    )
+            finally:
+                # materialize() has no end-of-iteration hook, so finish the
+                # epoch here.
+                self._finish_epoch()
+
+        return gen_ref_bundles(), self._iter_stats, None
+
+    def _check_not_on_actor_task_thread(self) -> None:
+        # A default actor runs its tasks on the main thread; blocking it
+        # would starve the delivery tasks and hang.
         if (
             ray.get_runtime_context().get_actor_id() is not None
             and threading.current_thread() is threading.main_thread()
@@ -273,6 +315,11 @@ class PushBasedDataIterator(DataIterator):
                 "from a background thread (as Ray Train does) or give the "
                 "actor max_concurrency > 1."
             )
+
+    def _create_batch_source(self, **batch_iterator_kwargs) -> _BatchSource:
+        # Runs on the thread consuming batches (the block generator itself is
+        # pulled from a helper thread).
+        self._check_not_on_actor_task_thread()
         # Capture the prefetch window before iteration starts; _iter_blocks
         # reads it lazily on its first next().
         self._prefetch_batches = batch_iterator_kwargs.get("prefetch_batches", 1)
@@ -294,11 +341,25 @@ class PushBasedDataIterator(DataIterator):
         )
         return _BatchSource(batch_iterator, self._iter_stats, None, dataset_tags)
 
-    def _iter_blocks(self) -> Iterator[ResolvedBlock]:
-        """Join the next epoch and yield the blocks pushed to this split."""
+    def _iter_blocks(
+        self,
+        target_rows: Optional[int] = None,
+        track_prefetched_bytes: bool = True,
+    ) -> Iterator[ResolvedBlock]:
+        """Join the next epoch and yield the blocks pushed to this split.
+
+        Args:
+            target_rows: The flow window, in rows. Defaults to the prefetch
+                window of the current ``iter_batches`` call.
+            track_prefetched_bytes: Whether to report the bytes in the local
+                queue as this split's prefetched bytes.
+        """
         receiver, epoch = self._join_epoch()
-        target_rows = self._prefetch_window_rows()
+        if target_rows is None:
+            target_rows = self._prefetch_window_rows()
         pending_consumed_bytes = 0
+        # Like the pull split, don't carry prefetched bytes across epochs.
+        self._iter_stats.iter_prefetched_bytes = 0
         self._update_flow_window(epoch, target_rows, 0, 0)
         # reset() gave this epoch a fresh queue, so a lingering
         # generator from an early-exited epoch can't steal deliveries;
@@ -321,6 +382,11 @@ class PushBasedDataIterator(DataIterator):
             if isinstance(item, _ExecutorError):
                 raise item.error
             assert isinstance(item, _BlockDelivery)
+            # The blocks still in the local queue are this split's prefetched
+            # blocks, like the pull split's prefetch window.
+            queued_bytes = receiver.on_block_popped(epoch_queue, item.size_bytes)
+            if track_prefetched_bytes:
+                self._iter_stats.iter_prefetched_bytes = queued_bytes
             self._update_flow_window(
                 epoch, target_rows, item.num_rows, pending_consumed_bytes
             )
@@ -396,8 +462,14 @@ class PushBasedDataIterator(DataIterator):
         )
 
     def _on_iteration_end(self, executor) -> None:
-        """Notify the coordinator on any end of iteration (exhaustion, early
-        break, or exception); runs on the consumer thread."""
+        """Runs on the consumer thread on any end of ``iter_batches``
+        (exhaustion, early break, or exception)."""
+        self._finish_epoch()
+        # Blocks left in the queue after an early break are dropped.
+        self._iter_stats.iter_prefetched_bytes = 0
+
+    def _finish_epoch(self) -> None:
+        """Notify the coordinator that this split stopped consuming."""
         epoch = self._active_epoch
         if epoch is None:
             return
@@ -416,6 +488,9 @@ class PushBasedDataIterator(DataIterator):
         stats = cast(DatasetStats, ray.get(self._coord_actor.stats.remote()))
         summary = stats.to_summary()
         summary.iter_stats = self._iter_stats.to_summary().iter_stats
+        summary.iter_stats.streaming_split_coord_time.add(
+            stats.streaming_split_coordinator_s.get()
+        )
         return summary.to_string()
 
     def schema(self) -> Optional["Schema"]:
