@@ -1,5 +1,7 @@
 import asyncio
+import shutil
 import sys
+import tempfile
 from unittest.mock import AsyncMock
 
 import pytest
@@ -435,6 +437,153 @@ class TestKvOffload:
         scores = await router.get_kv_overlap_scores.remote(target_tokens)
         assert scores[miss_worker]["device_blocks"] == 0
         assert scores[miss_worker]["host_pinned_blocks"] == 0
+
+
+@pytest.mark.requires_2GPU
+class TestKvDiskOffload:
+    """End-to-end native vLLM offload with a local disk tier behind the CPU tier."""
+
+    @pytest.fixture(scope="class")
+    def deployed_handle(self):
+        if not ray.is_initialized():
+            ray.init(address="auto")
+        serve.shutdown()
+
+        root_dir = tempfile.mkdtemp(prefix="ray_kv_disk_tier_")
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id=MODEL_ID,
+                model_source=MODEL_SOURCE,
+            ),
+            deployment_config=dict(
+                autoscaling_config=dict(
+                    min_replicas=NUM_REPLICAS, max_replicas=NUM_REPLICAS
+                ),
+                request_router_config=RequestRouterConfig(
+                    request_router_class=KVAwareRouter
+                ),
+            ),
+            engine_kwargs=dict(
+                enable_prefix_caching=True,
+                enable_prompt_tokens_details=True,
+                enable_force_include_usage=True,
+                enforce_eager=True,
+                gpu_memory_utilization=0.4,
+                kv_offloading_backend="native",
+                # About 58 blocks of Qwen3-0.6B, so a few fillers push the
+                # target out of the CPU tier while the disk tier keeps it.
+                kv_offloading_size=0.1,
+                kv_transfer_config=dict(
+                    kv_connector="OffloadingConnector",
+                    kv_role="kv_both",
+                    kv_connector_extra_config=dict(
+                        spec_name="TieringOffloadingSpec",
+                        # enable_kv_events is left unset: KVAwareRouter turns
+                        # it on for filesystem tiers.
+                        secondary_tiers=[dict(type="fs", root_dir=root_dir)],
+                    ),
+                ),
+                max_model_len=512,
+                num_gpu_blocks_override=33,
+            ),
+            experimental_configs={"KV_EVENTS_PORT_BASE": 21800},
+            runtime_env=dict(
+                env_vars={
+                    "RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
+                    "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
+                }
+            ),
+            log_engine_metrics=False,
+        )
+        with patch_ingress():
+            app = build_kv_app(llm_config)
+            handle = serve.run(app, name="kv_disk_offload_gpu_test")
+        yield handle
+        serve.shutdown()
+        shutil.rmtree(root_dir, ignore_errors=True)
+
+    @pytest.mark.asyncio
+    @pytest.mark.timeout(900)
+    async def test_offload_routes_to_disk_prefix_and_reloads(self, deployed_handle):
+        """A prefix evicted from GPU and CPU stays routable from disk and reloads
+        on the replica that stored it."""
+        router = serve.get_deployment_handle(
+            "LLMRouter", app_name="kv_disk_offload_gpu_test"
+        )
+        replica_endpoints = await discover_replica_endpoints(
+            deployed_handle, NUM_REPLICAS
+        )
+
+        async def all_registered():
+            registered = await router.get_kv_event_worker_replicas.remote()
+            return sorted(registered.values()) == sorted(replica_endpoints)
+
+        await async_wait_for_condition(all_registered, timeout=90)
+        replica_by_worker = await router.get_kv_event_worker_replicas.remote()
+        endpoints = {
+            worker_id: replica_endpoints[replica_id]
+            for worker_id, replica_id in replica_by_worker.items()
+        }
+        cached_worker, miss_worker = sorted(endpoints)
+        target_tokens = tokenize_prompt(endpoints[cached_worker], OFFLOAD_MESSAGES)
+        target_blocks = num_prompt_blocks(target_tokens)
+        assert 4 < target_blocks < 32
+
+        post_chat(endpoints[cached_worker], OFFLOAD_MESSAGES, max_tokens=2)
+
+        async def target_is_on_gpu():
+            scores = await router.get_kv_overlap_scores.remote(target_tokens)
+            return scores.get(cached_worker, {}).get("device_blocks") == target_blocks
+
+        await async_wait_for_condition(target_is_on_gpu, timeout=60)
+
+        # Unique prompts displace the target from the GPU, then from the small
+        # CPU tier. The disk tier keeps it and emits STORAGE events for it.
+        async def target_is_only_on_disk():
+            scores = await router.get_kv_overlap_scores.remote(target_tokens)
+            cached_score = scores.get(cached_worker, {})
+            return (
+                cached_score.get("device_blocks") == 0
+                and cached_score.get("host_pinned_extension_blocks") == 0
+                and cached_score.get("disk_extension_blocks", 0) > 0
+            )
+
+        on_disk_only = False
+        for i in range(30):
+            filler = [
+                {
+                    "role": "user",
+                    "content": (
+                        f"Unique disk eviction sequence {i}. " + f"filler-{i} " * 60
+                    ),
+                }
+            ]
+            post_chat(endpoints[cached_worker], filler, max_tokens=1)
+            for _ in range(10):
+                if await target_is_only_on_disk():
+                    on_disk_only = True
+                    break
+                await asyncio.sleep(0.5)
+            if on_disk_only:
+                break
+        if not on_disk_only:
+            raise AssertionError("Target prefix did not end up only on disk.")
+
+        # Both replicas share root_dir and could read the target from disk, but
+        # only the replica that stored it published STORAGE events for it.
+        scores = await router.get_kv_overlap_scores.remote(target_tokens)
+        miss_score = scores[miss_worker]
+        assert miss_score["device_blocks"] == 0
+        assert miss_score["host_pinned_extension_blocks"] == 0
+        assert miss_score["disk_extension_blocks"] == 0
+
+        # Production path: HAProxy -> LLMRouter -> KVAwareRouter. The target
+        # must come back onto the GPU of the replica that stored it on disk.
+        response = post_chat(("127.0.0.1", 8000), OFFLOAD_MESSAGES, max_tokens=2)
+        assert response["usage"]["prompt_tokens_details"]["cached_tokens"] > 0
+        await async_wait_for_condition(target_is_on_gpu, timeout=60)
+        scores = await router.get_kv_overlap_scores.remote(target_tokens)
+        assert scores[miss_worker]["device_blocks"] == 0
 
 
 @pytest.mark.requires_2GPU

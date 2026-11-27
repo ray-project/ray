@@ -33,7 +33,7 @@ The best policy depends on your workload. You can configure different routers th
 The router scores replicas with the selection service from [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo), which Ray Serve LLM runs in-process inside the ingress replica. The selection service is responsible for request scoring, while Ray Serve manages replica discovery, request orchestration, request lifecycle, and KV event transport and synchronization. Install it in your cluster environment, for example in the image:
 
 ```bash
-pip install "ai-dynamo>=1.4.0"
+pip install "ai-dynamo>=1.5.0"
 ```
 
 ## Configuration
@@ -127,6 +127,14 @@ request_router_config = RequestRouterConfig(
 
 Set it to `0` to disable model replica pinning. Requests without `x-session-id` use token-load scoring and KV cache overlap.
 
+### Multi-tier KV aware routing
+
+With native offloading, a replica keeps KV blocks in GPU memory, in CPU memory, and optionally in a local disk tier behind the CPU tier. Each tier publishes KV events, so the router knows which replica holds a prefix in which tier and credits a match by tier: full credit for GPU blocks, `DYN_ROUTER_HOST_CACHE_HIT_WEIGHT` for CPU blocks, and `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` for disk blocks (see [Tune the scoring weights](#tune-the-scoring-weights)). To set up the tiers, see {ref}`native KV cache offloading <native-kv-cache-offloading>` and {ref}`Add a local disk tier <native-kv-cache-disk-tier>`.
+
+Under `KVAwareRouter`, Ray Serve LLM turns on KV events for a local disk tier unless the tier sets `enable_kv_events` or `"locality": "REMOTE"`; the router doesn't track remote tiers. Replicas on the same node share `root_dir` and can read each other's blocks, but the router credits only the replica that stored a block.
+
+vLLM's filesystem tier doesn't publish removal events yet. Don't delete files under `root_dir` while the replica runs: the router keeps crediting deleted blocks until that replica restarts.
+
 ### Tuning
 
 Set these in the cluster environment:
@@ -176,7 +184,7 @@ How a request flows through a KV-aware deployment.
 
 Token load estimates how much work remains on each engine replica. It captures the two main phases of LLM inference: compute-bound prefill and memory-bound decode. For each candidate replica, the selection service estimates token load in KV blocks, and the router sends the request to the replica with the lowest estimated load.
 
-- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded blocks receive less because they must first be loaded back to the GPU.
+- **Prefill load**, the compute-bound term. KV cache overlap tells the router how much of the incoming request’s prefill can be skipped. The remaining uncached tokens are combined with the replica’s active prefill work to estimate its total prefill load. GPU-resident KV blocks receive full cache credit, while CPU-offloaded and disk-offloaded blocks receive less because they must first be loaded back to the GPU.
 - **Decode load**, the memory-bound term. During decoding, each step accesses the KV cache of the replica's active requests. This term counts the KV blocks of those requests' prompts.
 
 ### Tune the scoring weights
@@ -196,6 +204,8 @@ llm_config = LLMConfig(
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT` | 1.0 | Controls how much GPU-resident KV cache overlap reduces the prefill cost. Increase it when KV cache reuse is more important, or set it to 0.0 to ignore KV cache overlap and route based on load alone. |
 | `DYN_ROUTER_KV_OVERLAP_SCORE_CREDIT_DECAY` | 0.0, off | Reduces the benefit of KV cache overlap as a replica’s prefill backlog grows relative to the least-loaded candidate. Increase it when cache affinity repeatedly favors a busy replica while others remain underutilized. |
 | `DYN_ROUTER_DECODE_ACTIVE_REQUEST_WEIGHT` | 0.0, off | Adds a cost for each request a replica is already serving. Increase it when many small requests tend to concentrate on the same replica. |
+| `DYN_ROUTER_HOST_CACHE_HIT_WEIGHT` | 0.75 | Cache credit for each matched block held in CPU memory, relative to 1.0 for a block in GPU memory. Applies with {ref}`native KV cache offloading <native-kv-cache-offloading>`. |
+| `DYN_ROUTER_DISK_CACHE_HIT_WEIGHT` | 0.25 | Cache credit for each matched block held in a local disk tier, relative to 1.0 for a block in GPU memory. Applies with a local disk tier; see [Multi-tier KV aware routing](#multi-tier-kv-aware-routing). |
 
 For the full set of selection-service settings, see NVIDIA's [standalone selection service](https://docs.nvidia.com/dynamo/knowledge-base/modular-components/router/standalone-selection) documentation.
 
