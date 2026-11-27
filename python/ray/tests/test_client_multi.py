@@ -3,6 +3,7 @@ import sys
 import pytest
 
 import ray
+from ray._common.network_utils import find_free_port
 
 
 def test_multi_raise_exception_on_non_client(shutdown_only):
@@ -199,6 +200,27 @@ def test_multi_cli_threading(call_ray_start):
     t1.join()
     t2.join()
     assert ret == [0, 1]
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port 25308 --port 0"],
+    indirect=True,
+)
+def test_multi_client_connect_after_client_connect_failed(call_ray_start):
+    @ray.remote
+    def hello():
+        return "world"
+
+    with pytest.raises(ConnectionError):
+        ray.init(f"ray://localhost:{find_free_port()}")
+
+    cli = ray.init("ray://localhost:25308", allow_multiple=True)
+    with cli:
+        assert ray.get(hello.remote()) == "world"
 
 
 if __name__ == "__main__":
