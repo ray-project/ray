@@ -148,6 +148,26 @@ class LoggerSuite(unittest.TestCase):
         logger.on_trial_complete(3, [], t)
         self._validate_json_result(config)
 
+    def testJSONInitLocalPathBeforeUpdateConfig(self):
+        config = {"a": 2, "b": 5}
+        lazy_logdir = os.path.join(self.test_dir, "uncreated_trial_dir")
+
+        class LazyDirTrial(Trial):
+            def init_local_path(self):
+                self.logdir = lazy_logdir
+                os.makedirs(self.logdir, exist_ok=True)
+
+        t = LazyDirTrial(evaluated_params=config, trial_id="json_lazy", logdir=None)
+        logger = JsonLoggerCallback()
+        logger.on_trial_start(0, [], t)
+        logger.on_trial_result(0, [], t, result(0, 4))
+        logger.on_trial_complete(1, [], t)
+        self.assertTrue(os.path.isfile(os.path.join(lazy_logdir, EXPR_PARAM_FILE)))
+        self.assertTrue(
+            os.path.isfile(os.path.join(lazy_logdir, EXPR_PARAM_PICKLE_FILE))
+        )
+        self.assertTrue(os.path.isfile(os.path.join(lazy_logdir, EXPR_RESULT_FILE)))
+
     def _validate_json_result(self, config):
         # Check result logs
         results = []

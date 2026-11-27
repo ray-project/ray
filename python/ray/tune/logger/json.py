@@ -34,11 +34,12 @@ class JsonLoggerCallback(LoggerCallback):
         if trial in self._trial_files:
             self._trial_files[trial].close()
 
+        # Make sure logdir exists
+        trial.init_local_path()
+
         # Update config
         self.update_config(trial, trial.config)
 
-        # Make sure logdir exists
-        trial.init_local_path()
         local_file = Path(trial.local_path, EXPR_RESULT_FILE)
 
         # Resume the file from remote storage.
