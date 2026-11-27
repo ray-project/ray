@@ -118,6 +118,10 @@ class PlacementGroupResourceManager(ResourceManager):
             self.update_state()
 
     def update_state(self):
+        if not self._staging_future_to_pg:
+            self._last_update = time.monotonic()
+            return
+
         ready, not_ready = ray.wait(
             list(self._staging_future_to_pg.keys()),
             num_returns=len(self._staging_future_to_pg),
@@ -154,15 +158,15 @@ class PlacementGroupResourceManager(ResourceManager):
             # Cancel the pg.ready task.
             # Otherwise, it will be pending node assignment forever.
             ray.cancel(future)
-        else:
+        elif self._request_to_ready_pgs[resource_request]:
             # PG might be ready
             pg = self._request_to_ready_pgs[resource_request].pop()
-            if not pg:
-                raise RuntimeError(
-                    "Cannot cancel resource request: No placement group was "
-                    f"staged or is ready. Make sure to not cancel more resource "
-                    f"requests than you've created. Request: {resource_request}"
-                )
+        else:
+            raise RuntimeError(
+                "Cannot cancel resource request: No placement group was "
+                f"staged or is ready. Make sure to not cancel more resource "
+                f"requests than you've created. Request: {resource_request}"
+            )
 
         self._pg_to_request.pop(pg)
         ray.util.remove_placement_group(pg)
