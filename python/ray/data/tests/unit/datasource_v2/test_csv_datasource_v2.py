@@ -33,6 +33,7 @@ from ray.data._internal.datasource_v2.formats.csv.csv_datasource_v2 import (
 )
 from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     _QUOTE_SCAN_BUFFER_BYTES,
+    _chunk_ends_in_quoted_value,
     csv_file_format,
     invalid_csv_chunk_error,
 )
@@ -453,6 +454,25 @@ def test_split_files_preserve_quotes_in_unquoted_values(
     )
 
     assert table.column("text").to_pylist() == values
+
+
+@pytest.mark.parametrize(
+    "prefix,expected",
+    [
+        pytest.param(b"", False, id="unquoted"),
+        pytest.param(b"'", True, id="open_quote"),
+    ],
+)
+def test_quote_free_tail_respects_chunk_boundaries(prefix, expected):
+    # Both adjacent chunks contain a quote. Only the opening quote inside
+    # this chunk can make its final newline part of a field.
+    chunk = prefix + b"x" * _QUOTE_SCAN_BUFFER_BYTES + b"\n"
+    adjacent = b"'\n"
+    lines = memoryview(adjacent + chunk + adjacent)[len(adjacent) : -len(adjacent)]
+    assert (
+        _chunk_ends_in_quoted_value(lines, pcsv.ParseOptions(quote_char="'"))
+        == expected
+    )
 
 
 @pytest.mark.parametrize("delimiter", [",", ";"])

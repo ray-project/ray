@@ -2579,6 +2579,7 @@ def read_csv(
     ignore_missing_paths: bool = False,
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     file_extensions: Optional[List[str]] = None,
+    validate_chunk_boundaries: bool = True,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     # Advanced Ray remote parameters
@@ -2603,10 +2604,10 @@ def read_csv(
         Column types are inferred per piece, so :meth:`Dataset.schema` before
         execution is a guess from the first about 1 MiB of up to 16 sampled
         files, and one file's pieces can produce different types for the same
-        column. A piece ending inside a quoted value raises ``ValueError``.
+        column. By default, a piece ending inside a quoted value raises ``ValueError``.
         Pass ``parse_options=pyarrow.csv.ParseOptions(newlines_in_values=True)``
         to read files containing quoted newlines without splitting them.
-        ``arrow_open_stream_args``, and CSV options other than
+        ``arrow_open_stream_args``, and PyArrow CSV options other than
         ``read_options``, ``parse_options`` and ``convert_options``, use the V1
         reader. To use the V1 reader everywhere, set
         ``ray.data.DataContext.get_current().use_datasource_v2 = False``, or
@@ -2728,6 +2729,11 @@ def read_csv(
             If setting to :class:`~ray.data.FileShuffleConfig`, you can pass a seed to
             shuffle the input files. Defaults to not shuffle with ``None``.
         file_extensions: A list of file extensions to filter files by.
+        validate_chunk_boundaries: Check whether a byte-range chunk ends inside a
+            quoted field. Defaults to True. Set to False to skip this check when
+            the producer guarantees one physical line per record. If a quoted
+            field spans a chunk boundary, disabling the check can silently
+            produce incorrect rows. Applies only to DataSourceV2 split reads.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2759,6 +2765,9 @@ def read_csv(
         CsvDatasourceV2,
     )
 
+    if not isinstance(validate_chunk_boundaries, bool):
+        raise TypeError("validate_chunk_boundaries must be a bool")
+
     if (
         DataContext.get_current().use_datasource_v2
         and not arrow_open_stream_args
@@ -2767,6 +2776,7 @@ def read_csv(
         datasource_v2 = CsvDatasourceV2(
             paths=paths if isinstance(paths, list) else [paths],
             arrow_csv_args=arrow_csv_args,
+            validate_chunk_boundaries=validate_chunk_boundaries,
             filesystem=filesystem,
             partitioning=partitioning,
             file_extensions=file_extensions,

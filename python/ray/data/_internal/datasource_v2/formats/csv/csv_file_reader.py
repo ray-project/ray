@@ -1,6 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
+from codecs import BOM_UTF8
 from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
@@ -75,6 +76,9 @@ def _chunk_ends_in_quoted_value(
     while end:
         start = max(0, end - _QUOTE_SCAN_BUFFER_BYTES)
         block = lines[start:end].tobytes()
+        if quote not in block:
+            end = start
+            continue
         if double_quote and quote not in block.replace(quote * 2, b""):
             # Every quote run is even, so this buffer preserves quote state.
             end = start
@@ -160,8 +164,8 @@ class CsvFileReader(LineChunkableFileReader):
 
     A chunk after the first has no header. It is parsed with its file's own
     column names, which ``CsvFileIndexer`` read while listing and stored in
-    the chunk's metadata. Chunks ending inside a quoted value are rejected
-    before parsing, since pyarrow can otherwise accept the incomplete row.
+    the chunk's metadata. By default, the reader rejects chunks ending inside a
+    quoted value before parsing, since pyarrow can accept the incomplete row.
     """
 
     def __init__(
@@ -170,12 +174,14 @@ class CsvFileReader(LineChunkableFileReader):
         read_options: pcsv.ReadOptions,
         parse_options: pcsv.ParseOptions,
         convert_options: pcsv.ConvertOptions,
+        validate_chunk_boundaries: bool = True,
         **line_chunkable_kwargs: Any,
     ):
         super().__init__(FileFormat.CSV, **line_chunkable_kwargs)
         # Re-init invalid row handler: https://issues.apache.org/jira/browse/ARROW-17641
         if hasattr(parse_options, "invalid_row_handler"):
             parse_options.invalid_row_handler = parse_options.invalid_row_handler
+        self._validate_chunk_boundaries = validate_chunk_boundaries
         self._read_options = read_options
         self._parse_options = parse_options
         # pyarrow's dataset scan appends the projection to ``include_columns``,
@@ -232,8 +238,18 @@ class CsvFileReader(LineChunkableFileReader):
         self, fragment_to_read: ReadUnitFragment
     ) -> Optional[memoryview]:
         lines = super()._read_chunk_lines(fragment_to_read)
-        if lines is not None and _chunk_ends_in_quoted_value(
-            lines, self._parse_options
+        if lines is None:
+            return None
+        scan_lines = lines
+        if lines[: len(BOM_UTF8)] == BOM_UTF8:
+            if fragment_to_read.unit.index == 0:
+                scan_lines = lines[len(BOM_UTF8) :]
+            else:
+                # Arrow strips a BOM from every fragment. Supply a signature
+                # so the field's leading U+FEFF survives parsing.
+                lines = memoryview(BOM_UTF8 + lines)
+        if self._validate_chunk_boundaries and _chunk_ends_in_quoted_value(
+            scan_lines, self._parse_options
         ):
             raise ValueError(
                 f"A chunk of CSV file {fragment_to_read.unit.source!r} ends inside "
