@@ -674,7 +674,7 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
     auto core_worker = GetCoreWorker();
     std::vector<rpc::Address> locations;
     const std::optional<absl::flat_hash_set<NodeID>> object_locations =
-        core_worker->reference_counter_->GetObjectLocations(object_id);
+        core_worker->reference_counter_->GetObjectLocationsForRecovery(object_id);
     std::vector<NodeID> nodes_to_lookup;
     if (object_locations.has_value()) {
       locations.reserve(object_locations->size());
