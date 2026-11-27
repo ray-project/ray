@@ -14,6 +14,7 @@ from ray.data.datasource.partitioning import (
     PathPartitionParser,
     _broadcast_partition_value,
     _cast_value,
+    _partition_field_types_to_pa_schema,
 )
 from ray.data.expressions import Expr
 
@@ -40,6 +41,23 @@ class _PartitionValueParser(PathPartitionParser):
                         f"Failed to parse partition path {path!r}: {exc}"
                     ) from exc
         return values
+
+
+def partition_value_schema(
+    schema: Optional[pa.Schema], partitioning: Optional[Partitioning]
+) -> Optional[pa.Schema]:
+    """Schema that types path partition values.
+
+    The dataset schema when there is one; otherwise, for a format that leaves
+    its schema to the first read block, a schema built from
+    ``partitioning.field_types`` so a declared ``int`` key does not fall back
+    to a string.
+    """
+    if schema is not None or partitioning is None or not partitioning.field_types:
+        return schema
+    return _partition_field_types_to_pa_schema(
+        list(partitioning.field_types), partitioning.field_types
+    )
 
 
 def resolve_partitioning(

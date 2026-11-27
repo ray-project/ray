@@ -12,8 +12,10 @@ from pyarrow.fs import HadoopFileSystem, LocalFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+from ray.data._internal.datasource_v2.common import (
+    file_stream_reader as file_stream_reader_mod,
+)
 from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
-from ray.data._internal.datasource_v2.formats.text import text_reader as text_reader_mod
 from ray.data._internal.datasource_v2.formats.text.text_datasource_v2 import (
     TextDatasourceV2,
 )
@@ -132,7 +134,9 @@ def test_reader_empty_projection_preserves_rows(tmp_path):
     scanner = TextScanner(schema=TEXT_SCHEMA).prune_columns([])
     tables = list(scanner.create_reader().read(_manifest(path)))
 
-    assert scanner.read_schema().names == []
+    schema = scanner.read_schema()
+    assert schema is not None
+    assert schema.names == []
     assert sum(table.num_rows for table in tables) == 3
     assert all(
         table.column_names == [_BATCH_SIZE_PRESERVING_STUB_COL_NAME] for table in tables
@@ -224,9 +228,9 @@ def test_reader_applies_partition_predicate_before_opening(tmp_path):
     opened = []
 
     class CountingReader(TextReader):
-        def _read_bytes(self, path):
+        def _open_stream(self, path):
             opened.append(path)
-            return super()._read_bytes(path)
+            return super()._open_stream(path)
 
     reader = CountingReader(
         partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
@@ -265,7 +269,8 @@ def test_decompress_snappy_uses_hadoop_framing_for_hdfs():
     hdfs = Mock(spec=HadoopFileSystem)
 
     assert (
-        text_reader_mod._decompress_snappy(io.BytesIO(framed.getvalue()), hdfs) == data
+        file_stream_reader_mod._decompress_snappy(io.BytesIO(framed.getvalue()), hdfs)
+        == data
     )
 
 
@@ -277,11 +282,11 @@ def test_reader_retries_transient_errors(tmp_path, monkeypatch):
     attempts = []
     original = TextReader._read_file
 
-    def flaky(self, file_path, limit):
+    def flaky(self, file_path):
         attempts.append(file_path)
         if len(attempts) == 1:
             raise OSError("flaky storage")
-        return original(self, file_path, limit)
+        return original(self, file_path)
 
     monkeypatch.setattr(TextReader, "_read_file", flaky)
     # ``tests/unit/conftest.py`` makes ``time.sleep`` raise.
@@ -294,7 +299,7 @@ def test_reader_retries_transient_errors(tmp_path, monkeypatch):
 def test_reader_runs_pickle_object_gate(tmp_path, monkeypatch):
     path = _write(tmp_path / "data.txt", "a\n")
     gate = Mock(side_effect=ValueError("arrow_pickled_object"))
-    monkeypatch.setattr(text_reader_mod, "raise_on_pickle_object_columns", gate)
+    monkeypatch.setattr(file_stream_reader_mod, "raise_on_pickle_object_columns", gate)
 
     with pytest.raises(ValueError, match="arrow_pickled_object"):
         list(TextReader().read(_manifest(path)))
@@ -481,6 +486,7 @@ def test_read_text_routes_to_v2_and_forwards_read_options(monkeypatch, tmp_path)
     assert datasource.paths == [str(tmp_path)]
     assert datasource.file_extensions == ["txt"]
     schema = datasource.infer_schema(None)
+    assert schema is not None
     assert schema.names == [TEXT_COLUMN_NAME, "path"]
     path = _write(tmp_path / "data.txt", "café\n\n", encoding="latin-1")
     reader = datasource.create_scanner(schema).create_reader()

@@ -1,0 +1,251 @@
+"""``FileStreamDatasourceV2``: the shared datasource for :class:`FileStreamReader`
+formats.
+
+Each file is one read unit, read whole. The schema is the format's data
+columns, the partition columns found in the sampled paths, and the
+synthesized columns (``path`` for ``include_paths``). No file is opened while
+planning: read tasks are sized by bytes on disk unless a format supplies its
+own estimator.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+from abc import abstractmethod
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+
+import pyarrow as pa
+from typing_extensions import override
+
+from ray.data._internal.datasource_v2.common.file_stream_reader import (
+    _raise_on_partition_field_clash,
+)
+from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
+    NonSamplingFileIndexer,
+)
+from ray.data._internal.datasource_v2.common.partitioning_utils import (
+    resolve_partitioning,
+)
+from ray.data._internal.datasource_v2.common.round_robin_partitioner import (
+    RoundRobinPartitioner,
+)
+from ray.data._internal.datasource_v2.common.size_estimators import (
+    OnDiskSizeEstimator,
+)
+from ray.data._internal.datasource_v2.common.synthesized_columns import PathColumn
+from ray.data._internal.datasource_v2.interfaces.datasource_v2 import (
+    DatasourceCategory,
+    FileDataSourceV2,
+)
+from ray.data._internal.datasource_v2.interfaces.file_indexer import FileIndexer
+from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+    FilePartitioner,
+    PartitionHints,
+)
+from ray.data._internal.datasource_v2.interfaces.in_memory_size_estimator import (
+    InMemorySizeEstimator,
+)
+from ray.data._internal.datasource_v2.interfaces.synthesized_columns import (
+    SynthesizedColumn,
+)
+from ray.data._internal.util import (
+    RetryingPyFileSystem,
+    _is_local_scheme,
+    _normalize_paths_to_strings,
+)
+from ray.data.context import DataContext
+from ray.data.datasource.file_based_datasource import FileShuffleConfig
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    PathPartitionParser,
+    _partition_field_types_to_pa_schema,
+)
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from pyarrow.fs import FileSystem
+
+    from ray.data._internal.datasource_v2.common.file_stream_scanner import (
+        FileStreamScanner,
+    )
+
+
+@DeveloperAPI
+class FileStreamDatasourceV2(FileDataSourceV2):
+    """V2 datasource for formats read whole from a byte stream.
+
+    Subclass it with the format's name, implement :meth:`_infer_file_schema`
+    for its data columns and :meth:`create_scanner` for its scanner, built on
+    :meth:`_scanner_kwargs`. Override :meth:`_in_memory_size_estimator` when
+    decoded rows are much larger than the bytes on disk.
+    """
+
+    def __init__(
+        self,
+        paths: List[str],
+        *,
+        name: str,
+        filesystem: Optional["FileSystem"] = None,
+        open_stream_args: Optional[Dict[str, Any]] = None,
+        partitioning: Optional[Partitioning] = None,
+        file_extensions: Optional[List[str]] = None,
+        ignore_missing_paths: bool = False,
+        include_paths: bool = False,
+        shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
+    ):
+        super().__init__(name=name, category=DatasourceCategory.FILE_BASED)
+        self._supports_distributed_reads = not _is_local_scheme(paths)
+        resolved_paths, resolved_filesystem = _resolve_paths_and_filesystem(
+            paths, filesystem
+        )
+        self._paths = resolved_paths
+        # The resolved paths above lose their URI scheme; lineage tracking
+        # reads the caller's paths through ``source_paths``.
+        self._source_paths = _normalize_paths_to_strings(paths)
+        self._filesystem = RetryingPyFileSystem.wrap(
+            resolved_filesystem,
+            retryable_errors=DataContext.get_current().retried_io_errors,
+        )
+        self._open_stream_args = dict(open_stream_args or {})
+        self._partitioning = partitioning
+        self._file_extensions = file_extensions
+        self._ignore_missing_paths = ignore_missing_paths
+        self._shuffle = shuffle
+        self._synthesized_columns: Tuple[SynthesizedColumn, ...] = (
+            (PathColumn(),) if include_paths else ()
+        )
+
+    @property
+    @override
+    def paths(self) -> List[str]:
+        return self._paths
+
+    @property
+    @override
+    def source_paths(self) -> List[str]:
+        return self._source_paths
+
+    @property
+    @override
+    def filesystem(self) -> "FileSystem":
+        return self._filesystem
+
+    @property
+    @override
+    def file_extensions(self) -> Optional[List[str]]:
+        return self._file_extensions
+
+    @property
+    @override
+    def shuffle(self) -> Optional[Union[Literal["files"], FileShuffleConfig]]:
+        return self._shuffle
+
+    @override
+    def _get_file_indexer(self) -> FileIndexer:
+        """One listing row per file. An empty file is a valid file, as in V1."""
+        return NonSamplingFileIndexer(
+            ignore_missing_paths=self._ignore_missing_paths, keep_empty_files=True
+        )
+
+    def _in_memory_size_estimator(self) -> InMemorySizeEstimator:
+        """Size read tasks by bytes on disk, as V1 does, without opening files."""
+        return OnDiskSizeEstimator()
+
+    @override
+    def get_file_partitioner(
+        self, *, hints: Optional[PartitionHints] = None
+    ) -> Optional[FilePartitioner]:
+        if hints is None:
+            return None
+        if DataContext.get_current().execution_options.preserve_order:
+            # One bucket fills in listing order; several deal files round-robin.
+            hints = dataclasses.replace(hints, num_buckets=1)
+        return RoundRobinPartitioner(self._in_memory_size_estimator(), hints=hints)
+
+    @property
+    @override
+    def schema_needs_file_sample(self) -> bool:
+        # Sampled paths decide the partition columns and report "no files found".
+        return True
+
+    @abstractmethod
+    def _infer_file_schema(self, sample: Optional[FileManifest]) -> Optional[pa.Schema]:
+        """Return the schema of the columns the reader decodes from a file.
+
+        Partition and synthesized columns are appended by :meth:`infer_schema`.
+        A fixed schema needs no file opened; a format whose types depend on the
+        data may read from ``sample``, which lists up to 16 files. Return
+        ``None`` when the types are only known after decoding (variable-shaped
+        tensors): the first read block then defines the dataset schema, and the
+        reader types partition columns from their values.
+        """
+        ...
+
+    @override
+    def infer_schema(self, sample: Optional[FileManifest]) -> Optional[pa.Schema]:
+        schema = self._infer_file_schema(sample)
+        if schema is None:
+            return None
+        sample_paths: List[str] = sample.paths.tolist() if sample is not None else []
+
+        resolved_partitioning = self.resolve_partitioning(sample)
+        if resolved_partitioning is not None:
+            parser = PathPartitionParser(resolved_partitioning)
+            partition_names = list(
+                dict.fromkeys(
+                    name for path in sample_paths for name in parser(path).keys()
+                )
+            )
+            _raise_on_partition_field_clash(partition_names, schema.names)
+            if partition_names:
+                partition_schema = _partition_field_types_to_pa_schema(
+                    field_names=partition_names,
+                    field_types=resolved_partitioning.field_types or {},
+                )
+                for name in partition_names:
+                    schema = schema.append(partition_schema.field(name))
+
+        for column in self._synthesized_columns:
+            index = schema.get_field_index(column.name)
+            field = pa.field(column.name, column.type)
+            if index == -1:
+                schema = schema.append(field)
+            elif schema.field(index).type != column.type:
+                schema = schema.set(index, field)
+
+        return schema
+
+    @override
+    def resolve_partitioning(
+        self, sample: Optional[FileManifest]
+    ) -> Optional[Partitioning]:
+        paths = sample.paths.tolist() if sample is not None else []
+        return resolve_partitioning(self._partitioning, paths)
+
+    def _scanner_kwargs(
+        self,
+        schema: Optional[pa.Schema],
+        filesystem: Optional["FileSystem"],
+        options: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """The ``FileStreamScanner`` arguments shared by every format; a
+        subclass's :meth:`create_scanner` adds its own."""
+        return dict(
+            schema=schema,
+            filesystem=filesystem or self._filesystem,
+            open_stream_args=dict(self._open_stream_args),
+            partitioning=options.get("partitioning", self._partitioning),
+            synthesized_columns=self._synthesized_columns,
+        )
+
+    @abstractmethod
+    @override
+    def create_scanner(
+        self,
+        schema: Optional[pa.Schema],
+        filesystem: Optional["FileSystem"] = None,
+        **options: Any,
+    ) -> "FileStreamScanner":
+        ...
