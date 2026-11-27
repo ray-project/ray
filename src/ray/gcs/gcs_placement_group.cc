@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_placement_group.h"
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
@@ -82,7 +83,12 @@ GcsPlacementGroup::GetUnplacedBundles() const {
 }
 
 bool GcsPlacementGroup::HasUnplacedBundles() const {
-  return !GetUnplacedBundles().empty();
+  // Read the bundle messages directly. Going through `GetUnplacedBundles()` would
+  // build a `BundleSpecification` for every bundle just to answer yes or no.
+  const auto &bundles = placement_group_table_data_.bundles();
+  return std::any_of(bundles.begin(), bundles.end(), [](const rpc::Bundle &bundle) {
+    return NodeID::FromBinary(bundle.node_id()).IsNil();
+  });
 }
 
 bool GcsPlacementGroup::AllUnplacedBundles() const {
