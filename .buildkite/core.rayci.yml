@@ -60,6 +60,7 @@ steps:
         - "3.12"
         - "3.13"
         - "3.14"
+        - "3.15"
     env:
       PYTHON_VERSION: "{{array.python}}"
       EXTRA_DEPENDENCY: core
@@ -373,7 +374,7 @@ steps:
     array:
       python:
         - "3.10"
-        - "3.14"
+        - "3.15"
 
   # Intermediate Python versions only run on postmerge (skipped on premerge).
   - label: ":ray: core: minimal tests {{array.python}}"
@@ -432,6 +433,7 @@ steps:
         - "3.11"
         - "3.12"
         - "3.13"
+        - "3.14"
 
   - label: ":ray: core: cgroup tests"
     tags:

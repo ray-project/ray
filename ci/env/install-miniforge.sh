@@ -87,7 +87,7 @@ install_miniforge() {
     # For certain Python versions, we need to create a separate environment because
     # conda itself doesn't have builds yet, and upgrading the base environment
     # would remove conda without replacement.
-    if [[ "$PYTHON" == "3.14" ]]; then
+    if [[ "$PYTHON" == "3.14" || "$PYTHON" == "3.15" ]]; then
       (
         set +x
         echo "Creating new conda environment for Python ${PYTHON}..."
