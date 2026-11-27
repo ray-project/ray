@@ -1,0 +1,11 @@
+--- a/bazel/upb_proto_library.bzl
++++ b/bazel/upb_proto_library.bzl
+@@ -159,7 +159,7 @@
+         cc_toolchain = toolchain,
+         compilation_outputs = compilation_outputs,
+         linking_contexts = linking_contexts,
+-        disallow_dynamic_library = cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "targets_windows"),
++        disallow_dynamic_library = cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "targets_windows") or not cc_common.is_enabled(feature_configuration = feature_configuration, feature_name = "supports_dynamic_linker"),
+         **blaze_only_args
+     )
+ 
