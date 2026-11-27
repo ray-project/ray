@@ -4,6 +4,7 @@ import pytest
 
 import ray
 from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -11,6 +12,12 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_map_operator import (
+    ShuffleMapOp,
+)
+from ray.data._internal.execution.operators.shuffle_operators.shuffle_reduce_operator import (
+    ShuffleReduceOp,
+)
 from ray.data._internal.execution.resource_manager import (
     ReservationOpResourceAllocator,
     ResourceManager,
@@ -1202,6 +1209,57 @@ class TestReservationOpResourceAllocator:
         assert allocator._op_budgets[o8] == ExecutionResources(
             cpu=13, object_store_memory=float("inf")
         )
+
+
+class TestDefaultResourceRequirements:
+    def test_default_max_caps_only_unused_gpu(self, restore_data_context):
+        class CpuOnlyOp(PhysicalOperator):
+            def min_scheduling_resources(self):
+                return ExecutionResources(cpu=1)
+
+        ctx = DataContext.get_current()
+        op = CpuOnlyOp("CpuOnlyOp", [InputDataBuffer(ctx, [])], ctx)
+
+        _, max_usage = op.min_max_resource_requirements()
+
+        assert max_usage.gpu == 0
+        assert max_usage.cpu == float("inf")
+        assert max_usage.memory == float("inf")
+        assert max_usage.object_store_memory == float("inf")
+
+    def test_default_max_keeps_gpu_for_gpu_operator(self, restore_data_context):
+        class GpuOp(PhysicalOperator):
+            def min_scheduling_resources(self):
+                return ExecutionResources(gpu=1)
+
+        ctx = DataContext.get_current()
+        op = GpuOp("GpuOp", [InputDataBuffer(ctx, [])], ctx)
+
+        _, max_usage = op.min_max_resource_requirements()
+
+        assert max_usage.gpu == float("inf")
+
+    def test_default_max_keeps_gpu_for_gpu_shuffle_reduce(self, restore_data_context):
+        ctx = DataContext.get_current()
+        shuffle_map = ShuffleMapOp(
+            InputDataBuffer(ctx, []),
+            ctx,
+            num_partitions=8,
+            partition_fn=MagicMock(),
+        )
+        reduce_op = ShuffleReduceOp(
+            shuffle_map,
+            ctx,
+            num_partitions=8,
+            reduce_fn=MagicMock(),
+            reduce_ray_remote_args={"num_gpus": 1},
+        )
+
+        _, map_max_usage = shuffle_map.min_max_resource_requirements()
+        _, reduce_max_usage = reduce_op.min_max_resource_requirements()
+
+        assert map_max_usage.gpu == 0
+        assert reduce_max_usage.gpu == float("inf")
 
 
 if __name__ == "__main__":
