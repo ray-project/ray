@@ -46,9 +46,9 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
     """Lists newline-delimited files (CSV, JSONL) as byte-range chunks.
 
     Use this indexer only when every newline ends a row. Keep
-    ``NonSamplingFileIndexer`` for CSV read with ``newlines_in_values=True``,
-    and when ``arrow_open_stream_args`` forces a compression codec the file
-    extension doesn't show.
+    ``NonSamplingFileIndexer`` for CSV read with ``newlines_in_values=True``.
+    Compression is read from the file extension alone: ``read_csv`` and
+    ``read_json`` send a read with ``arrow_open_stream_args`` to V1.
     """
 
     def __init__(
@@ -88,7 +88,7 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
         return (
             file_info.size is not None
             and file_info.size > self._chunk_size
-            and not _is_compressed(file_info.path)
+            and infer_compression(file_info.path) is None
         )
 
     @override
@@ -104,9 +104,3 @@ class LineChunkFileIndexer(NonSamplingFileIndexer):
                 file_size=file_info.size, chunk_size=self._chunk_size
             )
         ]
-
-
-def _is_compressed(path: str) -> bool:
-    # ``infer_compression`` misses upper-case extensions and ``.br``.
-    lowered = path.lower()
-    return infer_compression(lowered) is not None or lowered.endswith(".br")

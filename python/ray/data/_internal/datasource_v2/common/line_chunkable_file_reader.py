@@ -30,9 +30,13 @@ Design decisions:
   parallel, and a failure retries only that chunk. Downloading while
   planning units would fetch every chunk serially on one thread, with no
   retry.
-- A read task holds one chunk's raw text, up to ``chunk_size`` bytes, while
-  pyarrow parses it. We don't expect this to matter: the text is bounded by
-  ``chunk_size``, and V1's ``ArrowJSONDatasource`` already reads whole files
+- Each scan thread holds one chunk's raw text, up to ``chunk_size`` bytes plus
+  the line crossing its end (usually within the 64 KiB read past the end),
+  and the table pyarrow parses from it as one block. A task scans its units
+  in parallel, at most ``RAY_DATA_FILE_READER_MAX_FRAGMENT_WORKERS`` (64) at a
+  time and one at a time under ``preserve_order``, so its peak is the sum over
+  the units in flight. We don't expect this to matter: the partitioner packs
+  by bytes on disk, and V1's ``ArrowJSONDatasource`` already reads whole files
   into memory. If it does matter, override ``_iter_unit_tables`` in the CSV
   subclass to stream the chunk instead:
 
@@ -46,10 +50,15 @@ Design decisions:
   JSONL can't stream this way before pyarrow 20, which added
   ``pyarrow.json.open_json``.
 - Column types are inferred per fragment, as V1 infers them per file, not
-  pinned to the plan-time schema. Two chunks of one file can therefore come
-  back with different types, which downstream schema unification promotes.
-  A plan-time column a fragment lacks is null-filled. Each fragment parses
-  its bytes as one block, so its types come from all of its rows.
+  pinned to the plan-time schema. That schema is a sample of at most 16
+  files, and pinning it fails any file the sample didn't predict, such as an
+  int64 column that holds 7.5 elsewhere. Two chunks of one file can therefore
+  differ in type. Their blocks combine when the types widen (null with
+  anything, int with float) and fail schema unification when they don't
+  (number with string). A fragment also keeps columns the sample missed, so a
+  block can be wider than the plan-time schema. A plan-time column a fragment
+  lacks is null-filled. Each fragment parses its bytes as one block, so its
+  types come from all of its rows.
 - CSV chunks after the first have no header. The CSV subclass names their
   columns from the file's own header line, which its indexer reads once
   while listing and stores in each chunk's metadata.
@@ -74,9 +83,6 @@ import pyarrow.dataset as pds
 from typing_extensions import override
 
 from ray.data._internal.datasource_v2.common.file_reader import FileFormat, FileReader
-from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
-    _is_compressed,
-)
 from ray.data._internal.datasource_v2.common.line_chunking import (
     line_chunk_byte_range,
     read_line_aligned,
@@ -90,7 +96,7 @@ from ray.data._internal.datasource_v2.interfaces.read_units import (
     ReadUnitFragment,
 )
 from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_columns
-from ray.data._internal.util import NumBytes, RetryingPyFileSystem
+from ray.data._internal.util import NumBytes, RetryingPyFileSystem, infer_compression
 from ray.data.datasource.file_based_datasource import _decompress_snappy
 
 if TYPE_CHECKING:
@@ -119,6 +125,10 @@ def one_block_size(lines: memoryview) -> int:
 
     Returns:
         ``len(lines)``, within pyarrow's bounds of 1 and 2**31 - 1.
+
+    ``block_size`` is a 32-bit int in pyarrow, so a larger ``lines`` parses as
+    further blocks and doesn't get one schema. That needs
+    ``RAY_DATA_LINE_CHUNK_BYTES`` above 2 GiB.
     """
     return max(1, min(len(lines), _MAX_BLOCK_SIZE))
 
@@ -183,7 +193,8 @@ class LineChunkableFileReader(FileReader):
         Args:
             fragment: The file's whole-file fragment.
             chunk_metadata: The row's :class:`FileChunk` metadata.
-            file_size: Unused; the chunk's range is computed at read time.
+            file_size: Unused; a unit reads its file's listed size from
+                ``_file_sizes``.
 
         Returns:
             The file's chunk units, in order.
@@ -200,6 +211,13 @@ class LineChunkableFileReader(FileReader):
             )
             for index in FileChunk.from_metadata(chunk_metadata).unit_ids
         ]
+
+    @staticmethod
+    def _is_whole_file_unit(unit: ReadUnit) -> bool:
+        # ``ReadUnit`` has no kind field. ``_get_chunk_fragments`` names a chunk
+        # "<path>#chunk<i>" and ``FileReader._get_whole_file_fragment`` names a
+        # whole file by its path, so the two namings must change together.
+        return unit.id == unit.source
 
     @override
     def _iter_unit_tables(
@@ -222,7 +240,7 @@ class LineChunkableFileReader(FileReader):
             pa.Table: The unit's tables.
         """
         unit = fragment_to_read.unit
-        if unit.id == unit.source:
+        if self._is_whole_file_unit(unit):
             data = self._read_whole_file(fragment_to_read)
             if data is None:
                 yield from self._iter_streamed_unit_tables(
@@ -271,7 +289,11 @@ class LineChunkableFileReader(FileReader):
         """
         path = fragment_to_read.unit.source
         size = self._file_sizes[path]
-        if _is_compressed(path) or size is None or size > self._chunk_size:
+        if (
+            infer_compression(path) is not None
+            or size is None
+            or size > self._chunk_size
+        ):
             return None
         with fragment_to_read.fragment.open() as file:
             return memoryview(file.read_buffer())
@@ -281,8 +303,11 @@ class LineChunkableFileReader(FileReader):
     ) -> Optional[memoryview]:
         """Fetch a chunk unit's whole lines; ``None`` when it holds no rows."""
         unit = fragment_to_read.unit
+        # The listed size, which the indexer cut the chunks from, so the ranges
+        # match the listing even if the file has changed since.
+        file_size = self._file_sizes[unit.source]
+        assert file_size is not None
         with fragment_to_read.fragment.open() as file:
-            file_size = file.size()
             start, end = line_chunk_byte_range(
                 index=unit.index, chunk_size=self._chunk_size, file_size=file_size
             )
@@ -357,6 +382,11 @@ class LineChunkableFileReader(FileReader):
         Columns the scan reads that ``fragment`` lacks are added as ``null``
         columns, so they null-fill instead of failing: the projected ones, or
         without a projection, the plan-time file columns.
+
+        The fill type is ``null``, not the plan-time type: ``null`` unifies with
+        whatever another fragment infers, while a sampled type can clash with
+        it. Filter columns aren't filled, because the CSV and JSON scanners
+        keep filters above the read, so ``filter`` is ``None`` here.
         """
         physical_schema = fragment.physical_schema
         columns = scanner_kwargs.get("columns")

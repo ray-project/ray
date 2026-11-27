@@ -34,6 +34,7 @@ from ray.data._internal.util import (
     find_insertion_index,
     find_partition_index,
     get_max_task_capacity,
+    infer_compression,
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
@@ -831,6 +832,22 @@ def test_filesystem_for_sized_opens_without_s3_support(monkeypatch):
     monkeypatch.delattr(pa_fs, "S3FileSystem")
     local = RetryingPyFileSystem.wrap(pa_fs.LocalFileSystem(), retryable_errors=[])
     assert filesystem_for_sized_opens(local) is local
+
+
+@pytest.mark.parametrize(
+    "path,expected",
+    [
+        ("a.csv", None),
+        ("a.csv.gz", "gzip"),
+        ("a.CSV.GZ", "gzip"),
+        ("a.csv.br", "brotli"),
+        ("a.csv.BR", "brotli"),
+        ("a.csv.zst", "zstd"),
+        ("a.csv.snappy", "snappy"),
+    ],
+)
+def test_infer_compression(path, expected):
+    assert infer_compression(path) == expected
 
 
 if __name__ == "__main__":

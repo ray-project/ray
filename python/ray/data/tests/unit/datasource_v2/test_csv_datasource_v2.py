@@ -463,10 +463,19 @@ def test_checks_a_partition_column_outside_include_columns_in_a_gzip_file(tmp_pa
         _read_all(datasource, [path], columns=("country", "id"))
 
 
-def test_reads_compressed_files_whole(tmp_path, small_chunks):
-    path = str(tmp_path / "a.csv.gz")
+@pytest.mark.parametrize(
+    "name,compress",
+    [
+        ("a.csv.gz", gzip.compress),
+        ("a.CSV.GZ", gzip.compress),
+        ("a.csv.br", pa.Codec("brotli").compress),
+        ("a.csv.zst", pa.Codec("zstd").compress),
+    ],
+)
+def test_reads_compressed_files_whole(tmp_path, small_chunks, name, compress):
+    path = str(tmp_path / name)
     with open(path, "wb") as f:
-        f.write(gzip.compress(b"id\n" + b"".join(b"%d\n" % i for i in range(200))))
+        f.write(compress(b"id\n" + b"".join(b"%d\n" % i for i in range(200))))
     table = _read_all(CsvDatasourceV2([path]), [path])
     assert sorted(table.column("id").to_pylist()) == list(range(200))
 
