@@ -1,9 +1,10 @@
 import uuid
 from asyncio import CancelledError
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.responses import JSONResponse, Response
 
@@ -30,6 +31,27 @@ def get_request_id(request: Request) -> str:
     return getattr(request.state, "request_id", None)
 
 
+# Pydantic adds type names to an error location for union members, e.g.
+# ("body", "stop", "str"). They are not field names.
+_TYPE_NAMES = {"str", "int", "float", "bool", "bytes", "none"}
+
+
+def _get_param(error: Dict[str, Any]) -> Optional[str]:
+    """Return the path of the invalid field, e.g. ``"messages.0.content"``."""
+    if error.get("type") == "json_invalid":
+        # The location is ("body", <character offset>), not a field.
+        return None
+    # Skip the request part ("body") and segments that are not field names,
+    # e.g. "list[str]", "function-wrap[...]" or "ChatCompletionUserMessageParam".
+    parts = [
+        str(part)
+        for part in error.get("loc", ())[1:]
+        if isinstance(part, int)
+        or (part.isidentifier() and part.islower() and part not in _TYPE_NAMES)
+    ]
+    return ".".join(parts) or None
+
+
 async def _handle_validation_error(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
@@ -38,19 +60,32 @@ async def _handle_validation_error(
 
     error_msg = error_details.get("msg", "Unknown validation error")
     error_loc = error_details.get("loc", ("body"))
-    error_input = error_details.get("input", None)
     msg = f"Invalid request format: {error_msg} at {error_loc}"
 
     error_response = {
         "error": {
             "message": msg,
-            "type": error_details.get("type", "invalid_request_error"),
-            "param": error_input,
+            "type": "invalid_request_error",
+            "param": _get_param(error_details),
             "code": "invalid_parameter",
         }
     }
 
     return JSONResponse(status_code=status.HTTP_400_BAD_REQUEST, content=error_response)
+
+
+async def _handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
+    """Handle HTTP exceptions in an OpenAI-like format.
+
+    Without this handler, Starlette renders them as ``{"detail": ...}``.
+    """
+    error_response = get_response_for_error(exc, get_request_id(request))
+
+    return JSONResponse(
+        content=error_response.model_dump(),
+        status_code=error_response.error.code,
+        headers=exc.headers,
+    )
 
 
 def _uncaught_exception_handler(request: Request, e: Exception):
@@ -125,6 +160,8 @@ def add_exception_handling_middleware(router: FastAPI):
     router.add_exception_handler(Exception, _uncaught_exception_handler)
     # Add validation error handler
     router.add_exception_handler(RequestValidationError, _handle_validation_error)
+    # Add HTTP exception handler, replacing Starlette's `{"detail": ...}` body
+    router.add_exception_handler(HTTPException, _handle_http_exception)
     # This adds application exception handler, allowing to convert application
     # exceptions into properly formatted responses
     router.add_middleware(

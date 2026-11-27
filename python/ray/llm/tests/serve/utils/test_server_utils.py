@@ -4,6 +4,7 @@ import sys
 
 import pytest
 from fastapi import HTTPException
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from ray.llm._internal.serve.core.configs.openai_api_models import OpenAIHTTPException
 from ray.llm._internal.serve.utils.server_utils import get_response_for_error
@@ -77,6 +78,20 @@ def test_internal_message_is_not_sent_to_the_client():
 )
 def test_status_mapping_is_unchanged(exc, expected_code):
     assert get_response_for_error(exc, REQUEST_ID).error.code == expected_code
+
+
+@pytest.mark.parametrize(
+    ("exc", "message"),
+    [
+        # Starlette raises its own HTTPException, e.g. for a wrong method.
+        (StarletteHTTPException(status_code=405), "Method Not Allowed"),
+        (HTTPException(status_code=400, detail={"reason": "bad"}), "{'reason': 'bad'}"),
+    ],
+)
+def test_http_exception_detail_is_the_message(exc, message):
+    error = get_response_for_error(exc, REQUEST_ID).error
+
+    assert error.message == f"{message} (Request ID: {REQUEST_ID})"
 
 
 if __name__ == "__main__":
