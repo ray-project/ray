@@ -784,6 +784,31 @@ class TestDatasetSummary:
                 actual_value == expected
             ), f"{stat}[{col}] = {actual_value} != {expected}"
 
+    def test_summary_native_fixed_shape_tensor_with_permutation(
+        self, restore_data_context
+    ):
+        """Regression test for #68280: summary() must not raise NotImplementedError on
+        native arrow.fixed_shape_tensor columns with permutation on pyarrow 25+."""
+        import numpy as np
+
+        from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
+        from ray.data.context import DataContext
+
+        DataContext.get_current().arrow_fixed_shape_tensor_format = (
+            FixedShapeTensorFormat.ARROW_NATIVE
+        )
+        ds = ray.data.from_items(
+            [{"id": i, "emb": np.full((2, 2), i, dtype=np.int64)} for i in range(3)]
+        )
+        summary = ds.summary()
+        actual = summary.to_pandas()
+        assert "emb" in actual.columns
+        assert "id" in actual.columns
+        min_row = actual[actual[DatasetSummary.STATISTIC_COLUMN] == "min"]
+        assert len(min_row) == 1
+        assert min_row["id"].iloc[0] == 0
+        assert pd.isna(min_row["emb"].iloc[0])
+
 
 if __name__ == "__main__":
     import sys

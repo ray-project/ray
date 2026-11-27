@@ -575,10 +575,19 @@ def _create_pyarrow_array(
         PyArrow array
     """
     if col_type is not None:
+        # Use pa.nulls for all-null columns so extension types that reject Python
+        # sequence conversion (e.g. pyarrow 25+ native fixed_shape_tensor with a
+        # permutation) still construct a typed null array.
+        if all(v is None for v in col_data):
+            try:
+                return pa.nulls(len(col_data), type=col_type)
+            except (pa.ArrowTypeError, pa.ArrowInvalid, NotImplementedError):
+                pass
         try:
             return pa.array(col_data, type=col_type)
-        except (pa.ArrowTypeError, pa.ArrowInvalid):
-            # Type mismatch - fall through to type inference
+        except (pa.ArrowTypeError, pa.ArrowInvalid, NotImplementedError):
+            # Type mismatch or unsupported sequence conversion - fall through
+            # to type inference
             pass
 
     # Use convert_to_pyarrow_array for type inference and error handling
