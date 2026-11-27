@@ -122,6 +122,12 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         # (shuffle_id, node_id) -> owned ShuffleFileServer handle, created on
         # the first handle from that node and killed in teardown.
         self._file_servers: Dict[Tuple[str, str], "ray.actor.ActorHandle"] = {}
+        # Shuffle IDs are known at planning time, even if no mapper completes.
+        self._planned_shuffle_ids = {
+            shuffle_id
+            for op in input_ops
+            if (shuffle_id := getattr(op, "_disk_shuffle_id", None))
+        }
         self._output_queue: deque = deque()
         self._estimated_num_output_bundles = num_partitions
 
@@ -257,14 +263,37 @@ class DiskHashShuffleRegroupOp(PhysicalOperator):
         super()._do_shutdown(force)
         self._output_queue.clear()
 
-    def teardown(self) -> None:
+    def teardown(
+        self,
+        completion_refs: Tuple[ObjectRef, ...] = (),
+    ) -> None:
         """Kill the owned file servers and remove the mappers' shuffle files."""
         # ``no_restart=True`` goes through GCS DestroyActor, overriding
         # ``max_restarts=-1``.
         for server in self._file_servers.values():
             ray.kill(server, no_restart=True)
-        teardown_disk_shuffle(self._file_servers.keys())
+
+        # A mapper can create its shuffle directory before returning a handle.
+        # If it is cancelled at that point, _file_servers has no record of the
+        # node on which the directory was created.
+        shuffle_nodes = set(self._file_servers)
+
+        # Clean up planned shuffles on all currently alive nodes so that
+        # cancelled mappers without returned handles are also covered.
+        if self._planned_shuffle_ids:
+            for node in ray.nodes():
+                if node.get("Alive"):
+                    node_id = node["NodeID"]
+                    for shuffle_id in self._planned_shuffle_ids:
+                        shuffle_nodes.add((shuffle_id, node_id))
+
+        teardown_disk_shuffle(
+            shuffle_nodes,
+            completion_refs=completion_refs,
+        )
+
         self._file_servers.clear()
+        self._planned_shuffle_ids.clear()
         for bundle in self._handle_bundles:
             bundle.destroy_if_owned()
         self._handle_bundles.clear()
@@ -605,6 +634,9 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
         if self._preserve_partition_order and partition_complete:
             self._output_queue.finalize(key=partition_id)
 
+    def _should_capture_shutdown_completion_refs(self) -> bool:
+        return True
+
     def has_execution_finished(self) -> bool:
         if self._shuffle_reduce_tasks or len(self._output_queue) > 0:
             return False
@@ -619,9 +651,20 @@ class DiskHashShuffleReduceOp(PhysicalOperator):
             self._shuffle_reduce_tasks.clear()
             self._output_queue.clear()
             self._held_partition_outputs.clear()
+
             regroup_op = self.input_dependencies[0]
             assert isinstance(regroup_op, DiskHashShuffleRegroupOp)
-            regroup_op.teardown()
+
+            # The upstream writers have already been shut down, but their
+            # streaming tasks may still be completing cancellation.
+            completion_refs = set(self.get_shutdown_completion_refs())
+
+            for writer in regroup_op.input_dependencies:
+                completion_refs.update(writer.get_shutdown_completion_refs())
+
+            regroup_op.teardown(
+                completion_refs=tuple(completion_refs),
+            )
 
     def _extra_metrics(self) -> Dict[str, Any]:
         return self._phase_metrics.extra_metrics()

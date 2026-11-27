@@ -426,39 +426,66 @@ class ShuffleFileServer:
 
 
 @ray.remote(num_cpus=0)
-def _cleanup_shuffle_dir(map_dir: str, reduce_dir: str) -> None:
-    """Best-effort ``rmtree`` of this shuffle's map + reduce staging dirs. Pinned
-    to its node with ``NodeAffinity(soft=False)``: on a live node it runs there;
-    if the node is gone the task just fails."""
+def _cleanup_shuffle_dir(
+    map_dir: str,
+    reduce_dir: str,
+    completion_refs: Tuple[ray.ObjectRef, ...] = (),
+) -> None:
+    """Best-effort cleanup after in-flight shuffle tasks terminate.
+
+    Pinned to the node with NodeAffinity(soft=False).
+    """
     import shutil
+
+    # Completion refs may contain cancellation errors. Wait for readiness
+    # instead of fetching their values.
+    if completion_refs:
+        ray.wait(
+            list(completion_refs),
+            num_returns=len(completion_refs),
+            fetch_local=False,
+        )
 
     shutil.rmtree(map_dir, ignore_errors=True)
     shutil.rmtree(reduce_dir, ignore_errors=True)
 
 
-def teardown_disk_shuffle(shuffle_nodes: Iterable[Tuple[str, str]]) -> None:
-    """Remove the shuffle directories of every ``(shuffle_id, node_id)`` in
-    ``shuffle_nodes`` on that node. Called once from the regroup operator's
-    teardown, when no reducer can still need the files. The node's
-    ``ShuffleFileServer`` is owned by the regroup operator and killed there;
-    serving a removed directory is harmless, so the two need no ordering.
+def teardown_disk_shuffle(
+    shuffle_nodes: Iterable[Tuple[str, str]],
+    completion_refs: Tuple[ray.ObjectRef, ...] = (),
+) -> None:
+    """Remove the shuffle directories on their respective nodes.
+
+    Cleanup tasks wait for in-flight shuffle tasks to terminate before
+    removing directories. The driver uses a bounded ray.wait() so pending
+    cleanup tasks can continue asynchronously after teardown returns.
     """
     cleanup_refs = []
+
     for shuffle_id, node_id in shuffle_nodes:
         try:
             map_dir, reduce_dir = disk_shuffle_dirs(shuffle_id)
+
             cleanup_refs.append(
                 _cleanup_shuffle_dir.options(
                     scheduling_strategy=NodeAffinitySchedulingStrategy(
                         node_id, soft=False
                     ),
-                ).remote(map_dir, reduce_dir)
+                ).remote(
+                    map_dir,
+                    reduce_dir,
+                    completion_refs,
+                )
             )
         except Exception:
             pass
 
     if cleanup_refs:
-        ray.wait(cleanup_refs, num_returns=len(cleanup_refs), timeout=5.0)
+        ray.wait(
+            cleanup_refs,
+            num_returns=len(cleanup_refs),
+            timeout=5.0,
+        )
 
 
 # =============================================================================

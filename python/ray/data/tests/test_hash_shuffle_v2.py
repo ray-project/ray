@@ -1,6 +1,7 @@
 import gc
 import glob
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import MagicMock, patch
@@ -1084,6 +1085,403 @@ def test_disk_shuffle_resource_eligibility_by_phase(ray_start_regular_shared_2_c
 
     # Reduce phase.
     assert allocator._get_eligible_ops() == [reduce_op, tail]
+
+
+def test_disk_shuffle_teardown_cleans_nodes_without_mapper_handles():
+    """Cleanup must not depend on successfully returned mapper handles."""
+    ctx = DataContext.get_current()
+    input_op = InputDataBuffer(ctx, [])
+
+    writer = plan_disk_hash_shuffle_map(
+        input_op,
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {0: table},
+    )
+    reduce_op = plan_disk_hash_shuffle_reduce(
+        writer,
+        ctx,
+        num_partitions=2,
+        reduce_fn=lambda *args: [],
+    )
+    regroup_op = reduce_op.input_dependencies[0]
+
+    shuffle_id = writer._disk_shuffle_id
+
+    # Simulate cancellation before any mapper returns a handle.
+    assert regroup_op._file_servers == {}
+    assert regroup_op._planned_shuffle_ids == {shuffle_id}
+
+    completion_refs = (MagicMock(), MagicMock())
+
+    nodes = [
+        {"NodeID": "node-a", "Alive": True},
+        {"NodeID": "node-b", "Alive": True},
+        {"NodeID": "node-c", "Alive": False},
+    ]
+
+    module = (
+        "ray.data._internal.execution.operators."
+        "shuffle_operators.disk_shuffle_reduce_operator"
+    )
+
+    with (
+        patch(f"{module}.ray.nodes", return_value=nodes) as get_nodes,
+        patch(f"{module}.teardown_disk_shuffle") as cleanup,
+    ):
+        regroup_op.teardown(completion_refs=completion_refs)
+
+        get_nodes.assert_called_once()
+        cleanup.assert_called_once_with(
+            {
+                (shuffle_id, "node-a"),
+                (shuffle_id, "node-b"),
+            },
+            completion_refs=completion_refs,
+        )
+
+        assert not regroup_op._planned_shuffle_ids
+
+        # Repeated teardown must not query nodes or schedule cleanup again.
+        get_nodes.reset_mock()
+        cleanup.reset_mock()
+
+        regroup_op.teardown()
+
+        get_nodes.assert_not_called()
+        cleanup.assert_called_once_with(set(), completion_refs=())
+
+
+def test_disk_shuffle_cleanup_waits_for_task_completion(tmp_path):
+    from ray.data._internal.execution.operators.shuffle_operators.disk_shuffle_runtime import (
+        _cleanup_shuffle_dir,
+    )
+
+    map_dir = tmp_path / "map"
+    reduce_dir = tmp_path / "reduce"
+
+    map_dir.mkdir()
+    reduce_dir.mkdir()
+
+    (map_dir / "map_0.shf").touch()
+    (reduce_dir / "reduce_p0.bin").touch()
+
+    completion_refs = (MagicMock(), MagicMock())
+
+    def wait_for_completion(refs, **kwargs):
+        # Neither directory should be removed before all
+        # in-flight shuffle tasks have completed.
+        assert map_dir.exists()
+        assert reduce_dir.exists()
+
+        return refs, []
+
+    with patch.object(
+        ray,
+        "wait",
+        side_effect=wait_for_completion,
+    ) as wait:
+        _cleanup_shuffle_dir._function(
+            str(map_dir),
+            str(reduce_dir),
+            completion_refs,
+        )
+
+    wait.assert_called_once_with(
+        list(completion_refs),
+        num_returns=len(completion_refs),
+        fetch_local=False,
+    )
+
+    assert not map_dir.exists()
+    assert not reduce_dir.exists()
+
+
+def test_disk_shuffle_shutdown_completion_refs_are_reusable():
+    from ray._raylet import ObjectRefGenerator
+
+    ctx = DataContext.get_current()
+    writer = plan_disk_hash_shuffle_map(
+        InputDataBuffer(ctx, []),
+        ctx,
+        num_partitions=2,
+        partition_fn=lambda table: {0: table},
+    )
+    reduce_op = plan_disk_hash_shuffle_reduce(
+        writer,
+        ctx,
+        num_partitions=2,
+        reduce_fn=lambda *args: [],
+    )
+
+    completion_refs = (MagicMock(), MagicMock())
+    tasks = []
+
+    for ref in completion_refs:
+        generator = MagicMock(spec=ObjectRefGenerator)
+        generator.completed.return_value = ref
+
+        task = MagicMock()
+        task.get_waitable.return_value = generator
+
+        def cancel(force):
+            # Completion refs must already be captured before
+            # cancellation starts.
+            assert set(reduce_op.get_shutdown_completion_refs()) == set(completion_refs)
+
+        task._cancel.side_effect = cancel
+        tasks.append(task)
+
+    with patch.object(
+        reduce_op,
+        "get_active_tasks",
+        return_value=tasks,
+    ):
+        reduce_op._cancel_active_tasks(force=False)
+
+    # A fused reduce/writer can participate in two shuffle cleanups.
+    # Both consumers must receive the same completion refs.
+    first_cleanup_refs = reduce_op.get_shutdown_completion_refs()
+    second_cleanup_refs = reduce_op.get_shutdown_completion_refs()
+
+    assert set(first_cleanup_refs) == set(completion_refs)
+    assert first_cleanup_refs == second_cleanup_refs
+
+    for task in tasks:
+        task._cancel.assert_called_once_with(force=False)
+        task.get_waitable.return_value.completed.assert_called_once()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux",
+    reason="Requires Linux SIGINT cancellation semantics",
+)
+@pytest.mark.parametrize(
+    "cancel_during_mkdir",
+    [False, True],
+    ids=["after-mkdir", "during-mkdir"],
+)
+def test_disk_shuffle_mid_map_cancel_cleans_directories(
+    cancel_during_mkdir,
+):
+    """Cancelled mappers must not strand disk shuffle directories."""
+    import os
+    import subprocess
+    import textwrap
+
+    # A separate process isolates SIGINT from the pytest runner and starts a
+    # private Ray cluster. This test deliberately uses a single local node.
+    script = textwrap.dedent(
+        r"""
+        import glob
+        import os
+        import shutil
+        import signal
+        import tempfile
+        import threading
+        import time
+        from pathlib import Path
+        from unittest.mock import patch
+
+        import ray
+        import ray.data._internal.planner.plan_all_to_all_op as planner
+        from ray.data.context import DataContext, ShuffleStrategy
+
+        cancel_during_mkdir = (
+            os.environ["TEST_CANCEL_DURING_MKDIR"] == "1"
+        )
+
+        class GatedPartition:
+            def __init__(self, marker, release):
+                self.marker = str(marker)
+                self.release = str(release)
+
+            def __call__(self, table):
+                # DiskShuffleWriteFn creates the map directory before invoking
+                # partition_fn. Cancel only after the marker is written.
+                Path(self.marker).touch()
+                deadline = time.monotonic() + 40
+                while not Path(self.release).exists():
+                    if time.monotonic() > deadline:
+                        raise TimeoutError("partition gate was not released")
+                    time.sleep(0.05)
+                return {0: table}
+
+        class DelayedMkdirWriter:
+            def __init__(self, writer, marker, completed):
+                self.writer = writer
+                self.marker = str(marker)
+                self.completed = str(completed)
+
+            def __call__(self, *args, **kwargs):
+                original_makedirs = os.makedirs
+
+                def delayed_makedirs(path, *args, **kwargs):
+                    if os.fspath(path) != self.writer._out_dir:
+                        return original_makedirs(path, *args, **kwargs)
+
+                    Path(self.marker).touch()
+
+                    try:
+                        deadline = time.monotonic() + 30
+                        while time.monotonic() < deadline:
+                            time.sleep(0.05)
+                        raise TimeoutError("mkdir was not cancelled")
+                    except KeyboardInterrupt:
+                        # Simulate a filesystem operation that completes
+                        # after task cancellation has been requested.
+                        time.sleep(2)
+                        original_makedirs(path, *args, **kwargs)
+                        Path(self.completed).touch()
+                        raise
+
+                os.makedirs = delayed_makedirs
+                try:
+                    yield from self.writer(*args, **kwargs)
+                finally:
+                    os.makedirs = original_makedirs
+
+        def dirs():
+            return set(glob.glob(os.path.join(
+                tempfile.gettempdir(), "ray_shuffle_disk_*"
+            )))
+
+        ray.init(num_cpus=2, include_dashboard=False)
+        baseline = dirs()
+        gate_reached = threading.Event()
+        stop_monitor = threading.Event()
+        interrupted = False
+        leftover = set()
+        error = None
+
+        try:
+            ctx = DataContext.get_current()
+            ctx.shuffle_strategy = ShuffleStrategy.SHUFFLE_V2
+            ctx.use_disk_based_hash_shuffle = True
+            ctx.shuffle_input_batch_bytes = 0
+
+            with tempfile.TemporaryDirectory(prefix="disk_shuffle_gate_") as d:
+                marker = Path(d) / "entered"
+                release = Path(d) / "release"
+                mkdir_completed = Path(d) / "mkdir_completed"
+
+                original_writer = planner.DiskShuffleWriteFn
+
+                def make_delayed_writer(*args, **kwargs):
+                    return DelayedMkdirWriter(
+                        original_writer(*args, **kwargs),
+                        marker,
+                        mkdir_completed,
+                    )
+
+                def watch_gate():
+                    deadline = time.monotonic() + 30
+                    while not stop_monitor.is_set() and time.monotonic() < deadline:
+                        if marker.exists():
+                            gate_reached.set()
+                            os.kill(os.getpid(), signal.SIGINT)
+                            return
+                        time.sleep(0.05)
+
+                monitor = threading.Thread(target=watch_gate, daemon=True)
+                monitor.start()
+                try:
+                    ds = ray.data.range(1000, override_num_blocks=1).repartition(
+                        4, keys=["id"]
+                    )
+                    if cancel_during_mkdir:
+                        fault_injection = patch.object(
+                            planner,
+                            "DiskShuffleWriteFn",
+                            side_effect=make_delayed_writer,
+                        )
+                    else:
+                        fault_injection = patch.object(
+                            planner,
+                            "_make_hash_partition_fn",
+                            return_value=GatedPartition(marker, release),
+                        )
+
+                    with fault_injection:
+                        try:
+                            ds.materialize()
+                        except KeyboardInterrupt:
+                            interrupted = True
+                finally:
+                    stop_monitor.set()
+                    monitor.join(timeout=2)
+                    release.touch()
+                    if cancel_during_mkdir:
+                        deadline = time.monotonic() + 15
+                        while not mkdir_completed.exists():
+                            if time.monotonic() > deadline:
+                                raise AssertionError(
+                                    "Delayed mkdir never completed after cancellation"
+                                )
+                            time.sleep(0.05)
+
+            # Let async cancellation/cleanup tasks settle.
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if not (dirs() - baseline):
+                    break
+                time.sleep(0.1)
+            leftover = dirs() - baseline
+            print(
+                "CANCEL_RESULT",
+                f"gate={gate_reached.is_set()}",
+                f"interrupted={interrupted}",
+                f"leftover={sorted(leftover)}",
+                flush=True,
+            )
+        except BaseException as exc:
+            error = exc
+        finally:
+            # Limit cleanup strictly to new paths in the local temp root.
+            tmp_root = Path(tempfile.gettempdir()).resolve()
+            for path in dirs() - baseline:
+                p = Path(path)
+                if (
+                    p.parent.resolve() == tmp_root
+                    and p.name.startswith("ray_shuffle_disk_")
+                    and not p.is_symlink()
+                ):
+                    shutil.rmtree(p, ignore_errors=True)
+            ray.shutdown()
+
+        if error is not None:
+            raise error
+        assert gate_reached.is_set(), "map task never entered partition gate"
+        assert interrupted, "driver did not catch cancellation SIGINT"
+        assert not leftover, f"shuffle directories leaked: {sorted(leftover)}"
+    """
+    )
+
+    # Keep the temporary root short to avoid exceeding the Unix domain
+    # socket path length limit during Ray initialization.
+    with tempfile.TemporaryDirectory(prefix="rds_", dir="/tmp") as tmp_dir:
+        env = os.environ.copy()
+        env.pop("RAY_ADDRESS", None)
+        env["TMPDIR"] = tmp_dir
+        env["TMP"] = tmp_dir
+        env["TEMP"] = tmp_dir
+        env["TEST_CANCEL_DURING_MKDIR"] = "1" if cancel_during_mkdir else "0"
+
+        completed = subprocess.run(
+            [sys.executable, "-u", "-c", script],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            env=env,
+        )
+
+        assert completed.returncode == 0, (
+            f"child exited {completed.returncode}\n"
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}"
+        )
+        assert (
+            "CANCEL_RESULT gate=True interrupted=True leftover=[]" in completed.stdout
+        )
 
 
 def _ipc_shard_bundle(partition_id, table):
