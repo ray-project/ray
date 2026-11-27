@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from dataclasses import fields
 from decimal import Decimal
 from pathlib import Path
@@ -18,6 +19,205 @@ from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
 from ray.data._internal.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.expressions import col
+
+
+@pytest.fixture
+def orc_pruning_files(tmp_path):
+    def write(name, values, **extra):
+        path = tmp_path / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = {"x": values, "payload": [str(value) for value in values], **extra}
+        orc.write_table(
+            pa.table(data),
+            str(path),
+            compression="zlib",
+            stripe_size=8192,
+            batch_size=256,
+        )
+        return path
+
+    return write
+
+
+@pytest.fixture
+def orc_pruning_trace(tmp_path, monkeypatch):
+    from ray.data._internal.datasource_v2.formats.orc.orc_datasource_v2 import (
+        OrcDatasourceV2,
+    )
+    from ray.data._internal.datasource_v2.formats.orc.orc_scanner import OrcScanner
+
+    trace_path = str(tmp_path / "statistics-execution.jsonl")
+    driver_pid = os.getpid()
+    original_create_scanner = OrcDatasourceV2.create_scanner
+
+    class TracingScanner(OrcScanner):
+        def create_reader(self):
+            reader = super().create_reader()
+            original = reader._scan_with_statistics
+
+            def trace(fragment, scan_kwargs, schema, predicate):
+                def record(kind):
+                    with open(trace_path, "a") as stream:
+                        stream.write(
+                            json.dumps(
+                                {
+                                    "kind": kind,
+                                    "path": fragment.path,
+                                    "pid": os.getpid(),
+                                }
+                            )
+                            + "\n"
+                        )
+
+                class Fragment:
+                    def __getattr__(self, name):
+                        return getattr(fragment, name)
+
+                    def scanner(self, **kwargs):
+                        native = fragment.scanner(**kwargs)
+
+                        class Scanner:
+                            def scan_batches(self):
+                                if predicate is not None:
+                                    record("scan")
+                                yield from native.scan_batches()
+
+                        return Scanner()
+
+                if predicate is not None:
+                    record("consider")
+                yield from original(Fragment(), scan_kwargs, schema, predicate)
+
+            reader._scan_with_statistics = trace
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return TracingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(OrcDatasourceV2, "create_scanner", create_scanner)
+
+    def check(paths, expected_scanned):
+        records = [
+            json.loads(line) for line in Path(trace_path).read_text().splitlines()
+        ]
+        records = [record for record in records if record["pid"] != driver_pid]
+        assert {
+            Path(record["path"]).name
+            for record in records
+            if record["kind"] == "consider"
+        } == {path.name for path in paths}
+        scanned = {
+            Path(record["path"]).name for record in records if record["kind"] == "scan"
+        }
+        assert scanned == {path.name for path in expected_scanned}
+
+    return check
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "mode,scanned_indexes,merge_schema",
+    [
+        pytest.param("off", (0, 1, 2), False, id="off-default-schema"),
+        pytest.param("file", (1, 2), False, id="file-default-schema"),
+        pytest.param("file", (1, 2), True, id="file-merged-schema"),
+    ],
+)
+def test_orc_file_statistics_pruning_public_worker(
+    ray_start_regular_shared,
+    restore_data_context,
+    datasource_v2,
+    orc_pruning_files,
+    orc_pruning_trace,
+    mode,
+    scanned_indexes,
+    merge_schema,
+):
+    restore_data_context.orc_statistics_pruning = mode
+    rng = random.Random(66995)
+    payload = [rng.randbytes(128) for _ in range(4096)]
+    paths = [
+        orc_pruning_files("excluded.orc", [-10, -1], payload=[b"-10", b"-1"]),
+        orc_pruning_files("other.orc", [3500], payload=[b"other"]),
+        orc_pruning_files(
+            "candidate.orc", range(4096), payload=payload, extra=["a"] * 4096
+        ),
+    ]
+    assert orc.ORCFile(str(paths[2])).nstripes > 1
+    predicate = (col("x") >= 3500) & (col("x") < 3800) & (col("path") == str(paths[2]))
+    rows = (
+        ray.data.read_orc(
+            [str(path) for path in paths],
+            override_num_blocks=1,
+            include_paths=True,
+            merge_schema=merge_schema,
+        )
+        .filter(expr=predicate)
+        .select_columns(["payload", "extra"])
+        .limit(73)
+        .take_all()
+    )
+    assert rows == [{"payload": value, "extra": "a"} for value in payload[3500:3573]]
+    orc_pruning_trace(paths, [paths[index] for index in scanned_indexes])
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "style,parts",
+    [
+        pytest.param("hive", ("year={}", "unused=not-an-int"), id="hive"),
+        pytest.param("dir", ("{}", "not-an-int"), id="directory"),
+    ],
+)
+def test_orc_file_statistics_pruning_with_partitions(
+    ray_start_regular_shared,
+    restore_data_context,
+    datasource_v2,
+    orc_pruning_files,
+    orc_pruning_trace,
+    tmp_path,
+    style,
+    parts,
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    restore_data_context.orc_statistics_pruning = "file"
+    restore_data_context.execution_options.preserve_order = True
+    paths = []
+    for year, name, values in (
+        (2, "partition-excluded", [100, 101]),
+        (10, "statistics-excluded", [-20, -10]),
+        (10, "candidate", [100, 101, 102, 103]),
+    ):
+        directory = Path(*(part.format(year) for part in parts))
+        paths.append(
+            orc_pruning_files(
+                str(directory / f"{name}.orc"),
+                values,
+                year=pa.array([-1] * len(values), type=pa.int32()),
+                unused=pa.array([0] * len(values), type=pa.int32()),
+            )
+        )
+    partitioning = Partitioning(
+        PartitionStyle(style), base_dir=str(tmp_path), field_names=["year", "unused"]
+    )
+    rows = (
+        ray.data.read_orc(
+            [str(path) for path in paths],
+            partitioning=partitioning,
+            override_num_blocks=1,
+        )
+        .filter(expr=(col("year") > 2) & (col("x") >= 100))
+        .select_columns(["payload"])
+        .limit(3)
+        .take_all()
+    )
+    assert rows == [{"payload": str(value)} for value in (100, 101, 102)]
+    assert partitioning.field_types == {}
+    orc_pruning_trace(paths[1:], paths[2:])
 
 
 def _write_orc(path, table):

@@ -50,6 +50,10 @@ _ALLOWLIST = {
         "size estimation; no data batches are materialized. Batches are read and "
         "gated in OrcFileReader."
     ),
+    "orc_metadata.py": (
+        "ORCFile is used only to inspect file-tail metadata; no data batches are "
+        "materialized. Batches are read and gated in OrcFileReader."
+    ),
     "orc_datasource_v2.py": (
         "ORCFile is used only to inspect schema metadata; materialized batches are "
         "read and gated in OrcFileReader."

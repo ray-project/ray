@@ -52,7 +52,24 @@ py_test_module_list(
         "tests/parquet_test_utils.py",
         "tests/schema_planning_utils.py",
     ],
-    files = glob(["tests/datasource_v2/test_*.py"]),
+    files = glob(
+        ["tests/datasource_v2/test_*.py"],
+        exclude = ["tests/datasource_v2/test_orc_statistics_io.py"],
+    ),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
+    data = ["tests/unit/datasource_v2/fixtures/orc_java_strings.orc"],
+    files = ["tests/datasource_v2/test_orc_statistics_io.py"],
     tags = [
         "exclusive",
         "team:data",
