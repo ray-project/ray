@@ -67,7 +67,7 @@ Follow {ref}`Deploy a KubeRay operator <kuberay-operator-deploy>` to install the
 ```bash
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
-helm install kuberay-operator kuberay/kuberay-operator --version 1.7.0
+helm install kuberay-operator kuberay/kuberay-operator --version 1.8.0
 ```
 
 Verify that the operator Pod is running:

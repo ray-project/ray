@@ -21,9 +21,9 @@ Install the KubeRay operator, following [these instructions](../getting-started/
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install KubeRay operator v1.7.0 with the RayClusterNetworkPolicy feature gate enabled
+# Install KubeRay operator v1.8.0 with the RayClusterNetworkPolicy feature gate enabled
 helm install kuberay-operator kuberay/kuberay-operator \
-  --version 1.7.0 \
+  --version 1.8.0 \
   --set "featureGates[0].name=RayClusterNetworkPolicy" \
   --set "featureGates[0].enabled=true"
 ```

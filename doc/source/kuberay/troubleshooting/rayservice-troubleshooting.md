@@ -116,7 +116,7 @@ You have two options to resolve this issue:
 (kuberay-raysvc-issue4)=
 ### Issue 4: Incorrect `import_path`.
 
-You can refer to the {class}`ServeApplicationSchema <ray.serve.schema.ServeApplicationSchema>` documentation for more details about the format of `import_path`. Taking [the MobileNet YAML file](https://github.com/kuberay-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example, the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`, the second `mobilenet` is the name of the Python file in the directory `mobilenet/`, and `app` is the name of the variable representing Ray Serve application within the Python file.
+You can refer to the {class}`ServeApplicationSchema <ray.serve.schema.ServeApplicationSchema>` documentation for more details about the format of `import_path`. Taking [the MobileNet YAML file](https://github.com/kuberay-project/kuberay/blob/master/ray-operator/config/samples/ray-service.mobilenet.yaml) as an example, the `import_path` is `mobilenet.mobilenet:app`. The first `mobilenet` is the name of the directory in the `working_dir`, the second `mobilenet` is the name of the Python file in the directory `mobilenet/`, and `app` is the name of the variable representing Ray Serve application within the Python file.
 
 ```yaml
   serveConfigV2: |
