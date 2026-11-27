@@ -52,6 +52,7 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          std::shared_ptr<ClientConnection> connection,
          rpc::ClientCallManager &client_call_manager,
          ClockInterface &clock);
+  ~Worker() override;
 
   rpc::WorkerType GetWorkerType() const override;
   void MarkDead() override;
@@ -164,10 +165,21 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   void SetIsActorWorker(bool is_actor_worker);
 
  private:
+  /// Whether the worker process is still running, without trusting a recycled PID.
+  bool IsProcessAlive() const;
+  /// Send SIGKILL (force) or SIGTERM to the worker process, never to a recycled PID.
+  void SignalProcess(bool force);
+  /// Whether the worker still holds its end of the raylet connection (Linux only).
+  bool IsConnectionPeerAlive() const;
+
   /// The worker's ID.
   WorkerID worker_id_;
   /// The worker's process.
   std::unique_ptr<ProcessInterface> proc_;
+  /// pidfd for proc_, opened in SetProcess; -1 if unavailable.
+  int pidfd_ = -1;
+  /// Whether proc_ must never be signaled because SetProcess could not pin it.
+  bool process_exited_ = false;
   /// The language type of this worker.
   rpc::Language language_;
   /// The type of the worker.
