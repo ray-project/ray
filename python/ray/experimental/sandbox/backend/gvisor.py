@@ -567,6 +567,8 @@ def _release_cgroup(sandbox_id: str, cgroup: Optional[SandboxCgroup]) -> bool:
 class GVisorSandboxBackend(BaseSandboxBackend):
     """gVisor sandbox backend running a single persistent container instance per sandbox locally via runsc."""
 
+    checkpoint_format = "gvisor"
+
     def __init__(self, image_manager: Optional[BaseImageManager] = None):
         super().__init__(image_manager=image_manager)
         self._sandbox_metadata: Dict[str, Dict] = {}

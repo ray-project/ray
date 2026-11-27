@@ -884,6 +884,10 @@ To change the default for every sandbox on a node, set `RAY_SANDBOX_DEFAULT_DNS`
 
 If the sandbox can't reach any resolver, `network="host"` uses the node's own `/etc/resolv.conf`. It also gives the sandbox the node's whole network, including every Ray port and instance metadata, so use it only for trusted code. Configure anything beyond that through the OCI spec. See [Pass custom OCI configurations to gVisor](#pass-custom-oci-configurations-to-gvisor).
 
+## Sandbox backends
+
+`SandboxRuntime` runs sandboxes through a backend. gVisor is the default. To pick another one, pass `SandboxRuntime(backend=...)`, either a backend instance or a name, or set `RAY_SANDBOX_BACKEND` in the worker's environment. A name is `gvisor`, a name that a package registers in the `ray.sandbox_backends` entry point group, or an import path such as `my_pkg.backends:MyBackend`. A backend subclasses `ray.experimental.sandbox.backend.base.BaseSandboxBackend`. `RAY_SANDBOX_BACKEND` applies to every `SandboxRuntime` the process builds, including the ones inside `Sandbox` actors and the HTTP API's `SandboxHost`. `SandboxRuntime.commit()` works only on gVisor, and raises `NotImplementedError` on a backend that can't export a root filesystem. `SandboxRuntime.delete_checkpoint()` deletes a checkpoint that's no longer needed (on gVisor, its directory). `restore()` refuses a checkpoint that another backend took, with an error that names that backend.
+
 ## Architecture
 
 The Ray Sandboxes subsystem has the following layers:
