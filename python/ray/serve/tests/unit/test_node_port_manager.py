@@ -352,5 +352,70 @@ def test_prune_drops_empty_manager_after_quarantine(monkeypatch, port_range_cons
     wait_for_condition(_manager_reclaimed, timeout=5)
 
 
+def test_prune_reclaims_port_allocated_after_last_prune_when_alive_unchanged(
+    monkeypatch, port_range_constants
+):
+    """If a starting replica allocates a port after a prune tick and dies before
+    joining the alive set on the next prune tick, its port must still be reclaimed
+    even though the node's alive replica set is unchanged."""
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        60.0,
+    )
+    node_id = "node-transient-replica"
+    manager = NodePortManager.get_node_manager(node_id)
+
+    port_alive = manager.allocate_port("replica-alive", RequestProtocol.HTTP)
+    NodePortManager.prune({node_id: {"replica-alive"}})
+    assert manager._last_pruned_alive == {"replica-alive"}
+
+    # A starting replica allocates a port and then crashes before next prune.
+    port_dead = manager.allocate_port("replica-starting-dead", RequestProtocol.HTTP)
+    assert manager.is_port_allocated("replica-starting-dead", RequestProtocol.HTTP)
+    assert manager._last_pruned_alive == {"replica-alive", "replica-starting-dead"}
+
+    # Next prune sees the same alive set {"replica-alive"}, but must still reclaim
+    # and quarantine replica-starting-dead's port.
+    NodePortManager.prune({node_id: {"replica-alive"}})
+    assert not manager.is_port_allocated("replica-starting-dead", RequestProtocol.HTTP)
+    assert port_dead in manager._http_allocator._quarantined_ports
+    assert manager.get_port("replica-alive", RequestProtocol.HTTP) == port_alive
+    assert manager._last_pruned_alive == {"replica-alive"}
+
+    # If a newly allocated replica survives into the next prune tick, _last_pruned_alive
+    # already includes it so _prune_replica_ports can be skipped in steady state.
+    port_surviving = manager.allocate_port("replica-surviving", RequestProtocol.HTTP)
+    assert manager._last_pruned_alive == {"replica-alive", "replica-surviving"}
+    NodePortManager.prune({node_id: {"replica-alive", "replica-surviving"}})
+    assert manager.get_port("replica-surviving", RequestProtocol.HTTP) == port_surviving
+
+
+def test_prune_reclaims_recovered_port_when_alive_unchanged(
+    monkeypatch, port_range_constants
+):
+    """If update_ports registers a port for a replica not in _last_pruned_alive
+    that is no longer alive by the time prune runs, prune must reclaim it."""
+    monkeypatch.setattr(
+        "ray.serve._private.node_port_manager.RAY_SERVE_PORT_QUARANTINE_S",
+        60.0,
+    )
+    node_id = "node-transient-recovered"
+    manager = NodePortManager.get_node_manager(node_id)
+
+    manager.allocate_port("replica-alive", RequestProtocol.HTTP)
+    NodePortManager.prune({node_id: {"replica-alive"}})
+    assert manager._last_pruned_alive == {"replica-alive"}
+
+    recovered_http = port_range_constants["RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT"] + 2
+    NodePortManager.update_ports([(node_id, "replica-stale", recovered_http, None)])
+    assert manager.is_port_allocated("replica-stale", RequestProtocol.HTTP)
+    assert manager._last_pruned_alive == {"replica-alive", "replica-stale"}
+
+    NodePortManager.prune({node_id: {"replica-alive"}})
+    assert not manager.is_port_allocated("replica-stale", RequestProtocol.HTTP)
+    assert recovered_http in manager._http_allocator._quarantined_ports
+    assert manager._last_pruned_alive == {"replica-alive"}
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
