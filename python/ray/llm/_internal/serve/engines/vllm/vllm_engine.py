@@ -25,6 +25,7 @@ from vllm.entrypoints.serve.engine.protocol import ErrorResponse as VLLMErrorRes
 from vllm.exceptions import VLLMClientError
 
 import ray
+from ray import serve
 from ray.llm._internal.common.callbacks.base import CallbackCtx
 from ray.llm._internal.common.utils.import_utils import try_import
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -61,8 +62,17 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.llm._internal.serve.routing_policies.kv_aware import (
     token_channel,
 )
+from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
+    KV_LIFECYCLE_METADATA_KEY,
+)
 from ray.llm._internal.serve.routing_policies.kv_aware.kv_aware_router import (
     is_kv_aware,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
+    get_worker_id,
+)
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    LifecyclePublisher,
 )
 from ray.llm._internal.serve.routing_policies.kv_aware.metrics import (
     init_tokenization_bypass_counter,
@@ -348,6 +358,10 @@ class VLLMEngine(LLMEngine):
             )
             self._prompt_token_zmq_advertised_endpoint = advertised_endpoint
             init_tokenization_bypass_counter()
+        # Publishes request lifecycle events to every LLMRouter.
+        self._lifecycle_publisher = (
+            LifecyclePublisher() if is_kv_aware(self.llm_config) else None
+        )
 
         # vLLM Integration points. Will be set through .start()
         self._engine_client = None
@@ -484,12 +498,23 @@ class VLLMEngine(LLMEngine):
 
         # Read the engine client's config: the engine core syncs its resolved
         # KV block sizes back to it after initialization.
+        block_size = resolve_kv_event_block_size(self._engine_client.vllm_config)
         self._routing_stats = get_kv_event_routing_stats(
             self.llm_config,
-            resolve_kv_event_block_size(self._engine_client.vllm_config),
+            block_size,
             vllm_engine_config.scheduler_config.max_num_batched_tokens,
         )
         self._routing_stats.update(prompt_token_stats)
+        if self._lifecycle_publisher is not None:
+            lifecycle_endpoint = self._lifecycle_publisher.start(
+                worker_id=get_worker_id(
+                    serve.get_replica_context().replica_id.unique_id
+                ),
+                dp_rank=self.llm_config.engine_kwargs.get("data_parallel_rank") or 0,
+            )
+            self._routing_stats[KV_LIFECYCLE_METADATA_KEY] = {
+                "endpoint": lifecycle_endpoint
+            }
 
         self._running = True
         if is_model_express(self.llm_config):
@@ -498,9 +523,11 @@ class VLLMEngine(LLMEngine):
         logger.info("Started vLLM engine.")
 
     async def shutdown(self) -> None:
-        """Release the prompt-token channel's ZMQ socket and receive task."""
+        """Release the prompt-token and lifecycle ZMQ sockets."""
         if self._token_receiver is not None:
             await self._token_receiver.close()
+        if self._lifecycle_publisher is not None:
+            self._lifecycle_publisher.close()
 
     def routing_stats(self) -> Dict[str, Any]:
         """Returns KV event and prompt-token endpoints for KV-aware routing."""
@@ -643,12 +670,9 @@ class VLLMEngine(LLMEngine):
 
         executor_class = Executor.get_class(vllm_engine_config)
         logger.info(f"Using executor class: {executor_class}")
-        # Report per-request token progress to the deployment's KV router actor,
-        # but only on KV-aware deployments: elsewhere the actor never exists and
-        # resolving it per request would block the engine's event loop.
         engine_cls = AsyncLLM
-        if is_kv_aware(self.llm_config):
-            engine_cls = enable_token_tracking(AsyncLLM)
+        if self._lifecycle_publisher is not None:
+            engine_cls = enable_token_tracking(AsyncLLM, self._lifecycle_publisher)
         engine_client = engine_cls(
             vllm_config=vllm_engine_config,
             executor_class=executor_class,

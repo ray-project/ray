@@ -1,166 +1,58 @@
-import asyncio
-from typing import Optional, Type
+from typing import Type
 
 from vllm.outputs import RequestOutput
 from vllm.v1.engine.async_llm import AsyncLLM
 
-from ray import serve
-from ray.llm._internal.serve.observability.logging import get_logger
-from ray.llm._internal.serve.routing_policies.kv_aware.constants import (
-    LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
-)
-from ray.llm._internal.serve.routing_policies.kv_aware.kv_token_tracker import (
-    get_llm_router_handle,
-    get_worker_id,
+from ray.llm._internal.serve.routing_policies.kv_aware.lifecycle import (
+    LifecycleEvent,
+    LifecyclePublisher,
 )
 from ray.llm._internal.serve.utils.server_utils import get_serve_request_id
-from ray.serve.handle import DeploymentHandle
-
-logger = get_logger(__name__)
-
-
-class LifecycleEventForwarder:
-    """Ordered, non-blocking bridge from the engine to every LLMRouter
-    replica's KVTokenTracker, which maintains per-replica token load
-    statistics. Each batch is broadcast to all ingress replicas, whose
-    selection services received the reservation through the ingress-side
-    background broadcast.
-
-    ``report`` only enqueues locally, so generation never blocks on delivery.
-    A single delivery task per replica drains the queue to the trackers,
-    awaiting one broadcast at a time so events arrive everywhere in the order
-    they were reported. Events that pile up during a call are sent together in
-    the next one.
-    """
-
-    def __init__(self, handle: DeploymentHandle, worker_id: int):
-        self.handle = handle
-        self.worker_id = worker_id
-        self._events: asyncio.Queue = asyncio.Queue()
-        self._delivery_task: Optional[asyncio.Task] = None
-
-    def report(self, method_name: str, *args) -> None:
-        if self._delivery_task is None or self._delivery_task.done():
-            self._delivery_task = asyncio.get_running_loop().create_task(
-                self._deliver()
-            )
-        self._events.put_nowait((method_name, args))
-
-    async def _deliver(self) -> None:
-        while True:
-            # Wait for the next event, then drain whatever queued up behind it
-            # into the same batch.
-            batch = [await self._events.get()]
-            while not self._events.empty():
-                batch.append(self._events.get_nowait())
-            try:
-                # return_exceptions so one failed replica cannot mask delivery
-                # to the rest; failures are logged and dropped below.
-                results = await self.handle.broadcast(
-                    "on_lifecycle_events", batch
-                ).results_async(
-                    timeout_s=LIFECYCLE_EVENT_BROADCAST_TIMEOUT_S,
-                    return_exceptions=True,
-                )
-                errors = [r for r in results if isinstance(r, Exception)]
-                if errors:
-                    logger.warning(
-                        "KV lifecycle events dropped on %d/%d ingress replicas: %s",
-                        len(errors),
-                        len(results),
-                        errors[0],
-                    )
-            except Exception as e:
-                # Best-effort delivery: any failure (no LLMRouter replica being
-                # available during a redeploy, backpressure, a booking error) is
-                # dropped so the engine's token stream is never disrupted; report()
-                # restarts the delivery task on the next event.
-                logger.warning("Dropping KV lifecycle events: %s", e)
-            finally:
-                for _ in batch:
-                    self._events.task_done()
-
-    async def flush(self) -> None:
-        """Wait until every reported event has been delivered."""
-        await self._events.join()
-
-    def close(self) -> None:
-        """Cancel the delivery task on engine shutdown."""
-        if self._delivery_task is not None:
-            self._delivery_task.cancel()
-            self._delivery_task = None
 
 
 class RequestTokenTracker:
-    """Drives the request lifecycle hooks for one ``generate()`` stream."""
+    """Publishes the lifecycle events of one ``generate()`` stream."""
 
-    def __init__(self, forwarder: LifecycleEventForwarder, request_id: str):
-        self._forwarder = forwarder
+    def __init__(self, publisher: LifecyclePublisher, request_id: str):
+        self._publisher = publisher
         self._request_id = request_id
         self._prefill_marked = False
         self._finished = False
 
     def on_output(self, output: RequestOutput) -> None:
-        """Observe one engine ``RequestOutput`` (forwarded to the caller as-is)."""
         if self._prefill_marked or not any(o.token_ids for o in output.outputs):
             return
         # The first output token signals prefill completion.
         self._prefill_marked = True
-        self._forwarder.report("on_prefill_complete", self._request_id)
+        self._publisher.publish(self._request_id, LifecycleEvent.PREFILL_COMPLETE)
 
     def finish(self) -> None:
         """Report completion exactly once."""
         if not self._finished:
             self._finished = True
-            self._forwarder.report("on_request_completed", self._request_id)
+            self._publisher.publish(self._request_id, LifecycleEvent.FINISHED)
 
 
-def enable_token_tracking(engine_cls: Type[AsyncLLM]) -> Type[AsyncLLM]:
-    """Decorator adding KV-router request lifecycle tracking."""
+def enable_token_tracking(
+    engine_cls: Type[AsyncLLM], publisher: LifecyclePublisher
+) -> Type[AsyncLLM]:
+    """Decorator publishing each request's lifecycle events through ``publisher``."""
 
     class TokenTrackingEngine(engine_cls):
-        _lifecycle_forwarder: Optional[LifecycleEventForwarder] = None
-        _resolve_warned: bool = False
-
-        def _resolve_lifecycle_forwarder(self) -> Optional[LifecycleEventForwarder]:
-            if self._lifecycle_forwarder is None:
-                try:
-                    # The KVTokenTracker lives inside the LLMRouter, so
-                    # forward lifecycle events to its deployment handle method.
-                    handle = get_llm_router_handle()
-                    worker_id = get_worker_id(
-                        serve.get_replica_context().replica_id.unique_id
-                    )
-                    self._lifecycle_forwarder = LifecycleEventForwarder(
-                        handle, worker_id
-                    )
-                except Exception as e:
-                    # Warn once: resolution is retried per request until it succeeds.
-                    if not self._resolve_warned:
-                        self._resolve_warned = True
-                        logger.warning("KV token tracking disabled: %s", e)
-            return self._lifecycle_forwarder
-
-        def shutdown(self, *args, **kwargs):
-            if self._lifecycle_forwarder is not None:
-                self._lifecycle_forwarder.close()
-            return super().shutdown(*args, **kwargs)
-
         async def generate(self, prompt, sampling_params, request_id, *args, **kwargs):
             stream = super().generate(
                 prompt, sampling_params, request_id, *args, **kwargs
             )
-            forwarder = self._resolve_lifecycle_forwarder()
-            if forwarder is None:
-                async for output in stream:
-                    yield output
-                return
-
-            lifecycle_request_id = get_serve_request_id() or request_id
+            # Routers book requests under their Serve request id. Requests no
+            # router booked (e.g. HAProxy's fallback path) publish too. Routers
+            # have no booking for them, so the selection service keeps each such
+            # event for 30 s in case a booking arrives, then drops it.
             # TODO (jeffreywang): Track per request, not per generate call. Beam
             # search runs many generate calls, so the first one frees the
             # request's load early.
-            tracker = RequestTokenTracker(forwarder, lifecycle_request_id)
+            tracker = RequestTokenTracker(
+                publisher, get_serve_request_id() or request_id
+            )
             try:
                 async for output in stream:
                     tracker.on_output(output)

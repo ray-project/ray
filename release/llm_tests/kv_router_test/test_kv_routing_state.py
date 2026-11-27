@@ -1,13 +1,10 @@
 """Tests for KV routing state across LLMRouter ingress replicas.
 
-Each ingress owns a local KV selector. The routing ingress atomically selects
-and reserves a worker, then asynchronously broadcasts that already-selected
-reservation so peer ingresses can mirror the same load state. Engine lifecycle
-events are broadcast separately and advance or free reservations admitted
-locally. Cached KV blocks are tracked per replica: every ingress independently
-subscribes to each engine worker's KV-event stream. Session bindings stream
-from the routing ingress's selection service and are broadcast the same way,
-so a session stays on its worker whichever ingress routes its next turn.
+Each ingress owns a local KV selector. The selecting ingress reserves a worker,
+and the Dynamo mesh replicates the reservation and session bindings to
+peer ingresses. Every ingress independently subscribes to each engine worker's
+KV-event stream to track cached blocks, and to its lifecycle events to release
+each request's load.
 """
 
 import asyncio
@@ -136,11 +133,16 @@ async def _registered_workers(router, num_replicas, num_workers, timeout=120):
 
     async def registered():
         per_replica = await _broadcast(router, "get_registered_worker_ids")
-        return len(per_replica) == num_replicas and all(
-            len(ids) == num_workers for ids in per_replica
+        sources = await _broadcast(router, "get_lifecycle_sources")
+        return (
+            len(per_replica) == num_replicas
+            and all(len(ids) == num_workers for ids in per_replica)
+            and all(len(endpoints) == num_workers for endpoints in sources)
         )
 
     await async_wait_for_condition(registered, timeout=timeout, retry_interval_ms=1000)
+    # Subscriptions connect in the background.
+    await asyncio.sleep(1)
     return (await _broadcast(router, "get_registered_worker_ids"))[0]
 
 
@@ -180,69 +182,54 @@ class TestIngressSynchronization:
 
     @pytest.mark.asyncio
     async def test_booked_load(self, ingress_replicas_per_node, deployed_handle):
-        """One ingress selects atomically, then every ingress converges through
-        booking, prefill completion, and request completion."""
+        """One ingress selects atomically and books the request, and the mesh
+        copies the booking to every ingress. Each applies the engine's lifecycle
+        events to its own booking, so the selecting ingress leaving mid-request
+        doesn't keep the request's load booked on the others."""
         router = serve.get_deployment_handle("LLMRouter", app_name=APP_NAME)
         replica_ids = await _ingress_replica_ids(router, ingress_replicas_per_node)
-        num_ingress_replicas = len(replica_ids)
-        worker_id = await _registered_worker(router, num_ingress_replicas)
+        worker_id = await _registered_worker(router, len(replica_ids))
+        owner, survivors = replica_ids[0], replica_ids[1:] or replica_ids
 
-        loads = await _broadcast(router, "get_worker_load", worker_id)
-        assert all(load["active_requests"] == 0 for load in loads)
+        async def loads():
+            return {
+                snapshot["replica_id"]: (
+                    snapshot["active_requests"],
+                    snapshot["potential_prefill_tokens"],
+                )
+                for snapshot in await _broadcast(router, "get_load_snapshot", worker_id)
+            }
 
-        token_ids = list(range(64))
-        selection = await router.select_worker.remote(
-            "probe", token_ids, [worker_id], 32
-        )
-        assert selection["worker_id"] == worker_id
+        assert all(active == 0 for active, _ in (await loads()).values())
+        assert await _select_on(router, owner, "probe", 1, [worker_id]) == worker_id
 
-        async def reservation_converged():
-            states = await _broadcast(router, "get_request_lifecycle", "probe")
-            loads = await _broadcast(router, "get_worker_load", worker_id)
-            return (
-                len(states) == num_ingress_replicas
-                and all(state is not None for state in states)
-                and all(load["active_requests"] == 1 for load in loads)
-                and len({load["potential_prefill_tokens"] for load in loads}) == 1
-                and loads[0]["potential_prefill_tokens"] > 0
+        async def booked():
+            readings = await loads()
+            return len(readings) == len(replica_ids) and all(
+                active == 1 and prefill > 0 for active, prefill in readings.values()
             )
 
-        await async_wait_for_condition(
-            reservation_converged, timeout=30, retry_interval_ms=100
-        )
+        await async_wait_for_condition(booked, timeout=30, retry_interval_ms=100)
 
-        await _broadcast(
-            router, "on_lifecycle_events", [("on_prefill_complete", ("probe",))]
-        )
+        if owner not in survivors:
+            (actor,) = [
+                actor
+                for actor in await _broadcast(router, "get_actor_of", owner)
+                if actor is not None
+            ]
+            ray.kill(actor, no_restart=True)
 
-        async def prefill_converged():
-            states = await _broadcast(router, "get_request_lifecycle", "probe")
-            loads = await _broadcast(router, "get_worker_load", worker_id)
-            return all(
-                state is not None and state["prefill_completed"] for state in states
-            ) and all(
-                load["active_requests"] == 1 and load["potential_prefill_tokens"] == 0
-                for load in loads
-            )
+        # Only the engine's lifecycle events can release this booking.
+        endpoint = await _backend_endpoint(deployed_handle)
+        await asyncio.to_thread(_post_chat, endpoint, request_id="probe")
 
-        await async_wait_for_condition(
-            prefill_converged, timeout=30, retry_interval_ms=100
-        )
+        async def released():
+            readings = await loads()
+            return all(readings.get(replica_id) == (0, 0) for replica_id in survivors)
 
-        await _broadcast(
-            router, "on_lifecycle_events", [("on_request_completed", ("probe",))]
-        )
-
-        async def completion_converged():
-            states = await _broadcast(router, "get_request_lifecycle", "probe")
-            loads = await _broadcast(router, "get_worker_load", worker_id)
-            return all(state is None for state in states) and all(
-                load["active_requests"] == 0 for load in loads
-            )
-
-        await async_wait_for_condition(
-            completion_converged, timeout=30, retry_interval_ms=100
-        )
+        await async_wait_for_condition(released, timeout=30, retry_interval_ms=100)
+        # Serve replaces the killed ingress before the next test.
+        await _registered_worker(router, len(replica_ids))
 
     @pytest.mark.asyncio
     async def test_real_request_load(self, ingress_replicas_per_node, deployed_handle):
@@ -254,7 +241,7 @@ class TestIngressSynchronization:
         worker_id = await _registered_worker(router, num_ingress_replicas)
         # Atomic reservation happens in LLMRouter while HAProxy routes the
         # request. A backend HTTP endpoint bypasses that selection path, so it
-        # cannot exercise the reservation or its ingress-to-ingress broadcast.
+        # cannot exercise the reservation or its replica-mesh replication.
         endpoint = get_application_url(app_name=APP_NAME, use_localhost=True)
 
         # A long generation keeps the request in flight while we observe it.
@@ -365,21 +352,9 @@ async def _select_on(router, replica_id, request_id, seed, allowed, session_id=N
 
 
 async def _complete(router, *request_ids):
-    """Complete requests on every ingress and wait until none tracks them."""
-    await _broadcast(
-        router,
-        "on_lifecycle_events",
-        [("on_request_completed", (request_id,)) for request_id in request_ids],
-    )
-
-    async def released():
-        for request_id in request_ids:
-            states = await _broadcast(router, "get_request_lifecycle", request_id)
-            if any(state is not None for state in states):
-                return False
-        return True
-
-    await async_wait_for_condition(released, timeout=30, retry_interval_ms=200)
+    """Free requests on every ingress, standing in for their engine's completion."""
+    for request_id in request_ids:
+        await _broadcast(router, "free_reservation", request_id)
 
 
 async def _skew_load(router, replica_id, worker_id, prefix):
