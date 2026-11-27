@@ -14,6 +14,7 @@ from ray.data._internal.planner.download_partition_actor import (
 from ray.data._internal.planner.plan_download_op import split_download_uri_blocks
 from ray.data._internal.util import MiB
 from ray.data.expressions import DownloadExpr, col, download
+from ray.tests.conftest import _ray_start
 
 _TARGET_BLOCK_SIZE = 128 * MiB
 
@@ -55,6 +56,7 @@ class TestDownloadExpressionStructure:
         assert not non_download_expr.structurally_equals(expr1)
 
 
+@pytest.mark.usefixtures("download_cluster")
 class TestDownloadExpressionFunctionality:
     """Test actual download functionality with real and mocked data."""
 
@@ -301,6 +303,7 @@ class TestDownloadExpressionFunctionality:
         assert results[0]["file_id"] == 0
 
 
+@pytest.mark.usefixtures("download_cluster")
 class TestDownloadExpressionErrors:
     """Test error conditions and edge cases for download expressions."""
 
@@ -403,6 +406,7 @@ class TestDownloadExpressionErrors:
         assert results[1]["bytes"] is None
 
 
+@pytest.mark.usefixtures("download_cluster")
 class TestDownloadExpressionIntegration:
     """Integration tests combining download expressions with other Ray Data operations."""
 
@@ -572,6 +576,17 @@ _TINY_RETRY_BUDGET = {
 }
 
 
+@pytest.fixture(scope="module")
+def download_cluster(maybe_setup_external_redis_shared):
+    with _ray_start(
+        num_cpus=4,
+        include_dashboard=False,
+        runtime_env={"env_vars": _TINY_RETRY_BUDGET},
+    ):
+        yield
+
+
+@pytest.mark.usefixtures("download_cluster")
 class TestDownloadTransientFailures:
     """A download that fails after its retries fails the task.
 
@@ -580,12 +595,7 @@ class TestDownloadTransientFailures:
     """
 
     @pytest.fixture
-    def tiny_retry_cluster(self, shutdown_only):
-        # The env vars must reach the worker processes, so they go through
-        # runtime_env rather than monkeypatch. Earlier tests in this module
-        # may have auto-started a cluster without it.
-        ray.shutdown()
-        ray.init(num_cpus=2, runtime_env={"env_vars": _TINY_RETRY_BUDGET})
+    def tiny_retry_cluster(self):
         ctx = ray.data.DataContext.get_current()
         saved = (ctx.max_errored_blocks, ctx.retried_map_errors, ctx.max_map_retries)
         yield ctx
@@ -656,4 +666,4 @@ class TestDownloadTransientFailures:
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", __file__, *sys.argv[1:]]))
