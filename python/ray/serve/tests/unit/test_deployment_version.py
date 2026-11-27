@@ -191,6 +191,20 @@ def test_health_check_timeout_s():
     assert hash(v1) != hash(v3)
 
 
+def test_health_check_unhealthy_threshold():
+    current = DeploymentVersion(
+        "1", DeploymentConfig(health_check_unhealthy_threshold=3), {}
+    )
+    updated = DeploymentVersion(
+        "1", DeploymentConfig(health_check_unhealthy_threshold=5), {}
+    )
+
+    assert current != updated
+    assert hash(current) != hash(updated)
+    assert not current.requires_actor_restart(updated)
+    assert not current.requires_actor_reconfigure(updated)
+
+
 def test_graceful_shutdown_timeout_s():
     v1 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_timeout_s=5), {})
     v2 = DeploymentVersion("1", DeploymentConfig(graceful_shutdown_timeout_s=5), {})

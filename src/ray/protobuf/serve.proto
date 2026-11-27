@@ -259,6 +259,10 @@ message DeploymentConfig {
   // Extra replicas allowed during a rolling restart, as a percentage of the
   // target count. Defaults to 0, which stops old replicas before starting new ones.
   int32 max_surge_percent = 25;
+
+  // Consecutive failed health checks before marking a replica unhealthy.
+  // Optional so older configs use the Python-side default instead of zero.
+  optional int32 health_check_unhealthy_threshold = 26;
 }
 
 // Configuration of the HTTP response returned when a request is rejected due

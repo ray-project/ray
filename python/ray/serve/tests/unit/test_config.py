@@ -19,6 +19,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
 )
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
@@ -190,6 +191,30 @@ class TestDeploymentConfig:
 
         # Test default value
         assert DeploymentConfig().max_constructor_retry_count == 20
+
+    @pytest.mark.parametrize("threshold", [0, -1, 1.5, "invalid", None])
+    def test_health_check_unhealthy_threshold_validation(self, threshold):
+        with pytest.raises(ValidationError):
+            DeploymentConfig(health_check_unhealthy_threshold=threshold)
+
+    @pytest.mark.parametrize("threshold", [1, 5])
+    def test_health_check_unhealthy_threshold_proto_roundtrip(self, threshold):
+        config = DeploymentConfig(health_check_unhealthy_threshold=threshold)
+        restored = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert restored.health_check_unhealthy_threshold == threshold
+
+    def test_health_check_unhealthy_threshold_proto_default(self):
+        proto = DeploymentConfig(health_check_unhealthy_threshold=7).to_proto()
+        proto.ClearField("health_check_unhealthy_threshold")
+        restored = DeploymentConfig.from_proto_bytes(proto.SerializeToString())
+        assert (
+            restored.health_check_unhealthy_threshold
+            == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+        )
+
+        proto.health_check_unhealthy_threshold = 0
+        with pytest.raises(ValidationError):
+            DeploymentConfig.from_proto(proto)
 
     def test_backpressure_config_status_code_validation(self):
         # Only 503 (the default) and 429 are allowed.
