@@ -743,6 +743,11 @@ class DataContext:
             ``ray.data.read_webdataset()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
+        enable_outer_join_simplification: Experimentally rewrite eligible left
+            outer joins followed by a right-side integer comparison to inner
+            joins that filter the right input before shuffle. Defaults to False.
+            For highly selective filters this can reduce shuffle input. Filters
+            that keep most rows can increase execution time.
         small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
             runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
@@ -1196,6 +1201,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     use_datasource_v2: bool = DEFAULT_USE_DATASOURCE_V2
+    enable_outer_join_simplification: bool = field(default=False, kw_only=True)
     small_shuffle_chunk_size: int = DEFAULT_SMALL_SHUFFLE_CHUNK_SIZE
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(

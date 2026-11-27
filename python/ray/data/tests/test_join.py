@@ -856,105 +856,338 @@ def test_join_with_unjoinable_non_key_columns(
         )
 
 
+@pytest.fixture
+def outer_join_simplification(hash_shuffle_version):
+    DataContext.get_current().enable_outer_join_simplification = True
+
+
+@pytest.mark.usefixtures("outer_join_simplification")
 @pytest.mark.parametrize(
-    "join_type,filter_side,should_push",
+    "join_type,side,column,expected_type",
     [
-        ("inner", "left", True),
-        ("inner", "right", True),
-        ("left_outer", "left", True),
-        ("left_outer", "right", False),
+        pytest.param("inner", 0, "left_val", JoinType.INNER, id="inner_left"),
+        pytest.param("inner", 1, "right_val", JoinType.INNER, id="inner_right"),
+        pytest.param("left_outer", 0, "left_val", JoinType.LEFT_OUTER, id="outer_left"),
+        pytest.param("left_outer", 1, "right_val", JoinType.INNER, id="outer_right"),
     ],
-    ids=["inner_left", "inner_right", "left_outer_left", "left_outer_right"],
 )
 def test_join_with_predicate_pushdown(
-    ray_start_regular_shared_2_cpus, join_type, filter_side, should_push
+    ray_start_regular_shared_2_cpus, join_type, side, column, expected_type
 ):
-    """Test that predicate pushdown works correctly with different join types.
+    left, right = _unique_key_join_inputs()
+    ds = left.join(
+        right, join_type, 2, on=("id",), aggregator_ray_remote_args={"num_cpus": 0.01}
+    )
+    predicate = col(column) < 150
+    filtered = ds.filter(expr=predicate)
+    join = _optimized_plan(filtered).dag
+    assert join.join_type is expected_type
+    _assert_filter_with(join.input_dependencies[side], predicate)
 
-    Filters on single-side predicates should push past the join when appropriate:
-    - Inner join: can push to either side
-    - Left outer: can push to left (preserved) side only
-    - Right outer: can push to right (preserved) side only
-    """
-    from ray.data._internal.logical.optimizers import LogicalOptimizer
-    from ray.data._internal.util import MiB
-    from ray.data.expressions import col
+    how = "left" if join_type == "left_outer" else "inner"
+    expected = left.to_pandas().merge(right.to_pandas(), on="id", how=how)
+    assert rows_same(filtered.to_pandas(), expected[expected[column] < 150])
 
-    DataContext.get_current().target_max_block_size = 1 * MiB
 
-    # Create datasets directly without map to allow filter pushdown through join
-    # Both have ids 0-31 with different value columns
-    left_data = [{"id": i, "left_val": i * 10} for i in range(32)]
-    right_data = [{"id": i, "right_val": i * 100} for i in range(32)]
+@pytest.fixture
+def outer_join_scores(ray_start_regular_shared_2_cpus, outer_join_simplification):
+    import pyarrow as pa
 
-    left_ds = ray.data.from_items(left_data)
-    right_ds = ray.data.from_items(right_data)
-
-    # Join then filter
-    joined = left_ds.join(
-        right_ds,
-        join_type=join_type,
-        num_partitions=4,
-        on=("id",),
+    left = ray.data.from_arrow(pa.table({"k": [1, 1, 2, 3], "score": [0] * 4}))
+    right = ray.data.from_arrow(
+        pa.table(
+            {
+                "k": [1, 1, 1, 1, 2],
+                "score": pa.array([5, 5, -1, None, -1], type=pa.int8()),
+            }
+        )
+    )
+    return left.join(
+        right,
+        "left_outer",
+        2,
+        on=("k",),
+        right_suffix="_r",
         aggregator_ray_remote_args={"num_cpus": 0.01},
     )
 
-    # Filter on column from specified side
-    if filter_side == "left":
-        filtered_ds = joined.filter(expr=col("left_val") < 100)
-    else:
-        filtered_ds = joined.filter(expr=col("right_val") < 1000)
 
-    left_pd = left_ds.to_pandas()
-    right_pd = right_ds.to_pandas()
+@pytest.mark.parametrize(
+    "threshold,expected_count",
+    [
+        pytest.param(0, 4, id="duplicate_matches"),
+        pytest.param(5, 0, id="all_scores_filtered"),
+    ],
+)
+def test_outer_join_filters_right_payload(outer_join_scores, threshold, expected_count):
+    from ray.data.expressions import lit
 
-    # Compute expected join result
-    if join_type == "inner":
-        expected_pd = left_pd.merge(right_pd, on="id", how="inner")
-    elif join_type == "left_outer":
-        expected_pd = left_pd.merge(right_pd, on="id", how="left")
-    else:
-        raise ValueError(f"Unsupported join type for this test: {join_type}")
+    filtered = outer_join_scores.filter(expr=lit(threshold) < col("score_r"))
+    join = _optimized_plan(filtered).dag
+    assert join.join_type is JoinType.INNER
+    _assert_filter_with(join.input_dependencies[1], lit(threshold) < col("score"))
+    assert filtered.take_all() == [{"k": 1, "score": 0, "score_r": 5}] * expected_count
+    assert filtered.schema() == outer_join_scores.schema()
+    assert outer_join_scores.count() == 10
 
-    # Apply filter (must match what we filtered in Ray Data)
-    if filter_side == "left":
-        # For left-side filter, use notna() to include NaN rows from outer joins
-        expected_pd = expected_pd[expected_pd["left_val"] < 100]
-    else:
-        # For right-side filter in outer joins, NaN values fail the comparison
-        # and are filtered out (matching Ray Data behavior)
-        expected_pd = expected_pd[expected_pd["right_val"] < 1000]
 
-    actual_df = filtered_ds.to_pandas()
-    expected_df = expected_pd.reset_index(drop=True)
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        pytest.param(col("score_r").is_null(), id="null_accepted"),
+        pytest.param((col("score_r") > 0) | (col("score") == 0), id="left_can_be_true"),
+        pytest.param(col("k") > 0, id="coalesced_key"),
+        pytest.param(col("score_r") > col("score"), id="cross_side"),
+        pytest.param(col("score_r") < 128, id="outside_int8_range"),
+        pytest.param(col("score_r") > False, id="boolean_literal"),
+        pytest.param(col("score_r") > 1.5, id="float_literal"),
+    ],
+)
+def test_outer_join_kept_for_unsupported_predicate(outer_join_scores, predicate):
+    from ray.data.tests.test_util import get_operators_of_type
 
-    assert rows_same(actual_df, expected_df), (
-        f"Results don't match for {join_type} join with {filter_side} filter:\n"
-        f"Actual:\n{actual_df}\n\nExpected:\n{expected_df}"
+    plan = _optimized_plan(outer_join_scores.filter(expr=predicate))
+    (join,) = get_operators_of_type(plan, Join)
+    assert join.join_type is JoinType.LEFT_OUTER
+
+
+def test_outer_join_filter_after_top_one(outer_join_scores):
+    from ray.data.tests.test_util import get_operators_of_type
+
+    # k=3 is unmatched. Dropping it before the top-1 changes which row wins.
+    selected = outer_join_scores.sort("k", descending=True).limit(1)
+    filtered = selected.filter(expr=col("score_r") > 0)
+    (join,) = get_operators_of_type(_optimized_plan(filtered), Join)
+    assert join.join_type is JoinType.LEFT_OUTER
+    assert filtered.take_all() == []
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.usefixtures("outer_join_simplification")
+@pytest.mark.parametrize("threshold", [0, 10], ids=["keeps_one", "prunes_all"])
+def test_outer_join_pushes_score_into_parquet(
+    ray_start_regular_shared_2_cpus,
+    tmp_path,
+    datasource_v2,
+    hash_shuffle_version,
+    threshold,
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from ray.data._internal.logical.operators import ReadFiles
+    from ray.data.tests.test_util import get_operators_of_type
+
+    table = pa.table({"k": [1, 2], "score": [5, -1]})
+    pq.write_table(table, tmp_path / "with_score.parquet")
+    pq.write_table(pa.table({"k": [3]}), tmp_path / "without_score.parquet")
+    left = ray.data.from_items([{"k": 1}, {"k": 2}, {"k": 3}])
+    scores = ray.data.read_parquet(
+        str(tmp_path), schema=table.schema, partitioning=None
     )
-
-    # Check plan to verify pushdown behavior
-    logical_plan = filtered_ds._logical_plan
-    optimized_plan = LogicalOptimizer().optimize(logical_plan)
-    plan_str = optimized_plan.dag.dag_str
-
-    join_idx = plan_str.find("Join[Join]")
-    filter_idx = plan_str.find("Filter[Filter(")
-
-    if should_push:
-        # Filter should be pushed before join
-        assert filter_idx != -1, f"Filter should exist in plan: {plan_str}"
-        assert filter_idx < join_idx, (
-            f"Filter should be pushed before Join for {join_type} with {filter_side} "
-            f"predicate. Plan: {plan_str}"
+    filtered = left.join(
+        scores,
+        "left_outer",
+        2,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    ).filter(expr=col("score") > threshold)
+    plan = _optimized_plan(filtered)
+    (join,) = get_operators_of_type(plan, Join)
+    (read,) = get_operators_of_type(plan, ReadFiles)
+    if hash_shuffle_version == ShuffleStrategy.SHUFFLE_V2:
+        assert join.join_type is JoinType.INNER
+        assert read.scanner.pushed_predicate().structurally_equals(
+            col("score") > threshold
         )
     else:
-        # Filter should remain after join
-        if filter_idx != -1:
-            assert filter_idx > join_idx, (
-                f"Filter should stay after Join for {join_type} with {filter_side} "
-                f"predicate. Plan: {plan_str}"
-            )
+        assert join.join_type is JoinType.LEFT_OUTER
+        assert read.scanner.pushed_predicate() is None
+    materialized = filtered.materialize()
+    assert materialized.take_all() == ([{"k": 1, "score": 5}] if threshold == 0 else [])
+    assert materialized.columns() == ["k", "score"]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.usefixtures("outer_join_simplification")
+def test_outer_join_parquet_preserves_filter_compute(
+    ray_start_regular_shared_2_cpus, tmp_path, datasource_v2
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from ray.data.tests.test_util import get_operators_of_type
+
+    path = tmp_path / "scores.parquet"
+    scores = pa.table({"k": [1, 2], "score": [-1, 5]})
+    pq.write_table(scores, path)
+    left = ray.data.from_items([{"k": 1}, {"k": 2}])
+    right = ray.data.read_parquet(str(path), schema=scores.schema, partitioning=None)
+    compute = ray.data.TaskPoolStrategy(size=1)
+    result = left.join(right, "left_outer", 1, on=("k",)).filter(
+        expr=col("score") > 0, compute=compute
+    )
+    plan = _optimized_plan(result)
+    (join,) = get_operators_of_type(plan, Join)
+    assert join.join_type is JoinType.LEFT_OUTER
+    _assert_filter_with(plan.dag, col("score") > 0)
+    assert plan.dag.compute == compute
+
+
+@pytest.mark.usefixtures("outer_join_simplification")
+@pytest.mark.parametrize("materialize", [False, True])
+def test_outer_join_score_missing_from_one_block(
+    ray_start_regular_shared_2_cpus, materialize
+):
+    import pyarrow as pa
+
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left = ray.data.from_items([{"k": 1}, {"k": 2}])
+    scores = ray.data.from_arrow(
+        [pa.table({"k": [1], "score": [5]}), pa.table({"k": [2]})]
+    )
+    if materialize:
+        scores = scores.materialize()
+    # The reducer combines these blocks before evaluating score. A Filter on
+    # the right input would instead try to read score from the second block.
+    selected = left.join(
+        scores,
+        "left_outer",
+        1,
+        on=("k",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    ).filter(expr=col("score") > 0)
+    (join,) = get_operators_of_type(_optimized_plan(selected), Join)
+    assert join.join_type is JoinType.LEFT_OUTER
+    assert selected.take_all() == [{"k": 1, "score": 5}]
+
+
+@pytest.mark.usefixtures("outer_join_simplification")
+@pytest.mark.parametrize("empty_side", [None, "left", "right"])
+def test_outer_join_filter_with_nullable_keys(
+    ray_start_regular_shared_2_cpus, empty_side
+):
+    import pyarrow as pa
+
+    left = pa.table({"k": [None, 1, 2]})
+    right = pa.table({"rk": [None, 1], "score": [10, 5]})
+    if empty_side == "left":
+        left = left.slice(0, 0)
+    elif empty_side == "right":
+        right = right.slice(0, 0)
+    joined = ray.data.from_arrow(left).join(
+        ray.data.from_arrow(right),
+        "left_outer",
+        1,
+        on=("k",),
+        right_on=("rk",),
+        aggregator_ray_remote_args={"num_cpus": 0.01},
+    )
+    filtered = joined.filter(expr=col("score") >= 5)
+    assert _optimized_plan(filtered).dag.join_type is JoinType.INNER
+    assert filtered.take_all() == ([{"k": 1, "score": 5}] if empty_side is None else [])
+    assert filtered.schema() == joined.schema()
+
+
+def test_outer_join_simplification_is_opt_in(ray_start_regular_shared_2_cpus):
+    from ray.data.tests.test_util import get_operators_of_type
+
+    left, right = _unique_key_join_inputs()
+    query = left.join(right, "left_outer", 1).filter(expr=col("right_val") < 150)
+    (join,) = get_operators_of_type(_optimized_plan(query), Join)
+    assert join.join_type is JoinType.LEFT_OUTER
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.usefixtures("outer_join_simplification")
+def test_outer_join_parquet_preserves_row_hash(
+    ray_start_regular_shared_2_cpus, tmp_path, datasource_v2
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    path = tmp_path / "scores.parquet"
+    table = pa.table({"k": [1, 2], "score": [-1, 5]})
+    pq.write_table(table, path, row_group_size=2)
+    scores = ray.data.read_parquet(
+        str(path), schema=table.schema, partitioning=None, include_row_hash=True
+    )
+    match = next(row for row in scores.take_all() if row["k"] == 2)
+    left = ray.data.from_arrow(
+        pa.table({"row_hash": pa.array([match["row_hash"]], type=pa.uint64())})
+    )
+    result = left.join(scores, "left_outer", 1, on=("row_hash",)).filter(
+        expr=col("score") > 0
+    )
+    assert result.take_all() == [match]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.usefixtures("outer_join_simplification")
+def test_outer_join_parquet_preserves_partition_column_order(
+    ray_start_regular_shared_2_cpus, tmp_path, datasource_v2
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    from ray.data.datasource.partitioning import Partitioning
+
+    DataContext.get_current().execution_options.preserve_order = True
+    root_file = tmp_path / "00.parquet"
+    partition = tmp_path / "score=9"
+    partition.mkdir()
+    partition_file = partition / "99.parquet"
+    table = pa.table({"k": [1], "score": [-1], "tail": [8]})
+    pq.write_table(table, root_file)
+    pq.write_table(pa.table({"k": [3], "tail": [8]}), partition_file)
+    scores = ray.data.read_parquet(
+        [str(root_file), str(partition_file)],
+        schema=table.schema,
+        partitioning=Partitioning(
+            "hive",
+            base_dir=str(tmp_path),
+            field_names=["score"],
+            field_types={"score": int},
+        ),
+        override_num_blocks=1,
+    )
+    left = ray.data.from_arrow(pa.table({"k": [1, 3]}))
+    result = left.join(scores, "left_outer", 1, on=("k",)).filter(expr=col("score") > 0)
+    materialized = result.materialize()
+    assert materialized.take_all() == [{"k": 3, "score": 9, "tail": 8}]
+    assert materialized.columns() == ["k", "score", "tail"]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.usefixtures("outer_join_simplification")
+def test_outer_join_disk_shuffle_preserves_schema_if_both_scans_could_be_empty(
+    ray_start_regular_shared_2_cpus, tmp_path, datasource_v2, hash_shuffle_version
+):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    if hash_shuffle_version != ShuffleStrategy.SHUFFLE_V2 or not (
+        DataContext.get_current().use_disk_based_hash_shuffle
+    ):
+        pytest.skip(
+            "The disk reducer preserves the empty schema when one side has data."
+        )
+    left_path, right_path = tmp_path / "left.parquet", tmp_path / "right.parquet"
+    left_table = pa.table({"k": [1], "keep": [0]})
+    right_table = pa.table({"k": [1], "score": [-1]})
+    pq.write_table(left_table, left_path)
+    pq.write_table(right_table, right_path)
+    left = ray.data.read_parquet(
+        str(left_path), schema=left_table.schema, partitioning=None
+    ).filter(expr=col("keep") > 0)
+    right = ray.data.read_parquet(
+        str(right_path), schema=right_table.schema, partitioning=None
+    )
+    result = left.join(right, "left_outer", 1, on=("k",)).filter(expr=col("score") > 0)
+    materialized = result.materialize()
+    assert materialized.take_all() == []
+    assert materialized.columns() == ["k", "keep", "score"]
 
 
 def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_2_cpus):

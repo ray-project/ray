@@ -65,6 +65,11 @@ Many {class}`~ray.data.DataContext` options are for advanced use cases or debugg
 * `verbose_stats_logs`: Whether stats logs are verbose. Verbose logs include fields such as `extra_metrics` in the stats output, which are otherwise excluded. Off by default.
 * `log_internal_stack_trace`: Whether to write the full internal stack frames from Ray Data and Ray Core to the Ray Data log file when logging a user-code error. Ray Data always omits these internal frames from `stdout`, and by default also omits them from the log file. Set this to `True` to include them in the log file. Off by default.
 * `raise_original_map_exception`: Whether to raise the original exception from a map UDF instead of wrapping it in a `UserCodeException`.
+* `enable_outer_join_simplification`: Experimentally let Ray Data move eligible
+  integer comparisons from after a left outer join to the right input before
+  shuffle. Set this option before creating the datasets. It's off by default.
+  Benchmark with your data before enabling it because filters that retain most
+  rows can increase execution time.
 
 For more details on each of the preceding options, see {class}`~ray.data.DataContext`.
 
