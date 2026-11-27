@@ -104,7 +104,12 @@ void SchedulerResourceReporter::FillResourceUsage(rpc::ResourcesData &data) cons
           scheduling_class_descriptor.scheduling_strategy.scheduling_strategy_case() ==
           rpc::SchedulingStrategy::SchedulingStrategyCase::
               kNodeAffinitySchedulingStrategy;
-      if ((is_node_affinity_scheduling_strategy ||
+      // A soft lease that spills when its node is full can run on any node.
+      const auto &node_affinity = scheduling_class_descriptor.scheduling_strategy
+                                      .node_affinity_scheduling_strategy();
+      const bool can_run_on_any_node =
+          node_affinity.soft() && node_affinity.spill_on_unavailable();
+      if (((is_node_affinity_scheduling_strategy && !can_run_on_any_node) ||
            AllLabelSelectorsAreHardNodeAffinity(scheduling_class_descriptor)) &&
           !is_infeasible) {
         // Resource demands from hard node affinity constraints shouldn't create new

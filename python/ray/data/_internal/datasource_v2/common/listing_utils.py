@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Iterable, List, Optional
+from typing import TYPE_CHECKING, Iterable, Iterator, List, Optional
 
 import pyarrow as pa
 
@@ -45,6 +45,20 @@ def partition_files(
     partitioner.finalize()
     while partitioner.has_partition():
         yield partitioner.next_partition().as_block()
+
+
+def batch_file_infos(
+    file_infos: Iterable[FileInfo], batch_size: int
+) -> Iterator[List[FileInfo]]:
+    """Group file infos into ``batch_size`` batches, keeping size-less rows."""
+    batch: List[FileInfo] = []
+    for file_info in file_infos:
+        batch.append(file_info)
+        if len(batch) >= batch_size:
+            yield batch
+            batch = []
+    if batch:
+        yield batch
 
 
 def _build_pruners(
@@ -182,15 +196,15 @@ def sample_files(
     assert max_files is None or max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
     sampled_paths: List[str] = []
-    sampled_sizes: List[int] = []
+    # ``None`` where the filesystem didn't report a size. Full mode retains
+    # these paths for execution, so dropping them here would drop their rows.
+    sampled_sizes: List[Optional[int]] = []
     for file_info in indexer.list_file_infos(
         paths_column,
         filesystem=filesystem,
         pruners=pruners or [],
         preserve_order=True,
     ):
-        if file_info.size is None:
-            continue
         sampled_paths.append(file_info.path)
         sampled_sizes.append(file_info.size)
         if max_files is not None and len(sampled_paths) >= max_files:

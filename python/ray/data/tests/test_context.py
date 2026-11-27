@@ -21,11 +21,6 @@ def test_write_file_retry_on_errors_emits_deprecation_warning(caplog):
         ctx.write_file_retry_on_errors = []
 
 
-def _init_job_with_disable_job_level_lineage_reconstruction(enabled: bool) -> None:
-    """Start a job whose `_disable_job_level_lineage_reconstruction` is `enabled`."""
-    ray.init(job_config=JobConfig(_disable_job_level_lineage_reconstruction=enabled))
-
-
 @pytest.mark.parametrize(
     ("attr", "value"),
     [
@@ -132,62 +127,38 @@ def test_use_external_hash_shuffle_alias(monkeypatch):
     assert _deduce_default_enable_disk_shuffle() is False
 
 
-@pytest.mark.parametrize("job_setting", [False, True])
-def test_enable_ray_data_reconstruction_resolved_from_core_worker(
-    shutdown_only, job_setting: bool
-):
-    """
-    The ray data reconstruction setting is read and based off the core worker's
-    `disable_job_level_lineage_reconstruction` setting.
-    """
-    from ray.data.context import DataContext
-
-    original = DataContext.get_current()
-    try:
-        _init_job_with_disable_job_level_lineage_reconstruction(job_setting)
-
-        # The sealed per-Dataset copy carries it too.
-        ds = ray.data.range(1)
-        assert ds.context.enable_ray_data_reconstruction is job_setting
-    finally:
-        DataContext._set_current(original)
-
-
-def test_enable_ray_data_reconstruction_defaults_false(shutdown_only):
-    """Resolution falls back to `False` when the process isn't connected."""
+def test_enable_ray_data_reconstruction_defaults_false():
+    """Resolution falls back to `False` without a connection and by default."""
     from ray.data.context import DataContext
 
     ray.shutdown()
     assert DataContext().enable_ray_data_reconstruction is False
-
-    ray.init()
-    assert DataContext().enable_ray_data_reconstruction is False
+    # A bare `ray.init()` starts a job with this default.
+    assert JobConfig()._disable_job_level_lineage_reconstruction is False
 
 
 @pytest.mark.parametrize("job_setting", [False, True])
-def test_enable_ray_data_reconstruction_rejects_conflicting_override(
+def test_enable_ray_data_reconstruction_follows_job_config(
     shutdown_only, job_setting: bool
 ):
-    """An override that disagrees with the job config is rejected on read.
-
-    Reading is the last point at which the two can be compared, and letting a
-    stale override through would silently diverge from Ray Core's lineage
-    pinning decision for this job.
+    """The setting is read from the core worker's job config, and an override
+    that disagrees with it is rejected on read, also on a Dataset's sealed copy.
     """
     from ray.data.context import DataContext
 
+    ray.init(
+        num_cpus=1,
+        job_config=JobConfig(_disable_job_level_lineage_reconstruction=job_setting),
+    )
     original = DataContext.get_current()
     try:
-        _init_job_with_disable_job_level_lineage_reconstruction(job_setting)
+        assert ray.data.range(1).context.enable_ray_data_reconstruction is job_setting
 
-        context = DataContext(_enable_ray_data_reconstruction=not job_setting)
-
+        conflicting = DataContext(_enable_ray_data_reconstruction=not job_setting)
         with pytest.raises(ValueError, match=_RECONSTRUCTION_OVERRIDE_ERROR):
-            _ = context.enable_ray_data_reconstruction
+            _ = conflicting.enable_ray_data_reconstruction
 
-        # The override travels with the sealed per-Dataset copy, so a Dataset
-        # can't pick it up unnoticed either.
-        DataContext._set_current(context)
+        DataContext._set_current(conflicting)
         with pytest.raises(ValueError, match=_RECONSTRUCTION_OVERRIDE_ERROR):
             _ = ray.data.range(1).context.enable_ray_data_reconstruction
     finally:

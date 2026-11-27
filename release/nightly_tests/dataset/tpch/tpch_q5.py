@@ -32,30 +32,18 @@ def main(args):
         # The pipeline stays linear:
         # (region->nation->customer)->orders->lineitem->supplier.
 
-        region = load_table("region", args.sf).select_columns(["r_regionkey", "r_name"])
-        nation = load_table("nation", args.sf).select_columns(
-            ["n_nationkey", "n_name", "n_regionkey"]
-        )
-        customer = load_table("customer", args.sf).select_columns(
-            ["c_custkey", "c_nationkey"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_custkey", "o_orderdate"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_suppkey", "l_extendedprice", "l_discount"]
-        )
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_nationkey"]
-        )
+        region = load_table("region", args.sf)
+        nation = load_table("nation", args.sf)
+        customer = load_table("customer", args.sf)
+        orders = load_table("orders", args.sf)
+        lineitem = load_table("lineitem", args.sf)
+        supplier = load_table("supplier", args.sf)
 
         region_name = "ASIA"
         date_start = datetime(1994, 1, 1)
         date_end = datetime(1995, 1, 1)
 
-        region_filtered = region.filter(
-            expr=col("r_name") == region_name
-        ).select_columns(["r_regionkey"])
+        region_filtered = region.filter(expr=col("r_name") == region_name)
 
         nation_region = region_filtered.join(
             nation,
@@ -63,20 +51,16 @@ def main(args):
             join_type="inner",
             on=("r_regionkey",),
             right_on=("n_regionkey",),
-        ).select_columns(["n_nationkey", "n_name"])
+        )
 
         # TODO: manual rename n_nationkey to c_nationkey as workaround, the join planner or operator should be able to infer the correct join column to keep. See https://github.com/ray-project/ray/issues/62846
-        customer_nation = (
-            nation_region.join(
-                customer,
-                num_partitions=200,
-                join_type="inner",
-                on=("n_nationkey",),
-                right_on=("c_nationkey",),
-            )
-            .select_columns(["c_custkey", "n_nationkey", "n_name"])
-            .rename_columns({"n_nationkey": "c_nationkey"})
-        )
+        customer_nation = nation_region.join(
+            customer,
+            num_partitions=200,
+            join_type="inner",
+            on=("n_nationkey",),
+            right_on=("c_nationkey",),
+        ).rename_columns({"n_nationkey": "c_nationkey"})
 
         orders_filtered = orders.filter(
             expr=((col("o_orderdate") >= date_start) & (col("o_orderdate") < date_end))
@@ -87,7 +71,7 @@ def main(args):
             join_type="inner",
             on=("o_custkey",),
             right_on=("c_custkey",),
-        ).select_columns(["o_orderkey", "c_nationkey", "n_name"])
+        )
 
         lineitem_orders = lineitem.join(
             orders_customer,
@@ -95,19 +79,19 @@ def main(args):
             join_type="inner",
             on=("l_orderkey",),
             right_on=("o_orderkey",),
-        ).select_columns(
-            ["l_suppkey", "l_extendedprice", "l_discount", "c_nationkey", "n_name"]
         )
 
+        # ``c_nationkey = s_nationkey`` is a join ``condition`` rather than a
+        # filter after the join: it becomes a second hash key, so the hash
+        # partitioning enforces it instead of materializing every
+        # ``l_suppkey`` match first.
         ds = lineitem_orders.join(
             supplier,
             num_partitions=200,
             join_type="inner",
             on=("l_suppkey",),
             right_on=("s_suppkey",),
-        )
-        ds = ds.filter(expr=col("c_nationkey") == col("s_nationkey")).select_columns(
-            ["n_name", "l_extendedprice", "l_discount"]
+            condition=col("c_nationkey") == col("s_nationkey"),
         )
 
         ds = ds.with_column(

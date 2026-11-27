@@ -215,3 +215,17 @@ def audio_asset():
 def video_asset():
     video_url = S3_ARTIFACT_ASSETS_URL + "free-videos.mp4"
     yield video_url
+
+
+@pytest.fixture(scope="session")
+def tokenizer_qwen3_0_6b():
+    """The Qwen3 0.6B tokenizer, without the model weights."""
+    REMOTE_URL = f"{S3_ARTIFACT_LLM_OSSCI_URL}qwen3-0.6b/"
+    FILE_LIST = [
+        "config.json",
+        "merges.txt",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "vocab.json",
+    ]
+    yield from download_model_from_s3(REMOTE_URL, FILE_LIST)

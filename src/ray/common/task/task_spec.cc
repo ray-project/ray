@@ -328,6 +328,10 @@ std::optional<std::string> TaskSpecification::ArgTensorTransport(size_t arg_inde
   return std::nullopt;
 }
 
+bool TaskSpecification::ArgIsMove(size_t arg_index) const {
+  return message_->args(arg_index).is_move();
+}
+
 const uint8_t *TaskSpecification::ArgData(size_t arg_index) const {
   return reinterpret_cast<const uint8_t *>(message_->args(arg_index).data().data());
 }
@@ -400,6 +404,16 @@ std::vector<rpc::ObjectReference> TaskSpecification::GetDependencies() const {
     }
   }
   return dependencies;
+}
+
+std::vector<bool> TaskSpecification::GetDependencyIsMove() const {
+  std::vector<bool> is_move;
+  for (size_t i = 0; i < NumArgs(); ++i) {
+    if (ArgByRef(i)) {
+      is_move.push_back(ArgIsMove(i));
+    }
+  }
+  return is_move;
 }
 
 const ResourceSet &TaskSpecification::GetRequiredPlacementResources() const {

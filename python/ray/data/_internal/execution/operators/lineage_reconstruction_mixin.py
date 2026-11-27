@@ -6,12 +6,15 @@ from typing import Any, Dict, FrozenSet, Iterable, Iterator, List, Optional, Set
 from typing_extensions import override
 
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.common import TaskIndex
 from ray.data._internal.execution.interfaces.ref_bundle import ReconstructionStamp
 from ray.data._internal.execution.lineage_tracker import (
     LineageTaskId,
     LineageTracker,
     ParentBlockOutput,
     ReconstructionPlanId,
+    make_lineage_task_id,
+    parse_lineage_task_id,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -50,6 +53,8 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
         # A plan that traces back to a queued seed is batched here instead of
         # re-injecting the seed.
         self._batched_plans: Dict[LineageTaskId, Set[ReconstructionPlanId]] = {}
+        # Reconstruction tasks that finished successfully.
+        self._num_reconstruction_tasks_finished = 0
         super().__init__(*args, **kwargs)
 
     @abc.abstractmethod
@@ -79,13 +84,48 @@ class LineageReconstructionMixin(InternalQueueOperatorMixin, abc.ABC):
             for input_op in self.input_dependencies
         )
 
-    def _lineage_task_id_for(self, task_index: int) -> str:
-        """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking."""
-        return f"{self.id}:{task_index}"
+    def _is_sink_operator(self) -> bool:
+        """Whether this op's tasks write to a sink, ending their lineage."""
+        from ray.data._internal.logical.operators.write_operator import Write
 
-    def owns_data_task(self, lineage_task_id: str) -> bool:
-        """Whether this operator owns the data task with the given lineage task ID."""
-        return lineage_task_id.rsplit(":", 1)[0] == self.id
+        return any(isinstance(op, Write) for op in self._logical_operators)
+
+    def _lineage_task_id_for(self, task_index: TaskIndex) -> LineageTaskId:
+        """The lineage id of this operator's ``task_index``-th fresh task. This provides a logical ID (stable across task reconstruction attempts) for lineage tracking."""
+        return make_lineage_task_id(self.id, task_index)
+
+    def _task_index_of(self, lineage_task_id: LineageTaskId) -> TaskIndex:
+        """The task index in one of this operator's lineage task IDs. The inverse of
+        ``_lineage_task_id_for``.
+
+        Args:
+            lineage_task_id: A lineage task ID of one of this operator's tasks.
+
+        Returns:
+            The index the task was first submitted under.
+
+        Raises:
+            ValueError: If ``lineage_task_id`` is malformed or belongs to another
+                operator.
+        """
+        operator_id, task_index = parse_lineage_task_id(lineage_task_id)
+        if operator_id != self.id:
+            raise ValueError(
+                f"Lineage task ID {lineage_task_id!r} belongs to operator "
+                f"{operator_id!r}, not {self.id!r}."
+            )
+        return task_index
+
+    def owns_data_task(self, lineage_task_id: LineageTaskId) -> bool:
+        """Whether this operator owns the data task with the given lineage task ID.
+
+        A malformed ID belongs to no operator.
+        """
+        try:
+            operator_id, _ = parse_lineage_task_id(lineage_task_id)
+        except ValueError:
+            return False
+        return operator_id == self.id
 
     def _lineage_for_submission(
         self,

@@ -1,6 +1,7 @@
 import logging
 import math
 from concurrent.futures import ThreadPoolExecutor
+from functools import cached_property
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -70,8 +71,6 @@ from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
-
-_UNSET = object()
 
 # Per-stream read-ahead buffer for ``use_buffered_stream=True``. PyArrow's
 # default (~8 KiB) produces many tiny range requests on S3; 8 MiB
@@ -286,9 +285,10 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         self._partition_parser = None
         self._target_block_size = target_block_size
         self._parquet_format_kwargs: Dict[str, Any] = parquet_format_kwargs or {}
-        self._sampled_batch_size: int | object = (
-            _UNSET  # pyrefly: ignore[bad-assignment]
-        )
+        # ``None`` until the first read sizes batches. Not an ``object()``
+        # sentinel: a reader pickled before its first read would get a copy
+        # that no longer compares identical to it.
+        self._sampled_batch_size: Optional[int] = None
         # Size Arrow's process-wide IO/CPU pools for the read task so a Parquet
         # scan can issue many concurrent column/range fetches against S3 instead
         # of being capped at Arrow's small default.
@@ -307,7 +307,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
 
         Priority: explicit batch_size > sampled estimate > metadata estimate > default.
 
-        On the first call ``_sampled_batch_size`` is ``_UNSET``, so we fall
+        On the first call ``_sampled_batch_size`` is ``None``, so we fall
         through to the metadata estimate and seed ``_sampled_batch_size`` with
         the result.  ``_on_batch_read`` later refines it from actual data, and
         subsequent ``read()`` calls on the same instance use the refined value.
@@ -321,8 +321,8 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
 
-        if self._sampled_batch_size is not _UNSET:
-            return self._sampled_batch_size  # pyrefly: ignore[bad-return]
+        if self._sampled_batch_size is not None:
+            return self._sampled_batch_size
 
         batch_size = _ARROW_DEFAULT_BATCH_SIZE
         if self._target_block_size is not None:
@@ -369,79 +369,68 @@ class ParquetFileReader(FileReader, SupportsMetadata):
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
 
-    @override
-    def _get_fragments_to_read(
-        self,
-        dataset: pds.Dataset,
-        manifest: FileManifest,
-    ) -> List[ReadUnitFragment]:
-        """Fan file fragments into read-level sub-fragments per manifest row.
+    @cached_property
+    def _per_row_group_offsets(self) -> bool:
+        """Whether a column's value depends on the row's position in its file.
 
-        For each manifest row, looks up the file's fragment by path and:
-
-        - If ``chunk_metadata`` is ``None`` (whole-file case), the file
-          fragment is yielded as-is, as a read unit named by its path with a
-          row offset of 0. When a synthesized column needs read unit
-          boundaries the unit also carries the file's row count, read from
-          the footer pyarrow opens to scan the file anyway.
-        - Otherwise the row carries a :class:`FileChunk` whose ``unit_ids``
-          are the exact physical row groups the bin assigned to this file
-          (predicate pruning + bin packing already happened in ``ListFiles``);
-          we slice the fragment via
-          :func:`~ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils._fragments_from_row_group_ids`.
-          When a synthesized column needs read unit boundaries
-          (``RowHashColumn``) it fans out one sub-fragment per row group,
-          each a :class:`ReadUnit` of its own paired with its cumulative
-          pre-filter row offset, so per-row values stay unique across
-          sub-fragments that share ``fragment.path``. Otherwise the groups
-          are scanned together as one unit named by the path.
-
-        Paths are deduped by :meth:`FileReader.read` before the dataset is
-        built, so the dataset has exactly one fragment per file. The
-        per-row chunk metadata drives the fan-out here, not the dataset
-        itself — multiple manifest rows can share a single path, either
-        with different row-group sets (chunking) or repeating the same
-        ones (the user listed the file more than once); each row is read.
+        Scans each row group on its own then (``RowHashColumn``); otherwise
+        pyarrow coalesces a file's groups into one scan.
         """
-        path_to_fragment = {
-            fragment.path: fragment for fragment in dataset.get_fragments()
-        }
-        # Scan each row group on its own when a column's value depends on
-        # the row's position in the file (``RowHashColumn``); otherwise let
-        # pyarrow coalesce a file's groups into one scan.
-        per_row_group_offsets = any(
-            c.requires_read_unit_boundaries for c in self._synthesized_columns
+        return any(c.requires_read_unit_boundaries for c in self._synthesized_columns)
+
+    @override
+    def _get_whole_file_fragment(self, fragment: pds.Fragment) -> ReadUnitFragment:
+        """Read the whole file as one unit named by its path, at row offset 0.
+
+        When a synthesized column needs read unit boundaries the unit also
+        carries the file's row count, read from the footer pyarrow opens to
+        scan the file anyway.
+        """
+        num_rows = None
+        if self._per_row_group_offsets:
+            # The whole file is the unit; a column that positions rows
+            # within their unit still needs its row count.
+            num_rows = _with_io_retry(
+                lambda: fragment.metadata.num_rows,
+                f"read Parquet footer for {fragment.path}",
+            )
+        return ReadUnitFragment(
+            fragment,
+            ReadUnit(
+                id=fragment.path, source=fragment.path, count=1, num_rows=num_rows
+            ),
         )
-        fragments: List[ReadUnitFragment] = []
-        for path, file_size, chunk_metadata in zip(
-            manifest.paths, manifest.known_file_sizes, manifest.file_chunk_metadatas
-        ):
-            fragment: pds.ParquetFileFragment = path_to_fragment[path]
-            if chunk_metadata is None:
-                num_rows = None
-                if per_row_group_offsets:
-                    # The whole file is the unit; a column that positions rows
-                    # within their unit still needs its row count.
-                    num_rows = _with_io_retry(
-                        lambda: fragment.metadata.num_rows,
-                        f"read Parquet footer for {path}",
-                    )
-                fragments.append(
-                    ReadUnitFragment(
-                        fragment,
-                        ReadUnit(id=path, source=path, count=1, num_rows=num_rows),
-                    )
-                )
-            else:
-                fragments.extend(
-                    _fragments_from_row_group_ids(
-                        fragment,
-                        chunk_metadata["unit_ids"],
-                        per_row_group_offsets=per_row_group_offsets,
-                        file_size=file_size,
-                    )
-                )
-        return fragments
+
+    @override
+    def _get_chunk_fragments(
+        self,
+        fragment: pds.Fragment,
+        chunk_metadata: Dict[str, Any],
+        file_size: Optional[int],
+    ) -> List[ReadUnitFragment]:
+        """Slice the file into the exact row groups the bin assigned to it.
+
+        ``chunk_metadata`` carries a :class:`FileChunk` whose ``unit_ids``
+        are those row groups (predicate pruning + bin packing already
+        happened in ``ListFiles``); we slice the fragment via
+        :func:`~ray.data._internal.datasource_v2.formats.parquet.parquet_file_chunking_utils._fragments_from_row_group_ids`.
+        When a synthesized column needs read unit boundaries
+        (``RowHashColumn``) it fans out one sub-fragment per row group,
+        each a :class:`ReadUnit` of its own paired with its cumulative
+        pre-filter row offset, so per-row values stay unique across
+        sub-fragments that share ``fragment.path``. Otherwise the groups
+        are scanned together as one unit named by the path.
+
+        Multiple manifest rows can share a single path, either with
+        different row-group sets (chunking) or repeating the same ones (the
+        user listed the file more than once); each row is read.
+        """
+        return _fragments_from_row_group_ids(
+            fragment,
+            chunk_metadata["unit_ids"],
+            per_row_group_offsets=self._per_row_group_offsets,
+            file_size=file_size,
+        )
 
     @override
     def _get_partition_values(self, path: str) -> Dict[str, Any]:

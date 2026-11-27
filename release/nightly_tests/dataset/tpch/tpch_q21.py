@@ -46,17 +46,11 @@ def main(args):
         #       ⟺ COUNT(DISTINCT l_suppkey) among late lineitems per order == 1
         #     (since l1 itself is the only late supplier)
 
-        # Load tables with early projection.
-        supplier = load_table("supplier", args.sf).select_columns(
-            ["s_suppkey", "s_name", "s_nationkey"]
-        )
-        lineitem = load_table("lineitem", args.sf).select_columns(
-            ["l_orderkey", "l_suppkey", "l_receiptdate", "l_commitdate"]
-        )
-        orders = load_table("orders", args.sf).select_columns(
-            ["o_orderkey", "o_orderstatus"]
-        )
-        nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
+        # Load tables. Projection pushdown derives the columns each read needs.
+        supplier = load_table("supplier", args.sf)
+        lineitem = load_table("lineitem", args.sf)
+        orders = load_table("orders", args.sf)
+        nation = load_table("nation", args.sf)
 
         # Q21 parameters
         nation_name = "SAUDI ARABIA"
@@ -66,8 +60,7 @@ def main(args):
         # supplier for any given supplier on that order.
         # Filter early to reduce the right-side dataset size before join.
         suppliers_per_order = (
-            lineitem.select_columns(["l_orderkey", "l_suppkey"])
-            .groupby("l_orderkey")
+            lineitem.groupby("l_orderkey")
             .aggregate(CountDistinct(on="l_suppkey", alias_name="num_suppliers"))
             .filter(expr=col("num_suppliers") > 1)
         )
@@ -77,6 +70,7 @@ def main(args):
         # Materialize to avoid recomputing the filter in both the
         # late_suppliers_per_order branch and the main pipeline
         # (Ray Data has no CSE).
+        # Projection pushdown stops at materialize(), so prune by hand first.
         late_lineitem = (
             lineitem.filter(expr=col("l_receiptdate") > col("l_commitdate"))
             .select_columns(["l_orderkey", "l_suppkey"])
@@ -98,12 +92,10 @@ def main(args):
             num_partitions=join_num_partitions,
             on=("s_nationkey",),
             right_on=("n_nationkey",),
-        ).select_columns(["s_suppkey", "s_name"])
+        )
 
         # Failed orders
-        failed_orders = orders.filter(expr=col("o_orderstatus") == "F").select_columns(
-            ["o_orderkey"]
-        )
+        failed_orders = orders.filter(expr=col("o_orderstatus") == "F")
 
         # Late lineitem joined with failed orders (l1 base rows)
         ds = late_lineitem.join(

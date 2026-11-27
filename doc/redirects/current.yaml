@@ -1114,7 +1114,10 @@ redirects:
   to: /train/getting-started-transformers.html
   type: page
 - from: /train/user-guides/local_mode.html
-  to: /train/user-guides/local-mode.html
+  to: /train/user-guides/debugging.html
+  type: page
+- from: /train/user-guides/local-mode.html
+  to: /train/user-guides/debugging.html
   type: page
 - from: /train/api/*
   to: /train/api/api.html
