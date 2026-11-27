@@ -128,12 +128,10 @@ bool Worker::IsProcessAlive() const {
     return false;
   }
   if (pidfd_ >= 0) {
-    // A pidfd becomes readable once its process has exited.
+    // A pidfd becomes readable once its process has exited. On a poll error, assume it is
+    // alive: the follow-up signal goes through the pidfd and cannot hit a recycled PID.
     pollfd pfd = {pidfd_, POLLIN, 0};
-    const int ready = poll(&pfd, 1, 0);
-    if (ready >= 0) {
-      return ready == 0;
-    }
+    return poll(&pfd, 1, 0) != 1;
   }
 #endif
   return proc_->IsAlive();
@@ -168,9 +166,10 @@ bool Worker::IsConnectionPeerAlive() const {
   if (connection_ == nullptr) {
     return true;
   }
-  // The worker holds its end of the socket until it exits, so a hang-up means it is gone.
+  // The worker holds its end of the socket until it exits, so only a hang-up means it is
+  // gone; poll errors are treated as alive.
   pollfd pfd = {connection_->GetNativeHandle(), POLLRDHUP, 0};
-  return poll(&pfd, 1, 0) == 0;
+  return poll(&pfd, 1, 0) != 1 || (pfd.revents & (POLLRDHUP | POLLHUP)) == 0;
 }
 #endif
 
@@ -207,7 +206,14 @@ void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
       // unsignaled.
       const int err = errno;
       process_exited_ = err != ENOSYS;
-      RAY_LOG(DEBUG) << "pidfd_open(" << proc_->GetId() << ") failed: " << strerror(err);
+      if (err == EMFILE || err == ENFILE) {
+        RAY_LOG(WARNING) << "pidfd_open(" << proc_->GetId()
+                         << ") failed: " << strerror(err)
+                         << "; the raylet will not kill this worker.";
+      } else {
+        RAY_LOG(DEBUG) << "pidfd_open(" << proc_->GetId()
+                       << ") failed: " << strerror(err);
+      }
     } else if (!IsConnectionPeerAlive()) {
       // The worker exited before pidfd_open, so the pidfd may refer to a process that
       // reused its PID.
