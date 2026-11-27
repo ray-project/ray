@@ -849,7 +849,7 @@ def _resource_based_utilization_scorer(
     gpu_ok = True
     if AUTOSCALER_CONSERVE_GPU_NODES:
         is_gpu_node = "GPU" in node_resources and node_resources["GPU"] > 0
-        any_gpu_task = any("GPU" in r for r in resources)
+        any_gpu_task = any(r.get("GPU", 0) > 0 for r in resources)
         if is_gpu_node and not any_gpu_task:
             gpu_ok = False
 
@@ -933,7 +933,7 @@ def get_bin_pack_residual(
                 if strict_spread:
                     used.add(i)
                 break
-        if found and node:
+        if found:
             _inplace_subtract(node, demand)
         else:
             unfulfilled.append(demand)

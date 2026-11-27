@@ -157,6 +157,16 @@ def test_gpu_node_util_score():
         [{"GPU": 1}],
         node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
     ) == (True, 1, 0.0, 0.5)
+    # Explicit zero GPU demand (e.g. request_resources({"CPU": 1, "GPU": 0}))
+    # should not be treated as a GPU task.
+    assert (
+        _resource_based_utilization_scorer(
+            {"GPU": 1, "CPU": 1},
+            [{"CPU": 1, "GPU": 0}],
+            node_availability_summary=EMPTY_AVAILABILITY_SUMMARY,
+        )[0]
+        is False
+    )
 
 
 def test_zero_resource():
@@ -215,6 +225,12 @@ def test_bin_pack():
     assert get_bin_pack_residual(
         [{"CPU": 1}], [{implicit_resource: 1}, {implicit_resource: 0.5}]
     ) == ([{implicit_resource: 0.5}], [{"CPU": 1, implicit_resource: 0}])
+    # Empty node resource dict (e.g. zero-CPU head node) still provides
+    # implicit resources and satisfies empty / zero-resource demands.
+    assert get_bin_pack_residual(
+        [{}], [{implicit_resource: 1}, {implicit_resource: 0.5}]
+    ) == ([{implicit_resource: 0.5}], [{implicit_resource: 0}])
+    assert get_bin_pack_residual([{}], [{}], strict_spread=True) == ([], [{}])
 
 
 def test_get_nodes_packing_heuristic():
