@@ -170,6 +170,42 @@ def test_is_vfio_group_a_tpu_unicode_decode_error_fails_closed(mock_list):
         assert tpu._is_vfio_group_a_tpu(96) is False
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="Uses PCI sysfs symlinks")
+@pytest.mark.parametrize("device_id,expected_count", [("0x0076", 2), ("0x1234", 3)])
+def test_autodetect_sriov_tpu_functions(
+    tmp_path, monkeypatch, request, device_id, expected_count
+):
+    # The VF index is given by the PF's virtfnN link, not the PCI address.
+    bdfs = ["0000:03:00.0", "0000:04:00.1", "0000:04:00.2", "0000:04:00.3"]
+    pf = tmp_path / bdfs[0]
+    for group, bdf in enumerate(bdfs):
+        device = tmp_path / bdf
+        device.mkdir()
+        (device / "vendor").write_text("0x1ae0\n")
+        (device / "device").write_text((device_id if group else "0x0075") + "\n")
+        group_devices = tmp_path / str(group) / "devices"
+        group_devices.mkdir(parents=True)
+        (group_devices / bdf).symlink_to(device, target_is_directory=True)
+        if group:
+            (pf / f"virtfn{group - 1}").symlink_to(device, target_is_directory=True)
+            (device / "physfn").symlink_to(pf, target_is_directory=True)
+
+    monkeypatch.setattr(tpu, "_IOMMU_GROUPS_PATH", str(tmp_path))
+    listdir = os.listdir
+
+    def fake_listdir(path):
+        return ["0", "1", "2", "3"] if path == "/dev/vfio" else listdir(path)
+
+    with patch("glob.glob", return_value=[]), patch("os.listdir", fake_listdir):
+        count = TPUAcceleratorManager.get_current_node_num_accelerators
+        count.cache_clear()
+        request.addfinalizer(count.cache_clear)
+        assert count() == expected_count
+        assert tpu._discover_tpu_vfio_devices() == [
+            [f"/dev/vfio/{i}" for i in range(1, expected_count + 1)]
+        ]
+
+
 @pytest.fixture
 def vfio_sysfs(monkeypatch):
     """Mock a tpu7x host with 4 dual-VF chips (8 non-monotonic VFIO groups) + 1 non-TPU group."""

@@ -82,6 +82,8 @@ DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 # PCI vendor ID for Google TPUs (used to validate VFIO devices).
 # See https://cloud.google.com/tpu/docs/custom-os-image.
 TPU_PCI_VENDOR_ID = "0x1ae0"
+_TPU_V7X_VF_DEVICE_ID = "0x0076"
+_IOMMU_GROUPS_PATH = "/sys/kernel/iommu_groups"
 
 # VFIO teardown after SIGKILL took 2.07-2.39s on TPU v7x (256 GiB HBM
 # allocated); 10s gives ~4x headroom.
@@ -569,7 +571,8 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
 
     To distinguish TPU groups from non-TPU groups we inspect
     ``/sys/kernel/iommu_groups/<group>/devices/*/vendor`` and look for
-    Google's PCI vendor ID (``0x1ae0``).
+    Google's PCI vendor ID (``0x1ae0``). On SR-IOV hosts we exclude physical
+    functions with enabled VFs and the v7x ICI management VF.
 
     Args:
         group: The numeric IOMMU group id found under ``/dev/vfio``.
@@ -583,29 +586,43 @@ def _is_vfio_group_a_tpu(group: int) -> bool:
     return _tpu_vfio_bdf(group) is not None
 
 
+def _is_tpu_compute_function(device_path: str) -> bool:
+    if os.path.islink(os.path.join(device_path, "virtfn0")):
+        return False  # The PF exposes its compute resources through VFs.
+
+    # On tpu7x the third VF handles ICI management. Its PCI device ID is
+    # shared with the compute VFs, and its BDF need not end in ".2".
+    vf2 = os.path.join(device_path, "physfn", "virtfn2")
+    if os.path.islink(vf2) and os.path.samefile(vf2, device_path):
+        with open(os.path.join(device_path, "device"), encoding="ascii") as f:
+            return f.read().strip().lower() != _TPU_V7X_VF_DEVICE_ID
+    return True
+
+
 def _tpu_vfio_bdf(group: int) -> Optional[str]:
     """Return the sysfs PCI BDF name if VFIO ``group`` is a Google TPU, else None."""
-    sysfs_root = f"/sys/kernel/iommu_groups/{group}/devices"
+    sysfs_root = f"{_IOMMU_GROUPS_PATH}/{group}/devices"
     try:
         devices = os.listdir(sysfs_root)
     except OSError as e:
         logger.debug("Unable to inspect VFIO group %s at %s: %s", group, sysfs_root, e)
         return None
     for device in devices:
-        vendor_path = os.path.join(sysfs_root, device, "vendor")
+        device_path = os.path.join(sysfs_root, device)
         try:
-            with open(vendor_path, encoding="ascii") as f:
+            with open(os.path.join(device_path, "vendor"), encoding="ascii") as f:
                 vendor = f.read().strip()
+            if vendor.lower() == TPU_PCI_VENDOR_ID and _is_tpu_compute_function(
+                device_path
+            ):
+                return device.lower()
         except (OSError, UnicodeDecodeError) as e:
             logger.debug(
-                "Unable to read PCI vendor for VFIO group %s at %s: %s",
+                "Unable to identify PCI device for VFIO group %s at %s: %s",
                 group,
-                vendor_path,
+                device_path,
                 e,
             )
-            continue
-        if vendor.lower() == TPU_PCI_VENDOR_ID:
-            return device.lower()
     return None
 
 
