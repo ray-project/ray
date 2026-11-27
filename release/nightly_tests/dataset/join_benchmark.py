@@ -64,8 +64,14 @@ def main(args):
             join_type=args.join_type,
         )
 
-        # Process joined_ds if needed
-        print(f"Join completed with {joined_ds.count()} records.")
+        # Consume the joined blocks instead of calling ``count()``: ``count()``
+        # projects the plan down to zero columns, and projection pushdown
+        # carries that through the join, so only the join keys would be read
+        # and shuffled. Iterating the output keeps the full-width join.
+        num_rows = 0
+        for bundle in joined_ds.iter_internal_ref_bundles():
+            num_rows += bundle.num_rows()
+        print(f"Join completed with {num_rows} records.")
 
     benchmark.run_fn(str(vars(args)), benchmark_fn)
     benchmark.write_result()
