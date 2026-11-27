@@ -259,14 +259,16 @@ class RuntimeEnv(dict):
             storage), each of which is an archive that Ray unpacks and
             inserts into the PYTHONPATH of the workers. Supported formats for
             remote URIs: ``.zip``, ``.whl``, ``.tar.gz``, ``.tgz``, and
-            ``.tar.xz``.
+            ``.tar.xz``. See :ref:`remote-uris` for storage schemes, including
+            ``oss://``.
         py_executable: Path or command to the Python executable that Ray uses to
             launch worker processes. By default, Ray uses the same interpreter
             that is running the driver.
         working_dir: Local path or remote URI (either in the GCS or external storage) of an
             archive that Ray unpacks in the directory of each task/actor.
             Supported formats for local paths and remote URIs: ``.zip``,
-            ``.tar.gz``, ``.tgz``, and ``.tar.xz``.
+            ``.tar.gz``, ``.tgz``, and ``.tar.xz``. See :ref:`remote-uris` for storage
+            schemes, including ``oss://``.
         pip: Either a list of pip packages, a string
             containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a

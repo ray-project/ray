@@ -13,10 +13,11 @@ from ray._common.runtime_env_package import (
     get_package_extension,
 )
 
-_REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "file")
+_REMOTE_PROTOCOLS = ("http", "https", "s3", "gs", "azure", "abfss", "oss", "file")
 
 # Matches the leading "C:/" or "C:\" of a Windows path rooted at a drive.
 _WINDOWS_DRIVE_PATH = re.compile(r"^[a-zA-Z]:[\\/]")
+_OSS_BUCKET_NAME = re.compile(r"[a-z0-9][a-z0-9-]{1,61}[a-z0-9]")
 
 
 class Protocol(enum.Enum):
@@ -40,6 +41,8 @@ class Protocol(enum.Enum):
     AZURE = "azure"
     # Remote Azure Blob File System Secure path, assumes everything packed in one zip file.
     ABFSS = "abfss"
+    # Remote Alibaba Cloud Object Storage Service package.
+    OSS = "oss"
     # File storage path, assumes everything packed in one zip file.
     FILE = "file"
     # A directory that is already present on every node. Assumes absolute path.
@@ -50,6 +53,37 @@ class Protocol(enum.Enum):
         # Returns a list of protocols that support remote storage.
         # RuntimeEnv fields apply their own format constraints to these URIs.
         return [cls[protocol.upper()] for protocol in _REMOTE_PROTOCOLS]
+
+
+class InvalidOssUriError(ValueError):
+    """An OSS URI that cannot refer to a runtime environment package."""
+
+
+def parse_oss_uri(source_uri: str) -> Tuple[str, str]:
+    """Return the bucket name and decoded object key for an OSS URI.
+
+    Args:
+        source_uri: The OSS package URI in ``oss://bucket/key`` form.
+
+    Returns:
+        A pair containing the bucket name and the decoded object key.
+    """
+    uri = urlparse(source_uri)
+    if (
+        uri.scheme != Protocol.OSS.value
+        or not _OSS_BUCKET_NAME.fullmatch(uri.netloc)
+        or len(uri.path) <= 1
+        or "?" in source_uri
+        or "#" in source_uri
+    ):
+        raise InvalidOssUriError("Expected an OSS URI of the form oss://bucket/key.")
+
+    try:
+        key = urllib.parse.unquote(uri.path[1:], errors="strict")
+    except UnicodeDecodeError as exc:
+        raise InvalidOssUriError("The OSS object key must be valid UTF-8.") from exc
+
+    return uri.netloc, key
 
 
 def _is_path(path_or_uri: str) -> bool:
@@ -98,6 +132,9 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
             f'Invalid protocol for runtime_env URI "{pkg_uri}". '
             f"Supported protocols: {Protocol._member_names_}. Original error: {e}"
         )
+
+    if protocol == Protocol.OSS:
+        parse_oss_uri(pkg_uri)
 
     if protocol == Protocol.LOCAL:
         # There is no package to name: the directory is used in place, so return

@@ -12,17 +12,22 @@ import types
 import uuid
 import zipfile
 from filecmp import dircmp
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from shutil import copytree, make_archive, rmtree
+from threading import Thread
+from unittest.mock import Mock
+from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
 import ray
-from ray._common.runtime_env_uri import parse_uri
+from ray._common.runtime_env_uri import InvalidOssUriError, parse_uri
 from ray._private.ray_constants import (
     KV_NAMESPACE_PACKAGE,
 )
 from ray._private.runtime_env import packaging as packaging_module
+from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
     GCS_STORAGE_MAX_SIZE,
     MAC_OS_ZIP_HIDDEN_DIR_NAME,
@@ -51,7 +56,11 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.protocol import ProtocolsProvider
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import (
+    WorkingDirPlugin,
+    upload_working_dir_if_needed,
+)
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
     _internal_kv_del,
@@ -59,6 +68,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_get,
     _internal_kv_reset,
 )
+from ray.runtime_env import RuntimeEnv
 
 TOP_LEVEL_DIR_NAME = "top_level"
 ARCHIVE_NAME = "archive.zip"
@@ -898,6 +908,166 @@ class TestAbfssProtocol:
             for invalid_uri in invalid_uris:
                 with pytest.raises(ValueError, match="Invalid ABFSS URI format"):
                     Protocol.ABFSS.download_remote_uri(invalid_uri, str(dest_file))
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "extension,endpoint",
+    [("zip", None), ("tar.gz", "https://oss-cn-hangzhou-internal.aliyuncs.com")],
+)
+async def test_oss_working_dir(tmp_path, monkeypatch, extension, endpoint):
+    pkg_uri = f"oss://example-bucket/jobs/my%20job+v1%23test.{extension}"
+    payload = b"print('Hello from OSS')\n"
+    body = io.BytesIO()
+    if extension == "zip":
+        with zipfile.ZipFile(body, "w") as archive:
+            archive.writestr("src/main.py", payload)
+    else:
+        with tarfile.open(fileobj=body, mode="w:gz") as archive:
+            info = tarfile.TarInfo("src/main.py")
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    mock_oss = Mock()
+    download = mock_oss.Client.return_value.get_object_to_file
+    download.side_effect = lambda request, path: Path(path).write_bytes(body.getvalue())
+    monkeypatch.setitem(sys.modules, "alibabacloud_oss_v2", mock_oss)
+    monkeypatch.setenv("OSS_REGION", "cn-hangzhou")
+    if endpoint is None:
+        monkeypatch.delenv("OSS_ENDPOINT", raising=False)
+    else:
+        monkeypatch.setenv("OSS_ENDPOINT", endpoint)
+
+    upload = Mock()
+    runtime_env = {"working_dir": pkg_uri}
+    submitted_env = upload_working_dir_if_needed(
+        runtime_env, include_gitignore=True, upload_fn=upload
+    )
+    assert submitted_env["working_dir"] == pkg_uri
+    upload.assert_not_called()
+    mock_oss.Client.assert_not_called()
+
+    plugin = WorkingDirPlugin(str(tmp_path), gcs_client=None)
+    await plugin.create(pkg_uri, runtime_env, RuntimeEnvContext())
+    local_dir = get_local_dir_from_uri(pkg_uri, tmp_path / "working_dir_files")
+    assert (local_dir / "main.py").read_bytes() == payload
+    download.assert_called_once()
+
+    mock_oss.GetObjectRequest.assert_called_once_with(
+        bucket="example-bucket",
+        key=f"jobs/my job+v1#test.{extension}",
+        response_content_encoding="identity",
+    )
+    config = mock_oss.config.load_default.return_value
+    mock_oss.Client.assert_called_once_with(config)
+    assert config.region == "cn-hangzhou"
+    assert config.endpoint == endpoint
+    assert config.credentials_provider is (
+        mock_oss.credentials.EnvironmentVariableCredentialsProvider.return_value
+    )
+
+
+@pytest.mark.parametrize(
+    "uri",
+    [
+        "oss:///archive.zip",
+        "oss://example-bucket/",
+        "oss://user@bucket/file.zip",
+        "oss://example-bucket/file.zip?versionId=old",
+        "oss://example-bucket/file.zip#fragment",
+    ],
+)
+def test_invalid_oss_uri_is_rejected_before_upload_or_download(
+    tmp_path, monkeypatch, uri
+):
+    # Neither URI validation nor reporting an invalid URI requires the OSS SDK.
+    monkeypatch.setitem(sys.modules, "alibabacloud_oss_v2", None)
+    upload = Mock()
+    working_dir_env = {"working_dir": uri}
+    py_modules_env = {"py_modules": [uri]}
+
+    with pytest.raises(InvalidOssUriError, match="oss://bucket/key"):
+        upload_working_dir_if_needed(
+            working_dir_env, include_gitignore=True, upload_fn=upload
+        )
+    with pytest.raises(InvalidOssUriError, match="oss://bucket/key"):
+        upload_py_modules_if_needed(
+            py_modules_env, include_gitignore=True, upload_fn=upload
+        )
+    for env in (working_dir_env, py_modules_env):
+        with pytest.raises(InvalidOssUriError, match="oss://bucket/key"):
+            RuntimeEnv(**env)
+    with pytest.raises(InvalidOssUriError, match="oss://bucket/key"):
+        Protocol.OSS.download_remote_uri(uri, tmp_path / "archive.zip")
+    upload.assert_not_called()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("valid_checksum", [True, False])
+async def test_oss_preserves_gzip_archive_bytes(tmp_path, monkeypatch, valid_checksum):
+    oss = pytest.importorskip("alibabacloud_oss_v2")
+    from alibabacloud_oss_v2.crc import Crc64
+
+    archive = io.BytesIO()
+    contents = b"print('Hello from OSS')\n"
+    with tarfile.open(fileobj=archive, mode="w:gz") as tar:
+        info = tarfile.TarInfo("src/main.py")
+        info.size = len(contents)
+        tar.addfile(info, io.BytesIO(contents))
+    payload = archive.getvalue()
+    checksum = Crc64(0)
+    checksum.write(payload)
+    crc = checksum.sum64() if valid_checksum else checksum.sum64() ^ 1
+
+    class ObjectHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            # Model an OSS object with stored Content-Encoding: gzip metadata.
+            query = parse_qs(urlsplit(self.path).query)
+            encoding = query.get("response-content-encoding", ["gzip"])[0]
+            self.send_response(200)
+            self.send_header("Content-Encoding", encoding)
+            self.send_header("Content-Length", str(len(payload)))
+            self.send_header("x-oss-hash-crc64ecma", str(crc))
+            self.end_headers()
+            self.wfile.write(payload)
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), ObjectHandler) as server:
+        monkeypatch.setenv("OSS_REGION", "cn-hangzhou")
+        monkeypatch.setenv("OSS_ENDPOINT", f"http://127.0.0.1:{server.server_port}")
+        monkeypatch.setenv("OSS_ACCESS_KEY_ID", "test-key")
+        monkeypatch.setenv("OSS_ACCESS_KEY_SECRET", "test-secret")
+        monkeypatch.delenv("OSS_SESSION_TOKEN", raising=False)
+        monkeypatch.setenv("NO_PROXY", "127.0.0.1")
+        monkeypatch.setenv("no_proxy", "127.0.0.1")
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            uri = "oss://example-bucket/archive.tar.gz"
+            if valid_checksum:
+                local_dir = await download_and_unpack_package(uri, str(tmp_path))
+                assert (Path(local_dir) / "main.py").read_bytes() == contents
+            else:
+                with pytest.raises(oss.exceptions.InconsistentError):
+                    await download_and_unpack_package(uri, str(tmp_path))
+        finally:
+            server.shutdown()
+            thread.join()
+
+
+def test_oss_download_requires_region(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "alibabacloud_oss_v2", Mock())
+    monkeypatch.delenv("OSS_REGION", raising=False)
+    with pytest.raises(ValueError, match="OSS_REGION"):
+        Protocol.OSS.download_remote_uri(
+            "oss://example-bucket/archive.zip", tmp_path / "archive.zip"
+        )
+
+
+def test_oss_download_requires_sdk(tmp_path, monkeypatch):
+    monkeypatch.setitem(sys.modules, "alibabacloud_oss_v2", None)
+    with pytest.raises(ImportError, match="pip install alibabacloud-oss-v2"):
+        Protocol.OSS.download_remote_uri(
+            "oss://example-bucket/archive.zip", tmp_path / "archive.zip"
+        )
 
 
 class TestS3Protocol:

@@ -5,7 +5,7 @@ from types import ModuleType
 from typing import Any, Dict, List, Optional
 
 from ray._common.runtime_env_package import PY_MODULES, validate_package_extension
-from ray._common.runtime_env_uri import Protocol, parse_uri
+from ray._common.runtime_env_uri import InvalidOssUriError, Protocol, parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -38,6 +38,8 @@ def _check_is_uri(s: str) -> bool:
 
     try:
         protocol, path = parse_uri(s)
+    except InvalidOssUriError:
+        raise
     except ValueError:
         protocol, path = None, None
 

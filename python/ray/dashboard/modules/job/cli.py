@@ -156,7 +156,7 @@ def job_cli_group():
     required=False,
     help=(
         "Directory containing files that your job will run in. Can be a "
-        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
+        "local directory or a remote URI to an archive (for example, S3 or OSS). "
         "If specified, this overrides the option in `--runtime-env`."
     ),
 )

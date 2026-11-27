@@ -24,7 +24,7 @@ def validate_path(path: str) -> None:
 
 
 def validate_uri(uri: str, field: str):
-    from ray._common.runtime_env_uri import Protocol, parse_uri
+    from ray._common.runtime_env_uri import InvalidOssUriError, Protocol, parse_uri
     from ray._private.runtime_env.packaging import get_local_dir_uri_path
 
     if get_local_dir_uri_path(uri) is not None:
@@ -32,6 +32,8 @@ def validate_uri(uri: str, field: str):
 
     try:
         protocol, path = parse_uri(uri)
+    except InvalidOssUriError:
+        raise
     except ValueError:
         raise ValueError(
             f"{uri} is not a valid URI. Passing directories or modules to "

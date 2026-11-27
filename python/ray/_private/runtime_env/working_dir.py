@@ -12,7 +12,7 @@ from ray._common.runtime_env_package import (
     has_package_extension,
     validate_package_extension,
 )
-from ray._common.runtime_env_uri import Protocol, parse_uri
+from ray._common.runtime_env_uri import InvalidOssUriError, Protocol, parse_uri
 from ray._common.utils import try_to_create_directory
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import (
@@ -74,6 +74,8 @@ def upload_working_dir_if_needed(
     # working_dir is already a URI -- just pass it through.
     try:
         protocol, path = parse_uri(working_dir)
+    except InvalidOssUriError:
+        raise
     except ValueError:
         protocol, path = None, None
 

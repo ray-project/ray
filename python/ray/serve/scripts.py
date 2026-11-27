@@ -394,7 +394,7 @@ def deploy(
     required=False,
     help=(
         "Directory containing files that your application(s) will run in. Can be a "
-        "local directory or a remote URI to a .zip file (S3, GS, HTTP). "
+        "local directory or a remote URI to an archive (for example, S3 or OSS). "
         "This overrides the working_dir in --runtime-env if both are "
         "specified. This will be passed to ray.init() as the default for "
         "deployments."
