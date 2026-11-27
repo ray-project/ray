@@ -26,8 +26,8 @@ class NodeTracker:
         assert len(self.lru_order) == len(self.node_mapping)
         if len(self.lru_order) >= constants.AUTOSCALER_MAX_NODES_TRACKED:
             # The LRU eviction case
-            node_id = self.lru_order.pop(0)
-            del self.node_mapping[node_id]
+            evicted_node_id = self.lru_order.pop(0)
+            del self.node_mapping[evicted_node_id]
 
         self.node_mapping[node_id] = value
         self.lru_order.append(node_id)
