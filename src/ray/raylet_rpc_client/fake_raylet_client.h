@@ -171,6 +171,7 @@ class FakeRayletClient : public RayletClientInterface {
       const std::vector<std::shared_ptr<const BundleSpecification>> &bundle_specs,
       const ClientCallback<PrepareBundleResourcesReply> &callback) override {
     num_lease_requested += 1;
+    prepare_bundle_specs.push_back(bundle_specs);
     lease_callbacks.push_back(callback);
   }
 
@@ -369,6 +370,9 @@ class FakeRayletClient : public RayletClientInterface {
   std::list<ClientCallback<CancelWorkerLeaseReply>> cancel_callbacks = {};
   std::list<ClientCallback<ReleaseUnusedActorWorkersReply>> release_callbacks = {};
   std::list<ClientCallback<PrepareBundleResourcesReply>> lease_callbacks = {};
+  // The bundles of each PrepareBundleResources request, in the order they were sent.
+  std::vector<std::vector<std::shared_ptr<const BundleSpecification>>>
+      prepare_bundle_specs = {};
   std::list<ClientCallback<CommitBundleResourcesReply>> commit_callbacks = {};
   std::list<ClientCallback<RemovePlacementGroupBundlesReply>>
       remove_pg_bundles_callbacks = {};

@@ -443,7 +443,15 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// release is no longer mirrored here -- when bundles are cancelled or a
   /// scheduling attempt fails, GCS waits for the raylet's next ray-syncer
   /// broadcast to reconcile its view of the affected nodes' resources.
-  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
+  ///
+  /// \param bundles The bundles that were scheduled.
+  /// \param selected_nodes The node chosen for each bundle
+  /// \param allocation_order The order these bundles should be allocated. Each bundle
+  /// request is represented by its index.
+  void AcquireBundleResources(
+      const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+      const std::vector<scheduling::NodeID> &selected_nodes,
+      const std::vector<int> &allocation_order);
 
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(

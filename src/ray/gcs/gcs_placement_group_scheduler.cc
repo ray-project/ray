@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_placement_group_scheduler.h"
 
 #include <memory>
+#include <numeric>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -126,14 +127,22 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                 .emplace(placement_group->GetPlacementGroupID(), lease_status_tracker)
                 .second);
 
-  // Acquire resources from gcs resources manager to reserve bundle resources.
-  const auto &bundle_locations = lease_status_tracker->GetBundleLocations();
-  AcquireBundleResources(bundle_locations);
+  std::vector<int> allocation_order = scheduling_result.allocation_order;
+  // Fallback: If the allocation order is emtpy, we just use the index order
+  if (allocation_order.empty()) {
+    allocation_order.resize(bundles.size());
+    std::iota(allocation_order.begin(), allocation_order.end(), 0);
+  }
+  RAY_CHECK(allocation_order.size() == bundles.size());
 
-  // Convert to a set of bundle specifications grouped by the node.
+  // Acquire resources from gcs resources manager to reserve bundle resources.
+  AcquireBundleResources(bundles, selected_nodes, allocation_order);
+
+  // Convert to a set of bundle specifications grouped by the node, each node's
+  // bundles in allocation order.
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
       node_to_bundles;
-  for (size_t i = 0; i < selected_nodes.size(); ++i) {
+  for (int i : allocation_order) {
     node_to_bundles[NodeID::FromBinary(selected_nodes[i].Binary())].emplace_back(
         bundles[i]);
   }
@@ -712,14 +721,15 @@ void GcsPlacementGroupScheduler::DestroyPlacementGroupCommittedBundleResources(
 }
 
 void GcsPlacementGroupScheduler::AcquireBundleResources(
-    const std::shared_ptr<BundleLocations> &bundle_locations) {
+    const std::vector<std::shared_ptr<const BundleSpecification>> &bundles,
+    const std::vector<scheduling::NodeID> &selected_nodes,
+    const std::vector<int> &allocation_order) {
   // Acquire bundle resources from gcs resources manager.
   auto &cluster_resource_manager =
       cluster_resource_scheduler_.GetClusterResourceManager();
-  for (auto &bundle : *bundle_locations) {
+  for (int i : allocation_order) {
     cluster_resource_manager.SubtractNodeAvailableResources(
-        scheduling::NodeID(bundle.second.first.Binary()),
-        bundle.second.second->GetRequiredResources());
+        selected_nodes[i], bundles[i]->GetRequiredResources());
   }
 }
 
