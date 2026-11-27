@@ -1090,6 +1090,11 @@ def test_count_pushdown_declines_row_reducing_reads(
     assert ds.count() == 2
 
 
+@pytest.mark.parametrize(
+    "num_files,rows_per_file,row_group_size",
+    [(1, 10, None), (3, 100, 10), (4, 1000, 250)],
+    ids=["single_file", "multi_file_many_row_groups", "multi_file_large"],
+)
 def test_count_matches_rows(
     tmp_path, restore_ctx, num_files, rows_per_file, row_group_size
 ):
