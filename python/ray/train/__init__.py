@@ -78,6 +78,10 @@ if is_v2_enabled():
         ValidationFn,
         ValidationTaskConfig,
     )
+else:
+    from ray.train.constants import _log_v1_deprecation_warning
+
+    _log_v1_deprecation_warning()
 
 
 __all__ = [

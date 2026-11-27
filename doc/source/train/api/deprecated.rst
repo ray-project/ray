@@ -5,6 +5,9 @@
 Ray Train V1 API
 ================
 
+.. include:: /_includes/train/v1_deprecation.md
+    :parser: myst_parser.sphinx_
+
 .. currentmodule:: ray
 
 .. important::

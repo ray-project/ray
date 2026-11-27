@@ -76,6 +76,50 @@ def _v2_migration_warnings_enabled() -> bool:
     return env_bool(ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR, True)
 
 
+V1_REMOVAL_MESSAGE = "Ray Train V1 is deprecated and will be removed in Ray 3.0."
+
+V1_DEPRECATION_MESSAGE = (
+    "Ray Train V1 was enabled by setting `RAY_TRAIN_V2_ENABLED=0`. "
+    f"{V1_REMOVAL_MESSAGE} "
+    "Unset `RAY_TRAIN_V2_ENABLED` to use Ray Train V2, the default. "
+    f"{V2_MIGRATION_GUIDE_MESSAGE}"
+)
+
+
+_v1_deprecation_warning_logged = False
+
+
+def _log_v1_deprecation_warning() -> None:
+    """Warns that Ray Train V1 is deprecated and will be removed in Ray 3.0.
+
+    Called on ``import ray.train`` when V1 is selected with
+    ``RAY_TRAIN_V2_ENABLED=0``. It warns at most once per process and only in
+    the driver: Ray worker processes (Train workers, Tune trials, RLlib
+    learners) skip it so it isn't repeated for each of them.
+    """
+    global _v1_deprecation_warning_logged
+
+    import warnings
+
+    from ray._private.worker import (
+        RESTORE_WORKER_MODE,
+        SPILL_WORKER_MODE,
+        WORKER_MODE,
+        global_worker,
+    )
+    from ray.util.annotations import RayDeprecationWarning
+
+    if (
+        _v1_deprecation_warning_logged
+        or not _v2_migration_warnings_enabled()
+        or global_worker.mode in (WORKER_MODE, SPILL_WORKER_MODE, RESTORE_WORKER_MODE)
+    ):
+        return
+    _v1_deprecation_warning_logged = True
+
+    warnings.warn(V1_DEPRECATION_MESSAGE, RayDeprecationWarning, stacklevel=2)
+
+
 # ==================================================
 #               Environment Variables
 # ==================================================

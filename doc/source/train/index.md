@@ -8,6 +8,9 @@ myst:
 
 # Ray Train: Scalable model training
 
+```{include} /_includes/train/v1_deprecation.md
+```
+
 ```{toctree}
 :hidden:
 
