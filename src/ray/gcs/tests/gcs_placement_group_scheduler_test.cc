@@ -16,6 +16,7 @@
 
 #include <gtest/gtest.h>
 
+#include <future>
 #include <list>
 #include <memory>
 #include <utility>
@@ -712,6 +713,42 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringPreparedPut)
   auto bundles_on_node1 =
       scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(0, bundles_on_node1.size());
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest,
+       ReschedulingPlacementGroupCancelledDuringPreparedPut) {
+  // Tests that a placement group that is cancelled while one of its bundles is being
+  // rescheduled, after the bundle is prepared but before the commit starts, releases
+  // both that bundle and the bundle that stayed committed.
+  AddNode(GenNodeInfo(0));
+  AddNode(GenNodeInfo(1));
+  auto placement_group = std::make_shared<GcsPlacementGroup>(
+      GenCreatePlacementGroupRequest(), "", counter_, clock_);
+  ScheduleUnplacedBundles(placement_group);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+  GrantCommitBundleResources(Status::OK(), Status::OK());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Reschedule the first bundle, as when its node dies.
+  auto bundle = placement_group->GetMutableBundle(0);
+  scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(bundle->node_id()));
+  bundle->clear_node_id();
+  // Block the io context: the commit starts from the callback of a table write, which
+  // runs on it.
+  std::promise<void> release;
+  std::future<void> released = release.get_future();
+  io_service_.post([&released]() { released.wait(); }, "BlockIOContextForTest");
+  ScheduleUnplacedBundles(placement_group);
+  EXPECT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources() ||
+              raylet_clients_[1]->GrantPrepareBundleResources());
+  scheduler_->MarkScheduleCancelled(placement_group->GetPlacementGroupID());
+  release.set_value();
+
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+  ASSERT_EQ(
+      raylet_clients_[0]->num_bundles_removed + raylet_clients_[1]->num_bundles_removed,
+      2);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyReschedulingWhenNodeAdd) {

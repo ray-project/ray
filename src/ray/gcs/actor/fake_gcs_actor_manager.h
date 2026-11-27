@@ -57,6 +57,7 @@ class FakeGcsActorManager : private FakeGcsActorManagerDeps, public GcsActorMana
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
+            [](const PlacementGroupID &) { return true; },
             raylet_client_pool,
             worker_client_pool,
             /*ray_event_recorder=*/ray_event_recorder,
