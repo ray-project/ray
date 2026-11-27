@@ -212,6 +212,17 @@ def test_falls_back_to_json_load_for_a_top_level_array(tmp_path):
     assert table.to_pylist() == [{"one": [1]}, {"one": [1, 2]}]
 
 
+def test_rejects_a_top_level_array_in_a_compressed_jsonl_file(tmp_path):
+    path = str(tmp_path / "a.jsonl.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b'[{"x": 1}, {"x": 2}]'))
+
+    with pytest.raises(ValueError, match="Failed to parse line-delimited JSON") as e:
+        _read_all(JsonDatasourceV2([path]), [path])
+
+    assert path in str(e.value)
+
+
 _ROWS_OVER_ONE_MIB = [{"s": "x" * 1000}] * 1100
 
 
@@ -280,6 +291,36 @@ def test_infers_the_schema_from_a_stream_that_returns_short_reads(tmp_path, num_
     )
 
     assert datasource.infer_schema(sample).names == ["id", "name"]
+
+
+def _snappy_compress(data: bytes) -> bytes:
+    snappy = pytest.importorskip("snappy")
+    out = io.BytesIO()
+    snappy.stream_compress(io.BytesIO(data), out)
+    return out.getvalue()
+
+
+@pytest.mark.parametrize(
+    "path, compress, in_pieces",
+    [
+        ("a.jsonl.gz", gzip.compress, True),
+        ("a.json.gz", gzip.compress, False),
+        ("a.jsonl.snappy", _snappy_compress, True),
+    ],
+    ids=["jsonl", "json", "jsonl-snappy"],
+)
+def test_streams_only_compressed_json_lines_in_pieces(
+    tmp_path, monkeypatch, path, compress, in_pieces
+):
+    monkeypatch.setenv("RAY_DATA_LINE_CHUNK_BYTES", "100")
+    file = str(tmp_path / path)
+    with open(file, "wb") as f:
+        f.write(compress(b"".join(b'{"id": %d}\n' % i for i in range(200))))
+
+    tables = _read_blocks(JsonDatasourceV2([file]), [file])
+
+    assert (len(tables) > 1) == in_pieces
+    assert sorted(pa.concat_tables(tables).column("id").to_pylist()) == list(range(200))
 
 
 def test_lines_true_reports_the_file_of_a_bad_line(tmp_path):

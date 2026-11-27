@@ -1,7 +1,7 @@
 """``FileReader`` for CSV on DataSource V2, splitting large files at newlines."""
 
 import copy
-from typing import Any, Dict, Iterator, List
+from typing import Any, Dict, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.csv as pcsv
@@ -150,6 +150,68 @@ class CsvFileReader(LineChunkableFileReader):
             if unit.id == unit.source:
                 raise invalid_csv_error(unit.source, e) from e
             raise invalid_csv_chunk_error(unit.source, e) from e
+
+    @override
+    def _iter_streamed_unit_tables(
+        self,
+        fragment_to_read: ReadUnitFragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Stream the file with ``pcsv.open_csv``, as V1 does.
+
+        pyarrow's dataset scan of a CSV stream reads ahead of its consumer
+        without bound, so a file larger than memory would fill it. ``open_csv``
+        parses a block only when asked for the next one, and converts only the
+        projected columns. Each block is scanned as an in-memory fragment, the way
+        a chunk is.
+        """
+        path = fragment_to_read.unit.source
+        convert_options = self._streamed_convert_options(
+            path, scanner_kwargs.get("columns")
+        )
+        with self._open_stream(path) as file:
+            reader = pcsv.open_csv(
+                file,
+                read_options=self._read_options,
+                parse_options=self._parse_options,
+                convert_options=convert_options,
+            )
+            for batch in reader:
+                table = pa.Table.from_batches([batch])
+                for fragment in pds.dataset(table).get_fragments():
+                    yield from self._iter_fragment_tables(fragment, scanner_kwargs)
+
+    def _open_stream(self, path: str) -> pa.NativeFile:
+        assert self._filesystem is not None
+        return self._filesystem.open_input_stream(path)
+
+    def _streamed_convert_options(
+        self, path: str, columns: Optional[List[str]]
+    ) -> pcsv.ConvertOptions:
+        """Return the options that make ``open_csv`` convert only ``columns``.
+
+        A column the file lacks is read as ``null``, which the scan would fill
+        anyway. A file column named like a requested partition key is also read,
+        so ``_apply_partition_values`` can check it against the path value;
+        asking ``open_csv`` for the key itself would invent that column in
+        every file, so the file's own columns are looked up first.
+        """
+        if not columns:
+            return self._convert_options
+        include = list(columns)
+        if self._partition_keys.intersection(self._columns or ()):
+            with self._open_stream(path) as file:
+                names = pcsv.open_csv(
+                    file,
+                    read_options=self._read_options,
+                    parse_options=self._parse_options,
+                    convert_options=self._convert_options,
+                ).schema.names
+            include = self._with_file_partition_keys(include, names)
+        options = copy.copy(self._convert_options)
+        options.include_columns = include
+        options.include_missing_columns = True
+        return options
 
     @override
     def _make_chunk_fragment(

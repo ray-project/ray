@@ -1,4 +1,5 @@
 """Unit tests for byte-range line chunking of CSV and JSONL on DataSourceV2."""
+
 import json
 import random
 from unittest import mock
@@ -20,6 +21,7 @@ from ray.data._internal.datasource_v2.common.line_chunkable_file_reader import (
     one_block_size,
 )
 from ray.data._internal.datasource_v2.common.line_chunking import (
+    iter_line_pieces,
     line_chunk_byte_range,
     read_line_aligned,
     split_into_line_chunks,
@@ -282,6 +284,64 @@ def test_chunk_units_name_their_byte_offset(tmp_path):
     units = reader._get_fragments_to_read(dataset, manifest)
     assert [u.unit.id for u in units] == [f"{path}#chunk{i}" for i in range(len(units))]
     assert [u.unit_start_row for u in units] == [50 * i for i in range(len(units))]
+
+
+@pytest.mark.parametrize(
+    "text, piece_size, expected",
+    [
+        (b"a\nb\nc\n", 100, [b"a\nb\nc\n"]),
+        (b"aa\nbb\ncc\ndd\n", 5, [b"aa\nbb\n", b"cc\ndd\n"]),
+        (b"aa\nbb\ncc", 5, [b"aa\nbb\n", b"cc"]),
+        (b"a very long line\nb\n", 4, [b"a very long line\n", b"b\n"]),
+        (b"", 4, []),
+        (b"a\nbbbbbbbbbb\nc\n", 4, [b"a\n", b"bbbbbbbbbb\nc\n"]),
+        (b"aaa\nbbb\n", 4, [b"aaa\n", b"bbb\n"]),
+        (b"\n\n\n\n\n", 2, [b"\n\n", b"\n\n", b"\n"]),
+        (b"abcdefghij", 4, [b"abcdefghij"]),
+    ],
+    ids=[
+        "one_piece",
+        "cut_at_a_newline",
+        "no_final_newline",
+        "long_line",
+        "empty",
+        "newline_before_the_piece_fills",
+        "newline_at_a_read_boundary",
+        "only_newlines",
+        "no_newline",
+    ],
+)
+def test_iter_line_pieces_cuts_a_stream_at_newlines(text, piece_size, expected):
+    with mock.patch.object(line_chunking, "_STREAM_READ_BYTES", 3):
+        pieces = list(iter_line_pieces(pa.BufferReader(text), piece_size))
+
+    assert pieces == expected
+
+
+class _ShortReads:
+    """A stream whose ``read(n)`` returns between one and ``n`` bytes."""
+
+    def __init__(self, data: bytes, rng: random.Random):
+        self._data = data
+        self._pos = 0
+        self._rng = rng
+
+    def read(self, n: int) -> bytes:
+        size = self._rng.randint(1, n)
+        part = self._data[self._pos : self._pos + size]
+        self._pos += size
+        return part
+
+
+def test_iter_line_pieces_rejoins_to_the_stream():
+    rng = random.Random(0)
+    for _ in range(200):
+        data = bytes(rng.choice(b"ab\n") for _ in range(rng.randint(0, 60)))
+        pieces = list(iter_line_pieces(_ShortReads(data, rng), rng.randint(1, 12)))
+
+        assert b"".join(pieces) == data
+        assert all(pieces)
+        assert all(piece.endswith(b"\n") for piece in pieces[:-1])
 
 
 if __name__ == "__main__":

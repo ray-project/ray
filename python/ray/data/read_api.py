@@ -2339,9 +2339,9 @@ def read_json(
         types per piece, so a column of whole numbers early in a file and
         decimals later is int64 in some blocks and double in others. Pass
         ``parse_options=pyarrow.json.ParseOptions(explicit_schema=...)`` to pin
-        the types. A ``.jsonl`` file larger than the chunk size is parsed only
-        as JSON Lines: unlike a whole file, a chunk can't fall back to
-        ``json.load``, so a ``.jsonl`` file holding one array raises.
+        the types. A ``.jsonl`` file is expected to hold newline-delimited JSON
+        objects, one per line. A top-level JSON array, where the whole file is
+        one array instead of one object per line, isn't supported.
 
         With ``lines=True`` it parses with ``pandas.read_json``, as V1 does,
         and produces pandas blocks, so the schema is known only once a block is

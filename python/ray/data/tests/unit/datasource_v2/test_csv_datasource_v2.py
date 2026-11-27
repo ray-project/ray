@@ -431,12 +431,151 @@ def test_reads_only_the_included_columns(
     assert sorted(table.column(names[0]).to_pylist()) == list(range(100))
 
 
+@pytest.mark.parametrize("name", ["a.csv", "a.csv.gz"], ids=["plain", "gzip"])
+def test_projects_a_column_outside_include_columns(tmp_path, name):
+    path = str(tmp_path / name)
+    text = b"id,name\n1,a\n"
+    with open(path, "wb") as f:
+        f.write(gzip.compress(text) if name.endswith(".gz") else text)
+    datasource = CsvDatasourceV2(
+        [path],
+        arrow_csv_args={"convert_options": pcsv.ConvertOptions(include_columns=["id"])},
+    )
+
+    table = _read_all(datasource, [path], columns=("id", "name"))
+
+    assert table.to_pylist() == [{"id": 1, "name": "a"}]
+
+
+def test_checks_a_partition_column_outside_include_columns_in_a_gzip_file(tmp_path):
+    partition_dir = tmp_path / "country=US"
+    partition_dir.mkdir()
+    path = str(partition_dir / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b"id,country\n1,CA\n"))
+    datasource = CsvDatasourceV2(
+        [path],
+        partitioning=Partitioning(PartitionStyle.HIVE),
+        arrow_csv_args={"convert_options": pcsv.ConvertOptions(include_columns=["id"])},
+    )
+
+    with pytest.raises(ValueError, match="Partition column country exists"):
+        _read_all(datasource, [path], columns=("country", "id"))
+
+
 def test_reads_compressed_files_whole(tmp_path, small_chunks):
     path = str(tmp_path / "a.csv.gz")
     with open(path, "wb") as f:
         f.write(gzip.compress(b"id\n" + b"".join(b"%d\n" % i for i in range(200))))
     table = _read_all(CsvDatasourceV2([path]), [path])
     assert sorted(table.column("id").to_pylist()) == list(range(200))
+
+
+def test_streams_a_compressed_file_with_projection_and_null_fill(tmp_path):
+    path = str(tmp_path / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b"id,name\n0,n0\n1,n1\n"))
+    datasource = CsvDatasourceV2([path])
+    scanner = dataclasses.replace(
+        datasource.create_scanner(schema=pa.schema([("id", pa.int64())])),
+        columns=("name", "missing"),
+    )
+    manifest = FileManifest.concat(
+        list(
+            datasource._get_file_indexer().list_files(
+                pa.array([path]), filesystem=datasource.filesystem
+            )
+        )
+    )
+
+    table = pa.concat_tables(list(scanner.create_reader().read(manifest)))
+
+    assert table.to_pylist() == [
+        {"name": "n0", "missing": None},
+        {"name": "n1", "missing": None},
+    ]
+
+
+@pytest.fixture
+def converted_columns(monkeypatch):
+    """The non-empty ``include_columns`` each ``pcsv.open_csv`` call receives."""
+    seen = []
+    open_csv = pcsv.open_csv
+
+    def spy_open_csv(*args, **kwargs):
+        if kwargs["convert_options"].include_columns:
+            seen.append(kwargs["convert_options"].include_columns)
+        return open_csv(*args, **kwargs)
+
+    monkeypatch.setattr(pcsv, "open_csv", spy_open_csv)
+    return seen
+
+
+@pytest.mark.parametrize("partitioned", [False, True], ids=["plain", "hive"])
+def test_streams_a_compressed_file_converting_only_the_projected_columns(
+    tmp_path, converted_columns, partitioned
+):
+    directory = tmp_path / "country=US" if partitioned else tmp_path
+    directory.mkdir(exist_ok=True)
+    path = str(directory / "a.csv.gz")
+    with open(path, "wb") as f:
+        f.write(gzip.compress(b"id,name,extra\n1,a,x\n"))
+    datasource = CsvDatasourceV2(
+        [path], partitioning=Partitioning(PartitionStyle.HIVE) if partitioned else None
+    )
+    columns = ("name", "missing") + (("country",) if partitioned else ())
+
+    table = _read_all(datasource, [path], columns=columns)
+
+    assert converted_columns == [["name", "missing"]]
+    expected = {"name": "a", "missing": None}
+    assert table.to_pylist() == [
+        {**expected, "country": "US"} if partitioned else expected
+    ]
+
+
+def test_streams_a_file_without_reading_it_all_before_the_first_table(
+    tmp_path, monkeypatch
+):
+    path = str(tmp_path / "a.csv")
+    with open(path, "wb") as f:
+        f.write(b"id\n" + b"".join(b"%d\n" % i for i in range(200_000)))
+    file_size = (tmp_path / "a.csv").stat().st_size
+    datasource = CsvDatasourceV2(
+        [path],
+        arrow_csv_args={"read_options": pcsv.ReadOptions(block_size=1024)},
+    )
+    scanner = datasource.create_scanner(schema=pa.schema([("id", pa.int64())]))
+    # An unknown size sends the file down the streamed path.
+    manifest = FileManifest.construct_manifest(
+        paths=[path], sizes=[None], chunk_metadatas=[None]
+    )
+
+    class CountingStream:
+        closed = False
+
+        def __init__(self, stream):
+            self._stream = stream
+            self.bytes_read = 0
+
+        def read(self, n=-1):
+            data = self._stream.read(n)
+            self.bytes_read += len(data)
+            return data
+
+    streams = []
+    open_csv = pcsv.open_csv
+
+    def spy_open_csv(stream, *args, **kwargs):
+        streams.append(CountingStream(stream))
+        return open_csv(streams[-1], *args, **kwargs)
+
+    monkeypatch.setattr(pcsv, "open_csv", spy_open_csv)
+
+    next(scanner.create_reader().read(manifest))
+
+    assert len(streams) == 1
+    assert streams[0].bytes_read < file_size // 2
 
 
 def test_reads_snappy_files_whole(tmp_path):
