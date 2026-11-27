@@ -41,6 +41,10 @@ class BigQueryDatasink(Datasink[None]):
         self.max_retry_cnt = max_retry_cnt
         self.overwrite_table = overwrite_table
 
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        return False
+
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         from google.api_core import exceptions
 

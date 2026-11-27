@@ -51,6 +51,21 @@ class Datasink(Generic[WriteReturnType]):
     and call :meth:`~ray.data.Dataset.write_datasink`.
     """
 
+    @property
+    def on_write_start_requires_schema(self) -> bool:
+        """Whether initialization depends on the schema of the data being written.
+
+        Defaults to False for the inherited no-op hook and True for custom hooks.
+        If True, Write can only fuse with an upstream map when its input schema
+        can be inferred as an Arrow schema.
+
+        Override with False only if neither the hook nor the state it sets depends
+        on this schema. The hook is still called, but may receive None or the schema
+        before upstream transformations. Subclasses that add schema-dependent
+        initialization must override this property to return True.
+        """
+        return type(self).on_write_start is not Datasink.on_write_start
+
     def on_write_start(self, schema: Optional["pa.Schema"] = None) -> None:
         """Callback for when a write job starts.
 

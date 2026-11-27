@@ -31,7 +31,7 @@ from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
 from ray.data.context import DataContext, ShuffleStrategy
 from ray.data.dataset import Dataset
-from ray.data.expressions import star
+from ray.data.expressions import col, star
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values
@@ -1011,6 +1011,251 @@ def test_write_fusion(ray_start_regular_shared_2_cpus, tmp_path):
     ds.write_csv(tmp_path)
     assert "ReadRange->Write" in ds._write_ds.stats()
     _check_usage_record(["ReadRange", "WriteCSV"])
+
+
+def _check_write_schema(ds, expected_schema, expected_num_rows):
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    class SchemaCheckingDatasink(Datasink):
+        def __init__(self):
+            self.schema = None
+            self.start_calls = 0
+            self.rows_written = 0
+
+        def on_write_start(self, schema=None):
+            assert schema == expected_schema
+            self.schema = schema
+            self.start_calls += 1
+
+        def write(self, blocks, ctx):
+            assert self.schema == expected_schema
+            rows = 0
+            for block in blocks:
+                accessor = BlockAccessor.for_block(block)
+                assert accessor.to_arrow().schema == self.schema
+                rows += accessor.num_rows()
+            return rows
+
+        def on_write_complete(self, write_result):
+            self.rows_written = sum(write_result.write_returns)
+
+    sink = SchemaCheckingDatasink()
+    ds.write_datasink(sink)
+
+    assert sink.start_calls == 1
+    assert sink.rows_written == expected_num_rows
+
+
+@pytest.mark.parametrize(
+    "transform,expected_operator",
+    [
+        pytest.param(
+            lambda ds: ds.map(lambda row: dict(row, added=row["id"] + 1)),
+            "Map(<lambda>):",
+            id="map",
+        ),
+        pytest.param(
+            lambda ds: ds.map_batches(
+                lambda batch: batch.assign(added=batch["id"] + 1),
+                batch_format="pandas",
+            ),
+            "MapBatches(<lambda>):",
+            id="map_batches",
+        ),
+        pytest.param(
+            lambda ds: ds.with_column("added", col("id") + 1),
+            "Project->Write:",
+            id="project",
+        ),
+        pytest.param(
+            lambda ds: ds.with_column("added", col("id") + 1).filter(
+                lambda row: row["added"] >= 0
+            ),
+            "Project->Filter(<lambda>)->Write:",
+            id="project_chain",
+        ),
+    ],
+)
+def test_write_start_receives_transformed_schema(
+    ray_start_regular_shared_2_cpus, transform, expected_operator
+):
+    import pyarrow as pa
+
+    ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
+    ds = transform(ds)
+    _check_write_schema(ds, pa.schema([("id", pa.int64()), ("added", pa.int64())]), 8)
+    assert expected_operator in ds._write_ds.stats()
+
+
+def test_write_start_preserves_filter_schema(ray_start_regular_shared_2_cpus):
+    import pyarrow as pa
+
+    ds = ray.data.from_arrow(pa.table({"id": pa.array(range(8), type=pa.int32())}))
+    ds = ds.filter(lambda row: row["id"] >= 0)
+    _check_write_schema(ds, pa.schema([("id", pa.int32())]), 8)
+    assert "Filter(<lambda>)->Write" in ds._write_ds.stats()
+
+
+def test_write_start_converts_pandas_schema(
+    ray_start_regular_shared_2_cpus, restore_data_context
+):
+    import pyarrow as pa
+
+    DataContext.get_current().enable_pandas_block = True
+    ds = ray.data.from_pandas(pd.DataFrame({"id": range(8), "added": range(1, 9)}))
+    _check_write_schema(ds, pa.schema([("id", pa.int64()), ("added", pa.int64())]), 8)
+
+
+def test_unfused_write_start_uses_runtime_schema(
+    ray_start_regular_shared_2_cpus, monkeypatch
+):
+    import pyarrow as pa
+
+    from ray.data.datasource.datasink import Datasink
+
+    expected_schema = pa.schema([("id", pa.int64())])
+    received_schemas = []
+
+    class SchemaCheckingDatasink(Datasink):
+        def on_write_start(self, schema=None):
+            received_schemas.append(schema)
+
+        def write(self, blocks, ctx):
+            pass
+
+    ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2).sort(
+        "id"
+    )
+
+    # Distinguish static inference from the actual first-bundle schema.
+    inferred_schema = expected_schema.with_metadata({b"source": b"inferred"})
+    monkeypatch.setattr(
+        type(ds._logical_plan.dag), "infer_schema", lambda self: inferred_schema
+    )
+    sink = SchemaCheckingDatasink()
+    ds.write_datasink(sink)
+
+    assert len(received_schemas) == 1
+    assert received_schemas[0].equals(expected_schema, check_metadata=True)
+    assert "->Write" not in ds._write_ds.stats()
+
+
+def test_write_fusion_with_default_start_hook(ray_start_regular_shared_2_cpus):
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    class CountingDatasink(Datasink):
+        def write(self, blocks, ctx):
+            return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
+
+        def on_write_complete(self, result):
+            self.rows_written = sum(result.write_returns)
+
+    sink = CountingDatasink()
+    ds = ray.data.range(8, override_num_blocks=2).map_batches(lambda batch: batch)
+    ds.write_datasink(sink)
+
+    assert sink.rows_written == 8
+    assert "MapBatches(<lambda>)->Write" in ds._write_ds.stats()
+
+
+@pytest.mark.parametrize("requires_schema", [False, True])
+def test_write_fusion_with_schema_requirement(
+    ray_start_regular_shared_2_cpus, requires_schema
+):
+    from ray.data.block import BlockAccessor
+    from ray.data.datasource.datasink import Datasink
+
+    class CountingDatasink(Datasink):
+        def __init__(self):
+            self.rows_written = 0
+            self.start_calls = 0
+
+        @property
+        def on_write_start_requires_schema(self):
+            return requires_schema
+
+        def on_write_start(self, schema=None):
+            self.start_calls += 1
+            if requires_schema:
+                assert schema.names == ["id", "added"]
+
+        def write(self, blocks, ctx):
+            # Schema-independent hooks must still initialize worker-side state.
+            assert self.start_calls == 1
+            return sum(BlockAccessor.for_block(block).num_rows() for block in blocks)
+
+        def on_write_complete(self, result):
+            self.rows_written = sum(result.write_returns)
+
+    sink = CountingDatasink()
+    ds = ray.data.range(8, override_num_blocks=2).map(
+        lambda row: dict(row, added=row["id"] + 1)
+    )
+    ds.write_datasink(sink)
+
+    assert sink.rows_written == 8
+    assert sink.start_calls == 1
+    if requires_schema:
+        assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
+    else:
+        assert "ReadRange->Map(<lambda>)->Write" in ds._write_ds.stats()
+
+
+@pytest.mark.parametrize("transform", ["map", "project"])
+def test_write_fusion_with_custom_file_start_hook(
+    ray_start_regular_shared_2_cpus, tmp_path, transform
+):
+    import pyarrow.dataset as pads
+
+    from ray.data._internal.datasource.csv_datasink import CSVDatasink
+
+    class SchemaCheckingCSVDatasink(CSVDatasink):
+        @property
+        def on_write_start_requires_schema(self):
+            # Override the file sink's schema-independent default.
+            return True
+
+        def __init__(self, path):
+            super().__init__(path)
+            self.start_schemas = []
+            self.schema = None
+
+        def on_write_start(self, schema=None):
+            self.start_schemas.append(schema)
+            super().on_write_start(schema)
+            if schema is not None:
+                self.schema = schema
+
+        def write_block_to_file(self, block, file):
+            assert self.schema == block.to_arrow().schema
+            super().write_block_to_file(block, file)
+
+    path = tmp_path / "output"
+    sink = SchemaCheckingCSVDatasink(str(path))
+    if transform == "map":
+        ds = ray.data.range(8, override_num_blocks=2).map(
+            lambda row: dict(row, added=row["id"] + 1)
+        )
+    else:
+        from ray.data.expressions import col
+
+        ds = ray.data.from_items([{"id": i} for i in range(8)], override_num_blocks=2)
+        ds = ds.with_column("added", col("id") + 1)
+    ds.write_datasink(sink)
+
+    # File setup runs first without a schema, then Write initializes with its input.
+    assert len(sink.start_schemas) == 2
+    assert sink.start_schemas[0] is None
+    assert sink.start_schemas[1].names == ["id", "added"]
+    assert "Map(<lambda>)->Write" not in ds._write_ds.stats()
+    if transform != "map":
+        assert "Project->Write" in ds._write_ds.stats()
+    rows = pads.dataset(str(path), format="csv").to_table().to_pylist()
+    assert sorted(rows, key=lambda row: row["id"]) == [
+        {"id": i, "added": i + 1} for i in range(8)
+    ]
 
 
 @pytest.mark.parametrize(

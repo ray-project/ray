@@ -2,6 +2,8 @@ import itertools
 import logging
 from typing import Any, Dict, List, Optional, Union
 
+import pyarrow as pa
+
 from ray.data._internal.compute import (
     ActorPoolStrategy,
     ComputeStrategy,
@@ -666,6 +668,17 @@ class FuseOperators(Rule):
         # This preserves deferred initialization (e.g., on_write_start for Write ops).
         up_on_start = up_op._on_start
         down_on_start = down_op._on_start
+        if isinstance(down_logical_op, Write) and down_on_start is not None:
+            sink = down_logical_op.datasink_or_legacy_datasource
+            if sink.on_write_start_requires_schema:
+                # Keep the schema of Write's original input across further fusions.
+                inferred_schema = down_logical_op.input_dependencies[0].infer_schema()
+                assert isinstance(inferred_schema, pa.Schema)
+                write_start = down_on_start
+
+                def down_on_start(_schema):
+                    write_start(inferred_schema)
+
         if up_on_start is not None and down_on_start is not None:
 
             def fused_on_start(schema):

@@ -2,6 +2,8 @@ import itertools
 import uuid
 from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
+import pyarrow as pa
+
 from ray.data._internal.execution.bundle_queue import EstimateBytes, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -129,17 +131,23 @@ def _plan_write_op_internal(
     map_transformer = MapTransformer(transform_fns)
 
     # Set up on_start callback for datasinks.
-    # This allows on_write_start to receive the schema from the first input bundle,
-    # enabling schema-dependent initialization (e.g., Iceberg schema evolution).
+    # Keep the runtime schema for standalone writes. The fusion rule substitutes
+    # the inferred input schema only when Write is fused with an upstream map.
     on_start = None
     if isinstance(datasink, Datasink):
         on_start = datasink.on_write_start
+
+    needs_input_schema = (
+        isinstance(datasink, Datasink) and datasink.on_write_start_requires_schema
+    )
+    supports_fusion = not needs_input_schema or isinstance(
+        op.input_dependencies[0].infer_schema(), pa.Schema
+    )
 
     min_bytes_per_bundle = (
         datasink.min_bytes_per_write if isinstance(datasink, Datasink) else None
     )
     ref_bundler = None
-    supports_fusion = True
     if min_bytes_per_bundle is not None:
         ref_bundler = RebundleQueue(EstimateBytes(min_bytes_per_bundle))
         supports_fusion = False
