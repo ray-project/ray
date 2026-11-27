@@ -139,6 +139,11 @@ Delta Sharing
 Hudi
 ^^^^
 
+.. note::
+
+   :func:`~ray.data.read_hudi` is deprecated. Ray Data plans to remove it in a
+   future release and has no planned replacement.
+
 .. autosummary::
    :nosignatures:
    :toctree: doc/

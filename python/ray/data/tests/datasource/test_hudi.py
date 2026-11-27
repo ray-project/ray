@@ -1,5 +1,6 @@
 import os
 import zipfile
+from unittest import mock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -251,6 +252,14 @@ def test_hudi_read_checks_pickle_object_columns(local_path, monkeypatch):
 
     assert len(yielded) == 3
     assert [id(t) for t in checked] == [id(t) for t in yielded]
+
+
+def test_read_hudi_warns_that_it_is_deprecated():
+    with mock.patch("ray.data.read_api.read_datasource") as read_datasource:
+        with pytest.warns(DeprecationWarning, match="read_hudi"):
+            ray.data.read_hudi(table_uri="/hudi/trips")
+
+    read_datasource.assert_called_once()
 
 
 if __name__ == "__main__":

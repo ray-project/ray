@@ -5241,7 +5241,15 @@ def read_databricks_tables(
     )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated(
+    message=(
+        "``read_hudi`` is deprecated and will be removed in a future Ray "
+        "release. Ray Data is prioritizing a smaller set of datasources, and "
+        "there's no planned replacement. If you rely on ``read_hudi``, comment "
+        "on https://github.com/ray-project/ray/issues/68279."
+    ),
+    warning=True,
+)
 def read_hudi(
     table_uri: str,
     *,
