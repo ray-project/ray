@@ -3,9 +3,20 @@ load("//bazel:python.bzl", "doctest")
 doctest(
     files = glob(
         ["**/*.py"],
-        exclude = ["**/thirdparty_files/**"],
+        exclude = [
+            "**/thirdparty_files/**",
+            # Importing pyzes loads libze_loader, so it can't be collected on
+            # hosts without the Intel GPU driver.
+            "thirdparty/pyzes/**",
+        ],
     ),
     tags = ["team:core"],
+)
+
+# The loader test imports this file by path to run it with dlopen mocked.
+exports_files(
+    ["thirdparty/pyzes/pyzes.py"],
+    visibility = ["//python/ray/_private/thirdparty/pyzes/tests:__pkg__"],
 )
 
 filegroup(
