@@ -1278,7 +1278,11 @@ class PhysicalOperator(Operator):
         - Maximum: upper bound (max) of how many resources this operator could
         utilize.
         """
-        return ExecutionResources.zero(), ExecutionResources.inf()
+        min_resources = self.min_scheduling_resources()
+        max_resource_usage = ExecutionResources.for_limits(
+            gpu=0 if min_resources.gpu == 0 else None
+        )
+        return ExecutionResources.zero(), max_resource_usage
 
     def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
