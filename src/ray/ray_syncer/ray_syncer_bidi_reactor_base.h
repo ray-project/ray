@@ -62,6 +62,14 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
         batch_timer_(io_context),
         batch_timer_active_(false) {}
 
+  void ForgetNode(const std::string &node_id) override {
+    node_versions_.erase(node_id);
+    for (size_t message_type = 0; message_type < kComponentArraySize; ++message_type) {
+      sending_buffer_.erase(
+          std::make_pair(node_id, static_cast<MessageType>(message_type)));
+    }
+  }
+
   bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) override {
     if (*IsDisconnected()) {
       return false;
@@ -323,6 +331,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseDropsMalformedMessages);
+  FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseForgetNode);
   FRIEND_TEST(RaySyncerTest, RaySyncerBidiReactorBaseReadsAreNotGatedByProcessing);
 
   friend struct SyncerServerTest;

@@ -84,6 +84,12 @@ class RaySyncerBidiReactor {
   /// \return true if push to queue successfully.
   virtual bool PushToSendingQueue(std::shared_ptr<const RaySyncMessage> message) = 0;
 
+  /// Forget everything tracked about a dead node on this connection: its known
+  /// versions and any of its messages not yet sent. Must run on the syncer's io_context.
+  ///
+  /// \param node_id The id of the dead node.
+  virtual void ForgetNode(const std::string &node_id) = 0;
+
   /// Return the remote node id of this connection.
   const std::string &GetRemoteNodeID() const { return remote_node_id_; }
 
