@@ -14,6 +14,7 @@ from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpr
     DownstreamCapacityBackpressurePolicy,
 )
 from ray.data._internal.execution.execution_callback import ExecutionCallback
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
@@ -404,6 +405,15 @@ def _executor_threads():
     ]
 
 
+# Raised so that only consumer activity or shutdown can end the executor's
+# idle wait in time.
+_patch_long_idle_wait_timeout = patch(
+    "ray.data._internal.execution.streaming_executor."
+    "WAIT_FOR_TASK_COMPLETION_TIMEOUT_S",
+    60,
+)
+
+
 def _iterate_until_output_backpressured():
     """Start iterating a dataset much larger than the object store, take one
     batch, then stop consuming until the executor has been output-backpressured
@@ -455,7 +465,9 @@ def test_executor_shuts_down_while_output_backpressured(
     it, _, _ = _iterate_until_output_backpressured()
 
     assert _executor_threads()
-    it.close()
+    with _patch_long_idle_wait_timeout:
+        time.sleep(0.5)
+        it.close()
     assert not _executor_threads()
 
 
@@ -532,14 +544,6 @@ def _iterate_until_idle_with_unread_output():
     return it, ids, stats
 
 
-# Raised so that only consumer activity can end the executor's idle wait in time.
-_patch_long_idle_wait_timeout = patch(
-    "ray.data._internal.execution.streaming_executor."
-    "WAIT_FOR_TASK_COMPLETION_TIMEOUT_S",
-    60,
-)
-
-
 def _consume_rest(it, ids):
     _DispatchGate.closed = False
     for batch in it:
@@ -606,8 +610,54 @@ def test_executor_shuts_down_while_idle_with_unread_output(
     it, _, _ = _iterate_until_idle_with_unread_output()
 
     assert _executor_threads()
-    it.close()
+    with _patch_long_idle_wait_timeout:
+        time.sleep(0.5)
+        it.close()
     assert not _executor_threads()
+
+
+def test_materialize_with_nothing_dispatchable_does_not_busy_spin(
+    shutdown_only, restore_data_context  # noqa: F811
+):
+    ray.init(num_cpus=4, object_store_memory=100 * MiB)
+    stats = {"num_steps": 0, "idle_streak": 0, "dispatch_blocked": True}
+
+    class BlockDispatchAndCountSteps(ExecutionCallback):
+        # Liveness dispatch ignores backpressure policies, so gate the
+        # operators directly. materialize() drains output as it arrives, so the
+        # consumer always looks idle.
+        def before_execution_starts(self, executor):
+            for op in executor._topology:
+                if not isinstance(op, InputDataBuffer):
+                    can_add_input = op.can_add_input
+                    op.can_add_input = lambda can_add_input=can_add_input: (
+                        not stats["dispatch_blocked"] and can_add_input()
+                    )
+
+        def on_execution_step(self, executor):
+            stats["num_steps"] += 1
+            if all(op.num_active_tasks() == 0 for op in executor._topology):
+                stats["idle_streak"] += 1
+            else:
+                stats["idle_streak"] = 0
+
+    ray.data.DataContext.get_current().custom_execution_callback_classes.append(
+        BlockDispatchAndCountSteps
+    )
+    dataset = ray.data.range(400, override_num_blocks=40).map_batches(
+        lambda batch: batch
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        materialized = pool.submit(dataset.materialize)
+        wait_for_condition(lambda: stats["idle_streak"] >= 5)
+        steps_before = stats["num_steps"]
+        time.sleep(1)
+        idle_steps = stats["num_steps"] - steps_before
+        stats["dispatch_blocked"] = False
+        assert materialized.result(timeout=60).count() == 400
+
+    assert idle_steps < 50, idle_steps
 
 
 if __name__ == "__main__":

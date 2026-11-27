@@ -40,6 +40,7 @@ from ray.data._internal.execution.resource_manager import (
 )
 from ray.data._internal.execution.streaming_executor_state import (
     WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
+    CompletedTasks,
     OpState,
     OutputBackpressureGuard,
     Topology,
@@ -195,6 +196,9 @@ class StreamingExecutor(Executor, threading.Thread):
         self._shutdown_lock = threading.RLock()
         self._execution_started = False
         self._shutdown = False
+        # Wakes the scheduling loop from its end-of-step wait. Set by consumer
+        # activity and by shutdown().
+        self._scheduler_wakeup = threading.Event()
 
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
@@ -412,6 +416,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
             _num_shutdown += 1
             self._shutdown = True
+            self._scheduler_wakeup.set()
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
             # Stop the metadata fetcher (after the loop thread that feeds it has
@@ -564,7 +569,7 @@ class StreamingExecutor(Executor, threading.Thread):
             freed = num_bytes < self._resource_manager.get_external_consumer_bytes()
             self._resource_manager.set_external_consumer_bytes(num_bytes)
             if freed:
-                self._output_node[1].consumer_activity.set()
+                self._scheduler_wakeup.set()
 
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
@@ -602,13 +607,13 @@ class StreamingExecutor(Executor, threading.Thread):
             True if we should continue running the scheduling loop.
         """
         # Clear before update_usages() reads the output queue and consumer state,
-        # so any consumer activity from here on wakes process_completed_tasks.
-        self._output_node[1].consumer_activity.clear()
+        # so any consumer activity from here on cuts the end-of-step wait short.
+        self._scheduler_wakeup.clear()
         self._resource_manager.update_usages()
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        num_errored_blocks = process_completed_tasks(
+        completed = process_completed_tasks(
             topology,
             self._backpressure_policies,
             self._max_errored_blocks,
@@ -617,8 +622,8 @@ class StreamingExecutor(Executor, threading.Thread):
             metadata_fetcher=self._metadata_fetcher,
         )
         if self._max_errored_blocks > 0:
-            self._max_errored_blocks -= num_errored_blocks
-        self._num_errored_blocks += num_errored_blocks
+            self._max_errored_blocks -= completed.num_errored_blocks
+        self._num_errored_blocks += completed.num_errored_blocks
 
         self._resource_manager.update_usages()
         # Dispatch as many operators as we can for completed tasks.
@@ -683,24 +688,27 @@ class StreamingExecutor(Executor, threading.Thread):
         should_continue = not all(op.has_completed() for op in topology)
         self._no_progress_guard.check()
 
-        if should_continue and self._should_wait_for_consumer_activity(topology):
-            self._output_node[1].consumer_activity.wait(
-                WAIT_FOR_TASK_COMPLETION_TIMEOUT_S
-            )
+        if should_continue and self._made_no_progress(topology, completed, i):
+            self._scheduler_wakeup.wait(WAIT_FOR_TASK_COMPLETION_TIMEOUT_S)
         return should_continue
 
-    def _should_wait_for_consumer_activity(self, topology: Topology) -> bool:
-        """Whether to end this scheduling step waiting for consumer activity
-        instead of spinning.
+    def _made_no_progress(
+        self, topology: Topology, completed: CompletedTasks, num_dispatched: int
+    ) -> bool:
+        """Whether this step had nothing to wait on and read, dispatched and
+        pulled nothing, so running the next step right away would spin.
 
-        Call after dispatching, when nothing more could be dispatched. If no task
-        is left for process_completed_tasks to wait on and no operator has output
-        to pull, the consumer reading its output is what usually frees capacity.
-        Changes the consumer doesn't signal, such as cluster resources, actor
-        restarts or shutdown, are picked up when the wait times out.
+        Consumer activity and shutdown end the wait early. Changes nothing
+        signals, such as cluster resources, actor restarts or the liveness
+        guard's release interval, are picked up when the wait times out.
+        Checking ``_shutdown`` here covers a shutdown whose wakeup landed before
+        this step cleared it.
         """
-        return not self._consumer_idling() and not any(
-            op.get_active_tasks() or op.has_next() for op in topology
+        return (
+            completed.idle
+            and num_dispatched == 0
+            and not self._shutdown
+            and not any(op.has_next() for op in topology)
         )
 
     def _refresh_progress_manager(self, topology: Topology):
@@ -912,7 +920,9 @@ class _ClosingIterator(OutputIterator):
     def get_next(self, output_split_idx: Optional[int] = None) -> RefBundle:
         try:
             op, state = self._executor._output_node
-            bundle = state.get_output_blocking(output_split_idx)
+            bundle = state.get_output_blocking(
+                output_split_idx, self._executor._scheduler_wakeup
+            )
 
             # Update progress-bars
             if self._executor._progress_manager:

@@ -9,7 +9,7 @@ import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Dict, List, NamedTuple, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
@@ -64,6 +64,15 @@ Topology = Dict[PhysicalOperator, "OpState"]
 
 # Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
 WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
+
+
+class CompletedTasks(NamedTuple):
+    """What one ``process_completed_tasks`` call did."""
+
+    num_errored_blocks: int
+    # No task could be waited on and no task output was read, so the call
+    # couldn't have freed anything for the scheduler.
+    idle: bool
 
 
 class IdleDetector:
@@ -401,12 +410,6 @@ class OpState:
         # _waiting_consumers_lock since += is not atomic.
         self._num_waiting_consumers: int = 0
         self._waiting_consumers_lock = threading.Lock()
-        # Set when a consumer takes output, starts waiting for it, or reports
-        # fewer buffered bytes than before. The scheduling loop clears it before
-        # reading budgets and waits on it while every active task is
-        # output-backpressured, or while it has nothing to wait on, pull or
-        # dispatch.
-        self.consumer_activity = threading.Event()
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -536,7 +539,9 @@ class OpState:
 
         assert False, "Nothing to dispatch"
 
-    def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
+    def get_output_blocking(
+        self, output_split_idx: Optional[int], scheduler_wakeup: threading.Event
+    ) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
         This method must be thread-safe.
@@ -544,6 +549,9 @@ class OpState:
         Args:
             output_split_idx: Optional output split index for streaming-split
                 consumers; ``None`` reads from the default output queue.
+            scheduler_wakeup: Set when this consumer takes output or starts
+                waiting for it, either of which can free capacity for the
+                scheduling loop.
 
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
@@ -570,13 +578,13 @@ class OpState:
                     # TODO: Abstract queue-releated metrics to queue.
                     self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                     self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                    self.consumer_activity.set()
+                    scheduler_wakeup.set()
                     return ref
                 if not starving:
                     # Queue is empty — mark this consumer as starving.
                     with self._waiting_consumers_lock:
                         self._num_waiting_consumers += 1
-                    self.consumer_activity.set()
+                    scheduler_wakeup.set()
                     starving = True
                 time.sleep(0.01)
         finally:
@@ -807,7 +815,7 @@ def process_completed_tasks(
     output_backpressure_guard: OutputBackpressureGuard,
     metadata_fetcher: "MetadataFetcher",
     lineage_tracker: Optional["LineageTracker"] = None,
-) -> int:
+) -> CompletedTasks:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
 
@@ -828,7 +836,7 @@ def process_completed_tasks(
             of counting as an errored block. ``None`` disables reconstruction.
 
     Returns:
-        The number of errored blocks.
+        The number of errored blocks, and whether the call was idle.
     """
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
@@ -879,6 +887,8 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+    waitables: List[Waitable] = []
+    num_bytes_read = 0
 
     def _record_errored_block(e: BaseException, op_name: str) -> None:
         """Apply ``max_errored_blocks`` accounting to a block-level error from
@@ -922,12 +932,10 @@ def process_completed_tasks(
         # progress, yet its streaming generator usually has its next output
         # ready, so waiting on it would return immediately and busy-spin the
         # scheduling loop. Wait only on the other tasks. If there are none, the
-        # consumer is the usual source of new capacity, so wait for its activity
-        # instead. Other changes (the liveness guard's release interval, cluster
-        # resources) are picked up when the timeout expires. Still process the
-        # output-backpressured tasks below so `on_data_ready(0)` keeps tracking
-        # their backpressure time and drained tasks still reach the fetcher.
-        waitables: List[Waitable] = []
+        # scheduling loop waits at the end of its step instead. Still process
+        # the output-backpressured tasks below so `on_data_ready(0)` keeps
+        # tracking their backpressure time and drained tasks still reach the
+        # fetcher.
         output_backpressured: List[Waitable] = []
         for waitable, (state, task) in active_tasks.items():
             if isinstance(task, DataOpTask) and remaining_output_budget.get(state) == 0:
@@ -935,6 +943,7 @@ def process_completed_tasks(
             else:
                 waitables.append(waitable)
 
+        ready = []
         if waitables:
             ready, _ = ray.wait(
                 waitables,
@@ -942,10 +951,6 @@ def process_completed_tasks(
                 fetch_local=False,
                 timeout=WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
             )
-        else:
-            output_state = topology[terminal_operator_from_topology(topology)]
-            output_state.consumer_activity.wait(WAIT_FOR_TASK_COMPLETION_TIMEOUT_S)
-            ready = []
         ready += output_backpressured
 
         # Organize tasks by the operator they belong to, and sort them by task index.
@@ -981,6 +986,7 @@ def process_completed_tasks(
                                 metadata_fetcher,
                             )
                             op_data_tasks.append(task)
+                            num_bytes_read += bytes_read
                             if bytes_read > 0 and state.op in guard_released_ops:
                                 # The guard's release produced real output, so
                                 # start this op's interval from here.
@@ -1047,7 +1053,9 @@ def process_completed_tasks(
         while op.has_next():
             op_state.add_output(op.get_next())
 
-    return num_errored_blocks
+    return CompletedTasks(
+        num_errored_blocks, idle=not waitables and num_bytes_read == 0
+    )
 
 
 def update_operator_states(topology: Topology) -> None:
