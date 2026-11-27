@@ -1019,7 +1019,7 @@ def _walk(op):
 
 
 def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
-    """``count()`` must not run the footer indexer.
+    """An unfiltered ``count()`` must not run the footer indexer.
 
     ``FooterFileIndexer`` subclasses ``NonSamplingFileIndexer`` but overrides
     ``list_files``, so it footer-sweeps every file during listing -- the exact
@@ -1114,6 +1114,87 @@ def test_count_matches_rows(
     restore_ctx.use_datasource_v2 = True
 
     assert ray.data.read_parquet(str(tmp_path)).count() == num_files * rows_per_file
+
+
+def test_filtered_count_reads_only_partial_runs(tmp_path, restore_ctx, monkeypatch):
+    """Fully matched runs come from footers; only unsettled runs are read."""
+    from dataclasses import dataclass, fields
+    from pathlib import Path
+
+    for i in range(4):
+        pq.write_table(
+            pa.table({"id": list(range(i * 100, (i + 1) * 100))}),
+            str(tmp_path / f"f{i}.parquet"),
+            row_group_size=50,
+        )
+
+    restore_ctx.use_datasource_v2 = True
+    trace_path = tmp_path / "worker-reads.jsonl"
+    original_create_scanner = ParquetDatasourceV2.create_scanner
+
+    @dataclass(frozen=True)
+    class RecordingScanner(ParquetScanner):
+        def create_reader(self) -> ParquetFileReader:
+            reader = super().create_reader()
+            # Trace the manifest a scan is about to open. Stubbed runs never
+            # reach ``_get_fragments_to_read``, so a recorded path was read.
+            original_fragments = reader._get_fragments_to_read
+
+            def traced_fragments(dataset, manifest):
+                rows = [
+                    {
+                        "path": str(path),
+                        "unit_ids": sorted(int(unit) for unit in metadata["unit_ids"]),
+                    }
+                    for path, metadata in zip(
+                        manifest.paths, manifest.file_chunk_metadatas
+                    )
+                ]
+                with open(trace_path, "a", encoding="utf-8") as trace:
+                    trace.write(json.dumps(rows) + "\n")
+                return original_fragments(dataset, manifest)
+
+            reader._get_fragments_to_read = traced_fragments
+            return reader
+
+    def create_scanner(datasource, schema, filesystem=None, **options):
+        scanner = original_create_scanner(datasource, schema, filesystem, **options)
+        return RecordingScanner(
+            **{field.name: getattr(scanner, field.name) for field in fields(scanner)}
+        )
+
+    monkeypatch.setattr(ParquetDatasourceV2, "create_scanner", create_scanner)
+
+    # Every surviving run is fully matched: count() must not open any file.
+    all_matched = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 200)
+    assert all_matched.count() == 200
+    assert not Path(trace_path).exists()
+
+    # f2's first row group is partial; f3 is fully matched and must be skipped.
+    partial = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 225)
+    assert partial.count() == 175
+
+    records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
+    assert records
+    # f2 mixes a partial row group (0) and a matched one (1). The packer keeps
+    # the priced matched run in its own row, so row group 1 and all of f3 are
+    # answered from their footers and only f2's partial row group 0 is read.
+    assert [row for record in records for row in record] == [
+        {"path": str(tmp_path / "f2.parquet"), "unit_ids": [0]}
+    ]
+
+    # A normal read does not stub, so each file stays one manifest row and the
+    # reader scans its row groups together instead of reopening the file.
+    Path(trace_path).unlink()
+    normal = ray.data.read_parquet(str(tmp_path)).filter(expr=col("id") >= 225)
+    assert len(normal.take_all()) == 175
+    records = [json.loads(line) for line in Path(trace_path).read_text().splitlines()]
+    assert sorted(
+        (row["path"], tuple(row["unit_ids"])) for record in records for row in record
+    ) == [
+        (str(tmp_path / "f2.parquet"), (0, 1)),
+        (str(tmp_path / "f3.parquet"), (0, 1)),
+    ]
 
 
 def test_count_pushdown_honors_skip_paths(tmp_path, restore_ctx):

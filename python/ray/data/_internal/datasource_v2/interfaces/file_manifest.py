@@ -29,14 +29,18 @@ class FileChunk:
     per copy when the user lists the same path repeatedly. The
     packer only sums ``size_bytes`` against its budget; the indexer decides
     what the number measures (Parquet records the projection-scoped
-    uncompressed size from the footer).
+    uncompressed size from the footer). For an exact-count read the indexer
+    prices a fully matched run at zero instead, and the reader answers it
+    from ``num_rows``.
     """
 
     unit_ids: Tuple[int, ...]
     num_rows: int  # summed over the run
     size_bytes: int  # summed over the run; what a partitioner budgets on
-    # Whether every row in the run survives the pushed predicate, so
-    # ``num_rows`` is an exact survivor count that limit push-down may use.
+    # Whether the reader returns every row in the run, so ``num_rows`` is
+    # the exact delivered count that limit push-down and the exact-count
+    # read both answer from metadata. The Parquet footer proves it by
+    # checking that every row survives the pushed predicate.
     fully_matched: bool = True
     # Per-unit breakdown in ``unit_ids`` order, only for runs of more than
     # one unit, so a partitioner can split the run at exact boundaries.

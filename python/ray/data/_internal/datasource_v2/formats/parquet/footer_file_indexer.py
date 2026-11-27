@@ -21,9 +21,15 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicates,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
     FooterReaderActor,
+)
+from ray.data._internal.datasource_v2.formats.parquet.parquet_file_reader import (
+    _is_exact_count_read,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
@@ -315,6 +321,17 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         coalesce_bytes = self._coalesce_bytes
         if shuffle_row_groups:
             coalesce_bytes = max(coalesce_bytes, self._small_shuffle_chunk_size)
+        # A row-group shuffle clears the listing's limit but not the scanner's,
+        # so the reader may still open matched runs; keep their real sizes.
+        read_predicate = combine_predicates(
+            predicate,
+            partition_pruner.predicate if partition_pruner is not None else None,
+        )
+        stub_fully_matched = not shuffle_row_groups and _is_exact_count_read(
+            predicate=read_predicate,
+            limit=limit,
+            columns=projected_columns,
+        )
         with reader_actor_pool(
             FooterReaderActor,
             num_actors=self._num_actors,
@@ -327,6 +344,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             partitioning=self._partitioning,
             partition_pruner=partition_pruner,
             logical_schema=self._logical_schema,
+            stub_fully_matched=stub_fully_matched,
         ) as pool:
             manifests = self._read_footers(pool, file_infos, limit)
             if shuffle_row_groups:

@@ -175,6 +175,61 @@ def test_packer_preserves_unit_multiplicity_of_duplicated_files(
     assert sorted(pairs) == expected
 
 
+def test_bin_to_manifest_merges_runs_by_stub() -> None:
+    # A stubbed run gets its own row and the rest merge into one, so a copy is
+    # opened once no matter how many row groups alternate.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    packer.add_input(
+        _file(
+            "a",
+            400,
+            [
+                _run((2,), 0, rows=20, fully_matched=True),
+                _run((0,), 10, rows=5, fully_matched=False),
+                _run((1,), 0, rows=15, fully_matched=True),
+                _run((4,), 30, rows=7, fully_matched=False),
+            ],
+        )
+    )
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    chunks = [FileChunk.from_metadata(md) for md in manifest.file_chunk_metadatas]
+    assert [
+        (c.unit_ids, c.fully_matched, c.num_rows, c.size_bytes) for c in chunks
+    ] == [
+        ((1, 2), True, 35, 0),
+        ((0, 4), False, 12, 40),
+    ]
+
+    # A duplicated copy splits the same way once per copy.
+    packer = OnlineBinPacker(max_bin_bytes=1000)
+    copy = _file(
+        "a",
+        200,
+        [
+            _run((0,), 10, rows=5, fully_matched=False),
+            _run((1,), 0, rows=15, fully_matched=True),
+        ],
+    )
+    packer.add_input(copy)
+    packer.add_input(copy)
+    packer.finalize()
+
+    manifest = packer.next_partition()
+    assert not packer.has_partition()
+    assert [
+        (str(p), tuple(md["unit_ids"]), md["fully_matched"])
+        for p, md in zip(manifest.paths, manifest.file_chunk_metadatas)
+    ] == [
+        ("a", (1,), True),
+        ("a", (0,), False),
+        ("a", (1,), True),
+        ("a", (0,), False),
+    ]
+
+
 def test_split_coalesced_is_noop_without_coalescing() -> None:
     # With every run a single unit, the split flag must not change the packing.
     files = [_units("a", [40] * 3), _units("b", [40] * 2)]
