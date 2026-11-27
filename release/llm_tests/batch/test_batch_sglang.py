@@ -314,5 +314,62 @@ def test_sglang_score_extraction(score_tokenizer, label_token_ids, enable_mis):
     )
 
 
+EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+EMBED_PROMPTS = ["What is the capital of France?", "Ray scales Python.", "Hi"]
+# Qwen3-Embedding supports Matryoshka dimensions.
+EMBED_DIMENSIONS = 256
+# Leave room for the reference engine, which starts right after the processor's.
+EMBED_ENGINE_KWARGS = dict(context_length=2048, mem_fraction_static=0.4)
+
+
+@ray.remote(num_gpus=1)
+def _embed_with_engine(prompts, dimensions):
+    """Embed `prompts` with `sglang.Engine` directly, as a reference."""
+    import sglang
+
+    engine = sglang.Engine(
+        model_path=EMBED_MODEL, is_embedding=True, **EMBED_ENGINE_KWARGS
+    )
+    try:
+        outputs = [engine.encode(prompt=p, dimensions=dimensions) for p in prompts]
+        return [
+            (output["embedding"], output["meta_info"]["prompt_tokens"])
+            for output in outputs
+        ]
+    finally:
+        engine.shutdown()
+
+
+def test_sglang_embed_matches_engine():
+    """The embed task returns the embeddings `Engine.encode` returns."""
+    rows = [
+        {"id": i, "prompt": prompt, "embed_params": {"dimensions": EMBED_DIMENSIONS}}
+        for i, prompt in enumerate(EMBED_PROMPTS)
+    ]
+    config = SGLangEngineProcessorConfig(
+        model_source=EMBED_MODEL,
+        task_type="embed",
+        engine_kwargs=EMBED_ENGINE_KWARGS,
+        batch_size=4,
+        concurrency=1,
+    )
+    outputs = build_processor(config)(ray.data.from_items(rows)).take_all()
+    outputs = sorted(outputs, key=lambda row: row["id"])
+    expected = ray.get(_embed_with_engine.remote(EMBED_PROMPTS, EMBED_DIMENSIONS))
+
+    assert len(outputs) == len(expected)
+    for output, (expected_embedding, expected_tokens) in zip(outputs, expected):
+        actual = output["embeddings"]
+        expected_embedding = np.asarray(expected_embedding, dtype=np.float32)
+        assert actual.dtype == np.float32
+        assert actual.shape == expected_embedding.shape == (EMBED_DIMENSIONS,)
+        # Batching changes bf16 kernels slightly, so compare directions.
+        cosine = np.dot(actual, expected_embedding) / (
+            np.linalg.norm(actual) * np.linalg.norm(expected_embedding)
+        )
+        assert cosine > 0.999
+        assert output["num_input_tokens"] == expected_tokens
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

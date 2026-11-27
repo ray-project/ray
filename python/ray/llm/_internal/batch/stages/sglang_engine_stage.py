@@ -51,6 +51,9 @@ class SGLangEngineWrapper:
         # because we will not use the tokenizer/detokenizer in SGLang engine
         # by default.
         kwargs["skip_tokenizer_init"] = kwargs.pop("skip_tokenizer_init", True)
+        # The processor already applies these, but the stage can be built
+        # without it.
+        kwargs.update(task_cls.forced_engine_kwargs)
 
         try:
             import sglang
@@ -100,7 +103,8 @@ class SGLangEngineWrapper:
         async with self.semaphore:
             output = await self.task.run(self.engine, request)
         if self.task.params_column is not None:
-            output["params"] = str(params)
+            # A task can record the params it sent instead.
+            output.setdefault("params", str(params))
         return request_id, idx_in_batch, output, time.perf_counter() - t
 
     def shutdown(self):

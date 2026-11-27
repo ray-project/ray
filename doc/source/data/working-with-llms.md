@@ -319,6 +319,8 @@ Embedding models differ from text generation in the following ways:
 - Use `prompt` input instead of `messages`.
 - Access results through `row["embeddings"]`.
 
+{class}`SGLangEngineProcessorConfig <ray.data.llm.SGLangEngineProcessorConfig>` also supports `task_type="embed"`, with the same `prompt` input and `embeddings` output. Because SGLang tokenizes prompts itself, the embed task doesn't support the tokenize or detokenize stages. The chat template stage is off unless you enable it. To set `Engine.async_encode` arguments per row, add an `embed_params` dict with `dimensions`, for Matryoshka models, or `lora_path`, for example `{"dimensions": 256}`.
+
 (classification_models)=
 
 ## Run classification models
