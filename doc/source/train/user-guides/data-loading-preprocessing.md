@@ -348,6 +348,10 @@ data_loader = DataLoader(
 ## Split datasets
 By default, Ray Train splits all datasets across workers with {meth}`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. Each worker sees a disjoint subset of the data instead of iterating over the entire dataset.
 
+:::{note}
+Ray Train V2 uses a push-based implementation of the streaming split: a coordinator actor pushes blocks to each worker, instead of each worker requesting them. The split semantics and the {class}`DataIterator <ray.data.DataIterator>` API don't change. To use the pull-based implementation, set the `RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT=0` environment variable before you start the training job.
+:::
+
 To customize which datasets Ray Train splits, pass a {class}`DataConfig <ray.train.DataConfig>` to the trainer constructor.
 
 For example, to split only the training dataset, do the following:

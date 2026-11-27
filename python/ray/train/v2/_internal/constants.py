@@ -139,6 +139,11 @@ NCCL_RAS_ACTION_FAIL = "fail"  # reattempts the run through the failure policy
 NCCL_RAS_ACTION_OBSERVE = "observe"  # logs the hang and captures stacks, never raises
 DEFAULT_NCCL_RAS_ACTION = NCCL_RAS_ACTION_OBSERVE  # defaults to observe
 
+# Whether the controller shards Train datasets with the push-based streaming
+# split. Set it to 0 to go back to the pull-based `Dataset.streaming_split`.
+USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR = "RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT"
+DEFAULT_USE_PUSH_BASED_STREAMING_SPLIT = True
+
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
 ENV_VARS_TO_PROPAGATE = {
@@ -164,6 +169,7 @@ ENV_VARS_TO_PROPAGATE = {
     NCCL_RAS_MIN_POLL_INTERVAL_S_ENV_VAR,
     NCCL_RAS_CONFIRM_DURATION_S_ENV_VAR,
     NCCL_RAS_ACTION_ENV_VAR,
+    USE_PUSH_BASED_STREAMING_SPLIT_ENV_VAR,
 }
 
 

@@ -16,8 +16,10 @@ Release-test configurations:
   rate-limiter so a pipeline-rate regression shows up. Cannot see the
   object store usage signal (consumer-side queues stay empty when consumer is fast).
 
-With ``--compare-pull-push``, each configuration runs first with the default
-pull-based streaming split, then with the push-based one, and the two are
+Each configuration uses the push-based streaming split, which is the Ray Train
+default. ``--pull-based-split`` selects the pull-based one. With
+``--compare-pull-push``, each configuration runs first with the pull-based
+streaming split, then with the push-based one, and the two are
 compared against ``--min-throughput-ratio`` / ``--max-peak-object-store-ratio``.
 """
 
@@ -351,11 +353,13 @@ def run_once(args: argparse.Namespace) -> Dict[str, float]:
         )
         datasets = {"train": ds}
 
+    # Ray Train V2 uses the push-based streaming split by default. Set the
+    # variable for both cases, so that the flag decides and not the default.
+    # Ray Train sends it to the controller.
+    os.environ["RAY_TRAIN_USE_PUSH_BASED_STREAMING_SPLIT"] = (
+        "1" if args.push_based_split else "0"
+    )
     dataset_config = None
-    if args.push_based_split:
-        from ray.train._internal.push_based_data_config import PushBasedDataConfig
-
-        dataset_config = PushBasedDataConfig()
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
@@ -491,9 +495,13 @@ def main() -> None:
         ),
     )
     p.add_argument(
-        "--push-based-split",
-        action="store_true",
-        help="Shard the dataset with the push-based streaming split.",
+        "--pull-based-split",
+        dest="push_based_split",
+        action="store_false",
+        help=(
+            "Shard the dataset with the pull-based streaming split instead of "
+            "the default push-based one."
+        ),
     )
     p.add_argument(
         "--compare-pull-push",
@@ -517,8 +525,8 @@ def main() -> None:
         help="Fail if push peak object store usage > this multiple of pull's.",
     )
     args = p.parse_args()
-    if args.compare_pull_push and args.push_based_split:
-        p.error("--compare-pull-push already runs the push-based split.")
+    if args.compare_pull_push and not args.push_based_split:
+        p.error("--compare-pull-push already runs the pull-based split.")
 
     print(
         f"config: batch_size={BATCH_SIZE}  "
