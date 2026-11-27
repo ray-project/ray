@@ -328,6 +328,14 @@ pkg_files(
 )
 
 pkg_files(
+    name = "erofs_pull_files",
+    srcs = ["//src/ray/sandbox/erofs_pull"],
+    attributes = pkg_attributes(mode = "755"),
+    prefix = "ray/core/src/ray/sandbox/erofs_pull",
+    visibility = ["//visibility:private"],
+)
+
+pkg_files(
     name = "jemalloc_files",
     srcs = ["@jemalloc//:shared"],
     attributes = pkg_attributes(mode = "755"),
@@ -343,6 +351,10 @@ pkg_zip(
         ":raylet_so_files",
     ] + select({
         ":jemalloc": [":jemalloc_files"],
+        "//conditions:default": [],
+    }) + select({
+        # Ray Sandbox (gVisor) runs on Linux only.
+        "@platforms//os:linux": [":erofs_pull_files"],
         "//conditions:default": [],
     }),
     out = "ray_pkg.zip",

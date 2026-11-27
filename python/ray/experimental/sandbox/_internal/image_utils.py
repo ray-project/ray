@@ -11,11 +11,13 @@ import os
 import platform
 import re
 import shutil
+import ssl
 import stat
 import subprocess
 import tarfile
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -1229,9 +1231,6 @@ def pull_and_extract_container_image(
                     "using it. Stop those sandboxes before retrying."
                 )
 
-            # Checked before any download: without it the pull cannot finish.
-            require_mkfs_erofs()
-
             tmp_extract_dir = os.path.join(
                 images_dir, f"{safe_name}.tmp.{uuid.uuid4().hex}"
             )
@@ -1240,14 +1239,21 @@ def pull_and_extract_container_image(
             os.makedirs(tmp_rootfs_dir, mode=0o755, exist_ok=True)
             try:
                 ownership = _extract_image_layers(
-                    image, tmp_rootfs_dir, tmp_extract_dir, timeout_seconds, images_dir
-                )
-                _seed_tmp(tmp_rootfs_dir)
-                build_erofs_image(
+                    image,
                     tmp_rootfs_dir,
-                    ownership,
-                    os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                    tmp_extract_dir,
+                    timeout_seconds,
+                    images_dir,
+                    erofs_image=os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
                 )
+                # None: erofs-pull built the image, with no tree to seed.
+                if ownership is not None:
+                    _seed_tmp(tmp_rootfs_dir)
+                    build_erofs_image(
+                        tmp_rootfs_dir,
+                        ownership,
+                        os.path.join(tmp_extract_dir, ROOTFS_IMAGE),
+                    )
             except Exception:
                 shutil.rmtree(tmp_extract_dir, ignore_errors=True)
                 raise
@@ -1349,19 +1355,190 @@ def _close_blob(download: "concurrent.futures.Future[BinaryIO]") -> None:
         download.result().close()
 
 
+# Set to "0" to not build images with erofs-pull, or to the path of an
+# erofs-pull binary to use in place of the one Ray's Linux wheels ship
+# (//src/ray/sandbox/erofs_pull).
+_EROFS_PULL_ENV = "RAY_SANDBOX_EROFS_PULL"
+_EROFS_PULL_PACKAGED = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))),
+    "core/src/ray/sandbox/erofs_pull/erofs_pull",
+)
+
+
+# rapidgzip's decoding threads per erofs-pull: one per CPU up to this many.
+# Each holds a few decoded chunks, so memory grows with threads. 8 decode a
+# PyTorch image's layers at about 800 MB/s, faster than a fast node downloaded
+# them (540 MB/s); fewer were much slower.
+_EROFS_PULL_MAX_GZIP_THREADS = 8
+# How many erofs-pull builds a node runs at once, by default max(2, CPUs / 8);
+# set to change it. Other pulls wait for a slot.
+_EROFS_PULL_MAX_CONCURRENT_ENV = "RAY_SANDBOX_EROFS_PULL_MAX_CONCURRENT"
+_EROFS_PULL_SLOTS_DIR = ".erofs-pull-slots"
+
+
+def _available_cpus() -> int:
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        return os.cpu_count() or 1
+
+
+@contextlib.contextmanager
+def _erofs_pull_slot(images_dir: str) -> Iterator[None]:
+    """Hold one of the node's erofs-pull slots, waiting for one to be free.
+
+    Each slot is an ``flock`` on a file under ``images_dir``, so pulls in
+    every Ray worker on the node share them, and a slot frees itself when
+    its holder exits. Eviction skips the directory, as its name starts with
+    a dot.
+    """
+    try:
+        slots = int(os.environ[_EROFS_PULL_MAX_CONCURRENT_ENV])
+    except (KeyError, ValueError):
+        slots = max(2, _available_cpus() // 8)
+    slots = max(1, slots)
+    slots_dir = os.path.join(images_dir, _EROFS_PULL_SLOTS_DIR)
+    os.makedirs(slots_dir, exist_ok=True)
+    while True:
+        for i in range(slots):
+            slot = open(os.path.join(slots_dir, f"{i}.lock"), "a")
+            try:
+                fcntl.flock(slot, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                slot.close()
+                continue
+            try:
+                yield
+            finally:
+                slot.close()
+            return
+        time.sleep(0.1)
+
+
+def _erofs_pull_binary() -> Optional[str]:
+    """The erofs-pull binary to build images with, or None for none."""
+    binary = os.environ.get(_EROFS_PULL_ENV) or _EROFS_PULL_PACKAGED
+    return binary if binary != "0" and os.access(binary, os.X_OK) else None
+
+
+def _erofs_pull_can_build(layers: List[dict]) -> bool:
+    """Whether erofs-pull can try the image: it's there, and the manifest
+    gives every layer's size (an int, not a bool)."""
+    return _erofs_pull_binary() is not None and all(
+        type(layer.get("size")) is int and layer["size"] >= 0 for layer in layers
+    )
+
+
+def _build_image_with_erofs_pull(
+    image: str,
+    manifest: dict,
+    base_url: str,
+    headers: Dict[str, str],
+    auth_header: Optional[str],
+    timeout_seconds: float,
+    blob_dir: str,
+    out_path: str,
+) -> bool:
+    """Build ``out_path`` from a resolved registry image with erofs-pull.
+
+    erofs-pull downloads the layers into the layer cache over parallel range
+    requests, decompresses them one after another (each on all cores) as
+    they arrive, and writes each file's data once into the image, applying
+    the layers and seed as ``extract_tar_layer`` and ``_seed_tmp`` do. The
+    registry token reaches it on stdin; it goes through the proxies
+    ``urllib`` does (``HTTPS_PROXY``, ``NO_PROXY`` and so on) and trusts the
+    CA certificates Python's ``ssl`` does.
+
+    Args:
+        image: Registry image reference, for log messages.
+        manifest: The image's manifest.
+        base_url: Registry blob URL prefix to which each digest is appended.
+        headers: Headers to include in registry requests.
+        auth_header: Optional Authorization header value for registry requests.
+        timeout_seconds: Network request timeout.
+        blob_dir: Image cache directory, whose layer cache keeps the blobs.
+        out_path: Destination image file.
+
+    Returns:
+        True if the image is built; False, with nothing at ``out_path``, if
+        extraction should build it: no erofs-pull, layers without sizes in
+        the manifest, or a failed build (a download error included:
+        extraction retries it).
+    """
+    binary = _erofs_pull_binary()
+    layers = manifest["layers"]
+    if not _erofs_pull_can_build(layers):
+        return False
+    spec = {
+        "base_url": base_url,
+        "headers": headers,
+        "auth": auth_header,
+        "layers": [
+            {"digest": layer["digest"], "size": layer["size"]} for layer in layers
+        ],
+        "blob_dir": os.path.dirname(
+            layer_cache.blob_path(blob_dir, layers[0]["digest"])
+        ),
+        "out": out_path,
+        "block_size": mmap.PAGESIZE,
+        "timeout_seconds": timeout_seconds,
+        "gzip_threads": min(_available_cpus(), _EROFS_PULL_MAX_GZIP_THREADS),
+        # erofs-pull exits if this process is gone (it also dies with it).
+        "parent_pid": os.getpid(),
+        # The proxies urllib uses for Ray's own registry requests.
+        "proxies": {
+            scheme: url
+            for scheme, url in urllib.request.getproxies().items()
+            if scheme in ("http", "https", "no")
+        },
+    }
+    env = dict(os.environ)
+    paths = ssl.get_default_verify_paths()
+    if paths.cafile:
+        env.setdefault("SSL_CERT_FILE", paths.cafile)
+    if paths.capath:
+        env.setdefault("SSL_CERT_DIR", paths.capath)
+    try:
+        with _erofs_pull_slot(blob_dir):
+            result = subprocess.run(
+                [binary], input=json.dumps(spec).encode(), capture_output=True, env=env
+            )
+        failure = result.returncode and (
+            result.stderr.decode(errors="replace").strip()
+            or f"exit status {result.returncode}"
+        )
+    except OSError as err:
+        failure = str(err)
+    if failure:
+        logger.warning(
+            f"Building image '{image}' with erofs-pull failed, so it is "
+            f"built by extraction instead: {failure.strip()[-500:]}"
+        )
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(out_path)
+        return False
+    return True
+
+
 def _extract_image_layers(
     image: str,
     rootfs_dir: str,
     image_dir: str,
     timeout_seconds: float,
     blob_dir: str,
-) -> Dict[str, Tuple[int, int]]:
+    erofs_image: Optional[str] = None,
+) -> Optional[Dict[str, Tuple[int, int]]]:
     """Flatten ``image`` into ``rootfs_dir`` and return its recorded owners.
 
     ``image`` is a local tar archive or a registry reference. A registry
     image's config and manifest are written to ``image_dir/.image_config.json``
     and ``image_dir/.manifest.json``, respectively, and its
-    layer blobs come from the shared layer cache under ``blob_dir``.
+    layer blobs come from the shared layer cache under ``blob_dir``. With
+    ``erofs_image``, the caller builds an EROFS image from the tree: a
+    registry image is then built straight into ``erofs_image`` with
+    erofs-pull where it can be (``_build_image_with_erofs_pull``), with
+    nothing extracted, and ``mkfs.erofs``, which the caller builds with
+    otherwise, is checked for before extracting.
 
     Args:
         image: Container image name or path to a local tar archive.
@@ -1369,15 +1546,20 @@ def _extract_image_layers(
         image_dir: Directory that receives the image config.
         timeout_seconds: Network request timeout.
         blob_dir: Image cache directory, whose layer cache keeps the blobs.
+        erofs_image: The EROFS image the caller builds from the tree, if any.
 
     Returns:
-        {path: (uid, gid)} for every path shipped with a non-root owner.
+        {path: (uid, gid)} for every path shipped with a non-root owner, or
+        None if erofs-pull built ``erofs_image``.
 
     Raises:
         SandboxCreationError: When the image cannot be fetched or extracted.
     """
     ownership: Dict[str, Tuple[int, int]] = {}
     if os.path.isfile(image):
+        if erofs_image is not None:
+            # Checked before extracting: the image is built with mkfs.erofs.
+            require_mkfs_erofs()
         try:
             with open(image, "rb") as f:
                 extract_tar_layer(f, rootfs_dir, ownership=ownership)
@@ -1472,6 +1654,30 @@ def _extract_image_layers(
 
         digests = [layer["digest"] for layer in layers]
         base_url = f"{registry_base_url(registry)}/v2/{repo}/blobs/"
+        if erofs_image is not None:
+            if _build_image_with_erofs_pull(
+                image,
+                manifest_data,
+                base_url,
+                headers,
+                auth_header,
+                timeout_seconds,
+                blob_dir,
+                erofs_image,
+            ):
+                return None
+            # Checked before any layer download: the caller builds the image
+            # from the extracted tree with mkfs.erofs.
+            try:
+                require_mkfs_erofs()
+            except SandboxCreationError as err:
+                # Blame erofs-pull only if it ran.
+                if not _erofs_pull_can_build(layers):
+                    raise
+                raise SandboxCreationError(
+                    f"erofs-pull failed to build image '{image}' (its error is "
+                    f"logged above), and extracting it needs mkfs.erofs: {err}"
+                ) from None
         with contextlib.closing(
             _download_blobs(
                 digests, base_url, headers, auth_header, timeout_seconds, blob_dir

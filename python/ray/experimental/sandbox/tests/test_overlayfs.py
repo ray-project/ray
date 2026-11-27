@@ -37,6 +37,11 @@ def _overlay(userns, image_mount_mode, id_maps=None):
     )
 
 
+# What the fake mount tools do to "mount" the image: give the lower mount
+# point (their last argument) the image root's mode 0751 and an mtime of 1e9.
+_MOUNT_IMAGE_ROOT = 'chmod 751 "$last"; touch -d @1000000000 "$last"'
+
+
 def _run_mount_script(
     tmp_path,
     userns,
@@ -53,14 +58,17 @@ def _run_mount_script(
     ``fake_bodies`` replaces the body of any fake, by tool name."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    image_root = 'chmod 751 "$last"; touch -d @1000000000 "$last"'
+    image_root = _MOUNT_IMAGE_ROOT
     fakes = {
         "mount": (
             f'case "$*" in *"-t erofs"*) {image_root} ;; esac\n'
             f"exit {mount_exit_code}"
         ),
         "erofsfuse": image_root,
-        "mountpoint": "exit 0",
+        # Like the real one, a directory counts as mounted only once the image
+        # is mounted on it: the script runs erofsfuse in the background and
+        # waits for this, so answering yes at once races the fake erofsfuse.
+        "mountpoint": '[ "$(stat -c %a "$last")" = 751 ]',
         "chown": "exit 0",
         **fake_bodies,
     }
@@ -178,7 +186,7 @@ def test_mount_script_stops_erofsfuse_when_it_exits(tmp_path, overlay_exit_code)
         tmp_path,
         UserNamespaceType.PRIVATE,
         ImageMountMode.FUSE,
-        erofsfuse=f'echo $$ > "{pid_file}"; exec sleep 60',
+        erofsfuse=f'{_MOUNT_IMAGE_ROOT}; echo $$ > "{pid_file}"; exec sleep 60',
         mount=(
             f'case "$*" in *"-t overlay"*) exit {overlay_exit_code} ;; esac\n' "exit 0"
         ),
@@ -196,7 +204,7 @@ def test_mount_script_stops_erofsfuse_when_it_gets_killed(tmp_path):
         UserNamespaceType.PRIVATE,
         ImageMountMode.FUSE,
         command=["sh", "-c", "kill -KILL $$"],
-        erofsfuse=f'echo $$ > "{pid_file}"; exec sleep 60',
+        erofsfuse=f'{_MOUNT_IMAGE_ROOT}; echo $$ > "{pid_file}"; exec sleep 60',
     )
     assert res.returncode == -signal.SIGKILL, res.stderr
     assert not _still_running(pid_file)

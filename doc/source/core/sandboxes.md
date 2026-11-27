@@ -39,7 +39,7 @@ Ray Sandboxes need the following on every Ray node that runs a sandbox:
 * **Linux**: x86_64 or arm64.
 * **gVisor (`runsc`)**: Install the `runsc` binary on worker nodes and make it reachable from the system `$PATH`.
 * **Ray**: version 2.58.0 or later, which includes the `ray.experimental.sandbox` package.
-* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. Sandbox creation fails without it.
+* **erofs-utils**: `mkfs.erofs` 1.7 or later on the `$PATH`, for local image archives and for registry images that Ray's own image builder hands back. Ray caches each image as an EROFS file that gVisor mounts inside its own kernel, so files in the sandbox keep the image's real owners and `chown` works for any uid, with no privileges or id mappings on the node. On Linux, Ray builds registry images with erofs-pull, which ships with Ray and needs no erofs-utils, so a node without `mkfs.erofs` can still run most images. Sandboxes that boot from an [overlayfs root filesystem](#overlayfs-root-filesystems) still need `mkfs.erofs`, because Ray checks that the worker can mount one with an image it builds with `mkfs.erofs`. For details, see [Pull images](#pull-images). Sandbox creation fails when Ray needs `mkfs.erofs` and can't find it.
 * **Overlayfs root filesystems**: Ray boots some sandboxes from a kernel overlayfs over their cached EROFS image, based on each sandbox's final OCI spec. Every worker needs `unshare`, `mount`, `mountpoint`, `flock`, and `setpriv` from util-linux for this. Workers without mount privileges also need `erofsfuse`, and so do workers with them whose kernel lacks the `erofs` driver or free loop devices. Workers without mount privileges that run as a user other than root need the `uidmap` package too. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems).
 * **slirp4netns (`network="public"` only)**: The [slirp4netns](https://github.com/rootless-containers/slirp4netns) binary on the `$PATH`, plus `/dev/net/tun` in the worker's environment. slirp4netns bridges each sandbox's private network namespace to the node. The `nsenter` and `setpriv` commands from util-linux 2.33 or later, which Ubuntu 20.04 and later include, must also be on the `$PATH`.
 * **nftables (`network="public"` only)**: The `nft` binary on the `$PATH`. The node's kernel also needs `nf_tables` built in or loaded as a module. Ray filters each `public` sandbox's outbound traffic with an nftables ruleset, so creating a `public` sandbox fails without them. To check a node, see [Troubleshooting](#troubleshooting).
@@ -571,7 +571,7 @@ res = ray.get(resumed_sb.exec.remote("cat /workspace/state.txt"))
 * **Read-only sandboxes:** Earlier Ray versions could create a sandbox with a read-only root filesystem through `readonly=True`. Restore refuses a checkpoint of one, because its saved state depends on that root filesystem.
 * **Egress allowlist:** a checkpoint saves the allowlist in force when it's taken, including changes from `set_egress_allowlist()`.
 * **Checkpoint path:** `checkpoint()` replaces an earlier checkpoint at the same path, but refuses a non-empty directory that doesn't hold one.
-* **Image builds:** gVisor restores only onto the same build of the sandbox's image. If the image was evicted from the cache and rebuilt, or its tag moved, since the checkpoint, restore fails with an error that says so.
+* **Image builds:** gVisor restores only onto the same build of the sandbox's image. erofs-pull builds the same image identically every time, so a checkpoint restores onto a rebuild of it after the image is evicted. If the image's tag moved since the checkpoint, or the image was built a different way, by extraction or by another Ray version, restore fails with an error that says so.
 * **Compression:** `checkpoint(compression="flate-best-speed")` writes a smaller checkpoint. gVisor loads guest memory in the background only from uncompressed checkpoints, so a sandbox restored from a compressed one starts after all of its memory is loaded.
 :::
 
@@ -641,7 +641,7 @@ ray.get(sb.delete.remote())
 
 ## Container images
 
-Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, keeps its layers in a node-wide layer cache, flattens them, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Each sandbox gets its own private writable overlay on top of the cached root filesystem, and Ray discards the overlay with the sandbox. A sandbox whose OCI spec has hooks that run on the host boots from an overlayfs root filesystem instead. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems). A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
+Sandboxes boot from OCI container images. The image manager pulls an image straight from the registry's HTTP API, with no Docker daemon, keeps its layers in a node-wide layer cache, flattens them, and caches the result under `/tmp/ray/sandbox/images` on the node for reuse by subsequent sandboxes on that node using the same image. References that name the same image share one cache entry, so `python:3.12-slim`, `library/python:3.12-slim`, and `docker.io/library/python:3.12-slim` pull and build it once. The cached root filesystem is a single EROFS image, built by erofs-pull or with `mkfs.erofs`, that gVisor mounts inside the Sentry, which keeps the image's file ownership intact. Each sandbox gets its own private writable overlay on top of the cached root filesystem, and Ray discards the overlay with the sandbox. A sandbox whose OCI spec has hooks that run on the host boots from an overlayfs root filesystem instead. For details, see [Overlayfs root filesystems](#overlayfs-root-filesystems). A cache left by an earlier Ray version, which extracted images into directories, is rebuilt on the next pull.
 
 ### Pull from private registries
 
@@ -653,7 +653,7 @@ Ray pulls a private image with the credentials that the node's Docker configurat
 
 Ray reads the file only when a registry asks a pull to authenticate. It handles both the token authentication that Docker Hub, GHCR, and Artifact Registry use and the HTTP basic authentication that Amazon ECR uses. Docker Hub and GHCR ask every pull to authenticate, including pulls of public images. When the file holds credentials for Docker Hub or GHCR, Ray uses them for public images too. If that registry's credential helper fails, public image pulls from it fail too, as they do with `docker pull`.
 
-The credentials stay out of sandboxes. The Ray worker that pulls an image holds them in memory for the pull and sends them only to the registry and to the token service that the registry names, not to the object storage that serves the image's layers. Ray never writes them to the image cache or its logs, and a sandbox's processes see only the image's files and the environment variables that you pass. Keep the following in mind:
+The credentials stay out of sandboxes. The Ray worker that pulls an image holds them in memory for the pull and sends them only to the registry and to the token service that the registry names, not to the object storage that serves the image's layers. When erofs-pull builds the image, the worker hands it the registry's token on its standard input, never on its command line. Ray never writes them to the image cache or its logs, and a sandbox's processes see only the image's files and the environment variables that you pass. Keep the following in mind:
 
 * **Ray checks credentials when it pulls, not when a sandbox starts.** Every sandbox on a node can use any image that the node already holds in its cache.
 * **A sandbox with network access can reach whatever its node can.** That can include the source a credential helper draws on, such as a cloud's instance metadata service. On Amazon EKS, require Instance Metadata Service Version 2 (IMDSv2) with a hop limit of 1 so that Pods and the sandboxes they run can't reach it.
@@ -691,6 +691,19 @@ The cache bounds both EROFS images and downloaded layers so that a node that run
 ### Layer cache
 
 Ray verifies downloaded image layers against their digests and stores them in `/tmp/ray/sandbox/images/.blobs/sha256/<digest>`. Images and tags that share layers reuse these files. Rebuilding an evicted image downloads only layers the node no longer has. Concurrent pulls of the same layer, from any process on the node, download it once. A cached image's EROFS file doesn't depend on its layers, so evicting layers doesn't affect a running sandbox.
+
+### Pull images
+
+On Linux, Ray builds a registry image's EROFS file with erofs-pull, a program that ships in Ray's wheels, rather than by extracting the layers to a directory and running `mkfs.erofs`. erofs-pull downloads the layers into the layer cache over parallel HTTP range requests, decompresses each layer on several CPU cores while it downloads, and writes each file's data once, straight into the image. It applies the layers by the same rules as extraction, so it builds the same files. It goes through the proxies that `HTTPS_PROXY`, `HTTP_PROXY`, and `NO_PROXY` name, and it trusts the same certificate authorities as Ray's Python code.
+
+Ray extracts an image and builds it with `mkfs.erofs` instead in these cases:
+
+* The image is a local image archive.
+* The manifest doesn't list its layers' sizes.
+* A layer has something erofs-pull doesn't build, such as a sparse file.
+* erofs-pull fails for any other reason, such as a download error. The worker's log has a warning that says why.
+
+A node runs a few erofs-pull builds at a time, by default one per 8 CPUs and at least 2, and each decompresses on up to 16 threads. Other pulls wait for a free slot. To change how many builds a node runs at once, set `RAY_SANDBOX_EROFS_PULL_MAX_CONCURRENT` on worker nodes. To always extract, set `RAY_SANDBOX_EROFS_PULL=0`.
 
 ### Route Docker Hub pulls through a mirror
 

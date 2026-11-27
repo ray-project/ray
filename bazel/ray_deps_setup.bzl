@@ -405,6 +405,33 @@ def ray_deps_setup():
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
+    # rapidgzip (parallel gzip decoding) for //src/ray/sandbox/erofs_pull, from
+    # its upstream library repository at a release tag.
+    auto_http_archive(
+        name = "rapidgzip",
+        build_file = "@io_ray//bazel:rapidgzip.BUILD",
+        sha256 = "69637d58fea7ec136b870b71e33a922a0a808feb782f3c0e16010dafe1780c8e",
+        strip_prefix = "librapidarchive-rapidgzip-v0.16.1",
+        url = "https://github.com/mxmlnkn/librapidarchive/archive/refs/tags/rapidgzip-v0.16.1.tar.gz",
+        patches = [
+            "@io_ray//thirdparty/patches:rapidgzip-small-access-cache.patch",
+        ],
+        patch_args = ["-p1"],
+    )
+
+    # Rust, for //src/ray/sandbox/erofs_pull (Ray Sandbox's image builder).
+    # 0.70.0 is the last release with WORKSPACE support (rust/repositories.bzl
+    # and crate_universe/repositories.bzl are gone from 0.71.0 on); newer ones
+    # need bzlmod. Declared after rules_foreign_cc and before
+    # rules_rust_dependencies(), whose maybe() calls keep Ray's own pins of
+    # rules_cc, bazel_skylib, platforms and rules_shell.
+    auto_http_archive(
+        name = "rules_rust",
+        sha256 = "5ffd9ff1f6f2f14f2057b7cbaa91a5e6acd9a4cbded5ac81dad9beb36859601e",
+        url = "https://github.com/bazelbuild/rules_rust/releases/download/0.70.0/rules_rust-0.70.0.tar.gz",
+        strip_prefix = "",
+    )
+
     # Using shallow_since allows the rule to clone down fewer commits.
     # Reference:  https://bazel.build/rules/lib/repo/git
     git_repository(

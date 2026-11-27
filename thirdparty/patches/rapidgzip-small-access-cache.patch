@@ -1,0 +1,15 @@
+--- a/src/core/BlockFetcher.hpp
++++ b/src/core/BlockFetcher.hpp
+@@ -178,7 +178,11 @@
+                   size_t                       parallelization ) :
+         m_parallelization( parallelization == 0 ? std::max<size_t>( 1U, availableCores() ) : parallelization ),
+         m_blockFinder( std::move( blockFinder ) ),
+-        m_cache( std::max( size_t( 16 ), m_parallelization ) ),
++        /* Ray: cache only the chunk being read. erofs-pull reads each layer front to back,
++         * once, and never returns to a chunk it has finished, while 16 or more cached
++         * decoded chunks were most of its memory. (insertIntoCache keeps one for
++         * sequential access, too, but FetchMultiStream isn't sequential.) */
++        m_cache( 1 ),
+         m_prefetchCache( 2 * m_parallelization /* Only m_parallelization would lead to lot of cache pollution! */ ),
+         m_failedPrefetchCache( m_prefetchCache.capacity() ),
+         /* If parallelization is 1, then do not start any thread even if the main thread is not doing much work. */
