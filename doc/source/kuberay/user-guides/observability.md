@@ -39,18 +39,19 @@ The `.Status.State` field represents the cluster's situation, but its limited re
 
 #### RayCluster `.Status.Conditions`
 
-Although `Status.State` can represent the cluster situation, it's still only a single field. By enabling the feature gate `RayClusterStatusConditions` on the KubeRay v1.2.1, you can access to new `Status.Conditions` for more detailed cluster history and states.
+Although `Status.State` can represent the cluster situation, it's still only a single field. With the feature gate `RayClusterStatusConditions`, you can access the new `Status.Conditions` for more detailed cluster history and states.
 
-:::{warning}
-`RayClusterStatusConditions` is still an alpha feature and may change in the future.
+:::{note}
+KubeRay v1.3.0 and later enable `RayClusterStatusConditions` by default. In KubeRay v1.2.x, it's an alpha feature that's disabled by default, so you need to enable it.
 :::
 
 If you deployed KubeRay with Helm, then enable the `RayClusterStatusConditions` gate in the `featureGates` of your Helm values.
 
 ```bash
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.2 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.7.0 \
   --set featureGates\[0\].name=RayClusterStatusConditions \
-  --set featureGates\[0\].enabled=true
+  --set featureGates\[0\].enabled=true \
+  -n $YOUR_NAMESPACE
 ```
 
 Or, just make your KubeRay Operator executable run with `--feature-gates=RayClusterStatusConditions=true` argument.
