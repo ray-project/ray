@@ -543,6 +543,25 @@ def test_filter_udf_preserves_dictionary_encoded_column_type(
     assert filtered_table.column("category").to_pylist() == ["a", "a"]
 
 
+# https://github.com/ray-project/ray/issues/67230
+@pytest.mark.parametrize(
+    "limit_first",
+    [
+        pytest.param(False, id="no_limit"),
+        pytest.param(True, id="limit_first"),
+    ],
+)
+def test_filter_expr_with_unicode_literal(ray_start_regular_shared, limit_first):
+    """Expression literals are part of the Filter operator name, which is used
+    as a metric tag. Non-ASCII literals used to fail the dataset with
+    ``UnicodeEncodeError`` while recording metrics."""
+    ds = ray.data.from_arrow(pa.table({"text": ["中文", "other", None]}))
+    if limit_first:
+        ds = ds.limit(2)
+
+    assert ds.filter(expr=col("text") == "中文").take_all() == [{"text": "中文"}]
+
+
 if __name__ == "__main__":
     import sys
 

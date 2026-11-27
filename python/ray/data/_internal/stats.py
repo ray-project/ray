@@ -112,6 +112,20 @@ def _create_prometheus_metric(
     return None
 
 
+def _to_metric_tag_value(value: str) -> str:
+    """Escapes non-ASCII characters so ``value`` can be used as a metric tag.
+
+    Ray's metrics recorder only accepts ASCII tag values, but operator names can
+    contain Unicode (e.g., string literals in filter expressions). ASCII values
+    are returned unchanged.
+
+    The escaping isn't injective: a non-ASCII value and the ASCII text it escapes
+    to map to the same tag. Operator IDs still get distinct tags within a dataset,
+    because each ID ends with the operator's index in the topology.
+    """
+    return value.encode("ascii", "backslashreplace").decode("ascii")
+
+
 def _record_prometheus_metric(
     prom_metric: PrometheusMetric,
     value: PrometheusMetricValue,
@@ -958,7 +972,7 @@ class _StatsActor:
         for operator, op_state in state.get("operators", {}).items():
             operator_tags = {
                 "dataset": dataset_tag,
-                "operator": operator,
+                "operator": _to_metric_tag_value(operator),
             }
             self.data_operator_estimated_total_blocks.set(
                 op_state.get("total", 0), operator_tags
@@ -1074,7 +1088,7 @@ class _StatsActor:
     ):
         tags = {"dataset": dataset_tag}
         if operator_tag is not None:
-            tags["operator"] = operator_tag
+            tags["operator"] = _to_metric_tag_value(operator_tag)
         if node_ip_tag is not None:
             tags["node_ip"] = node_ip_tag
         if split_tag is not None:
