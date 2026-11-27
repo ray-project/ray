@@ -217,6 +217,27 @@ class TestRollingWindowAccumulatorSingleThread:
             accumulator.add(50.0)
             assert accumulator.get_total() == 50.0
 
+    def test_window_does_not_stretch_with_unaligned_adds(self):
+        """Test that adds between bucket boundaries don't stretch the window."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            accumulator = RollingWindowAccumulator(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            # Add every 1.5s, so each rotation lands mid-bucket.
+            t = 0.0
+            while t <= 15.0:
+                mock_time.return_value = t
+                accumulator.add(1.0)
+                t += 1.5
+
+            # At t=15 the window covers buckets [6, 16), which hold the adds
+            # at t=6, 7.5, 9, 10.5, 12, 13.5, 15.
+            assert accumulator.get_total() == 7.0
+
 
 class TestRollingWindowAccumulatorMultiThread:
     def test_thread_registration(self):
