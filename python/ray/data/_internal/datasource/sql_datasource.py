@@ -112,7 +112,7 @@ class SQLDatasource(Datasource):
         return None
 
     def supports_sharding(self, parallelism: int) -> bool:
-        """Check if database supports sharding with MOD/ABS/CONCAT operations.
+        """Check if database supports sharding with the required operations.
 
         Args:
             parallelism: The number of shards to split the read into.
@@ -124,12 +124,13 @@ class SQLDatasource(Datasource):
         if parallelism <= 1 or self.shard_keys is None:
             return False
 
-        # Test if database supports required operations (MOD, ABS, MD5, CONCAT)
-        # by executing a sample query
+        # Test the operations used by the shard predicate (MOD, ABS, the hash
+        # function, CONCAT for multiple keys, and COALESCE) against the database.
         hash_fn = self.shard_hash_fn
+        bucket = f"MOD(ABS({hash_fn}({self.shard_keys})), {parallelism})"
         query = (
             f"SELECT COUNT(1) FROM ({self.sql}) as T"
-            f" WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = 0"
+            f" WHERE COALESCE({bucket}, 0) = 0"
         )
         try:
             with _connect(self.connection_factory) as cursor:
@@ -202,10 +203,13 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        query = (
-            f"SELECT * FROM ({self.sql}) as T "
-            f"WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = {task_id}"
-        )
+        bucket = f"MOD(ABS({hash_fn}({self.shard_keys})), {parallelism})"
+        # A NULL bucket can result from NULL shard keys or from the hash function
+        # itself (for example, SQLite's unicode('')). Route those rows to task 0;
+        # rows with a usable bucket keep their normal shard assignment.
+        predicate = f"COALESCE({bucket}, 0) = {task_id}"
+
+        query = f"SELECT * FROM ({self.sql}) AS T WHERE {predicate}"
 
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
