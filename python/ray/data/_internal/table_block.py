@@ -90,8 +90,8 @@ class TableBlockBuilder(BlockBuilder):
 
         self._num_rows += 1
         self._num_uncompacted_rows += 1
-        self._compact_if_needed()
         self._uncompacted_size.add(item)
+        self._compact_if_needed()
 
     def add_block(self, block: Any) -> None:
         if not isinstance(block, self._block_type):
@@ -101,6 +101,8 @@ class TableBlockBuilder(BlockBuilder):
                 "object with the expected type. Block:\n"
                 f"{block}"
             )
+        if self._columns:
+            self._compact_columns()
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
         self._num_rows += accessor.num_rows()
@@ -160,16 +162,20 @@ class TableBlockBuilder(BlockBuilder):
         self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
 
-    def _compact_if_needed(self) -> None:
+    def _compact_columns(self) -> None:
         assert self._columns
-        if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
-            return
         block = self._table_from_pydict(self._columns)
-        self.add_block(block)
+        self._tables.append(block)
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()
         self._num_compactions += 1
         self._num_uncompacted_rows = 0
+
+    def _compact_if_needed(self) -> None:
+        assert self._columns
+        if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
+            return
+        self._compact_columns()
 
 
 class TableBlockAccessor(BlockAccessor):
