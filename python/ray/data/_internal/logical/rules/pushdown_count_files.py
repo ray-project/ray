@@ -147,6 +147,13 @@ class PushdownCountFiles(Rule):
                 total_rows += block_metadata.num_rows or 0
             return pa.table({Count.COLUMN_NAME: pa.array([total_rows])})
 
+        read_num_cpus = read_files.ray_remote_args.get(
+            "num_cpus", self._PER_TASK_NUM_CPUS_ALLOCATION
+        )
+        if read_num_cpus is None:
+            # Explicit None reserves no CPU in Ray Core.
+            read_num_cpus = 0
+
         count_rows_op = MapBatches(
             fn=count_rows,
             input_dependencies=[list_files],
@@ -155,7 +162,20 @@ class PushdownCountFiles(Rule):
             min_rows_per_bundled_input=batch_size,
             zero_copy_batch=True,
             can_modify_num_rows=True,
-            ray_remote_args={"num_cpus": self._PER_TASK_NUM_CPUS_ALLOCATION},
+            # Counting still accesses storage, but does not need read resources.
+            ray_remote_args={
+                "num_cpus": min(self._PER_TASK_NUM_CPUS_ALLOCATION, read_num_cpus),
+                **{
+                    key: read_files.ray_remote_args[key]
+                    for key in (
+                        "runtime_env",
+                        "label_selector",
+                        "fallback_strategy",
+                        "scheduling_strategy",
+                    )
+                    if key in read_files.ray_remote_args
+                },
+            },
         )
 
         return LogicalPlan(count_rows_op, plan.context)

@@ -1051,6 +1051,58 @@ def test_count_pushdown_replaces_footer_indexer(tmp_path, restore_ctx):
     assert list_files_op.file_partitioner is None
 
 
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_count_pushdown_preserves_environment_and_placement(
+    tmp_path, ray_start_cluster, shutdown_only, datasource_v2
+):
+    from ray.data._internal.logical.operators.map_operator import MapBatches
+    from ray.util.placement_group import placement_group, remove_placement_group
+    from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=100_000_000, labels={"z": "1"})
+    cluster.add_node(num_cpus=2, object_store_memory=100_000_000)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    driver_pid = os.getpid()
+
+    class TargetNodeHandler(FSSpecHandler):
+        def open_input_file(self, path):
+            if os.getpid() != driver_pid:
+                assert os.environ.get("COUNT_TEST") == "1"
+            return super().open_input_file(path)
+
+    _write(tmp_path / "data.parquet", pa.table({"a": [1, 2, 3]}))
+    path = str(tmp_path)
+    fs = PyFileSystem(TargetNodeHandler(fsspec.filesystem("file")))
+    env = {"env_vars": {"COUNT_TEST": "1"}}
+    pg = placement_group([{"CPU": 0.1}])
+    try:
+        ray.get(pg.ready(), timeout=20)
+        strategy = PlacementGroupSchedulingStrategy(pg, placement_group_bundle_index=0)
+        fallback = [{"label_selector": {"z": "1"}}]
+        location = {"label_selector": {"z": "missing"}, "fallback_strategy": fallback}
+        datasets = []
+        for cpu_args, expected_cpus, options in (
+            ({}, 0.5, {"scheduling_strategy": "SPREAD"}),
+            ({"num_cpus": None}, 0, location),
+            ({"num_cpus": 0.1}, 0.1, {"scheduling_strategy": strategy}),
+            ({"num_cpus": 1}, 0.5, {"scheduling_strategy": "SPREAD"}),
+        ):
+            opts = {**options, **cpu_args, "num_gpus": 1, "runtime_env": env}
+            dataset = ray.data.read_parquet(path, filesystem=fs, ray_remote_args=opts)
+            count_op = _optimized_count_plan(dataset).dag
+            assert isinstance(count_op, MapBatches)
+            expected = {**opts, "num_cpus": expected_cpus}
+            del expected["num_gpus"]
+            assert count_op.ray_remote_args == expected
+            datasets.append(dataset)
+        assert [dataset.count() for dataset in datasets[1:3]] == [3, 3]
+    finally:
+        remove_placement_group(pg)
+
+
 @pytest.mark.parametrize(
     "read_kwargs", [{}, {"include_paths": True}], ids=["plain", "include_paths"]
 )
