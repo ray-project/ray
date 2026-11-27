@@ -146,6 +146,16 @@ Never extend `DataSourceV2` directly.
 | `<Name>Scanner` | `ArrowFileScanner` when `FileReader` decodes the format; otherwise `FileScanner` plus the `Supports*` mixins your reader honours | `Scanner` plus the `Supports*` mixins your reader honours |
 | Reader | `FileReader(format=...)` when it decodes the format; otherwise implement `Reader.read` | implement `Reader.read` |
 
+A format that decodes a whole file from one byte stream (binary, text, images,
+NumPy, audio, video) extends the `FileStream*` ladder in `common/` instead:
+`FileStreamDatasourceV2` (`_infer_file_schema`, `create_scanner`),
+`FileStreamScanner` (column, limit and partition pushdown) and
+`FileStreamReader` (`_read_stream(stream, path)` yields the data columns; the
+base opens, decompresses, retries, appends partition and `path` columns and
+projects; set `num_threads_per_task` to open several files at once). Mix
+`FixedRowsPerFileMetadata` into the reader when every file is one row, so
+`count()` never opens a file.
+
 Wire it up in `read_api.py` under the `use_datasource_v2` branch of the
 matching `read_*` function, which calls `_read_datasource_v2(datasource, ...)`.
 A file format then gets parallel listing, extension filtering,
