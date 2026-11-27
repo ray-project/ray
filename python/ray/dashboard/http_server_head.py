@@ -2,6 +2,7 @@ import asyncio
 import errno
 import ipaddress
 import logging
+import math
 import os
 import pathlib
 import posixpath
@@ -14,6 +15,7 @@ import multidict
 from packaging.version import Version
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
@@ -104,6 +106,15 @@ class HttpServerDashboardHead:
         self.metrics = metrics
         self._session_name = session_name
         self.proxy_server_url = proxy_server_url
+        proxy_server_timeout = dashboard_consts.PROXY_SERVER_TIMEOUT
+        if not math.isfinite(proxy_server_timeout) or proxy_server_timeout <= 0:
+            logger.warning(
+                f"Found RAY_DASHBOARD_PROXY_SERVER_TIMEOUT={proxy_server_timeout} in "
+                "environment, but value must be a positive finite float. "
+                f"Falling back to default {dashboard_consts.DEFAULT_PROXY_SERVER_TIMEOUT}s."
+            )
+            proxy_server_timeout = dashboard_consts.DEFAULT_PROXY_SERVER_TIMEOUT
+        self.proxy_server_timeout = proxy_server_timeout
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -328,11 +339,11 @@ class HttpServerDashboardHead:
             # This is to fix 415 error caused by content-type not in headers
             proxy_headers.setdefault("Content-Type", "application/json")
 
-            timeout = aiohttp.ClientTimeout(total=30)
+            timeout = aiohttp.ClientTimeout(total=self.proxy_server_timeout)
+            # Manual concatenation to preserve potential paths in proxy_server_url
+            full_url = f"{self.proxy_server_url.rstrip('/')}{rel_path}"
             try:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
-                    # Manual concatenation to preserve potential paths in proxy_server_url
-                    full_url = f"{self.proxy_server_url.rstrip('/')}{rel_path}"
                     logger.debug(
                         f"Sending request to proxy server instead. {full_url=}"
                     )
@@ -364,9 +375,15 @@ class HttpServerDashboardHead:
                             logger.warning(
                                 f"Calling endpoint {request.rel_url} returned status {resp.status} and {body}, falling back"
                             )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Request to proxy server endpoint {full_url} timed out after "
+                    f"{self.proxy_server_timeout}s. Falling back to original handler."
+                )
             except Exception as e:
                 logger.warning(
-                    f"Failed to use proxy server endpoint: {e}. Falling back to original handler."
+                    f"Failed to use proxy server endpoint {full_url}: {e!r}. "
+                    "Falling back to original handler."
                 )
 
         return await handler(request)

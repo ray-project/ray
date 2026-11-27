@@ -2,6 +2,7 @@ import asyncio
 import collections
 import contextlib
 import copy
+import importlib
 import ipaddress
 import json
 import logging
@@ -9,6 +10,7 @@ import os
 import socket
 import subprocess
 import sys
+import threading
 import time
 import warnings
 from types import SimpleNamespace
@@ -1627,6 +1629,140 @@ def test_middleware_with_httpserver_for_proxy_server_with_ray_start(
     response = request_with_auth_token("GET", f"{webui_url}{target_path}")
     assert response.json() == mock_response
     assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_proxy_server_timeout_validation(monkeypatch, caplog):
+    """Test env var parsing and invalid-value fallback for proxy server timeout."""
+    import ray.dashboard.http_server_head as http_server_head_mod
+    from ray.dashboard.http_server_head import HttpServerDashboardHead
+
+    monkeypatch.setattr(logging.getLogger("ray"), "propagate", True)
+    # Avoid mutating global DashboardHeadRouteTable across repeated instantiations.
+    monkeypatch.setattr(http_server_head_mod, "setup_static_dir", lambda: "/tmp")
+    monkeypatch.setattr(
+        http_server_head_mod.dashboard_optional_utils.DashboardHeadRouteTable,
+        "bind",
+        lambda _self: None,
+    )
+    try:
+        monkeypatch.delenv("RAY_DASHBOARD_PROXY_SERVER_TIMEOUT", raising=False)
+        importlib.reload(dashboard_consts)
+        assert (
+            dashboard_consts.PROXY_SERVER_TIMEOUT
+            == dashboard_consts.DEFAULT_PROXY_SERVER_TIMEOUT
+        )
+
+        for raw_valid, expected in [("0.25", 0.25), ("120", 120.0)]:
+            monkeypatch.setenv("RAY_DASHBOARD_PROXY_SERVER_TIMEOUT", raw_valid)
+            importlib.reload(dashboard_consts)
+            assert dashboard_consts.PROXY_SERVER_TIMEOUT == expected
+
+            head = HttpServerDashboardHead(
+                ip="127.0.0.1",
+                http_host="127.0.0.1",
+                http_port=8265,
+                http_port_retries=0,
+                gcs_address="127.0.0.1:6379",
+                session_name="test_session",
+                metrics=MagicMock(),
+                proxy_server_url="http://127.0.0.1:8080",
+            )
+            try:
+                assert head.proxy_server_timeout == expected
+            finally:
+                if not head.http_session.closed:
+                    await head.http_session.close()
+
+        for raw_invalid in ["0", "-5", "inf", "-inf", "nan", "abc"]:
+            caplog.clear()
+            monkeypatch.setenv("RAY_DASHBOARD_PROXY_SERVER_TIMEOUT", raw_invalid)
+            with caplog.at_level(logging.WARNING):
+                importlib.reload(dashboard_consts)
+                head = HttpServerDashboardHead(
+                    ip="127.0.0.1",
+                    http_host="127.0.0.1",
+                    http_port=8265,
+                    http_port_retries=0,
+                    gcs_address="127.0.0.1:6379",
+                    session_name="test_session",
+                    metrics=MagicMock(),
+                    proxy_server_url="http://127.0.0.1:8080",
+                )
+            try:
+                assert (
+                    head.proxy_server_timeout
+                    == dashboard_consts.DEFAULT_PROXY_SERVER_TIMEOUT
+                )
+                assert "RAY_DASHBOARD_PROXY_SERVER_TIMEOUT" in caplog.text
+            finally:
+                if not head.http_session.closed:
+                    await head.http_session.close()
+    finally:
+        monkeypatch.undo()
+        importlib.reload(dashboard_consts)
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server_timeout(
+    monkeypatch, shutdown_only, httpserver
+):
+    """Test that proxy middleware respects RAY_DASHBOARD_PROXY_SERVER_TIMEOUT."""
+    from werkzeug.wrappers import Response
+
+    monkeypatch.setenv("RAY_DASHBOARD_PROXY_SERVER_TIMEOUT", "1.0")
+
+    mock_fast_response = {"status": "success", "source": "proxy"}
+    mock_slow_response = {"offset": "proxy", "value": "proxy"}
+    entered_slow = threading.Event()
+    release_slow = threading.Event()
+    done_slow = threading.Event()
+
+    def slow_handler(_request):
+        entered_slow.set()
+        try:
+            release_slow.wait(timeout=10.0)
+            return Response(
+                json.dumps(mock_slow_response), content_type="application/json"
+            )
+        finally:
+            done_slow.set()
+
+    httpserver.expect_request("/api/fast").respond_with_json(mock_fast_response)
+    httpserver.expect_request("/timezone").respond_with_handler(slow_handler)
+
+    address_info = ray.init(
+        num_cpus=1,
+        include_dashboard=True,
+        proxy_server_url=httpserver.url_for("/"),
+    )
+    assert wait_until_server_available(address_info["webui_url"]) is True
+    webui_url = format_web_url(address_info["webui_url"])
+
+    fast_resp = request_with_auth_token("GET", f"{webui_url}/api/fast")
+    assert fast_resp.status_code == 200
+    assert fast_resp.json() == mock_fast_response
+
+    start = time.monotonic()
+    try:
+        slow_resp = request_with_auth_token("GET", f"{webui_url}/timezone")
+        elapsed = time.monotonic() - start
+    finally:
+        release_slow.set()
+        assert done_slow.wait(timeout=5.0)
+
+    assert entered_slow.is_set()
+    assert slow_resp.status_code == 200
+    assert slow_resp.json() != mock_slow_response
+    assert "offset" in slow_resp.json()
+    assert elapsed < 5.0
 
 
 def test_dashboard_not_included_ray_init(shutdown_only, capsys):
