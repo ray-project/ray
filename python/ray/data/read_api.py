@@ -4545,8 +4545,9 @@ def read_hive(
     Configure authentication, transport, and TLS certificate verification in
     ``connection_factory``. ``GSSAPI`` also requires ``impyla[kerberos]`` and
     Kerberos credentials on those nodes.
-    The real-server integration test covers ``PLAIN`` with HiveServer2 in
-    server mode ``NONE``. It doesn't cover ``NOSASL`` or ``GSSAPI``.
+    For verified TLS, pass ``use_ssl=True`` and a trusted ``ca_cert`` in the
+    factory, and make the CA file available wherever the factory runs. See
+    :ref:`read-hive-auth-tls` for certificate requirements.
 
     .. note::
 

@@ -1,9 +1,12 @@
 """Real HiveServer2 tests, enabled with RAY_HIVE_TEST_HOST."""
 
+import base64
 import os
 import socket
+import ssl
+import time
 import uuid
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal, Optional, TypedDict, cast
@@ -63,7 +66,7 @@ def _connection_options() -> _ConnectionOptions:
     return options
 
 
-def _make_connection_factory(options: _ConnectionOptions):
+def _make_connection_factory(options: _ConnectionOptions, *, timeout=None):
     def connection_factory():
         from impala.dbapi import connect
 
@@ -75,7 +78,11 @@ def _make_connection_factory(options: _ConnectionOptions):
             if not password:
                 raise ValueError("PLAIN integration requires HIVE_TEST_PASSWORD")
         return connect(
-            **options, password=password, verify_cert=options["use_ssl"], retries=1
+            **options,
+            password=password,
+            verify_cert=options["use_ssl"],
+            retries=1,
+            timeout=timeout,
         )
 
     return connection_factory
@@ -83,6 +90,36 @@ def _make_connection_factory(options: _ConnectionOptions):
 
 def _connect(options: _ConnectionOptions):
     return connect_read_hive(_make_connection_factory(options))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _configure_tls_fixture(tmp_path_factory):
+    encoded_ca = os.environ.get("RAY_HIVE_CA_PEM_B64")
+    if encoded_ca is None:
+        yield
+        return
+
+    ca_path = tmp_path_factory.mktemp("hive_tls") / "ca.pem"
+    ca_path.write_bytes(base64.b64decode(encoded_ca, validate=True))
+    ssl.create_default_context(cafile=str(ca_path))
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("RAY_HIVE_TEST_CA_CERT", str(ca_path))
+        options = _connection_options()
+        if not options["use_ssl"]:
+            pytest.fail("TLS fixture requires RAY_HIVE_TEST_USE_SSL=true")
+        deadline = time.monotonic() + 120
+        while True:
+            try:
+                with closing(_make_connection_factory(options, timeout=10)()) as conn:
+                    with closing(conn.cursor()) as cursor:
+                        cursor.execute("SELECT 1")
+                        assert cursor.fetchall() == [(1,)]
+                break
+            except Exception:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(2)
+        yield
 
 
 @contextmanager
@@ -277,12 +314,15 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
     if not options["use_ssl"] or not options["ca_cert"]:
         pytest.skip("Run against a TLS-enabled HiveServer2 with a test CA certificate")
 
+    import certifi
+
     # Positive control: the configured endpoint trusts the test CA.
     _connect(options).close()
 
     wrong_host = os.environ.get("RAY_HIVE_TEST_WRONG_HOST", "127.0.0.1")
     if wrong_host == options["host"]:
         pytest.fail("RAY_HIVE_TEST_WRONG_HOST must differ from RAY_HIVE_TEST_HOST")
+    assert socket.gethostbyname(wrong_host) == socket.gethostbyname(options["host"])
     try:
         socket.create_connection((wrong_host, options["port"]), timeout=10).close()
     except OSError:
@@ -296,7 +336,7 @@ def test_hive_tls_rejects_untrusted_or_mismatched_server():
         _connect(mismatched_host_options)
 
     untrusted_ca_options = options.copy()
-    untrusted_ca_options["ca_cert"] = None
+    untrusted_ca_options["ca_cert"] = certifi.where()
     with pytest.raises(RuntimeError, match="HiveServer2 connection failed"):
         _connect(untrusted_ca_options)
 
