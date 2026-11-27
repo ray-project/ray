@@ -145,6 +145,9 @@ class NvidiaGpuProvider(GpuProvider):
         self._force_fallback_this_cycle = False
         self._process_util_detection_failure_count = 0
         self._last_process_util_detection_failure_log_ts = 0.0
+        # GPUs whose NVML handle lookup failed, so the warning is logged once
+        # per GPU instead of on every collection cycle.
+        self._unqueryable_gpu_indices: Set[int] = set()
 
     def get_provider_name(self) -> GpuProviderType:
         return GpuProviderType.NVIDIA
@@ -279,7 +282,23 @@ class NvidiaGpuProvider(GpuProvider):
             self._detect_ppu_devices(num_gpus)
 
             for i in range(num_gpus):
-                gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(i)
+                try:
+                    gpu_handle = self._pynvml.nvmlDeviceGetHandleByIndex(i)
+                except self._pynvml.NVMLError as e:
+                    # A GPU that NVML cannot query, for example one that has
+                    # fallen off the bus, must not hide the GPUs after it.
+                    if i not in self._unqueryable_gpu_indices:
+                        logger.warning(
+                            "Skipping NVIDIA GPU %d in GPU metrics: cannot get "
+                            "its NVML handle: %s",
+                            i,
+                            e,
+                        )
+                        self._unqueryable_gpu_indices.add(i)
+                    continue
+                if i in self._unqueryable_gpu_indices:
+                    logger.info("NVIDIA GPU %d is reporting GPU metrics again", i)
+                    self._unqueryable_gpu_indices.discard(i)
 
                 # Check if MIG mode is enabled on this GPU
                 try:
