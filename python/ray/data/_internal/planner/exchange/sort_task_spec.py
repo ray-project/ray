@@ -7,7 +7,7 @@ from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data._internal.util import NULL_SENTINEL
+from ray.data._internal.util import NULL_SENTINEL, _is_null_scalar
 from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.types import ObjectRef
 
@@ -224,23 +224,15 @@ class SortTaskSpec(ExchangeTaskSpec):
         # This zip does the transposition from list of column values to list of tuples.
         samples_list = list(zip(*samples_dict.values()))
 
-        def is_na(x):
-            # Check if x is None or NaN. Type casting to np.array first to avoid
-            # isnan failing on strings and other types.
-            if x is None:
-                return True
-            x = np.asarray(x)
-            if np.issubdtype(x.dtype, np.number):
-                return np.isnan(x)
-            return False
-
         # To allow multi-directional sort, we utilize Python's stable sort: we
         # sort several times with different directions. We do this in reverse, so
         # that the last key we sort by is the primary sort key passed by the user.
         for i, desc in list(enumerate(sort_key.get_descending()))[::-1]:
             # Sort the list, but Nones should be NULL_SENTINEL to ensure safe sorting.
             samples_list.sort(
-                key=lambda sample: NULL_SENTINEL if is_na(sample[i]) else sample[i],
+                key=lambda sample: (
+                    NULL_SENTINEL if _is_null_scalar(sample[i]) else sample[i]
+                ),
                 reverse=desc,
             )
 
@@ -250,7 +242,14 @@ class SortTaskSpec(ExchangeTaskSpec):
             for q in np.linspace(0, 1, num_reducers + 1)
         ]
         # Exclude the first and last quantiles because they're 0 and 1.
-        return [samples_list[i] for i in quantile_indices[1:-1]]
+        #
+        # Return every missing value as None, so a boundary never holds a NaN,
+        # pd.NA or NaT that can't be compared with the rest of the column (e.g.
+        # strings in a pandas block).
+        return [
+            tuple(None if _is_null_scalar(v) else v for v in samples_list[i])
+            for i in quantile_indices[1:-1]
+        ]
 
 
 def _sample_block(block: Block, n_samples: int, sort_key: SortKey) -> Block:

@@ -1,6 +1,7 @@
 import random
 from unittest import mock
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 
@@ -64,6 +65,26 @@ def test_get_boundaries_from_samples():
     )
 
     assert boundaries == [(4,)]
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [
+        pytest.param(float("nan"), id="nan"),
+        pytest.param(pd.NA, id="pd_na"),
+    ],
+)
+def test_get_boundaries_from_pandas_samples_with_missing_values(missing):
+    samples = [
+        pd.DataFrame({"key": pd.Series(["a", "b", missing, missing], dtype=object)})
+    ]
+
+    boundaries = SortTaskSpec.get_boundaries_from_samples(
+        samples, SortKey("key"), num_reducers=4
+    )
+
+    # Missing values sort last and are all returned as None.
+    assert boundaries == [("a",), ("b",), (None,)]
 
 
 def test_get_boundaries_from_empty_samples():

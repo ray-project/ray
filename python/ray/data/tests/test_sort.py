@@ -336,6 +336,39 @@ def test_sort_pandas(
     assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
 
 
+@pytest.mark.parametrize("descending", [False, True])
+@pytest.mark.parametrize(
+    "values,dtype",
+    [
+        pytest.param(
+            [f"user_{i % 7}" for i in range(48)],
+            pd.StringDtype(na_value=np.nan),
+            id="str_nan",
+        ),
+        pytest.param([f"user_{i % 7}" for i in range(48)], "string", id="str_na"),
+    ],
+)
+def test_sort_pandas_blocks_with_missing_values(
+    ray_start_regular, configure_shuffle_method, values, dtype, descending
+):
+    # Most of the values are missing, so some sampled boundaries are missing too.
+    # pandas marks them with NaN or pd.NA, which can't be compared with the
+    # non-missing strings in the column.
+    series = pd.Series(
+        [v if i % 4 == 0 else np.nan for i, v in enumerate(values)], dtype=dtype
+    )
+    df = pd.DataFrame({"key": series, "id": range(len(series))})
+    blocks = [df.iloc[i : i + 8].reset_index(drop=True) for i in range(0, 48, 8)]
+
+    actual = ray.data.from_blocks(blocks).sort("key", descending=descending)
+
+    expected = df.sort_values("key", ascending=not descending, na_position="last")
+    assert actual.to_pandas()["key"].isna().tolist() == expected["key"].isna().tolist()
+    assert (
+        actual.to_pandas()["key"].dropna().tolist() == expected["key"].dropna().tolist()
+    )
+
+
 def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_method):
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))

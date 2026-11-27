@@ -876,6 +876,11 @@ def unify_ref_bundles_schema(
     return unify_schemas_with_validation(schemas_to_unify)
 
 
+def _is_null_scalar(value: Any) -> bool:
+    """Whether ``value`` is a missing value: None, NaN, ``pd.NA`` or ``NaT``."""
+    return value is None or bool(pd.isna(value))
+
+
 def find_insertion_index(
     key_columns: List[np.ndarray],
     pivot: Tuple[Union[Any]],
@@ -938,14 +943,15 @@ def find_insertion_index(
         # Nulls sort last in Arrow, so they accumulate at the tail of
         # column_range_view. Stripping them before searching avoids a
         # TypeError from np.searchsorted on None values — and if
-        # cur_pivot_val is also None, the answer is simply the end of
-        # the non-null region. Skip the O(n) strip when the caller has
+        # cur_pivot_val is also null (None, NaN, pd.NA or NaT, which is how
+        # pandas blocks mark missing values), the answer is simply the end
+        # of the non-null region. Skip the O(n) strip when the caller has
         # told us the column has no nulls (Arrow's null_count is O(1),
         # so the caller can cheaply check once per column instead of us
         # paying ``pd.isna`` per boundary).
         if has_nulls is None or has_nulls[col_idx]:
             column_range_view = column_range_view[~pd.isna(column_range_view)]
-        if cur_pivot_val is None:
+        if _is_null_scalar(cur_pivot_val):
             return left + len(column_range_view)
 
         if descending[col_idx] is True:
