@@ -134,9 +134,11 @@ ray_cc_library(
     deps = [
         "//src/ray/asio:instrumented_io_context",
         "//src/ray/common:id",
+        "//src/ray/common:ray_config",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/util:logging",
+        "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_set",
     ],
 )

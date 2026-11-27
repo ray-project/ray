@@ -21,9 +21,12 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_format.h"
 #include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "gtest/gtest.h"
 #include "ray/asio/asio_util.h"
+#include "ray/common/ray_config.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
@@ -33,14 +36,34 @@ namespace {
 
 class FakeRayletClientForTest : public rpc::FakeRayletClient {
  public:
-  void GetResourceLoad(const rpc::ClientCallback<rpc::GetResourceLoadReply> &) override {
+  // Called on the pull thread by Pull().
+  void GetResourceLoad(
+      const rpc::ClientCallback<rpc::GetResourceLoadReply> &callback) override {
     num_calls_++;
+    absl::MutexLock lock(&mutex_);
+    callbacks_.push_back(callback);
   }
 
   int NumCalls() { return num_calls_; }
 
+  // Must run on the pull thread, like a real reply.
+  void Reply(const NodeID &node_id, const Status &status = Status::OK()) {
+    rpc::ClientCallback<rpc::GetResourceLoadReply> callback;
+    {
+      absl::MutexLock lock(&mutex_);
+      RAY_CHECK(!callbacks_.empty());
+      callback = std::move(callbacks_.front());
+      callbacks_.erase(callbacks_.begin());
+    }
+    rpc::GetResourceLoadReply reply;
+    reply.mutable_resources()->set_node_id(node_id.Binary());
+    callback(status, std::move(reply));
+  }
+
  private:
   std::atomic<int> num_calls_{0};
+  absl::Mutex mutex_;
+  std::vector<rpc::ClientCallback<rpc::GetResourceLoadReply>> callbacks_;
 };
 
 rpc::Address AddressOf(const NodeID &node_id) {
@@ -58,6 +81,9 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
   GcsResourceLoadPullerTest()
       : pull_io_thread_("test_pull",
                         /*enable_lag_probe=*/false,
+                        /*used_for_health_check=*/false),
+        main_io_thread_("test_main",
+                        /*enable_lag_probe=*/false,
                         /*used_for_health_check=*/false) {}
 
   std::shared_ptr<FakeRayletClientForTest> ClientFor(const NodeID &node_id) {
@@ -74,7 +100,13 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
     return factory_calls_[node_id];
   }
 
-  std::unique_ptr<GcsResourceLoadPuller> MakePuller() {
+  std::unique_ptr<GcsResourceLoadPuller> MakePuller(int max_batch_size = 100,
+                                                    int batch_delay_ms = 10) {
+    RayConfig::instance().initialize(
+        absl::StrFormat(R"({"gcs_resource_load_apply_batch_size": %d, )"
+                        R"("gcs_resource_load_apply_batch_delay_milliseconds": %d})",
+                        max_batch_size,
+                        batch_delay_ms));
     pool_ = std::make_unique<rpc::RayletClientPool>([this](const rpc::Address &address) {
       const auto node_id = NodeID::FromBinary(address.node_id());
       {
@@ -83,27 +115,63 @@ class GcsResourceLoadPullerTest : public ::testing::Test {
       }
       return ClientFor(node_id);
     });
-    return std::make_unique<GcsResourceLoadPuller>(pull_io_thread_.GetIoService(),
-                                                   pull_io_thread_.GetIoService(),
-                                                   *pool_,
-                                                   [](rpc::ResourcesData) {});
+    return std::make_unique<GcsResourceLoadPuller>(
+        pull_io_thread_.GetIoService(),
+        main_io_thread_.GetIoService(),
+        *pool_,
+        [this](rpc::ResourcesData resources) {
+          RAY_CHECK(
+              main_io_thread_.GetIoService().get_executor().running_in_this_thread());
+          absl::MutexLock lock(&mutex_);
+          applied_.push_back(NodeID::FromBinary(resources.node_id()));
+        });
+  }
+
+  void RunOnPullThread(std::function<void()> fn) {
+    auto done = std::make_shared<std::promise<void>>();
+    auto future = done->get_future();
+    pull_io_thread_.GetIoService().post(
+        [fn = std::move(fn), done]() {
+          fn();
+          done->set_value();
+        },
+        "GcsResourceLoadPullerTest.run");
+    future.wait();
   }
 
   void PullOnPullThread(GcsResourceLoadPuller &puller,
                         std::vector<rpc::Address> raylet_addresses) {
+    RunOnPullThread(
+        [&puller, &raylet_addresses] { puller.Pull(std::move(raylet_addresses)); });
+  }
+
+  // Waits until the main thread has applied `n` loads, then returns them.
+  std::vector<NodeID> WaitForApplied(size_t n) {
+    absl::MutexLock lock(&mutex_);
+    auto done = [this, n]()
+                    ABSL_SHARED_LOCKS_REQUIRED(mutex_) { return applied_.size() >= n; };
+    mutex_.AwaitWithTimeout(absl::Condition(&done), absl::Seconds(10));
+    return applied_;
+  }
+
+  std::vector<NodeID> Applied() {
+    absl::MutexLock lock(&mutex_);
+    return applied_;
+  }
+
+  // Waits for everything already posted to the main thread to run.
+  void DrainMainThread() {
     auto done = std::make_shared<std::promise<void>>();
     auto future = done->get_future();
-    pull_io_thread_.GetIoService().post(
-        [&puller, done, raylet_addresses = std::move(raylet_addresses)]() mutable {
-          puller.Pull(std::move(raylet_addresses));
-          done->set_value();
-        },
-        "GcsResourceLoadPullerTest.pull");
+    main_io_thread_.GetIoService().post([done]() { done->set_value(); },
+                                        "GcsResourceLoadPullerTest.drain");
     future.wait();
   }
 
   InstrumentedIOContextWithThread pull_io_thread_;
+  InstrumentedIOContextWithThread main_io_thread_;
   absl::Mutex mutex_;
+  std::vector<NodeID> applied_ ABSL_GUARDED_BY(mutex_);
   absl::flat_hash_map<NodeID, std::shared_ptr<FakeRayletClientForTest>> clients_;
   absl::flat_hash_map<NodeID, int> factory_calls_;
   std::unique_ptr<rpc::RayletClientPool> pool_;
@@ -127,6 +195,67 @@ TEST_F(GcsResourceLoadPullerTest, DisconnectsRayletsThatLeftTheSnapshot) {
   EXPECT_EQ(ClientFor(node1)->NumCalls(), 2);
   EXPECT_EQ(FactoryCalls(node1), 2);
   EXPECT_EQ(FactoryCalls(node2), 1);
+}
+
+// Replies below the size cap wait for the delay timer and then reach the main
+// thread together, in arrival order.
+TEST_F(GcsResourceLoadPullerTest, FlushesBatchAfterDelay) {
+  const std::vector<NodeID> nodes = {
+      NodeID::FromRandom(), NodeID::FromRandom(), NodeID::FromRandom()};
+  auto puller = MakePuller(/*max_batch_size=*/10, /*batch_delay_ms=*/50);
+  PullOnPullThread(*puller,
+                   {AddressOf(nodes[0]), AddressOf(nodes[1]), AddressOf(nodes[2])});
+
+  RunOnPullThread([&] {
+    for (const auto &node : nodes) {
+      ClientFor(node)->Reply(node);
+    }
+  });
+  DrainMainThread();
+  EXPECT_TRUE(Applied().empty());
+
+  EXPECT_EQ(WaitForApplied(3), nodes);
+}
+
+// Reaching the cap flushes at once, and the leftover reply goes out on the
+// timer that the first reply armed.
+TEST_F(GcsResourceLoadPullerTest, FlushesBatchWhenFull) {
+  const std::vector<NodeID> nodes = {
+      NodeID::FromRandom(), NodeID::FromRandom(), NodeID::FromRandom()};
+  auto puller = MakePuller(/*max_batch_size=*/2, /*batch_delay_ms=*/200);
+  PullOnPullThread(*puller,
+                   {AddressOf(nodes[0]), AddressOf(nodes[1]), AddressOf(nodes[2])});
+
+  RunOnPullThread([&] {
+    for (const auto &node : nodes) {
+      ClientFor(node)->Reply(node);
+    }
+  });
+  DrainMainThread();
+  EXPECT_EQ(Applied(), (std::vector<NodeID>{nodes[0], nodes[1]}));
+
+  EXPECT_EQ(WaitForApplied(3), nodes);
+}
+
+// A failed reply is left out of the batch and doesn't hold up the others.
+TEST_F(GcsResourceLoadPullerTest, SkipsFailedReplies) {
+  const NodeID ok1 = NodeID::FromRandom();
+  const NodeID failed = NodeID::FromRandom();
+  const NodeID ok2 = NodeID::FromRandom();
+  auto puller = MakePuller(/*max_batch_size=*/10, /*batch_delay_ms=*/10);
+  PullOnPullThread(*puller, {AddressOf(ok1), AddressOf(failed), AddressOf(ok2)});
+
+  RunOnPullThread([&] {
+    ClientFor(ok1)->Reply(ok1);
+    ClientFor(failed)->Reply(failed, Status::IOError("raylet unreachable"));
+    ClientFor(ok2)->Reply(ok2);
+  });
+
+  EXPECT_EQ(WaitForApplied(2), (std::vector<NodeID>{ok1, ok2}));
+  // The failed reply never shows up later either.
+  absl::SleepFor(absl::Milliseconds(50));
+  DrainMainThread();
+  EXPECT_EQ(Applied(), (std::vector<NodeID>{ok1, ok2}));
 }
 
 }  // namespace gcs
