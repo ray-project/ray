@@ -470,8 +470,8 @@ def override_runtime_envs_except_env_vars(parent_env: Dict, child_env: Dict) -> 
     defaults = copy.deepcopy(parent_env)
     overrides = copy.deepcopy(child_env)
 
-    default_env_vars = defaults.get("env_vars", {})
-    override_env_vars = overrides.get("env_vars", {})
+    default_env_vars = defaults.get("env_vars") or {}
+    override_env_vars = overrides.get("env_vars") or {}
 
     defaults.update(overrides)
     default_env_vars.update(override_env_vars)

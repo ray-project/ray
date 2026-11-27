@@ -217,6 +217,32 @@ class TestRollingWindowAccumulatorSingleThread:
             accumulator.add(50.0)
             assert accumulator.get_total() == 50.0
 
+    def test_fractional_bucket_rotation_does_not_drift_expiry(self):
+        """Test that partial-bucket timestamps do not push bucket boundaries forward."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            accumulator = RollingWindowAccumulator(
+                window_duration_s=10.0,
+                num_buckets=10,  # 1 second per bucket
+            )
+
+            # Record 100 in bucket 0 [0.0, 1.0)
+            accumulator.add(100.0)
+
+            # Rotate at t=1.9 (advances 1 bucket to bucket 1; 0.9s into bucket 1)
+            mock_time.return_value = 1.9
+            accumulator.add(25.0)
+
+            # At t=10.5, bucket 0 [0.0, 1.0) is >10s old and must be expired,
+            # while bucket 1 [1.0, 2.0) is still within the 10s window.
+            mock_time.return_value = 10.5
+            assert accumulator.get_total() == 25.0
+
+            # Rotating again via add() at t=10.5 should also expire bucket 0
+            accumulator.add(10.0)
+            assert accumulator.get_total() == 35.0
+
 
 class TestRollingWindowAccumulatorMultiThread:
     def test_thread_registration(self):

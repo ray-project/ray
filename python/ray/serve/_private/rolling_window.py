@@ -114,6 +114,7 @@ class _RollingWindowBase:
                 # All buckets have expired, reset everything
                 data.buckets = [0.0] * self._num_buckets
                 data.current_bucket_idx = 0
+                data.last_rotation_time = now
             else:
                 # Clear old buckets as we advance
                 for _ in range(buckets_to_advance):
@@ -122,7 +123,7 @@ class _RollingWindowBase:
                     ) % self._num_buckets
                     data.buckets[data.current_bucket_idx] = 0.0
 
-            data.last_rotation_time = now
+                data.last_rotation_time += buckets_to_advance * self._bucket_duration_s
 
     def get_num_registered_threads(self) -> int:
         """Get the number of threads that have called add().
