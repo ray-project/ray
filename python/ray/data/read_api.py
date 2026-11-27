@@ -4810,20 +4810,68 @@ def read_sql(
     .. note::
 
         Parallelism is supported by databases that support sharding. This means
-        that the database needs to support all of the following operations:
-        ``MOD``, ``ABS``, and ``CONCAT``.
+        that the database needs to support ``ABS``, ``COALESCE``, the configured
+        hash function, and either ``MOD()`` or the ``%`` operator. Multi-column
+        shard keys also require ``CONCAT``. Rows whose computed shard bucket is
+        NULL are assigned to the first shard.
 
-        You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
-        The default is ``MD5``, but other common alternatives include ``hash``,
-        ``unicode``, and ``SHA``.
+        You can use ``shard_hash_fn`` to specify the hash function to use for
+        sharding. The default is ``MD5``, but some databases return ``MD5`` as
+        text, so you may need a different integer-returning function. The
+        function should satisfy these requirements:
+
+        * Hash the *whole* key and spread keys evenly across shards. A weak hash
+          can silently skew the shards and defeat parallelism without omitting
+          rows when every computed bucket is non-NULL and matches a shard.
+        * Return an integer, not text or a fractional numeric value, so that
+          ``ABS`` and modulo produce a whole-number bucket from ``0`` to
+          ``parallelism - 1``. Some invalid numeric outputs can produce buckets
+          that match no shard.
+        * Return a non-NULL value for every non-NULL key. For example,
+          SQLite's ``unicode()`` returns NULL for an empty string; without
+          NULL-safe bucket handling, that row matches no shard and is omitted.
+          With NULL-safe bucket handling, NULL buckets are assigned to the first
+          shard, preserving rows but potentially adding skew.
+        * Return the same value for the same typed key on every worker,
+          connection, and retry. Otherwise, a row can match multiple shard
+          queries or none of them, causing duplicate or missing rows.
+
+        For example, SQLite's built-in ``unicode()`` returns the code point of
+        only the *first* character of a value, so keys that share a leading
+        character (such as ``"user_1"``, ``"user_2"``, ``"user_3"``) all map to
+        the same shard. It also returns NULL for an empty string. Stock SQLite
+        does not provide ``MD5`` or ``SHA`` (they require an extension or a
+        custom SQL function), so register a real hash function instead of
+        relying on ``unicode()``.
+
+        Avoid registering Python's built-in ``hash()`` as a SQL function: its
+        result for strings is randomized between processes. Use a stable digest
+        converted to a bounded integer instead. Examples of integer-returning
+        hashes include MySQL's ``CRC32()``, which returns a 32-bit unsigned
+        value, and Snowflake's ``HASH()``, which returns a signed 64-bit
+        ``NUMBER(19, 0)``. For non-NULL input, both return non-NULL values.
+
+        For SQLite, register a deterministic function on every connection
+        returned by ``connection_factory``, including connections used for
+        sharding probes and read tasks. The example below defines such a
+        function and uses it for a sharded read.
+
+        For multi-column shard keys, ``CONCAT`` does not add a separator. For
+        example, ``("ab", "c")`` and ``("a", "bc")`` produce the same string
+        and therefore the same hash. Account for this ambiguity when choosing
+        shard keys or a custom hash function.
 
         If the database does not support sharding, the read operation will be
-        executed in a single task.
+        executed in a single task unless ``override_num_blocks > 1`` is set, in
+        which case ``read_sql`` raises a ``ValueError``. When available, the last
+        sharding probe error is included in the ``ValueError`` and logged.
 
     Examples:
         For examples of reading from larger databases like MySQL and PostgreSQL, see
         :ref:`Read SQL databases <reading_sql>`.
 
+        >>> import builtins
+        >>> import hashlib
         >>> import os
         >>> import sqlite3
         >>> import tempfile
@@ -4842,10 +4890,23 @@ def read_sql(
         ...         ("Rocky II", 1979, 7.3)
         ...     \"\"\"
         ... )
+        >>> _ = connection.execute("CREATE TABLE movie_catalog(title)")
+        >>> _ = connection.executemany(
+        ...     "INSERT INTO movie_catalog VALUES (?)",
+        ...     [(f"Movie {i}",) for i in builtins.range(100)],
+        ... )
         >>> connection.commit()
         >>> connection.close()
+        >>> def stable_hash(value):
+        ...     digest = hashlib.sha256(str(value).encode("utf-8")).digest()
+        ...     # Stay below 2**53 so SQLite can represent the value exactly.
+        ...     return int.from_bytes(digest[:8], "big", signed=True) % (2**53)
         >>> def create_connection():
-        ...     return sqlite3.connect(db_path)
+        ...     connection = sqlite3.connect(db_path)
+        ...     connection.create_function(
+        ...         "stable_hash", 1, stable_hash, deterministic=True
+        ...     )
+        ...     return connection
         >>> # Get all movies
         >>> ds = ray.data.read_sql("SELECT * FROM movie", create_connection)
         >>> ds.count()
@@ -4858,6 +4919,19 @@ def read_sql(
         >>> ds = ray.data.read_sql(
         ...     "SELECT year, COUNT(*) FROM movie GROUP BY year", create_connection
         ... )
+        >>> # Shard 100 rows using a stable, integer-returning hash
+        >>> ds = ray.data.read_sql(
+        ...     "SELECT * FROM movie_catalog",
+        ...     create_connection,
+        ...     shard_keys=["title"],
+        ...     shard_hash_fn="stable_hash",
+        ...     override_num_blocks=2,
+        ... )
+        >>> ds = ds.materialize()
+        >>> ds.num_blocks()
+        2
+        >>> ds.count()
+        100
         >>> db_dir.cleanup()
 
     Args:
@@ -4868,9 +4942,12 @@ def read_sql(
         sql_params: Parameters to bind to the SQL query. Use the placeholder style
             required by your database connector (per Python DB API2).
         shard_keys: The keys to shard the data by.
-        shard_hash_fn: The hash function string to use for sharding. Defaults to "MD5".
-            For other databases, common alternatives include "hash" and "SHA".
-            This is applied to the shard keys.
+        shard_hash_fn: The hash function string to use for sharding. Defaults to
+            "MD5". The available functions are database-specific (e.g., Snowflake
+            uses "HASH"). The function should hash the whole key, distribute keys
+            evenly, return a non-NULL integer for a non-NULL key, and return the
+            same value across workers, connections, and retries; see the note
+            above for examples and pitfalls such as SQLite's "unicode()".
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
