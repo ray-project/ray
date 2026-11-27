@@ -233,6 +233,8 @@ def build_vllm_engine_processor(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
                     trust_remote_code=trust_remote_code,
+                    # The chat template already adds BOS and other special tokens.
+                    add_special_tokens=not chat_template_stage_cfg.enabled,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
