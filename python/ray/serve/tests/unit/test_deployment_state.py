@@ -90,7 +90,7 @@ from ray.serve._private.utils import (
     get_random_string,
 )
 from ray.serve.config import DeploymentActorConfig, GangSchedulingConfig
-from ray.serve.schema import LoggingConfig, ReplicaRank
+from ray.serve.schema import LoggingConfig, ReplicaRank, TracingConfig
 from ray.util.placement_group import validate_placement_group
 
 TEST_DEPLOYMENT_ID = DeploymentID(name="test_deployment", app_name="test_app")
@@ -4925,6 +4925,14 @@ def actor_replica_wrapper() -> ActorReplicaWrapper:
 
 
 class TestActorReplicaWrapper:
+    def test_start_passes_tracing_config(self, actor_replica_wrapper):
+        config = TracingConfig(enabled=True, sampling_ratio=0.375)
+        info, _ = deployment_info()
+        request = actor_replica_wrapper.start(
+            info, assign_rank_callback=Mock(), tracing_config=config
+        )
+        assert request.actor_init_args[-2] == config
+
     def test_poll_shutdown_without_killing(self):
         wrapper = ActorReplicaWrapper(
             version=deployment_version("1"),
@@ -4975,7 +4983,9 @@ class TestActorReplicaWrapper:
         max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
         d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
         replica_scheduling_request = actor_replica.start(
-            d_info, assign_rank_callback=lambda x: 0
+            d_info,
+            assign_rank_callback=lambda x: 0,
+            tracing_config=TracingConfig(enabled=False),
         )
         assert (
             "max_concurrency" in replica_scheduling_request.actor_options

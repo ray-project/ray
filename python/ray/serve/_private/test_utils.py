@@ -707,6 +707,7 @@ class MockReplicaActorWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[..., ReplicaRank],
+        tracing_config,
         gang_placement_group=None,
         gang_pg_index=None,
         gang_context=None,

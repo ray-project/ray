@@ -128,6 +128,7 @@ from ray.serve.schema import (
     DeploymentDetails,
     ReplicaDetails,
     ReplicaRank,
+    TracingConfig,
     _deployment_info_to_schema,
 )
 from ray.util import metrics as ray_metrics
@@ -1316,6 +1317,7 @@ class ActorReplicaWrapper:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[str, str], ReplicaRank],
+        tracing_config: TracingConfig,
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
@@ -1329,6 +1331,7 @@ class ActorReplicaWrapper:
         Args:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
+            tracing_config: Controller-resolved tracing settings for Python replicas.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
@@ -1388,6 +1391,7 @@ class ActorReplicaWrapper:
                 self._version,
                 deployment_info.ingress,
                 deployment_info.route_prefix,
+                tracing_config,
                 deployment_info.ingress_request_router,
             )
         # TODO(simon): unify the constructor arguments across language
@@ -2382,6 +2386,7 @@ class DeploymentReplica:
         self,
         deployment_info: DeploymentInfo,
         assign_rank_callback: Callable[[str, str], ReplicaRank],
+        tracing_config: TracingConfig,
         gang_placement_group: Optional[PlacementGroup] = None,
         gang_pg_index: Optional[int] = None,
         gang_context: Optional[GangContext] = None,
@@ -2392,6 +2397,7 @@ class DeploymentReplica:
         Args:
             deployment_info: Configuration info for the deployment.
             assign_rank_callback: Callback to assign rank to the replica.
+            tracing_config: Controller-resolved tracing settings for Python replicas.
             gang_placement_group: Pre-created gang PG to schedule this replica on.
             gang_pg_index: Bundle index within the gang PG for this replica.
             gang_context: Gang context for this replica.
@@ -2404,6 +2410,7 @@ class DeploymentReplica:
         replica_scheduling_request = self._actor.start(
             deployment_info,
             assign_rank_callback=assign_rank_callback,
+            tracing_config=tracing_config,
             gang_placement_group=gang_placement_group,
             gang_pg_index=gang_pg_index,
             gang_context=gang_context,
@@ -3362,12 +3369,14 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
+        tracing_config: TracingConfig,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._tracing_config = tracing_config
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -4911,6 +4920,7 @@ class DeploymentState:
             scheduling_request = new_deployment_replica.start(
                 self._deployed_info,
                 assign_rank_callback=self._rank_manager.assign_rank,
+                tracing_config=self._tracing_config,
                 target_node_id=target_node_id,
             )
             upscale.append(scheduling_request)
@@ -5000,6 +5010,7 @@ class DeploymentState:
                 scheduling_request = new_deployment_replica.start(
                     self._deployed_info,
                     assign_rank_callback=self._rank_manager.assign_rank,
+                    tracing_config=self._tracing_config,
                     gang_placement_group=gang_pg,
                     gang_pg_index=bundle_index * bundles_per_replica,
                     gang_context=gang_context,
@@ -6866,6 +6877,7 @@ class DeploymentStateManager:
         all_current_placement_group_names: List[str],
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
+        tracing_config: TracingConfig,
         head_node_id_override: Optional[str] = None,
         create_placement_group_fn_override: Optional[Callable] = None,
     ):
@@ -6878,6 +6890,7 @@ class DeploymentStateManager:
             create_placement_group_fn_override,
         )
         self._autoscaling_state_manager = autoscaling_state_manager
+        self._tracing_config = tracing_config
 
         self._shutting_down = False
 
@@ -6950,6 +6963,7 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
+            tracing_config=self._tracing_config,
         )
 
     def record_replica_health(
