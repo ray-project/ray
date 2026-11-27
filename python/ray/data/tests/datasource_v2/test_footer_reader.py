@@ -513,10 +513,10 @@ class TestNullsAreNeverExactSurvivors:
             def __getattr__(self, name):
                 return getattr(self._fragment, name)
 
-            def split_by_row_group(self, expr):
+            def split_by_row_group(self, expr, schema=None):
                 if str(expr) != str(self._positive):
                     return []
-                return self._fragment.split_by_row_group(expr)
+                return self._fragment.split_by_row_group(expr, schema=schema)
 
         class _Format:
             def __init__(self, real, positive):
@@ -724,7 +724,7 @@ class TestMissingFilterColumnsSkipPruning:
             def __getattr__(self, name):
                 return getattr(self._fragment, name)
 
-            def split_by_row_group(self, expr):
+            def split_by_row_group(self, expr, schema=None):
                 raise RuntimeError("injected split failure")
 
         class _Format:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import logging
 from typing import TYPE_CHECKING, AbstractSet, Any, Iterable, Iterator, List, Optional
 
@@ -21,9 +22,16 @@ from ray.data._internal.datasource_v2.common.non_sampling_file_indexer import (
     NonSamplingFileIndexer,
     _shuffle_file_infos,
 )
+from ray.data._internal.datasource_v2.common.pushdown_utils import (
+    combine_predicate_chain,
+    flatten_predicate_chain,
+    float_column_names,
+    is_parquet_pushdown_safe,
+)
 from ray.data._internal.datasource_v2.formats.parquet.footer_reader import (
     ChunkedFile,
     FooterReaderActor,
+    ResidualPruning,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     FILE_CHUNK_METADATA_COLUMN_NAME,
@@ -31,16 +39,20 @@ from ray.data._internal.datasource_v2.interfaces.file_manifest import (
     PATH_COLUMN_NAME,
     FileManifest,
 )
+from ray.data._internal.planner.plan_expression.expression_visitors import (
+    get_column_references,
+)
+from ray.data.expressions import Expr, Operation
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
     from ray.data._internal.datasource_v2.interfaces.file_pruner import FilePruner
+    from ray.data._internal.datasource_v2.interfaces.scanner import Scanner
     from ray.data.block import BlockColumn
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import Partitioning
-    from ray.data.expressions import Expr
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +222,48 @@ class FooterFileIndexer(NonSamplingFileIndexer):
         self._max_inflight_batches = (
             _inflight if _inflight is not None else self._num_actors * 2
         )
+        self._residual_pruning: ResidualPruning | None = None
+
+    def with_residual_pruning(
+        self, scanner: Scanner | None = None, residual: Expr | None = None
+    ) -> FooterFileIndexer:
+        from ray.data._internal.datasource_v2.formats.parquet.parquet_scanner import (
+            ParquetScanner,
+        )
+
+        if residual is None and self._residual_pruning is None:
+            return self
+        configured = copy.copy(self)
+        configured._residual_pruning = None
+        # Pruning must not change the input rows of non-idempotent expressions.
+        if (
+            residual is not None
+            and residual.is_idempotent()
+            and isinstance(scanner, ParquetScanner)
+            and scanner.limit is None
+            and scanner.partitioning is not None
+        ):
+            synthesized_columns = scanner._synthesized_column_names()
+            float_columns = float_column_names(scanner.schema)
+            safe_predicate = combine_predicate_chain(
+                [
+                    conjunct
+                    for conjunct in flatten_predicate_chain(residual, Operation.AND)
+                    if conjunct._is_pyarrow_convertible()
+                    and synthesized_columns.isdisjoint(get_column_references(conjunct))
+                    and is_parquet_pushdown_safe(
+                        predicate=conjunct, float_columns=float_columns
+                    )
+                ],
+                Operation.AND,
+            )
+            if safe_predicate is not None:
+                configured._residual_pruning = ResidualPruning(
+                    predicate=safe_predicate,
+                    partitioning=scanner.partitioning,
+                    schema=scanner.schema,
+                )
+        return configured
 
     def list_files(
         self,
@@ -327,6 +381,7 @@ class FooterFileIndexer(NonSamplingFileIndexer):
             partitioning=self._partitioning,
             partition_pruner=partition_pruner,
             logical_schema=self._logical_schema,
+            residual_pruning=self._residual_pruning,
         ) as pool:
             manifests = self._read_footers(pool, file_infos, limit)
             if shuffle_row_groups:

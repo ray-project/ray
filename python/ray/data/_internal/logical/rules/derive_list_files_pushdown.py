@@ -1,8 +1,8 @@
-"""Derive ``ListFiles`` pushdown state from its consuming ``ReadFiles`` scanner.
+"""Derive ``ListFiles`` constraints from its scanner and retained filters.
 
-This is the single source of truth for the read constraints a ``ListFiles``
-applies while listing. It runs once, after every other logical rule, so no rule
-has to remember to keep the two operators in sync.
+This is the single source of truth for scanner constraints and residual pruning
+hints applied during listing. It runs once, after every other logical rule, so
+no rule has to remember to keep the operators in sync.
 """
 
 from dataclasses import replace
@@ -11,6 +11,7 @@ from ray.data._internal.datasource_v2.common.pushdown_utils import (
     derive_list_files_pushdown,
 )
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
+from ray.data._internal.logical.operators.map_operator import Filter
 from ray.data._internal.logical.operators.read_operator import ListFiles, ReadFiles
 
 __all__ = [
@@ -19,13 +20,13 @@ __all__ = [
 
 
 class DeriveListFilesPushdown(Rule):
-    """Sync each ``ListFiles``' listing constraints from its consuming scanner.
+    """Derive listing constraints and optional residual pruning hints.
 
-    Listing-time prune (predicate / projected columns / limit) is only sound if
-    it is no stronger than what the downstream ``ReadFiles`` applies. This rule
-    derives that state from the scanner once, after the optimize loop, instead
-    of having every pushdown rule mirror onto ``ListFiles``. Non-``ReadFiles``
-    consumers clear the constraints -- unless the ``ListFiles`` says
+    Scanner-derived constraints (predicate / projected columns / limit) must be
+    no stronger than what the downstream ``ReadFiles`` applies. This rule derives
+    that state once, after the optimize loop, instead of having every pushdown
+    rule mirror onto ``ListFiles``. Non-``ReadFiles`` consumers clear the
+    constraints -- unless the ``ListFiles`` says
     ``pushdown_is_final``, which is how a rule that rewrote the consumer keeps
     the constraints it deliberately set (see ``PushdownCountFiles``).
 
@@ -33,6 +34,12 @@ class DeriveListFilesPushdown(Rule):
     (``FileShuffleConfig.small_chunks_shuffle``): the shuffle runs on the listed
     rows, so an early stop would shrink the shuffle pool. The scanner keeps its
     limit; it applies after the shuffle.
+
+    A ``Filter`` directly above ``ReadFiles``, anywhere in the plan, can also
+    supply a residual pruning hint to the ``ListFiles`` indexer. The filter stays
+    in place to evaluate the rows. Block UDFs must preserve the filtered columns,
+    and the indexer decides whether it can use the hint. Hints are cleared before
+    re-derivation so removing a filter does not leave stale pruning state.
     """
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:  # pyrefly: ignore[bad-override]
@@ -81,7 +88,34 @@ class DeriveListFilesPushdown(Rule):
                 return node
             return node._with_new_input_dependencies(new_inputs)
 
+        def configure(node: LogicalOperator) -> LogicalOperator:
+            # Re-derivation must not retain a hint from a removed Filter.
+            if isinstance(node, ListFiles):
+                indexer = node.file_indexer.with_residual_pruning()
+                if indexer is not node.file_indexer:
+                    return replace(node, file_indexer=indexer)
+            if not isinstance(node, Filter) or node.predicate_expr is None:
+                return node
+            read = node.input_dependencies[0]
+            if not isinstance(read, ReadFiles):
+                return node
+            if not read.can_push_predicate_before_block_udf(node.predicate_expr):
+                return node
+            listing = read.input_dependencies[0]
+            if not isinstance(listing, ListFiles):
+                return node
+            indexer = listing.file_indexer.with_residual_pruning(
+                scanner=read.scanner, residual=node.predicate_expr
+            )
+            if indexer is listing.file_indexer:
+                return node
+            configured = replace(listing, file_indexer=indexer)
+            return node._with_new_input_dependencies(
+                [read._with_new_input_dependencies([configured])]
+            )
+
         dag = plan.dag._apply_transform(transform)
+        dag = dag._apply_transform(configure)
 
         return LogicalPlan(dag=dag, context=plan.context)
 

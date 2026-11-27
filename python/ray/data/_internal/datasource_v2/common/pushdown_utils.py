@@ -145,6 +145,13 @@ def float_column_names(schema: pa.Schema) -> Set[str]:
     return {field.name for field in schema if pa.types.is_floating(field.type)}
 
 
+def is_parquet_pushdown_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool:
+    """Check float statistics and column arithmetic before Parquet pushdown."""
+    return is_statistics_safe(
+        predicate=predicate, float_columns=float_columns
+    ) and not has_column_arithmetic(expr=predicate)
+
+
 def is_statistics_safe(predicate: Expr, float_columns: AbstractSet[str]) -> bool:
     """Whether Parquet row-group pruning on ``predicate`` keeps every matching row.
 
