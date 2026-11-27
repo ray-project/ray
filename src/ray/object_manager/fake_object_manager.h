@@ -121,6 +121,10 @@ class FakeObjectManager : public ObjectManagerInterface {
     return {};
   }
 
+  WorkerID GetLocalObjectProducerWorkerId(const ObjectID &object_id) const override {
+    return WorkerID::Nil();
+  }
+
   void HandleObjectAdded(const ObjectInfo &object_info) override {
     added_objects.push_back(object_info.object_id);
   }

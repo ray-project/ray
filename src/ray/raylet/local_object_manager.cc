@@ -33,7 +33,8 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     const std::vector<ObjectID> &object_ids,
     std::vector<std::unique_ptr<RayObject>> &&objects,
     const rpc::Address &owner_address,
-    const ObjectID &generator_id) {
+    const ObjectID &generator_id,
+    const WorkerID &producer_worker_id) {
   for (size_t i = 0; i < object_ids.size(); i++) {
     const auto &object_id = object_ids[i];
     auto &object = objects[i];
@@ -44,13 +45,21 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
     }
 
     const auto inserted = local_objects_.emplace(
-        object_id, LocalObjectInfo(owner_address, generator_id, object->GetSize()));
+        object_id,
+        LocalObjectInfo(
+            owner_address, generator_id, object->GetSize(), producer_worker_id));
     if (inserted.second) {
       // This is the first time we're pinning this object.
       RAY_LOG(DEBUG) << "Pinning object " << object_id;
       pinned_objects_size_ += object->GetSize();
       pinned_objects_.emplace(object_id, std::move(object));
     } else {
+      // A pin without a producer, such as a re-executed task's, can arrive before the
+      // producer's own pin.
+      LocalObjectInfo &local_object = inserted.first->second;
+      if (local_object.producer_worker_id_.IsNil()) {
+        local_object.producer_worker_id_ = producer_worker_id;
+      }
       auto original_worker_id =
           WorkerID::FromBinary(inserted.first->second.owner_address_.worker_id());
       auto new_worker_id = WorkerID::FromBinary(owner_address.worker_id());
@@ -122,6 +131,11 @@ std::vector<ObjectID> LocalObjectManager::GetLocalObjectsOwnedByOwnersOn(
         return !info.is_freed_ &&
                NodeID::FromBinary(info.owner_address_.node_id()) == node_id;
       });
+}
+
+WorkerID LocalObjectManager::GetProducerWorkerId(const ObjectID &object_id) const {
+  auto it = local_objects_.find(object_id);
+  return it == local_objects_.end() ? WorkerID::Nil() : it->second.producer_worker_id_;
 }
 
 void LocalObjectManager::FlushFreeObjects() {
