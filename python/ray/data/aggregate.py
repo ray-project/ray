@@ -1446,7 +1446,7 @@ class CountDistinct(Unique):
 
 
 @PublicAPI
-class ValueCounter(AggregateFnV2):
+class ValueCounter(VectorizedAggregateFnV2[Dict[str, List], Dict[str, List]]):
     """Counts the number of times each value appears in a column.
 
     This aggregation computes value counts for a specified column, similar to pandas'
@@ -1496,6 +1496,38 @@ class ValueCounter(AggregateFnV2):
 
         col_accessor = BlockColumnAccessor.for_column(block[self._target_col_name])
         return col_accessor.value_counts()
+
+    def _combine_column(
+        self, accumulator_col: BlockColumn
+    ) -> Optional[Dict[str, List]]:
+        if len(accumulator_col) == 0:
+            return None
+
+        values: List[Any] = []
+        counts: List[int] = []
+        value_to_index: Dict[Any, int] = {}
+        has_non_null = False
+
+        for accumulator in BlockColumnAccessor.for_column(accumulator_col).to_pylist():
+            if accumulator is None:
+                continue
+            has_non_null = True
+            for v_new, c_new in zip(accumulator["values"], accumulator["counts"]):
+                v_norm = _to_hashable(v_new)
+                if isinstance(v_norm, float) and np.isnan(v_norm):
+                    v_norm = np.nan
+                idx = value_to_index.get(v_norm)
+                if idx is not None:
+                    counts[idx] += c_new
+                else:
+                    value_to_index[v_norm] = len(values)
+                    values.append(v_norm)
+                    counts.append(c_new)
+
+        if not has_non_null:
+            return None
+
+        return {"values": values, "counts": counts}
 
     def combine(
         self,
