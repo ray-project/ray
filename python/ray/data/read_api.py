@@ -4810,15 +4810,21 @@ def read_sql(
     .. note::
 
         Parallelism is supported by databases that support sharding. This means
-        that the database needs to support all of the following operations:
-        ``MOD``, ``ABS``, and ``CONCAT``.
+        that the database needs to support ``ABS``, ``CONCAT`` (for multi-column
+        keys), ``COALESCE``, the configured hash function, and either ``MOD()``
+        or the ``%`` operator. Rows whose computed shard bucket is NULL are
+        assigned to the first shard.
 
         You can use ``shard_hash_fn`` to specify the hash function to use for sharding.
         The default is ``MD5``, but other common alternatives include ``hash``,
-        ``unicode``, and ``SHA``.
+        ``unicode``, and ``SHA``. Rows whose computed shard bucket is NULL,
+        including when the hash of a NULL key is NULL, are assigned to the first
+        shard.
 
         If the database does not support sharding, the read operation will be
-        executed in a single task.
+        executed in a single task unless ``override_num_blocks > 1`` is set, in
+        which case ``read_sql`` raises a ``ValueError`` that includes the last
+        sharding probe error, when available.
 
     Examples:
         For examples of reading from larger databases like MySQL and PostgreSQL, see
@@ -4913,9 +4919,14 @@ def read_sql(
             raise ValueError("shard_keys must be provided when override_num_blocks > 1")
 
         if not datasource.supports_sharding(override_num_blocks):
-            raise ValueError(
-                "Database does not support sharding. Please set override_num_blocks to 1."
+            message = (
+                "SQL sharding is not available. Please set override_num_blocks to 1."
             )
+            if datasource._last_probe_error is not None:
+                message += (
+                    f" Last sharding probe error: {datasource._last_probe_error!r}"
+                )
+            raise ValueError(message)
 
     return read_datasource(
         datasource,

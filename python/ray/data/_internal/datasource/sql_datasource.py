@@ -88,6 +88,11 @@ def _execute(cursor: Cursor, sql: str, params: Optional[Any]) -> None:
 
 class SQLDatasource(Datasource):
     MIN_ROWS_PER_READ_TASK = 50
+    # Modulo syntaxes to probe, in preference order. ``MOD()`` is the
+    # SQL-standard function (Oracle, MySQL, PostgreSQL); ``%`` is the fallback
+    # for databases without ``MOD()`` (SQL Server, and SQLite built without
+    # math functions).
+    _MODULO_SYNTAXES = ("MOD", "%")
 
     def __init__(
         self,
@@ -107,36 +112,101 @@ class SQLDatasource(Datasource):
         self.shard_hash_fn = shard_hash_fn
         self.connection_factory = connection_factory
         self.sql_params = sql_params
+        # Modulo syntax detected by ``supports_sharding()``: ``"MOD"``, ``"%"``,
+        # or ``"%%"`` when parameters require an escaped percent sign. Stays
+        # ``None`` until a probe succeeds.
+        self._modulo_syntax = None
+        self._last_probe_error: Optional[Exception] = None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
 
+    def _build_modulo_expr(self, syntax: str, hash_fn: str, parallelism: int) -> str:
+        """Build the modulo expression used to bucket rows into shards.
+
+        ``"MOD"`` renders the SQL-standard ``MOD(x, n)`` function; ``"%"``
+        renders the ``x % n`` operator. ``"%%"`` renders the same operator with
+        the literal percent escaped for DB API drivers using ``format`` or
+        ``pyformat`` parameters. The operand is wrapped in ``ABS()`` so integer
+        hash outputs produce non-negative bucket indices in
+        ``[0, parallelism)``, independent of how each database signs negative
+        modulo results.
+        """
+        operand = f"ABS({hash_fn}({self.shard_keys}))"
+        if syntax == "MOD":
+            return f"MOD({operand}, {parallelism})"
+        if syntax in ("%", "%%"):
+            return f"({operand} {syntax} {parallelism})"
+        raise ValueError(f"Unsupported modulo syntax: {syntax}")
+
     def supports_sharding(self, parallelism: int) -> bool:
-        """Check if database supports sharding with MOD/ABS/CONCAT operations.
+        """Check if the database supports hash sharding.
+
+        Sharding needs ``ABS``, the configured hash function, ``CONCAT`` (for
+        multi-column keys), ``COALESCE``, and a modulo operation. The modulo
+        syntax is not portable -- ``MOD()`` is missing on SQL Server and on
+        SQLite built without math functions, while the ``%`` operator is missing
+        on Oracle -- so this probes ``MOD()`` first and falls back to ``%``. With
+        bound parameters, it also tries ``%%`` for drivers using ``format`` or
+        ``pyformat`` placeholders. The winning syntax is cached in
+        ``self._modulo_syntax`` so the per-task read queries match the probe.
 
         Args:
             parallelism: The number of shards to split the read into.
 
         Returns:
             bool: True if sharding is supported, False otherwise.
+
+        Raises:
+            Exception: Errors raised while establishing the database connection
+                or cursor, committing or closing the transaction, are propagated.
+                If rollback also fails, the original operation error is preserved.
         """
+        self._modulo_syntax = None
+        self._last_probe_error = None
         if parallelism <= 1 or self.shard_keys is None:
             return False
 
-        # Test if database supports required operations (MOD, ABS, MD5, CONCAT)
-        # by executing a sample query
         hash_fn = self.shard_hash_fn
-        query = (
-            f"SELECT COUNT(1) FROM ({self.sql}) as T"
-            f" WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = 0"
-        )
-        try:
-            with _connect(self.connection_factory) as cursor:
-                _execute(cursor, query, self.sql_params)
+        syntaxes = self._MODULO_SYNTAXES
+        if self.sql_params is not None:
+            # DB API drivers with format/pyformat parameters interpret a literal
+            # percent as a placeholder introducer unless it is escaped.
+            syntaxes += ("%%",)
+        for syntax in syntaxes:
+            modulo_expr = self._build_modulo_expr(syntax, hash_fn, parallelism)
+            bucket = f"COALESCE({modulo_expr}, 0)"
+            query = f"SELECT COUNT(1) FROM ({self.sql}) as T WHERE {bucket} = 0"
+            probe_error: Optional[Exception] = None
+            try:
+                with _connect(self.connection_factory) as cursor:
+                    try:
+                        _execute(cursor, query, self.sql_params)
+                    except Exception as e:
+                        probe_error = e
+                        raise
+            except Exception as e:
+                # A query error re-raised unchanged by _connect indicates that
+                # this modulo candidate failed. Connection/cursor acquisition and
+                # commit/close failures are propagated rather than treated as a
+                # failed modulo candidate.
+                if probe_error is None or e is not probe_error:
+                    raise
+                self._last_probe_error = probe_error
+                logger.debug(
+                    f"Sharding probe using {syntax!r} failed: {str(probe_error)}."
+                )
+                continue
+            self._modulo_syntax = syntax
             return True
-        except Exception as e:
-            logger.info(f"Database does not support sharding: {str(e)}.")
-            return False
+
+        # Keep the wording neutral: a missing hash function or another query
+        # error can make every probe fail even when both modulo syntaxes exist.
+        logger.info(
+            "Sharding probe failed (tried modulo syntaxes): "
+            f"{self._last_probe_error!r}"
+        )
+        return False
 
     def get_read_tasks(
         self,
@@ -145,7 +215,7 @@ class SQLDatasource(Datasource):
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
-            """Read all data in a single block when sharding is not supported."""
+            """Read all data in a single block without sharding."""
             with _connect(self.connection_factory) as cursor:
                 _execute(cursor, self.sql, self.sql_params)
                 return [_cursor_to_block(cursor)]
@@ -153,10 +223,11 @@ class SQLDatasource(Datasource):
         # Check if sharding is supported by the database first
         # If not, fall back to reading all data in a single task without counting rows
         if not self.supports_sharding(parallelism):
-            logger.info(
-                "Sharding is not supported. "
-                "Falling back to reading all data in a single task."
-            )
+            if self._last_probe_error is not None:
+                logger.info(
+                    "Sharding probe failed. "
+                    "Falling back to reading all data in a single task."
+                )
             metadata = BlockMetadata(None, None, None, None)
             return [ReadTask(fallback_read_fn, metadata)]
 
@@ -197,10 +268,14 @@ class SQLDatasource(Datasource):
 
     def _create_parallel_read_fn(self, task_id: int, parallelism: int):
         hash_fn = self.shard_hash_fn
-        query = (
-            f"SELECT * FROM ({self.sql}) as T "
-            f"WHERE MOD(ABS({hash_fn}({self.shard_keys})), {parallelism}) = {task_id}"
-        )
+        # Use the modulo syntax detected by supports_sharding(); default to
+        # MOD() if no probe has run yet.
+        syntax = self._modulo_syntax or "MOD"
+        modulo_expr = self._build_modulo_expr(syntax, hash_fn, parallelism)
+        # A NULL hash produces a NULL bucket. Route those rows to task 0 while
+        # keeping every row with a usable bucket in its normal shard.
+        predicate = f"COALESCE({modulo_expr}, 0) = {task_id}"
+        query = f"SELECT * FROM ({self.sql}) as T WHERE {predicate}"
 
         def read_fn() -> Iterable[Block]:
             with _connect(self.connection_factory) as cursor:
