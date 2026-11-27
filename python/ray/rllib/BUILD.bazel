@@ -2059,6 +2059,24 @@ py_test(
 )
 
 # --------------------------------------------------------------------
+# Connector tests
+# rllib/connectors/
+#
+# Tag: env
+# --------------------------------------------------------------------
+
+py_test(
+    name = "connectors/tests/test_prev_actions_prev_rewards",
+    size = "small",
+    srcs = ["connectors/tests/test_prev_actions_prev_rewards.py"],
+    tags = [
+        "env",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+# --------------------------------------------------------------------
 # Env tests
 # rllib/env/
 #
