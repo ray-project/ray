@@ -4,7 +4,8 @@ gVisor is the default. Another backend is chosen by name, through the
 ``backend`` argument of ``SandboxRuntime`` or the ``RAY_SANDBOX_BACKEND``
 environment variable, where a name is one of:
 
-* a name passed to :func:`register_backend`, such as the built-in ``gvisor``;
+* a name passed to :func:`register_backend`, such as the built-in ``gvisor``
+  and ``substrate`` (Agent Substrate, see ``backend/substrate.py``);
 * a name in the ``ray.sandbox_backends`` entry point group of an installed
   package (looked up once per name and process: a package installed later in
   the process isn't found);
@@ -35,6 +36,17 @@ def _gvisor_factory(image_manager: Optional[Any] = None) -> Any:
     from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
 
     return GVisorSandboxBackend(image_manager=image_manager)
+
+
+def _substrate_factory(image_manager: Optional[Any] = None) -> Any:
+    # Imported only when selected: it needs the optional ate-env-rl SDK.
+    from ray.experimental.sandbox.backend.substrate import SubstrateSandboxBackend
+
+    return SubstrateSandboxBackend(image_manager=image_manager)
+
+
+# Substrate pulls images itself: the runtime needn't build an ImageManager.
+_substrate_factory.needs_image_manager = False
 
 
 def register_backend(name: str, factory: Callable[..., Any]) -> None:
@@ -130,3 +142,4 @@ def create_backend(name: Optional[str] = None, image_manager: Optional[Any] = No
 
 
 register_backend(DEFAULT_BACKEND, _gvisor_factory)
+register_backend("substrate", _substrate_factory)

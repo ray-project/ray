@@ -886,7 +886,44 @@ If the sandbox can't reach any resolver, `network="host"` uses the node's own `/
 
 ## Sandbox backends
 
-`SandboxRuntime` runs sandboxes through a backend. gVisor is the default. To pick another one, pass `SandboxRuntime(backend=...)`, either a backend instance or a name, or set `RAY_SANDBOX_BACKEND` in the worker's environment. A name is `gvisor`, a name that a package registers in the `ray.sandbox_backends` entry point group, or an import path such as `my_pkg.backends:MyBackend`. A backend subclasses `ray.experimental.sandbox.backend.base.BaseSandboxBackend`. `RAY_SANDBOX_BACKEND` applies to every `SandboxRuntime` the process builds, including the ones inside `Sandbox` actors and the HTTP API's `SandboxHost`. `SandboxRuntime.commit()` works only on gVisor, and raises `NotImplementedError` on a backend that can't export a root filesystem. `SandboxRuntime.delete_checkpoint()` deletes a checkpoint that's no longer needed (on gVisor, its directory). `restore()` refuses a checkpoint that another backend took, with an error that names that backend.
+`SandboxRuntime` runs sandboxes through a backend. gVisor is the default. To pick another one, pass `SandboxRuntime(backend=...)`, either a backend instance or a name, or set `RAY_SANDBOX_BACKEND` in the worker's environment. A name is `gvisor`, `substrate`, a name that a package registers in the `ray.sandbox_backends` entry point group, or an import path such as `my_pkg.backends:MyBackend`. A backend subclasses `ray.experimental.sandbox.backend.base.BaseSandboxBackend`. `RAY_SANDBOX_BACKEND` applies to every `SandboxRuntime` the process builds, including the ones inside `Sandbox` actors and the HTTP API's `SandboxHost`. `SandboxRuntime.commit()` works only on gVisor, and raises `NotImplementedError` on a backend that can't export a root filesystem. `SandboxRuntime.delete_checkpoint()` deletes a checkpoint that's no longer needed (on gVisor, its directory). `restore()` refuses a checkpoint that another backend took, with an error that names that backend.
+
+### Agent Substrate backend
+
+The `substrate` backend runs each sandbox as an [Agent Substrate](https://github.com/gke-labs/env-rl) environment through the ate-env-api service, instead of a gVisor sandbox on the Ray node. It needs the env-rl Python SDK, which Ray doesn't install: `pip install ate-env-rl`. Copy restores and `checkpoint(leave_running=True)` need `ForkEnvironment`, which no ate-env-rl release has yet: build the SDK from env-rl commit 6fd75328 or later, and run an ate-env-api that lists `fork_environment` among its features. The backend checks both and raises a clear error otherwise. The SDK requires `grpcio>=1.85.1` and `protobuf>=7.35`. Configure the backend with environment variables on the worker nodes:
+
+| Variable | Meaning |
+| --- | --- |
+| `RAY_SUBSTRATE_ENDPOINT` | ate-env-api `host:port`. Defaults to `ate-env-api.ate-env.svc:7777`. |
+| `RAY_SUBSTRATE_AUTH_TOKEN_FILE`, `RAY_SUBSTRATE_AUTH_TOKEN`, or `SUBSTRATE_ENV_AUTH_TOKEN` | Bearer token for ate-env-api: a file that holds it, or the token. |
+| `RAY_SUBSTRATE_ATESPACE` | Atespace of the environments. Defaults to `ate-env`. |
+| `RAY_SUBSTRATE_TEMPLATE`, `RAY_SUBSTRATE_TEMPLATE_BY_DOMAIN` | Base template, and per placement domain templates such as `0-65:c3-tmpl,66-120:n2d-tmpl`. |
+| `NODE_NAME`, `RAY_SUBSTRATE_DOMAIN_BY_NODE` (or `..._FILE`) | The pod's Kubernetes node, and a `node=dK` map, so that a sandbox runs on the node of the worker that creates it, with the worker selector `ate-env/domain=dK`. |
+| `RAY_SUBSTRATE_DOMAIN`, `RAY_SUBSTRATE_WORKER_SELECTOR` | A fixed domain, or a fixed worker selector `k=v,...`, for every sandbox the process creates. |
+| `RAY_SUBSTRATE_RESTORE_MODE` | `copy` (default) or `resume`: what `restore()` does when the call doesn't say. |
+| `RAY_SUBSTRATE_SUSPEND_MODE` | `local` (default) or `durable` snapshots. |
+| `RAY_SUBSTRATE_RPC_TIMEOUT_S` | Deadline of a control call (create, suspend, delete, status, files) without a timeout of its own. Defaults to 300. `exec()` without `timeout` has no deadline, as on gVisor. |
+| `RAY_SUBSTRATE_ID_PREFIX` | Prefix of the environment IDs. Defaults to `rsb`. |
+
+The Substrate template decides resources, network, and isolation:
+
+- `create()` raises `SandboxCreationError` for options that the backend can't honor: `mounts`, `cidr_allowlist`, `dns`, `capabilities`, `gpu_ids`, a non-zero `disk`, `oom_score_adj`, and any `network` other than the default `"none"`. Capabilities equal to Docker's defaults (`DOCKER_DEFAULT_CAPABILITIES`), which the HTTP API passes when a request names none, count as unset. With the default network, the sandbox gets the template's network, so use a template without egress where sandboxes must have none.
+- `cpu` and `memory` aren't enforced, and the backend logs that once per process. A `Sandbox` actor still reserves its CPU and memory on the Ray node, although the sandbox runs on a Substrate node. `rootless` and `_oci_spec_transform_fn` are ignored. `env`, `workdir`, and `shell` work as on gVisor. Images must be pinned by digest.
+
+Checkpoints are suspended Substrate environments that belong to the checkpoint:
+
+| Operation | Substrate backend |
+| --- | --- |
+| `checkpoint(sid, leave_running=False)` | Suspends the sandbox, which becomes the checkpoint. In this process, `exec(sid)` then raises and `delete(sid)` does nothing. |
+| `checkpoint(sid, leave_running=True)` | Copies the sandbox into a new environment, born suspended: the checkpoint. The sandbox keeps its state, and its later changes don't reach the checkpoint. The fork pauses the sandbox for the length of the call; its next command wakes it. |
+| `checkpoint(sid)` without `checkpoint_path` | Returns a `substrate://` handle that restores on any node. |
+| `checkpoint(sid, checkpoint_path, remote=...)` | Writes a manifest there that `ray.experimental.sandbox.restore()` reads. `remote` says whether every node mounts the path, as on gVisor. Like gVisor, it refuses a non-empty directory that holds no checkpoint. |
+| `restore(checkpoint)` | Returns a new sandbox copied from the checkpoint with one fork call, and leaves the checkpoint in place. Concurrent copies of one checkpoint serialize: Substrate refuses concurrent forks of one environment, and the backend retries until the restore's `timeout_seconds` runs out. For a fan-out of N copies of one checkpoint, pass `timeout_seconds` of about N times the fork latency. Coalescing them on the server is planned ([env-rl#69](https://github.com/gke-labs/env-rl/issues/69)). |
+| `restore(checkpoint, resume_in_place=True)` | Returns the checkpointed environment itself, without a remote call: Substrate wakes it on its next command. The checkpoint is used up, and another restore of it raises `SandboxError`. |
+| `delete(copy)` | Deletes that sandbox only. |
+| `SandboxRuntime.delete_checkpoint(checkpoint)` | Deletes the checkpoint's environment and files. A new checkpoint at the same path also replaces the old one. |
+
+Each checkpoint holds a suspended environment until it's deleted, resumed in place, or replaced, so flows that copy should call `delete_checkpoint()` on checkpoints they no longer need. A loop that checkpoints and restores once per step should restore with `resume_in_place=True` (or set `RAY_SUBSTRATE_RESTORE_MODE=resume`): each step then reuses the one environment instead of leaving a checkpoint environment behind. With the `local` suspend mode, a snapshot reaches object storage in the background, and losing the Substrate node before then loses the checkpoint. Writing, resuming in place, and deleting a checkpoint lock a file in `checkpoint_path`, so they work across the processes of one node, or on shared storage with POSIX locks, such as NFS. Commands reach the guest through `sh -c`. `exec(user=...)` isn't supported, and `pause()` suspends the sandbox.
 
 ## Architecture
 
