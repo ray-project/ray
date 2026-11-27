@@ -10,7 +10,7 @@ import numpy as np
 import pyarrow as pa
 import pyarrow.csv as pcsv
 import pytest
-from pyarrow.fs import LocalFileSystem
+from pyarrow.fs import LocalFileSystem, _MockFileSystem
 
 import ray.data.read_api as read_api
 from ray.data._internal.datasource_v2.common.line_chunk_file_indexer import (
@@ -35,7 +35,10 @@ from ray.data._internal.datasource_v2.formats.csv.csv_file_reader import (
     csv_file_format,
     invalid_csv_chunk_error,
 )
-from ray.data._internal.datasource_v2.formats.csv.header_reader import HeaderReader
+from ray.data._internal.datasource_v2.formats.csv.header_reader import (
+    HeaderReader,
+    _read_header_for_first_chunk,
+)
 from ray.data._internal.datasource_v2.interfaces.file_indexer import FileInfo
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
@@ -237,6 +240,7 @@ def test_header_reader_reads_each_files_header(tmp_path):
         file_format=csv_file_format(
             pcsv.ReadOptions(), pcsv.ParseOptions(), pcsv.ConvertOptions()
         ),
+        chunk_size=64,
         io_concurrency=2,
     )
     paths = [_write(tmp_path / f"{i}.csv", f"id{i},x\n1,2\n") for i in range(3)]
@@ -248,6 +252,65 @@ def test_header_reader_reads_each_files_header(tmp_path):
     assert [reader.read_header(file) for file in files] == [
         [f"id{i}", "x"] for i in range(3)
     ]
+
+
+@pytest.mark.parametrize(
+    "prefix,first_name",
+    [
+        pytest.param(b"\n" * 15, "id", id="header_starts_at_last_byte"),
+        pytest.param(b"\r\r\n", "id", id="mixed_line_endings"),
+        pytest.param(b"\xef\xbb\xbf\r\n", "id", id="file_bom"),
+        pytest.param(b"\xef\xbb\xbf", "id", id="bom_on_header"),
+        pytest.param(b"\xef\xbc\xa1", "\uff21id", id="name_shares_first_bom_byte"),
+        pytest.param(b"\n\xef\xbb\xbf", "\ufeffid", id="bom_in_name"),
+        pytest.param(b"\n \t", " \tid", id="whitespace_in_name"),
+    ],
+)
+def test_header_after_empty_lines(prefix, first_name):
+    with io.BufferedReader(io.BytesIO(prefix + b"id,x\n1,2\n"), buffer_size=4) as file:
+        header = _read_header_for_first_chunk(file, 16, ignore_empty_lines=True)
+    assert header is not None
+    assert pcsv.read_csv(pa.BufferReader(header)).column_names == [first_name, "x"]
+
+
+@pytest.mark.parametrize(
+    "ignore_empty_lines,short_headers,long_headers",
+    [
+        pytest.param(True, [("id",)] * 2, [None], id="skip_blank_records"),
+        pytest.param(False, [("",)] * 2, [("",)] * 2, id="use_empty_column_name"),
+    ],
+)
+def test_lists_files_with_leading_empty_lines(
+    ignore_empty_lines, short_headers, long_headers
+):
+    filesystem = _MockFileSystem()
+    output = pa.BufferOutputStream()
+    pcsv.write_csv(pa.table({"id": range(10)}), output)
+    csv = output.getvalue()
+    # The body fills one chunk. Adding either prefix makes two candidate chunks.
+    chunk_size = csv.size
+    files = []
+    for path, prefix in [("short.csv", b"\r\r\n"), ("long.csv", b"\n" * chunk_size)]:
+        with filesystem.open_output_stream(path) as out:
+            out.write(prefix)
+            out.write(csv)
+        files.append(FileInfo(path=path, size=len(prefix) + csv.size))
+
+    indexer = CsvFileIndexer(
+        filesystem=filesystem,
+        read_options=pcsv.ReadOptions(),
+        parse_options=pcsv.ParseOptions(ignore_empty_lines=ignore_empty_lines),
+        chunk_size=chunk_size,
+        ignore_missing_paths=False,
+    )
+    manifest = FileManifest.concat(
+        list(indexer.list_files_from_file_infos(files, filesystem=filesystem))
+    )
+
+    headers = collections.defaultdict(list)
+    for path, chunk in zip(manifest.paths, manifest.file_chunk_metadatas):
+        headers[path].append(None if chunk is None else tuple(chunk["column_names"]))
+    assert headers == {"short.csv": short_headers, "long.csv": long_headers}
 
 
 @pytest.mark.parametrize(

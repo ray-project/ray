@@ -80,7 +80,9 @@ class CsvFileIndexer(LineChunkFileIndexer):
 
     A chunk after the first has no header, so the indexer reads the split
     file's header line once and puts its column names in every chunk's
-    metadata. The first ``RAY_DATA_CSV_HEADER_BATCH_SIZE`` split files read
+    metadata. If skipped empty lines fill the first chunk, the indexer lists
+    the file whole so a later chunk can't treat the header as data.
+    The first ``RAY_DATA_CSV_HEADER_BATCH_SIZE`` split files read
     their headers inline in the listing task, so a few large files pay no
     actor startup. Further headers read in a spread actor pool, as Parquet
     indexers read footers, made when the first of them is listed;
@@ -115,9 +117,10 @@ class CsvFileIndexer(LineChunkFileIndexer):
         self._reader = HeaderReader(
             filesystem=filesystem,
             file_format=self._header_format,
+            chunk_size=self._chunk_size,
             io_concurrency=self._io_concurrency,
         )
-        self._header_names: Dict[str, List[str]] = {}
+        self._header_names: Dict[str, Optional[List[str]]] = {}
         self._inline_headers_read = 0
 
     @override
@@ -140,6 +143,7 @@ class CsvFileIndexer(LineChunkFileIndexer):
                 },
                 filesystem=self._filesystem,
                 file_format=self._header_format,
+                chunk_size=self._chunk_size,
                 io_concurrency=self._io_concurrency,
             ) as pool:
                 yield from super()._process_file_infos_to_manifests(
@@ -162,7 +166,9 @@ class CsvFileIndexer(LineChunkFileIndexer):
 
         def submit(
             pool: LazyActorPool, batch: List[FileInfo]
-        ) -> Optional[Tuple[List[FileInfo], Union[List[List[str]], "ray.ObjectRef"]]]:
+        ) -> Optional[
+            Tuple[List[FileInfo], Union[List[Optional[List[str]]], "ray.ObjectRef"]]
+        ]:
             with_headers = [info for info in batch if self._is_chunked(info)]
             if not with_headers:
                 return None
@@ -195,17 +201,19 @@ class CsvFileIndexer(LineChunkFileIndexer):
     def _chunk_metadatas_of_file(
         self, file_info: FileInfo
     ) -> List[Optional[ChunkMetadata]]:
-        metadatas = super()._chunk_metadatas_of_file(file_info)
-        if metadatas == [None]:
-            return metadatas
-        names = self._header_names.pop(file_info.path, None)
-        if names is None:
+        if not self._is_chunked(file_info):
+            return [None]
+        if file_info.path in self._header_names:
+            names = self._header_names.pop(file_info.path)
+        else:
             # The inline path (``RAY_DATA_CSV_HEADER_NUM_ACTORS=0``) and
             # direct off-listing calls read the header right here.
             names = self._reader.read_header(file_info)
+        if names is None:
+            return [None]
         return [
             None if metadata is None else {**metadata, COLUMN_NAMES_KEY: names}
-            for metadata in metadatas
+            for metadata in super()._chunk_metadatas_of_file(file_info)
         ]
 
 
@@ -257,7 +265,8 @@ class CsvDatasourceV2(LineChunkableDatasourceV2):
     Splits a large uncompressed file into byte-range chunks unless the parse
     options let a row span lines (``newlines_in_values`` or
     ``escape_char``), skip rows at the start of each file, or use a non-UTF-8
-    encoding.
+    encoding. After schema inference, the indexer also lists a file whole
+    if skipped empty lines fill its first chunk.
     """
 
     _FORMAT_NAME = "CSV"
