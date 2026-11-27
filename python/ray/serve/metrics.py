@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.serve import context
@@ -287,3 +287,16 @@ class Histogram(metrics.Histogram):
         """
         tags = _add_serve_context_tag_values(self._tag_keys, tags)
         super().observe(value, tags)
+
+    def _observe_many(
+        self,
+        values: Iterable[Union[int, float]],
+        tags: Dict[str, str] = None,
+    ) -> None:
+        """Observe many values, adding serve context tag values to the tags.
+
+        Mirrors :meth:`observe` so batched observations fill in the ``route``
+        tag the same way single observations do.
+        """
+        tags = _add_serve_context_tag_values(self._tag_keys, tags)
+        super()._observe_many(values, tags)

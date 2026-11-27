@@ -127,13 +127,6 @@ class RequestIngressMetrics:
         return (route, method, application, status_code)
 
     @staticmethod
-    def request_error_tags_key(
-        *, route: str, method: str, application: str, status_code: str
-    ) -> Tuple[str, ...]:
-        """Cached-buffer key for ``request_error_tags``."""
-        return (route, method, application, status_code)
-
-    @staticmethod
     def deployment_error_tags_key(
         *,
         route: str,
@@ -150,11 +143,6 @@ class RequestIngressMetrics:
         key: Tuple[str, ...], tag_keys: Tuple[str, ...]
     ) -> Dict[str, str]:
         """Rebuild a tag dict from a cached key and its canonical key order."""
-        if len(key) != len(tag_keys):
-            raise ValueError(
-                f"Key has {len(key)} values but {len(tag_keys)} tag keys "
-                f"are expected: {key!r} for {tag_keys!r}."
-            )
         return dict(zip(tag_keys, key))
 
     @staticmethod

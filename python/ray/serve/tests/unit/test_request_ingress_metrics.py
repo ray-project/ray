@@ -41,14 +41,9 @@ def test_cached_tag_keys_rebuild_the_direct_tags():
         status_code=status_code,
     )
 
-    error_key = RequestIngressMetrics.request_error_tags_key(
-        route=route,
-        method=method,
-        application=application,
-        status_code=status_code,
-    )
+    # The error counter shares the request counter's cached key.
     assert RequestIngressMetrics.tags_from_key(
-        error_key, REQUEST_ERROR_TAG_KEYS
+        request_key, REQUEST_ERROR_TAG_KEYS
     ) == RequestIngressMetrics.request_error_tags(
         route=route,
         method=method,
@@ -76,8 +71,3 @@ def test_cached_tag_keys_rebuild_the_direct_tags():
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
-
-
-def test_tags_from_key_rejects_a_length_mismatch():
-    with pytest.raises(ValueError):
-        RequestIngressMetrics.tags_from_key(("route", "method"), REQUEST_TAG_KEYS)

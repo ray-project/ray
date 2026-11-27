@@ -961,14 +961,9 @@ class ReplicaMetricsManager:
                 latency_ms
             )
             if is_error:
-                self._cached_ingress_request_error_counter[protocol][
-                    RequestIngressMetrics.request_error_tags_key(
-                        route=route,
-                        method=method,
-                        application=app_name,
-                        status_code=status_code,
-                    )
-                ] += 1
+                # The error counter's key is the same tuple as the request
+                # counter's; only the tag keys differ at flush time.
+                self._cached_ingress_request_error_counter[protocol][request_key] += 1
                 self._cached_deployment_request_error_counter[protocol][
                     RequestIngressMetrics.deployment_error_tags_key(
                         route=route,
