@@ -10,6 +10,73 @@ import pytest
 from ray.data.read_api import read_hive
 
 
+@pytest.fixture
+def hive_source(ray_start_regular_shared, tmp_path):
+    from functools import partial
+
+    from ray.data.tests.unit.datasource_v2.test_hive_hs2 import _Connection, _Cursor
+
+    trace = tmp_path / "statements"
+    trace.write_text("")
+
+    class Cursor(_Cursor):
+        def execute(self, statement):
+            trace.write_text(statement)
+            if statement.startswith("SELECT 1 AS"):
+                self.description = [("__ray_hive_row", "INT", *self.description[0][2:])]
+                self.batches = [[(1,)], [(1,)]]
+                return
+            projected = statement.startswith("SELECT `name`")
+            self.description = self.description[1:] if projected else self.description
+            rows = [("a",), ("b",)] if projected else [(1, "a"), (2, "b")]
+            self.batches = [rows]
+
+    factory = partial(lambda password: _Connection(Cursor()), "synthetic_password")
+    return read_hive("analytics.events", connection_factory=factory), trace, factory
+
+
+def test_table_projection_through_public_api(hive_source):
+    from ray.data._internal.metadata_exporter import sanitize_for_struct
+    from ray.data.expressions import col
+
+    ds, trace, factory = hive_source
+    exported = str(sanitize_for_struct(ds._logical_plan.dag._get_args(), 1000))
+    assert "synthetic_" not in exported
+    rows = ds.select_columns(["name"], concurrency=2).take_all()
+    assert [dict(row) for row in rows] == [{"name": "a"}, {"name": "b"}]
+    assert trace.read_text() == "SELECT `name` FROM `analytics`.`events`"
+    assert [(row["id"], row["name"]) for row in ds.take_all()] == [(1, "a"), (2, "b")]
+    assert len(ds.select_columns([]).take_all()) == 2
+    assert trace.read_text() == "SELECT 1 AS `__ray_hive_row` FROM `analytics`.`events`"
+    rows = ds.filter(expr=col("id") >= 2).select_columns(["name"]).limit(1).take_all()
+    assert [row["name"] for row in rows] == ["b"]
+    assert trace.read_text() == "SELECT * FROM `analytics`.`events`"
+    source_limited = read_hive("analytics.events", limit=2, connection_factory=factory)
+    for limited in (source_limited, ds.limit(2)):
+        rows = limited.filter(expr=col("id") >= 2).limit(1).take_all()
+        assert [row["id"] for row in rows] == [2]
+        assert trace.read_text() == "SELECT * FROM `analytics`.`events` LIMIT 2"
+
+
+@pytest.mark.parametrize(
+    "limits,suffix,count",
+    [
+        pytest.param((True,), "", 1, id="bool_true"),
+        pytest.param((False,), None, 0, id="bool_false"),
+        pytest.param((2**31 - 1,), f" LIMIT {2**31 - 1}", 2, id="hive_max"),
+        pytest.param((2**31,), "", 2, id="above_hive_max"),
+        pytest.param((10, 2**31), " LIMIT 10", 2, id="limit_then_overflow"),
+    ],
+)
+def test_table_limits_through_public_api(hive_source, limits, suffix, count):
+    dataset, trace, _ = hive_source
+    for limit in limits:
+        dataset = dataset.limit(limit)
+    assert len(dataset.take_all()) == count
+    expected = "" if suffix is None else f"SELECT * FROM `analytics`.`events`{suffix}"
+    assert trace.read_text() == expected
+
+
 @pytest.mark.parametrize("max_errored_blocks", [0, 3, -1])
 @pytest.mark.parametrize("block_count", [None, 1, 4])
 def test_public_api_passes_task_options_without_repartition(
