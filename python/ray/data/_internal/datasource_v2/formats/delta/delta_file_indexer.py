@@ -14,6 +14,7 @@ carries them to the reader in a manifest column (``PARTITION_VALUES_COLUMN``).
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import posixpath
 import urllib.parse
@@ -90,12 +91,15 @@ class DeltaTableSnapshot:
     Attributes:
         table_uri: The table URI, as ``DeltaTable.table_uri`` reports it.
         version: The table version to read.
-        storage_options: ``deltalake`` storage options, for credentials.
+        storage_options: ``deltalake`` storage options, for credentials. Left
+            out of the ``repr``.
     """
 
     table_uri: str
     version: int
-    storage_options: Optional[Dict[str, Any]] = None
+    storage_options: Optional[Dict[str, Any]] = dataclasses.field(
+        default=None, repr=False
+    )
 
     def open(self) -> "DeltaTable":
         """Open the table at the pinned version."""
@@ -108,10 +112,17 @@ class DeltaTableSnapshot:
         )
 
     def add_actions(self) -> pa.Table:
-        """The ``add`` actions of the pinned version, one row per data file."""
+        """The ``add`` actions of the pinned version, one row per data file.
+
+        Sorted by path. ``deltalake`` lists them in the order it replays the
+        log, which follows the layout of the latest checkpoint, so one version
+        could otherwise list its files in another order once a checkpoint is
+        written with its rows in another order.
+        """
         # ``deltalake`` returns an arro3-core table, not a PyArrow one;
         # ``pa.table`` converts it through the Arrow C stream interface.
-        return pa.table(self.open().get_add_actions(flatten=True))
+        add_actions = pa.table(self.open().get_add_actions(flatten=True))
+        return add_actions.sort_by(ADD_ACTION_PATH_COLUMN)
 
 
 def resolve_data_file_path(logged_path: str) -> str:
@@ -129,15 +140,14 @@ def resolve_data_file_path(logged_path: str) -> str:
 
     Raises:
         ValueError: If the path is absolute. The Delta protocol allows that
-            (for example for shallow clones), but the DataSourceV2 reader reads
-            through a filesystem rooted at the table.
+            (for example for shallow clones), but ``read_delta`` reads through a
+            filesystem rooted at the table, as the V1 reader does.
     """
     if posixpath.isabs(logged_path) or _has_scheme(logged_path):
         raise ValueError(
-            f"The Delta log names a data file by absolute path ({logged_path!r}). "
-            "The DataSourceV2 reader for `read_delta` only reads files under the "
-            "table directory. Set `DataContext.use_delta_datasource_v2 = False` "
-            "to read this table with the V1 reader."
+            f"The Delta log names a data file by absolute path ({logged_path!r}), "
+            "as a shallow clone's log does. `ray.data.read_delta` only reads "
+            "data files under the table directory."
         )
     return urllib.parse.unquote(logged_path)
 
@@ -272,7 +282,6 @@ class _DeltaLogListing:
     _partition_schema: pa.Schema
     _shuffle_config: Optional["FileShuffleConfig"]
     _partition_values_by_path: Dict[str, PartitionValues]
-    _num_records_by_path: Dict[str, Optional[int]]
 
     def _init_delta_listing(
         self,
@@ -291,7 +300,6 @@ class _DeltaLogListing:
         self._shuffle_config = shuffle_config
         # Filled by ``list_file_infos``, in the listing task.
         self._partition_values_by_path = {}
-        self._num_records_by_path = {}
 
     def list_file_infos(
         self,
@@ -304,11 +312,12 @@ class _DeltaLogListing:
         """Yield the table's data files at the pinned version.
 
         ``paths`` holds the table label from ``DeltaDatasourceV2.paths`` and is
-        not read. Paths are relative to the table root and sorted, so a seeded
-        shuffle and ``preserve_order`` don't depend on the log's order.
-        Zero-size files are skipped and ``pruners`` applied, as the directory
-        listing does; a ``DeltaPartitionPruner`` gets each file's partition
-        values from the log.
+        not read. Paths are relative to the table root, in path order, so a
+        version lists its files in one order however its log is checkpointed
+        (``preserve_order=True`` reads them in that order). Empty files are
+        skipped and ``pruners`` applied, as
+        the directory listing does; a ``DeltaPartitionPruner`` gets each
+        file's partition values from the log.
         """
         add_actions = self._snapshot.add_actions()
         file_paths = [
@@ -321,24 +330,13 @@ class _DeltaLogListing:
                 partition_values_as_strings(add_actions, self._partition_schema),
             )
         )
-        # ``deltalake`` leaves the column out when no file has stats.
-        self._num_records_by_path = dict(
-            zip(
-                file_paths,
-                add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
-                if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
-                else [None] * add_actions.num_rows,
+        self._remember_add_actions(file_paths, add_actions)
+        file_infos = [
+            FileInfo(path=path, size=size)
+            for path, size in zip(
+                file_paths, add_actions[ADD_ACTION_SIZE_COLUMN].to_pylist()
             )
-        )
-        file_infos = sorted(
-            (
-                FileInfo(path=path, size=size)
-                for path, size in zip(
-                    file_paths, add_actions[ADD_ACTION_SIZE_COLUMN].to_pylist()
-                )
-            ),
-            key=lambda info: info.path,
-        )
+        ]
         logger.debug(
             "Delta table %s version %d has %d data files",
             self._snapshot.table_uri,
@@ -351,12 +349,21 @@ class _DeltaLogListing:
         self, file_infos: Iterable[FileInfo], pruners: List["FilePruner"]
     ) -> Iterator[FileInfo]:
         for info in file_infos:
-            if not info.size:
-                logger.warning(f"Skipping zero-size file: {info.path!r}")
+            # A file of unknown size stays in: its footer read finds the size.
+            if info.size == 0:
+                logger.warning(f"Skipping empty data file: {info.path!r}")
                 continue
             if not all(self._pruner_includes(pruner, info.path) for pruner in pruners):
                 continue
             yield info
+
+    def _remember_add_actions(
+        self, file_paths: Sequence[str], add_actions: pa.Table
+    ) -> None:
+        """Keep what a subclass needs from the listed ``add`` actions.
+
+        ``file_paths`` are the ``add_actions`` paths, resolved.
+        """
 
     def _pruner_includes(self, pruner: FilePruner, path: str) -> bool:
         if isinstance(pruner, DeltaPartitionPruner):
@@ -496,6 +503,22 @@ class DeltaWholeFileIndexer(_DeltaLogListing, NonSamplingFileIndexer):
             snapshot=snapshot,
             filesystem=filesystem,
             partition_schema=partition_schema,
+        )
+        # Filled by ``list_file_infos``, in the listing task.
+        self._num_records_by_path: Dict[str, Optional[int]] = {}
+
+    @override
+    def _remember_add_actions(
+        self, file_paths: Sequence[str], add_actions: pa.Table
+    ) -> None:
+        # ``deltalake`` leaves the column out when no file has stats.
+        self._num_records_by_path = dict(
+            zip(
+                file_paths,
+                add_actions[ADD_ACTION_NUM_RECORDS_COLUMN].to_pylist()
+                if ADD_ACTION_NUM_RECORDS_COLUMN in add_actions.column_names
+                else [None] * add_actions.num_rows,
+            )
         )
 
     @override
