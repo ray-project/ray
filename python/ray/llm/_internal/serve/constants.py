@@ -68,6 +68,43 @@ RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING = (
     os.environ.get("RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING", "0") == "1"
 )
 
+# vLLM routes that direct streaming serves to clients. All other routes are
+# dropped, including unauthenticated operational routes such as /pause and
+# /scale_elastic_ep. Ray calls those operations through LLMServer methods.
+DIRECT_STREAMING_VLLM_ROUTES = frozenset(
+    {
+        "/v1/models",
+        "/v1/chat/completions",
+        "/v1/completions",
+        "/v1/responses",
+        "/v1/responses/{response_id}",
+        "/v1/responses/{response_id}/cancel",
+        "/v1/messages",
+        "/v1/messages/count_tokens",
+        "/v1/embeddings",
+        "/v1/audio/transcriptions",
+        "/v1/audio/translations",
+        "/v1/score",
+        "/v1/rerank",
+        "/pooling",
+        "/classify",
+        "/score",
+        "/rerank",
+        "/tokenize",
+        "/detokenize",
+    }
+)
+
+# Extra vLLM routes to serve under direct streaming, comma-separated.
+# Example: "/reset_prefix_cache,/health".
+RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES = frozenset(
+    route.strip()
+    for route in os.environ.get(
+        "RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES", ""
+    ).split(",")
+    if route.strip()
+)
+
 _RAY_SERVE_LLM_REPLICA_ENV_DEFAULTS = {
     "RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD": "0",
     "RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP": "0",

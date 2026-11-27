@@ -149,8 +149,10 @@ class TestKvEvents:
                 env_vars={
                     "RAY_SERVE_ENABLE_DIRECT_INGRESS": "1",
                     "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING": "1",
-                    # /reset_prefix_cache is a vLLM dev-mode endpoint.
+                    # /reset_prefix_cache is a vLLM dev-mode endpoint, and direct
+                    # streaming serves it only when listed.
                     "VLLM_SERVER_DEV_MODE": "1",
+                    "RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES": "/reset_prefix_cache",
                 },
             ),
             log_engine_metrics=False,

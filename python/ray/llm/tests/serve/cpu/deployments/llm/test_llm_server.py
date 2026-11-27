@@ -15,6 +15,7 @@ from vllm.utils.argparse_utils import FlexibleArgumentParser
 from vllm.v1.engine.exceptions import EngineDeadError
 
 from ray import serve
+from ray.llm._internal.serve.constants import DIRECT_STREAMING_VLLM_ROUTES
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -820,15 +821,10 @@ class TestMaybeAddRequestId:
 
 
 class TestBuildAsgiApp:
-    """``VLLMEngine.build_asgi_app`` must produce an app vLLM's error handlers work on."""
+    """``VLLMEngine.build_asgi_app`` builds the app that direct streaming serves."""
 
-    @pytest.mark.asyncio
-    async def test_engine_error_reaches_the_client(self):
-        """A dead engine reports vLLM's error, not the handler's own AttributeError.
-
-        vLLM's engine error handler reads ``app.state.server``, which neither
-        ``build_app`` nor ``init_app_state`` sets.
-        """
+    @staticmethod
+    async def _build_app(*cli_args):
         # Building the parser resolves VllmConfig's defaults, which infer the device
         # type. A GPU-less CI node has no vLLM platform, so pin one; this app is never
         # served and no engine is started.
@@ -837,7 +833,7 @@ class TestBuildAsgiApp:
         if not current_platform.device_type:
             current_platform.device_type = "cpu"
 
-        vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args([])
+        vllm_args = make_arg_parser(FlexibleArgumentParser()).parse_args(cli_args)
         engine = VLLMEngine.__new__(VLLMEngine)
         engine._vllm_args = vllm_args
         engine._engine_client = SimpleNamespace(model_config=None)
@@ -846,6 +842,16 @@ class TestBuildAsgiApp:
 
         app = await engine.build_asgi_app()
         app.state.args = vllm_args
+        return app
+
+    @pytest.mark.asyncio
+    async def test_engine_error_reaches_the_client(self):
+        """A dead engine reports vLLM's error, not the handler's own AttributeError.
+
+        vLLM's engine error handler reads ``app.state.server``, which neither
+        ``build_app`` nor ``init_app_state`` sets.
+        """
+        app = await self._build_app()
         app.state.engine_client = SimpleNamespace(
             errored=True, is_running=False, should_keep_api_server_alive=False
         )
@@ -858,6 +864,35 @@ class TestBuildAsgiApp:
 
         assert response.status_code == 500
         assert response.json()["error"]["message"] == EngineDeadError.CLIENT_MESSAGE
+
+    @pytest.mark.asyncio
+    async def test_operational_routes_are_not_served(self, monkeypatch):
+        """Operational routes return 404, even when enabled."""
+        monkeypatch.setenv("VLLM_SERVER_DEV_MODE", "1")
+        app = await self._build_app("--enable-elastic-ep")
+
+        paths = {route.path for route in app.routes}
+        assert paths <= DIRECT_STREAMING_VLLM_ROUTES
+        assert {"/v1/chat/completions", "/v1/completions", "/v1/models"} <= paths
+
+        client = TestClient(app, raise_server_exceptions=False)
+        # %73 decodes to "s". Routing uses the decoded path, so this is 404 too.
+        for path in ["/scale_elastic_ep", "/%73cale_elastic_ep", "/pause", "/sleep"]:
+            assert client.post(path, json={}).status_code == 404, path
+
+    @pytest.mark.asyncio
+    async def test_extra_routes_are_served(self, monkeypatch):
+        monkeypatch.setenv("VLLM_SERVER_DEV_MODE", "1")
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.engines.vllm.vllm_engine."
+            "RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES",
+            frozenset({"/reset_prefix_cache"}),
+        )
+        app = await self._build_app()
+
+        paths = {route.path for route in app.routes}
+        assert "/reset_prefix_cache" in paths
+        assert "/pause" not in paths
 
 
 if __name__ == "__main__":

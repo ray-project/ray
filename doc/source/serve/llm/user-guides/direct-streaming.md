@@ -50,7 +50,7 @@ serve run config.yaml
 :::
 ::::
 
-The deployed application is OpenAI-compatible and exposes the engine's native routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`.
+The deployed application is OpenAI-compatible and serves the engine's inference routes, including `/v1/chat/completions`, `/v1/completions`, and `/v1/models`. See {ref}`direct-streaming-routes` for the full list.
 
 To confirm direct streaming is active, check that the application runs two deployments: your model deployment (`LLMServer:<model_id>`) and an `LLMRouter` deployment. `LLMRouter` is the ingress request router. It replaces the standalone `OpenAiIngress` deployment that fronts a non-direct-streaming app.
 
@@ -153,6 +153,23 @@ Truncation affects only the copy sent to the router, not the request forwarded t
 To pin all turns of a conversation to the same replica, send a session-id header with each request. HAProxy forwards the header to the ingress request router, which passes the session id to the configured policy. Session-aware policies such as `ConsistentHashRouter` then route every request with the same session id to one replica.
 
 The header name defaults to `x-session-id` and is configurable with `RAY_SERVE_SESSION_ID_HEADER_KEY`. Matching is case-insensitive and tolerant of the `-`/`_` substitutions some proxies make.
+
+(direct-streaming-routes)=
+## Served routes
+
+With vLLM, the replica serves only these routes:
+
+- OpenAI: `/v1/chat/completions`, `/v1/completions`, `/v1/responses` (including retrieve and cancel), `/v1/embeddings`, `/v1/audio/transcriptions`, `/v1/audio/translations`, `/v1/score`, `/v1/rerank`, and `/v1/models`
+- Anthropic: `/v1/messages` and `/v1/messages/count_tokens`
+- vLLM: `/tokenize`, `/detokenize`, `/pooling`, `/classify`, `/score`, and `/rerank`
+
+All other routes return 404. This includes vLLM's operational routes, such as `/pause`, `/collective_rpc`, and `/scale_elastic_ep`, which have no authentication, and routes from vLLM endpoint plugins. To serve more routes, list them in `RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES` in the `LLMConfig`'s `runtime_env`:
+
+```python
+runtime_env={"env_vars": {"RAY_SERVE_LLM_DIRECT_STREAMING_EXTRA_ROUTES": "/reset_prefix_cache,/health"}}
+```
+
+Any client that can reach the application can call these routes.
 
 (direct-streaming-limitations)=
 ## Limitations
