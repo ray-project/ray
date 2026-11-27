@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Union
+from typing import TYPE_CHECKING, Literal, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -73,6 +73,112 @@ def _validate_nested_list(arr_type: pyarrow.DataType) -> None:
         )
 
 
+def _list_row_layout(arr: pyarrow.Array) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Return each row's length, start in ``pc.list_flatten(arr)``, and validity.
+
+    ``pc.list_flatten`` skips null rows (even ones whose offsets span child
+    values), so a null row has length 0 and adds nothing to the flattened values.
+    """
+    lengths = (
+        pc.fill_null(pc.list_value_length(arr), 0)
+        .to_numpy(zero_copy_only=False)
+        .astype(np.int64)
+    )
+    starts = np.cumsum(lengths) - lengths
+    valid = arr.is_valid().to_numpy(zero_copy_only=False)
+    return lengths, starts, valid
+
+
+def _resolve_slice_bound(
+    bound: Optional[int], lengths: Union[int, np.ndarray], default
+) -> Union[int, np.ndarray]:
+    """Resolve a Python slice bound against list lengths, clipping to [0, length]."""
+    if bound is None:
+        return default
+    if bound < 0:
+        return np.maximum(lengths + bound, 0)
+    return np.minimum(bound, lengths)
+
+
+def _list_element_from_end(arr: pyarrow.Array, index: int) -> pyarrow.Array:
+    """Get the element at a negative ``index`` from each list.
+
+    ``pc.list_element`` only accepts non-negative indices. Like it, raise if a
+    non-null list is too short, and return null for null lists.
+    """
+    lengths, starts, valid = _list_row_layout(arr)
+    positions = lengths + index
+    out_of_bounds = valid & (positions < 0)
+    if out_of_bounds.any():
+        length = int(lengths[np.argmax(out_of_bounds)])
+        raise pyarrow.lib.ArrowInvalid(
+            f"Index {index} is out of bounds: should be in [{-length}, 0)"
+        )
+    indices = pyarrow.array(starts + positions, type=pyarrow.int64(), mask=~valid)
+    return pc.take(pc.list_flatten(arr), indices)
+
+
+def _slice_lists_with_negative_bounds(
+    arr: pyarrow.Array, start: Optional[int], stop: Optional[int], step: int
+) -> pyarrow.Array:
+    """Slice each list with Python semantics, where negative bounds count from
+    the end of that list. ``pc.list_slice`` only accepts non-negative bounds.
+    """
+    if step < 1:
+        # Same error as pc.list_slice; negative steps aren't supported.
+        raise pyarrow.lib.ArrowInvalid(
+            f"`step` must be greater than or equal to 1, got: {step}"
+        )
+
+    if pyarrow.types.is_fixed_size_list(arr.type):
+        # Every list has the same length, so the bounds resolve to the same
+        # non-negative values in every row, and pc.list_slice keeps the type.
+        size = arr.type.list_size
+        resolved_start = int(_resolve_slice_bound(start, size, 0))
+        resolved_stop = int(_resolve_slice_bound(stop, size, size))
+        return pc.list_slice(
+            arr,
+            start=resolved_start,
+            stop=max(resolved_stop, resolved_start),
+            step=step,
+        )
+
+    lengths, starts, _ = _list_row_layout(arr)
+    row_starts = np.broadcast_to(_resolve_slice_bound(start, lengths, 0), lengths.shape)
+    row_stops = _resolve_slice_bound(stop, lengths, lengths)
+    counts = (np.maximum(row_stops - row_starts, 0) + step - 1) // step
+
+    offsets = np.concatenate([[0], np.cumsum(counts)])
+    rows = np.repeat(np.arange(len(arr)), counts)
+    positions = np.arange(offsets[-1]) - offsets[:-1][rows]
+    indices = starts[rows] + row_starts[rows] + positions * step
+    values = pc.take(pc.list_flatten(arr), pyarrow.array(indices, type=pyarrow.int64()))
+
+    # Build the result in the input's type, as pc.list_slice does.
+    mask = arr.is_null() if arr.null_count else None
+    is_list_view = hasattr(pyarrow.types, "is_list_view") and (
+        pyarrow.types.is_list_view(arr.type)
+        or pyarrow.types.is_large_list_view(arr.type)
+    )
+    is_large = pyarrow.types.is_large_list(arr.type) or (
+        is_list_view and pyarrow.types.is_large_list_view(arr.type)
+    )
+    offset_type = pyarrow.int64() if is_large else pyarrow.int32()
+    if is_list_view:
+        array_cls = pyarrow.LargeListViewArray if is_large else pyarrow.ListViewArray
+        return array_cls.from_arrays(
+            pyarrow.array(offsets[:-1], type=offset_type),
+            pyarrow.array(counts, type=offset_type),
+            values,
+            type=arr.type,
+            mask=mask,
+        )
+    array_cls = pyarrow.LargeListArray if is_large else pyarrow.ListArray
+    return array_cls.from_arrays(
+        pyarrow.array(offsets, type=offset_type), values, type=arr.type, mask=mask
+    )
+
+
 @dataclass
 class _ListNamespace:
     """Namespace for list operations on expression columns.
@@ -100,7 +206,7 @@ class _ListNamespace:
             self._expr
         )
 
-    def __getitem__(self, key: Union[int, slice]) -> "PyArrowComputeUDFExpr":
+    def __getitem__(self, key: Union[int, slice]) -> "UDFExpr":
         """Get element or slice using bracket notation.
 
         Args:
@@ -123,11 +229,13 @@ class _ListNamespace:
                 f"List indices must be integers or slices, not {type(key).__name__}"
             )
 
-    def get(self, index: int) -> "PyArrowComputeUDFExpr":
+    def get(self, index: int) -> "UDFExpr":
         """Get element at the specified index from each list.
 
         Args:
-            index: The index of the element to retrieve. Negative indices are supported.
+            index: The index of the element to retrieve. Negative indices count
+                from the end of each list, so ``-1`` is the last element. An
+                index past either end of a non-null list raises an error.
 
         Returns:
             Expression that extracts the element at the given index.
@@ -142,14 +250,25 @@ class _ListNamespace:
             ):
                 return_dtype = DataType.from_arrow(arrow_type.value_type)
 
+        if index < 0:
+            # pc.list_element only accepts non-negative indices.
+            @pyarrow_udf(return_dtype=return_dtype)
+            def _list_get_from_end(arr: pyarrow.Array) -> pyarrow.Array:
+                return _list_element_from_end(_ensure_array(arr), index)
+
+            return _list_get_from_end(self._expr)
+
         return _create_pyarrow_compute_udf(pc.list_element, return_dtype)(
             self._expr, index
         )
 
     def slice(
         self, start: int | None = None, stop: int | None = None, step: int | None = None
-    ) -> "PyArrowComputeUDFExpr":
+    ) -> "UDFExpr":
         """Slice each list.
+
+        Negative ``start`` and ``stop`` count from the end of each list, as in
+        Python slicing, so ``slice(-2)`` keeps the last two elements.
 
         Args:
             start: Start index (inclusive). Defaults to 0.
@@ -159,6 +278,16 @@ class _ListNamespace:
         Returns:
             Expression that extracts a slice from each list.
         """
+        if (start is not None and start < 0) or (stop is not None and stop < 0):
+            # pc.list_slice only accepts non-negative bounds.
+            @pyarrow_udf(return_dtype=self._expr.data_type)
+            def _list_slice_from_end(arr: pyarrow.Array) -> pyarrow.Array:
+                return _slice_lists_with_negative_bounds(
+                    _ensure_array(arr), start, stop, 1 if step is None else step
+                )
+
+            return _list_slice_from_end(self._expr)
+
         return _create_pyarrow_compute_udf(pc.list_slice, self._expr.data_type)(
             self._expr,
             start=0 if start is None else start,
