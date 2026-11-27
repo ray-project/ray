@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import ray._private.thirdparty.pynvml as pynvml
 from ray._private.accelerators import NvidiaGPUAcceleratorManager, nvidia_gpu
 from ray.tests.accelerators.mock_pynvml import (
     DeviceHandleMock,
@@ -63,6 +64,74 @@ def test_num_gpus_parsing(patch_mock_pynvml):
 @pytest.mark.parametrize("mock_nvml", [mock_nvml])
 def test_gpu_info_parsing(patch_mock_pynvml):
     assert NvidiaGPUAcceleratorManager.get_current_node_accelerator_type() == "A100"
+
+
+class _UnqueryableGPUsNVMLMock(PyNVMLMock):
+    """Fails the handle or name lookup of the GPUs in `lost`, as NVML does for
+    a GPU that has fallen off the bus, and counts shutdowns."""
+
+    def __init__(self, mock_data, lost, fail_at):
+        super().__init__(mock_data)
+        self.lost = lost
+        self.fail_at = fail_at
+        self.shutdowns = 0
+
+    def nvmlShutdown(self):
+        self.shutdowns += 1
+
+    def nvmlDeviceGetHandleByIndex(self, index):
+        if self.fail_at == "handle" and index in self.lost:
+            raise pynvml.NVMLError_GpuIsLost
+        return super().nvmlDeviceGetHandleByIndex(index)
+
+    def nvmlDeviceGetName(self, handle):
+        if self.fail_at == "name" and self._mock_data.index(handle) in self.lost:
+            raise pynvml.NVMLError_GpuIsLost
+        return super().nvmlDeviceGetName(handle)
+
+
+_TWO_TYPES_MOCK_DATA = [
+    DeviceHandleMock("NVIDIA H100 80GB HBM3", "GPU-0"),
+    DeviceHandleMock("Tesla V100-SXM2-16GB", "GPU-1"),
+]
+
+
+@pytest.mark.parametrize(
+    "mock_nvml",
+    [
+        _UnqueryableGPUsNVMLMock(_TWO_TYPES_MOCK_DATA, lost={0}, fail_at=fail_at)
+        for fail_at in ("handle", "name")
+    ],
+    ids=["handle", "name"],
+)
+def test_accelerator_type_skips_gpu_that_cannot_be_queried(
+    mock_nvml, patch_mock_pynvml, propagate_logs, caplog
+):
+    accelerator_type = NvidiaGPUAcceleratorManager.get_current_node_accelerator_type()
+
+    # GPU 0 cannot be queried, so GPU 1 gives the type.
+    assert accelerator_type == "V100"
+    assert mock_nvml.shutdowns == 1
+    assert "NVIDIA GPU 0" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "mock_nvml",
+    [
+        _UnqueryableGPUsNVMLMock(_TWO_TYPES_MOCK_DATA, lost={0, 1}, fail_at=fail_at)
+        for fail_at in ("handle", "name")
+    ],
+    ids=["handle", "name"],
+)
+def test_accelerator_type_is_unknown_when_no_gpu_can_be_queried(
+    mock_nvml, patch_mock_pynvml, propagate_logs, caplog
+):
+    accelerator_type = NvidiaGPUAcceleratorManager.get_current_node_accelerator_type()
+
+    assert accelerator_type is None
+    assert mock_nvml.shutdowns == 1
+    assert "NVIDIA GPU 0" in caplog.text
+    assert "NVIDIA GPU 1" in caplog.text
 
 
 @pytest.mark.parametrize(
