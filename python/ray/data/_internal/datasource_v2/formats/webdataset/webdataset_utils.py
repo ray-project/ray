@@ -154,13 +154,14 @@ def _tar_file_iterator(
             fname = tarinfo.name
             if not tarinfo.isreg() or fname is None:
                 continue
-            member = stream.extractfile(tarinfo)
-            assert member is not None  # Regular files always have contents.
-            data = member.read()
             fname = _apply_list(filerename, fname)
             assert isinstance(fname, str)
             if not _check_suffix(fname, fileselect):
                 continue
+
+            member = stream.extractfile(tarinfo)
+            assert member is not None  # Regular files always have contents.
+            data = member.read()
             result = dict(fname=fname, data=data)
             yield result
         if verbose_open:
