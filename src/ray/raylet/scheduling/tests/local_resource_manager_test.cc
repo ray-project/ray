@@ -431,6 +431,57 @@ TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
   ASSERT_EQ(msg.labels().at("label2"), "value2");
 }
 
+TEST_F(LocalResourceManagerTest, PopulateGcsPullerResourceInfo) {
+  const ResourceID implicit_resource(std::string(kImplicitResourcePrefix) + "actor");
+  manager = std::make_unique<LocalResourceManager>(
+      local_node_id,
+      CreateNodeResources(
+          {{ResourceID::CPU(), 2.0}, {ResourceID::GPU(), 2.0}, {implicit_resource, 1.0}}),
+      nullptr,
+      nullptr,
+      nullptr,
+      nullptr,
+      fake_resource_usage_gauge_,
+      clock_);
+
+  // An idle node reports how long it has been idle, and at least 1 ms.
+  {
+    rpc::ResourcesData data;
+    manager->PopulateGcsPullerResourceInfo(data);
+    ASSERT_EQ(data.idle_duration_ms(), 1);
+  }
+  AdvanceTime(absl::Milliseconds(50));
+  {
+    rpc::ResourcesData data;
+    manager->PopulateGcsPullerResourceInfo(data);
+    ASSERT_EQ(data.idle_duration_ms(), 50);
+  }
+
+  // CPU goes negative, the GPU is fully used, the implicit resource drops to 0, and
+  // the node starts draining.
+  manager->SubtractResourceInstances(
+      ResourceID::CPU(), {3.0}, /*allow_going_negative=*/true);
+  manager->SubtractResourceInstances(ResourceID::GPU(), {1.0, 1.0});
+  manager->SubtractResourceInstances(implicit_resource, {1.0});
+  manager->SetLocalNodeDraining(rpc::DrainRayletRequest());
+
+  rpc::ResourcesData data;
+  manager->PopulateGcsPullerResourceInfo(data);
+
+  // A resource at its default value is left out, which is 1 for an implicit resource.
+  ASSERT_EQ(data.resources_total_size(), 2);
+  ASSERT_EQ(data.resources_total().at("CPU"), 2.0);
+  ASSERT_EQ(data.resources_total().at("GPU"), 2.0);
+  // Negative CPU is reported as 0, the used-up GPU is left out, and the implicit
+  // resource is kept at 0 so it doesn't read as its default of 1.
+  ASSERT_EQ(data.resources_available_size(), 2);
+  ASSERT_EQ(data.resources_available().at("CPU"), 0.0);
+  ASSERT_EQ(data.resources_available().at(implicit_resource.Binary()), 0.0);
+  // A busy node reports 0.
+  ASSERT_EQ(data.idle_duration_ms(), 0);
+  ASSERT_TRUE(data.is_draining());
+}
+
 TEST_F(LocalResourceManagerTest, MaybeMarkFootprintAsBusyPreservesIdleTime) {
   // Test that MaybeMarkFootprintAsBusy saves the idle time and restores it
   // when MarkFootprintAsIdle is called, preserving the original idle duration.
