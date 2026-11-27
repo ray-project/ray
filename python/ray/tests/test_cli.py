@@ -23,6 +23,7 @@ import multiprocessing as mp
 import multiprocessing.connection
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import threading
@@ -35,6 +36,7 @@ from typing import Optional
 from unittest import mock
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 import yaml
 from click.testing import CliRunner
@@ -1582,11 +1584,12 @@ except ImportError:
 @pytest.mark.skipif(not SERVE_AVAILABLE, reason="ray.serve is not installed")
 def test_serve_cli_registered():
     """Test that serve CLI is properly registered with the main ray CLI."""
+    ctx = click.Context(scripts.cli)
     # Verify 'serve' command is registered
-    assert "serve" in scripts.cli.commands, "serve command should be registered"
+    assert "serve" in scripts.cli.list_commands(ctx)
 
     # Verify serve subcommands are accessible
-    serve_cli = scripts.cli.commands["serve"]
+    serve_cli = scripts.cli.get_command(ctx, "serve")
     expected_commands = {
         "start",
         "deploy",
@@ -1608,6 +1611,47 @@ def test_ray_serve_help():
     assert "CLI for managing Serve applications" in result.output
     assert "deploy" in result.output
     assert "run" in result.output
+
+
+def _lazy_subcommand_module(name: str) -> str:
+    return scripts._LAZY_SUBCOMMANDS[name].rsplit(".", 1)[0]
+
+
+def test_lazy_subcommands_not_imported_at_startup():
+    """Loading the `ray` CLI must not import the lazily loaded subcommands."""
+    # A fresh interpreter is needed because this process already imported them.
+    result = subprocess.run(
+        [sys.executable, "-c", "import sys, ray.scripts.scripts; print(*sys.modules)"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    lazy_modules = {_lazy_subcommand_module(name) for name in scripts._LAZY_SUBCOMMANDS}
+    imported_lazy_modules = lazy_modules & set(result.stdout.split())
+    assert not imported_lazy_modules
+
+
+@pytest.mark.parametrize("name", sorted(scripts._LAZY_SUBCOMMANDS))
+def test_lazy_subcommand_help(name):
+    """Each lazily loaded subcommand can be loaded and shows its help."""
+    pytest.importorskip(_lazy_subcommand_module(name))
+
+    result = CliRunner().invoke(scripts.cli, [name, "--help"])
+    assert result.exit_code == 0, result.output
+
+
+@pytest.mark.parametrize("name", ["job", "list", "serve"])
+def test_lazy_subcommand_with_import_error(monkeypatch, name):
+    """A subcommand that cannot be imported is hidden and reports the error."""
+    # A None entry in sys.modules makes importing that module raise ImportError.
+    monkeypatch.setitem(sys.modules, _lazy_subcommand_module(name), None)
+
+    ctx = click.Context(scripts.cli)
+    assert scripts.cli.get_command(ctx, name).hidden
+
+    result = CliRunner().invoke(scripts.cli, [name, "--help"])
+    assert result.exit_code == 1
+    assert f"`ray {name}` is unavailable" in result.output
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows-only agent cleanup test")
