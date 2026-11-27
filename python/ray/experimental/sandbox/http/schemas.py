@@ -405,7 +405,31 @@ class SandboxAPISettings(BaseModel):
             "pending instead of blocking. A cluster that is adding nodes "
             "routinely takes tens of seconds to place an actor; requests "
             "never fail on this budget, they report pending and the client "
-            "polls."
+            "polls. With host_mode='node', it's also how long a create whose "
+            "every node is full waits for a node with room before it answers "
+            "UNAVAILABLE, which clients retry."
+        ),
+    )
+    host_mode: Literal["actor", "node"] = Field(
+        default="actor",
+        description=(
+            "How the gRPC facade hosts sandboxes (the REST app always uses "
+            "'actor'). 'actor': one detached SandboxHost actor (one Ray "
+            "worker process) per sandbox. 'node': one SandboxNodeHost actor "
+            "per node hosts every sandbox placed there, and each sandbox's "
+            "resources are reserved by a one-bundle placement group; creates "
+            "skip a worker process start. Named sandboxes always use 'actor'."
+        ),
+    )
+    reservation_slab_cpus: float = Field(
+        default=0.0,
+        ge=0,
+        description=(
+            "With host_mode='node': CPUs each node host reserves at a time "
+            "(one placement group) and shares among the sandboxes it hosts, "
+            "so a burst costs Ray one reservation per slab rather than per "
+            "sandbox. 0 reserves each sandbox on its own. Only sandboxes that "
+            "request nothing but CPUs use slabs."
         ),
     )
     default_actor_num_cpus: float = Field(
