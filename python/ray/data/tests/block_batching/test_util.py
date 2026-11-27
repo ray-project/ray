@@ -22,6 +22,7 @@ from ray.data._internal.block_batching.interfaces import (
 from ray.data._internal.block_batching.util import (
     WaitBlockPrefetcher,
     _calculate_ref_hits,
+    _copy_batch,
     blocks_to_batches,
     collate,
     finalize_batches,
@@ -31,6 +32,7 @@ from ray.data._internal.block_batching.util import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import make_async_gen
+from ray.data.block import BlockAccessor
 
 logger = logging.getLogger(__file__)
 
@@ -140,6 +142,33 @@ def test_format_batches(batch_format):
     assert [batch.metadata.batch_idx for batch in batch_iter] == list(
         range(len(batch_iter))
     )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [
+        [[1, 2], [3]],  # list<int64>, converted to an object array of ndarrays
+        [[[1, 2]], [[3, 4], [5, 6]]],  # list<list<int64>>, nested object arrays
+    ],
+)
+def test_copy_batch_copies_object_array_elements(values):
+    block = pa.table({"x": [1, 2], "l": values})
+    batch = BlockAccessor.for_block(block).to_batch_format("numpy")
+
+    copied = _copy_batch(batch)
+
+    def leaves(array):
+        if array.dtype == object:
+            for element in array:
+                yield from leaves(element)
+        else:
+            yield array
+
+    assert copied["x"].flags.writeable
+    for original, leaf in zip(leaves(batch["l"]), leaves(copied["l"])):
+        assert leaf.flags.writeable
+        assert not np.shares_memory(original, leaf)
+        np.testing.assert_array_equal(original, leaf)
 
 
 def test_collate():
