@@ -1482,6 +1482,24 @@ class PyArrowComputeUDFExpr(UDFExpr):
     pc_positional: Tuple[Any, ...] = field(default=())
     pc_kwargs: Dict[str, Any] = field(default_factory=dict)
 
+    def get_type(self, input_schema: "pyarrow.Schema") -> Optional["pyarrow.DataType"]:
+        # PyArrow picks the output type from the input type (``pc.year`` gives
+        # int64, ``pc.utf8_length`` on large_string gives int64, ``pc.ln`` on
+        # float32 gives float32), so a fixed ``return_dtype`` can be wrong.
+        # Running the kernel on an empty array of the resolved input type gives
+        # the exact output type without touching any data.
+        if len(self.args) == 1 and not self.kwargs:
+            input_type = self.args[0].get_type(input_schema)
+            if input_type is not None:
+                try:
+                    empty = pyarrow.array([], type=input_type)
+                    return self.pc_func(
+                        empty, *self.pc_positional, **self.pc_kwargs
+                    ).type
+                except (pyarrow.ArrowException, TypeError, ValueError):
+                    pass
+        return super().get_type(input_schema)
+
     def structurally_equals(self, other: Any) -> bool:
         if not isinstance(other, PyArrowComputeUDFExpr):
             return False
