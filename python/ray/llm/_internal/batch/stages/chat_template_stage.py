@@ -110,9 +110,9 @@ class ChatTemplateUDF(StatefulStageUDF):
     def _should_add_generation_prompt(self, conversation: List[Dict[str, Any]]) -> bool:
         """Determines if the generation prompt should be added for the given conversation.
 
-        Adds the generation prompt only if the last message is from the user.
-        This is useful in cases where the user provides an assistant prefill
-        message.
+        Adds the generation prompt unless the last message is from the assistant.
+        A trailing assistant message is a prefill that the model continues; after
+        any other message (user, tool, system) the model starts a new turn.
 
         Args:
             conversation: The conversation to check.
@@ -120,7 +120,7 @@ class ChatTemplateUDF(StatefulStageUDF):
         Returns:
             True if the generation prompt should be added, False otherwise.
         """
-        return conversation[-1]["role"] == "user"
+        return conversation[-1]["role"] != "assistant"
 
 
 class ChatTemplateStage(StatefulStage):
