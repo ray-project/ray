@@ -52,6 +52,27 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "worker_test",
+    size = "small",
+    srcs = ["worker_test.cc"],
+    tags = [
+        "no_tsan",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/asio:instrumented_io_context",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/raylet:worker",
+        "//src/ray/util:clock",
+        "//src/ray/util:process",
+    ],
+)
+
+ray_cc_test(
     name = "local_object_manager_test",
     size = "small",
     srcs = [

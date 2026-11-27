@@ -20,6 +20,23 @@
 #include <string>
 #include <utility>
 
+#if defined(__linux__)
+#include <poll.h>
+#include <sys/syscall.h>
+#include <unistd.h>
+
+#include <cerrno>
+#include <cstring>
+
+// Generic syscall numbers; older kernel headers lack the definitions.
+#ifndef SYS_pidfd_send_signal
+#define SYS_pidfd_send_signal 424
+#endif
+#ifndef SYS_pidfd_open
+#define SYS_pidfd_open 434
+#endif
+#endif
+
 #include "ray/core_worker_rpc_client/core_worker_client.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
@@ -70,15 +87,11 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
   }
   const auto worker = shared_from_this();
   if (force) {
-    proc_->Kill();
+    SignalProcess(/*force=*/true);
     return;
   }
-#ifdef _WIN32
-  // TODO(mehrdadn): implement graceful process termination mechanism
-#else
   // Attempt to gracefully shutdown the worker before force killing it.
-  kill(proc_->GetId(), SIGTERM);
-#endif
+  SignalProcess(/*force=*/false);
 
   auto retry_timer = std::make_shared<boost::asio::deadline_timer>(io_service);
   auto timeout = RayConfig::instance().kill_worker_timeout_milliseconds();
@@ -88,7 +101,7 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
       [timeout, retry_timer, worker](const boost::system::error_code &error) {
 #ifdef _WIN32
 #else
-        if (worker->proc_->IsAlive()) {
+        if (worker->IsProcessAlive()) {
           RAY_LOG(INFO) << "Worker with PID=" << worker->proc_->GetId()
                         << " did not exit after " << timeout
                         << "ms, force killing with SIGKILL.";
@@ -97,9 +110,68 @@ void Worker::KillAsync(instrumented_io_context &io_service, bool force) {
         }
 #endif
         // Force kill worker
-        worker->proc_->Kill();
+        worker->SignalProcess(/*force=*/true);
       });
 }
+
+Worker::~Worker() {
+#if defined(__linux__)
+  if (pidfd_ >= 0) {
+    close(pidfd_);
+  }
+#endif
+}
+
+bool Worker::IsProcessAlive() const {
+#if defined(__linux__)
+  if (process_exited_) {
+    return false;
+  }
+  if (pidfd_ >= 0) {
+    // A pidfd becomes readable once its process has exited. On a poll error, assume it is
+    // alive: the follow-up signal goes through the pidfd and cannot hit a recycled PID.
+    pollfd pfd = {pidfd_, POLLIN, 0};
+    return poll(&pfd, 1, 0) != 1;
+  }
+#endif
+  return proc_->IsAlive();
+}
+
+void Worker::SignalProcess(bool force) {
+#if defined(__linux__)
+  if (process_exited_) {
+    return;
+  }
+  if (pidfd_ >= 0) {
+    const int sig = force ? SIGKILL : SIGTERM;
+    if (syscall(SYS_pidfd_send_signal, pidfd_, sig, nullptr, 0) != 0 && errno != ESRCH) {
+      RAY_LOG(WARNING) << "Failed to send signal " << sig
+                       << " to worker with PID=" << proc_->GetId() << ": "
+                       << strerror(errno);
+    }
+    return;
+  }
+#endif
+  if (force) {
+    proc_->Kill();
+    return;
+  }
+#ifndef _WIN32
+  kill(proc_->GetId(), SIGTERM);
+#endif
+}
+
+#if defined(__linux__)
+bool Worker::IsConnectionPeerAlive() const {
+  if (connection_ == nullptr) {
+    return true;
+  }
+  // The worker holds its end of the socket until it exits, so only a hang-up means it is
+  // gone; poll errors are treated as alive.
+  pollfd pfd = {connection_->GetNativeHandle(), POLLRDHUP, 0};
+  return poll(&pfd, 1, 0) != 1 || (pfd.revents & (POLLRDHUP | POLLHUP)) == 0;
+}
+#endif
 
 void Worker::MarkBlocked() { blocked_ = true; }
 
@@ -122,6 +194,35 @@ void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
       worker_id_.Hex(),
       proc_->GetId());
   proc_ = std::move(proc);
+#if defined(__linux__)
+  // Pin the process identity while the PID is known to be this worker. After the worker
+  // exits, its PID can be recycled (even as a thread ID of another process), and a
+  // PID-based kill would then terminate that unrelated process.
+  if (proc_->IsValid()) {
+    pidfd_ = static_cast<int>(syscall(SYS_pidfd_open, proc_->GetId(), 0));
+    if (pidfd_ < 0) {
+      // Only ENOSYS (no pidfd support) may fall back to PID-based signals. Any other
+      // failure (PID gone, recycled as a thread ID, fd exhaustion) leaves the worker
+      // unsignaled.
+      const int err = errno;
+      process_exited_ = err != ENOSYS;
+      if (err == EMFILE || err == ENFILE) {
+        RAY_LOG(WARNING) << "pidfd_open(" << proc_->GetId()
+                         << ") failed: " << strerror(err)
+                         << "; the raylet will not kill this worker.";
+      } else {
+        RAY_LOG(DEBUG) << "pidfd_open(" << proc_->GetId()
+                       << ") failed: " << strerror(err);
+      }
+    } else if (!IsConnectionPeerAlive()) {
+      // The worker exited before pidfd_open, so the pidfd may refer to a process that
+      // reused its PID.
+      close(pidfd_);
+      pidfd_ = -1;
+      process_exited_ = true;
+    }
+  }
+#endif
 }
 
 rpc::Language Worker::GetLanguage() const { return language_; }
