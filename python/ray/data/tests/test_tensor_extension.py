@@ -77,6 +77,114 @@ def test_tensor_array_from_tensor_array_element():
     np.testing.assert_array_equal(t_arr.to_numpy(), np.arange(4, 8).reshape((1, 2, 2)))
 
 
+def test_tensor_array_astype_numeric():
+    arr = np.arange(4).reshape(2, 2)
+
+    result = TensorArray(arr).astype(np.float32)
+
+    assert result.dtype == np.float32
+    assert result.shape == arr.shape
+    np.testing.assert_array_equal(result, arr)
+
+
+def test_tensor_array_astype_string_and_object():
+    tensor_array = TensorArray(np.arange(4).reshape(2, 2))
+    expected_strings = ["[0 1]", "[2 3]"]
+
+    for dtype in (str, np.str_):
+        result = tensor_array.astype(dtype)
+        assert result.dtype.kind == pd.api.types.pandas_dtype(dtype).kind
+        assert result.tolist() == expected_strings
+
+    pandas_string_result = tensor_array.astype(pd.StringDtype())
+    assert pandas_string_result.dtype == pd.StringDtype()
+    assert pandas_string_result.tolist() == expected_strings
+
+    arrow_string_result = tensor_array.astype(pd.ArrowDtype(pa.string()))
+    assert arrow_string_result.dtype == pd.ArrowDtype(pa.string())
+    assert arrow_string_result.tolist() == expected_strings
+
+    object_result = tensor_array.astype(object)
+    assert object_result.dtype == object
+    assert object_result.shape == (2,)
+    for actual, expected in zip(object_result, tensor_array):
+        np.testing.assert_array_equal(actual, expected)
+
+
+def test_tensor_array_astype_empty_string():
+    tensor_array = TensorArray(np.empty((0, 2), dtype=np.int64))
+
+    result = tensor_array.astype(np.str_)
+    assert isinstance(result, np.ndarray)
+    assert result.dtype.kind == "U"
+    assert result.shape == (0,)
+
+    for dtype in (pd.StringDtype(), pd.ArrowDtype(pa.string())):
+        result = tensor_array.astype(dtype)
+        assert isinstance(result, dtype.construct_array_type())
+        assert result.dtype == dtype
+        assert result.tolist() == []
+
+
+@pytest.mark.parametrize(
+    "dtype", [pd.StringDtype("python"), pd.ArrowDtype(pa.string())]
+)
+def test_tensor_array_astype_nullable_string_preserves_null_rows(dtype):
+    tensor_array = TensorArray([np.arange(2), None])
+
+    result = tensor_array.astype(dtype)
+
+    pd.testing.assert_extension_array_equal(
+        result, pd.array(["[0 1]", None], dtype=dtype)
+    )
+
+
+@pytest.mark.parametrize("dtype", [pd.StringDtype(), pd.ArrowDtype(pa.large_string())])
+def test_tensor_series_astype_string_after_reindex(dtype):
+    series = pd.Series(TensorArray(np.array([[1.0, np.nan]]))).reindex([0, 1])
+
+    result = series.astype(dtype)
+
+    pd.testing.assert_series_equal(result, pd.Series(["[ 1. nan]", None], dtype=dtype))
+    pd.testing.assert_series_equal(result.isna(), series.isna())
+
+
+def test_tensor_array_astype_arrow_string_view():
+    if not hasattr(pa, "string_view"):
+        pytest.skip("string_view requires PyArrow 16")
+    dtype = pd.ArrowDtype(pa.string_view())
+    tensor_array = TensorArray([np.arange(2), None])
+
+    result = tensor_array.astype(dtype)
+    assert result.dtype == dtype
+    assert result.__arrow_array__().to_pylist() == ["[0 1]", None]
+
+
+@pytest.mark.parametrize("dtype", ["S2", [("value", "i4")]])
+def test_tensor_array_astype_nullable_string_without_missing_values(dtype):
+    rows = np.zeros((2, 1), dtype=dtype)
+    result = TensorArray(rows).astype(pd.StringDtype())
+    assert result.tolist() == [str(row) for row in rows]
+
+
+def test_tensor_array_astype_numpy_variable_width_string():
+    if not hasattr(getattr(np, "dtypes", None), "StringDType"):
+        pytest.skip("variable-width strings require NumPy 2")
+    tensor_array = TensorArray([np.arange(2), None])
+    for dtype, missing in (
+        (np.dtypes.StringDType(), "None"),
+        (np.dtypes.StringDType(na_object=None), None),
+    ):
+        result = tensor_array.astype(dtype)
+        assert result.dtype == dtype
+        assert result.tolist() == ["[0 1]", missing]
+
+    dense = TensorArray(np.arange(4).reshape(2, 2))
+    dtype = np.dtypes.StringDType()
+    assert dense.astype(dtype).tolist() == ["[0 1]", "[2 3]"]
+    assert pd.Series(dense).astype(dtype).tolist() == ["[0 1]", "[2 3]"]
+
+
 def test_pandas_to_arrow_fixed_shape_tensor_conversion(tensor_format_context):
     # First, convert Pandas serise w/ nulls to numpy
     array = pd.Series([1, 2, 3, None], dtype=pd.Int64Dtype).to_numpy().reshape((2, 2))
