@@ -148,12 +148,13 @@ So an Apple Silicon Mac or any ARM box can't produce a valid lockfile. The GPU a
 # x86_64 Linux, Python 3.11
 ci/ci.sh compile_pip_dependencies            # -> requirements_compiled.txt
 ci/ci.sh compile_pip_dependencies_py314      # -> requirements_compiled_py3.14.txt
+ci/ci.sh compile_pip_dependencies_py315      # -> requirements_compiled_py3.15.txt
 bazelisk run //ci/raydepsets:raydepsets -- build --all-configs
 ```
 
-### Python 3.14
+### Python 3.14 and 3.15
 
-`requirements_compiled_py3.14.txt` is compiled separately with uv (`--python-version 3.14`, wheels only) from the same source files. Where a shared pin has no cp314 wheel, gate it with a `python_version` marker and leave the 3.14 line unpinned:
+`requirements_compiled_py3.14.txt` and `requirements_compiled_py3.15.txt` are each compiled separately with uv (`--python-version 3.14` or `3.15`, wheels only) from the same source files. Where a shared pin has no wheel for that Python version, gate it with a `python_version` marker and leave the newer line unpinned:
 
 ```text
 numba==0.61.2; python_version < '3.14'

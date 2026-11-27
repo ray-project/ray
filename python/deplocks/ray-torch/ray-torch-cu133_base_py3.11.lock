@@ -1140,7 +1140,7 @@ fastjsonschema==2.21.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   nbformat
-fastrlock==0.8.3 ; sys_platform != 'darwin' \
+fastrlock==0.8.3 ; python_full_version < '3.15' and sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
     --hash=sha256:04bb5eef8f460d13b8c0084ea5a9d3aab2c0573991c880c0a34a56bb14951d30 \
     --hash=sha256:05029d7080c0c61a81d5fee78e842c9a1bf22552cd56129451a252655290dcef \
@@ -2431,7 +2431,7 @@ locust-cloud==1.30.0 \
     --hash=sha256:2324b690efa1bfc8d1871340276953cf265328bd6333e07a5ba8ff7dc5e99e6c \
     --hash=sha256:324ae23754d49816df96d3f7472357a61cd10e56cebcb26e2def836675cb3c68
     # via locust
-lz4==4.4.5 \
+lz4==4.4.5 ; python_full_version < '3.15' \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
     --hash=sha256:12233624f1bc2cebc414f9efb3113a03e89acce3ab6f72035577bc61b270d24d \

@@ -1,15 +1,19 @@
 # Used by CI for datasets and docs.
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
-daft>=0.7.0
-dask[complete]>=2025.5.0
+# Not installed on py3.15: every daft release caps pyarrow<26, the first with cp315 wheels.
+daft>=0.7.0; python_version < '3.15'
+dask[complete]>=2025.5.0; python_version < '3.15'
+# dask[complete] minus lz4, which has no cp315 wheel.
+dask[array,dataframe,diagnostics,distributed]>=2025.5.0; python_version >= '3.15'
 distributed>=2025.5.0
 aioboto3==12.1.0
 crc32c==2.3; python_version < '3.14'
 crc32c==2.9.post0; python_version >= '3.14'
 flask_cors
 bokeh==3.1.0
-modin>=0.26.0
+# Not installed on py3.15: every modin release caps pandas<2.4; cp315 wheels start at pandas 3.0.6.
+modin>=0.26.0; python_version < '3.15'
 pandas>=2.2.2
 responses>=0.15.0
 pymars>=0.8.3; python_version < "3.12"
