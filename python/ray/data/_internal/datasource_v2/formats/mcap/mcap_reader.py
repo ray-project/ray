@@ -226,10 +226,12 @@ class MCAPReader(Reader[FileManifest]):
         # What the read skips. Each attempt starts it afresh, so it holds the
         # last attempt's.
         skipped = _SkippedData() if skip_corrupt else None
+        ctx = DataContext.get_current()
         tables = iterate_with_retry(
             partial(read_file, limit, skipped),
             f"read MCAP file {path}",
-            match=DataContext.get_current().retried_io_errors,
+            match=ctx.retried_io_errors,
+            max_attempts=ctx.io_retry_max_attempts,
         )
         try:
             yield from tables

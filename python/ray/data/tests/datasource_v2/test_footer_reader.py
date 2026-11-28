@@ -5,6 +5,7 @@ these drive it directly against local Parquet fixtures. No Ray cluster needed.
 """
 
 import time
+from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -36,6 +37,39 @@ def four_row_groups(tmp_path):
 
 def _reader(**kwargs):
     return FooterReader(filesystem=LocalFileSystem(), io_concurrency=2, **kwargs)
+
+
+@pytest.mark.parametrize(
+    "attempts, errors, expected_calls",
+    [
+        (1, ["custom footer error"], 1),
+        (3, ["custom footer error"], 3),
+        (3, [], 1),
+        (3, ["unrelated error"], 1),
+    ],
+)
+def test_footer_reader_uses_explicit_io_retry_config(
+    monkeypatch, attempts, errors, expected_calls
+):
+    from ray.data.context import DataContext
+
+    monkeypatch.setattr("ray._common.retry.time.sleep", lambda _: None)
+    ctx = DataContext(io_retry_max_attempts=9)
+    ctx.retried_io_errors = ["custom footer error"]
+    reader = _reader(io_retry_max_attempts=attempts, retried_io_errors=errors)
+    errors.append("later error")
+    assert "later error" not in reader.retried_io_errors
+    fragment = Mock()
+    metadata = PropertyMock(side_effect=OSError("custom footer error"))
+    type(fragment).metadata = metadata
+    reader.file_format = Mock()
+    reader.file_format.make_fragment.return_value = fragment
+
+    with reader.pool, DataContext.current(ctx):
+        with pytest.raises(OSError, match="custom footer error"):
+            reader._read_and_chunk(FileInfo("ids.parquet", 123))
+
+    assert metadata.call_count == expected_calls
 
 
 def _filter_leaves(reader, metadata):

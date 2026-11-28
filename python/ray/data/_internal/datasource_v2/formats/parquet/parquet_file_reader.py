@@ -774,6 +774,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 lambda: fragment.metadata,
                 description=f"read Parquet footer for {path}",
                 match=retried_io_errors,
+                max_attempts=DataContext.get_current().io_retry_max_attempts,
             )
             return metadata.num_rows
 

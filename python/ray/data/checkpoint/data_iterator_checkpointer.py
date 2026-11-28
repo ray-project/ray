@@ -396,6 +396,7 @@ class RowIDBasedDataIteratorCheckpointer(DataIteratorCheckpointer):
                 _write,
                 description=f"Write checkpoint file: {checkpoint_path}",
                 match=DataContext.get_current().retried_io_errors,
+                max_attempts=DataContext.get_current().io_retry_max_attempts,
             )
         except Exception as e:
             logger.exception(f"Failed to write checkpoint file: {checkpoint_path}")

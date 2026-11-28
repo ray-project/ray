@@ -20,7 +20,6 @@ from ray.data.datasource.filename_provider import FilenameProvider
 if TYPE_CHECKING:
     import pyarrow
 
-WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 FILE_FORMAT = "parquet"
 
@@ -321,7 +320,7 @@ class ParquetDatasink(_FileDatasink):
             write_blocks_to_path,
             description=f"write '{filename}' to '{self.path}'",
             match=self._data_context.retried_io_errors,
-            max_attempts=WRITE_FILE_MAX_ATTEMPTS,
+            max_attempts=self._data_context.io_retry_max_attempts,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
 

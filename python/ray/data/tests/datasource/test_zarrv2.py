@@ -625,6 +625,35 @@ def test_per_task_row_limit_caps_chunks_read(
     assert len(reads) == 3
 
 
+@pytest.mark.parametrize("max_attempts", [1, 3])
+def test_read_tasks_respect_io_retry_max_attempts(tmp_path, monkeypatch, max_attempts):
+    from ray.data.context import DataContext
+
+    store_path = tmp_path / "retry.zarr"
+    _write_real_zarr_store(store_path, {"data": (np.arange(4, dtype="<i4"), (4,))})
+    datasource = zarrv2_datasource.ZarrV2Datasource(str(store_path))
+
+    class FlakyArray:
+        attempts = 0
+
+        def __getitem__(self, _index):
+            self.attempts += 1
+            raise OSError("flaky storage")
+
+    array = FlakyArray()
+    monkeypatch.setattr(datasource, "root", {"data": array})
+    monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
+    ctx = DataContext.get_current()
+    monkeypatch.setattr(ctx, "io_retry_max_attempts", max_attempts)
+    monkeypatch.setattr(ctx, "retried_io_errors", ["flaky storage"])
+
+    tasks = datasource.get_read_tasks(parallelism=1)
+    with pytest.raises(OSError, match="flaky storage"):
+        _execute_read_tasks(tasks)
+
+    assert array.attempts == max_attempts
+
+
 def test_read_chunk_retries_transient_io(monkeypatch):
     """_read_chunk retries reads whose error matches retry_match (Ray Data's
     DataContext.retried_io_errors), then succeeds."""
@@ -648,6 +677,7 @@ def test_read_chunk_retries_transient_io(monkeypatch):
         "x",
         ((0, 4),),
         retry_match=["Connection reset"],
+        max_attempts=3,
     )
     np.testing.assert_array_equal(out, np.arange(4, dtype="<i4"))
     assert _FlakyArray.attempts == 3  # failed twice, then succeeded

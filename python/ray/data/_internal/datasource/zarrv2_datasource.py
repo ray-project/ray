@@ -112,6 +112,8 @@ def _read_chunk(
     array_name: str,
     chunk_slices: tuple[tuple[int, int], ...],
     retry_match: Optional[List[str]] = None,
+    *,
+    max_attempts: int,
 ) -> np.ndarray:
     """Read ``array[chunk_slices]`` as an ndarray.
 
@@ -128,7 +130,10 @@ def _read_chunk(
     # TODO(Artur): This would be more elegant with a general retry helper for non-iterables.
     return next(
         iterate_with_retry(
-            lambda: [_read()], description="read a Zarr chunk", match=retry_match
+            lambda: [_read()],
+            description="read a Zarr chunk",
+            match=retry_match,
+            max_attempts=max_attempts,
         )
     )
 
@@ -171,6 +176,7 @@ def _create_read_fn(
     root: ZarrRoot,
     per_task_row_limit: Optional[int],
     retry_match: Optional[List[str]],
+    max_attempts: int,
 ) -> Callable[[], Iterable[Block]]:
     """Build a callable that materializes one block for a chunk-grid range.
 
@@ -195,7 +201,11 @@ def _create_read_fn(
                     "chunk_index": chunk_index,
                     "chunk_slices": chunk_slices,
                     "chunk": _read_chunk(
-                        root, cr.array_name, chunk_slices, retry_match
+                        root,
+                        cr.array_name,
+                        chunk_slices,
+                        retry_match,
+                        max_attempts=max_attempts,
                     ),
                 }
             )
@@ -210,6 +220,7 @@ def _create_aligned_read_fn(
     root: ZarrRoot,
     per_task_row_limit: Optional[int],
     retry_match: Optional[List[str]],
+    max_attempts: int,
 ) -> Callable[[], Iterable[Block]]:
     """Build a callable for aligned (wide-row) reads.
 
@@ -229,7 +240,11 @@ def _create_aligned_read_fn(
             row: dict[str, Any] = {"t_start": d.t_start, "t_stop": d.t_stop}
             for name in aligned_array_names:
                 row[name] = _read_chunk(
-                    root, name, ((d.t_start, d.t_stop_data),), retry_match
+                    root,
+                    name,
+                    ((d.t_start, d.t_stop_data),),
+                    retry_match,
+                    max_attempts=max_attempts,
                 )
             builder.add(row)
         yield builder.build()
@@ -486,13 +501,15 @@ class ZarrV2Datasource(Datasource):
         """Enumerate every chunk and wrap it (or batches of chunks) in ReadTasks."""
         from ray.data.context import DataContext
 
-        retry_match = (data_context or DataContext.get_current()).retried_io_errors
+        ctx = data_context or DataContext.get_current()
+        retry_match = ctx.retried_io_errors
+        max_attempts = ctx.io_retry_max_attempts
         if self._aligned_array_names is not None:
             return self._get_aligned_read_tasks(
-                parallelism, per_task_row_limit, retry_match
+                parallelism, per_task_row_limit, retry_match, max_attempts
             )
         return self._get_long_form_read_tasks(
-            parallelism, per_task_row_limit, retry_match
+            parallelism, per_task_row_limit, retry_match, max_attempts
         )
 
     def _get_long_form_read_tasks(
@@ -500,6 +517,7 @@ class ZarrV2Datasource(Datasource):
         parallelism: int,
         per_task_row_limit: Optional[int],
         retry_match: Optional[List[str]],
+        max_attempts: int,
     ) -> List[ReadTask]:
         read_tasks: List[ReadTask] = []
         for name, meta in self._metadata_by_path.items():
@@ -521,7 +539,11 @@ class ZarrV2Datasource(Datasource):
                 read_tasks.append(
                     ReadTask(
                         _create_read_fn(
-                            chunk_range, self.root, per_task_row_limit, retry_match
+                            chunk_range,
+                            self.root,
+                            per_task_row_limit,
+                            retry_match,
+                            max_attempts,
                         ),
                         BlockMetadata(
                             num_rows=flat_stop - flat_start,
@@ -548,6 +570,7 @@ class ZarrV2Datasource(Datasource):
         parallelism: int,
         per_task_row_limit: Optional[int],
         retry_match: Optional[List[str]],
+        max_attempts: int,
     ) -> List[ReadTask]:
         """Aligned read tasks. See :meth:`get_read_tasks` for semantics."""
         assert self._aligned_array_names is not None
@@ -583,6 +606,7 @@ class ZarrV2Datasource(Datasource):
                         self.root,
                         per_task_row_limit,
                         retry_match,
+                        max_attempts,
                     ),
                     BlockMetadata(
                         num_rows=len(batch),

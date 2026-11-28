@@ -17,6 +17,7 @@ from ray._common.utils import (
     _BACKGROUND_TASKS,
     add_exception_note,
     env_bool,
+    env_tuple,
     get_cgroup_aware_swap_memory,
     get_or_create_event_loop,
     get_system_memory,
@@ -110,6 +111,32 @@ class TestEnvBool:
         monkeypatch.delenv(self._KEY, raising=False)
         assert env_bool(self._KEY, False) is False
         assert env_bool(self._KEY, True) is True
+
+
+class TestEnvTuple:
+    """Tests for the env_tuple utility function."""
+
+    _KEY = "_RAY_TEST_ENV_TUPLE"
+
+    @pytest.mark.parametrize(
+        "env_value, expected",
+        [
+            (None, ("default",)),
+            ('["a", "HTTP (429|503)"]', ("a", "HTTP (429|503)")),
+            ("[]", ()),
+        ],
+    )
+    def test_env_tuple_values(self, env_value, expected, monkeypatch):
+        monkeypatch.delenv(self._KEY, raising=False)
+        if env_value is not None:
+            monkeypatch.setenv(self._KEY, env_value)
+        assert env_tuple(self._KEY, ("default",)) == expected
+
+    @pytest.mark.parametrize("env_value", ["", "not-json", "{}", '"a"', '["a", 1]'])
+    def test_env_tuple_invalid(self, env_value, monkeypatch):
+        monkeypatch.setenv(self._KEY, env_value)
+        with pytest.raises(ValueError, match=self._KEY):
+            env_tuple(self._KEY, ())
 
 
 @pytest.mark.asyncio

@@ -291,6 +291,27 @@ def test_reader_retries_transient_errors(tmp_path, monkeypatch):
     assert len(attempts) == 2
 
 
+def test_reader_respects_io_retry_max_attempts(tmp_path, monkeypatch):
+    path = _write(tmp_path / "data.txt", "a\n")
+    attempts = []
+
+    def flaky(self, file_path, limit):
+        attempts.append(file_path)
+        raise OSError("flaky storage")
+
+    monkeypatch.setattr(TextReader, "_read_file", flaky)
+    # ``tests/unit/conftest.py`` makes ``time.sleep`` raise.
+    monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
+    ctx = DataContext(io_retry_max_attempts=3)
+    monkeypatch.setattr(ctx, "retried_io_errors", ["flaky storage"])
+
+    with DataContext.current(ctx):
+        with pytest.raises(OSError, match="flaky storage"):
+            list(TextReader().read(_manifest(path)))
+
+    assert len(attempts) == 3
+
+
 def test_reader_runs_pickle_object_gate(tmp_path, monkeypatch):
     path = _write(tmp_path / "data.txt", "a\n")
     gate = Mock(side_effect=ValueError("arrow_pickled_object"))
