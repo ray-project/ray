@@ -380,6 +380,12 @@ def ray_deps_setup():
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
             "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
+            # LegacyClientIdleFilter treats its own IDLE disconnect_with_error op as
+            # channel shutdown and stores its timer in a SingleSetPtr, so
+            # GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS only fires once per channel
+            # (grpc/grpc#38454, upstream fix in grpc/grpc#43987) and can race with a
+            # call starting as the timer fires.
+            "@io_ray//thirdparty/patches:grpc-client-idle-filter-reuse.patch",
             # The *_pb2_grpc.py stubs come from this gRPC's Python plugin. From
             # 1.63 on it emits `_registered_method=True` and
             # `server.add_registered_method_handlers()`, which need grpcio >= 1.64
