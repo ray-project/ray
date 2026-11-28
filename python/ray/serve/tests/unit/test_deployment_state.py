@@ -1513,6 +1513,33 @@ def test_outdated_replicas_reach_the_scheduler(mock_deployment_state_manager):
     assert reported[TEST_DEPLOYMENT_ID] == old_replicas
 
 
+def test_unmet_rules_message_on_a_healthy_deployment(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=2, version="1")
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    rule = "topology_spread[ray.io/availability-zone>=2]"
+    dsm._deployment_scheduler.get_unmet_rules = lambda deployment_id: [rule]
+    dsm.update()
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+    assert ds.curr_status_info.message == f"Unmet placement rules: {rule}."
+
+    dsm._deployment_scheduler.get_unmet_rules = lambda deployment_id: []
+    dsm.update()
+    assert ds.curr_status_info.message == ""
+
+
+def test_unmet_rules_message_keeps_other_messages(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    ds = _deploy_running(dsm, TEST_DEPLOYMENT_ID, num_replicas=1, version="1")
+    ds._curr_status_info = ds._curr_status_info.update_message("Something else.")
+
+    ds.update_unmet_rules_message(["topology_spread[ray.io/node-id>=2]"])
+    assert ds.curr_status_info.message == "Something else."
+
+
 def test_redeploy_different_num_replicas(mock_deployment_state_manager):
     """Tests status changes when redeploying with different num_replicas.
 

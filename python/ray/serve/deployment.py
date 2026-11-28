@@ -7,6 +7,7 @@ from ray.serve._private.config import (
     RequestRouterConfig,
     handle_num_replicas_auto,
     topology_spread_to_dicts,
+    validate_topology_spread_replicas,
 )
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
@@ -135,6 +136,9 @@ class Deployment:
         self._validate_name(name)
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
+        validate_topology_spread_replicas(
+            replica_config.topology_spread, deployment_config
+        )
 
         self._name = name
         self._version = version

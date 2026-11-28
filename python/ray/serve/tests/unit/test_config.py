@@ -1046,6 +1046,94 @@ class TestReplicaConfig:
                     topology_spread=rules,
                 )
 
+    def test_required_topology_spread_validation(self):
+        class Class:
+            pass
+
+        def create(**rule):
+            return ReplicaConfig.create(
+                Class,
+                topology_spread=[
+                    {"label_key": "ray.io/availability-zone", "min_domains": 2, **rule}
+                ],
+            )
+
+        create(required=True)
+        create(required=True, wait_timeout_s=600)
+        create(required=False)
+        with pytest.raises(ValueError, match="required to be a bool"):
+            create(required="yes")
+        for wait_timeout_s in (0, -1, "600", True):
+            with pytest.raises(ValueError, match="positive number"):
+                create(required=True, wait_timeout_s=wait_timeout_s)
+        with pytest.raises(ValueError, match="without required=True"):
+            create(wait_timeout_s=600)
+
+    @pytest.mark.parametrize(
+        "ray_actor_options,valid",
+        [
+            ({}, True),
+            ({"label_selector": {"zone": "in(a,b,c)"}}, True),
+            ({"label_selector": {"zone": "a"}}, False),
+            ({"label_selector": {"zone": "in(a,b),!in(a)"}}, False),
+            ({"label_selector": {"zone": "!in(x)"}}, True),
+            ({"label_selector": {"zone": "exists()"}}, True),
+            ({"label_selector": {"gpu": "a100"}}, True),
+            (
+                {
+                    "label_selector": {"zone": "a"},
+                    "fallback_strategy": [{"label_selector": {"zone": "b"}}],
+                },
+                True,
+            ),
+            (
+                {
+                    "label_selector": {"zone": "a"},
+                    "fallback_strategy": [{"label_selector": {"gpu": "a100"}}],
+                },
+                True,
+            ),
+        ],
+    )
+    def test_required_rule_against_label_selectors(self, ray_actor_options, valid):
+        class Class:
+            pass
+
+        def create(required: bool):
+            return ReplicaConfig.create(
+                Class,
+                ray_actor_options=dict(ray_actor_options),
+                topology_spread=[
+                    {"label_key": "zone", "min_domains": 2, "required": required}
+                ],
+            )
+
+        create(required=False)
+        if valid:
+            create(required=True)
+        else:
+            with pytest.raises(ValueError, match="label selectors allow only"):
+                create(required=True)
+
+    def test_required_rule_against_a_bundle_label_selector(self):
+        class Class:
+            pass
+
+        def create(bundle_selector):
+            return ReplicaConfig.create(
+                Class,
+                placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
+                placement_group_strategy="STRICT_PACK",
+                placement_group_bundle_label_selector=bundle_selector,
+                topology_spread=[
+                    {"label_key": "zone", "min_domains": 2, "required": True}
+                ],
+            )
+
+        create([{"zone": "in(a,b)"}, {"zone": "a"}])
+        with pytest.raises(ValueError, match="label selectors allow only"):
+            create([{"zone": "a"}, {"zone": "in(a,b)"}])
+
     def test_topology_spread_proto_round_trip(self):
         class Class:
             pass

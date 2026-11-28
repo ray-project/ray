@@ -4374,6 +4374,22 @@ def test_topology_spread_option_becomes_rules():
     scheduler.on_deployment_deployed(d_id, rconfig())
     assert scheduler._deployments[d_id].rules == ()
 
+    scheduler.on_deployment_deployed(
+        d_id,
+        rconfig(
+            topology_spread=[
+                {
+                    "label_key": ZONE,
+                    "min_domains": 2,
+                    "required": True,
+                    "wait_timeout_s": 60,
+                }
+            ]
+        ),
+    )
+    (rule,) = scheduler._deployments[d_id].rules
+    assert rule.required and rule.wait_timeout_s == 60
+
 
 class TestMinReplicaNodes:
     @staticmethod
@@ -4813,6 +4829,45 @@ class TestDomainProbes:
         scheduler.on_replica_stopping(ReplicaID("r1", d_id))
         scheduler.on_deployment_deleted(d_id)
         assert probe.killed
+
+
+def test_unmet_rules_are_recorded():
+    a1, b1 = _hex(1), _hex(2)
+    zone = MinTopologyDomainsConstraint(ZONE, 2)
+    nodes = MinTopologyDomainsConstraint(RAY_NODE_ID_LABEL, 2)
+    scheduler, d_id = _rules_scheduler(
+        {a1: (4, {ZONE: "a"}), b1: (4, {ZONE: "b"})}, [zone, nodes]
+    )
+    scheduler._cluster_node_info_cache.set_available_resources_per_node(b1, {"CPU": 0})
+    _place(scheduler, d_id, ["r1", "r2"])
+    assert scheduler.get_unmet_rules(d_id) == [zone.describe(), nodes.describe()]
+
+    scheduler.on_replica_stopping(ReplicaID("r2", d_id))
+    scheduler._deployments[d_id].rules = ()
+    scheduler.schedule(upscales={}, downscales={})
+    assert scheduler.get_unmet_rules(d_id) == []
+
+
+def test_rule_metrics_report_covered_domains_next_to_the_floor():
+    a1, b1 = _hex(1), _hex(2)
+    zone = MinTopologyDomainsConstraint(ZONE, 3)
+    scheduler, d_id = _rules_scheduler(
+        {a1: (4, {ZONE: "a"}), b1: (4, {ZONE: "b"})}, [zone]
+    )
+    scheduler._covered_domains_gauge = Mock()
+    scheduler._floor_domains_gauge = Mock()
+    scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+    scheduler.on_replica_running(ReplicaID("r1", d_id), a1)
+    scheduler.on_replica_running(ReplicaID("r2", d_id), a1)
+    scheduler.schedule(upscales={}, downscales={})
+
+    tags = {
+        "deployment": d_id.name,
+        "application": d_id.app_name,
+        "rule": zone.describe(),
+    }
+    scheduler._covered_domains_gauge.set.assert_called_with(1, tags=tags)
+    scheduler._floor_domains_gauge.set.assert_called_with(2, tags=tags)
 
 
 if __name__ == "__main__":

@@ -238,6 +238,49 @@ class TestDeploymentOptions:
             g.options(gang_scheduling_config=gang)
         g.options(gang_scheduling_config=gang, topology_spread=[])
 
+    def test_required_topology_spread(self):
+        from ray.serve.config import TopologySpread
+
+        zones = TopologySpread(
+            label_key="ray.io/availability-zone",
+            min_domains=2,
+            required=True,
+            wait_timeout_s=600,
+        )
+
+        @serve.deployment(num_replicas=2, topology_spread=[zones])
+        def f():
+            pass
+
+        assert f._replica_config.topology_spread == [
+            {
+                "label_key": "ray.io/availability-zone",
+                "min_domains": 2,
+                "required": True,
+                "wait_timeout_s": 600,
+            }
+        ]
+
+        with pytest.raises(ValueError, match="wait_timeout_s can only be set"):
+            TopologySpread(label_key="ray.io/node-id", min_domains=2, wait_timeout_s=1)
+
+        with pytest.raises(ValueError, match="num_replicas is 1"):
+            f.options(num_replicas=1)
+        with pytest.raises(ValueError, match="min_replicas is 1"):
+            f.options(
+                num_replicas=None,
+                autoscaling_config={"min_replicas": 1, "max_replicas": 4},
+            )
+        f.options(
+            num_replicas=None, autoscaling_config={"min_replicas": 2, "max_replicas": 4}
+        )
+        f.options(
+            num_replicas=1,
+            topology_spread=[
+                {"label_key": "ray.io/availability-zone", "min_domains": 2}
+            ],
+        )
+
     def test_typed_options_match_deployment_signature(self):
         """_DeploymentOptions must list every keyword option deployment() takes."""
         from ray.serve.api import _DeploymentOptions, deployment

@@ -672,7 +672,67 @@ def handle_num_replicas_auto(
     return max_ongoing_requests, autoscaling_config
 
 
-TOPOLOGY_SPREAD_RULE_KEYS = frozenset({"label_key", "min_domains"})
+TOPOLOGY_SPREAD_RULE_KEYS = frozenset(
+    {"label_key", "min_domains", "required", "wait_timeout_s"}
+)
+
+
+def _split_label_selector_value(value: str) -> List[str]:
+    """Splits a selector value at commas outside parentheses."""
+    expressions, depth, start = [], 0, 0
+    for i, char in enumerate(value):
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        elif char == "," and depth == 0:
+            expressions.append(value[start:i].strip())
+            start = i + 1
+    expressions.append(value[start:].strip())
+    return [expression for expression in expressions if expression]
+
+
+def _allowed_label_values(value: str) -> Optional[Set[str]]:
+    """The values a selector value allows, or None if it doesn't limit them."""
+
+    def listed(expression: str) -> Set[str]:
+        if expression.startswith("in(") and expression.endswith(")"):
+            return {v.strip() for v in expression[3:-1].split(",") if v.strip()}
+        return {expression}
+
+    allowed: Optional[Set[str]] = None
+    excluded: Set[str] = set()
+    for expression in _split_label_selector_value(value):
+        if expression == "!exists()":
+            return set()
+        if expression == "exists()":
+            continue
+        if expression.startswith("!"):
+            excluded |= listed(expression[1:])
+        else:
+            values = listed(expression)
+            allowed = values if allowed is None else allowed & values
+    return None if allowed is None else allowed - excluded
+
+
+def validate_topology_spread_replicas(
+    topology_spread: Optional[List[Dict[str, Any]]],
+    deployment_config: "DeploymentConfig",
+) -> None:
+    """Rejects a required rule with more domains than the fewest replicas."""
+    autoscaling_config = deployment_config.autoscaling_config
+    if autoscaling_config is not None:
+        field, fewest = "min_replicas", autoscaling_config.min_replicas
+    else:
+        field, fewest = "num_replicas", deployment_config.num_replicas
+    for rule in topology_spread or []:
+        if rule.get("required") and rule["min_domains"] > fewest:
+            raise ValueError(
+                f"The required topology_spread rule on {rule['label_key']!r} "
+                f"needs {rule['min_domains']} domains, but {field} is {fewest}. "
+                f"Raise {field} to at least {rule['min_domains']}, or make the "
+                "rule best effort."
+            )
 
 
 def topology_spread_to_dicts(
@@ -817,6 +877,38 @@ class ReplicaConfig:
                 "placement_group_strategy, because Serve can only steer a "
                 "STRICT_PACK placement group to a node."
             )
+        self._validate_required_rules_against_label_selectors()
+
+    def _validate_required_rules_against_label_selectors(self) -> None:
+        """Rejects a required rule its selectors allow too few values for."""
+        if self.placement_group_bundles is not None:
+            selectors = list((self.placement_group_bundle_label_selector or [{}])[:1])
+        else:
+            selectors = [self.ray_actor_options.get("label_selector") or {}] + [
+                fallback.get("label_selector") or {}
+                for fallback in self.ray_actor_options.get("fallback_strategy") or []
+            ]
+        for rule in self.topology_spread or []:
+            if not rule.get("required"):
+                continue
+            allowed: Set[str] = set()
+            for selector in selectors:
+                values = (
+                    _allowed_label_values(selector[rule["label_key"]])
+                    if rule["label_key"] in selector
+                    else None
+                )
+                if values is None:
+                    break
+                allowed |= values
+            else:
+                if len(allowed) < rule["min_domains"]:
+                    raise ValueError(
+                        f"The required topology_spread rule on "
+                        f"{rule['label_key']!r} needs {rule['min_domains']} "
+                        f"domains, but the label selectors allow only "
+                        f"{sorted(allowed)}."
+                    )
 
     def update(
         self,
@@ -1014,6 +1106,28 @@ class ReplicaConfig:
                     f"topology_spread rule at index {i} needs min_domains to be "
                     f"a positive integer. Got: {min_domains!r}."
                 )
+            required = rule.get("required", False)
+            if not isinstance(required, bool):
+                raise ValueError(
+                    f"topology_spread rule at index {i} needs required to be a "
+                    f"bool. Got: {required!r}."
+                )
+            wait_timeout_s = rule.get("wait_timeout_s")
+            if wait_timeout_s is not None:
+                if (
+                    not isinstance(wait_timeout_s, (int, float))
+                    or isinstance(wait_timeout_s, bool)
+                    or wait_timeout_s <= 0
+                ):
+                    raise ValueError(
+                        f"topology_spread rule at index {i} needs wait_timeout_s "
+                        f"to be a positive number. Got: {wait_timeout_s!r}."
+                    )
+                if not required:
+                    raise ValueError(
+                        f"topology_spread rule at index {i} sets wait_timeout_s "
+                        "without required=True."
+                    )
 
     def _validate_placement_group_options(self) -> None:
         if self.placement_group_strategy is not None:

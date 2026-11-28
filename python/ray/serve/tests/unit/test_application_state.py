@@ -1913,6 +1913,16 @@ class TestOverrideDeploymentInfo:
         assert override(topology_spread=[]).replica_config.topology_spread == []
         assert override().replica_config.topology_spread is None
 
+        required = [{**rules[0], "required": True}]
+        with pytest.raises(ValueError, match="num_replicas is 1"):
+            override(num_replicas=1, topology_spread=required)
+        assert (
+            override(
+                num_replicas=2, topology_spread=required
+            ).replica_config.topology_spread[0]["required"]
+            is True
+        )
+
         info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
             gang_size=1
         )
