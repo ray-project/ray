@@ -26,7 +26,12 @@ from ray.tune.search.sample import (
     Uniform,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
-from ray.tune.utils.util import flatten_dict, unflatten_dict, validate_warmstart
+from ray.tune.utils.util import (
+    flatten_dict,
+    unflatten_dict,
+    unflattened_lookup,
+    validate_warmstart,
+)
 
 try:
     import optuna as ot
@@ -580,6 +585,23 @@ class OptunaSearch(Searcher):
         pruned: bool = False,
         intermediate_values: Optional[List[float]] = None,
     ):
+        """Import a prior evaluation into the configured static Optuna space.
+
+        Distribution names are looked up in flat or nested ``parameters``.
+        Extra keys are ignored, whether fixed or searched in the source run.
+        Callers must ensure historical evaluations are comparable and valid for
+        the target experiment and distributions. The input is not modified.
+
+        Required parameters and distribution bounds are validated. Validation
+        errors and lookup errors from malformed nested configurations propagate.
+
+        Args:
+            parameters: Flat or nested values; None-valued categories are kept.
+            value: Objective value, ignored for ``error=True``; may then be None.
+            error: Whether to store the point as a failed trial.
+            pruned: Whether to store a pruned trial, unless ``error=True``.
+            intermediate_values: Intermediate objective values, indexed from zero.
+        """
         if not self._space:
             raise RuntimeError(
                 UNDEFINED_SEARCH_SPACE.format(
@@ -599,6 +621,14 @@ class OptunaSearch(Searcher):
                 "an `OptunaDistribution` dict or pass a Ray Tune "
                 "search space to `tune.Tuner()`."
             )
+
+        # A trial config can include constants and nested parameters.
+        missing = object()
+        evaluated_parameters = {}
+        for name in self._space:
+            param_value = unflattened_lookup(name, parameters, default=missing)
+            if param_value is not missing:
+                evaluated_parameters[name] = param_value
 
         ot_trial_state = OptunaTrialState.COMPLETE
         if error:
@@ -623,7 +653,7 @@ class OptunaSearch(Searcher):
         trial = ot.trial.create_trial(
             state=ot_trial_state,
             value=value,
-            params=parameters,
+            params=evaluated_parameters,
             distributions=self._space,
             intermediate_values=intermediate_values_dict,
         )
