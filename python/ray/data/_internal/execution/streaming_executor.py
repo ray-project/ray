@@ -4,7 +4,7 @@ import os
 import threading
 import time
 import typing
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
@@ -43,6 +43,7 @@ from ray.data._internal.execution.resource_manager import (
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     OutputBackpressureGuard,
+    OutputSplitFinished,
     Topology,
     build_streaming_topology,
     format_op_state_summary,
@@ -201,6 +202,8 @@ class StreamingExecutor(Executor, threading.Thread):
         self._shutdown_lock = threading.RLock()
         self._execution_started = False
         self._shutdown = False
+        self._force_shutdown_requested = False
+        self.batch_readers: Optional[Set[int]] = None
 
         # Internal execution state shared across thread boundaries. We run the control
         # loop on a separate thread so that it doesn't become stalled between
@@ -319,7 +322,14 @@ class StreamingExecutor(Executor, threading.Thread):
             )
         ):
             self._lineage_tracker = LineageTracker()
-        self._block_ref_counter = BlockRefCounter()
+        replicated = isinstance(dag, OutputSplitter) and dag.consumers_per_split > 1
+        if replicated:
+            dag.batch_readers = self.batch_readers
+        self._block_ref_counter = BlockRefCounter(
+            target_block_size=self._data_context.target_max_block_size
+            if replicated
+            else None
+        )
         self._topology = build_streaming_topology(
             dag,
             self._options,
@@ -419,7 +429,14 @@ class StreamingExecutor(Executor, threading.Thread):
         global _num_shutdown
 
         with self._shutdown_lock:
-            if not self._execution_started or self._shutdown:
+            if not self._execution_started:
+                return
+            if force:
+                self._force_shutdown_requested = True
+            if self._shutdown:
+                # Cooperative shutdown leaves unread split outputs for active peers.
+                if force:
+                    self._output_node[1].output_queue.clear()
                 return
 
             start = time.perf_counter()
@@ -568,6 +585,9 @@ class StreamingExecutor(Executor, threading.Thread):
         finally:
             # Mark state of outputting operator as finished
             _, state = self._output_node
+            # A scheduling step can publish after shutdown's bounded join returns.
+            if self._force_shutdown_requested:
+                state.output_queue.clear()
             state.mark_finished(exc)
 
     def update_metrics(self, sched_loop_duration: int):
@@ -584,6 +604,18 @@ class StreamingExecutor(Executor, threading.Thread):
             return self._final_stats
         else:
             return self._generate_stats()
+
+    def record_split_progress(
+        self, split_idx: int, consumed: int, delivered: int
+    ) -> None:
+        self._output_node[1].record_split_progress(split_idx, consumed, delivered)
+
+    def discard_output_split(self, split_idx: int) -> None:
+        """Stop retaining output for a replica that has finished the epoch."""
+        if self._output_node is not None:
+            _, state = self._output_node
+            if state.has_replicated_outputs:
+                state.discard_output_split(split_idx)
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
@@ -936,6 +968,9 @@ class _ClosingIterator(OutputIterator):
         # Have to be BaseException to catch ``KeyboardInterrupt``
         #
         # NOTE: This also handles ``StopIteration``
+        except OutputSplitFinished:
+            # A prefetched pull can outlive its reader. Peers still own the executor.
+            raise
         except BaseException as e:
             # Asynchronously shutdown the executor (ie avoid unnecessary
             # synchronization on tasks termination)

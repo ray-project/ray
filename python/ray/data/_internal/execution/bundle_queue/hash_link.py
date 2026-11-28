@@ -122,5 +122,8 @@ class HashLinkedQueue(QueueWithRemoval):
     def clear(self):
         self._reset_metrics()
         self._bundle_to_nodes.clear()
-        self._head = None
+        # Unlink neighboring nodes so block references are released immediately.
+        while self._head is not None:
+            self._head.prev = None
+            self._head = self._head.next
         self._tail = None

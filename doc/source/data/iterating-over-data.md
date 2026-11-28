@@ -301,3 +301,38 @@ workers = [Worker.remote() for _ in range(4)]
 shards = ds.streaming_split(n=4, equal=True)
 ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 ```
+
+### Share a stream across concurrent Tune trials
+
+Use `consumers_per_split` to give concurrent trials the same blocks from one
+execution of the input pipeline. For example, these two trials try different
+batch sizes. Each trial reads all 32 rows through its own iterator.
+
+Run this example with at least three available CPUs so both trials and the
+input pipeline can run at the same time.
+
+```python
+import ray
+from ray import tune
+
+def train(config, readers):
+    slot, batch_size = config["case"]
+    rows = sum(
+        len(batch["id"])
+        for batch in readers[slot].iter_batches(batch_size=batch_size)
+    )
+    tune.report({"rows": rows})
+
+ds = ray.data.range(32)
+readers = ds.streaming_split(n=1, consumers_per_split=2)
+results = tune.Tuner(
+    tune.with_parameters(train, readers=readers),
+    param_space={"case": tune.grid_search([(0, 4), (1, 8)])},
+).fit()
+assert [result.metrics["rows"] for result in results] == [32, 32]
+```
+
+All readers must start each epoch, and a reader that stops early can stall
+its peers. After both trials finish reading, you can pass the same
+iterators to the next pair. Each pair starts a fresh execution from the beginning.
+Replicated splits currently require the default Ray Data execution backend.

@@ -2179,6 +2179,7 @@ def create_streaming_split_dataset(
     *,
     equal: bool = False,
     locality_hints: Optional[List["NodeIdStr"]] = None,
+    consumers_per_split: int = 1,
 ) -> "Dataset":
     """Wrap ``dataset`` in a ``StreamingSplit`` logical op, as
     :meth:`Dataset.streaming_split` does."""
@@ -2188,6 +2189,7 @@ def create_streaming_split_dataset(
 
     op = StreamingSplit(
         num_splits=n,
+        consumers_per_split=consumers_per_split,
         equal=equal,
         input_dependencies=[dataset._logical_plan.dag],
         locality_hints=locality_hints,
