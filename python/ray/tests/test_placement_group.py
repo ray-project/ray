@@ -797,6 +797,51 @@ class TestPlacementGroupValidation:
         with pytest.raises(ValueError, match="Invalid label selector provided"):
             _validate_bundle_label_selector([{"INVALID key!": "value"}])
 
+    def test_fallback_strategy_validation(self):
+        """Test fallback_strategy validation when creating a placement group."""
+        bundles = [{"CPU": 1}, {"CPU": 1}]
+
+        # Valid fallback strategies should not raise an exception.
+        validate_placement_group(
+            bundles=bundles,
+            bundle_label_selector=[{"zone": "a"}, {"zone": "a"}],
+            fallback_strategy=[
+                {"bundle_label_selector": [{"zone": "b"}, {"zone": "b"}]},
+                {"bundle_label_selector": [{}, {}]},
+            ],
+        )
+        validate_placement_group(bundles=bundles, fallback_strategy=[])
+
+        with pytest.raises(ValueError, match="must be a list"):
+            validate_placement_group(
+                bundles=bundles,
+                fallback_strategy={"bundle_label_selector": [{}, {}]},
+            )
+
+        # Each option is a dict with only a bundle_label_selector key.
+        with pytest.raises(ValueError, match="only a `bundle_label_selector` key"):
+            validate_placement_group(
+                bundles=bundles, fallback_strategy=[{"label_selector": {"zone": "b"}}]
+            )
+        with pytest.raises(ValueError, match="only a `bundle_label_selector` key"):
+            validate_placement_group(bundles=bundles, fallback_strategy=[[{}, {}]])
+
+        # Each option has one label selector per bundle.
+        with pytest.raises(ValueError, match="one label selector per bundle"):
+            validate_placement_group(
+                bundles=bundles,
+                fallback_strategy=[{"bundle_label_selector": [{"zone": "b"}]}],
+            )
+
+        # Each label selector is validated like bundle_label_selector.
+        with pytest.raises(ValueError, match="Invalid label selector provided"):
+            validate_placement_group(
+                bundles=bundles,
+                fallback_strategy=[
+                    {"bundle_label_selector": [{"zone": "b"}, {"zone": "!!b"}]}
+                ],
+            )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

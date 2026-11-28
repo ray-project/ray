@@ -25,6 +25,21 @@
 
 namespace ray {
 
+std::string_view LabelSelectorOperatorName(LabelSelectorOperator op) {
+  switch (op) {
+  case LabelSelectorOperator::LABEL_IN:
+    return "in";
+  case LabelSelectorOperator::LABEL_NOT_IN:
+    return "!in";
+  case LabelSelectorOperator::LABEL_EXISTS:
+    return "exists";
+  case LabelSelectorOperator::LABEL_DOES_NOT_EXIST:
+    return "!exists";
+  default:
+    return "";
+  }
+}
+
 void LabelSelector::ToProto(rpc::LabelSelector *proto) const {
   RAY_CHECK(proto != nullptr);
   proto->clear_label_constraints();
@@ -64,19 +79,48 @@ google::protobuf::Map<std::string, std::string> LabelSelector::ToStringMap() con
       } else {
         value_str = "!in(" + absl::StrJoin(sorted_values, ",") + ")";
       }
+    } else if (constraint.GetOperator() == LabelSelectorOperator::LABEL_EXISTS) {
+      value_str = "exists()";
+    } else if (constraint.GetOperator() == LabelSelectorOperator::LABEL_DOES_NOT_EXIST) {
+      value_str = "!exists()";
     }
 
     if (!value_str.empty()) {
-      string_map[key] = value_str;
+      // Join constraints on the same key with commas, the form AddConstraint parses.
+      std::string &joined = string_map[key];
+      if (!joined.empty()) {
+        joined += ",";
+      }
+      joined += value_str;
     }
   }
   return string_map;
 }
 
 void LabelSelector::AddConstraint(const std::string &key, const std::string &value) {
-  auto [op, values] = ParseLabelSelectorValue(key, value);
-  LabelConstraint constraint(key, op, values);
-  AddConstraint(std::move(constraint));
+  for (const auto &expression : SplitLabelSelectorValue(value)) {
+    auto [op, values] = ParseLabelSelectorValue(key, expression);
+    AddConstraint(LabelConstraint(key, op, std::move(values)));
+  }
+}
+
+std::vector<std::string> LabelSelector::SplitLabelSelectorValue(
+    const std::string &value) {
+  std::vector<std::string> expressions;
+  bool in_parentheses = false;
+  size_t start = 0;
+  for (size_t i = 0; i < value.size(); ++i) {
+    if (value[i] == '(') {
+      in_parentheses = true;
+    } else if (value[i] == ')') {
+      in_parentheses = false;
+    } else if (value[i] == ',' && !in_parentheses) {
+      expressions.push_back(value.substr(start, i - start));
+      start = i + 1;
+    }
+  }
+  expressions.push_back(value.substr(start));
+  return expressions;
 }
 
 void LabelSelector::AddConstraint(LabelConstraint constraint) {
@@ -102,7 +146,10 @@ LabelSelector::ParseLabelSelectorValue(const std::string &key, const std::string
   absl::flat_hash_set<std::string> values;
   LabelSelectorOperator op;
 
-  if (absl::StartsWith(val, "in(") && val.back() == ')') {
+  if (val == "exists()") {
+    op = is_negated ? LabelSelectorOperator::LABEL_DOES_NOT_EXIST
+                    : LabelSelectorOperator::LABEL_EXISTS;
+  } else if (absl::StartsWith(val, "in(") && val.back() == ')') {
     val.remove_prefix(3);  // Remove "in("
     val.remove_suffix(1);  // Remove ')'
 
@@ -132,19 +179,7 @@ std::string LabelSelector::DebugString() const {
     const auto &constraint = constraints_[i];
     ss << "'" << constraint.GetLabelKey() << "': ";
 
-    // Convert label selector operator to string
-    switch (constraint.GetOperator()) {
-    case LabelSelectorOperator::LABEL_IN:
-      ss << "in";
-      break;
-    case LabelSelectorOperator::LABEL_NOT_IN:
-      ss << "!in";
-      break;
-    default:
-      ss << "";
-    }
-
-    ss << " (";
+    ss << LabelSelectorOperatorName(constraint.GetOperator()) << " (";
     bool first = true;
     for (const auto &val : constraint.GetLabelValues()) {
       if (!first) {

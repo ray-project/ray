@@ -31,6 +31,7 @@ from ray.autoscaler.v2.schema import (
 from ray.autoscaler.v2.tests.util import MockEventLogger, make_autoscaler_instance
 from ray.autoscaler.v2.utils import ResourceRequestUtil
 from ray.core.generated.autoscaler_pb2 import (
+    BundleSelector,
     ClusterResourceConstraint,
     GangResourceRequest,
     NodeState,
@@ -2881,6 +2882,72 @@ def test_scale_up_node_to_satisfy_labels():
     assert to_launch == {"gpu_node": 1}
 
 
+@pytest.mark.parametrize(
+    "constraints, expected_to_launch",
+    [
+        (
+            [
+                ("zone", LabelSelectorOperator.LABEL_OPERATOR_EXISTS, []),
+                ("zone", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["a"]),
+            ],
+            {"zone_b_node": 1},
+        ),
+        (
+            [("zone", LabelSelectorOperator.LABEL_OPERATOR_DOES_NOT_EXIST, [])],
+            {"no_zone_node": 1},
+        ),
+        # Without exists, not in also matches the node type with no zone label.
+        (
+            [("zone", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["a", "b"])],
+            {"no_zone_node": 1},
+        ),
+        (
+            [
+                ("zone", LabelSelectorOperator.LABEL_OPERATOR_EXISTS, []),
+                ("zone", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["a", "b"]),
+            ],
+            {},
+        ),
+    ],
+    ids=["exists-and-not-in", "does-not-exist", "not-in-alone", "no-match"],
+)
+def test_scale_up_node_to_satisfy_exists_labels(constraints, expected_to_launch):
+    """
+    Test that a node type matches exists when it declares the label key, and
+    does not exist when it doesn't.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+
+    node_type_configs = {
+        name: NodeTypeConfig(
+            name=name,
+            resources={"CPU": 1},
+            labels=labels,
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        )
+        for name, labels in [
+            ("no_zone_node", {}),
+            ("zone_a_node", {"zone": "a"}),
+            ("zone_b_node", {"zone": "b"}),
+        ]
+    }
+
+    resource_request = ResourceRequestUtil.make(
+        {"CPU": 1}, label_selectors=[constraints]
+    )
+
+    request = sched_request(
+        node_type_configs=node_type_configs,
+        resource_requests=[resource_request],
+    )
+
+    reply = scheduler.schedule(request)
+    to_launch, _ = _launch_and_terminate(reply)
+
+    assert to_launch == expected_to_launch
+
+
 def test_label_selector_fallback_priority():
     """
     Test that a resource request with multiple label selectors scales up
@@ -2934,6 +3001,50 @@ def test_label_selector_fallback_priority():
     )
     to_launch2, _ = _launch_and_terminate(reply2)
     assert to_launch2 == {"gpu_node": 1}
+
+
+def test_gang_request_tries_bundle_selectors_in_order():
+    """
+    Test that a gang request with several bundle selectors uses the first one
+    that fits, and is infeasible only when none of them fits.
+    """
+    scheduler = ResourceDemandScheduler(event_logger)
+    node_type_configs = {
+        name: NodeTypeConfig(
+            name=name,
+            resources={"CPU": 2},
+            labels={"zone": zone},
+            min_worker_nodes=0,
+            max_worker_nodes=10,
+        )
+        for name, zone in [("zone_a_node", "a"), ("zone_b_node", "b")]
+    }
+
+    def schedule_gang(*zones):
+        # Each bundle selector holds two 1 CPU bundles that want the same zone.
+        bundle_selectors = []
+        for zone in zones:
+            request = ResourceRequestUtil.make(
+                {"CPU": 1},
+                label_selectors=[
+                    [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, [zone])]
+                ],
+            )
+            bundle_selectors.append(BundleSelector(resource_requests=[request] * 2))
+        request = sched_request(node_type_configs=node_type_configs)
+        request.gang_resource_requests.append(
+            GangResourceRequest(bundle_selectors=bundle_selectors)
+        )
+        reply = scheduler.schedule(request)
+        to_launch, _ = _launch_and_terminate(reply)
+        return to_launch, len(reply.infeasible_gang_resource_requests)
+
+    # No node type is in zone c, so the zone b selector comes next and wins.
+    assert schedule_gang("c", "b", "a") == ({"zone_b_node": 1}, 0)
+    # The first selector that fits wins even when a later one also fits.
+    assert schedule_gang("a", "b") == ({"zone_a_node": 1}, 0)
+    # The gang request is infeasible only when no selector fits.
+    assert schedule_gang("c", "d") == ({}, 1)
 
 
 def test_pg_with_bundle_infeasible_label_selectors():

@@ -2569,7 +2569,8 @@ Status CoreWorker::CreatePlacementGroup(
                                 worker_context_->GetCurrentActorID(),
                                 worker_context_->CurrentActorDetached(),
                                 placement_group_creation_options.bundle_label_selector_,
-                                placement_group_creation_options.topology_strategy_);
+                                placement_group_creation_options.topology_strategy_,
+                                placement_group_creation_options.fallback_strategy_);
   PlacementGroupSpecification placement_group_spec = builder.Build();
   *return_placement_group_id = placement_group_id;
   RAY_LOG(INFO).WithField(placement_group_id)

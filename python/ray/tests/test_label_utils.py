@@ -239,6 +239,8 @@ def test_validate_label_value(value, should_raise, expected_message):
         (None, None),  # Valid: No input provided
         ({"region": "us-west4"}, None),  # Valid label key and value
         ({"ray.io/accelerator-type": "A100"}, None),  # Valid label key and value
+        ({"zone": "in(a,b),!b"}, None),  # Valid several expressions on one key
+        ({"zone": "exists(),!in(a,b)"}, None),  # Valid exists with not in
         ({"": "valid-value"}, "Invalid label key name"),  # Invalid label key (empty)
         (
             {"!-invalidkey": "valid-value"},
@@ -273,6 +275,20 @@ def test_validate_label_selector(label_selector, expected_error):
         ("in(H100, TPU!GPU)", "Invalid label selector value"),
         ("!!!in(H100, TPU)", "Invalid label selector value"),
         ("a" * 64, "Invalid label selector value"),
+        ("in(a,b),!in(c, d)", None),
+        ("in(a,b),!c,d", None),
+        ("in(a,b),", "Invalid label selector value"),
+        (",in(a,b)", "Invalid label selector value"),
+        ("in(a,b), !c", "Invalid label selector value"),
+        ("in(a,b),in()", "Invalid label selector value"),
+        ("in(a,b)," + "a" * 64, "Invalid label selector value"),
+        ("exists()", None),
+        ("!exists()", None),
+        ("exists(),!in(a,b)", None),
+        ("exists", None),
+        ("exists(a)", "Invalid label selector value"),
+        ("!!exists()", "Invalid label selector value"),
+        ("in(exists())", "Invalid label selector value"),
     ],
     ids=[
         "spot",
@@ -287,6 +303,20 @@ def test_validate_label_selector(label_selector, expected_error):
         "invalid-noteq",
         "triple-noteq",
         "too-long",
+        "in-and-not-in",
+        "three-expressions",
+        "trailing-comma",
+        "leading-comma",
+        "space-between-expressions",
+        "empty-second-in",
+        "too-long-second-expression",
+        "exists",
+        "not-exists",
+        "exists-and-not-in",
+        "plain-value-named-exists",
+        "exists-with-value",
+        "double-not-exists",
+        "exists-inside-in",
     ],
 )
 def test_validate_label_selector_value(selector, expected_error):

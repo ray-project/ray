@@ -55,13 +55,13 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
+  const bool all_unplaced = placement_group->AllUnplacedBundles();
 
   // For topology strategy PGs: if ALL bundles are unplaced (total failure), clear
   // the topology assignments so new values can be selected. If only some bundles
   // are unplaced (partial failure), we attempt to reschedule onto the same
   // assignments.
-  if (placement_group->AllUnplacedBundles() &&
-      placement_group->GetTopologyStrategyKeys().has_value()) {
+  if (all_unplaced && placement_group->GetTopologyStrategyKeys().has_value()) {
     placement_group->ClearTopologyAssignments();
     RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
                   << " are unplaced, rescheduling on a new topology assignment";
@@ -71,15 +71,52 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                  << ", id: " << placement_group->GetPlacementGroupID()
                  << ", bundles size = " << bundles.size();
 
-  std::vector<const ResourceRequest *> resource_request_list;
-  resource_request_list.reserve(bundles.size());
-  for (const auto &bundle : bundles) {
-    resource_request_list.emplace_back(&bundle->GetRequiredResources());
+  // Try the bundles' own label selectors first, then each fallback option in order,
+  // and place every bundle with the first option that fits now. When some bundles are
+  // still placed, the rest keep the option those bundles use, so a group never mixes
+  // options.
+  int first_fallback_index = 0;
+  int last_fallback_index = placement_group->GetFallbackStrategySize();
+  if (!all_unplaced) {
+    first_fallback_index = placement_group->GetSelectedFallbackIndex();
+    last_fallback_index = first_fallback_index;
   }
 
-  auto scheduling_options = CreateSchedulingOptions(*placement_group, strategy);
-  auto scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
-      resource_request_list, scheduling_options);
+  const auto scheduling_options = CreateSchedulingOptions(*placement_group, strategy);
+  auto scheduling_result = raylet_scheduling_policy::SchedulingResult::Infeasible();
+  bool is_feasible = false;
+  for (int fallback_index = first_fallback_index; fallback_index <= last_fallback_index;
+       ++fallback_index) {
+    // A fallback option changes only the label selectors, so the bundles prepare and
+    // commit as usual once a node is chosen for each.
+    std::vector<ResourceRequest> fallback_requests;
+    fallback_requests.reserve(bundles.size());
+    std::vector<const ResourceRequest *> resource_request_list;
+    resource_request_list.reserve(bundles.size());
+    for (const auto &bundle : bundles) {
+      if (fallback_index == 0) {
+        resource_request_list.emplace_back(&bundle->GetRequiredResources());
+        continue;
+      }
+      fallback_requests.push_back(bundle->GetRequiredResources());
+      fallback_requests.back().SetLabelSelector(
+          placement_group->GetFallbackLabelSelector(fallback_index, bundle->Index()));
+      resource_request_list.emplace_back(&fallback_requests.back());
+    }
+
+    scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
+    if (scheduling_result.status.IsSuccess()) {
+      placement_group->SetSelectedFallbackIndex(fallback_index);
+      if (fallback_index > 0) {
+        RAY_LOG(INFO) << "Placement group " << placement_group->GetPlacementGroupID()
+                      << " is scheduled with fallback option " << fallback_index;
+      }
+      break;
+    }
+    // The group stays retryable unless no option is feasible.
+    is_feasible = is_feasible || !scheduling_result.status.IsInfeasible();
+  }
 
   auto result_status = scheduling_result.status;
   const auto &selected_nodes = scheduling_result.selected_nodes;
@@ -91,10 +128,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         << ", because current resources can't satisfy the required resource. IsFailed: "
         << result_status.IsFailed() << " IsInfeasible: " << result_status.IsInfeasible()
         << " IsPartialSuccess: " << result_status.IsPartialSuccess();
-    bool infeasible = result_status.IsInfeasible();
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
-    failure_callback(placement_group, /*is_feasible*/ !infeasible);
+    failure_callback(placement_group, is_feasible);
     return;
   }
 

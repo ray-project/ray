@@ -4215,7 +4215,8 @@ cdef class CoreWorker:
                             c_bool is_detached,
                             soft_target_node_id,
                             c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
-                            dict topology_strategy):
+                            dict topology_strategy,
+                            c_vector[c_vector[unordered_map[c_string, c_string]]] fallback_strategy):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
@@ -4241,7 +4242,8 @@ cdef class CoreWorker:
                                 is_detached,
                                 c_soft_target_node_id,
                                 bundle_label_selector,
-                                c_topology_strategy),
+                                c_topology_strategy,
+                                fallback_strategy),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())

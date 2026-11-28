@@ -289,6 +289,9 @@ cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
         CLabelSelector() nogil except +
         void AddConstraint(const c_string& key, const c_string& value) nogil except +
 
+        @staticmethod
+        c_vector[c_string] SplitLabelSelectorValue(const c_string& value) except +
+
 cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
     cdef cppclass CFallbackOption "ray::FallbackOption":
         CLabelSelector label_selector
@@ -450,6 +453,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
             const unordered_map[c_string, CPlacementStrategy] &topology_strategy,
+            const c_vector[c_vector[unordered_map[c_string, c_string]]] &fallback_strategy,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
