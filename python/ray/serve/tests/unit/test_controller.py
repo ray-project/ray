@@ -9,7 +9,11 @@ import pytest
 from ray.exceptions import ActorDiedError, GetTimeoutError, RayActorError, RayTaskError
 from ray.serve._private import api
 from ray.serve._private.api import _get_actor_init_error
-from ray.serve._private.common import TargetCapacityDirection
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TargetCapacityDirection,
+)
 from ray.serve._private.controller import (
     ServeController,
     applications_match,
@@ -826,6 +830,19 @@ class TestConfigCheckpoint:
         _, config, _ = self._read(current)
         assert config.config_id == "c1"
         assert self._read(None) == (0.0, None, None)
+
+
+def test_record_replica_health_returns_the_settings_to_the_replica():
+    """The heartbeat's reply is how a period or timeout changed on its own reaches
+    the replica."""
+    dsm = mock.Mock()
+    dsm.record_replica_health.return_value = (60.0, 30.0)
+    controller = SimpleNamespace(deployment_state_manager=dsm)
+    replica_id = ReplicaID("r1", DeploymentID(name="d", app_name="app"))
+    assert ServeController.record_replica_health(
+        controller, replica_id, 1, True, 0
+    ) == (60.0, 30.0)
+    dsm.record_replica_health.assert_called_once_with(replica_id, 1, True, 0)
 
 
 if __name__ == "__main__":
