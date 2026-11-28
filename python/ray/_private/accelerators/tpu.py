@@ -107,6 +107,10 @@ TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 # Accelerators that are 1 core per chip: v5e, v6e
 SINGLE_CORE_TPU_TYPES = ("v5litepod", "v6e")
 
+# Accelerators that expose 2 logical TPU devices (VFIO functions / chiplets)
+# per physical chip by default.
+DUAL_DEVICE_PER_CHIP_TPU_TYPES = ("v7x",)
+
 # The valid TPU types.
 VALID_TPU_TYPES = ("v2", "v3", "v4", "v5p", "v5litepod", "v6e", "v7x")
 
@@ -1062,10 +1066,31 @@ class TPUAcceleratorManager(AcceleratorManager):
     def get_num_workers_in_current_tpu_pod() -> Optional[int]:
         """Return the total number of workers in a TPU pod."""
         tpu_pod_type = TPUAcceleratorManager.get_current_node_tpu_pod_type()
-        chips_per_host = TPUAcceleratorManager.get_current_node_num_accelerators()
+        if not tpu_pod_type:
+            logging.debug("Could not get num workers in TPU pod.")
+            return None
+        devices_per_chip = (
+            2
+            if normalize_tpu_accelerator_type(tpu_pod_type).startswith(
+                DUAL_DEVICE_PER_CHIP_TPU_TYPES
+            )
+            else 1
+        )
+        accel_chips = [p for p in glob.glob("/dev/accel*") if not os.path.isdir(p)]
+        if accel_chips:
+            chips_per_host = len(accel_chips) // devices_per_chip
+        else:
+            vfio_chips = _discover_tpu_vfio_devices()
+            if vfio_chips:
+                chips_per_host = len(vfio_chips)
+            else:
+                num_accelerators = (
+                    TPUAcceleratorManager.get_current_node_num_accelerators()
+                )
+                chips_per_host = num_accelerators // devices_per_chip
         cores_per_chip = get_tpu_cores_per_chip(tpu_pod_type)  # Hard-coded map.
         cores_per_host = chips_per_host * cores_per_chip
-        if tpu_pod_type and cores_per_host > 0:
+        if cores_per_host > 0:
             num_cores = int(tpu_pod_type.split("-")[1])
             num_workers = num_cores // cores_per_host
             # If the chip count doesn't fill a full host, a sub-host is still treated as a host.
