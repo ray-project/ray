@@ -413,7 +413,10 @@ class BayesOptSearch(Searcher):
         """Register given tuple of params and results."""
         if is_nan_or_inf(result[self.metric]):
             return
-        self.optimizer.register(params, self._metric_op * result[self.metric])
+        # The optimizer's keys are flattened ("a/x"), so flatten nested configs.
+        self.optimizer.register(
+            flatten_dict(params), self._metric_op * result[self.metric]
+        )
 
     def get_state(self) -> Dict[str, Any]:
         state = self.__dict__.copy()
