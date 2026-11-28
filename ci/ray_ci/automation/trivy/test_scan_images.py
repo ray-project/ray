@@ -1,5 +1,8 @@
+import subprocess
 import sys
 from datetime import datetime
+from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 import click
@@ -8,15 +11,29 @@ import pytest
 from ci.ray_ci.automation import push_ray_image
 from ci.ray_ci.automation.trivy import registry, scan_images
 from ci.ray_ci.automation.trivy.scan_images import (
+    ContainedTrivy,
+    ScanError,
     build_targets,
     check_target,
     parse_image,
 )
 
+FIXTURE = Path(__file__).parent / "testdata" / "ray-py3.12-cpu.json"
 WORK_REPO = "123.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp"
 OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
 OCI_INDEX = "application/vnd.oci.image.index.v1+json"
 COMMIT = "80ceee083e49b1ae709c149d3a15862fe12ce8cb"
+
+
+@pytest.fixture(autouse=True)
+def no_real_processes(monkeypatch):
+    """Fail any test that would run real crane or docker, i.e. reach a
+    registry or the docker host instead of the fakes."""
+
+    def refuse(args, *a, **k):
+        raise AssertionError(f"test tried to run {list(args)[:3]}")
+
+    monkeypatch.setattr(scan_images.subprocess, "run", refuse)
 
 
 def targets(*images: tuple, platform: str = "cpu", arch: str = "x86_64") -> list:
@@ -143,6 +160,290 @@ def test_check_target_records_why_it_failed(error: Exception, expected: str):
     with mock.patch.object(scan_images.registry, "digest", side_effect=error):
         check_target(target, "x86_64")
     assert (target.error, target.digest) == (expected, "")
+
+
+def test_docker_run_args_keep_trivy_contained():
+    (target,) = targets(("ray", "3.12"))
+    target.digest = "sha256:d1"
+    trivy = ContainedTrivy("base@sha256:b")
+    args = trivy.docker_run_args(target, "trivy-scan-x-scan-0")
+    assert args == [
+        "docker",
+        "run",
+        "--rm",
+        "--name",
+        "trivy-scan-x-scan-0",
+        "--label",
+        "ray-trivy-scan=1",
+        "--network",
+        "none",
+        "--user",
+        "65534:65534",
+        "--read-only",
+        "--cap-drop",
+        "ALL",
+        "--security-opt",
+        "no-new-privileges",
+        "--workdir",
+        "/work/tmp",
+        "-e",
+        "HOME=/work/home",
+        "-e",
+        "XDG_CACHE_HOME=/work/home/.cache",
+        "-e",
+        "XDG_DATA_HOME=/work/home/.local",
+        "-e",
+        "TMPDIR=/work/tmp",
+        "-v",
+        f"{trivy.data}:/data:ro",
+        "-v",
+        f"{trivy.work}:/work",
+        "base@sha256:b",
+        "/data/trivy",
+        "image",
+        "--config",
+        "/data/trivy.yaml",
+        "--input",
+        "/data/layout@sha256:d1",
+        "--cache-dir",
+        "/work/cache",
+        "--skip-db-update",
+        "--skip-java-db-update",
+        "--offline-scan",
+        "--skip-version-check",
+        "--disable-telemetry",
+        "--scanners",
+        "vuln",
+        "--pkg-types",
+        "os,library",
+        "--list-all-pkgs",
+        "--ignorefile",
+        "/data/ignore/ray.trivyignore.yaml",
+        "--show-suppressed",
+        "--exit-code",
+        "0",
+        "--no-progress",
+        "--quiet",
+        "--timeout",
+        "30m",
+        "--format",
+        "json",
+        "--output",
+        "/work/out/ray-py3.12-cpu.json",
+    ]
+    # Nothing from the job's environment or filesystem reaches the container.
+    assert not any("AWS" in a or ".docker" in a or a.startswith("/home") for a in args)
+
+
+class FakeDocker:
+    """Stands in for _run: records docker commands, fakes Trivy's output."""
+
+    def __init__(self, fail_scan_of: Optional[str] = None) -> None:
+        self.calls: list[list[str]] = []
+        self.fail_scan_of = fail_scan_of
+
+    def __call__(self, args, check=True, timeout=None):
+        args = list(args)
+        self.calls.append(args)
+        if args[:2] == ["docker", "run"] and self.fail_scan_of:
+            if f"/work/out/{self.fail_scan_of}.json" in args:
+                raise ScanError("trivy exited 1")
+        if args[:2] == ["docker", "cp"] and ":/work/out/" in args[2]:
+            Path(args[3]).write_bytes(FIXTURE.read_bytes())
+        return ""
+
+    def commands(self) -> list[str]:
+        return [" ".join(c[:3]) for c in self.calls]
+
+
+def test_stage_needs_an_ignore_file_for_every_image_type(tmp_path: Path):
+    files = tmp_path / "runfiles"
+    files.mkdir()
+    (files / "trivy").write_bytes(b"\x7fELF")
+    (files / "ray.trivyignore.yaml").write_text("vulnerabilities: []\n")
+    rlocation = mock.Mock()
+    rlocation.Rlocation = lambda p: str(files / Path(p).name)
+    layout = tmp_path / "layout"
+    layout.mkdir()
+    dbs = {"db": tmp_path / "db", "java_db": tmp_path / "jdb"}
+    for d in dbs.values():
+        d.mkdir()
+    with mock.patch.object(
+        scan_images.registry.runfiles, "Create", return_value=rlocation
+    ):
+        with pytest.raises(ScanError, match="no ignore file for ray-extra"):
+            scan_images.stage(tmp_path / "a", layout, dbs, {"ray", "ray-extra"})
+        staging = scan_images.stage(tmp_path / "b", layout, dbs, {"ray"})
+    assert (staging / "data" / "ignore" / "ray.trivyignore.yaml").is_file()
+    assert (staging / "work" / "cache" / "db").readlink() == Path("/data/db")
+    assert (staging / "work" / "cache" / "java-db").readlink() == Path("/data/java-db")
+    assert oct((staging / "work" / "out").stat().st_mode & 0o7777) == "0o1777"
+
+
+def mode(path: Path) -> str:
+    return oct(path.stat().st_mode & 0o7777)
+
+
+def test_stage_makes_the_data_tree_readable_by_the_scan_user(tmp_path: Path):
+    """crane writes blobs 0600, and docker cp keeps the job's owner, which
+    isn't the scan user, so the scan user can only read what is world-readable."""
+    files = tmp_path / "runfiles"
+    files.mkdir()
+    (files / "trivy").write_bytes(b"\x7fELF")
+    (files / "trivy").chmod(0o500)
+    (files / "ray.trivyignore.yaml").write_text("vulnerabilities: []\n")
+    rlocation = mock.Mock()
+    rlocation.Rlocation = lambda p: str(files / Path(p).name)
+    layout = tmp_path / "layout"
+    blob = layout / "blobs" / "sha256" / "abc"
+    blob.parent.mkdir(parents=True)
+    blob.write_bytes(b"layer")
+    blob.chmod(0o600)
+    blob.parent.chmod(0o700)
+    db = tmp_path / "db"
+    db.mkdir()
+    (db / "trivy.db").write_bytes(b"db")
+    (db / "trivy.db").chmod(0o600)
+    with mock.patch.object(
+        scan_images.registry.runfiles, "Create", return_value=rlocation
+    ):
+        staging = scan_images.stage(tmp_path / "w", layout, {"db": db}, {"ray"})
+    data = staging / "data"
+    assert mode(data / "trivy") == "0o755"
+    assert mode(data / "layout" / "blobs" / "sha256" / "abc") == "0o644"
+    assert mode(data / "layout" / "blobs" / "sha256") == "0o755"
+    assert mode(data / "db" / "trivy.db") == "0o644"
+    assert mode(data / "ignore" / "ray.trivyignore.yaml") == "0o644"
+    # Only the DBs given get a cache link, so none is left dangling.
+    assert sorted(p.name for p in (staging / "work" / "cache").iterdir()) == ["db"]
+
+
+def test_a_failed_setup_removes_what_it_created():
+    docker = FakeDocker()
+    original = docker.__call__
+
+    def failing(args, check=True, timeout=None):
+        if args[:2] == ["docker", "create"]:
+            docker.calls.append(list(args))
+            raise ScanError("docker create failed")
+        return original(args, check)
+
+    trivy = ContainedTrivy("base")
+    with mock.patch.object(scan_images, "_run", failing):
+        with pytest.raises(ScanError):
+            with trivy:
+                pass
+    assert docker.calls[-2:] == [
+        ["docker", "rm", "-f", trivy.loader],
+        ["docker", "volume", "rm", "-f", trivy.data, trivy.work],
+    ]
+
+
+def test_cleanup_removes_the_volumes_even_if_removing_containers_fails():
+    """A cancelled job's SIGTERM handler can interrupt the first call."""
+    calls = []
+
+    def run(args, check=True, timeout=None):
+        calls.append(list(args))
+        if args[:3] == ["docker", "rm", "-f"]:
+            raise SystemExit(143)
+        return ""
+
+    trivy = ContainedTrivy("base")
+    with mock.patch.object(scan_images, "_run", run):
+        with pytest.raises(SystemExit):
+            trivy.__exit__(None, None, None)
+    assert calls[-1] == ["docker", "volume", "rm", "-f", trivy.data, trivy.work]
+
+
+def test_load_and_scan_copy_into_the_volumes_and_out_again(tmp_path: Path):
+    docker = FakeDocker()
+    (target,) = targets(("ray", "3.12"))
+    target.digest = "sha256:d1"
+    staging = tmp_path / "staging"
+    result = tmp_path / "result.json"
+    with mock.patch.object(scan_images, "_run", docker):
+        with ContainedTrivy("base") as trivy:
+            trivy.load(staging)
+            trivy.scan(target, result)
+    for volume in ("data", "work"):
+        copy = ["docker", "cp", f"{staging / volume}/.", f"{trivy.loader}:/{volume}"]
+        assert copy in docker.calls
+    assert result.read_bytes() == FIXTURE.read_bytes()
+    assert docker.calls[-2:] == [
+        ["docker", "rm", "-f", trivy.loader, f"{trivy.prefix}-scan-0"],
+        ["docker", "volume", "rm", "-f", trivy.data, trivy.work],
+    ]
+
+
+@pytest.mark.parametrize(
+    ("raised", "message"),
+    [
+        (subprocess.TimeoutExpired(["docker"], 120), "timed out after 120s"),
+        (FileNotFoundError(2, "No such file or directory"), "could not run"),
+    ],
+    ids=["hangs", "missing"],
+)
+def test_docker_problems_are_scan_errors(
+    monkeypatch: pytest.MonkeyPatch, raised: Exception, message: str
+):
+    monkeypatch.setattr(scan_images.subprocess, "run", mock.Mock(side_effect=raised))
+    with pytest.raises(ScanError, match=message):
+        scan_images._run(["docker", "ps"], check=False)
+
+
+def test_docker_output_is_decoded_leniently_within_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    done = subprocess.CompletedProcess([], 0, stdout="ok", stderr="")
+    run = mock.Mock(return_value=done)
+    monkeypatch.setattr(scan_images.subprocess, "run", run)
+    assert scan_images._run(["docker", "ps"], timeout=5) == "ok"
+    assert (run.call_args.kwargs["errors"], run.call_args.kwargs["timeout"]) == (
+        "replace",
+        5,
+    )
+
+
+def test_stale_leftovers_from_earlier_jobs_are_removed(caplog):
+    now = datetime(2026, 11, 12, 12, 0, 0)
+    listings = {
+        ("docker", "ps"): "trivy-scan-old-loader\ntrivy-scan-new-loader\n",
+        ("docker", "volume", "ls"): (
+            "trivy-scan-old-data\ntrivy-scan-new-data\ntrivy-scan-new-local-data\n"
+            "trivy-scan-odd-data\n"
+        ),
+    }
+    created = {
+        "trivy-scan-old-loader": "2026-11-12T01:00:00.123456789Z",
+        "trivy-scan-new-loader": "2026-11-12T11:30:00.5Z",
+        "trivy-scan-old-data": "2026-11-11T23:00:00Z",
+        "trivy-scan-new-data": "2026-11-12T11:30:00Z",
+        # Volumes report local time with an offset: 03:30-08:00 is 11:30 UTC.
+        "trivy-scan-new-local-data": "2026-11-12T03:30:00-08:00",
+        "trivy-scan-odd-data": "not a time",
+    }
+    calls = []
+
+    def run(args, check=True, timeout=None):
+        args = list(args)
+        calls.append(args)
+        if args[:2] == ["docker", "ps"]:
+            return listings[("docker", "ps")]
+        if args[:3] == ["docker", "volume", "ls"]:
+            return listings[("docker", "volume", "ls")]
+        if "inspect" in args:
+            return created[args[-1]] + "\n"
+        return ""
+
+    with mock.patch.object(scan_images, "_run", run):
+        scan_images._prune_stale(now)
+    removed = [c[-1] for c in calls if "rm" in c]
+    assert removed == ["trivy-scan-old-loader", "trivy-scan-old-data"]
+    assert "Can't tell when volume trivy-scan-odd-data was created" in caplog.text
+    assert all(
+        "label=ray-trivy-scan=1" in " ".join(c) for c in calls if "ls" in c or "ps" in c
+    )
 
 
 def test_check_target_validates_the_digest_it_will_scan():

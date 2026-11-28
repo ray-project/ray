@@ -1,16 +1,28 @@
-"""Name and check the Ray images one Trivy scan job scans.
+"""Name and check the Ray images one Trivy scan job scans, and run Trivy.
 
 For one (architecture, platform) group, ``build_targets`` names each image
 the build pushed to its wanda cache, with the tags the publish step gives it.
 ``check_target`` resolves each ref to a digest and checks, on the digest
 itself since a tag can be re-pushed meanwhile, that it is a single-platform
 image for the expected architecture.
+
+``ContainedTrivy`` runs the pinned Trivy on an OCI layout in a throwaway
+container with no network, no credentials, no inherited environment, a
+non-root user, a read-only root and no capabilities. The job talks to the
+host's docker daemon, so bind mounts would resolve host paths. Files reach
+the Trivy containers through docker volumes filled with ``docker cp``
+instead.
 """
 
 import logging
 import re
+import shutil
+import subprocess
+import uuid
 from dataclasses import dataclass, field
-from typing import Any, Sequence
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Optional, Sequence
 
 import click
 
@@ -21,6 +33,30 @@ from ci.ray_ci.docker_container import RayType
 from ci.ray_ci.ray_image import RayImageError
 
 logger = logging.getLogger(__name__)
+
+# Trivy is a static binary; this image only provides an empty, non-root root.
+# It pins a multi-arch index, but the Trivy binary staged into it is linux
+# x86_64, so scan jobs must run on x86_64 hosts.
+BASE_IMAGE = (
+    "gcr.io/distroless/static-debian12"
+    "@sha256:afa5c872c891853ca7fcf1f12c3edb23f7eeef36189728842dd51042ff57f7ab"
+)
+TRIVY_RUNFILE = "trivy_linux_x86_64/trivy"
+IGNORE_RUNFILE = "io_ray/ci/ray_ci/automation/trivy/ignore/{}.trivyignore.yaml"
+SCAN_USER = "65534:65534"
+# Everything the scan creates on the docker host carries this label.
+LABEL = "ray-trivy-scan=1"
+# Leftovers older than this come from jobs that died without cleaning up:
+# every scan step times out after 60 minutes (image-scan.rayci.yml), so
+# younger ones may belong to a job still running on the same host.
+STALE_AFTER = timedelta(hours=2)
+SCAN_TIMEOUT = "30m"
+# Seconds a docker call may take: a scan gets a margin over Trivy's own
+# SCAN_TIMEOUT, copying the layout and DBs into the volumes can take a
+# while, and everything else is quick.
+DOCKER_RUN_TIMEOUT = 35 * 60
+DOCKER_CP_TIMEOUT = 30 * 60
+DOCKER_TIMEOUT = 2 * 60
 # Single-platform manifests; an index would let Trivy silently pick one.
 IMAGE_MANIFEST_TYPES = frozenset(
     {
@@ -178,3 +214,260 @@ def check_target(target: Target, architecture: str) -> None:
         target.digest = digest
     except Exception as e:
         target.error = _describe(e)
+
+
+def _run(args: Sequence[str], check: bool = True, timeout: int = DOCKER_TIMEOUT) -> str:
+    """Run a docker command. A timeout, or a docker that can't run, is a
+    ScanError even with ``check=False``."""
+    what = " ".join(args[:3])
+    try:
+        result = subprocess.run(
+            list(args),
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise ScanError(f"{what} timed out after {timeout}s") from None
+    except OSError as e:
+        raise ScanError(f"{what} could not run: {e}") from e
+    if check and result.returncode != 0:
+        raise ScanError(f"{what} failed: {result.stderr.strip()[-2000:]}")
+    return result.stdout
+
+
+def trivy_args(image_type: str, digest: str, name: str) -> list[str]:
+    """Trivy's arguments. Every setting is a flag: Trivy rejects an unknown
+    flag but silently ignores an unknown config key."""
+    return [
+        "/data/trivy",
+        "image",
+        "--config",
+        "/data/trivy.yaml",
+        "--input",
+        f"/data/layout@{digest}",
+        "--cache-dir",
+        "/work/cache",
+        "--skip-db-update",
+        "--skip-java-db-update",
+        "--offline-scan",
+        "--skip-version-check",
+        "--disable-telemetry",
+        "--scanners",
+        "vuln",
+        "--pkg-types",
+        "os,library",
+        "--list-all-pkgs",
+        "--ignorefile",
+        f"/data/ignore/{image_type}.trivyignore.yaml",
+        "--show-suppressed",
+        "--exit-code",
+        "0",
+        "--no-progress",
+        "--quiet",
+        "--timeout",
+        SCAN_TIMEOUT,
+        "--format",
+        "json",
+        "--output",
+        f"/work/out/{name}.json",
+    ]
+
+
+class ContainedTrivy:
+    """Runs Trivy in throwaway containers that can't reach the network.
+
+    Volume ``data`` (mounted read-only) holds the Trivy binary, the OCI
+    layout, the ignore files and the DBs. Volume ``work`` holds Trivy's layer
+    cache, its temp dir and the results. Nothing else is visible to Trivy.
+    """
+
+    def __init__(self, base_image: str) -> None:
+        self.base_image = base_image
+        self.prefix = f"trivy-scan-{uuid.uuid4().hex[:12]}"
+        self.data = f"{self.prefix}-data"
+        self.work = f"{self.prefix}-work"
+        self.loader = f"{self.prefix}-loader"
+        self.scans: list[str] = []
+
+    def __enter__(self) -> "ContainedTrivy":
+        _prune_stale()
+        try:
+            _run(["docker", "volume", "create", "--label", LABEL, self.data])
+            _run(["docker", "volume", "create", "--label", LABEL, self.work])
+            _run(
+                [
+                    "docker",
+                    "create",
+                    "--name",
+                    self.loader,
+                    "--label",
+                    LABEL,
+                    "-v",
+                    f"{self.data}:/data",
+                    "-v",
+                    f"{self.work}:/work",
+                    self.base_image,
+                    # Never started; distroless has no default command to fall back on.
+                    "/data/trivy",
+                ]
+            )
+        except BaseException:
+            # __exit__ doesn't run when __enter__ raises.
+            self.__exit__(None, None, None)
+            raise
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        # rm -f also stops a scan container left running by an interrupted
+        # `docker run`; killing the CLI doesn't stop the container.
+        try:
+            _run(["docker", "rm", "-f", self.loader, *self.scans], check=False)
+        finally:
+            # Even if that failed, or the job is being stopped.
+            _run(["docker", "volume", "rm", "-f", self.data, self.work], check=False)
+
+    def load(self, staging: Path) -> None:
+        """Copy ``staging/data`` and ``staging/work`` into the volumes."""
+        for volume in ("data", "work"):
+            _run(
+                ["docker", "cp", f"{staging / volume}/.", f"{self.loader}:/{volume}"],
+                timeout=DOCKER_CP_TIMEOUT,
+            )
+
+    def docker_run_args(self, target: Target, name: str) -> list[str]:
+        return [
+            "docker",
+            "run",
+            "--rm",
+            "--name",
+            name,
+            "--label",
+            LABEL,
+            "--network",
+            "none",
+            "--user",
+            SCAN_USER,
+            "--read-only",
+            "--cap-drop",
+            "ALL",
+            "--security-opt",
+            "no-new-privileges",
+            "--workdir",
+            "/work/tmp",
+            "-e",
+            "HOME=/work/home",
+            "-e",
+            "XDG_CACHE_HOME=/work/home/.cache",
+            "-e",
+            "XDG_DATA_HOME=/work/home/.local",
+            "-e",
+            "TMPDIR=/work/tmp",
+            "-v",
+            f"{self.data}:/data:ro",
+            "-v",
+            f"{self.work}:/work",
+            self.base_image,
+            *trivy_args(target.image_type, target.digest, target.name),
+        ]
+
+    def scan(self, target: Target, dest: Path) -> None:
+        """Scan one image and copy its JSON result to ``dest``."""
+        logger.info(f"Scanning {target.name} ({target.digest})")
+        name = f"{self.prefix}-scan-{len(self.scans)}"
+        self.scans.append(name)
+        _run(self.docker_run_args(target, name), timeout=DOCKER_RUN_TIMEOUT)
+        _run(["docker", "cp", f"{self.loader}:/work/out/{target.name}.json", str(dest)])
+
+
+def _created(kind: str, name: str) -> Optional[datetime]:
+    """When a container or volume was created, as naive UTC."""
+    field_name = "{{.CreatedAt}}" if kind == "volume" else "{{.Created}}"
+    out = _run(["docker", kind, "inspect", "--format", field_name, name], check=False)
+    # Containers report UTC ("...Z", nanoseconds); volumes report local time
+    # with an offset. Drop the fraction, which fromisoformat may not parse.
+    match = re.match(
+        r"(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.\d+)?(Z|[+-]\d\d:\d\d)?",
+        out.strip(),
+    )
+    if not match:
+        return None
+    offset = match.group(2) if match.group(2) not in (None, "Z") else "+00:00"
+    created = datetime.fromisoformat(match.group(1) + offset)
+    return created.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _prune_stale(now: Optional[datetime] = None) -> None:
+    """Remove containers and volumes that earlier jobs left behind, e.g.
+    after being killed. Containers go first, so their volumes are free."""
+    now = now or datetime.now(timezone.utc).replace(tzinfo=None)
+    for kind, listing, remove in (
+        ("container", ["docker", "ps", "-a"], ["docker", "rm", "-f"]),
+        ("volume", ["docker", "volume", "ls"], ["docker", "volume", "rm", "-f"]),
+    ):
+        names = _run(
+            [
+                *listing,
+                "--filter",
+                f"label={LABEL}",
+                "--format",
+                "{{.Name}}" if kind == "volume" else "{{.Names}}",
+            ],
+            check=False,
+        ).split()
+        for name in names:
+            created = _created(kind, name)
+            if created is None:
+                logger.warning(f"Can't tell when {kind} {name} was created; left")
+            elif now - created > STALE_AFTER:
+                logger.info(f"Removing stale {kind} {name} (created {created})")
+                _run([*remove, name], check=False)
+
+
+def _make_world_readable(root: Path) -> None:
+    for path in [root, *root.rglob("*")]:
+        if path.is_symlink():
+            continue
+        if path.is_dir() or path.stat().st_mode & 0o100:
+            path.chmod(0o755)
+        else:
+            path.chmod(0o644)
+
+
+def stage(
+    workdir: Path, layout: Path, dbs: dict[str, Path], image_types: set[str]
+) -> Path:
+    """Lay out the files the volumes start with. Runfiles are symlinks, so
+    everything is copied for real; docker cp would copy the links."""
+    staging = workdir / "staging"
+    data = staging / "data"
+    (data / "ignore").mkdir(parents=True)
+    shutil.copy(registry.runfile(TRIVY_RUNFILE), data / "trivy")
+    (data / "trivy").chmod(0o755)
+    for image_type in sorted(image_types):
+        src = registry.runfile(IGNORE_RUNFILE.format(image_type))
+        if not src.is_file():
+            raise ScanError(f"no ignore file for {image_type}: {src}")
+        shutil.copy(src, data / "ignore" / src.name)
+    # An empty config file stops Trivy looking for trivy.yaml elsewhere.
+    (data / "trivy.yaml").write_text("")
+    shutil.move(str(layout), data / "layout")
+    for name, path in dbs.items():
+        shutil.move(str(path), data / name.replace("_", "-"))
+
+    # crane writes blobs 0600, and docker cp keeps the job's owner, which isn't
+    # the scan user, so the scan user can only read what is world-readable.
+    _make_world_readable(data)
+
+    work = staging / "work"
+    for sub in ("cache", "out", "tmp", "home"):
+        (work / sub).mkdir(parents=True)
+        # docker cp keeps the job's owner; the scan runs as nobody.
+        (work / sub).chmod(0o1777)
+    # Trivy reads its DBs from the cache dir; point it at the read-only copies.
+    for name in dbs:
+        db_dir = name.replace("_", "-")
+        (work / "cache" / db_dir).symlink_to(f"/data/{db_dir}")
+    return staging
