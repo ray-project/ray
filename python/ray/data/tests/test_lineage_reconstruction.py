@@ -470,7 +470,7 @@ def _run_to_completion(
 
 
 def test_shared_child_is_batched_until_it_is_submitted(
-    ray_start_regular_shared,  # noqa: F405
+    ray_start_regular_shared, monkeypatch  # noqa: F405
 ):
     """A child reads from two seeds, and two leaves under it are lost.
 
@@ -482,10 +482,18 @@ def test_shared_child_is_batched_until_it_is_submitted(
     That reconstruction task of the child is still queued when the second plan's
     input completes, so the second plan is batched into it and the child runs once
     for both plans.
+
+    The first seed's re-run output is shared by both plans and is in the child's
+    queued input, so it is never reported dropped: an operator that tracks block
+    memory (the actor-only backend) must keep charging it until the child consumes
+    it.
     """
     from ray.data._internal.execution.util import make_ref_bundles
 
     producer, consumer, seed_input, tracker = _seed_and_consumer_ops()
+    dropped, released = [], []
+    monkeypatch.setattr(producer, "_on_withheld_outputs_dropped", dropped.extend)
+    monkeypatch.setattr(producer, "_on_withheld_outputs_released", released.extend)
 
     # First run: two seeds feed one child, which fans two blocks out to two leaves.
     seed_task_ids = [producer._lineage_task_id_for(index) for index in range(2)]
@@ -550,6 +558,11 @@ def test_shared_child_is_batched_until_it_is_submitted(
     assert not producer.has_next()
     assert consumer._batched_plans == {child_task_id: {plan_b}}
     consumer._submit_data_task(MagicMock(), released_a)
+    # The shared block is in the queued input: released, not dropped. The second
+    # plan's own re-run of the second seed is unused.
+    assert released == first_seed.block_refs
+    assert dropped == second_seed_b.block_refs
+    assert not set(first_seed.block_refs) & set(dropped)
     assert consumer._batched_plans == {}
     (child_task,) = consumer._data_tasks.values()
     assert child_task.reconstruction_plan_ids == frozenset({plan_a, plan_b})

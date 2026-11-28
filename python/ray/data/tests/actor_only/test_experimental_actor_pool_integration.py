@@ -281,20 +281,23 @@ def test_resource_bank_output_backpressure_cache_updates_incrementally():
     assert op.output_backpressured_fraction() == (0, 0)
 
 
-def test_upgrade_output_limit_even_without_object_store_headroom():
+def test_relieve_backpressure_deadlock_even_without_object_store_headroom():
     op = cast(Any, object.__new__(ExperimentalActorPoolMapOperator))
     op._name = "MapBatches(Test)"
     op._additional_split_factor = None
+    op._actor_only_metrics = None
+    op._metrics_op_tag = None
     pool = cast(Any, _ExperimentalActorPool.__new__(_ExperimentalActorPool))
 
     upgrades = []
     pool.active_nodes = lambda: {"node-1"}
-    pool.upgrade_output_limit = lambda **kwargs: upgrades.append(kwargs)
+    pool.grant_backpressure_deadlock_headroom = (
+        lambda **kwargs: upgrades.append(kwargs) is None
+    )
     op._actor_pool = pool
 
     bank = MagicMock()
-    bank.live_object_store.return_value = LiveObjStore(num_pulled_output_bytes=900)
-    bank.node_capacity.return_value = ExecutionResources(object_store_memory=1000)
+    bank.free_object_store_bytes.return_value = 100
     cumulative = MagicMock()
     cumulative.output_bytes.mean = 200
     bank.cumulative_object_store.return_value = cumulative
@@ -302,7 +305,7 @@ def test_upgrade_output_limit_even_without_object_store_headroom():
 
     # Only 100 object-store bytes free vs a ~200-byte mean block, but we still
     # upgrade (floored at 1MiB) to avoid deadlock.
-    assert op.upgrade_output_limit() is True
+    assert op.relieve_backpressure_deadlock() is True
     assert upgrades == [
         {"node_id": "node-1", "delta_bytes": 1 << 20, "delta_outputs": 1}
     ]
@@ -653,7 +656,7 @@ def test_on_task_completed_tolerates_released_actor(two_node_cluster):
 # The output-backpressure path asks the pool for an actor's output
 # limits even after the actor was released (a lingering data-task ref). A bare
 # _id_to_actor[actor_id] lookup KeyError'd there and crashed the
-# executor (relieve_output_limit_deadlock -> is_output_backpressured -> output_bytes_limit);
+# executor (relieve_output_deadlock -> is_output_backpressured -> output_bytes_limit);
 # a released / unknown actor must yield no constraint instead.
 # ---------------------------------------------------------------------------
 def test_output_limits_tolerate_released_actor(two_node_cluster):

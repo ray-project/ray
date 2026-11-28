@@ -66,12 +66,19 @@ def _output_capped_map(num_rows: int) -> "ray.data.Dataset":
 
 def _drain_streaming_split(iterators: List[Any]) -> List[int]:
     """Consume every streaming-split iterator concurrently (the split has an
-    implicit barrier across its outputs) and return per-split row counts."""
+    implicit barrier across its outputs) and return per-split row counts.
+    Re-raises the first error a consumer hit."""
     lengths: List[int] = []
+    errors: List[BaseException] = []
     lock = threading.Lock()
 
     def _consume(it) -> None:
-        count = sum(1 for _ in it.iter_rows())
+        try:
+            count = sum(1 for _ in it.iter_rows())
+        except BaseException as e:
+            with lock:
+                errors.append(e)
+            return
         with lock:
             lengths.append(count)
 
@@ -80,6 +87,8 @@ def _drain_streaming_split(iterators: List[Any]) -> List[int]:
         t.start()
     for t in threads:
         t.join()
+    if errors:
+        raise errors[0]
     return lengths
 
 

@@ -23,6 +23,9 @@ from ray.data._internal.execution.interfaces.common import ActorStatus, NodeIdSt
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (
     ExperimentalActorPoolMapOperator,
 )
+from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+    HeadroomReason,
+)
 from ray.util.debug import log_once
 from ray.util.metrics import Counter, Gauge, Histogram
 
@@ -67,6 +70,7 @@ class ActorOnlyTags(tuple, Enum):
         "breakdown",
     )
     DATASET_OPERATOR = ("dataset", "operator")
+    DATASET_OPERATOR_UNIT = ("dataset", "operator", "unit")
     DATASET_OPERATOR_UNIT_STAT = ("dataset", "operator", "unit", "stat")
     DATASET_OPERATOR_KIND = ("dataset", "operator", "kind")
     DATASET_OPERATOR_REASON = ("dataset", "operator", "reason")
@@ -147,13 +151,46 @@ class ActorOnlyRecorders:
         tag_keys=ActorOnlyTags.DATASET_NODE_OPERATOR_UNIT_BREAKDOWN.value,
     )
 
-    output_limit_upgrades = Counter(
-        "data_actor_only_output_limit_upgrades",
+    # Both escape hatches raise output limits to break a deadlock, tagged by
+    # ``reason`` (a ``HeadroomReason``): 'backpressure_deadlock' is the
+    # output-limit hatch, 'withheld_deadlock' the withheld-output hatch.
+    escape_hatch_grants = Counter(
+        "data_actor_only_escape_hatch_grants",
         description=(
-            "Times the output-limit escape hatch raised an operator's per-actor "
-            "output limit to break a deadlock."
+            "Times an escape hatch raised output limits to break a deadlock, by "
+            "reason: 'backpressure_deadlock' (actors stuck at their output "
+            "limit) or 'withheld_deadlock' (an actor stuck on withheld "
+            "reconstruction outputs)."
+        ),
+        tag_keys=ActorOnlyTags.DATASET_OPERATOR_REASON.value,
+    )
+    escape_hatch_granted_bytes = Counter(
+        "data_actor_only_escape_hatch_granted_bytes",
+        description=(
+            "Output-limit bytes granted by the escape hatches, by reason and "
+            "by cause, where the bytes came from: 'free_space' (free object "
+            "store on the node), 'lent' (other actors' unused budget on the "
+            "node) or 'unbacked' (beyond both: the node is oversubscribed)."
+        ),
+        tag_keys=ActorOnlyTags.DATASET_OPERATOR_REASON_CAUSE.value,
+    )
+    escape_hatch_waits = Counter(
+        "data_actor_only_escape_hatch_waits",
+        description=(
+            "Passes in which the withheld-deadlock hatch held off a grant to a "
+            "deadlocked actor because its node peers could still free the "
+            "bytes by draining."
         ),
         tag_keys=ActorOnlyTags.DATASET_OPERATOR.value,
+    )
+    escape_hatch_loan_bytes = Counter(
+        "data_actor_only_escape_hatch_loan_bytes",
+        description=(
+            "Lent output-limit bytes whose lender left the pool ('orphaned'), "
+            "and such bytes a new actor on the node took over as lender "
+            "('adopted'), by kind."
+        ),
+        tag_keys=ActorOnlyTags.DATASET_OPERATOR_KIND.value,
     )
 
     op_output_limit = Gauge(
@@ -183,6 +220,29 @@ class ActorOnlyRecorders:
             "exceeded 150% of its output-bytes limit)."
         ),
         tag_keys=ActorOnlyTags.DATASET_OPERATOR_KIND.value,
+    )
+
+    # Lineage reconstruction. A re-made block is withheld until its child's
+    # whole input set is back, charged against its actor's output budget; when
+    # that wedges actors for good, the hatch grants one of them more room.
+    op_withheld_outputs = Gauge(
+        "data_actor_only_operator_withheld_outputs",
+        description=(
+            "Snapshot distribution of per-actor outputs withheld by lineage "
+            "reconstruction until their child's whole input set is re-made, in "
+            "bytes or blocks (by stat). They count against their actors' output "
+            "budgets but no consumer can drain them yet."
+        ),
+        tag_keys=ActorOnlyTags.DATASET_OPERATOR_UNIT_STAT.value,
+    )
+    op_withheld_deadlocked_actors = Gauge(
+        "data_actor_only_operator_withheld_deadlocked_actors",
+        description=(
+            "Number of an operator's actors deadlocked on withheld outputs: "
+            "their budgets are full of them and no amount of waiting frees "
+            "them."
+        ),
+        tag_keys=ActorOnlyTags.DATASET_OPERATOR.value,
     )
 
     # Actor draining. A downscaled actor drains: it takes no new tasks and is
@@ -295,13 +355,17 @@ class ActorOnlyMetrics:
         self._num_draining_actors = _StaleTrackingGauge(
             self.recorder.num_draining_actors
         )
+        self._op_withheld_outputs = _StaleTrackingGauge(
+            self.recorder.op_withheld_outputs
+        )
+        self._op_withheld_deadlocked_actors = _StaleTrackingGauge(
+            self.recorder.op_withheld_deadlocked_actors
+        )
 
     # --- counters, recorded at the event ---
 
-    def record_output_limit_upgrade(self, op_tag: str) -> None:
-        self.recorder.output_limit_upgrades.inc(
-            1, tags={"dataset": self._dataset_id, "operator": op_tag}
-        )
+    def record_backpressure_deadlock_grant(self, op_tag: str) -> None:
+        self._record_escape_hatch_grant(op_tag, HeadroomReason.BACKPRESSURE_DEADLOCK)
 
     def record_block_size_overshoot(self, op_tag: str) -> None:
         """A produced block exceeded 150% of its target size."""
@@ -315,6 +379,69 @@ class ActorOnlyMetrics:
     def _record_overshoot(self, op_tag: str, *, kind: str) -> None:
         self.recorder.op_output_overshoots.inc(
             1, tags={"dataset": self._dataset_id, "operator": op_tag, "kind": kind}
+        )
+
+    def record_withheld_deadlock_grant(self, op_tag: str) -> None:
+        """The hatch raised an actor's output limit to break a deadlock on
+        withheld outputs."""
+        self._record_escape_hatch_grant(op_tag, HeadroomReason.WITHHELD_DEADLOCK)
+
+    def _record_escape_hatch_grant(self, op_tag: str, reason: HeadroomReason) -> None:
+        self.recorder.escape_hatch_grants.inc(
+            1,
+            tags={
+                "dataset": self._dataset_id,
+                "operator": op_tag,
+                "reason": reason.value,
+            },
+        )
+
+    def record_headroom_grant(
+        self,
+        op_tag: str,
+        reason: str,
+        *,
+        bytes_from_free_space: int,
+        bytes_by_lender: int,
+        bytes_unbacked: int,
+    ) -> None:
+        """An escape hatch granted an actor output-limit bytes, split by where
+        they came from."""
+        for cause, num_bytes in (
+            ("free_space", bytes_from_free_space),
+            ("lent", bytes_by_lender),
+            ("unbacked", bytes_unbacked),
+        ):
+            if num_bytes > 0:
+                self.recorder.escape_hatch_granted_bytes.inc(
+                    num_bytes,
+                    tags={
+                        "dataset": self._dataset_id,
+                        "operator": op_tag,
+                        "reason": reason,
+                        "cause": cause,
+                    },
+                )
+
+    def record_withheld_deadlock_wait(self, op_tag: str) -> None:
+        """The withheld-deadlock hatch held off a grant this pass: the actor's
+        node peers can still free the bytes by draining."""
+        self.recorder.escape_hatch_waits.inc(
+            1, tags={"dataset": self._dataset_id, "operator": op_tag}
+        )
+
+    def record_loan_orphaned(self, op_tag: str, num_bytes: int) -> None:
+        """A lender left the pool with ``num_bytes`` lent."""
+        self._record_loan_bytes(op_tag, kind="orphaned", num_bytes=num_bytes)
+
+    def record_loan_adopted(self, op_tag: str, num_bytes: int) -> None:
+        """A new actor took over ``num_bytes`` of orphaned loans."""
+        self._record_loan_bytes(op_tag, kind="adopted", num_bytes=num_bytes)
+
+    def _record_loan_bytes(self, op_tag: str, *, kind: str, num_bytes: int) -> None:
+        self.recorder.escape_hatch_loan_bytes.inc(
+            num_bytes,
+            tags={"dataset": self._dataset_id, "operator": op_tag, "kind": kind},
         )
 
     # --- drain events, recorded by the actor pool (see _ActorOnlyOpMetrics) ---
@@ -369,6 +496,7 @@ class ActorOnlyMetrics:
         )
         self._update_output_backpressure(topology=topology)
         self._update_draining_actors(topology=topology)
+        self._update_withheld(topology=topology, resource_bank=resource_bank)
 
     def _update_node_object_store(self, *, resource_bank: "ResourceBankBase") -> None:
         for node_id in resource_bank.node_ids():
@@ -594,3 +722,40 @@ class ActorOnlyMetrics:
             )
 
         self._num_draining_actors.flush_stale()
+
+    def _update_withheld(
+        self, *, topology: "Topology", resource_bank: "ResourceBankBase"
+    ) -> None:
+        for op, op_state in topology.items():
+            if not isinstance(op, ExperimentalActorPoolMapOperator):
+                continue
+            tags = {"dataset": self._dataset_id, "operator": op_state.op_tag()}
+            # Distribution of withheld outputs across the pool's actors. Actors
+            # holding none are included so the spread reflects the whole pool.
+            withheld_by_unit: Dict[ObjStoreUnit, List[float]] = {
+                ObjStoreUnit.BYTES: [],
+                ObjStoreUnit.BLOCKS: [],
+            }
+            for actor_id in op.actor_pool.get_logical_ids():
+                live = resource_bank.live_object_store(actor_id=actor_id)
+                withheld_by_unit[ObjStoreUnit.BYTES].append(
+                    live.num_withheld_output_bytes
+                )
+                withheld_by_unit[ObjStoreUnit.BLOCKS].append(
+                    live.num_withheld_output_blocks
+                )
+            for unit, values in withheld_by_unit.items():
+                if not values:
+                    # No live actors: flush_stale resets any prior series.
+                    continue
+                for stat, value in _limit_stats(values).items():
+                    self._op_withheld_outputs.set(
+                        value, tags={**tags, "unit": unit.value, "stat": stat.value}
+                    )
+            # Cheap when nothing is withheld: the check returns right away.
+            self._op_withheld_deadlocked_actors.set(
+                len(op.withheld_deadlock().deadlocked), tags=tags
+            )
+
+        self._op_withheld_outputs.flush_stale()
+        self._op_withheld_deadlocked_actors.flush_stale()

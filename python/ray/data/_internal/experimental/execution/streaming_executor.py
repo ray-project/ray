@@ -16,7 +16,7 @@ loop's dispatch model:
   the sizer, and the progress status line, so they all agree.
 - **Sizing.** Actor-pool sizing belongs to the ``OperatorSizer`` alone; the
   standard actor autoscaler is never triggered.
-- **Deadlock escape hatch.** ``relieve_output_limit_deadlock`` runs on an
+- **Deadlock escape hatch.** ``relieve_output_deadlock`` runs on an
   adaptive interval and raises one stuck operator's output limit (see
   ``output_limit_escape_hatch``).
 """
@@ -48,7 +48,7 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
     ExperimentalActorPoolMapOperator,
 )
 from ray.data._internal.experimental.execution.output_limit_escape_hatch import (
-    relieve_output_limit_deadlock,
+    relieve_output_deadlock,
 )
 from ray.data._internal.experimental.execution.sizer.operator_sizer import (
     OperatorSizer,
@@ -153,6 +153,7 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
             topology=topology,
             max_errored_blocks=self._max_errored_blocks,
             metadata_fetcher=self._metadata_fetcher,
+            lineage_tracker=self._lineage_tracker,
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks
@@ -205,14 +206,15 @@ class ExperimentalStreamingExecutor(StreamingExecutor):
         assert self._output_node is not None
         assert self._resource_bank is not None
         assert self._topology is not None
-        upgraded_op = relieve_output_limit_deadlock(
+        # Apply the consumption reports queued since the step began first:
+        # processing completed tasks can drop withheld outputs, and the hatch
+        # must not count those as still withheld.
+        self._resource_bank.drain_consumed_blocks()
+        relieved_op = relieve_output_deadlock(
             output_operator=self._output_node[0], resource_bank=self._resource_bank
         )
-        if upgraded_op is not None:
-            assert self._actor_only_metrics is not None
-            self._actor_only_metrics.record_output_limit_upgrade(
-                self._topology[upgraded_op].op_tag()
-            )
+        # The operator records its own grant metric, by deadlock kind.
+        if relieved_op is not None:
             self._idle_detection_interval_s = max(
                 self.MIN_IDLE_DETECTION_INTERVAL_S, self._idle_detection_interval_s / 2
             )

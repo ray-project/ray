@@ -77,6 +77,32 @@ class _RecordingDrainMetrics:
     def record_output_limit_overshoot(self, op_tag: str) -> None:
         pass
 
+    def record_backpressure_deadlock_grant(self, op_tag: str) -> None:
+        pass
+
+    def record_withheld_deadlock_grant(self, op_tag: str) -> None:
+        pass
+
+    def record_withheld_deadlock_wait(self, op_tag: str) -> None:
+        pass
+
+    def record_loan_orphaned(self, op_tag: str, num_bytes: int) -> None:
+        pass
+
+    def record_loan_adopted(self, op_tag: str, num_bytes: int) -> None:
+        pass
+
+    def record_headroom_grant(
+        self,
+        op_tag: str,
+        reason: str,
+        *,
+        bytes_from_free_space: int,
+        bytes_by_lender: int,
+        bytes_unbacked: int,
+    ) -> None:
+        pass
+
     def record_drain_started(self, op_tag: str, reason: str) -> None:
         self.events.append(("started", op_tag, reason))
 
