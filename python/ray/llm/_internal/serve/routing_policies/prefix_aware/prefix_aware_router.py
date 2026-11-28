@@ -144,13 +144,14 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     ) -> Optional[Tuple[Any, Any]]:
         """Returns the request argument carrying a usable text value.
 
-        Preserves the original _extract_text_from_request selection: per
-        argument, 'messages' wins over 'prompt' even when its value is None,
-        and a None value means "keep looking at the next argument" — it does
-        not fall through to that argument's 'prompt'. Returns the argument
-        together with the selected value, so callers that need the argument
-        (e.g. for cache_salt) and callers that need the value agree on which
-        argument supplied the text.
+        Per argument, 'messages' is preferred over 'prompt', but a None
+        value falls through to that argument's 'prompt' before moving on
+        to the next argument: a prompt-based request whose schema also
+        defines 'messages' (as None) still supplies its text through
+        'prompt'. Returns the argument together with the selected value,
+        so callers that need the argument (e.g. for cache_salt) and
+        callers that need the value agree on which argument supplied the
+        text.
         """
         for arg in pending_request.args:
             for valid_input_type in ("messages", "prompt"):
@@ -158,7 +159,6 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     value = getattr(arg, valid_input_type)
                     if value is not None:
                         return arg, value
-                    break
         return None
 
     def _extract_text_from_request(self, pending_request: PendingRequest) -> str:

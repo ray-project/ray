@@ -829,17 +829,16 @@ class TestPromptNormalization:
         with pytest.raises(ValueError):
             _ = prefix_request_router._extract_text_from_request(fake_pending_request())
 
-    def test_extract_skips_none_messages_arg(self, prefix_request_router):
-        """A None messages value doesn't swallow a later valid argument.
+    def test_extract_none_messages_uses_same_arg_prompt(self, prefix_request_router):
+        """A None messages value falls through to the argument's prompt.
 
-        The original extraction kept looking when an argument's messages
-        value was None, even if that argument also carried a prompt. The
-        shared helper must preserve that: the text (and the salt) come
-        from the later argument, not from the first argument's prompt.
+        A prompt-based request whose schema also defines messages (as
+        None) supplies its text through prompt; the text (and the salt)
+        come from that argument, not from a later argument's messages.
         """
         req = PendingRequest(
             args=[
-                BothRequest(None, "ignored", cache_salt="salt-first"),
+                BothRequest(None, "from prompt", cache_salt="salt-first"),
                 ChatRequest([{"content": "Hello"}], cache_salt="salt-second"),
             ],
             kwargs={},
@@ -850,11 +849,25 @@ class TestPromptNormalization:
             created_at=time.time(),
         )
         normalized = prefix_request_router._extract_text_from_request(req)
-        assert normalized == "Hello"
-        assert prefix_request_router._cache_salt_from_request(req) == "salt-second"
+        assert normalized == "from prompt"
+        assert prefix_request_router._cache_salt_from_request(req) == "salt-first"
         assert prefix_request_router._prefix_tree_key_prefix(req) == (
-            "\0\0" + hashlib.sha256("salt-second".encode("utf-8")).hexdigest() + "\0"
+            "\0\0" + hashlib.sha256("salt-first".encode("utf-8")).hexdigest() + "\0"
         )
+
+    def test_extract_none_messages_single_arg_prompt(self, prefix_request_router):
+        """A lone argument with messages=None and a prompt yields its prompt."""
+        req = PendingRequest(
+            args=[BothRequest(None, "Hello world")],
+            kwargs={},
+            metadata=RequestMetadata(
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
+            ),
+            created_at=time.time(),
+        )
+        normalized = prefix_request_router._extract_text_from_request(req)
+        assert normalized == "Hello world"
 
     @pytest.mark.parametrize(
         "prefix_request_router",
