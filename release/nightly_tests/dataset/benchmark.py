@@ -9,19 +9,34 @@ import sys
 import time
 import uuid
 from enum import Enum
-from typing import Any, Callable, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.data import DataContext
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.streaming_executor_state import (
     WAIT_FOR_TASK_COMPLETION_TIMEOUT_S,
 )
+from ray.job_config import JobConfig
 from ray.util.state import list_runtime_envs
 
 logger = logging.getLogger(__name__)
 
 PROMETHEUS_QUERY_TIMEOUT_S = 30
+
+
+def benchmark_job_config() -> Optional[JobConfig]:
+    """The job config benchmarks pass to ``ray.init``.
+
+    On the actor-only backend, it turns on Ray Data lineage reconstruction:
+    actors are never restarted, so only that recovers a lost one (e.g. an
+    OOM-killed worker), and without it the first such loss fails the dataset.
+    Other backends get ``None`` and keep Ray Core lineage reconstruction.
+    """
+    if not actor_only_backend_enabled():
+        return None
+    return JobConfig(_disable_job_level_lineage_reconstruction=True)
 
 
 def _query_prometheus(query: str, timestamp: float):
@@ -353,7 +368,10 @@ class Benchmark:
                 # Ray would otherwise lose profiling entirely, with only a warning to
                 # show for it.
                 if not ray.is_initialized():
-                    ray.init(ignore_reinit_error=True)
+                    ray.init(
+                        ignore_reinit_error=True,
+                        job_config=benchmark_job_config(),
+                    )
                 profiling.num_gpu_nodes = sum(
                     1
                     for node in ray.nodes()

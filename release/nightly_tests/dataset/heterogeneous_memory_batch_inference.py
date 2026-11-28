@@ -32,7 +32,7 @@ import time
 from typing import Optional
 
 import numpy as np
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 import ray
 from ray.data import DataContext
@@ -190,6 +190,8 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     args = parse_args()
     benchmark = Benchmark()
     benchmark.run_fn(

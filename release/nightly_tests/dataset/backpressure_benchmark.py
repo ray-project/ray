@@ -6,7 +6,7 @@ import numpy as np
 import pyarrow as pa
 import ray
 
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 
 # Allow 20% headroom over the observed 10.8 GiB baseline.
@@ -204,4 +204,6 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     main(parse_args())

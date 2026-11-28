@@ -6,6 +6,7 @@ import PIL
 import streaming
 
 import ray
+from benchmark import benchmark_job_config
 
 
 def preprocess_mosaic(input_dir, output_dir):
@@ -79,7 +80,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init()
+    ray.init(job_config=benchmark_job_config())
 
     if args.mosaic_data_root is not None:
         os.makedirs(args.mosaic_data_root)

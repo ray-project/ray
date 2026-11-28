@@ -9,7 +9,7 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer
 
 import uuid
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 EMBED_MODEL_ID = "sentence-transformers/all-MiniLM-L6-v2"
 EMBEDDING_DIM = 384
@@ -21,7 +21,7 @@ CHUNK_SIZE = 2048
 CHUNK_OVERLAP = 200
 EMBEDDING_BATCH_SIZE = 10
 
-ray.init()
+ray.init(job_config=benchmark_job_config())
 
 
 @ray.remote

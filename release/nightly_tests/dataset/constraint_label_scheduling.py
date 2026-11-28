@@ -55,7 +55,7 @@ import time
 from typing import Dict, List
 
 import constraint_scheduling_common as common
-from benchmark import Benchmark, benchmark_py_modules
+from benchmark import Benchmark, benchmark_py_modules, benchmark_job_config
 from constraint_scheduling_common import (
     POOL_LABEL_KEY,
     GenStage,
@@ -312,9 +312,10 @@ if __name__ == "__main__":
     # Ship benchmark.py + the common module to workers: the UDF classes live in
     # constraint_scheduling_common, which workers must import to deserialize.
     ray.init(
+        job_config=benchmark_job_config(),
         runtime_env={
             "py_modules": benchmark_py_modules() + [os.path.abspath(common.__file__)],
-        }
+        },
     )
     name = f"constraint-label-scheduling-{args.case}"
     benchmark = Benchmark()

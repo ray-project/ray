@@ -25,7 +25,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Tuple
 
 import numpy as np
-from benchmark import Benchmark
+from benchmark import Benchmark, benchmark_job_config
 
 import ray
 from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
@@ -206,7 +206,11 @@ def main() -> None:
     if args.iterations is not None and args.iterations < 1:
         parser.error("--iterations must be positive")
 
-    ray.init(num_cpus=args.num_cpus, object_store_memory=args.object_store_memory)
+    ray.init(
+        num_cpus=args.num_cpus,
+        object_store_memory=args.object_store_memory,
+        job_config=benchmark_job_config(),
+    )
     context = ray.data.DataContext.get_current()
     context.execution_options.preserve_order = True
     benchmark = Benchmark()

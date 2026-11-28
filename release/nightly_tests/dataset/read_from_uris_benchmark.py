@@ -8,7 +8,7 @@ from PIL import Image
 
 import ray
 from ray.data.expressions import col, download
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import Benchmark, BenchmarkMetric, benchmark_job_config
 
 BUCKET = "anyscale-imagenet"
 # This Parquet file contains the keys of images in the 'anyscale-imagenet' bucket.
@@ -104,4 +104,6 @@ def benchmark_fn(sf: int, num_input_rows: int):
 
 
 if __name__ == "__main__":
+    # Start Ray explicitly so the job config applies (see benchmark_job_config).
+    ray.init(job_config=benchmark_job_config())
     main(parse_args())
