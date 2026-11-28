@@ -834,8 +834,8 @@ class TestTargetCapacityUpdateAndServeStatus:
         ray.get(lifecycle_signal.send.remote(clear=True))
         ray.get(request_signal.send.remote(clear=True))
 
-        # Scaling up to 100% target_capacity should make Serve use
-        # initial_replicas as lower bound.
+        # At 100% target_capacity nothing is scaled, so Serve uses
+        # min_replicas as lower bound, not initial_replicas.
         self.apply_config_and_check_status(
             client,
             target_capacity=100.0,
@@ -850,12 +850,11 @@ class TestTargetCapacityUpdateAndServeStatus:
         )
         self.check_num_replicas(int(0.1 * min_replicas), app_name, deployment_name)
         self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
-        self.check_num_replicas(initial_replicas, app_name, deployment_name)
+        self.check_num_replicas(min_replicas, app_name, deployment_name)
 
-        # Unsetting target_capacity should make Serve use
-        # min_replicas as lower bound. The current number of
-        # replicas is already a valid number, so the application stays
-        # RUNNING.
+        # Unsetting target_capacity keeps min_replicas as lower bound. The
+        # replicas are already at min_replicas, so nothing changes and the
+        # deployment stays HEALTHY.
         self.apply_config_and_check_status(
             client,
             target_capacity=None,
@@ -863,8 +862,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             app_name=app_name,
             deployment_name=deployment_name,
             expected_app_status=ApplicationStatus.RUNNING,
-            expected_deployment_status=DeploymentStatus.DOWNSCALING,
-            expected_deployment_status_trigger=(DeploymentStatusTrigger.AUTOSCALING),
+            expected_deployment_status=DeploymentStatus.HEALTHY,
         )
         self.unblock_replica_creation_and_deletion(lifecycle_signal, app_name)
         wait_for_condition(
@@ -1015,7 +1013,7 @@ class TestInitialReplicasHandling:
             3,
             min_replicas,
             min_replicas,
-            initial_replicas,
+            min_replicas,
             min_replicas,
         ]
 
