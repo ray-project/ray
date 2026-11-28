@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 import functools
 import logging
 import threading
@@ -23,7 +24,10 @@ from .base_autoscaling_coordinator import (
 )
 from ray._common.constants import HEAD_NODE_RESOURCE_NAME
 from ray._common.utils import env_bool
-from ray.data._internal.execution.interfaces.common import NodeIdStr
+from ray.data._internal.execution.interfaces.common import (
+    NodeIdStr,
+    PlacementGroupIdStr,
+)
 from ray.data._internal.execution.util import memory_string
 
 logger = logging.getLogger(__name__)
@@ -384,6 +388,19 @@ def _default_send_resources_request(
     )
 
 
+def _default_get_placement_group_table(
+    placement_group_id: PlacementGroupIdStr,
+) -> Dict:
+    """Default ``get_placement_group_table`` implementation for the actor."""
+    from ray._common.utils import hex_to_binary
+    from ray._raylet import PlacementGroupID
+    from ray.util.placement_group import PlacementGroup, placement_group_table
+
+    return placement_group_table(
+        PlacementGroup(PlacementGroupID(hex_to_binary(placement_group_id)))
+    )
+
+
 class _AutoscalingCoordinatorActor:
     """An actor to coordinate autoscaling resource requests from different components.
 
@@ -401,14 +418,22 @@ class _AutoscalingCoordinatorActor:
             [List[ResourceDict], Optional[List[LabelSelector]]], None
         ] = _default_send_resources_request,
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
+        get_placement_group_table: Callable[
+            [PlacementGroupIdStr], Dict
+        ] = _default_get_placement_group_table,
     ):
         self._get_current_time = get_current_time
         self._send_resources_request = send_resources_request
         self._get_cluster_nodes = get_cluster_nodes
+        self._get_placement_group_table = get_placement_group_table
 
         self._ongoing_reqs: Dict[RequesterId, OngoingRequest] = {}
         # Map from requester id to its subcluster selector.
         self._subcluster_selectors: Dict[RequesterId, Optional[LabelSelector]] = {}
+        # Placement group each requester registered. Kept apart from
+        # ``_ongoing_reqs`` because the group holds its resources until it is
+        # removed, whether or not the request is still renewed.
+        self._placement_group_ids: Dict[RequesterId, PlacementGroupIdStr] = {}
         # Node resources bucketed by their ``SUBCLUSTER_LABEL_KEY`` value.
         # Nodes without the key fall under ``DEFAULT_SUBCLUSTER``.
         self._cluster_node_resources: Dict[Optional[LabelValue], NodeResources] = {}
@@ -461,6 +486,13 @@ class _AutoscalingCoordinatorActor:
         subcluster_selector: Optional[LabelSelector] = None,
         strategy: ResourceRequestStrategy = ResourceRequestStrategy.PACK,
     ) -> None:
+        """See ``AutoscalingCoordinator.request_resources``.
+
+        ``resources`` includes the bundles of a placement group registered with
+        ``register_placement_group``; registering only says where they are.
+        ``subcluster_selector`` limits the requester to the nodes of one
+        subcluster, for both its bundles and its leftover share
+        """
         share_leftover_resource_types = frozenset(request_remaining or ())
         logger.debug(
             "Received request from %s: %s "
@@ -559,12 +591,73 @@ class _AutoscalingCoordinatorActor:
     ):
         logger.debug("Canceling request for %s.", requester_id)
         with self._lock:
+            self._placement_group_ids.pop(requester_id, None)
             if requester_id not in self._ongoing_reqs:
                 return
             del self._ongoing_reqs[requester_id]
             self._subcluster_selectors.pop(requester_id, None)
             self._merge_and_send_requests()
             self._refresh_resource_reservations()
+
+    def register_placement_group(
+        self,
+        requester_id: RequesterId,
+        placement_group_id: Optional[PlacementGroupIdStr],
+    ) -> None:
+        """Reserve the requester's bundles where its placement group put them.
+
+        Adds nothing to the request: the group's bundles must already be among
+        the trailing bundles of ``request_resources``, and those it covers are
+        reserved where Ray placed them instead of packed. The group stays out of
+        everyone else's capacity until removed, even if the request expires.
+        ``None`` unregisters it.
+        """
+        with self._lock:
+            if self._placement_group_ids.get(requester_id) == placement_group_id:
+                return
+            if placement_group_id is None:
+                del self._placement_group_ids[requester_id]
+            else:
+                self._placement_group_ids[requester_id] = placement_group_id
+            self._refresh_resource_reservations()
+
+    def _placement_group_reservations(
+        self, requester_id: RequesterId
+    ) -> Optional[ReservedResources]:
+        """Per-node bundles of the requester's placement group, if it is created.
+
+        Forgets the registration once the group is removed.
+
+        Args:
+            requester_id: The requester whose registered placement group to read.
+
+        Returns:
+            The group's bundles keyed by the node Ray placed them on. ``None``
+            if there is no created group.
+        """
+        placement_group_id = self._placement_group_ids.get(requester_id)
+        if placement_group_id is None:
+            return None
+        try:
+            table = self._get_placement_group_table(placement_group_id)
+        except Exception:
+            logger.warning(
+                "Failed to read placement group %s; packing its bundles instead.",
+                placement_group_id,
+                exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
+            )
+            return None
+        if table.get("state") == "REMOVED":
+            del self._placement_group_ids[requester_id]
+            return None
+        if table.get("state") != "CREATED":
+            return None
+        reservations: ReservedResources = {}
+        for bundle_index, bundle in table["bundles"].items():
+            node_id = table["bundles_to_node_id"].get(bundle_index)
+            if node_id:
+                _add_bundle_in_place(reservations.setdefault(node_id, {}), bundle)
+        return reservations
 
     def _purge_expired_requests(self):
         now = self._get_current_time()
@@ -620,7 +713,16 @@ class _AutoscalingCoordinatorActor:
     def get_reserved_resources(
         self, requester_id: RequesterId, recompute: bool = False
     ) -> ReservedResources:
-        """Get the reserved resources for the requester.
+        """Everything assigned to the requester on each node: PG and non-PG.
+
+        Per node, the sum of three parts, not split by source:
+        1. Bundles of its registered placement group that Ray placed there.
+        2. Its other requested bundles that the coordinator put there.
+        3. Its share of what is left on the node (``request_remaining``).
+
+        Example: a request for 3 x {CPU: 1}, whose placement group holds two
+        of them on n2, returns {"n2": {"CPU": 2}} for the group plus the third
+        bundle wherever it fits, e.g. {"n1": {"CPU": 1}, "n2": {"CPU": 2}}.
 
         Args:
             requester_id: The requester to answer for.
@@ -671,13 +773,45 @@ class _AutoscalingCoordinatorActor:
             selector = self._subcluster_selectors.get(requester_id)
             return (selector or {}).get(SUBCLUSTER_LABEL_KEY, DEFAULT_SUBCLUSTER)
 
+        # Ray already holds the bundles of created placement groups on known
+        # nodes, so take them out of capacity before packing anyone. This
+        # includes groups whose request has expired: they still hold them.
+        pg_reservations = {
+            requester_id: pg_reservation
+            for requester_id in list(self._placement_group_ids)
+            if (pg_reservation := self._placement_group_reservations(requester_id))
+        }
+        for reservations in pg_reservations.values():
+            for node_id, bundle in reservations.items():
+                for node_resources in cluster_node_resources.values():
+                    if node_id in node_resources:
+                        _subtract_bundle_in_place(node_resources[node_id], bundle)
+
         # TODO(hchen): Optimize the following triple loop.
         for requester_id, ongoing_req in live_items:
             ongoing_req.reserved_resources = {}
             subcluster = _subcluster_of(requester_id)
             node_resources = cluster_node_resources.get(subcluster, {})
+            request_to_pack = ongoing_req
+            pg_reservation = pg_reservations.get(requester_id)
+            if pg_reservation is not None:
+                # Pack only the leading bundles the group doesn't hold (e.g. a
+                # trainer bundle), so they stay first in the reservation.
+                num_unplaced = len(ongoing_req.requested_resources) - (
+                    _num_bundles_covered(
+                        requested_resources=ongoing_req.requested_resources,
+                        placement_group_reservation=pg_reservation,
+                    )
+                )
+                request_to_pack = dataclasses.replace(
+                    ongoing_req,
+                    requested_resources=ongoing_req.requested_resources[:num_unplaced],
+                    requested_label_selectors=ongoing_req.requested_label_selectors[
+                        :num_unplaced
+                    ],
+                )
             reservations = _compute_reservations(
-                ongoing_request=ongoing_req,
+                ongoing_request=request_to_pack,
                 node_resources=node_resources,
             )
             for node_id, bundle in reservations.items():
@@ -686,6 +820,12 @@ class _AutoscalingCoordinatorActor:
                     ongoing_req.reserved_resources.setdefault(node_id, {}),
                     bundle,
                 )
+            if pg_reservation is not None:
+                for node_id, bundle in pg_reservation.items():
+                    _add_bundle_in_place(
+                        ongoing_req.reserved_resources.setdefault(node_id, {}),
+                        bundle,
+                    )
 
         # Reserve remaining resources. For each resource type, concurrent
         # requesters in the same subcluster that asked for that type, split
@@ -805,6 +945,28 @@ def _compute_reservations(
                 break
 
     return reservations
+
+
+def _num_bundles_covered(
+    requested_resources: List[ResourceDict],
+    placement_group_reservation: ReservedResources,
+) -> int:
+    """How many trailing requested bundles a placement group's resources cover.
+
+    Compares resources, not bundle counts, so a group of 2 x {CPU: 8} covers
+    a request of 16 x {CPU: 1}. Trailing, because requesters put the bundles
+    they place themselves (e.g. Train's workers) after the rest.
+    """
+    pool: ResourceDict = {}
+    for bundle in placement_group_reservation.values():
+        _add_bundle_in_place(pool, bundle)
+    num_covered = 0
+    for bundle in reversed(requested_resources):
+        if not _bundle_can_fit_on_node(bundle=bundle, node=pool):
+            break
+        _subtract_bundle_in_place(pool, bundle)
+        num_covered += 1
+    return num_covered
 
 
 def _bundle_can_fit_on_node(bundle: ResourceDict, node: ResourceDict) -> bool:

@@ -8,6 +8,7 @@ from freezegun import freeze_time
 from ray.data._internal.cluster_autoscaler.base_autoscaling_coordinator import (
     ReservedResources,
     ResourceDict,
+    ResourceRequestStrategy,
 )
 from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
     ResourceRequestPriority,
@@ -190,6 +191,30 @@ def test_before_controller_abort():
     policy.before_controller_abort()
     mock_coordinator.cancel_request.remote.assert_called_once_with(
         requester_id=policy._requester_id
+    )
+
+
+def test_worker_group_placement_group_registration():
+    """The policy registers the worker group's placement group on start and
+    unregisters it on shutdown, so a restarted run doesn't keep the old one."""
+    policy = ElasticScalingPolicy(ScalingConfig(num_workers=(2, 4)))
+    _start_scaling_policy(policy)
+    mock_coordinator = policy._autoscaling_coordinator
+    worker_group = MagicMock()
+    placement_group = (
+        worker_group.get_worker_group_state().placement_group_handle.placement_group
+    )
+    placement_group.id.hex.return_value = "pg-1"
+
+    policy.after_worker_group_start(worker_group)
+    mock_coordinator.register_placement_group.remote.assert_called_once_with(
+        requester_id=policy._requester_id, placement_group_id="pg-1"
+    )
+
+    mock_coordinator.register_placement_group.remote.reset_mock()
+    policy.before_worker_group_shutdown(worker_group)
+    mock_coordinator.register_placement_group.remote.assert_called_once_with(
+        requester_id=policy._requester_id, placement_group_id=None
     )
 
 
@@ -500,6 +525,7 @@ def test_request_and_clear():
             label_selectors=None,
             expire_after_s=AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
             priority=ResourceRequestPriority.HIGH,
+            strategy=ResourceRequestStrategy.PACK,
         )
 
     with freeze_time() as frozen_time:

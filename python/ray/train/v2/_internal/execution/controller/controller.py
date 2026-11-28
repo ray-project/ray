@@ -190,7 +190,7 @@ class TrainController:
         # Group callbacks that will be propagated to the worker group,
         # train worker and the train context.
         self._worker_group_callbacks_to_propagate = (
-            [self._report_handler]
+            [self._report_handler, self._scaling_policy]
             + ([validation_manager] if validation_manager else [])
             + [
                 c
