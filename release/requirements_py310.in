@@ -38,7 +38,12 @@ h11>=0.16.0
 google-cloud-logging
 packaging==25.0
 
-# Last anyscale CLI/SDK release before Ray summit 2025
-# This should have a recent version of the new SDK where still having
-# the old SDK.
-anyscale>=0.26.74
+# Anyscale CLI/SDK used by the release test harness. It must have the new SDK
+# (anyscale.job, anyscale.compute_config) and still ship the old SDK
+# (anyscale.sdk.anyscale_client), which ray_release also uses.
+#
+# TODO: remove the hand-added kubernetes, durationpy, oauthlib,
+# requests-oauthlib and websocket-client entries from requirements_py310.txt
+# once py3.10 support is dropped from CI. anyscale pulls in kubernetes, and the
+# lock was edited by hand because it cannot be regenerated right now.
+anyscale>=0.26.117
