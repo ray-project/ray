@@ -18,6 +18,7 @@ from ray.data._internal.logical.operators import (
     Repartition,
     Sort,
     StreamingRepartition,
+    TopN,
 )
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
@@ -1778,10 +1779,11 @@ class TestProjectionDerivation:
         )
 
         plan = _optimize(ds)
-        # The sort needs its key on top of what the consumer selects, and the
-        # filter's column is dropped before the sort shuffle.
-        (sort,) = [op for op in plan.dag.post_order_iter() if isinstance(op, Sort)]
-        assert _column_names(sort.input_dependencies[0]) == {"k", "a"}
+        # The top-N rewrite fuses the sort with the limit; the fused operator
+        # still needs its key on top of what the consumer selects, and the
+        # filter's column is dropped before the shuffle.
+        (top_n,) = [op for op in plan.dag.post_order_iter() if isinstance(op, TopN)]
+        assert _column_names(top_n.input_dependencies[0]) == {"k", "a"}
         assert "unused" not in _column_names(_scan_op(plan.dag))
 
         expected = (
@@ -2126,15 +2128,32 @@ class TestProjectionDerivation:
         assert rows_same(ds.to_pandas(), expected)
 
     def test_aggregate_of_unknown_output_type_still_prunes_its_input(
-        self, wide_parquet, ray_start_regular_shared
+        self, tmp_path, ray_start_regular_shared
     ):
-        ds = ray.data.read_parquet(wide_parquet).groupby("k").aggregate(Unique("a"))
+        # ``Unique`` over a scalar column declares its output field today;
+        # over a nested column it still cannot (the fallback is pinned in
+        # test_infer_schema.py), so this keeps covering the unknown-output
+        # path end to end.
+        path = str(tmp_path / "lists.parquet")
+        pq.write_table(
+            pa.table(
+                {
+                    "k": [i % 3 for i in range(60)],
+                    "a": pa.array(
+                        [[float(i)] for i in range(60)], type=pa.list_(pa.float64())
+                    ),
+                    "unused": ["x" * 32] * 60,
+                }
+            ),
+            path,
+        )
+        ds = ray.data.read_parquet(path).groupby("k").aggregate(Unique("a"))
 
         plan = _optimize(ds)
         assert plan.dag.infer_schema() is None
         assert _column_names(_scan_op(plan.dag)) == {"k", "a"}
         assert {row["k"]: sorted(row["unique(a)"]) for row in ds.take_all()} == {
-            k: [float(i) for i in range(k, 60, 3)] for k in range(3)
+            k: [[float(i)] for i in range(k, 60, 3)] for k in range(3)
         }
 
     def test_pruning_below_a_udf_map_survives_a_narrowing_consumer(

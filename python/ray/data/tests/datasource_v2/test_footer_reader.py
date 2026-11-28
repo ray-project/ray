@@ -878,6 +878,58 @@ class TestReadFootersBatching:
         assert paths == [f.path for f in three_files]
 
 
+def test_plain_comparison_runs_one_split_pass(four_row_groups, monkeypatch):
+    """A plain comparison is pruned in one pass, and skips the rewrite."""
+    from ray.data._internal.datasource_v2.formats.parquet import footer_reader
+
+    split_calls = []
+    original_split = footer_reader.FooterReader._try_split_by_row_group
+
+    def counting_split(self, fragment, expr, path):
+        split_calls.append(expr)
+        return original_split(self, fragment, expr, path)
+
+    monkeypatch.setattr(
+        footer_reader.FooterReader, "_try_split_by_row_group", counting_split
+    )
+    rewrite_calls = []
+    monkeypatch.setattr(
+        footer_reader,
+        "_add_statistics_bounds",
+        lambda *args, **kwargs: rewrite_calls.append(kwargs),
+    )
+
+    path, size = four_row_groups
+    chunks = _reader(filter_expr=col("id") >= 50)._read_and_chunk(FileInfo(path, size))
+
+    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [2, 3]
+    # One pruning pass plus one negation pass.
+    assert len(split_calls) == 2
+    # The rewrite never ran.
+    assert rewrite_calls == []
+
+
+def test_derived_predicate_failure_falls_back_to_original(four_row_groups, monkeypatch):
+    """A rewrite failure must not leak out of the footer read.
+
+    The reader falls back to the plain predicate, which for an arithmetic
+    filter PyArrow cannot evaluate against statistics, so every row group
+    survives -- the same outcome an unevaluable filter gets without the
+    rewrite.
+    """
+    from ray.data._internal.datasource_v2.formats.parquet import footer_reader
+
+    def fail_to_derive(*args, **kwargs):
+        raise RuntimeError("Injected derivation failure")
+
+    monkeypatch.setattr(footer_reader, "_add_statistics_bounds", fail_to_derive)
+
+    path, size = four_row_groups
+    predicate = (col("id") + 1) >= 50
+    chunks = _reader(filter_expr=predicate)._read_and_chunk(FileInfo(path, size))
+    assert [rg.unit_ids[0] for rg in chunks.row_groups] == [0, 1, 2, 3]
+
+
 if __name__ == "__main__":
     import sys
 
