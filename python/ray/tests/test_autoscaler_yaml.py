@@ -378,6 +378,51 @@ class AutoscalingConfigTest(unittest.TestCase):
         except Exception:
             self.fail("Failed to validate config with security group name!")
 
+    def testExternalProviderHasNoLegacyFields(self):
+        # The defaults for an external node provider must not contain the
+        # legacy head_node and worker_nodes fields: prepare_config would then
+        # warn about fields that the user never set.
+        config = {
+            "cluster_name": "external",
+            "provider": {"type": "external", "module": "mymodule.MyProvider"},
+            "max_workers": 2,
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 1}},
+                "worker": {"node_config": {}, "resources": {"CPU": 1}},
+            },
+            "setup_commands": [],
+            "head_setup_commands": [],
+            "worker_setup_commands": [],
+        }
+        with patch("ray.autoscaler._private.util.logger") as logger:
+            prepared_config = prepare_config(config)
+        logger.warning.assert_not_called()
+        assert "head_node" not in prepared_config
+        assert "worker_nodes" not in prepared_config
+
+    def testExternalProviderLegacyConfigWithOneLegacyField(self):
+        # A legacy config for an external node provider may set only one of
+        # head_node and worker_nodes; the other takes the default node type.
+        base_config = {
+            "cluster_name": "external",
+            "max_workers": 2,
+            "provider": {"type": "external", "module": "mymodule.MyProvider"},
+            "setup_commands": [],
+            "head_setup_commands": [],
+            "worker_setup_commands": [],
+        }
+        for field in ["head_node", "worker_nodes"]:
+            config = copy.deepcopy(base_config)
+            config[field] = {"InstanceType": "my.instance"}
+            prepared_config = prepare_config(config)
+            node_configs = [
+                node_type.get("node_config")
+                for node_type in prepared_config["available_node_types"].values()
+            ]
+            assert len(node_configs) == 2
+            assert {"InstanceType": "my.instance"} in node_configs
+
     def testMaxWorkerDefault(self):
         # Load config, call prepare config, check that default max_workers
         # is filled correctly for node types that don't specify it.
