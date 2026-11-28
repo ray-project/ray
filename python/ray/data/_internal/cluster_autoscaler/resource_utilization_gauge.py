@@ -6,6 +6,7 @@ from typing import Optional
 from ray._common.utils import env_bool
 from ray.data._internal.average_calculator import TimeWindowAverageCalculator
 from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.stats import _to_metric_tag_value
 from ray.util.metrics import Gauge
 
 
@@ -141,7 +142,7 @@ class RollingLogicalUtilizationGauge(ResourceUtilizationGauge):
             )
 
         if self._execution_id is not None:
-            tags = {"dataset": self._execution_id}
+            tags = {"dataset": _to_metric_tag_value(self._execution_id)}
             if self._cluster_cpu_utilization_gauge is not None:
                 self._cluster_cpu_utilization_gauge.set(cpu_util * 100, tags=tags)
             if self._cluster_gpu_utilization_gauge is not None:

@@ -112,6 +112,22 @@ def _create_prometheus_metric(
     return None
 
 
+def _to_metric_tag_value(value: str) -> str:
+    """Escapes non-ASCII characters so ``value`` can be used as a metric tag.
+
+    Ray's metrics recorder only accepts ASCII tag values, but dataset names
+    and operator names can contain Unicode (e.g. ``ds.set_name("数据集")``
+    or string literals in filter expressions). ASCII values are returned
+    unchanged.
+
+    The escaping isn't injective: a non-ASCII value and the ASCII text it
+    escapes to map to the same tag. Dataset IDs still get distinct tags
+    within a job, because each ID ends with the dataset's UUID and run
+    index.
+    """
+    return value.encode("ascii", "backslashreplace").decode("ascii")
+
+
 def _record_prometheus_metric(
     prom_metric: PrometheusMetric,
     value: PrometheusMetricValue,
@@ -938,7 +954,7 @@ class _StatsActor:
 
         # Update dataset-level metrics
         dataset_tags = {
-            "dataset": dataset_tag,
+            "dataset": _to_metric_tag_value(dataset_tag),
             "job_id": job_id,
             "start_time": start_time,
         }
@@ -957,7 +973,7 @@ class _StatsActor:
         operator_states: Dict[str, str] = {}
         for operator, op_state in state.get("operators", {}).items():
             operator_tags = {
-                "dataset": dataset_tag,
+                "dataset": _to_metric_tag_value(dataset_tag),
                 "operator": operator,
             }
             self.data_operator_estimated_total_blocks.set(
@@ -1072,7 +1088,7 @@ class _StatsActor:
         node_ip_tag: Optional[str] = None,
         split_tag: Optional[str] = None,
     ):
-        tags = {"dataset": dataset_tag}
+        tags = {"dataset": _to_metric_tag_value(dataset_tag)}
         if operator_tag is not None:
             tags["operator"] = operator_tag
         if node_ip_tag is not None:

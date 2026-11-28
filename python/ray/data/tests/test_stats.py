@@ -57,6 +57,7 @@ from ray.data._internal.stats import (
     _maybe_time,
     _record_prometheus_metric,
     _StatsActor,
+    _to_metric_tag_value,
     get_or_create_stats_actor,
 )
 from ray.data._internal.util import MemoryProfiler
@@ -2838,6 +2839,71 @@ def test_dataset_name_and_id():
     ds = ray.data.range(100, override_num_blocks=20)
     ds.set_name("very_loooooooong_name")
     assert "very_loooooooong_name" in repr(ds)
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        pytest.param(
+            "数据集_03542aDIwihyYzj8t7dlbw_0",
+            r"\u6570\u636e\u96c6_03542aDIwihyYzj8t7dlbw_0",
+            id="unicode_dataset_name",
+        ),
+        # ASCII input is unchanged.
+        pytest.param(
+            "dataset_03542aDIwihyYzj8t7dlbw_0",
+            "dataset_03542aDIwihyYzj8t7dlbw_0",
+            id="ascii_dataset_name",
+        ),
+        # ASCII input that already looks like an escape sequence is unchanged.
+        pytest.param(r"\u6570", r"\u6570", id="ascii_escape_like"),
+    ],
+)
+def test_to_metric_tag_value_dataset_name(value, expected):
+    assert _to_metric_tag_value(value) == expected
+
+
+# https://github.com/ray-project/ray/issues/68525
+def test_dataset_with_unicode_name(ray_start_regular_shared):
+    """A non-ASCII dataset name used to fail the Dataset with
+    ``UnicodeEncodeError`` while recording metrics."""
+    ds = ray.data.range(3)
+    ds.set_name("数据集")
+
+    assert ds.take_all() == [{"id": 0}, {"id": 1}, {"id": 2}]
+
+
+# https://github.com/ray-project/ray/issues/68525
+def test_stats_actor_unicode_dataset_tags(ray_start_regular_shared):
+    """Recording metrics for a dataset whose name contains Unicode used to
+    raise ``UnicodeEncodeError`` inside the stats actor."""
+    dataset_tag = "数据集_03542aDIwihyYzj8t7dlbw_0"
+    operator_tag = "Input_0"
+    stats_actor = _StatsActor.remote()
+
+    ray.get(
+        stats_actor.register_dataset.remote(
+            "job_id", dataset_tag, [operator_tag], topology=None, data_context=None
+        )
+    )
+    ray.get(
+        stats_actor.update_execution_metrics.remote(
+            dataset_tag, [{}], [operator_tag], state={}
+        )
+    )
+    ray.get(
+        stats_actor.update_dataset.remote(
+            dataset_tag,
+            {
+                "state": DatasetState.FINISHED.name,
+                "operators": {operator_tag: {"state": DatasetState.FINISHED.name}},
+            },
+        )
+    )
+
+    # Only the metric tag is escaped; the dataset ID is kept as is.
+    datasets = ray.get(stats_actor.get_datasets.remote())
+    assert dataset_tag in datasets
 
 
 def test_dataset_id_train_ingest():

@@ -1,10 +1,15 @@
+import json
 import os
 import sys
+from types import SimpleNamespace
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 import ray
 from ray._private.test_utils import request_with_auth_token
+from ray.dashboard.modules.data.data_head import DataHead
+from ray.data._internal.stats import _to_metric_tag_value
 from ray.job_submission import JobSubmissionClient
 from ray.tests.conftest import *  # noqa
 
@@ -142,6 +147,43 @@ def test_get_datasets(ray_start_regular_shared):
     assert dataset["job_id"] == job_id
     assert dataset["state"] == "FINISHED"
     assert dataset["end_time"] is not None
+
+
+# https://github.com/ray-project/ray/issues/68525
+async def test_get_datasets_matches_escaped_dataset_tags():
+    """Prometheus dataset labels are ASCII-escaped, while the stats actor reports
+    the original dataset IDs. Metrics must still be matched to the dataset."""
+    dataset = "数据集_03542aDIwihyYzj8t7dlbw_0"
+    stats_actor = MagicMock()
+    stats_actor.get_datasets.remote = AsyncMock(
+        return_value={dataset: {"start_time": 0, "operators": {"Input_0": {}}}}
+    )
+
+    async def query_prometheus(query):
+        if "by (dataset, operator)" in query:
+            labels = {
+                "dataset": _to_metric_tag_value(dataset),
+                "operator": "Input_0",
+            }
+        else:
+            labels = {"dataset": _to_metric_tag_value(dataset)}
+        return {"data": {"result": [{"metric": labels, "value": [0, "3"]}]}}
+
+    data_head = SimpleNamespace(
+        session_name="session", _query_prometheus=query_prometheus
+    )
+    request = SimpleNamespace(match_info={"job_id": "job_id"})
+    with patch("ray.is_initialized", return_value=True), patch(
+        "ray.data._internal.stats.get_or_create_stats_actor",
+        return_value=stats_actor,
+    ):
+        response = await DataHead.get_datasets(data_head, request)
+
+    (dataset_result,) = json.loads(response.text)["datasets"]
+    assert dataset_result["dataset"] == dataset
+    assert dataset_result["ray_data_output_rows"] == {"max": "3"}
+    operators = {op["operator"]: op for op in dataset_result["operators"]}
+    assert operators["Input_0"]["ray_data_output_rows"] == {"max": "3"}
 
 
 if __name__ == "__main__":

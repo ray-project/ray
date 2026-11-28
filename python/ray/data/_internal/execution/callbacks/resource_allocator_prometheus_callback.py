@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Dict
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.stats import _to_metric_tag_value
 from ray.util.metrics import Gauge
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ class ResourceAllocatorPrometheusCallback(ExecutionCallback):
 
         for i, op in enumerate(topology):
             tags = {
-                "dataset": dataset_id,
+                "dataset": _to_metric_tag_value(dataset_id),
                 "operator": executor._get_operator_id(op, i),
             }
             self._update_budget_metrics(op, tags, resource_manager)
