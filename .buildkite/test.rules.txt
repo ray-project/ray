@@ -40,6 +40,7 @@
 ! release_tests spark_on_ray rocksdb_tests redis_tests sandbox_tests
 ! core_doc data_doc ml_doc rllib_doc serve_doc
 ! doc_example
+! conda_grpc
 
 # Per-team API reference pages. Editing these can change the documented public
 # API surface, so they must be able to trigger the API-consistency checks
@@ -193,6 +194,13 @@ ci/ray_ci/ml.tests.yml
 ci/docker/min.build.Dockerfile
 ci/docker/min.build.wanda.yaml
 @ min_build
+;
+
+# The conda-forge gRPC runtime test and its step. The step gets the py3.12
+# wheel through depends_on, so no wheel tag is needed here.
+ci/conda/
+.buildkite/conda.rayci.yml
+@ conda_grpc
 ;
 
 python/ray/rllib/
