@@ -30,6 +30,9 @@ from ray.data._internal.experimental.execution.operators.actor_pool_map_operator
 from ray.data._internal.experimental.execution.operators.placement_constraints import (  # noqa: E501
     is_constrained,
 )
+from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
+    pack_actors,
+)
 from ray.data._internal.experimental.execution.sizer.models import (
     TickCapacitySnapshot,
     TickContext,
@@ -111,8 +114,17 @@ class SizingTicker:
             Dict["ExperimentalActorPoolMapOperator", int]
         ] = None,
         warmup_timeout_s: float = SIZER_WARMUP_TIMEOUT_S,
+        hold_target: Optional[
+            Callable[
+                ["ExperimentalActorPoolMapOperator", ExecutionResources], Optional[int]
+            ]
+        ] = None,
     ):
         self._profiles = profiles
+        # Actors to hold for an op waiting on its first input: its warmup
+        # equal share (``OpSizingPolicy.warmup_target``); its min size without
+        # one.
+        self._hold_target = hold_target
         self.cadence_s = cadence_s
         self.clock = clock
         self.warmup: bool = True
@@ -177,14 +189,20 @@ class SizingTicker:
         )
 
     def _update_warmup_latch(self, now: float) -> None:
-        """Warmup ends for good once every critical op has produced its first
-        output: the pipeline is flowing end to end, so feedback beats
-        feedforward from here on.
+        """Warmup ends for good once every actor-pool op has received its
+        first input and every critical op has produced its first output: the
+        pipeline is flowing end to end, so feedback beats feedforward from
+        here on.
 
-        A critical op that finished without producing (an empty branch of a union)
-        does not hold warmup open. Nor does one that never produces within the
-        warmup timeout: leaving warmup early only hands sizing to the warm
-        phase, which can still move capacity to it.
+        Every op starts no actors until its first input (see
+        ``OperatorSizer``), so waiting for all of them keeps an op that has
+        not started yet under the warmup equal share: the warm phase never
+        sizes its neighbors while it still has no actors.
+
+        An op that finished without input or output (an empty branch of a
+        union) does not hold warmup open. Nor does one that gets neither
+        within the warmup timeout: leaving warmup early only hands sizing to
+        the warm phase, which can still move capacity to it.
         """
         if not self.warmup:
             return
@@ -195,12 +213,19 @@ class SizingTicker:
             for op in self.critical_ops
             if op.metrics.num_task_outputs_generated == 0 and not op.has_completed()
         ]
+        waiting_on += [
+            op
+            for op in self._profiles.actor_pool_ops
+            if op.awaiting_first_input()
+            and not op.has_completed()
+            and op not in waiting_on
+        ]
         if waiting_on:
             if now - self._warmup_started_t < self._warmup_timeout_s:
                 return
             logger.warning(
-                "OperatorSizer: warmup timed out after %.0fs with no output yet "
-                "from %s; switching to the warm phase.",
+                "OperatorSizer: warmup timed out after %.0fs still waiting on "
+                "first input or output from %s; switching to the warm phase.",
                 now - self._warmup_started_t,
                 ", ".join(op.name for op in waiting_on),
             )
@@ -252,19 +277,83 @@ class SizingTicker:
                 view_for_match, per_actor
             )
 
+        constrained_op_count_by_node = self._constrained_op_count_by_node(
+            schedulable_nodes_by_op
+        )
+        global_limits = ExecutionResources.zero()
+        for resources in reserved.values():
+            global_limits = global_limits.add(resources)
+        held_actors_by_op = self._hold_share_for_ops_awaiting_first_input(
+            free,
+            schedulable_nodes_by_op,
+            per_actor_resources_by_op,
+            constrained_op_count_by_node,
+            global_limits,
+        )
+
         return TickCapacitySnapshot(
             free_by_node=free,
             reserved_by_node=reserved,
             nodes_to_reclaim=nodes_to_reclaim,
             schedulable_nodes_by_op=schedulable_nodes_by_op,
             per_actor_resources_by_op=per_actor_resources_by_op,
-            constrained_op_count_by_node=self._constrained_op_count_by_node(
-                schedulable_nodes_by_op
-            ),
+            constrained_op_count_by_node=constrained_op_count_by_node,
             pg_free_by_bundle=self._pg_bundles.free_by_bundle(),
             schedulable_bundles_by_op=dict(self._pg_bundles.bundles_by_op),
             unknown_pg_headroom_by_op=self._unknown_pg_headroom(),
+            held_actors_by_op=held_actors_by_op,
         )
+
+    def _hold_share_for_ops_awaiting_first_input(
+        self,
+        free: Dict[NodeIdStr, ExecutionResources],
+        schedulable_nodes_by_op: Dict[
+            "ExperimentalActorPoolMapOperator", AbstractSet[NodeIdStr]
+        ],
+        per_actor_resources_by_op: Dict[
+            "ExperimentalActorPoolMapOperator", ExecutionResources
+        ],
+        constrained_op_count_by_node: Dict[NodeIdStr, int],
+        global_limits: ExecutionResources,
+    ) -> Dict["ExperimentalActorPoolMapOperator", int]:
+        """Reserve each op's warmup share until its first input arrives,
+        without starting any actor for it (``free`` is mutated).
+
+        An op starts no actors before its first input: there is nothing for
+        them to run, and an ``on_start`` (e.g. an Iceberg write's, which needs
+        the schema of that input) must run before the first actor is created.
+        Without a hold, ops that started earlier could take every node's
+        space. Returns the actors held per op: what it grows to once released.
+        PG-managed ops are not held; their placement group is their room."""
+        held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = {}
+        for op in self._profiles.non_pg_ops:
+            if not op.awaiting_first_input() or op.has_completed():
+                continue
+            pool = op.actor_pool
+            target = (
+                self._hold_target(op, global_limits)
+                if self._hold_target is not None
+                else None
+            )
+            if target is None:
+                target = pool.min_size()
+            num_to_hold = target - pool.serving_size()
+            if num_to_hold <= 0:
+                continue
+            nodes = sorted(
+                (n for n in free if n in schedulable_nodes_by_op[op]),
+                key=lambda n: (constrained_op_count_by_node.get(n, 0), n),
+            )
+            held = pack_actors(free, nodes, per_actor_resources_by_op[op], num_to_hold)
+            held_actors_by_op[op] = len(held)
+            logger.debug(
+                "OperatorSizer: holding %d/%d actor(s) (warmup share) for %s "
+                "until its first input arrives",
+                len(held),
+                num_to_hold,
+                op.name,
+            )
+        return held_actors_by_op
 
     def _constrained_op_count_by_node(
         self,

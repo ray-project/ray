@@ -86,6 +86,12 @@ class TickCapacitySnapshot:
     unknown_pg_headroom_by_op: Dict["ExperimentalActorPoolMapOperator", int] = field(
         default_factory=dict
     )
+    # Actors held out of ``free_by_node`` this tick for each op still waiting
+    # on its first input (see ``SizingTicker``): what it grows to once
+    # released.
+    held_actors_by_op: Dict["ExperimentalActorPoolMapOperator", int] = field(
+        default_factory=dict
+    )
 
     def get_global_limits(self) -> ExecutionResources:
         """This dataset's whole slice, summed."""

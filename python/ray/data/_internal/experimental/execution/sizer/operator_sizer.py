@@ -137,6 +137,20 @@ class OperatorSizer:
         # One clock for all three, so a faked clock in a test moves guard
         # expiry, tick cadence and rule deadlines together.
         self._guard = OpScalingGuard(clock)
+        # Ops that have not queued their first input bundle. They stay at zero
+        # actors until it arrives, with their warmup share held for them (see
+        # ``SizingTicker``): there is nothing for their actors to run yet, and
+        # an ``on_start`` (e.g. ``on_write_start``) must run on that bundle
+        # before the first actor serializes the MapTransformer.
+        self._awaiting_first_input: Set[ExperimentalActorPoolMapOperator] = {
+            op for op in self._profiles.actor_pool_ops if op.awaiting_first_input()
+        }
+        for op in self._awaiting_first_input:
+            self._guard.block(op, "awaiting first input")
+        # Actors held for each op awaiting its first input. Each tick refreshes
+        # the entries of ops still waiting; a released op keeps its entry until
+        # the WANT pass pops it as a one-time grant up to that count.
+        self._held_actors_by_op: Dict[ExperimentalActorPoolMapOperator, int] = {}
         # Warm the non-blocking allocation cache, so the first ticks read a
         # real allocation instead of the cold-cache empty value (the client
         # submits an async RPC and serves the answer on a later call).
@@ -161,6 +175,7 @@ class OperatorSizer:
             clock=clock,
             pg_bundles=pg_bundles,
             unknown_pg_cap_by_op=unknown_pg_cap_by_op,
+            hold_target=self._policy.warmup_target,
         )
 
     # --- lifecycle ------------------------------------------------------------
@@ -168,6 +183,8 @@ class OperatorSizer:
     def initial_sizing_request(self) -> None:
         """Bring every pool up to its initial (min) size, untargeted."""
         for op in ordered_actor_pool_ops(self._topology, self._profiles.actor_pool_ops):
+            if not self._guard.can_scale(op):
+                continue
             pool = op.actor_pool
             delta = pool.initial_size() - pool.serving_size()
             if delta > 0:
@@ -193,11 +210,13 @@ class OperatorSizer:
         handed in, so the bank and every phase of a tick agree on it.
         """
         t0 = time.perf_counter()
+        self._release_started_ops()
         self._observe()
         ctx = self._ticker.next_tick(cluster_view)
         t1 = time.perf_counter()
         if ctx is None:
             return
+        self._record_held_actors(ctx)
 
         self._cross_op_optimize(ctx, seconds_since_allocation_change)
         t2 = time.perf_counter()
@@ -218,6 +237,21 @@ class OperatorSizer:
             apply_s=t5 - t4,
             e2e_s=t5 - t0,
         )
+
+    def _record_held_actors(self, ctx: TickContext) -> None:
+        """Refresh the held count of each op still awaiting its first input.
+        An op released earlier this step keeps the count from the last tick."""
+        for op in self._awaiting_first_input:
+            self._held_actors_by_op[op] = ctx.capacity.held_actors_by_op.get(op, 0)
+
+    def _release_started_ops(self) -> None:
+        """Let ops that have now received their first input scale."""
+        started = {
+            op for op in self._awaiting_first_input if not op.awaiting_first_input()
+        }
+        for op in started:
+            self._guard.release(op)
+        self._awaiting_first_input -= started
 
     def _observe(self) -> None:
         """Sample the signals the optimizer decides on."""
@@ -309,8 +343,9 @@ class OperatorSizer:
             if op.has_completed():
                 continue
             if not self._guard.can_scale(op):
-                # An optimizer rule has claimed this op (e.g. mid-transfer).
-                # Leave it alone so our pendings aren't mistaken for its claim.
+                # An optimizer rule has claimed this op (e.g. mid-transfer),
+                # or it hasn't received its first input. Leave it alone so our
+                # pendings aren't mistaken for a rule's claim.
                 continue
             want: Optional[ActorPoolScalingRequest] = None
             if pool.min_size() == pool.max_size():
@@ -320,6 +355,14 @@ class OperatorSizer:
             else:
                 want = self._policy.warm_delta(
                     op, self._topology[op], backpressured_with_demand
+                )
+            # Released on its first input: grow straight into the room held
+            # for it while it waited (its warmup share), once.
+            held = self._held_actors_by_op.pop(op, 0)
+            to_held = held - pool.serving_size()
+            if to_held > 0 and (want is None or want.delta < to_held):
+                want = ActorPoolScalingRequest.upscale(
+                    delta=to_held, reason="held share (first input)"
                 )
             below_min = pool.min_size() - pool.serving_size()
             if below_min > 0 and (want is None or want.delta < below_min):

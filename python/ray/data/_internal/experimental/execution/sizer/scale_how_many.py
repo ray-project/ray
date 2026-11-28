@@ -144,6 +144,25 @@ class OpSizingPolicy:
         delta self-zeroes because serving_size() counts pendings.
         """
         pool = op.actor_pool
+        target = self.warmup_target(op, cluster_capacity)
+        if target is None:
+            return None
+        delta = target - pool.serving_size()
+        if delta > 0:
+            return ActorPoolScalingRequest.upscale(
+                delta=delta, reason="warmup equal-share"
+            )
+        return None
+
+    def warmup_target(
+        self,
+        op: "ExperimentalActorPoolMapOperator",
+        cluster_capacity: ExecutionResources,
+    ) -> Optional[int]:
+        """This op's warmup equal share in actors, clamped to
+        [min_size, max_size] (see ``warmup_delta``). Also what an op held
+        until its first input arrives reserves (``SizingTicker``)."""
+        pool = op.actor_pool
         if op in self._unknown_pg_cap_by_op:
             share = self._unknown_pg_cap_by_op[op] * self.reservation_ratio
         else:
@@ -163,20 +182,14 @@ class OpSizingPolicy:
         # FIT_EPS: float division can land just under a whole actor
         # (0.3 / 0.1 == 2.999...), which int() would truncate away.
         target = int(min(max(share + FIT_EPS, pool.min_size()), pool.max_size()))
-        delta = target - pool.serving_size()
         logger.debug(
-            "OperatorSizer: warmup %s share=%.1f target=%d current=%d delta=%d",
+            "OperatorSizer: warmup %s share=%.1f target=%d current=%d",
             op.name,
             share,
             target,
             pool.serving_size(),
-            max(delta, 0),
         )
-        if delta > 0:
-            return ActorPoolScalingRequest.upscale(
-                delta=delta, reason="warmup equal-share"
-            )
-        return None
+        return target
 
     def _pg_warmup_ceiling(
         self, op: "ExperimentalActorPoolMapOperator", resource_type: str
