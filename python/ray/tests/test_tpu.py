@@ -3823,5 +3823,404 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
             ray.util.tpu._tpu_subslice_cache.pop("slice-v7x", None)
 
 
+def _make_mock_spg(
+    monkeypatch,
+    *,
+    num_slices=1,
+    hosts_per_slice=4,
+    chips_per_host=4,
+    tpu_resource_per_chip=1,
+    bundles_per_host=4,
+    bundle_resources=None,
+    pg_per_slice=False,
+    topology="4x4",
+    accelerator_version="v6e",
+):
+    spg = object.__new__(ray.util.tpu.SlicePlacementGroup)
+    if pg_per_slice:
+        pgs = []
+        for i in range(num_slices):
+            pg = MagicMock(name=f"pg_{i}")
+            pg.ready.return_value = f"ready_ref_{i}"
+            pgs.append(pg)
+        spg._managed_pgs = pgs
+    else:
+        pg = MagicMock(name="pg_0")
+        pg.ready.return_value = "ready_ref_0"
+        spg._managed_pgs = [pg]
+    spg._head_pgs = []
+    spg._pg_per_slice = pg_per_slice
+    spg._num_slices = num_slices
+    spg._num_hosts = num_slices * hosts_per_slice
+    spg._num_bundles = spg._num_hosts * bundles_per_host
+    spg._topology = topology
+    spg._accelerator_version = accelerator_version
+    spg._chips_per_host = chips_per_host
+    spg._tpu_resource_per_chip = tpu_resource_per_chip
+    spg._logical_devices_per_host = chips_per_host * tpu_resource_per_chip
+    spg._bundle_resources = (
+        dict(bundle_resources) if bundle_resources is not None else {"TPU": 1, "CPU": 1}
+    )
+
+    monkeypatch.setattr(
+        spg,
+        "get_worker_addrs",
+        lambda slice_index=0: [
+            f"10.{slice_index}.0.{h + 1}" for h in range(hosts_per_slice)
+        ],
+    )
+    return spg
+
+
+class _FakeRemoteActorClass:
+    def __init__(self, name, fail_on_call=None):
+        self.name = name
+        self.fail_on_call = fail_on_call
+        self.launches = []
+
+    def options(self, **opts):
+        outer = self
+
+        class _Bound:
+            def remote(self, *args, **kwargs):
+                call_idx = len(outer.launches)
+                if outer.fail_on_call is not None and call_idx == outer.fail_on_call:
+                    raise RuntimeError(f"boom at {call_idx}")
+                handle = {
+                    "cls": outer.name,
+                    "opts": opts,
+                    "args": args,
+                    "kwargs": kwargs,
+                }
+                outer.launches.append(handle)
+                return handle
+
+        return _Bound()
+
+
+def test_create_role_actors_and_run_once_per_host(monkeypatch):
+    """Verify MPMD role launch, env wiring, box alignment, and run_once_per_host."""
+    spg = _make_mock_spg(monkeypatch)
+    trainer_cls = _FakeRemoteActorClass("Trainer")
+    sampler_cls = _FakeRemoteActorClass("Sampler")
+
+    result = spg.create_role_actors(
+        {
+            "trainer": ray.util.tpu.RoleActorSpec(
+                actor_cls=trainer_cls, count=8, kwargs={"role": "trainer"}
+            ),
+            "sampler_a": (sampler_cls, 4),
+            "sampler_b": (sampler_cls, 4),
+        },
+        master_port=29555,
+        skip_mds_query=True,
+    )
+    assert result.world_size == 16
+    assert result.master_addr == "10.0.0.1"
+    assert result.master_port == 29555
+    assert result.role_ranks == {
+        "trainer": list(range(0, 8)),
+        "sampler_a": list(range(8, 12)),
+        "sampler_b": list(range(12, 16)),
+    }
+    assert len(result["trainer"]) == 8
+    assert len(result["sampler_a"]) == 4
+    assert len(result["sampler_b"]) == 4
+    assert len(result.all_actors) == 16
+
+    # Check rank, bundle_index, env vars, and deterministic placement.
+    for rank, handle in enumerate(result.all_actors):
+        env = handle["opts"]["runtime_env"]["env_vars"]
+        assert env["RANK"] == str(rank)
+        assert env["LOCAL_RANK"] == str(rank % 4)
+        assert env["WORLD_SIZE"] == "16"
+        assert env["MASTER_ADDR"] == "10.0.0.1"
+        assert env["MASTER_PORT"] == "29555"
+        assert env["TPU_VISIBLE_DEVICES"] == str(rank % 4)
+        assert env["TPU_SKIP_MDS_QUERY"] == "1"
+        assert env["TPU_WORKER_ID"] == str(rank // 4)
+        strat = handle["opts"]["scheduling_strategy"]
+        assert strat.placement_group_bundle_index == rank
+
+    # skip_mds_query=False omits TPU_SKIP_MDS_QUERY.
+    no_skip = spg.create_role_actors({"all": (trainer_cls, 16)}, skip_mds_query=False)
+    assert (
+        "TPU_SKIP_MDS_QUERY"
+        not in no_skip.all_actors[0]["opts"]["runtime_env"]["env_vars"]
+    )
+
+    # Sub-host roles that stay within a single host pass box_aligned=True.
+    subhost = spg.create_role_actors(
+        {"a": (trainer_cls, 2), "b": (sampler_cls, 2), "c": (sampler_cls, 12)},
+        box_aligned=True,
+    )
+    assert subhost.role_ranks == {
+        "a": [0, 1],
+        "b": [2, 3],
+        "c": list(range(4, 16)),
+    }
+
+    # Box alignment validation rejects straddling roles.
+    with pytest.raises(ValueError, match="box-aligned|straddle"):
+        spg.create_role_actors({"a": (trainer_cls, 6), "b": (sampler_cls, 10)})
+
+    # Box alignment can be explicitly disabled.
+    unaligned = spg.create_role_actors(
+        {"a": (trainer_cls, 6), "b": (sampler_cls, 10)}, box_aligned=False
+    )
+    assert unaligned.role_ranks["a"] == list(range(0, 6))
+    assert unaligned.role_ranks["b"] == list(range(6, 16))
+
+    # Mismatched total count raises ValueError.
+    with pytest.raises(ValueError, match="Total actors across roles"):
+        spg.create_role_actors({"a": (trainer_cls, 8)})
+
+    # run_once_per_host schedules 1 task per host (4 tasks on bundles 0, 4, 8, 12).
+    host_calls = []
+
+    class FakeRemoteFn:
+        def options(self, **opts):
+            class _Bound:
+                def remote(self, *args, **kwargs):
+                    host_calls.append((opts, args, kwargs))
+                    return f"ref_{len(host_calls)}"
+
+            return _Bound()
+
+    with patch("ray.wait", return_value=(["ready_ref_0"], [])), patch(
+        "ray.get", return_value=[None]
+    ):
+        refs = ray.util.tpu.run_once_per_host(
+            FakeRemoteFn(), "arg1", slice_pg=spg, flag=True
+        )
+    assert len(refs) == 4
+    assert [
+        c[0]["scheduling_strategy"].placement_group_bundle_index for c in host_calls
+    ] == [0, 4, 8, 12]
+    assert all(c[0]["num_cpus"] == 0 and "resources" not in c[0] for c in host_calls)
+    assert all(c[1] == ("arg1",) and c[2] == {"flag": True} for c in host_calls)
+
+
+def test_create_role_actors_jax_multislice_specs_and_errors(monkeypatch):
+    """Test JAX mode, multi-slice, spec formats, resource checks, and cleanup."""
+    actor_cls = _FakeRemoteActorClass("Worker")
+
+    # 1. JAX framework with 1 bundle per host (4 TPUs, 4 CPUs).
+    spg_jax = _make_mock_spg(
+        monkeypatch,
+        bundles_per_host=1,
+        bundle_resources={"TPU": 4, "CPU": 4},
+    )
+    jax_res = spg_jax.create_role_actors(
+        {
+            "prefill": (actor_cls, 2, ("p",), None),
+            "decode": {
+                "actor_cls": actor_cls,
+                "count": 2,
+                "args": None,
+                "kwargs": {"mode": "decode"},
+                "env_vars": {"ROLE_TAG": "decode"},
+                "actor_options": {
+                    "resources": {"custom": 1},
+                    "runtime_env": {"env_vars": {"BASE": "1"}},
+                },
+            },
+        },
+        framework="jax",
+        extra_env_vars={"GLOBAL_FLAG": "yes", "ROLE_TAG": "overridden"},
+    )
+    assert jax_res.world_size == 4
+    assert jax_res.role_ranks == {"prefill": [0, 1], "decode": [2, 3]}
+    decode_opts = jax_res["decode"][0]["opts"]
+    assert decode_opts["resources"] == {"custom": 1, "TPU": 4}
+    decode_env = decode_opts["runtime_env"]["env_vars"]
+    assert decode_env["BASE"] == "1"
+    assert decode_env["GLOBAL_FLAG"] == "yes"
+    assert decode_env["ROLE_TAG"] == "decode"
+    assert decode_env["TPU_WORKER_ID"] == "2"
+
+    # JAX rejects multi-bundle-per-host placement groups.
+    spg_per_chip = _make_mock_spg(monkeypatch)
+    with pytest.raises(ValueError, match="framework='jax' requires 1 bundle per host"):
+        spg_per_chip.create_role_actors({"a": (actor_cls, 4)}, framework="jax")
+
+    # 2. bundles_per_host=1 with torch_tpu: validates CPU capacity.
+    spg_1cpu = _make_mock_spg(
+        monkeypatch,
+        bundles_per_host=1,
+        bundle_resources={"TPU": 4, "CPU": 1},
+    )
+    with pytest.raises(ValueError, match="exceeding bundle capacity"):
+        spg_1cpu.create_role_actors({"a": (actor_cls, 16)}, cpus_per_actor=1)
+    ok_0cpu = spg_1cpu.create_role_actors({"a": (actor_cls, 16)}, cpus_per_actor=0)
+    assert ok_0cpu.world_size == 16
+    assert [
+        h["opts"]["scheduling_strategy"].placement_group_bundle_index
+        for h in ok_0cpu.all_actors
+    ] == [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+
+    # 3. Multi-slice (pg_per_slice=True and False) injects Megascale env vars.
+    for pg_per_slice in (False, True):
+        spg_ms = _make_mock_spg(
+            monkeypatch,
+            num_slices=2,
+            hosts_per_slice=2,
+            bundles_per_host=4,
+            pg_per_slice=pg_per_slice,
+            topology="2x4",
+        )
+        ms_res = spg_ms.create_role_actors(
+            {"trainer": (actor_cls, 8), "sampler": (actor_cls, 8)}
+        )
+        assert ms_res.world_size == 16
+        assert ms_res.master_addr == "10.0.0.1"
+        env_s0 = ms_res.all_actors[0]["opts"]["runtime_env"]["env_vars"]
+        env_s1 = ms_res.all_actors[8]["opts"]["runtime_env"]["env_vars"]
+        assert env_s0["MEGASCALE_COORDINATOR_ADDRESS"] == "10.0.0.1"
+        assert env_s0["MEGASCALE_NUM_SLICES"] == "2"
+        assert env_s0["MEGASCALE_SLICE_ID"] == "0"
+        assert env_s1["MEGASCALE_SLICE_ID"] == "1"
+        strat_s1 = ms_res.all_actors[8]["opts"]["scheduling_strategy"]
+        if pg_per_slice:
+            assert strat_s1.placement_group is spg_ms._managed_pgs[1]
+            assert strat_s1.placement_group_bundle_index == 0
+        else:
+            assert strat_s1.placement_group is spg_ms._managed_pgs[0]
+            assert strat_s1.placement_group_bundle_index == 8
+
+    # 4. Partial launch failure cleans up already-created actors.
+    flaky_cls = _FakeRemoteActorClass("Flaky", fail_on_call=3)
+    killed = []
+    with patch("ray.kill", side_effect=lambda h, **kw: killed.append((h, kw))):
+        with pytest.raises(RuntimeError, match="boom at 3"):
+            spg_per_chip.create_role_actors({"a": (flaky_cls, 16)})
+    assert len(killed) == 3
+    assert all(kw == {"no_restart": True} for _, kw in killed)
+
+    # 5. Input validation errors.
+    with pytest.raises(ValueError, match="Unsupported framework"):
+        spg_per_chip.create_role_actors({"a": (actor_cls, 16)}, framework="tf")
+    with pytest.raises(ValueError, match="at least one role"):
+        spg_per_chip.create_role_actors({})
+    with pytest.raises(ValueError, match="master_port"):
+        spg_per_chip.create_role_actors({"a": (actor_cls, 16)}, master_port=True)
+    with pytest.raises(ValueError, match="missing required key"):
+        spg_per_chip.create_role_actors({"a": {"actor_cls": actor_cls}})
+    with pytest.raises(ValueError, match="unknown key"):
+        spg_per_chip.create_role_actors(
+            {"a": {"actor_cls": actor_cls, "count": 16, "bad": 1}}
+        )
+    with pytest.raises(ValueError, match="must not specify 'scheduling_strategy'"):
+        spg_per_chip.create_role_actors(
+            {
+                "a": ray.util.tpu.RoleActorSpec(
+                    actor_cls=actor_cls,
+                    count=16,
+                    actor_options={"scheduling_strategy": "SPREAD"},
+                )
+            }
+        )
+    spg_per_chip._managed_pgs = []
+    with pytest.raises(RuntimeError, match="shut down"):
+        spg_per_chip.create_role_actors({"a": (actor_cls, 16)})
+
+
+def test_run_once_per_host_multislice_subslice_and_errors(monkeypatch):
+    """Test run_once_per_host across multi-slice, subslice, and error paths."""
+    calls = []
+
+    class FakeRemoteFn:
+        def options(self, **opts):
+            class _Bound:
+                def remote(self, *args, **kwargs):
+                    calls.append((opts, args, kwargs))
+                    return f"ref_{len(calls)}"
+
+            return _Bound()
+
+    fn = FakeRemoteFn()
+
+    # Multi-slice with pg_per_slice=True, targeting a single slice_index.
+    spg_ms = _make_mock_spg(
+        monkeypatch,
+        num_slices=2,
+        hosts_per_slice=2,
+        bundles_per_host=4,
+        pg_per_slice=True,
+    )
+    with patch("ray.wait", return_value=(["ready_ref_1"], [])), patch(
+        "ray.get", return_value=[None]
+    ):
+        refs = ray.util.tpu.run_once_per_host(fn, slice_pg=spg_ms, slice_index=1)
+    assert len(refs) == 2
+    assert [c[0]["scheduling_strategy"].placement_group for c in calls] == [
+        spg_ms._managed_pgs[1],
+        spg_ms._managed_pgs[1],
+    ]
+    assert [
+        c[0]["scheduling_strategy"].placement_group_bundle_index for c in calls
+    ] == [0, 4]
+
+    # Multi-slice with pg_per_slice=False across all slices.
+    calls.clear()
+    spg_ms_single = _make_mock_spg(
+        monkeypatch,
+        num_slices=2,
+        hosts_per_slice=2,
+        bundles_per_host=4,
+        pg_per_slice=False,
+    )
+    with patch("ray.wait", return_value=(["ready_ref_0"], [])), patch(
+        "ray.get", return_value=[None]
+    ):
+        refs = ray.util.tpu.run_once_per_host(fn, slice_pg=spg_ms_single)
+    assert len(refs) == 4
+    assert [
+        c[0]["scheduling_strategy"].placement_group_bundle_index for c in calls
+    ] == [0, 4, 8, 12]
+
+    # SubslicePlacementGroup with 2 hosts and 4 bundles per host.
+    calls.clear()
+    sub_pg = MagicMock()
+    sub_pg.ready.return_value = "sub_ready"
+    sub_pg.bundle_count = 8
+    sg = object.__new__(ray.util.tpu.SubslicePlacementGroup)
+    sg._placement_group = sub_pg
+    sg._num_hosts = 2
+    with patch("ray.wait", return_value=(["sub_ready"], [])), patch(
+        "ray.get", return_value=[None]
+    ):
+        refs = ray.util.tpu.run_once_per_host(fn, slice_pg=sg)
+    assert len(refs) == 2
+    assert [
+        c[0]["scheduling_strategy"].placement_group_bundle_index for c in calls
+    ] == [0, 4]
+
+    # Error paths.
+    with pytest.raises(TypeError, match="@ray.remote"):
+        ray.util.tpu.run_once_per_host(lambda: None, slice_pg=spg_ms)
+    with pytest.raises(
+        TypeError, match="SlicePlacementGroup or SubslicePlacementGroup"
+    ):
+        ray.util.tpu.run_once_per_host(fn, slice_pg="not-a-pg")
+    with pytest.raises(ValueError, match="Invalid slice_index"):
+        ray.util.tpu.run_once_per_host(fn, slice_pg=spg_ms, slice_index=True)
+    with pytest.raises(ValueError, match="Invalid slice_index"):
+        ray.util.tpu.run_once_per_host(fn, slice_pg=spg_ms, slice_index=5)
+    with pytest.raises(ValueError, match="not supported for SubslicePlacementGroup"):
+        ray.util.tpu.run_once_per_host(fn, slice_pg=sg, slice_index=0)
+    with patch("ray.wait", return_value=([], ["ready_ref_0"])):
+        with pytest.raises(TimeoutError, match="not ready"):
+            ray.util.tpu.run_once_per_host(
+                fn, slice_pg=spg_ms_single, pg_ready_timeout_s=1.0
+            )
+    with patch("ray.wait", return_value=([], ["sub_ready"])):
+        with pytest.raises(TimeoutError, match="not ready"):
+            ray.util.tpu.run_once_per_host(fn, slice_pg=sg, pg_ready_timeout_s=1.0)
+    sg._placement_group = None
+    with pytest.raises(ValueError, match="shut down"):
+        ray.util.tpu.run_once_per_host(fn, slice_pg=sg)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
