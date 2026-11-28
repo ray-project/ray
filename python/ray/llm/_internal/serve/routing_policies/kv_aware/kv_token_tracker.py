@@ -216,9 +216,6 @@ class KVTokenTracker:
         self._requests: "OrderedDict[str, RequestLifecycle]" = OrderedDict()
         # Current workload snapshot, used by the autoscaler.
         self._outstanding_effective_prefill_tokens = 0
-        self._autoscaling_metrics_callback: Optional[
-            Callable[[Dict[str, int]], None]
-        ] = None
         # Reverse index of in-flight request ids per worker, kept in lockstep with
         # _requests, so remove_worker is O(k) in the worker's requests, not O(N).
         self._request_ids_by_worker: Dict[int, Set[str]] = {}
@@ -296,7 +293,6 @@ class KVTokenTracker:
                 # replica falls behind its peers and skips bookings whose requests
                 # completed in the meantime.
                 await asyncio.gather(*map(self._apply_reservation, bookings))
-                self._publish_autoscaling_snapshot()
             except Exception:
                 logger.exception("Failed to apply selection service peer updates.")
             finally:
@@ -329,28 +325,12 @@ class KVTokenTracker:
         except Exception:
             logger.exception("Failed to apply a peer load reservation.")
 
-    def set_autoscaling_metrics_callback(
-        self, callback: Callable[[Dict[str, int]], None]
-    ) -> None:
-        """Set the local callback for router-owned autoscaling metrics."""
-        self._autoscaling_metrics_callback = callback
-
     def _get_autoscaling_snapshot(self) -> Dict[str, int]:
         return {
             OUTSTANDING_EFFECTIVE_PREFILL_TOKENS: (
                 self._outstanding_effective_prefill_tokens
             ),
         }
-
-    def _publish_autoscaling_snapshot(self) -> None:
-        if self._autoscaling_metrics_callback is None:
-            return
-        # Callers publish after updating local state but before syncing the
-        # selection service and peers, so a raising callback must not abort them.
-        try:
-            self._autoscaling_metrics_callback(self._get_autoscaling_snapshot())
-        except Exception:
-            logger.exception("Autoscaling metrics callback failed.")
 
     def _create_selection_service(self) -> None:
         """Create the router-local Dynamo selection service for this deployment."""
@@ -493,7 +473,6 @@ class KVTokenTracker:
             state = self._requests.pop(request_id, None)
             if state is not None:
                 self._remove_autoscaling_load(state)
-        self._publish_autoscaling_snapshot()
         if self._svc is None:
             return
         self._schedule(self._svc.delete_worker(worker_id))
@@ -602,7 +581,6 @@ class KVTokenTracker:
         self._track_request_state(
             request_id, selection["worker_id"], selection["effective_prefill_tokens"]
         )
-        self._publish_autoscaling_snapshot()
         if self._replica_forwarder is not None:
             self._replica_forwarder.report(
                 PeerUpdateKind.LOAD_RESERVATION,
@@ -690,7 +668,6 @@ class KVTokenTracker:
             return
         state.prefill_completed = True
         self._outstanding_effective_prefill_tokens -= state.effective_prefill_tokens
-        self._publish_autoscaling_snapshot()
         await self._svc.prefill_complete(request_id)
 
     async def on_request_completed(self, request_id: str) -> None:
@@ -702,7 +679,6 @@ class KVTokenTracker:
             return
         self._remove_autoscaling_load(state)
         self._untrack_worker_request(request_id, state.worker_id)
-        self._publish_autoscaling_snapshot()
         await self._svc.free_reservation(request_id)
 
     def _remove_autoscaling_load(self, state: RequestLifecycle) -> None:
@@ -739,14 +715,12 @@ class KVTokenTracker:
             if completed_at > cutoff:
                 break
             self._completed_request_ids.pop(request_id, None)
-        autoscaling_load_changed = False
         while self._requests:
             request_id, state = next(iter(self._requests.items()))
             if state.created_at > cutoff:
                 break
             self._requests.popitem(last=False)
             self._remove_autoscaling_load(state)
-            autoscaling_load_changed = True
             self._untrack_worker_request(request_id, state.worker_id)
             logger.warning(
                 "Evicting stale KV request %s (tracked > %ds without completion); "
@@ -755,8 +729,6 @@ class KVTokenTracker:
                 REQUEST_TRACKING_TTL_S,
             )
             await self._svc.free_reservation(request_id)
-        if autoscaling_load_changed:
-            self._publish_autoscaling_snapshot()
 
 
 _KV_TOKEN_TRACKER: Optional["KVTokenTracker"] = None

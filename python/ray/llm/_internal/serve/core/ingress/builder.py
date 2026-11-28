@@ -136,6 +136,21 @@ def _build_openai_ingress_request_router(
         max_ongoing_requests=1000,
         ray_actor_options=ray_actor_options,
     )
+    if is_kv_aware(llm_config):
+        from ray.serve._private.config import AutoscalingMetricsConfig
+
+        target_config = server._bound_deployment._deployment_config
+        reporting = (
+            target_config.autoscaling_metrics_config or target_config.autoscaling_config
+        )
+        if reporting is not None:
+            deployment._deployment_config.autoscaling_metrics_config = (
+                AutoscalingMetricsConfig(
+                    metrics_interval_s=reporting.metrics_interval_s,
+                    look_back_period_s=reporting.look_back_period_s,
+                    aggregation_function="mean",
+                )
+            )
     return deployment.bind(
         server=server,
         llm_config=llm_config if is_kv_aware(llm_config) else None,

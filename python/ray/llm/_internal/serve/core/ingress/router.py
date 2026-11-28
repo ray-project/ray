@@ -171,6 +171,13 @@ class LLMRouter:
             self._tokenizer = await asyncio.to_thread(Tokenizer, llm_config)
         self._handle._init()
 
+    async def record_autoscaling_stats(self) -> Dict[str, int]:
+        if self._kv_token_tracker is None:
+            return {}
+        snapshot = await self._kv_token_tracker.get_autoscaling_snapshot()
+        target = self._handle.deployment_id.name
+        return {f"{key}:{target}": value for key, value in snapshot.items()}
+
     def _start_kv_token_tracking(
         self, llm_config: "LLMConfig", server: DeploymentHandle
     ) -> None:
