@@ -1,22 +1,61 @@
-"""Work out which images a build's Trivy scan steps should cover.
+"""Report a build's Trivy image scans from its S3 folder.
 
-``expected_images`` reads ``.buildkite/image-scan.rayci.yml`` with
-scan_images' own option parser. A report can then list an image whose scan
-job never ran or never uploaded, instead of silently leaving it out.
+Runs once every scan job has finished, passed or not. It reads what trivy_db
+and the scan jobs uploaded to the build's folder (see ``scan_store``), and
+checks it against the images ``.buildkite/image-scan.rayci.yml`` asks for, so
+an image whose job never ran or never uploaded still shows up as not scanned.
+It writes:
+
+- ``report.md``, ``vulns.csv`` and ``summary.json`` to ``--output-dir``, and
+  to the folder's ``report/`` (``vulns.csv`` gzipped);
+- the annotation as ``<annotation-dir>/trivy-scan.<style>.md``, which
+  ``.buildkite/hooks/post-command`` posts: postmerge job containers have no
+  buildkite-agent.
+
+Exit codes are trivy_report's: 0 clean, 10 fixable CRITICAL/HIGH findings,
+11 incomplete coverage. A failed report upload turns a clean 0 into 1, which
+rayci retries once.
+
+Example:
+    bazel run //ci/ray_ci/automation/trivy:build_report -- \\
+        --output-dir /artifact-mount/trivy/report \\
+        --annotation-dir /artifact-mount/annotations
 """
 
+import dataclasses
+import gzip
+import logging
+import os
 import re
 import shlex
-from typing import Any, Mapping
+import shutil
+import sys
+import tempfile
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any, Mapping, Optional, Sequence
 
 import click
+import yaml
 
-from ci.ray_ci.automation.trivy import scan_images
-from ci.ray_ci.automation.trivy.trivy_report import Image
+from ci.ray_ci.automation.trivy import registry, scan_images, scan_store, trivy_report
+from ci.ray_ci.automation.trivy.scan_store import (
+    DB_FOLDER,
+    REPORT_FOLDER,
+    RESULTS_FOLDER,
+    ScanStore,
+    StoreError,
+)
+from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA
+from ci.ray_ci.automation.trivy.trivy_report import Image, ImageScan
 from ci.ray_ci.ray_image import RayImage, RayImageError
+
+logger = logging.getLogger(__name__)
 
 PIPELINE_RUNFILE = "io_ray/.buildkite/image-scan.rayci.yml"
 SCAN_TARGET = "//ci/ray_ci/automation/trivy:scan_images"
+RESULT_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(status\.json|json\.gz)")
+DOWNLOAD_THREADS = 16
 
 
 def _commands(step: Mapping[str, Any]) -> list[str]:
@@ -161,3 +200,227 @@ def expected_images(pipeline: Mapping[str, Any]) -> list[Image]:
             scanned_by[image.name] = key
             images.append(image)
     return images
+
+
+RESULT_FILES = {".status.json": "status record", ".json.gz": "result"}
+# trivy_report's error for a scanned image whose result file isn't there.
+NO_RESULT_FILE = "no result file"
+UNLISTED = "not checked: the scan results could not be listed"
+
+
+def download_results(store: ScanStore, dest: Path) -> dict[str, str]:
+    """Download every status record and result. Returns why each image whose
+    files failed to download lacks them; raises StoreError if the results
+    can't be listed."""
+    dest.mkdir(parents=True)
+    names = store.names(RESULTS_FOLDER)
+    for name in names:
+        if not RESULT_NAME.fullmatch(name):
+            logger.warning(f"Ignoring unexpected file {name} in results/")
+
+    def fetch(name: str) -> str:
+        try:
+            store.download(RESULTS_FOLDER, name, dest / name)
+        except StoreError as e:
+            return str(e)
+        return ""
+
+    wanted = [n for n in names if RESULT_NAME.fullmatch(n)]
+    # The threads share the store's client; boto3 clients are thread-safe.
+    with ThreadPoolExecutor(max_workers=DOWNLOAD_THREADS) as pool:
+        errors = list(pool.map(fetch, wanted))
+    failed = {}
+    for name, error in zip(wanted, errors):
+        if error:
+            suffix = next(s for s in RESULT_FILES if name.endswith(s))
+            image = name[: -len(suffix)]
+            failed[image] = f"could not download its {RESULT_FILES[suffix]}: {error}"
+    return failed
+
+
+def explain_failed_downloads(
+    scans: Sequence[ImageScan], failed: Mapping[str, str]
+) -> list[ImageScan]:
+    """A scan whose result failed to download says so, not "no result file".
+    Any other error comes from its status record, and is the real cause."""
+    return [
+        dataclasses.replace(s, error=failed[s.image.name])
+        if s.error == NO_RESULT_FILE and s.image.name in failed
+        else s
+        for s in scans
+    ]
+
+
+def load_scanner(store: ScanStore, workdir: Path) -> tuple[dict[str, Any], str]:
+    try:
+        path = store.download(DB_FOLDER, DB_METADATA, workdir / DB_METADATA)
+    except StoreError as e:
+        return {}, f"scanner metadata unavailable: {e}"
+    return trivy_report.load_metadata(path, store.url(DB_FOLDER) + DB_METADATA)
+
+
+def _code_span(text: str) -> str:
+    """``text`` as one inline code span that can't break the markdown."""
+    return "`" + re.sub(r"\s+", " ", text).replace("`", "'")[:1000] + "`"
+
+
+def files_note(store: ScanStore, upload_error: str = "") -> str:
+    raw = f"each image's raw Trivy result in `{store.url(RESULTS_FOLDER)}`."
+    if upload_error:
+        return (
+            f"The report could not be uploaded to S3 ({_code_span(upload_error)}), "
+            f"so it is only in this job's `trivy/report/` artifacts; {raw}"
+        )
+    return (
+        f"Kept for 30 days: the report in `{store.url(REPORT_FOLDER)}` "
+        "(`report.md`, `summary.json`, `vulns.csv.gz`) and in this job's "
+        f"`trivy/report/` artifacts; {raw}"
+    )
+
+
+def publish_report(store: ScanStore, output_dir: Path, workdir: Path) -> str:
+    """Upload the report, summary.json last; returns the error, if any."""
+    csv_gz = workdir / "vulns.csv.gz"
+    with open(output_dir / "vulns.csv", "rb") as src, gzip.open(csv_gz, "wb") as out:
+        shutil.copyfileobj(src, out)
+    try:
+        for path in (csv_gz, output_dir / "report.md", output_dir / "summary.json"):
+            store.upload(path, REPORT_FOLDER)
+    except StoreError as e:
+        return str(e)
+    return ""
+
+
+def write_annotation(annotation_dir: Path, body: str, style: str) -> Path:
+    annotation_dir.mkdir(parents=True, exist_ok=True)
+    # post-command posts every file for the context, in name order.
+    for old in annotation_dir.glob(f"{trivy_report.ANNOTATION_CONTEXT}.*.md"):
+        old.unlink()
+    path = annotation_dir / f"{trivy_report.ANNOTATION_CONTEXT}.{style}.md"
+    path.write_text(body, encoding="utf-8")
+    return path
+
+
+def failure_annotation(error: BaseException) -> str:
+    return (
+        "## Trivy image scan: report failed\n\n"
+        f"{_code_span(f'{type(error).__name__}: {error}')}\n\n"
+        "The scans may have finished; this job's log has the traceback.\n"
+    )
+
+
+def report_build(
+    output_dir: Path,
+    annotation_dir: Path,
+    pipeline_file: Optional[Path],
+    store: ScanStore,
+) -> int:
+    """Write the report and the annotation; returns the exit code."""
+    if not pipeline_file:
+        pipeline_file = registry.runfile(PIPELINE_RUNFILE)
+    pipeline = yaml.safe_load(pipeline_file.read_text(encoding="utf-8"))
+    # An empty or wrong file must not pass for "expect no images".
+    expected = expected_images(pipeline) if isinstance(pipeline, Mapping) else []
+    if not expected:
+        raise ValueError(f"{pipeline_file} has no scan steps")
+    note = files_note(store)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        workdir = Path(tmp)
+        issues: list[str] = []
+        try:
+            failed = download_results(store, workdir / "results")
+        except StoreError as e:
+            issues.append(f"could not list the scan results: {e}")
+            failed = {image.name: UNLISTED for image in expected}
+        scanner, issue = load_scanner(store, workdir)
+        if issue:
+            issues.append(issue)
+        scans = explain_failed_downloads(
+            trivy_report.load_scans(workdir / "results"), failed
+        )
+        scans = trivy_report.add_missing(scans, expected, failed)
+        found = {s.image.name for s in scans}
+        # Failed downloads of images with no line of their own.
+        issues += [
+            f"`{name}`: {error}"
+            for name, error in sorted(failed.items())
+            if name not in found
+        ]
+        expected_names = {image.name for image in expected}
+        issues += [
+            f"`{name}`: has a status record, but no scan step asks for this image"
+            for name in sorted(found - expected_names)
+        ]
+        build = trivy_report.build_info(os.environ)
+        code = trivy_report.write_report(
+            output_dir, scans, scanner, build, issues=issues, files_note=note
+        )
+        upload_error = publish_report(store, output_dir, workdir)
+
+    style = trivy_report.annotation_style(scans, code)
+    if upload_error:
+        note = files_note(store, upload_error)
+        style = "warning" if style == "success" else style
+        # So the artifacts say where the report is, as the annotation does.
+        trivy_report.write_report(
+            output_dir, scans, scanner, build, issues=issues, files_note=note
+        )
+    body = trivy_report.render_annotation(
+        scans, scanner, issues=issues, files_note=note
+    )
+    annotation = write_annotation(annotation_dir, body, style)
+    logger.info(f"Wrote {output_dir} and {annotation}")
+    if upload_error:
+        logger.error(f"Could not upload the report: {upload_error}")
+        return code or 1
+    logger.info(f"Uploaded the report to {store.url(REPORT_FOLDER)}")
+    return code
+
+
+@click.command()
+@click.option(
+    "--output-dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Where to write report.md, vulns.csv and summary.json.",
+)
+@click.option(
+    "--annotation-dir",
+    required=True,
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Where to leave the annotation for the post-command hook.",
+)
+@click.option(
+    "--pipeline-file",
+    type=click.Path(dir_okay=False, path_type=Path),
+    help="The scan steps (default: the image-scan.rayci.yml built in).",
+)
+@scan_store.build_options
+def main(
+    output_dir: Path,
+    annotation_dir: Path,
+    pipeline_file: Optional[Path],
+    store: ScanStore,
+) -> None:
+    output_dir = trivy_report.resolve_path(output_dir)
+    annotation_dir = trivy_report.resolve_path(annotation_dir)
+    if pipeline_file:
+        pipeline_file = trivy_report.resolve_path(pipeline_file)
+    try:
+        code = report_build(output_dir, annotation_dir, pipeline_file, store)
+    except Exception as e:
+        # Without an annotation, a soft-failed report job goes unnoticed.
+        logger.exception("The Trivy report failed")
+        write_annotation(annotation_dir, failure_annotation(e), "warning")
+        code = 1
+    sys.exit(code)
+
+
+if __name__ == "__main__":
+    # Only as a program: importers keep their own logging setup. force, as
+    # importing ci.ray_ci.utils already gave the root logger a handler.
+    logging.basicConfig(
+        level=logging.INFO, format="%(message)s", stream=sys.stdout, force=True
+    )
+    main()
