@@ -195,9 +195,10 @@ class DeferredEmit:
 
 class TaskGeneratorState(Enum):
     """Lifecycle of a ``DataOpTask``'s streaming generator, as seen by the
-    data driver. Advances strictly ACTIVE -> DRAINED -> FINISHED."""
+    data driver: ACTIVE -> [CANCELLING ->] DRAINED -> FINISHED."""
 
     ACTIVE = auto()
+    CANCELLING = auto()
     DRAINED = auto()
     FINISHED = auto()
 
@@ -283,7 +284,7 @@ class DataOpTask(OpTask):
         self._last_block_meta: Optional[BlockMetadata] = None
 
         # Generator lifecycle (see ``TaskGeneratorState``). The driver moves it
-        # ACTIVE -> DRAINED (generator exhausted/failed, all pairs pulled) ->
+        # ACTIVE -> [CANCELLING ->] DRAINED (all pairs pulled) ->
         # FINISHED (all pairs' metadata emitted, ``task_done_callback`` fired).
         # Completion is postponed to FINISHED — rather than fired at DRAINED —
         # so a task's output is delivered before its completion is signalled.
@@ -297,11 +298,15 @@ class DataOpTask(OpTask):
         # ``ThreadedMetadataFetcher``. The DRAINED -> FINISHED transition happens
         # only once this reaches 0 (all of the task's bundles emitted).
         self._pending_emit_count: int = 0
+        # Drain unused output without delivering blocks or surfacing tail errors.
+        self.output_discarded: bool = False
 
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
 
-    def get_waitable(self) -> ObjectRefGenerator:
+    def get_waitable(self) -> Waitable:
+        if self.output_discarded and self._streaming_gen._stream_exhausted():
+            return self._streaming_gen.completed()
         return self._streaming_gen
 
     def on_data_ready(
@@ -349,6 +354,9 @@ class DataOpTask(OpTask):
         Returns:
             The number of bytes accounted for (for the budget loop).
         """
+        if self.output_discarded:
+            return self._drain_discarded_output()
+
         bytes_read = 0
 
         self._track_task_output_backpressure(max_bytes_to_read)
@@ -584,6 +592,60 @@ class DataOpTask(OpTask):
                 False,  # aborted
             )
         self._state = TaskGeneratorState.FINISHED
+
+    def cancel_if_no_output(self) -> None:
+        """Request graceful cancellation before the task has exposed any blocks."""
+        if (
+            self._state is not TaskGeneratorState.ACTIVE
+            or self._last_block_meta is not None
+            or self.has_pending_emits()
+            or self.is_lineage_tracked
+        ):
+            return
+
+        # Track completion while execution continues; normal shutdown can
+        # release the stream while Ray finishes cancellation asynchronously.
+        ray.cancel(self._streaming_gen, force=False, recursive=True)
+        self._state = TaskGeneratorState.CANCELLING
+        self.output_discarded = True
+        logger.debug("Requested graceful cancellation for %s", self.get_task_id())
+
+    @property
+    def is_cancelling(self) -> bool:
+        return self._state is TaskGeneratorState.CANCELLING
+
+    def _cancel(self, force: bool) -> None:
+        # A second interrupt during graceful shutdown could interrupt finally.
+        if not self.is_cancelling or force:
+            super()._cancel(force)
+
+    def _drain_discarded_output(self) -> int:
+        if self.is_drained() or self.has_finished:
+            return 0
+        self._track_task_output_backpressure(None)
+        self._pending_block_ref = ray.ObjectRef.nil()
+        self._pending_meta_ref = ray.ObjectRef.nil()
+        # Keep producers moving even with zero output budget. Fetch neither
+        # blocks nor metadata; an error ref in the unused tail is discarded too.
+        while True:
+            if self._streaming_gen._stream_exhausted():
+                # Start the remote return object's pull without waiting for it.
+                ready, _ = ray.wait(
+                    [self._streaming_gen.completed()], timeout=0, fetch_local=True
+                )
+                if not ready:
+                    break
+            try:
+                if self._streaming_gen._next_sync(timeout_s=0).is_nil():
+                    break
+            except StopIteration:
+                self._state = TaskGeneratorState.DRAINED
+                # Deferred pairs still belong to the metadata fetcher, which
+                # discards them before firing the postponed done-callback.
+                if not self.has_pending_emits():
+                    self.mark_done()
+                break
+        return 0
 
     def mark_aborted(
         self, exception: Exception, aborted_for_reconstruction: bool = False
