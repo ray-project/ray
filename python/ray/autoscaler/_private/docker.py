@@ -43,6 +43,17 @@ def validate_docker_config(config: Dict[str, Any]) -> None:
     else:
         assert cname and image_present, "Must provide a container & image name"
 
+    cluster_name = config.get("cluster_name")
+    # The launcher also mounts an auth token when token authentication is enabled.
+    has_mounts = bool(config.get("file_mounts")) or (
+        config.get("auth_mode", "token") == "token"
+    )
+    if has_mounts and isinstance(cluster_name, str) and ":" in cluster_name:
+        raise ValueError(
+            "`cluster_name` cannot contain ':' when using Docker bind mounts. "
+            "Remove ':' from the cluster name."
+        )
+
     return None
 
 
