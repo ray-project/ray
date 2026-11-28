@@ -1,3 +1,4 @@
+import functools
 import unittest
 
 import ray
@@ -104,6 +105,69 @@ class TestMultiCallback(unittest.TestCase):
             self.assertAlmostEqual(results["env_runners"]["callback_2"], 2)
             self.assertAlmostEqual(results["env_runners"]["custom_callback"], 3)
 
+        algo.stop()
+
+    def test_callbacks_class_accepts_callables(self):
+        """Tests if `callbacks_class` accepts callables returning a callback.
+
+        A `functools.partial` over an `RLlibCallback` subclass lets users pass
+        constructor arguments to their callback.
+        """
+
+        class ConfigurableCallback(RLlibCallback):
+            def __init__(self, key, value):
+                super().__init__()
+                self.key = key
+                self.value = value
+
+            def on_episode_step(self, *, episode, metrics_logger=None, **kwargs):
+                metrics_logger.log_value(self.key, self.value, reduce="mean")
+
+        class PlainCallback(RLlibCallback):
+            def on_episode_step(self, *, episode, metrics_logger=None, **kwargs):
+                metrics_logger.log_value("plain_callback", 1, reduce="mean")
+
+        config = (
+            PPOConfig()
+            .environment("CartPole-v1")
+            .api_stack(
+                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=True,
+            )
+            # Mix a callable and a class in the same list.
+            .callbacks(
+                callbacks_class=[
+                    functools.partial(ConfigurableCallback, key="partial_1", value=5),
+                    PlainCallback,
+                ],
+            )
+        )
+
+        algo = config.build()
+
+        # The Algorithm creates one callback object per entry.
+        self.assertEqual(len(algo.callbacks), 2)
+        self.assertIsInstance(algo.callbacks[0], ConfigurableCallback)
+        self.assertEqual(algo.callbacks[0].value, 5)
+        self.assertIsInstance(algo.callbacks[1], PlainCallback)
+
+        # The EnvRunners create them, too, and pass on the constructor arguments.
+        results = algo.train()
+        self.assertAlmostEqual(results["env_runners"]["partial_1"], 5)
+        self.assertAlmostEqual(results["env_runners"]["plain_callback"], 1)
+
+        algo.stop()
+
+        # A single callable (not in a list) works as well.
+        config.callbacks(
+            callbacks_class=functools.partial(
+                ConfigurableCallback, key="partial_2", value=7
+            )
+        )
+        algo = config.build()
+        self.assertEqual(len(algo.callbacks), 1)
+        results = algo.train()
+        self.assertAlmostEqual(results["env_runners"]["partial_2"], 7)
         algo.stop()
 
     def test_multicallback_validation_error(self):

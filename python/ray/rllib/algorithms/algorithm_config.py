@@ -2740,7 +2740,11 @@ class AlgorithmConfig(_Config):
     def callbacks(
         self,
         callbacks_class: Optional[
-            Union[Type[RLlibCallback], List[Type[RLlibCallback]]]
+            Union[
+                Type[RLlibCallback],
+                Callable[[], RLlibCallback],
+                Collection[Union[Type[RLlibCallback], Callable[[], RLlibCallback]]],
+            ]
         ] = NotProvided,
         *,
         on_algorithm_init: Optional[Union[Callable, List[Callable]]] = NotProvided,
@@ -2772,6 +2776,11 @@ class AlgorithmConfig(_Config):
         Args:
             callbacks_class: RLlibCallback class, whose methods are called during
                 various phases of training and RL environment sample collection.
+                Also accepts any callable that takes no arguments and returns an
+                `RLlibCallback` instance, for example
+                `functools.partial(MyCallback, some_arg=..)`, or a list of such
+                classes and callables. RLlib calls each entry once per `Algorithm`
+                and once per `EnvRunner` to create the callback objects.
                 TODO (sven): Change the link to new rst callbacks page.
                 See the `RLlibCallback` class and
                 `examples/metrics/custom_metrics_and_callbacks.py` for more information.
