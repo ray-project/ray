@@ -1011,5 +1011,52 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
   queue.Stop();
 }
 
+TEST(UnorderedActorTaskExecutionQueueTest, AsyncioArgsReadyAfterStopCancelsTask) {
+  // An async actor that exits gracefully stops the queue while a task may still be
+  // fetching its args. When the args arrive, the task must be canceled instead of
+  // being pushed into the closed fiber channel, which used to abort the worker.
+  instrumented_io_context io_service;
+  FakeWaiter waiter;
+  FakeTaskEventBuffer task_event_buffer;
+  [[maybe_unused]] ray::observability::FakeRayEventRecorder ray_task_event_recorder;
+
+  int n_executed = 0;
+  int n_canceled = 0;
+  auto execute_task = [&n_executed](TaskToExecute &task) { n_executed++; };
+  auto cancel_task = [&n_canceled](const TaskToExecute &task, const Status &status) {
+    ASSERT_TRUE(status.IsSchedulingCancelled());
+    n_canceled++;
+  };
+
+  UnorderedActorTaskExecutionQueue queue(
+      io_service,
+      waiter,
+      task_event_buffer,
+      ray_task_event_recorder,
+      /*pool_manager=*/nullptr,
+      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*is_asyncio=*/true,
+      /*fiber_max_concurrency=*/1,
+      /*concurrency_groups=*/{},
+      execute_task,
+      cancel_task);
+
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec.GetMutableMessage().set_task_id(
+      TaskID::FromRandom(JobID::FromInt(1)).Binary());
+  task_spec.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
+      ObjectID::FromRandom().Binary());
+  EnqueueWithFetch(queue, waiter, -1, -1, MakeTaskToExecute(task_spec));
+
+  queue.Stop();
+  waiter.Complete(0);
+
+  ASSERT_EQ(n_executed, 0);
+  ASSERT_EQ(n_canceled, 1);
+  // The task leaves the queue, so a later cancel no longer finds it.
+  ASSERT_FALSE(queue.CancelTaskIfFound(task_spec.TaskId()));
+}
+
 }  // namespace core
 }  // namespace ray

@@ -73,6 +73,10 @@ void UnorderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &m
 }
 
 void UnorderedActorTaskExecutionQueue::Stop() {
+  {
+    absl::MutexLock lock(&mu_);
+    stopped_ = true;
+  }
   if (pool_manager_) {
     pool_manager_->Stop();
   }
@@ -155,6 +159,19 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
     TaskToExecute request) {
   RAY_CHECK(request.DependenciesResolved());
   const auto task_id = request.TaskID();
+  {
+    // After Stop() the executors are closed (EnqueueFiber would fail its RAY_CHECK),
+    // so a task that becomes runnable now is canceled.
+    absl::MutexLock lock(&mu_);
+    if (stopped_) {
+      pending_task_id_to_is_canceled.erase(task_id);
+      cancel_task_(
+          request,
+          Status::SchedulingCancelled(
+              "Actor task execution queue stopped; canceling all queued tasks."));
+      return;
+    }
+  }
   if (is_asyncio_) {
     // Process async actor task.
     auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
