@@ -18,11 +18,13 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/ssl/error.hpp>
 #include <boost/asio/ssl/stream.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <boost/beast/core.hpp>
 #include <boost/beast/http.hpp>
 #include <boost/beast/version.hpp>
 #include <chrono>
 #include <fstream>
+#include <memory>
 #include <string>
 
 #include "nlohmann/json.hpp"
@@ -91,43 +93,237 @@ void InitK8sClientConfig() {
   k8s_client_initialized = true;
 }
 
-static Status EstablishSslConnection(net::io_context &ioc,
-                                     ssl::context &ctx,
-                                     ssl::stream<beast::tcp_stream> &stream,
-                                     tcp::resolver &resolver,
-                                     std::chrono::steady_clock::time_point deadline) {
+// State for a single asynchronous Kubernetes API request. A single
+// steady_timer armed at the deadline cancels the in-flight operation (by
+// cancelling the resolver and closing the socket) so that a slow or hung API
+// server cannot block the caller past the deadline. The state is kept alive
+// by shared_ptr for the duration of the async chain.
+struct K8sApiRequestState : public std::enable_shared_from_this<K8sApiRequestState> {
+  net::io_context ioc;
+  ssl::context ctx{ssl::context::tlsv12_client};
+  tcp::resolver resolver{ioc};
+  ssl::stream<beast::tcp_stream> stream{ioc, ctx};
+  net::steady_timer timer{ioc};
+  beast::flat_buffer buffer;
+  http::request<http::string_body> request;
+  http::response<http::string_body> response;
+  std::chrono::steady_clock::time_point deadline;
   beast::error_code ec;
-  ctx.load_verify_file(kK8sCaCertPath, ec);
-  if (ec) {
-    return Status::IOError(absl::StrCat("Failed to load CA cert: ", ec.message()));
-  }
-  ctx.set_verify_mode(ssl::verify_peer, ec);
-  if (ec) {
-    return Status::IOError(absl::StrCat("Failed to set verify mode: ", ec.message()));
+  bool timed_out = false;
+
+  // Runs the request to completion (or to the deadline) and returns the
+  // outcome. Blocks in ioc.run() until the async chain finishes or the
+  // deadline timer fires.
+  Status Run(http::verb method,
+             const std::string &path,
+             const nlohmann::json *body,
+             const std::string &token) {
+    deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
+
+    request = http::request<http::string_body>{method, path, 11};
+    request.set(http::field::host, k8s_host);
+    request.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+    if (body != nullptr) {
+      request.set(http::field::content_type, "application/json");
+      request.body() = body->dump();
+    }
+    request.set(http::field::authorization, "Bearer " + token);
+    request.prepare_payload();
+
+    beast::error_code setup_ec;
+    ctx.load_verify_file(kK8sCaCertPath, setup_ec);
+    if (setup_ec) {
+      return Status::IOError(
+          absl::StrCat("Failed to load CA cert: ", setup_ec.message()));
+    }
+    ctx.set_verify_mode(ssl::verify_peer, setup_ec);
+    if (setup_ec) {
+      return Status::IOError(
+          absl::StrCat("Failed to set verify mode: ", setup_ec.message()));
+    }
+    if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
+      setup_ec = beast::error_code{static_cast<int>(::ERR_get_error()),
+                                   net::error::get_ssl_category()};
+      return Status::IOError(
+          absl::StrCat("Failed to set SNI hostname: ", setup_ec.message()));
+    }
+
+    timer.expires_at(deadline);
+    timer.async_wait([self = shared_from_this()](beast::error_code timer_ec) {
+      self->OnTimer(timer_ec);
+    });
+    resolver.async_resolve(
+        k8s_host, k8s_port,
+        [self = shared_from_this()](beast::error_code resolve_ec,
+                                    tcp::resolver::results_type results) {
+          self->OnResolve(resolve_ec, results);
+        });
+
+    ioc.run();
+
+    if (timed_out) {
+      return Status::TimedOut(absl::StrCat("Kubernetes API request timed out after ",
+                                           kK8sApiTimeoutSecs, " seconds."));
+    }
+    if (ec) {
+      return Status::IOError(
+          absl::StrCat("Kubernetes API request failed: ", ec.message()));
+    }
+    return Status::OK();
   }
 
-  beast::get_lowest_layer(stream).expires_at(deadline);
-
-  if (!SSL_set_tlsext_host_name(stream.native_handle(), k8s_host)) {
-    ec = beast::error_code{static_cast<int>(::ERR_get_error()),
-                           net::error::get_ssl_category()};
-    return Status::IOError(absl::StrCat("Failed to set SNI hostname: ", ec.message()));
+  void OnTimer(beast::error_code timer_ec) {
+    if (timer_ec) {
+      return;  // Cancelled because the request already finished.
+    }
+    timed_out = true;
+    resolver.cancel();
+    beast::get_lowest_layer(stream).close();
   }
 
-  auto const results = resolver.resolve(k8s_host, k8s_port, ec);
-  if (ec) {
-    return Status::IOError(absl::StrCat("Failed to resolve K8s host: ", ec.message()));
+  void OnResolve(beast::error_code resolve_ec, tcp::resolver::results_type results) {
+    if (resolve_ec) {
+      Finish(resolve_ec);
+      return;
+    }
+    beast::get_lowest_layer(stream).expires_at(deadline);
+    beast::get_lowest_layer(stream).async_connect(
+        results,
+        [self = shared_from_this()](beast::error_code connect_ec,
+                                    tcp::endpoint /*connected_endpoint*/) {
+          self->OnConnect(connect_ec);
+        });
   }
 
-  beast::get_lowest_layer(stream).connect(results, ec);
-  if (ec) {
-    return Status::IOError(absl::StrCat("Failed to connect to K8s host: ", ec.message()));
+  void OnConnect(beast::error_code connect_ec) {
+    if (connect_ec) {
+      Finish(connect_ec);
+      return;
+    }
+    beast::get_lowest_layer(stream).expires_at(deadline);
+    stream.async_handshake(ssl::stream_base::client,
+                           [self = shared_from_this()](beast::error_code handshake_ec) {
+                             self->OnHandshake(handshake_ec);
+                           });
   }
 
-  beast::get_lowest_layer(stream).expires_at(deadline);
-  stream.handshake(ssl::stream_base::client, ec);
-  if (ec) {
-    return Status::IOError(absl::StrCat("SSL handshake failed: ", ec.message()));
+  void OnHandshake(beast::error_code handshake_ec) {
+    if (handshake_ec) {
+      Finish(handshake_ec);
+      return;
+    }
+    beast::get_lowest_layer(stream).expires_at(deadline);
+    http::async_write(stream, request,
+                      [self = shared_from_this()](beast::error_code write_ec,
+                                                  std::size_t /*bytes_transferred*/) {
+                        self->OnWrite(write_ec);
+                      });
+  }
+
+  void OnWrite(beast::error_code write_ec) {
+    if (write_ec) {
+      Finish(write_ec);
+      return;
+    }
+    beast::get_lowest_layer(stream).expires_at(deadline);
+    http::async_read(stream, buffer, response,
+                     [self = shared_from_this()](beast::error_code read_ec,
+                                                 std::size_t /*bytes_transferred*/) {
+                       self->OnRead(read_ec);
+                     });
+  }
+
+  void OnRead(beast::error_code read_ec) { Finish(read_ec); }
+
+  void Finish(beast::error_code finish_ec) {
+    ec = finish_ec;
+    beast::error_code cancel_ec;
+    timer.cancel(cancel_ec);
+  }
+};
+
+const char *MethodName(http::verb method) {
+  switch (method) {
+    case http::verb::get:
+      return "Get";
+    case http::verb::put:
+      return "Put";
+    default:
+      return "Post";
+  }
+}
+
+// Performs one HTTP request against the Kubernetes API server, enforcing the
+// kK8sApiTimeoutSecs deadline with a single async helper driven by ioc.run().
+// A null body sends a request without a JSON body (GET). The per-verb HTTP
+// status handling matches the previous synchronous helpers.
+Status K8sApiRequest(http::verb method,
+                     const std::string &path,
+                     const nlohmann::json *body,
+                     nlohmann::json &response_json) {
+  if (!k8s_client_initialized || k8s_host == nullptr || k8s_port == nullptr) {
+    return Status::Invalid("Kubernetes client configuration is not initialized.");
+  }
+
+  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
+
+  try {
+    auto state = std::make_shared<K8sApiRequestState>();
+    RAY_RETURN_NOT_OK(state->Run(method, path, body, k8s_sa_token));
+
+    const http::response<http::string_body> &res = state->response;
+    if (method == http::verb::get) {
+      if (res.result() != http::status::ok) {
+        RAY_LOG(WARNING) << "Kubernetes API Get request returned HTTP status "
+                         << res.result_int() << ". Response: " << res.body();
+        if (res.result() == http::status::not_found) {
+          return Status::NotFound(absl::StrCat("Resource not found: ", res.body()));
+        }
+        return Status::IOError(
+            absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
+      }
+    } else {
+      if (res.result() != http::status::ok && res.result() != http::status::created) {
+        RAY_LOG(WARNING) << "Kubernetes API " << MethodName(method)
+                         << " request returned HTTP status " << res.result_int()
+                         << ". Response: " << res.body();
+        if (res.result() == http::status::conflict) {
+          return Status::AlreadyExists(absl::StrCat("Conflict: ", res.body()));
+        }
+        return Status::IOError(
+            absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
+      }
+    }
+
+    response_json = nlohmann::json::parse(res.body());
+
+    if (method == http::verb::get) {
+      auto date_hdr = res[http::field::date];
+      if (!date_hdr.empty()) {
+        response_json["__api_server_date__"] = std::string(date_hdr);
+      }
+    }
+
+    beast::error_code ec;
+    state->stream.shutdown(ec);
+    if (ec == net::error::eof) {
+      ec.assign(0, ec.category());
+    }
+    if (ec) {
+      RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
+    }
+  } catch (const std::exception &e) {
+    RAY_LOG(ERROR) << "Kubernetes API " << MethodName(method)
+                   << " request failed: " << e.what();
+    std::string err_msg(e.what());
+    if (err_msg.find("Operation aborted") != std::string::npos ||
+        err_msg.find("timeout") != std::string::npos) {
+      return Status::TimedOut(absl::StrCat("Kubernetes API ", MethodName(method),
+                                           " request timed out: ", e.what()));
+    }
+    return Status::IOError(absl::StrCat("Kubernetes API ", MethodName(method),
+                                        " request failed: ", e.what()));
   }
 
   return Status::OK();
@@ -136,213 +332,19 @@ static Status EstablishSslConnection(net::io_context &ioc,
 Status K8sApiPost(const std::string &path,
                   const nlohmann::json &body,
                   nlohmann::json &response_json) {
-  if (!k8s_client_initialized || k8s_host == nullptr || k8s_port == nullptr) {
-    return Status::Invalid("Kubernetes client configuration is not initialized.");
-  }
-
-  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
-
-  try {
-    auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
-    net::io_context ioc;
-    ssl::context ctx(ssl::context::tlsv12_client);
-    tcp::resolver resolver(ioc);
-    ssl::stream<beast::tcp_stream> stream(ioc, ctx);
-
-    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver, deadline));
-
-    http::request<http::string_body> req{http::verb::post, path, 11};
-    req.set(http::field::host, k8s_host);
-    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-    req.set(http::field::content_type, "application/json");
-    std::string auth_header = "Bearer " + k8s_sa_token;
-    req.set(http::field::authorization, auth_header);
-    req.body() = body.dump();
-    req.prepare_payload();
-
-    beast::get_lowest_layer(stream).expires_at(deadline);
-    http::write(stream, req);
-
-    beast::get_lowest_layer(stream).expires_at(deadline);
-    beast::flat_buffer buffer;
-    http::response<http::string_body> res;
-    http::read(stream, buffer, res);
-
-    if (res.result() != http::status::ok && res.result() != http::status::created) {
-      RAY_LOG(WARNING) << "Kubernetes API Post request returned HTTP status "
-                       << res.result_int() << ". Response: " << res.body();
-      if (res.result() == http::status::conflict) {
-        return Status::AlreadyExists(absl::StrCat("Conflict: ", res.body()));
-      }
-      return Status::IOError(
-          absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
-    }
-
-    response_json = nlohmann::json::parse(res.body());
-
-    beast::error_code ec;
-    stream.shutdown(ec);
-    if (ec == net::error::eof) {
-      ec.assign(0, ec.category());
-    }
-    if (ec) {
-      RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
-    }
-  } catch (const std::exception &e) {
-    RAY_LOG(ERROR) << "Kubernetes API Post request failed: " << e.what();
-    std::string err_msg(e.what());
-    if (err_msg.find("Operation aborted") != std::string::npos ||
-        err_msg.find("timeout") != std::string::npos) {
-      return Status::TimedOut(
-          absl::StrCat("Kubernetes API Post request timed out: ", e.what()));
-    }
-    return Status::IOError(
-        absl::StrCat("Kubernetes API Post request failed: ", e.what()));
-  }
-
-  return Status::OK();
+  return K8sApiRequest(http::verb::post, path, &body, response_json);
 }
 
 Status K8sApiGet(const std::string &path, nlohmann::json &response_json) {
-  if (!k8s_client_initialized || k8s_host == nullptr || k8s_port == nullptr) {
-    return Status::Invalid("Kubernetes client configuration is not initialized.");
-  }
-
-  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
-
-  try {
-    auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
-    net::io_context ioc;
-    ssl::context ctx(ssl::context::tlsv12_client);
-    tcp::resolver resolver(ioc);
-    ssl::stream<beast::tcp_stream> stream(ioc, ctx);
-
-    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver, deadline));
-
-    http::request<http::empty_body> req{http::verb::get, path, 11};
-    req.set(http::field::host, k8s_host);
-    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-    std::string auth_header = "Bearer " + k8s_sa_token;
-    req.set(http::field::authorization, auth_header);
-
-    beast::get_lowest_layer(stream).expires_at(deadline);
-    http::write(stream, req);
-
-    beast::get_lowest_layer(stream).expires_at(deadline);
-    beast::flat_buffer buffer;
-    http::response<http::string_body> res;
-    http::read(stream, buffer, res);
-
-    if (res.result() != http::status::ok) {
-      RAY_LOG(WARNING) << "Kubernetes API Get request returned HTTP status "
-                       << res.result_int() << ". Response: " << res.body();
-      if (res.result() == http::status::not_found) {
-        return Status::NotFound(absl::StrCat("Resource not found: ", res.body()));
-      }
-      return Status::IOError(
-          absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
-    }
-
-    response_json = nlohmann::json::parse(res.body());
-
-    auto date_hdr = res[http::field::date];
-    if (!date_hdr.empty()) {
-      response_json["__api_server_date__"] = std::string(date_hdr);
-    }
-
-    beast::error_code ec;
-    stream.shutdown(ec);
-    if (ec == net::error::eof) {
-      ec.assign(0, ec.category());
-    }
-    if (ec) {
-      RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
-    }
-  } catch (const std::exception &e) {
-    RAY_LOG(ERROR) << "Kubernetes API Get request failed: " << e.what();
-    std::string err_msg(e.what());
-    if (err_msg.find("Operation aborted") != std::string::npos ||
-        err_msg.find("timeout") != std::string::npos) {
-      return Status::TimedOut(
-          absl::StrCat("Kubernetes API Get request timed out: ", e.what()));
-    }
-    return Status::IOError(absl::StrCat("Kubernetes API Get request failed: ", e.what()));
-  }
-
-  return Status::OK();
+  return K8sApiRequest(http::verb::get, path, nullptr, response_json);
 }
 
 Status K8sApiPut(const std::string &path,
                  const nlohmann::json &body,
                  nlohmann::json &response_json) {
-  if (!k8s_client_initialized || k8s_host == nullptr || k8s_port == nullptr) {
-    return Status::Invalid("Kubernetes client configuration is not initialized.");
-  }
-
-  std::string k8s_sa_token = ReadFile(kK8sSaTokenPath);
-
-  try {
-    auto deadline =
-        std::chrono::steady_clock::now() + std::chrono::seconds(kK8sApiTimeoutSecs);
-    net::io_context ioc;
-    ssl::context ctx(ssl::context::tlsv12_client);
-    tcp::resolver resolver(ioc);
-    ssl::stream<beast::tcp_stream> stream(ioc, ctx);
-
-    RAY_RETURN_NOT_OK(EstablishSslConnection(ioc, ctx, stream, resolver, deadline));
-
-    http::request<http::string_body> req{http::verb::put, path, 11};
-    req.set(http::field::host, k8s_host);
-    req.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-    req.set(http::field::content_type, "application/json");
-    std::string auth_header = "Bearer " + k8s_sa_token;
-    req.set(http::field::authorization, auth_header);
-    req.body() = body.dump();
-    req.prepare_payload();
-
-    beast::get_lowest_layer(stream).expires_at(deadline);
-    http::write(stream, req);
-
-    beast::get_lowest_layer(stream).expires_at(deadline);
-    beast::flat_buffer buffer;
-    http::response<http::string_body> res;
-    http::read(stream, buffer, res);
-
-    if (res.result() != http::status::ok && res.result() != http::status::created) {
-      RAY_LOG(WARNING) << "Kubernetes API Put request returned HTTP status "
-                       << res.result_int() << ". Response: " << res.body();
-      if (res.result() == http::status::conflict) {
-        return Status::AlreadyExists(absl::StrCat("Conflict: ", res.body()));
-      }
-      return Status::IOError(
-          absl::StrCat("HTTP error ", res.result_int(), ": ", res.body()));
-    }
-
-    response_json = nlohmann::json::parse(res.body());
-
-    beast::error_code ec;
-    stream.shutdown(ec);
-    if (ec == net::error::eof) {
-      ec.assign(0, ec.category());
-    }
-    if (ec) {
-      RAY_LOG(WARNING) << "SSL stream shutdown failed: " << ec.message();
-    }
-  } catch (const std::exception &e) {
-    RAY_LOG(ERROR) << "Kubernetes API Put request failed: " << e.what();
-    std::string err_msg(e.what());
-    if (err_msg.find("Operation aborted") != std::string::npos ||
-        err_msg.find("timeout") != std::string::npos) {
-      return Status::TimedOut(
-          absl::StrCat("Kubernetes API Put request timed out: ", e.what()));
-    }
-    return Status::IOError(absl::StrCat("Kubernetes API Put request failed: ", e.what()));
-  }
-
-  return Status::OK();
+  return K8sApiRequest(http::verb::put, path, &body, response_json);
 }
+
 
 bool ValidateToken(const AuthenticationToken &token) {
   std::string token_str = token.GetRawValue();
