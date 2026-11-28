@@ -62,6 +62,8 @@ If you need to mutate the array, copy it at the destination with `arr = arr.copy
 
 - Lock objects are mostly unserializable, because copying a lock is meaningless and could cause serious concurrency problems. If your object contains a lock, you might need a workaround.
 
+- Don't convert an `ObjectRef` to its hex string and reconstruct it elsewhere with `ray.ObjectRef(bytes.fromhex(...))`. The hex form carries no reference, so Ray can garbage collect the underlying object before the consumer fetches it. See {ref}`ray-out-of-band-object-ref-serialization` for the full pattern and the recommended fix.
+
 ## Zero-copy serialization for read-only tensors
 
 Ray provides optional zero-copy serialization for read-only PyTorch tensors. Ray converts these tensors to NumPy arrays and serializes them with pickle5's zero-copy buffer sharing. Skipping the copy of the underlying tensor data can improve performance when you pass large tensors between tasks or actors.
