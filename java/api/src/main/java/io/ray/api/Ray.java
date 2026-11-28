@@ -164,6 +164,8 @@ public final class Ray extends RayCall {
    * <p>Gets a handle to a named actor with the given name of current namespace. The actor must have
    * been created with name specified.
    *
+   * <p>The returned handle is weak and does not keep the actor alive.
+   *
    * @param name The name of the named actor.
    * @return an ActorHandle to the actor if the actor of specified name exists in current namespace
    *     or an Optional.empty()
@@ -178,6 +180,8 @@ public final class Ray extends RayCall {
    *
    * <p>Gets a handle to a named actor with the given name of the given namespace. The actor must
    * have been created with name specified.
+   *
+   * <p>The returned handle is weak and does not keep the actor alive.
    *
    * @param name The name of the named actor.
    * @param namespace The namespace of the actor.
