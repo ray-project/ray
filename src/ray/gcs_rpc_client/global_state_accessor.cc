@@ -41,7 +41,7 @@ GlobalStateAccessor::GlobalStateAccessor(const GcsClientOptions &gcs_client_opti
     promise.set_value(true);
     io_service_->run();
   });
-  promise.get_future().get();
+  (void)promise.get_future().get();
 }
 
 GlobalStateAccessor::~GlobalStateAccessor() { Disconnect(); }
@@ -82,7 +82,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo(
         TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),
         /*timeout_ms=*/-1);
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return job_table_data;
 }
 
@@ -116,7 +116,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
         },
         /*timeout_ms=*/-1);
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return node_table_data;
 }
 
@@ -128,7 +128,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllTaskEvents() {
     gcs_client_->Tasks().AsyncGetTaskEvents(
         TransformForMultiItemCallback<rpc::TaskEvents>(task_events, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return task_events;
 }
 
@@ -141,7 +141,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
         TransformForMultiItemCallback<rpc::AvailableResources>(available_resources,
                                                                promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return available_resources;
 }
 
@@ -153,7 +153,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllTotalResources() {
     gcs_client_->NodeResources().AsyncGetAllTotalResources(
         TransformForMultiItemCallback<rpc::TotalResources>(total_resources, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return total_resources;
 }
 
@@ -178,7 +178,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetAllResourceUsage() {
         TransformForItemCallback<rpc::ResourceUsageBatchData>(resource_batch_data,
                                                               promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return resource_batch_data;
 }
 
@@ -196,7 +196,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllActorInfo(
         actor_state_name,
         TransformForMultiItemCallback<rpc::ActorTableData>(actor_table_data, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return actor_table_data;
 }
 
@@ -209,7 +209,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetActorInfo(const ActorID &ac
         actor_id,
         TransformForOptionalItemCallback<rpc::ActorTableData>(actor_table_data, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return actor_table_data;
 }
 
@@ -224,7 +224,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetWorkerInfo(
         TransformForOptionalItemCallback<rpc::WorkerTableData>(worker_table_data,
                                                                promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return worker_table_data;
 }
 
@@ -236,7 +236,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllWorkerInfo() {
     gcs_client_->Workers().AsyncGetAll(
         TransformForMultiItemCallback<rpc::WorkerTableData>(worker_table_data, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return worker_table_data;
 }
 
@@ -251,7 +251,7 @@ bool GlobalStateAccessor::AddWorkerInfo(const std::string &serialized_string) {
       promise.set_value(true);
     });
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return true;
 }
 
@@ -347,7 +347,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllPlacementGroupInfo() {
         TransformForMultiItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return placement_group_table_data;
 }
 
@@ -362,7 +362,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupInfo(
         TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return placement_group_table_data;
 }
 
@@ -378,7 +378,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
         TransformForOptionalItemCallback<rpc::PlacementGroupTableData>(
             placement_group_table_data, promise));
   }
-  promise.get_future().get();
+  (void)promise.get_future().get();
   return placement_group_table_data;
 }
 

@@ -61,7 +61,7 @@ class GcsJobManagerTest : public ::testing::Test {
       promise.set_value(true);
       io_service_.run();
     });
-    promise.get_future().get();
+    (void)promise.get_future().get();
 
     gcs_publisher_ =
         std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
@@ -177,7 +177,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
         [&promise](Status, std::function<void()>, std::function<void()>) {
           promise.set_value(true);
         });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
 
   // Get all jobs.
@@ -191,7 +191,7 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise.set_value(true);
       });
-  all_job_info_promise.get_future().get();
+  (void)all_job_info_promise.get_future().get();
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), num_jobs);
 
@@ -229,7 +229,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
         [&promise](Status, std::function<void()>, std::function<void()>) {
           promise.set_value(true);
         });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
 
   // Get all jobs.
@@ -243,7 +243,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise.set_value(true);
       });
-  all_job_info_promise.get_future().get();
+  (void)all_job_info_promise.get_future().get();
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 100);
 
@@ -260,7 +260,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       [&promise](Status, std::function<void()>, std::function<void()>) {
         promise.set_value(true);
       });
-  promise.get_future().get();
+  (void)promise.get_future().get();
 
   // Manually put sample JobInfo for that job into the internal kv.
   // This is ordinarily done in Python by the Ray Job API.
@@ -283,7 +283,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 job_info_json,
                 /*overwrite=*/true,
                 {[&kv_promise](auto) { kv_promise.set_value(true); }, io_service_});
-  kv_promise.get_future().get();
+  (void)kv_promise.get_future().get();
 
   // Get all job info again.
   rpc::GetAllJobInfoRequest all_job_info_request2;
@@ -296,7 +296,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise2.set_value(true);
       });
-  all_job_info_promise2.get_future().get();
+  (void)all_job_info_promise2.get_future().get();
 
   ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 101);
 
@@ -334,7 +334,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
                 job_info_json,
                 /*overwrite=*/true,
                 {[&kv_promise2](auto) { kv_promise2.set_value(true); }, io_service_});
-  kv_promise2.get_future().get();
+  (void)kv_promise2.get_future().get();
 
   // Get all job info again.
   rpc::GetAllJobInfoRequest all_job_info_request3;
@@ -349,7 +349,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       });
 
   // Make sure the GCS didn't hang or crash.
-  all_job_info_promise3.get_future().get();
+  (void)all_job_info_promise3.get_future().get();
 
   // Add another job with the *same* submission ID. This can happen if the entrypoint
   // script calls ray.init() multiple times.
@@ -362,7 +362,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       [&promise4](Status, std::function<void()>, std::function<void()>) {
         promise4.set_value(true);
       });
-  promise4.get_future().get();
+  (void)promise4.get_future().get();
 
   // Get all job info again.
   rpc::GetAllJobInfoRequest all_job_info_request4;
@@ -375,7 +375,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
       [&all_job_info_promise4](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise4.set_value(true);
       });
-  all_job_info_promise4.get_future().get();
+  (void)all_job_info_promise4.get_future().get();
 
   ASSERT_EQ(all_job_info_reply4.job_info_list().size(), 101);
 }
@@ -397,7 +397,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
       [&promise1](Status, std::function<void()>, std::function<void()>) {
         promise1.set_value(true);
       });
-  promise1.get_future().get();
+  (void)promise1.get_future().get();
 
   auto add_job_request2 = GenAddJobRequest(job_id2, "namespace_2", "submission_2");
   gcs_job_manager_->HandleAddJob(
@@ -406,7 +406,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
       [&promise2](Status, std::function<void()>, std::function<void()>) {
         promise2.set_value(true);
       });
-  promise2.get_future().get();
+  (void)promise2.get_future().get();
 
   // Get all jobs with job_id filter.
   rpc::GetAllJobInfoRequest all_job_info_request;
@@ -420,7 +420,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise.set_value(true);
       });
-  all_job_info_promise.get_future().get();
+  (void)all_job_info_promise.get_future().get();
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
   ASSERT_EQ(all_job_info_reply.job_info_list(0).job_id(), job_id2.Binary());
 
@@ -436,7 +436,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
       [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise2.set_value(true);
       });
-  all_job_info_promise2.get_future().get();
+  (void)all_job_info_promise2.get_future().get();
   ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 1);
   ASSERT_EQ(all_job_info_reply2.job_info_list(0).job_id(), job_id1.Binary());
 
@@ -452,7 +452,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
       [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise3.set_value(true);
       });
-  all_job_info_promise3.get_future().get();
+  (void)all_job_info_promise3.get_future().get();
   ASSERT_EQ(all_job_info_reply3.job_info_list().size(), 0);
 }
 
@@ -473,7 +473,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
       [&promise1](Status, std::function<void()>, std::function<void()>) {
         promise1.set_value(true);
       });
-  promise1.get_future().get();
+  (void)promise1.get_future().get();
 
   auto add_job_request2 = GenAddJobRequest(job_id2, "namespace_2");
   gcs_job_manager_->HandleAddJob(
@@ -482,7 +482,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
       [&promise2](Status, std::function<void()>, std::function<void()>) {
         promise2.set_value(true);
       });
-  promise2.get_future().get();
+  (void)promise2.get_future().get();
 
   // Get all jobs with limit.
   rpc::GetAllJobInfoRequest all_job_info_request;
@@ -496,7 +496,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise.set_value(true);
       });
-  all_job_info_promise.get_future().get();
+  (void)all_job_info_promise.get_future().get();
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
 
@@ -512,7 +512,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
       [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise2.set_value(true);
       });
-  all_job_info_promise2.get_future().get();
+  (void)all_job_info_promise2.get_future().get();
 
   ASSERT_EQ(all_job_info_reply2.job_info_list().size(), 0);
 
@@ -528,7 +528,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
       [&all_job_info_promise3](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise3.set_value(true);
       });
-  all_job_info_promise3.get_future().get();
+  (void)all_job_info_promise3.get_future().get();
 
   ASSERT_EQ(all_job_info_reply3.job_info_list().size(), 2);
 
@@ -544,7 +544,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
       [&all_job_info_promise4](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise4.set_value(true);
       });
-  all_job_info_promise4.get_future().get();
+  (void)all_job_info_promise4.get_future().get();
 
   // Check that the reply has the invalid status.
   ASSERT_EQ(all_job_info_reply4.status().code(), (int)StatusCode::Invalid);
@@ -569,7 +569,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
       [&promise1](Status, std::function<void()>, std::function<void()>) {
         promise1.set_value(true);
       });
-  promise1.get_future().get();
+  (void)promise1.get_future().get();
 
   auto add_job_request2 = GenAddJobRequest(job_id2, "namespace_2");
   gcs_job_manager_->HandleAddJob(
@@ -578,7 +578,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
       [&promise2](Status, std::function<void()>, std::function<void()>) {
         promise2.set_value(true);
       });
-  promise2.get_future().get();
+  (void)promise2.get_future().get();
 
   auto job_config1 = gcs_job_manager_->GetJobConfig(job_id1);
   ASSERT_EQ("namespace_1", job_config1->ray_namespace());
@@ -612,7 +612,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
       [&promise](Status, std::function<void()>, std::function<void()>) {
         promise.set_value(true);
       });
-  promise.get_future().get();
+  (void)promise.get_future().get();
 
   rpc::MarkJobFinishedRequest job_finished_request;
   rpc::MarkJobFinishedReply job_finished_reply;
@@ -626,7 +626,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
       [&job_finished_promise](Status, std::function<void()>, std::function<void()>) {
         job_finished_promise.set_value(true);
       });
-  job_finished_promise.get_future().get();
+  (void)job_finished_promise.get_future().get();
 
   rpc::GetAllJobInfoRequest all_job_info_request;
   rpc::GetAllJobInfoReply all_job_info_reply;
@@ -638,7 +638,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise.set_value(true);
       });
-  all_job_info_promise.get_future().get();
+  (void)all_job_info_promise.get_future().get();
 
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
   rpc::JobTableData data = all_job_info_reply.job_info_list().Get(0);
@@ -678,7 +678,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
       [&add_promise](Status, std::function<void()>, std::function<void()>) {
         add_promise.set_value(true);
       });
-  add_promise.get_future().get();
+  (void)add_promise.get_future().get();
 
   // Call MarkJobFinished multiple times to simulate retry scenarios
   rpc::MarkJobFinishedRequest job_finished_request;
@@ -695,7 +695,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
           EXPECT_TRUE(status.ok());
           promise.set_value(true);
         });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
 
   // Second call - should handle gracefully (idempotent)
@@ -709,7 +709,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
           EXPECT_TRUE(status.ok());
           promise.set_value(true);
         });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
 
   // Third call - should still handle gracefully
@@ -723,7 +723,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
           EXPECT_TRUE(status.ok());
           promise.set_value(true);
         });
-    promise.get_future().get();
+    (void)promise.get_future().get();
   }
 
   // Verify job is still marked as finished correctly
@@ -736,7 +736,7 @@ TEST_F(GcsJobManagerTest, TestMarkJobFinishedIdempotency) {
       [&get_promise](Status, std::function<void()>, std::function<void()>) {
         get_promise.set_value(true);
       });
-  get_promise.get_future().get();
+  (void)get_promise.get_future().get();
 
   ASSERT_EQ(all_job_info_reply.job_info_list_size(), 1);
   auto job_table_data = all_job_info_reply.job_info_list(0);
@@ -765,7 +765,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
       [&promise1](Status, std::function<void()>, std::function<void()>) {
         promise1.set_value(true);
       });
-  promise1.get_future().get();
+  (void)promise1.get_future().get();
 
   auto add_job_request2 = GenAddJobRequest(job_id2, "namespace_2");
   gcs_job_manager_->HandleAddJob(
@@ -774,7 +774,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
       [&promise2](Status, std::function<void()>, std::function<void()>) {
         promise2.set_value(true);
       });
-  promise2.get_future().get();
+  (void)promise2.get_future().get();
 
   rpc::GetAllJobInfoRequest all_job_info_request;
   rpc::GetAllJobInfoReply all_job_info_reply;
@@ -787,7 +787,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
       [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
         all_job_info_promise.set_value(true);
       });
-  all_job_info_promise.get_future().get();
+  (void)all_job_info_promise.get_future().get();
   for (auto job_info : all_job_info_reply.job_info_list()) {
     ASSERT_TRUE(!job_info.is_dead());
   }
@@ -808,7 +808,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
         [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
           all_job_info_promise2.set_value(true);
         });
-    all_job_info_promise2.get_future().get();
+    (void)all_job_info_promise2.get_future().get();
 
     bool job_condition = true;
     // job1 from the current node should dead, while job2 is still alive

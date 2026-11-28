@@ -176,7 +176,7 @@ TEST_F(GetRequestQueueTest, TestObjectTimeout) {
   EXPECT_EQ(object_lifecycle_manager.get_object_call_count, 1);
   /// This trigger timeout
   io_context_.run_one();
-  promise.get_future().get();
+  (void)promise.get_future().get();
 
   AssertNoLeak(get_request_queue);
 }
@@ -201,7 +201,7 @@ TEST_F(GetRequestQueueTest, TestObjectNotSealed) {
   MarkObject(object1, ObjectState::PLASMA_SEALED);
   get_request_queue.MarkObjectSealed(object_id1);
   EXPECT_EQ(object_lifecycle_manager.get_object_call_count, 2);
-  promise.get_future().get();
+  (void)promise.get_future().get();
 
   AssertNoLeak(get_request_queue);
 }
@@ -232,14 +232,14 @@ TEST_F(GetRequestQueueTest, TestMultipleObjects) {
   object_lifecycle_manager.objects[object_id1] = &object1;
   object_lifecycle_manager.objects[object_id2] = &object2;
   get_request_queue.AddRequest(client, object_ids, 1000);
-  promise1.get_future().get();
+  (void)promise1.get_future().get();
   EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
   MarkObject(object2, ObjectState::PLASMA_SEALED);
   get_request_queue.MarkObjectSealed(object_id2);
   io_context_.run_one();
-  promise2.get_future().get();
-  promise3.get_future().get();
+  (void)promise2.get_future().get();
+  (void)promise3.get_future().get();
 
   AssertNoLeak(get_request_queue);
 }
@@ -277,14 +277,14 @@ TEST_F(GetRequestQueueTest, TestFallbackAllocatedFdArePassed) {
   object_lifecycle_manager.objects[object_id1] = &object1;
   object_lifecycle_manager.objects[object_id2] = &object2;
   get_request_queue.AddRequest(client, object_ids, 1000);
-  promise1.get_future().get();
+  (void)promise1.get_future().get();
   EXPECT_FALSE(IsGetRequestExist(get_request_queue, object_id1));
   EXPECT_TRUE(IsGetRequestExist(get_request_queue, object_id2));
   MarkObject(object2, ObjectState::PLASMA_SEALED);
   get_request_queue.MarkObjectSealed(object_id2);
   io_context_.run_one();
-  promise2.get_future().get();
-  promise3.get_future().get();
+  (void)promise2.get_future().get();
+  (void)promise3.get_future().get();
 
   AssertNoLeak(get_request_queue);
 }

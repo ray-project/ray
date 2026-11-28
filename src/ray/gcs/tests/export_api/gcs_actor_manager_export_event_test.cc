@@ -115,7 +115,7 @@ class FakeWorkerClient : public rpc::FakeCoreWorkerClient {
           promise.set_value(false);
         },
         "test");
-    promise.get_future().get();
+    (void)promise.get_future().get();
 
     callbacks_.pop_front();
     return true;
@@ -146,7 +146,7 @@ class GcsActorManagerTest : public ::testing::Test {
       promise.set_value(true);
       io_service_.run();
     }));
-    promise.get_future().get();
+    (void)promise.get_future().get();
     worker_client_ = std::make_shared<FakeWorkerClient>(io_service_);
     runtime_env_mgr_ =
         std::make_unique<ray::RuntimeEnvManager>([](auto, auto f) { f(true); });

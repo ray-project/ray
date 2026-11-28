@@ -424,7 +424,7 @@ class FakeWorkerPoolForTest : public WorkerPool {
     if (push_workers) {
       PushWorkers(timeout_worker_number, lease_spec.JobId());
     }
-    promise.get_future().get();
+    (void)promise.get_future().get();
     return popped_worker;
   }
 
@@ -462,7 +462,7 @@ class WorkerPoolTest : public ::testing::Test {
       promise.set_value(true);
       io_service_.run();
     }));
-    promise.get_future().get();
+    (void)promise.get_future().get();
     worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<FakeRuntimeEnvAgentClient>());
   }
 
@@ -1896,7 +1896,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
 
   // This will trigger the PopWorker callback in async.
   worker_pool_->PushWorker(worker);
-  promise.get_future().get();
+  (void)promise.get_future().get();
 
   ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
