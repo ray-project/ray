@@ -1,12 +1,15 @@
 import json
 import os
+import select
 import signal
 import socket
 import stat
 import sys
 import tempfile
 import time
+from contextlib import suppress
 from types import SimpleNamespace
+from typing import List, Tuple
 
 import pytest
 
@@ -26,12 +29,15 @@ pytestmark = pytest.mark.skipif(
 # Preloaded into the fork server; replaces the worker entrypoint so each forked child
 # reports its post-fork state and exits instead of connecting to a raylet.
 _PROBE_MODULE = """
-import gc, json, os, random, signal, sys
+import gc, json, os, random, signal, subprocess, sys, time
 import numpy as np
 import ray._private.utils as ray_utils
 import ray._private.workers.default_worker as default_worker
 
 np.random.rand()  # Initialize numpy's lazily-seeded global RNG before fork().
+_PRELOAD_SUBPROC_RC = subprocess.run(
+    [sys.executable, "-c", "import sys; sys.exit(3)"], check=False
+).returncode
 
 def _get_openblas_threads():
     for kind, lib, _ in ray_utils._cached_native_thread_pool_setters or ():
@@ -48,8 +54,18 @@ def _get_openblas_threads():
     return None
 
 def _report_and_exit():
+    grandchild_pid = None
+    if os.environ.get("SPAWN_GRANDCHILD") == "1":
+        gpid = os.fork()
+        if gpid == 0:
+            time.sleep(30)
+            os._exit(0)
+        grandchild_pid = gpid
+
     info = {
         "pid": os.getpid(), "pgid": os.getpgid(0), "argv": sys.argv[1:],
+        "grandchild_pid": grandchild_pid,
+        "preload_subproc_rc": _PRELOAD_SUBPROC_RC,
         "freeze_count": gc.get_freeze_count(),
         "rand": random.random(), "np_rand": float(np.random.rand()),
         "omp": os.environ.get("OMP_NUM_THREADS"),
@@ -65,23 +81,54 @@ def _report_and_exit():
         and signal.SIGINT not in signal.pthread_sigmask(signal.SIG_BLOCK, []),
         "sig_dfl": signal.getsignal(signal.SIGCHLD) == signal.SIG_DFL
         and signal.getsignal(signal.SIGTERM) == signal.SIG_DFL,
+        "stdin_eof": os.read(0, 1) == b"",
     }
     out = os.environ["PROBE_OUT"]
     with open(out + ".tmp", "w") as f:
         json.dump(info, f)
     os.replace(out + ".tmp", out)
+    hold_path = os.environ.get("HOLD_UNTIL_FILE")
+    if hold_path:
+        deadline = time.monotonic() + 10.0
+        while not os.path.exists(hold_path) and time.monotonic() < deadline:
+            time.sleep(0.01)
     os._exit(0)
 
 default_worker.initialize_default_worker = _report_and_exit
 """
 
 
-def _request(sock_path: str, payload: bytes) -> bytes:
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.settimeout(5.0)
-        s.connect(sock_path)
-        s.sendall(payload)
-        return s.makefile("rb").readline()
+def _request(
+    sock_path: str, payload: bytes, half_close: bool = False
+) -> Tuple[bytes, List[int]]:
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+        sock.settimeout(5.0)
+        sock.connect(sock_path)
+        sock.sendall(payload)
+        if half_close:
+            sock.shutdown(socket.SHUT_WR)
+        msg, fds, _flags, _addr = socket.recv_fds(sock, 4096, 4)
+        while b"\n" not in msg:
+            chunk, more_fds, _flags, _addr = socket.recv_fds(sock, 4096, 4)
+            fds.extend(more_fds)
+            if not chunk:
+                break
+            msg += chunk
+        return msg, fds
+
+
+def _wait_pipe_eof(fd: int, timeout_s: float = 5.0) -> bool:
+    poller = select.poll()
+    poller.register(fd, select.POLLIN | select.POLLHUP)
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        events = poller.poll(50)
+        for _ev_fd, mask in events:
+            if mask & (select.POLLHUP | select.POLLERR | select.POLLNVAL):
+                return True
+            if mask & select.POLLIN and not os.read(fd, 64):
+                return True
+    return False
 
 
 def test_preload_modules_and_prepare_child_environment(monkeypatch, tmp_path):
@@ -258,29 +305,88 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
         assert (tmp_path / "cgroup.procs").read_text() == str(server.process.pid)
         assert stat.S_IMODE(os.stat(sock_path).st_mode) == 0o600
         assert len(os.listdir(f"/proc/{server.process.pid}/task")) == 1
+        baseline_fd_count = len(os.listdir(f"/proc/{server.process.pid}/fd"))
 
-        # Malformed and expired requests must not fork (error reply, no pid).
-        assert "error" in json.loads(_request(sock_path, b"not-json\n"))
-        assert "error" in json.loads(_request(sock_path, b'{"args": null}\n'))
-        expired = json.dumps({"env": {"PROBE_OUT": "x"}, "deadline_ms": 1})
-        reply = _request(sock_path, expired.encode() + b"\n")
-        assert json.loads(reply) == {"error": "request expired"}
+        # A client that disconnects before accept is dropped cleanly without crashing.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
+            sock.connect(sock_path)
 
+        # Malformed payloads fail in the child before replying (EOF on request socket).
+        for bad_payload in (b"not-json\n", b'{"args": null}\n'):
+            raw, fds = _request(sock_path, bad_payload)
+            try:
+                assert raw == b""
+                assert fds == []
+            finally:
+                for fd in fds:
+                    os.close(fd)
+
+        # Oversized (>4 MiB) payload closes the child socket (EOF) without harming server.
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as big_sock:
+            big_sock.settimeout(5.0)
+            big_sock.connect(sock_path)
+            with suppress(BrokenPipeError, ConnectionResetError):
+                big_sock.sendall(b"x" * (4 * 1024 * 1024 + 64) + b"\n")
+            raw, fds, _flags, _addr = socket.recv_fds(big_sock, 4096, 4)
+            try:
+                assert raw == b""
+                assert fds == []
+            finally:
+                for fd in fds:
+                    os.close(fd)
+
+        # An idle client must not block subsequent fork requests (fork-before-read).
         children = []
         user_py_dir = str(tmp_path / "user_py")
-        for idx in range(2):
-            out = tmp_path / f"child_{idx}.json"
-            req = {
-                "args": [f"--idx={idx}"],
-                "env": {"PROBE_OUT": str(out)},
-                "runtime_env_vars": {"PYTHONPATH": user_py_dir} if idx == 1 else {},
-            }
-            resp = json.loads(_request(sock_path, json.dumps(req).encode() + b"\n"))
-            wait_for_condition(out.exists, timeout=10)
-            info = json.loads(out.read_text())
-            assert info["pid"] == info["pgid"] == resp["pid"]
-            assert info["argv"] == [f"--idx={idx}"]
-            children.append(info)
+        grandchild_pids = []
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as idle_sock:
+                idle_sock.settimeout(5.0)
+                idle_sock.connect(sock_path)
+                for idx in range(2):
+                    out = tmp_path / f"child_{idx}.json"
+                    hold = tmp_path / f"release_{idx}"
+                    env = {"PROBE_OUT": str(out), "HOLD_UNTIL_FILE": str(hold)}
+                    if idx == 0:
+                        # Grandchild forks must close the lifetime pipe write end via at_fork.
+                        env["SPAWN_GRANDCHILD"] = "1"
+                    req = {
+                        "args": [f"--idx={idx}"],
+                        "env": env,
+                        "runtime_env_vars": (
+                            {"PYTHONPATH": user_py_dir} if idx == 1 else {}
+                        ),
+                    }
+                    raw, fds = _request(
+                        sock_path,
+                        json.dumps(req).encode() + b"\n",
+                        half_close=(idx == 1),
+                    )
+                    assert len(fds) == 1
+                    life_r = fds[0]
+                    try:
+                        resp = json.loads(raw)
+                        wait_for_condition(out.exists, timeout=10)
+                        info = json.loads(out.read_text())
+                        if info["grandchild_pid"] is not None:
+                            grandchild_pids.append(info["grandchild_pid"])
+                        assert info["pid"] == info["pgid"] == resp["pid"]
+                        assert info["argv"] == [f"--idx={idx}"]
+                        # While the child is alive, its lifetime pipe must not report EOF.
+                        poller = select.poll()
+                        poller.register(life_r, select.POLLHUP)
+                        assert poller.poll(0) == []
+                        # Release child and verify lifetime pipe hits EOF even if a
+                        # grandchild is still sleeping.
+                        hold.write_text("go")
+                        assert _wait_pipe_eof(life_r, timeout_s=5.0)
+                        children.append(info)
+                    finally:
+                        os.close(life_r)
+        finally:
+            for grandchild_pid in grandchild_pids:
+                with suppress(OSError):
+                    os.kill(grandchild_pid, signal.SIGKILL)
 
         assert children[0]["rand"] != children[1]["rand"]
         assert children[0]["np_rand"] != children[1]["np_rand"]
@@ -291,23 +397,105 @@ def test_fork_server_end_to_end(monkeypatch, tmp_path, request):
             user_py_dir,
         ]
         for info in children:
+            assert info["preload_subproc_rc"] == 3
             assert info["freeze_count"] > 0
             assert info["native_setter_kinds"]
             if info["openblas_threads"] is not None:
                 assert info["openblas_threads"] == 6
             assert (info["omp"], info["je_arrow"], info["job_id"]) == ("6", None, None)
-            assert info["sigint_ok"] and info["sig_dfl"]
-            # Verify forked children are auto-reaped while the server is still alive
-            # (no zombie /proc/<pid> entries left behind).
+            assert info["sigint_ok"] and info["sig_dfl"] and info["stdin_eof"]
+            # Forked children must be auto-reaped by the kernel (no zombies).
             wait_for_condition(
                 lambda pid=info["pid"]: not os.path.exists(f"/proc/{pid}"),
                 timeout=5,
             )
+
+        # Parent server FD count must remain flat (no leaked life_r or conn FDs).
+        wait_for_condition(
+            lambda: len(os.listdir(f"/proc/{server.process.pid}/fd"))
+            == baseline_fd_count,
+            timeout=5,
+        )
+
+        # Closing stdin triggers --monitor-stdin lifeline EOF, clean exit, and unlink.
+        assert server.process.stdin is not None
+        server.process.stdin.close()
+        assert server.process.wait(timeout=5.0) == 0
+        assert not os.path.exists(sock_path)
     finally:
         server.stop()
 
     assert server.process.poll() is not None
     assert not os.path.exists(sock_path)
+
+    # SIGTERM must exit cleanly (code 0) via wakeup pipe and unlink its own socket.
+    sigterm_sock = os.path.join(sock_dir.name, "fs_sigterm")
+    sigterm_server = ForkServerProcess(sigterm_sock, [])
+    try:
+        os.kill(sigterm_server.process.pid, signal.SIGTERM)
+        assert sigterm_server.process.wait(timeout=5.0) == 0
+        assert not os.path.exists(sigterm_sock)
+    finally:
+        sigterm_server.stop()
+
+
+def test_fork_server_stdio_plumbing_and_startup_warnings(tmp_path):
+    """Preload warnings go to setup_log_path; forked workers use worker_stdout/err FDs."""
+    probe_code = """
+import os, sys
+import ray._private.workers.default_worker as default_worker
+
+def _emit_and_exit():
+    print(f"OUT:{os.path.basename(sys.argv[0])}", flush=True)
+    print("ERR:worker_stderr", file=sys.stderr, flush=True)
+    os._exit(0)
+
+default_worker.initialize_default_worker = _emit_and_exit
+"""
+    (tmp_path / "stdio_probe.py").write_text(probe_code)
+    setup_log = tmp_path / "logs" / "fork_server_test.log"
+    out_file = tmp_path / "container.out"
+    err_file = tmp_path / "container.err"
+
+    out_fd = os.open(str(out_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    err_fd = os.open(str(err_file), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    ctx = RuntimeEnvContext(
+        env_vars={"PYTHONPATH": f"{tmp_path}{os.pathsep}${{PYTHONPATH}}"}
+    )
+    server = None
+    with tempfile.TemporaryDirectory(dir="/tmp", prefix="rfs_") as sock_dir:
+        sock_path = os.path.join(sock_dir, "fs_stdio")
+        try:
+            server = ForkServerProcess(
+                sock_path,
+                preload_modules=["stdio_probe", "nonexistent_preload_xyz_42"],
+                context=ctx,
+                logs_dir=str(tmp_path / "logs"),
+                setup_log_path=str(setup_log),
+                worker_stdout_fd=out_fd,
+                worker_stderr_fd=err_fd,
+            )
+            warnings = server.read_startup_warnings()
+            assert any("nonexistent_preload_xyz_42" in w for w in warnings)
+            assert server.read_startup_warnings() == []
+
+            msg, fds = _request(
+                sock_path, b'{"args":[],"env":{},"runtime_env_vars":{}}\n'
+            )
+            assert json.loads(msg)["pid"] > 0
+            assert len(fds) == 1
+            try:
+                assert _wait_pipe_eof(fds[0], timeout_s=5.0)
+            finally:
+                os.close(fds[0])
+
+            assert "OUT:default_worker.py" in out_file.read_text()
+            assert "ERR:worker_stderr" in err_file.read_text()
+        finally:
+            if server is not None:
+                server.stop()
+            os.close(out_fd)
+            os.close(err_fd)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ import traceback
 from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
@@ -16,6 +16,7 @@ from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
 from ray._private.ray_logging import setup_component_logger
+from ray._private.runtime_env.agent.fork_server_manager import ForkServerManager
 from ray._private.runtime_env.conda import CondaPlugin
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.default_impl import get_image_uri_plugin_cls
@@ -337,6 +338,11 @@ class RuntimeEnvAgent:
         temp_dir: str,
         address: str,
         runtime_env_agent_port: int,
+        workers_cgroup_path: str = "",
+        worker_stdout_fd: Optional[int] = None,
+        worker_stderr_fd: Optional[int] = None,
+        session_dir: Optional[str] = None,
+        node_id: Optional[str] = None,
     ):
         """Initialize the runtime env agent.
 
@@ -349,6 +355,17 @@ class RuntimeEnvAgent:
             address: IP address that the agent is listening on, used for logging.
             runtime_env_agent_port: Port that the agent is listening on, used for
                 logging.
+            workers_cgroup_path: Path to the node's ``user/workers`` cgroup v2 leaf
+                when resource isolation is enabled, or empty string otherwise.
+            worker_stdout_fd: Optional pre-PipeLogger stdout file descriptor preserved
+                when ``RAY_LOG_TO_STDERR`` is enabled for forked workers.
+            worker_stderr_fd: Optional pre-PipeLogger stderr file descriptor preserved
+                when ``RAY_LOG_TO_STDERR`` is enabled for forked workers.
+            session_dir: Optional Ray session directory used to place fork server
+                sockets under ``<session_dir>/sockets``; defaults to the parent of
+                ``runtime_env_dir`` when omitted.
+            node_id: Optional hex node ID used to scope fork server socket paths per
+                node; falls back to ``RAY_NODE_ID`` when omitted.
         """
         super().__init__()
 
@@ -416,6 +433,7 @@ class RuntimeEnvAgent:
             self._image_uri_plugin,
         ]
         self._plugin_manager = RuntimeEnvPluginManager()
+        custom_plugin_names = frozenset(self._plugin_manager.plugins.keys())
         for plugin in self._base_plugins:
             self._plugin_manager.add_plugin(plugin)
 
@@ -436,6 +454,27 @@ class RuntimeEnvAgent:
             self._logger.warning(f"Failed to get node IP address, using fallback: {e}")
             self._node_prefix = "[Node unknown] "
 
+        sockets_parent = (
+            os.path.abspath(session_dir)
+            if session_dir
+            else os.path.dirname(os.path.abspath(self._runtime_env_dir))
+        )
+        self._fork_server_manager = ForkServerManager(
+            sockets_dir=os.path.join(sockets_parent, "sockets"),
+            logs_dir=self._logging_params.get("log_dir"),
+            logger=self._logger,
+            uris_parser=self.uris_parser,
+            pypath_plugins=(self._working_dir_plugin, self._py_modules_plugin),
+            custom_plugin_names=custom_plugin_names,
+            env_cache_contains=lambda env: env in self._env_cache,
+            workers_cgroup_path=workers_cgroup_path,
+            worker_stdout_fd=worker_stdout_fd,
+            worker_stderr_fd=worker_stderr_fd,
+            node_id=node_id,
+        )
+        for plugin_ctx in self._plugin_manager.plugins.values():
+            self._fork_server_manager.wrap_uri_cache(plugin_ctx.uri_cache)
+
     def uris_parser(self, runtime_env: RuntimeEnv):
         result = list()
         for name, plugin_setup_context in self._plugin_manager.plugins.items():
@@ -452,6 +491,7 @@ class RuntimeEnvAgent:
     def unused_runtime_env_processor(self, unused_runtime_env: str) -> None:
         def delete_runtime_env():
             del self._env_cache[unused_runtime_env]
+            self._fork_server_manager.on_env_cache_evicted(unused_runtime_env)
             self._logger.info(
                 "Runtime env %s removed from env-level cache.",
                 redact_serialized_runtime_env(unused_runtime_env),
@@ -477,11 +517,17 @@ class RuntimeEnvAgent:
             f"Got request from {request.source_process} to increase "
             f"reference for runtime env: {redacted_serialized_env}."
         )
+        is_raylet_worker_request = request.source_process == "raylet"
 
         async def _setup_runtime_env(
+            serialized_env: str,
             runtime_env: RuntimeEnv,
             runtime_env_config: RuntimeEnvConfig,
-        ):
+            setup_timeout_seconds: Optional[int],
+        ) -> Tuple[RuntimeEnvContext, Optional[str]]:
+            setup_deadline = ForkServerManager.compute_setup_deadline(
+                time.monotonic(), setup_timeout_seconds
+            )
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger scoped to this setup. Its file handles are
             # released when the setup exits (on success, failure, timeout, and
@@ -489,7 +535,7 @@ class RuntimeEnvAgent:
             with self._setup_logger_factory.setup_logger(
                 request.job_id.decode(), log_files
             ) as per_job_logger:
-                context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
+                context = RuntimeEnvContext(env_vars=dict(runtime_env.env_vars()))
 
                 # Warn about unrecognized fields in the runtime env.
                 for name, _ in runtime_env.plugins():
@@ -532,27 +578,26 @@ class RuntimeEnvAgent:
                             await create_for_plugin_if_needed(
                                 runtime_env, plugin, uri_cache, context, per_job_logger
                             )
-                return context
+
+                socket_path = None
+                if is_raylet_worker_request and self._fork_server_manager.enabled:
+                    socket_path = await self._fork_server_manager.resolve_socket(
+                        serialized_env,
+                        runtime_env,
+                        context,
+                        per_job_logger,
+                        setup_deadline=setup_deadline,
+                    )
+
+                return context, socket_path
 
         async def _create_runtime_env_with_retry(
+            serialized_env: str,
             runtime_env: RuntimeEnv,
-            setup_timeout_seconds: int,
+            setup_timeout_seconds: Optional[int],
             runtime_env_config: RuntimeEnvConfig,
-        ) -> Tuple[bool, str, str]:
-            """Create runtime env with retry times. This function won't raise exceptions.
-
-            Args:
-                runtime_env: The instance of RuntimeEnv class.
-                setup_timeout_seconds: The timeout of runtime environment creation for
-                    each attempt.
-                runtime_env_config: The configuration for the runtime environment.
-
-            Returns:
-                Tuple[bool, str, str]: A tuple containing:
-                    - result (bool): Whether the creation was successful
-                    - runtime_env_context (str): The serialized context if successful, None otherwise
-                    - error_message (str): Error message if failed, None otherwise
-            """
+        ) -> Tuple[bool, Optional[str], Optional[str], Optional[str]]:
+            """Create runtime env with retry times. This function won't raise exceptions."""
             self._logger.info(
                 f"Creating runtime env: {redacted_serialized_env} "
                 f"with timeout "
@@ -560,7 +605,8 @@ class RuntimeEnvAgent:
             )
             num_retries = runtime_env_consts.RUNTIME_ENV_RETRY_TIMES
             error_message = None
-            serialized_context = None
+            base_serialized_context = None
+            reply_serialized_context = None
             for i in range(num_retries):
                 # Only sleep when retrying.
                 if i != 0:
@@ -570,12 +616,21 @@ class RuntimeEnvAgent:
 
                 try:
                     runtime_env_setup_task = _setup_runtime_env(
-                        runtime_env, runtime_env_config
+                        serialized_env,
+                        runtime_env,
+                        runtime_env_config,
+                        setup_timeout_seconds,
                     )
-                    runtime_env_context = await asyncio.wait_for(
+                    runtime_env_context, socket_path = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
                     )
-                    serialized_context = runtime_env_context.serialize()
+                    runtime_env_context.fork_server_socket_path = None
+                    base_serialized_context = runtime_env_context.serialize()
+                    if socket_path is not None:
+                        runtime_env_context.fork_server_socket_path = socket_path
+                        reply_serialized_context = runtime_env_context.serialize()
+                    else:
+                        reply_serialized_context = base_serialized_context
                     error_message = None
                     break
                 except Exception as e:
@@ -604,14 +659,14 @@ class RuntimeEnvAgent:
                     "runtime_env creation failed %d times, giving up.",
                     num_retries,
                 )
-                return False, None, error_message
+                return False, None, None, error_message
             else:
                 self._logger.info(
                     "Successfully created runtime env: %s, context: %s",
                     redacted_serialized_env,
-                    redact_serialized_runtime_env(serialized_context),
+                    redact_serialized_runtime_env(reply_serialized_context),
                 )
-                return True, serialized_context, None
+                return True, base_serialized_context, reply_serialized_context, None
 
         try:
             serialized_env = request.serialized_runtime_env
@@ -634,88 +689,153 @@ class RuntimeEnvAgent:
         self._reference_table.increase_reference(
             runtime_env, serialized_env, request.source_process
         )
+        raylet_ref_held = is_raylet_worker_request
+        if is_raylet_worker_request:
+            self._fork_server_manager.on_raylet_ref_added(serialized_env)
 
         if serialized_env not in self._env_locks:
             # async lock to prevent the same env being concurrently installed
             self._env_locks[serialized_env] = asyncio.Lock()
 
-        async with self._env_locks[serialized_env]:
-            if serialized_env in self._env_cache:
-                serialized_context = self._env_cache[serialized_env]
-                result = self._env_cache[serialized_env]
-                if result.success:
-                    context = result.result
-                    self._logger.info(
-                        "Runtime env already created "
-                        f"successfully. Env: {redacted_serialized_env}, "
-                        f"context: {redact_serialized_runtime_env(context)}"
-                    )
-                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK,
-                        serialized_runtime_env_context=context,
-                    )
-                else:
-                    error_message = result.result
-                    self._logger.info(
-                        "Runtime env already failed. "
-                        f"Env: {redacted_serialized_env}, "
-                        f"err: {error_message}"
-                    )
+        try:
+            async with self._env_locks[serialized_env]:
+                if serialized_env in self._env_cache:
+                    result = self._env_cache[serialized_env]
+                    if result.success:
+                        context_str = result.result
+                        if (
+                            is_raylet_worker_request
+                            and self._fork_server_manager.enabled
+                        ):
+                            cached_ctx = RuntimeEnvContext.deserialize(context_str)
+                            cached_ctx.fork_server_socket_path = (
+                                self._fork_server_manager.get_ready_socket_fast(
+                                    serialized_env
+                                )
+                            )
+                            if (
+                                cached_ctx.fork_server_socket_path is None
+                                and not self._fork_server_manager.is_bypassed(
+                                    serialized_env
+                                )
+                            ):
+                                runtime_env_config = RuntimeEnvConfig.from_proto(
+                                    request.runtime_env_config
+                                )
+                                cache_timeout_s = (
+                                    None
+                                    if runtime_env_config["setup_timeout_seconds"] == -1
+                                    else runtime_env_config["setup_timeout_seconds"]
+                                )
+                                cache_deadline = (
+                                    ForkServerManager.compute_setup_deadline(
+                                        time.monotonic(), cache_timeout_s
+                                    )
+                                )
+                                log_files = runtime_env_config.get("log_files", [])
+                                with self._setup_logger_factory.setup_logger(
+                                    request.job_id.decode(), log_files
+                                ) as per_job_logger:
+                                    cached_ctx.fork_server_socket_path = (
+                                        await self._fork_server_manager.resolve_socket(
+                                            serialized_env,
+                                            runtime_env,
+                                            cached_ctx,
+                                            per_job_logger,
+                                            setup_deadline=cache_deadline,
+                                        )
+                                    )
+                            if cached_ctx.fork_server_socket_path is not None:
+                                context_str = cached_ctx.serialize()
+                        self._logger.info(
+                            "Runtime env already created "
+                            f"successfully. Env: {redacted_serialized_env}, "
+                            f"context: {redact_serialized_runtime_env(context_str)}"
+                        )
+                        raylet_ref_held = False
+                        return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                            status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK,
+                            serialized_runtime_env_context=context_str,
+                        )
+                    else:
+                        error_message = result.result
+                        self._logger.info(
+                            "Runtime env already failed. "
+                            f"Env: {redacted_serialized_env}, "
+                            f"err: {error_message}"
+                        )
+                        # Recover the reference.
+                        self._reference_table.decrease_reference(
+                            runtime_env, serialized_env, request.source_process
+                        )
+                        if raylet_ref_held:
+                            self._fork_server_manager.on_raylet_ref_removed(
+                                serialized_env
+                            )
+                            raylet_ref_held = False
+                        return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                            status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                            error_message=f"{self._node_prefix}{error_message}",
+                        )
+
+                if SLEEP_FOR_TESTING_S:
+                    self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
+                    time.sleep(int(SLEEP_FOR_TESTING_S))
+
+                runtime_env_config = RuntimeEnvConfig.from_proto(
+                    request.runtime_env_config
+                )
+
+                # accroding to the document of `asyncio.wait_for`,
+                # None means disable timeout logic
+                setup_timeout_seconds = (
+                    None
+                    if runtime_env_config["setup_timeout_seconds"] == -1
+                    else runtime_env_config["setup_timeout_seconds"]
+                )
+
+                start = time.perf_counter()
+                (
+                    successful,
+                    base_serialized_context,
+                    reply_serialized_context,
+                    error_message,
+                ) = await _create_runtime_env_with_retry(
+                    serialized_env,
+                    runtime_env,
+                    setup_timeout_seconds,
+                    runtime_env_config,
+                )
+                creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
+                if not successful:
                     # Recover the reference.
                     self._reference_table.decrease_reference(
                         runtime_env, serialized_env, request.source_process
                     )
-                    return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                        status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                        error_message=f"{self._node_prefix}{error_message}",
-                    )
-
-            if SLEEP_FOR_TESTING_S:
-                self._logger.info(f"Sleeping for {SLEEP_FOR_TESTING_S}s.")
-                time.sleep(int(SLEEP_FOR_TESTING_S))
-
-            runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
-
-            # accroding to the document of `asyncio.wait_for`,
-            # None means disable timeout logic
-            setup_timeout_seconds = (
-                None
-                if runtime_env_config["setup_timeout_seconds"] == -1
-                else runtime_env_config["setup_timeout_seconds"]
-            )
-
-            start = time.perf_counter()
-            (
-                successful,
-                serialized_context,
-                error_message,
-            ) = await _create_runtime_env_with_retry(
-                runtime_env,
-                setup_timeout_seconds,
-                runtime_env_config,
-            )
-            creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
-            if not successful:
-                # Recover the reference.
-                self._reference_table.decrease_reference(
-                    runtime_env, serialized_env, request.source_process
+                    if raylet_ref_held:
+                        self._fork_server_manager.on_raylet_ref_removed(serialized_env)
+                        raylet_ref_held = False
+                # Add the base (source-agnostic) context to env cache.
+                self._env_cache[serialized_env] = CreatedEnvResult(
+                    successful,
+                    base_serialized_context if successful else error_message,
+                    creation_time_ms,
                 )
-            # Add the result to env cache.
-            self._env_cache[serialized_env] = CreatedEnvResult(
-                successful,
-                serialized_context if successful else error_message,
-                creation_time_ms,
-            )
-            # Reply the RPC
-            return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
-                status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
-                if successful
-                else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
-                serialized_runtime_env_context=serialized_context,
-                error_message=f"{self._node_prefix}{error_message}"
-                if not successful
-                else "",
-            )
+                raylet_ref_held = False
+                # Reply the RPC
+                return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+                    status=runtime_env_agent_pb2.AGENT_RPC_STATUS_OK
+                    if successful
+                    else runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
+                    serialized_runtime_env_context=reply_serialized_context,
+                    error_message=f"{self._node_prefix}{error_message}"
+                    if not successful
+                    else "",
+                )
+        except BaseException:
+            if raylet_ref_held:
+                self._fork_server_manager.on_raylet_ref_removed(serialized_env)
+            raise
 
     async def DeleteRuntimeEnvIfPossible(self, request):
         # Log only this copy: the serialized env carries `env_vars` values.
@@ -751,6 +871,11 @@ class RuntimeEnvAgent:
             return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
                 status=runtime_env_agent_pb2.AGENT_RPC_STATUS_FAILED,
                 error_message=f"{self._node_prefix}Failed to decrement reference for runtime env for {str(e)}",
+            )
+
+        if request.source_process == "raylet":
+            self._fork_server_manager.on_raylet_ref_removed(
+                request.serialized_runtime_env
             )
 
         return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(

@@ -1,8 +1,10 @@
 import argparse
+import atexit
 import logging
 import os
 import socket
 import sys
+from contextlib import suppress
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -141,6 +143,13 @@ if __name__ == "__main__":
         default="",
         help="The filepath to dump runtime env agent stderr.",
     )
+    parser.add_argument(
+        "--workers-cgroup-path",
+        required=False,
+        type=str,
+        default="",
+        help="The cgroup v2 path where worker fork servers should be placed.",
+    )
 
     args = parser.parse_args()
 
@@ -159,12 +168,63 @@ if __name__ == "__main__":
         backup_count=logging_rotation_backup_count,
     )
 
+    # Preserve duplicate descriptors to container stdout/stderr before C++ PipeLogger
+    # redirects fd 1/2 so worker fork servers can route worker stdio directly when
+    # log redirection to files is disabled (e.g. RAY_LOG_TO_STDERR=1) without pinning
+    # PipeLogger pipes.
+    worker_stdout_fd = None
+    worker_stderr_fd = None
+    if (
+        sys.platform.startswith("linux")
+        and ray_constants.env_bool("RAY_enable_worker_fork_server", False)
+        and not args.stdout_filepath
+        and not args.stderr_filepath
+    ):
+        try:
+            worker_stdout_fd = os.dup(1)
+            os.set_inheritable(worker_stdout_fd, False)
+            worker_stderr_fd = os.dup(2)
+            os.set_inheritable(worker_stderr_fd, False)
+        except OSError:
+            for fd in (worker_stdout_fd, worker_stderr_fd):
+                if fd is not None:
+                    with suppress(OSError):
+                        os.close(fd)
+            worker_stdout_fd = None
+            worker_stderr_fd = None
+        else:
+
+            def _close_saved_worker_stdio() -> None:
+                for fd in (worker_stdout_fd, worker_stderr_fd):
+                    if fd is not None:
+                        with suppress(OSError):
+                            os.close(fd)
+
+            atexit.register(_close_saved_worker_stdio)
+
     # Setup stdout/stderr redirect files if redirection enabled.
     logging_utils.redirect_stdout_stderr_if_needed(
         args.stdout_filepath,
         args.stderr_filepath,
         logging_rotation_bytes,
         logging_rotation_backup_count,
+    )
+
+    # Bind the HTTP server socket and persist its port before starting fork servers
+    # so slow preloads never trip Raylet's 15s WaitForPersistedPort deadline.
+    port = args.runtime_env_agent_port or 0
+    infos = socket.getaddrinfo(args.node_ip_address, port, type=socket.SOCK_STREAM)
+    family, socktype, proto, _, sockaddr = infos[0]
+    sock = socket.socket(family, socktype, proto)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(sockaddr)
+    sock.listen(128)
+    bound_port = sock.getsockname()[1]
+    persist_port(
+        args.session_dir,
+        args.node_id,
+        RUNTIME_ENV_AGENT_PORT_NAME,
+        bound_port,
     )
 
     gcs_client = GcsClient(address=args.gcs_address, cluster_id=args.cluster_id_hex)
@@ -174,7 +234,12 @@ if __name__ == "__main__":
         gcs_client=gcs_client,
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
-        runtime_env_agent_port=args.runtime_env_agent_port,
+        runtime_env_agent_port=bound_port,
+        workers_cgroup_path=args.workers_cgroup_path,
+        worker_stdout_fd=worker_stdout_fd,
+        worker_stderr_fd=worker_stderr_fd,
+        session_dir=args.session_dir,
+        node_id=args.node_id,
     )
 
     ray._raylet.setproctitle(ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT)
@@ -231,7 +296,7 @@ if __name__ == "__main__":
             agent._logger.info(
                 "Raylet is dead! Exiting Runtime Env Agent. "
                 f"addr: {args.node_ip_address}, "
-                f"port: {args.runtime_env_agent_port}\n"
+                f"port: {bound_port}\n"
                 f"{msg}"
             )
 
@@ -239,21 +304,6 @@ if __name__ == "__main__":
         check_raylet_task = create_check_raylet_task(
             args.log_dir, gcs_client, parent_dead_callback, loop
         )
-
-    port = args.runtime_env_agent_port or 0
-    infos = socket.getaddrinfo(args.node_ip_address, port, type=socket.SOCK_STREAM)
-    family, socktype, proto, _, sockaddr = infos[0]
-    sock = socket.socket(family, socktype, proto)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(sockaddr)
-
-    bound_port = sock.getsockname()[1]
-    persist_port(
-        args.session_dir,
-        args.node_id,
-        RUNTIME_ENV_AGENT_PORT_NAME,
-        bound_port,
-    )
 
     try:
         web.run_app(app, sock=sock, loop=loop)

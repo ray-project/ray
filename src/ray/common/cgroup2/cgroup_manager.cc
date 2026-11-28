@@ -396,6 +396,8 @@ std::string CgroupManager::GetSystemCgroupPath() const { return system_cgroup_; 
 
 std::string CgroupManager::GetUserCgroupPath() const { return user_cgroup_; }
 
+std::string CgroupManager::GetWorkersCgroupPath() const { return workers_cgroup_; }
+
 StatusOr<std::string> CgroupManager::GetSystemCgroupConstraintValue(
     const std::string &constraint_name) const {
   return cgroup_driver_->GetConstraintValue(system_cgroup_, constraint_name);

@@ -57,6 +57,7 @@ class FakeCgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &) override { return Status::OK(); }
 
   std::string GetUserCgroupPath() const override { return temp_dir_->GetPath(); }
+  std::string GetWorkersCgroupPath() const override { return temp_dir_->GetPath(); }
   std::string GetSystemCgroupPath() const override { return temp_dir_->GetPath(); }
 
   StatusOr<std::string> GetSystemCgroupConstraintValue(

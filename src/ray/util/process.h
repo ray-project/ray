@@ -82,6 +82,14 @@ class Process : public ProcessInterface {
    */
   explicit Process(pid_t pid);
 
+#ifndef _WIN32
+  /**
+   * @brief Tracks a process via a lifetime pipe FD (owned, FD_CLOEXEC).
+   * Peer close on exit triggers POLLHUP/EOF without PID-reuse races.
+   */
+  Process(pid_t pid, int lifetime_pipe_fd);
+#endif
+
   Process(Process &&other);
   Process &operator=(Process &&other);
   Process(const Process &other) = delete;
@@ -137,6 +145,13 @@ class Process : public ProcessInterface {
   bool IsAlive() const override;
 
   int Wait() const override;
+
+#ifndef _WIN32
+  /**
+   * @brief Duplicates the owned lifetime pipe FD with FD_CLOEXEC, or returns -1 if none.
+   */
+  int DupLifetimeFd() const;
+#endif
 
  private:
   pid_t pid_;
