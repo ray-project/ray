@@ -1,7 +1,7 @@
 # Newest pyarrow that resolves with daft (which caps pyarrow < 26). On
-# Python >= 3.11 the image build then force-installs the real latest pyarrow
+# Python >= 3.12 the image build then force-installs the real latest pyarrow
 # on top (see the pyarrow-latest branch in ci/docker/data.build.Dockerfile);
-# pyarrow 26 dropped Python 3.10, so the 3.10 image stays on this pin.
+# the 3.11 image stays on this pin to keep pyarrow 25 covered.
 pyarrow==25.0.1
 hudi>=0.5.0
 pylance
