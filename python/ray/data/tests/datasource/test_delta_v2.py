@@ -7,7 +7,9 @@ where the two could disagree.
 
 import datetime
 import os
+import re
 import sys
+from decimal import Decimal
 from typing import Any, Dict, List
 
 import pyarrow as pa
@@ -277,6 +279,90 @@ def test_seeded_shuffle_permutes_the_files(tmp_path):
     assert shuffled != unshuffled
     # The same seed, the same order.
     assert read_order(shuffle=FileShuffleConfig(seed=11)) == shuffled
+
+
+_BIG_DECIMAL = 10**19
+
+
+@pytest.fixture
+def clustered_table(tmp_path) -> str:
+    """Four commits whose files hold disjoint ranges, like a Z-ordered table:
+    the log statistics can rule out whole files."""
+    path = str(tmp_path / "clustered")
+    for i, start in enumerate((0, 100, 200, 300)):
+        values = list(range(start, start + 10))
+        deltalake.write_deltalake(
+            path,
+            pa.table(
+                {
+                    "val": values,
+                    "name": [f"{chr(ord('a') + i)}{v:03d}" for v in values],
+                    "day": [datetime.date(2024, 1 + i, 1 + v % 10) for v in values],
+                    "score": [v / 3 if v % 7 else None for v in values],
+                    # Beyond int64: ``deltalake`` clamps its statistics.
+                    "big": pa.array(
+                        [Decimal(_BIG_DECIMAL + v) for v in values],
+                        pa.decimal128(38, 0),
+                    ),
+                }
+            ),
+            mode="append",
+        )
+    return path
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        col("val") > 250,
+        col("val") < 5,
+        col("val") > 1000,
+        col("val") >= 0,
+        col("val") != 3,
+        col("val").is_in([5, 305]),
+        (col("val") > 105) & (col("val") < 205),
+        (col("val") < 5) | (col("val") > 305),
+        col("name") < "b",
+        col("name") > "c050",
+        col("name") == "d305",
+        col("day") >= datetime.date(2024, 3, 1),
+        col("score") > 90.0,
+        col("big") == Decimal(_BIG_DECIMAL + 305),
+    ],
+    ids=str,
+)
+def test_log_statistics_pruning_keeps_every_matching_row(clustered_table, predicate):
+    """The V1 reader skips files with the same statistics, so compare with the
+    rows a filter on the materialized table keeps, with nothing pushed down."""
+    expected = _rows(_read(clustered_table).materialize().filter(expr=predicate))
+
+    assert _rows(_read(clustered_table).filter(expr=predicate)) == expected
+
+
+def test_millisecond_timestamp_statistics_keep_matching_rows(tmp_path):
+    """Spark and Databricks log timestamp statistics cut to milliseconds, so the
+    log says 12:00:00.000 for a file whose only row is at 12:00:00.000500."""
+    path = str(tmp_path / "table")
+    at = datetime.datetime(2024, 1, 1, 12, 0, 0, 500, tzinfo=datetime.timezone.utc)
+    for ts in (at, at.replace(hour=14)):
+        deltalake.write_deltalake(
+            path,
+            pa.table({"ts": pa.array([ts], pa.timestamp("us", tz="UTC"))}),
+            mode="append",
+        )
+    for name in os.listdir(os.path.join(path, "_delta_log")):
+        if name.endswith(".json"):
+            log = os.path.join(path, "_delta_log", name)
+            with open(log) as f:
+                text = f.read()
+            with open(log, "w") as f:
+                # ``...:00.000500Z`` -> ``...:00.000Z``, inside the stats JSON.
+                f.write(re.sub(r"(\.\d{3})\d+Z", r"\1Z", text))
+    predicate = col("ts") > at.replace(microsecond=100)
+
+    rows = _rows(_read(path).filter(expr=predicate))
+
+    assert [row["ts"] for row in rows] == [at, at.replace(hour=14)]
 
 
 @pytest.fixture
