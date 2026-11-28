@@ -103,7 +103,7 @@ export const StateApiLogsNodesList = () => {
       {isLoading ? (
         <Typography>Loading...</Typography>
       ) : error ? (
-        <Typography color="error">{error}</Typography>
+        <Typography color="error">{error.toString()}</Typography>
       ) : (
         <List>
           {nodes?.map(({ raylet: { nodeId }, ip }) => (
