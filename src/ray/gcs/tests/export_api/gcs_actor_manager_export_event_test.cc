@@ -50,13 +50,13 @@ using json = nlohmann::json;
 class FakeActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
   FakeActorScheduler() = default;
-
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) override {
     actors.push_back(actor);
   }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) override {}
-  void ReleaseUnusedActorWorkers(const absl::flat_hash_map<NodeID, std::vector<WorkerID>>
-                                     &node_to_workers) override {}
+  void ReconcileRayletsAfterGcsRestart(
+      const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers)
+      override {}
   void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) override {
     const auto &actor_id = actor->GetActorID();
     auto pending_it =

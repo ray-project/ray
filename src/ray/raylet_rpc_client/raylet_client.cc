@@ -221,6 +221,18 @@ void RayletClient::ReleaseUnusedActorWorkers(
       /*method_timeout_ms*/ -1);
 }
 
+void RayletClient::CancelStaleActorLeases(
+    const rpc::ClientCallback<rpc::CancelStaleActorLeasesReply> &callback) {
+  rpc::CancelStaleActorLeasesRequest request;
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            CancelStaleActorLeases,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
 void RayletClient::CancelWorkerLease(
     const LeaseID &lease_id,
     const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) {
