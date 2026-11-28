@@ -4,7 +4,7 @@ Fake-driven: the hatch only reads a handful of operator methods and one
 ResourceBank field, so the fakes implement exactly that surface.
 """
 from types import SimpleNamespace
-from typing import Any, Collection, List, cast
+from typing import Any, Collection, cast
 
 import pytest
 from typing_extensions import override
@@ -94,19 +94,16 @@ class _FakeActorPoolOp(_FakeQueueOp, ExperimentalActorPoolMapOperator):
         super().__init__(name, inputs, rows_needed=rows_needed)
         self.pulled_output_rows = pulled_output_rows
         self.upgrade_calls = 0
-        self.obp_notifications: List[Any] = []
+        # How often the walk evaluated this op's output backpressure.
+        self.bp_checks = 0
         self._output_backpressured = output_backpressured
         self._has_budget = has_budget
         self._active_tasks = active_tasks
 
     @override
     def is_output_backpressured(self) -> bool:
+        self.bp_checks += 1
         return self._output_backpressured
-
-    @override
-    # pyrefly: ignore[bad-override]  # partial test double
-    def notify_in_task_output_backpressure(self, *, in_backpressure, policy_name):
-        self.obp_notifications.append((in_backpressure, policy_name))
 
     @override
     def has_enough_budget_for_prebuffered_outputs(self) -> bool:
@@ -189,8 +186,8 @@ def test_upgrade_conditions(
     assert (upgraded is producer) == expect_upgrade
     assert producer.upgrade_calls == (1 if expect_upgrade else 0)
     # The producer was evaluated either way (a no-fire is a decision, not the
-    # traversal skipping it), and its backpressure state was mirrored.
-    assert producer.obp_notifications == [(True, "Output")]
+    # traversal skipping it).
+    assert producer.bp_checks == 1
 
 
 def test_pass_through_forwards_requirement_but_launcher_resets_it():
@@ -215,7 +212,7 @@ def test_pass_through_forwards_requirement_but_launcher_resets_it():
     splitter = _FakeQueueOp("split", inputs=[map2], rows_needed=2)
     assert _detect(splitter) is None
     assert map1.upgrade_calls == 0
-    assert map1.obp_notifications == [(True, "Output")]  # visited, not upgraded
+    assert map1.bp_checks == 1  # visited, not upgraded
 
 
 def test_at_most_one_upgrade_per_call_and_detection_converges():
@@ -253,7 +250,7 @@ def test_completed_operators_are_skipped():
 
     assert _detect(splitter) is None
     assert producer.upgrade_calls == 0
-    assert producer.obp_notifications == []
+    assert producer.bp_checks == 0
 
 
 def test_budget_check_counts_only_working_actors():
