@@ -63,7 +63,7 @@ run_config = RunConfig(
 # __result_metrics_start__
 result = trainer.fit()
 
-print("Observed metrics:", result.metrics)
+print("Observed metrics:", result.latest_metrics)
 # __result_metrics_end__
 
 
@@ -79,9 +79,9 @@ print("Returned data", result.return_value)
 
 
 # __result_checkpoint_start__
-print("Last checkpoint:", result.checkpoint)
+print("Last checkpoint:", result.latest_checkpoint)
 
-with result.checkpoint.as_directory() as tmpdir:
+with result.latest_checkpoint.as_directory() as tmpdir:
     # Load model from directory
     ...
 # __result_checkpoint_end__
@@ -115,7 +115,7 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 from ray.train import Result
 
 restored_result = Result.from_path(result_path)
-print("Restored loss", restored_result.metrics["loss"])
+print("Restored loss", restored_result.latest_metrics["loss"])
 # __result_restore_end__
 
 

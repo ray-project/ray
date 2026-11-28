@@ -83,5 +83,5 @@ trainer = TensorflowTrainer(
     datasets={"train": train_dataset},
 )
 result = trainer.fit()
-print(result.metrics)
+print(result.latest_metrics)
 # __tf_train_end__

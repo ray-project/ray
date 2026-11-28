@@ -103,8 +103,8 @@ def train_linear(num_workers=2, use_gpu=False, epochs=3, storage_path=None):
     )
     result = trainer.fit()
 
-    print(result.metrics)
-    return result.metrics
+    print(result.latest_metrics)
+    return result.latest_metrics
 
 
 if __name__ == "__main__":

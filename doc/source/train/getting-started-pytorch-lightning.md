@@ -122,7 +122,7 @@ trainer = TorchTrainer(
 result: ray.train.Result = trainer.fit()
 
 # [4] Load the trained model.
-with result.checkpoint.as_directory() as checkpoint_dir:
+with result.latest_checkpoint.as_directory() as checkpoint_dir:
     model = ImageClassifier.load_from_checkpoint(
         os.path.join(
             checkpoint_dir,
@@ -427,7 +427,7 @@ ray_trainer = LightningTrainer(
 result = ray_trainer.fit()
 
 # [6] Load the trained model from an opaque Lightning-specific checkpoint.
-lightning_checkpoint = result.checkpoint
+lightning_checkpoint = result.latest_checkpoint
 model = lightning_checkpoint.get_model(MyLightningModule)
 ```
 :::
@@ -492,7 +492,7 @@ ray_trainer = TorchTrainer(
 result = ray_trainer.fit()
 
 # [6] Load the trained model from a simplified checkpoint interface.
-checkpoint: ray.train.Checkpoint = result.checkpoint
+checkpoint: ray.train.Checkpoint = result.latest_checkpoint
 with checkpoint.as_directory() as checkpoint_dir:
     print("Checkpoint contents:", os.listdir(checkpoint_dir))
     checkpoint_path = os.path.join(checkpoint_dir, "checkpoint.ckpt")

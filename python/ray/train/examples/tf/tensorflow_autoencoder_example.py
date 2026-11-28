@@ -136,7 +136,7 @@ def train_tensorflow_mnist(
     )
 
     results = trainer.fit()
-    print(results.metrics)
+    print(results.latest_metrics)
     return results
 
 

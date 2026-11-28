@@ -77,7 +77,7 @@ def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> 
         datasets={"train": dataset},
     )
     results = trainer.fit()
-    print(results.metrics)
+    print(results.latest_metrics)
     return results
 
 

@@ -327,7 +327,7 @@ trainer = TorchTrainer(
     )
 )
 result: train.Result = trainer.fit()
-last_checkpoint: Checkpoint = result.checkpoint
+last_checkpoint: Checkpoint = result.latest_checkpoint
 ```
 
 Ray Train persists the following files to storage:
@@ -347,7 +347,7 @@ The {class}`~ray.train.Result` and {class}`~ray.train.Checkpoint` objects that `
 result.filesystem, result.path
 # S3FileSystem, "bucket-name/sub-path/unique-run-id"
 
-result.checkpoint.filesystem, result.checkpoint.path
+result.latest_checkpoint.filesystem, result.latest_checkpoint.path
 # S3FileSystem, "bucket-name/sub-path/unique-run-id/checkpoint_epoch=0"
 ```
 

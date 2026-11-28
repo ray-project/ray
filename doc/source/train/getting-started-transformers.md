@@ -149,7 +149,7 @@ ray_trainer = TorchTrainer(
 result: ray.train.Result = ray_trainer.fit()
 
 # [5] Load the trained model
-with result.checkpoint.as_directory() as checkpoint_dir:
+with result.latest_checkpoint.as_directory() as checkpoint_dir:
     checkpoint_path = os.path.join(
         checkpoint_dir,
         ray.train.huggingface.transformers.RayTrainReportCallback.CHECKPOINT_NAME,

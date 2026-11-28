@@ -24,7 +24,7 @@ You can use checkpoints for common downstream tasks such as {doc}`offline batch 
 
 ### Last saved checkpoint
 
-Use {attr}`Result.checkpoint <ray.train.Result>` to retrieve the last checkpoint.
+Use {attr}`Result.latest_checkpoint <ray.train.Result>` to retrieve the last checkpoint.
 
 ```{literalinclude} ../doc_code/key_concepts.py
 :language: python
@@ -64,7 +64,7 @@ Persisting free-floating metrics that you report through `ray.train.report(metri
 
 ### Metrics of the last checkpoint
 
-Use {attr}`Result.metrics <ray.train.Result>` to retrieve the metrics attached to the last saved checkpoint.
+Use {attr}`Result.latest_metrics <ray.train.Result>` to retrieve the metrics attached to the last saved checkpoint.
 
 ```{literalinclude} ../doc_code/key_concepts.py
 :language: python

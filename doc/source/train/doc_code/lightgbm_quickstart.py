@@ -124,5 +124,5 @@ trainer = LightGBMTrainer(
 result = trainer.fit()
 
 # 7. Load the trained model.
-model = RayTrainReportCallback.get_model(result.checkpoint)
+model = RayTrainReportCallback.get_model(result.latest_checkpoint)
 # __lightgbm_ray_end__

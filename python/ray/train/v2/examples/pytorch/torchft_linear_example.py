@@ -188,8 +188,8 @@ def train_torchft(num_workers=2, num_steps=100, storage_path=None):
     )
     result = trainer.fit()
 
-    print(result.metrics)
-    return result.metrics
+    print(result.latest_metrics)
+    return result.latest_metrics
 
 
 if __name__ == "__main__":

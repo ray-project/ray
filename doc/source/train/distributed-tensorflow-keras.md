@@ -240,7 +240,7 @@ trainer = TensorflowTrainer(
     scaling_config=ScalingConfig(num_workers=2),
 )
 result = trainer.fit()
-print(result.checkpoint)
+print(result.latest_checkpoint)
 ```
 
 By default, checkpoints persist to local disk in the {ref}`log directory <train-log-dir>` of each run.
@@ -305,7 +305,7 @@ trainer = TensorflowTrainer(
     scaling_config=ScalingConfig(num_workers=2),
 )
 result = trainer.fit()
-print(result.checkpoint)
+print(result.latest_checkpoint)
 ```
 
 

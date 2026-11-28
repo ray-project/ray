@@ -208,7 +208,7 @@ class RayTrainReportCallback(RayReportCallback):
         >>> from ray.train.lightgbm import RayTrainReportCallback
         >>> # Get a `Checkpoint` object that is saved by the callback during training.
         >>> result = trainer.fit()
-        >>> booster = RayTrainReportCallback.get_model(result.checkpoint)
+        >>> booster = RayTrainReportCallback.get_model(result.latest_checkpoint)
 
     Args:
         metrics: Metrics to report. If this is a list,
