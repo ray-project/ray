@@ -1755,6 +1755,142 @@ def test_join_tables_suffix_colliding_with_existing_column(side):
     assert f"value_{side[0]}" in str(exc_info.value)
 
 
+def test_join_image_feature_vectors(ray_start_regular_shared_2_cpus):
+    import pyarrow as pa
+
+    left = ray.data.from_arrow(pa.table({"image_id": [101], "features": [[10]]}))
+    right = ray.data.from_arrow(pa.table({"image_id": [101], "features": [[20]]}))
+    joined = left.join(
+        right, "inner", 1, on=("image_id",), left_suffix="_a", right_suffix="_b"
+    )
+
+    assert joined.schema().names == ["image_id", "features_a", "features_b"]
+    assert joined.take_all() == [
+        {"image_id": 101, "features_a": [10], "features_b": [20]}
+    ]
+    assert joined.select_columns(["features_b"]).take_all() == [{"features_b": [20]}]
+
+
+def test_join_filter_on_payload_named_like_coalesced_key(
+    ray_start_regular_shared_2_cpus,
+):
+    import pyarrow as pa
+
+    left = ray.data.from_arrow(pa.table({"k": [1, 2], "f": [[10], [11]]}))
+    right = ray.data.from_arrow(
+        pa.table({"f_l_r": [1, 2], "f": [1000, 2000], "f_l": [100, 200]})
+    )
+    joined = left.join(
+        right,
+        "inner",
+        1,
+        on=("k",),
+        right_on=("f_l_r",),
+        left_suffix="_l",
+        right_suffix="_r",
+    )
+    # The right key is coalesced into k. Its old name now belongs to the
+    # right payload f_l, which collided with the suffixed left f.
+    assert joined.filter(expr=col("f_l_r") == 100).take_all() == [
+        {"k": 1, "f_l": [10], "f_r": 1000, "f_l_r": 100}
+    ]
+
+
+@pytest.mark.parametrize(
+    "left_suffix,right_suffix,left_name,right_name",
+    [
+        pytest.param(
+            "__",
+            "_r",
+            "__ray_join_condition_key_0__",
+            "__ray_join_condition_key_0_r",
+            id="explicit_suffix",
+        ),
+        pytest.param(
+            "_",
+            "_",
+            "__ray_join_condition_key_0_",
+            "__ray_join_condition_key_0__",
+            id="fallback_suffix",
+        ),
+    ],
+)
+def test_join_condition_preserves_suffixed_payload(
+    ray_start_regular_shared_2_cpus, left_suffix, right_suffix, left_name, right_name
+):
+    payload = "__ray_join_condition_key_0"
+    left = ray.data.from_items([{"k": 1, "a": 2, payload: 7}])
+    right = ray.data.from_items(
+        [{"k": 1, "b": 2, payload: 8}, {"k": 1, "b": 3, payload: 9}]
+    )
+    joined = left.join(
+        right,
+        "inner",
+        1,
+        on=("k",),
+        left_suffix=left_suffix,
+        right_suffix=right_suffix,
+        condition=col("a") == col("b"),
+    )
+    assert joined.take_all() == [{"k": 1, "a": 2, "b": 2, left_name: 7, right_name: 8}]
+
+
+@pytest.mark.parametrize(
+    "left_value,right_value,left_suffix,right_suffix,left_name,right_name",
+    [
+        pytest.param([10], 20, "_l", "_r", "v_l", "v_r", id="list_scalar"),
+        pytest.param(10, [20], None, "_r", "v", "v_r", id="scalar_list"),
+        pytest.param({"x": 10}, [20, 21], "_l", None, "v_l", "v", id="struct_list"),
+        pytest.param([10], [20], "_x", "_x", "v_x", "v_x_x", id="same_suffix"),
+        pytest.param([10], [20], "", "", "v", "v_right", id="empty_suffix"),
+    ],
+)
+def test_join_tables_deferred_payload_names(
+    left_value, right_value, left_suffix, right_suffix, left_name, right_name
+):
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1], "v": [left_value]})
+    right = pa.table({"id": [1], "v": [right_value]})
+    kwargs = dict(
+        join_type=JoinType.INNER,
+        left_key_col_names=("id",),
+        right_key_col_names=("id",),
+        left_columns_suffix=left_suffix,
+        right_columns_suffix=right_suffix,
+    )
+    joined = join_tables(left, right, **kwargs)
+    expected = pa.table(
+        {"id": left["id"], left_name: left["v"], right_name: right["v"]}
+    )
+    assert joined.select(expected.column_names).equals(expected)
+    assert join_tables(left.slice(0, 0), right, **kwargs).schema == joined.schema
+
+
+def test_join_tables_fallback_suffix_collides_with_deferred_payload():
+    import polars as pl
+    import pyarrow as pa
+
+    from ray.data._internal.execution.operators.join import join_tables
+
+    left = pa.table({"id": [1], "v": [10], "v_x_x": [[30]]})
+    right = pa.table({"id": [1], "v": [[20]]})
+    # Both v columns become v_x. The right would then become v_x_x, which
+    # already belongs to the left payload set aside during the join.
+    with pytest.raises(pl.exceptions.DuplicateError, match="v_x_x"):
+        join_tables(
+            left,
+            right,
+            join_type=JoinType.INNER,
+            left_key_col_names=("id",),
+            right_key_col_names=("id",),
+            left_columns_suffix="_x",
+            right_columns_suffix="_x",
+        )
+
+
 def test_join_tables_suffix_not_flagged_when_name_is_free():
     """The check must not fire when the suffixed name is unused: a left key
     sharing a name with a right payload column is renamed on the right only."""
@@ -1982,7 +2118,11 @@ def test_join_tables_right_outer_asymmetric_keys_coalesce_into_right():
     assert rows[3]["rval"] == 300
 
 
-def test_join_tables_right_outer_keeps_coalesced_key_when_left_shares_name():
+@pytest.mark.parametrize(
+    "payload",
+    [pytest.param([9, 8, 7], id="scalar"), pytest.param([[9], [8], [7]], id="list")],
+)
+def test_join_tables_right_outer_keeps_coalesced_key_when_left_shares_name(payload):
     """If the left has a non-key named like the right key, Polars suffixes
     the coalesced key. That suffixed column is the key and must survive.
     """
@@ -1990,7 +2130,7 @@ def test_join_tables_right_outer_keeps_coalesced_key_when_left_shares_name():
 
     from ray.data._internal.execution.operators.join import join_tables
 
-    left = pa.table({"id": [0, 1, 2], "user_id": [9, 8, 7], "lval": [10, 20, 30]})
+    left = pa.table({"id": [0, 1, 2], "user_id": payload, "lval": [10, 20, 30]})
     right = pa.table({"user_id": [0, 1, 3], "rval": [100, 200, 300]})
     joined = join_tables(
         left,
@@ -2005,7 +2145,7 @@ def test_join_tables_right_outer_keeps_coalesced_key_when_left_shares_name():
 
     rows = {row["user_id_right"]: row for row in joined.to_pylist()}
     assert set(rows) == {0, 1, 3}
-    assert rows[0]["user_id"] == 9
+    assert rows[0]["user_id"] == payload[0]
     assert rows[3]["user_id"] is None
     assert rows[3]["rval"] == 300
 

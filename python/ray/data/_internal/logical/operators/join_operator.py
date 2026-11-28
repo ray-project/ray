@@ -497,6 +497,15 @@ class Join(
             output_name(c, right_renamed, self.right_columns_suffix): c
             for c in right_columns
         }
+        # A coalesced-away key does not produce an output under its old name.
+        # A second suffix can reuse that name for an unrelated payload column.
+        if self.join_type is JoinType.RIGHT_OUTER:
+            coalesced, keys = left, left_keys
+        else:
+            coalesced, keys = right, right_keys
+        for key in keys - shared_keys:
+            coalesced.pop(key, None)
+
         # Same-name keys are the one name both sides may emit: they hold the
         # same values, so a predicate on them can go to either side.
         emitted_by_both = (left.keys() & right.keys()) - shared_keys
