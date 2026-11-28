@@ -363,7 +363,7 @@ You can tweak the build with the following environment variables (when running `
 - `RAY_BUILD_REDIS`: If set and equal to `1`, Ray builds or fetches Redis binaries. These binaries are only used for testing. Defaults to `1`.
 - `RAY_DISABLE_EXTRA_CPP`: If set and equal to `1`, a regular (non-`cpp`) build won't provide some `cpp` interfaces.
 - `SKIP_BAZEL_BUILD`: If set and equal to `1`, Ray skips all Bazel build steps.
-- `SKIP_THIRDPARTY_INSTALL_CONDA_FORGE`: If set, setup skips installation of third-party packages required for build. This is active on conda-forge where pip isn't used to create a build environment.
+- `SKIP_THIRDPARTY_INSTALL_CONDA_FORGE`: If set and equal to `1`, setup skips installation of third-party packages required for build. This is active on conda-forge where pip isn't used to create a build environment.
 - `RAY_DEBUG_BUILD`: Can be set to `debug`, `asan`, or `tsan`. Ray ignores any other value.
 - `BAZEL_ARGS`: If set, pass a space-separated set of arguments to Bazel. This can be useful for restricting resource usage during builds, for example. See [the Bazel user manual](https://bazel.build/docs/user-manual) for more information about valid arguments.
 - `IS_AUTOMATED_BUILD`: Used in conda-forge CI to tweak the build for the managed CI machines.
