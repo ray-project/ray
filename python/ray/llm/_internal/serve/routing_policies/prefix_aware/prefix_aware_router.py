@@ -137,7 +137,9 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         else:
             self._tree_actor = tree_actor
 
-    def _extract_text_from_request(self, pending_request: PendingRequest) -> str:
+    def _extract_text_from_request(
+        self, pending_request: PendingRequest
+    ) -> Optional[str]:
         """Extracts the text content from a pending request for prefix matching.
 
         Searches through request arguments for either 'messages' or 'prompt' attributes,
@@ -148,10 +150,9 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             pending_request: The request to extract text from
 
         Returns:
-            A string containing the prompt text or concatenated message contents
-
-        Raises:
-            ValueError: If no prompt or messages attribute is found in the request
+            A string containing the prompt text or concatenated message contents,
+            or None if no prompt or messages attribute is found in the request,
+            in which case the caller falls back to load-balanced routing
         """
         prompt = None
         for arg in pending_request.args:
@@ -165,9 +166,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
             if prompt is not None:
                 break
         if prompt is None:
-            raise ValueError(
-                "No request with message or prompt attribute found in pending_request.args"
-            )
+            return None
 
         return self._normalize_prompt_to_string(prompt)
 
