@@ -257,7 +257,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
-            pb.disable_job_level_lineage_reconstruction = (
+            if hasattr(pb, "disable_job_level_lineage_reconstruction"):
+                pb.disable_job_level_lineage_reconstruction = (
                 self._disable_job_level_lineage_reconstruction
             )
             if self.py_logging_config:
