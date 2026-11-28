@@ -232,6 +232,69 @@ class InvalidValuesTest(unittest.TestCase):
 
         NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
 
+    def testNevergradPointsAndErrorHandling(self):
+        import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
+
+        nested_space = {
+            "a": {"x": tune.uniform(0.0, 10.0)},
+            "b": tune.choice(["c1", "c2"]),
+        }
+        initial_points = [{"a": {"x": 2.5}, "b": "c1"}]
+        searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne,
+            metric="loss",
+            mode="min",
+            points_to_evaluate=initial_points,
+        )
+        # Mutating caller's nested dict after init must not affect searcher
+        initial_points[0]["a"]["x"] = 9.5
+        initial_points.append({"a": {"x": 7.5}, "b": "c2"})
+
+        searcher.set_search_properties(metric="loss", mode="min", config=nested_space)
+        suggested = searcher.suggest("trial_1")
+        self.assertEqual(suggested, {"a": {"x": 2.5}, "b": "c1"})
+
+        # Instrumented optimizer with nested Dict kwargs preserves nested dict points
+        instr_space = ng.p.Instrumentation(
+            a=ng.p.Dict(x=ng.p.Scalar(lower=0.0, upper=10.0)),
+            b=ng.p.Choice(["c1", "c2"]),
+        )
+        instr_searcher = NevergradSearch(
+            optimizer=ng.optimizers.OnePlusOne,
+            space=instr_space,
+            metric="loss",
+            mode="min",
+            points_to_evaluate=[{"a": {"x": 3.5}, "b": "c2"}],
+        )
+        self.assertEqual(
+            instr_searcher.suggest("instr_trial_1"),
+            {"a": {"x": 3.5}, "b": "c2"},
+        )
+
+        # Errored trial with missing/partial result must not call tell() or fail
+        searcher.on_trial_complete("trial_1", result={"other": 1.0}, error=True)
+        self.assertEqual(searcher._nevergrad_opt.num_tell, 0)
+        # Duplicate or unknown trial completion must not raise KeyError
+        searcher.on_trial_complete("trial_1", result={"loss": 1.0}, error=False)
+        searcher.on_trial_complete("unknown_trial", result={"loss": 1.0}, error=False)
+        self.assertEqual(searcher._nevergrad_opt.num_tell, 0)
+
+        # None / NaN / inf metric values must be ignored without crashing
+        for idx, bad_val in enumerate(
+            [None, float("nan"), float("inf"), float("-inf")]
+        ):
+            tid = f"bad_trial_{idx}"
+            searcher.suggest(tid)
+            searcher.on_trial_complete(tid, result={"loss": bad_val}, error=False)
+        self.assertEqual(searcher._nevergrad_opt.num_tell, 0)
+
+        # Valid completion updates optimizer
+        searcher.suggest("good_trial")
+        searcher.on_trial_complete("good_trial", result={"loss": 0.5}, error=False)
+        self.assertEqual(searcher._nevergrad_opt.num_tell, 1)
+
     def testOptuna(self):
         from optuna.samplers import RandomSampler
 
