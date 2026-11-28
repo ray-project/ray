@@ -105,6 +105,34 @@ class BlockingReserveActor:
 
 
 @ray.remote(num_cpus=0)
+class BlockingQueueLenActor:
+    """Actor whose queue length call signals entry, then blocks until cancelled.
+
+    It handles the cancellation until `release_signal_actor` is sent, so the
+    call doesn't finish on the replica before the test releases it.
+    """
+
+    def __init__(
+        self, executing_signal_actor, cancelled_signal_actor, release_signal_actor
+    ):
+        self._executing_signal = executing_signal_actor
+        self._cancelled_signal = cancelled_signal_actor
+        self._release_signal = release_signal_actor
+
+    async def get_num_ongoing_requests(self) -> int:
+        try:
+            await self._executing_signal.send.remote()
+            await asyncio.sleep(100)
+        except (asyncio.CancelledError, TaskCancelledError):
+            # Clear the context var so Ray doesn't cancel the calls below.
+            ray._raylet.async_task_id.set(None)  # type: ignore[attr-defined]  # pyrefly: ignore[missing-attribute]
+            await self._cancelled_signal.send.remote()
+            await self._release_signal.wait.remote()
+            raise
+        raise RuntimeError("get_num_ongoing_requests wasn't cancelled.")
+
+
+@ray.remote(num_cpus=0)
 class FakeReplicaActor:
     def __init__(self):
         self._replica_queue_length_info = None
@@ -502,6 +530,38 @@ def _spawn_running_replica(actor_cls, replica_id_str: str, *actor_args, **actor_
 
 def _dummy_request_metadata() -> RequestMetadata:
     return RequestMetadata(request_id="abc", internal_request_id="def")
+
+
+@pytest.mark.asyncio
+async def test_get_queue_len_cancellation_requests_rpc_cancellation(ray_instance):
+    """Cancelling `get_queue_len` requests cancellation of the RPC and finishes
+    without waiting for the replica to finish handling the cancellation.
+    """
+    executing_signal = SignalActor.remote()
+    cancelled_signal = SignalActor.remote()
+    release_signal = SignalActor.remote()
+    replica, _ = _spawn_running_replica(
+        BlockingQueueLenActor,
+        "queue-len-replica",
+        executing_signal,
+        cancelled_signal,
+        release_signal,
+    )
+
+    task = get_or_create_event_loop().create_task(replica.get_queue_len(deadline_s=10))
+    # Wait for the actor to enter the call. A fixed deadline does not cover
+    # actor startup.
+    await executing_signal.wait.remote()
+    assert not task.done()
+
+    task.cancel()
+    # The probe finishes on the next event loop turn, without awaiting the replica.
+    await asyncio.sleep(0)
+    assert task.cancelled()
+    # The cancellation request reached the replica, which is still handling it.
+    await asyncio.wait_for(cancelled_signal.wait.remote(), timeout=10)
+
+    await release_signal.send.remote()
 
 
 @pytest.mark.asyncio
