@@ -692,6 +692,10 @@ class FuseOperators(Rule):
         isolate_workers = (
             isinstance(up_op, TaskPoolMapOperator) and up_op.isolate_workers
         ) or (isinstance(down_op, TaskPoolMapOperator) and down_op.isolate_workers)
+        # A read fused with the maps after it still requests its input's estimate.
+        memory_from_input_estimate = (
+            isinstance(up_op, TaskPoolMapOperator) and up_op.memory_from_input_estimate
+        )
 
         # Fused physical map operator.
         assert up_op.data_context is down_op.data_context
@@ -711,6 +715,7 @@ class FuseOperators(Rule):
             ray_remote_args_fn=ray_remote_args_fn,
             on_start=on_start,
             isolate_workers=isolate_workers,
+            memory_from_input_estimate=memory_from_input_estimate,
             # A fused op that contains a read stays a read op.
             is_read_op=up_op.is_read_op or down_op.is_read_op,
         )
