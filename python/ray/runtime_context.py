@@ -144,25 +144,18 @@ class RuntimeContext(object):
 
         This can be called from within a driver, task, or actor.
 
-        Example:
-
-            .. testcode::
-
-                import ray
-
-                ray.init()
-                session_name = ray.get_runtime_context().get_session_name()
-                print(f"Session Name: {session_name}")
-
-                @ray.remote
-                def get_session_name():
-                    return ray.get_runtime_context().get_session_name()
-
-                # Session name is the same across all processes in the cluster
-                assert ray.get(get_session_name.remote()) == session_name
-
-                # Use SessionName label to filter metrics by cluster, e.g.:
-                # ray_serve_http_request_latency_ms_bucket{SessionName="<session_name>"}
+        Examples:
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> ray.init()
+            >>> session_name = ray.get_runtime_context().get_session_name()
+            >>> print(f"Session Name: {session_name}")
+            >>> @ray.remote
+            ... def get_session_name():
+            ...     return ray.get_runtime_context().get_session_name()
+            >>> # Session name is the same across all processes in the cluster
+            >>> assert ray.get(get_session_name.remote()) == session_name
+            >>> # Use SessionName label to filter metrics by cluster, e.g.:
+            >>> # ray_serve_http_request_latency_ms_bucket{SessionName="<session_name>"}
 
         Returns:
             A session name string for the Ray cluster (e.g.,
@@ -200,28 +193,22 @@ class RuntimeContext(object):
         Task ID is the id of a Ray task.
         This shouldn't be used in a driver process.
 
-        Example:
-
-            .. testcode::
-
-                import ray
-
-                @ray.remote
-                class Actor:
-                    def ready(self):
-                        return True
-
-                @ray.remote
-                def f():
-                    return True
-
-                # All the below code generates different task ids.
-                # Task ids are available for actor creation.
-                a = Actor.remote()
-                # Task ids are available for actor tasks.
-                a.ready.remote()
-                # Task ids are available for normal tasks.
-                f.remote()
+        Examples:
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> @ray.remote
+            ... class Actor:
+            ...     def ready(self):
+            ...         return True
+            >>> @ray.remote
+            ... def f():
+            ...     return True
+            >>> # All the below code generates different task ids.
+            >>> # Task ids are available for actor creation.
+            >>> a = Actor.remote()
+            >>> # Task ids are available for actor tasks.
+            >>> a.ready.remote()
+            >>> # Task ids are available for normal tasks.
+            >>> f.remote()
 
         Returns:
             The current worker's task id. None if there's no task id.
@@ -241,33 +228,23 @@ class RuntimeContext(object):
         Task ID is the id of a Ray task. The ID will be in hex format.
         This shouldn't be used in a driver process.
 
-        Example:
-
-            .. testcode::
-
-                import ray
-
-                @ray.remote
-                class Actor:
-                    def get_task_id(self):
-                        return ray.get_runtime_context().get_task_id()
-
-                @ray.remote
-                def get_task_id():
-                    return ray.get_runtime_context().get_task_id()
-
-                # All the below code generates different task ids.
-                a = Actor.remote()
-                # Task ids are available for actor tasks.
-                print(ray.get(a.get_task_id.remote()))
-                # Task ids are available for normal tasks.
-                print(ray.get(get_task_id.remote()))
-
-            .. testoutput::
-                :options: +MOCK
-
-                16310a0f0a45af5c2746a0e6efb235c0962896a201000000
-                c2668a65bda616c1ffffffffffffffffffffffff01000000
+        Examples:
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> @ray.remote
+            ... class Actor:
+            ...     def get_task_id(self):
+            ...         return ray.get_runtime_context().get_task_id()
+            >>> @ray.remote
+            ... def get_task_id():
+            ...     return ray.get_runtime_context().get_task_id()
+            >>> # All the below code generates different task ids.
+            >>> a = Actor.remote()
+            >>> # Task ids are available for actor tasks.
+            >>> print(ray.get(a.get_task_id.remote()))
+            16310a0f0a45af5c2746a0e6efb235c0962896a201000000
+            >>> # Task ids are available for normal tasks.
+            >>> print(ray.get(get_task_id.remote()))
+            c2668a65bda616c1ffffffffffffffffffffffff01000000
 
         Returns:
             The current worker's task id in hex. None if there's no task id.
@@ -291,45 +268,34 @@ class RuntimeContext(object):
         Task name by default is the task's function call string. It can also be
         specified in options when triggering a task.
 
-        Example:
-
-            .. testcode::
-
-                import ray
-
-                @ray.remote
-                class Actor:
-                    def get_task_name(self):
-                        return ray.get_runtime_context().get_task_name()
-
-                @ray.remote
-                class AsyncActor:
-                    async def get_task_name(self):
-                        return ray.get_runtime_context().get_task_name()
-
-                @ray.remote
-                def get_task_name():
-                    return ray.get_runtime_context().get_task_name()
-
-                a = Actor.remote()
-                b = AsyncActor.remote()
-                # Task names are available for actor tasks.
-                print(ray.get(a.get_task_name.remote()))
-                # Task names are available for async actor tasks.
-                print(ray.get(b.get_task_name.remote()))
-                # Task names are available for normal tasks.
-                # Get default task name
-                print(ray.get(get_task_name.remote()))
-                # Get specified task name
-                print(ray.get(get_task_name.options(name="task_name").remote()))
-
-            .. testoutput::
-                :options: +MOCK
-
-                Actor.get_task_name
-                AsyncActor.get_task_name
-                get_task_name
-                task_name
+        Examples:
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> @ray.remote
+            ... class Actor:
+            ...     def get_task_name(self):
+            ...         return ray.get_runtime_context().get_task_name()
+            >>> @ray.remote
+            ... class AsyncActor:
+            ...     async def get_task_name(self):
+            ...         return ray.get_runtime_context().get_task_name()
+            >>> @ray.remote
+            ... def get_task_name():
+            ...     return ray.get_runtime_context().get_task_name()
+            >>> a = Actor.remote()
+            >>> b = AsyncActor.remote()
+            >>> # Task names are available for actor tasks.
+            >>> print(ray.get(a.get_task_name.remote()))
+            Actor.get_task_name
+            >>> # Task names are available for async actor tasks.
+            >>> print(ray.get(b.get_task_name.remote()))
+            AsyncActor.get_task_name
+            >>> # Task names are available for normal tasks.
+            >>> # Get default task name
+            >>> print(ray.get(get_task_name.remote()))
+            get_task_name
+            >>> # Get specified task name
+            >>> print(ray.get(get_task_name.options(name="task_name").remote()))
+            task_name
 
         Returns:
             The current worker's task name
@@ -346,41 +312,30 @@ class RuntimeContext(object):
     def get_task_function_name(self) -> Optional[str]:
         """Get current task function name string for this worker.
 
-        Example:
-
-            .. testcode::
-
-                import ray
-
-                @ray.remote
-                class Actor:
-                    def get_task_function_name(self):
-                        return ray.get_runtime_context().get_task_function_name()
-
-                @ray.remote
-                class AsyncActor:
-                    async def get_task_function_name(self):
-                        return ray.get_runtime_context().get_task_function_name()
-
-                @ray.remote
-                def get_task_function_name():
-                    return ray.get_runtime_context().get_task_function_name()
-
-                a = Actor.remote()
-                b = AsyncActor.remote()
-                # Task functions are available for actor tasks.
-                print(ray.get(a.get_task_function_name.remote()))
-                # Task functions are available for async actor tasks.
-                print(ray.get(b.get_task_function_name.remote()))
-                # Task functions are available for normal tasks.
-                print(ray.get(get_task_function_name.remote()))
-
-            .. testoutput::
-                :options: +MOCK
-
-                [python module name].Actor.get_task_function_name
-                [python module name].AsyncActor.get_task_function_name
-                [python module name].get_task_function_name
+        Examples:
+            >>> import ray  # doctest: +SKIP_EXAMPLE
+            >>> @ray.remote
+            ... class Actor:
+            ...     def get_task_function_name(self):
+            ...         return ray.get_runtime_context().get_task_function_name()
+            >>> @ray.remote
+            ... class AsyncActor:
+            ...     async def get_task_function_name(self):
+            ...         return ray.get_runtime_context().get_task_function_name()
+            >>> @ray.remote
+            ... def get_task_function_name():
+            ...     return ray.get_runtime_context().get_task_function_name()
+            >>> a = Actor.remote()
+            >>> b = AsyncActor.remote()
+            >>> # Task functions are available for actor tasks.
+            >>> print(ray.get(a.get_task_function_name.remote()))
+            [python module name].Actor.get_task_function_name
+            >>> # Task functions are available for async actor tasks.
+            >>> print(ray.get(b.get_task_function_name.remote()))
+            [python module name].AsyncActor.get_task_function_name
+            >>> # Task functions are available for normal tasks.
+            >>> print(ray.get(get_task_function_name.remote()))
+            [python module name].get_task_function_name
 
         Returns:
             The current worker's task function call string
@@ -650,19 +605,16 @@ def get_runtime_context() -> RuntimeContext:
     The obtained runtime context can be used to get the metadata
     of the current driver, task, or actor.
 
-    Example:
-
-        .. testcode::
-
-            import ray
-            # Get the job id.
-            ray.get_runtime_context().get_job_id()
-            # Get the session name (used as SessionName label in Ray metrics).
-            ray.get_runtime_context().get_session_name()
-            # Get the actor id.
-            ray.get_runtime_context().get_actor_id()
-            # Get the task id.
-            ray.get_runtime_context().get_task_id()
+    Examples:
+        >>> import ray  # doctest: +SKIP_EXAMPLE
+        >>> # Get the job id.
+        >>> ray.get_runtime_context().get_job_id()
+        >>> # Get the session name (used as SessionName label in Ray metrics).
+        >>> ray.get_runtime_context().get_session_name()
+        >>> # Get the actor id.
+        >>> ray.get_runtime_context().get_actor_id()
+        >>> # Get the task id.
+        >>> ray.get_runtime_context().get_task_id()
 
     Returns:
         The :class:`RuntimeContext` for the current driver, worker, or actor.
