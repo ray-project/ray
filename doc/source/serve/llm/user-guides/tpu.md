@@ -34,7 +34,7 @@ For a v6e `4x4` slice, this produces four host-level bundles:
 ]
 ```
 
-The model still spans all 16 chips because `tensor_parallel_size=16`. The bundle shape only tells Ray how to reserve the hosts that own those chips. If you need per-chip bundles, set `placement_group_config={"bundle_per_worker": {"TPU": 1}}`.
+The model still spans all 16 chips because `tensor_parallel_size=16`. The bundle shape only tells Ray how to reserve the hosts that own those chips. Set `placement_group_config={"bundle_per_worker": {"TPU": 1}}` only for per-device backends such as vLLM-TorchTPU. Host-level JAX vLLM-TPU expects one host-sized bundle per TPU VM, such as `{"TPU": 4}` on a four-chip host, and fails TPU initialization when given per-chip `{"TPU": 1}` bundles.
 
 ```{figure} ../images/ray_serve_llm_tpu.png
 ---
@@ -46,7 +46,9 @@ Topology-aware TPU placement for one Ray Serve LLM replica.
 ```
 
 :::{note}
-TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config={"kind": "tpu", "topology": ...}`. Without a topology, Ray Serve LLM falls back to a regular placement group with per-chip `{"TPU": 1}` bundles.
+TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config={"kind": "tpu", "topology": ...}`. Without a topology, Ray Serve LLM creates a plain placement group that defaults to per-chip `{"TPU": 1}` bundles, which work only for per-device backends such as vLLM-TorchTPU and fail TPU initialization on host-level JAX vLLM-TPU.
+
+A placement group created without a topology also omits `ray.io/tpu-slice-name` bundle label selectors. On clusters with more than one slice, even manually configured host-sized bundles in `placement_group_config` can split across slices depending on when nodes join the cluster, and multi-host TPU collective initialization then hangs and times out.
 :::
 
 ## `SlicePlacementGroup`
@@ -54,6 +56,32 @@ TPU support in Ray Serve LLM is topology-aware when you set `accelerator_config=
 For topology-aware TPU configs, Ray Serve LLM creates a {class}`~ray.util.tpu.SlicePlacementGroup` instead of a plain placement group. `SlicePlacementGroup` reserves a matching TPU slice, reads its `ray.io/tpu-slice-name` label, and creates the worker placement group with a per-bundle label selector that pins all bundles to that same physical slice.
 
 This makes the TPU slice an atomic scheduling unit. A replica reserves the complete slice it needs, and the placement group doesn't span unrelated slices.
+
+### Verify slice placement
+
+On a running cluster, inspect active placement groups from the Ray head node to confirm that a replica's worker bundles are pinned to one slice:
+
+```bash
+ray list placement-groups --filter "state!=REMOVED" --detail
+```
+
+When `topology` is set, each replica creates a single-bundle `TPU-<pod-type>-head` reservation group and a worker placement group in which every TPU bundle carries the same `ray.io/tpu-slice-name` selector:
+
+```yaml
+bundles:
+-   bundle_id:
+        placement_group_id: 9d44a6f12de5cc35682133dc51b601000000
+        bundle_index: 0
+    unit_resources:
+        CPU: 1.0
+        TPU: 4.0
+        accelerator_type:TPU-V6E: 0.001
+    node_id: 334c90f45be1512aef1a971eb4abf2a021a9025f26814a2f5a379702
+    label_selector:
+        ray.io/tpu-slice-name: tpu-group-1
+```
+
+If `label_selector` is `{}` on the TPU bundles, `topology` wasn't applied and the replica isn't pinned to a single slice.
 
 ## How the TPU vLLM executor uses the bundles
 
@@ -65,20 +93,22 @@ The executor then does the following:
 1. Reads the TPU count from each bundle.
 1. Starts one Ray worker actor per bundle with `PlacementGroupSchedulingStrategy`, pinning each actor to its bundle.
 
-With the default topology-aware bundles, one vLLM worker actor maps to one TPU host and consumes all local TPU chips on that host. The worker process uses the chips across the multi-host slice. Otherwise, manually setting `{"TPU": 1}` results in the creation of one worker per chip.
+With the default topology-aware bundles, one vLLM-TPU worker actor maps to one TPU host and consumes all local TPU chips on that host, such as `{"TPU": 4}` on a four-chip VM. Do not pass per-chip `{"TPU": 1}` bundles to vLLM-TPU; each worker actor then sees only one chip and TPU initialization fails.
 
-When you serve with vLLM-TorchTPU, vLLM runs one worker actor per logical TPU device. On `LLMConfig`, set `placement_group_config={"bundle_per_worker": {"TPU": 1}}`, and set `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env`. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
+Per-chip bundles apply only to per-device backends such as vLLM-TorchTPU, which runs one worker actor per logical TPU device. On `LLMConfig`, set `placement_group_config={"bundle_per_worker": {"TPU": 1}}`, and set `"TPU_MULTIHOST_BACKEND": "ray"` in `runtime_env`. For TPU7x, see {ref}`TPU7x logical devices <kuberay-tpu7x-dual-chiplet>`.
 
 ## Example
 
-Build the image from the vLLM TPU base image and install a Ray wheel that includes TPU topology support.
+Build the container image from a vLLM-TPU or vLLM-TorchTPU base image that matches the vLLM version your Ray release pins. Ray 2.60.0 pins vLLM 0.29.0, so the Dockerfiles below pair `RAY_VERSION=2.60.0` with the `v0.29.0` base image tags. Update both versions together when upgrading.
+
+Each Dockerfile installs `ray[serve]` with `grpcio-reflection` matched to the base image's `grpcio` version, then installs `ray[llm]` with `--no-deps` so pip keeps the base image's TPU vLLM and PyTorch or JAX packages instead of pulling PyPI CUDA wheels.
 
 ::::{tab-set}
 
 :::{tab-item} Dockerfile (vLLM-TPU)
 
 ```dockerfile
-FROM vllm/vllm-tpu:v0.21.0
+FROM vllm/vllm-tpu:v0.29.0
 
 ENV VLLM_TARGET_DEVICE=tpu
 ENV VLLM_XLA_CACHE_PATH=/tmp/vllm_xla_cache
@@ -89,10 +119,12 @@ ENV ENABLE_PJRT_COMPATIBILITY=true
 
 USER root
 
-# Use a released Ray version or wheel URL that contains TPU topology support.
-ARG RAY_PACKAGE="ray"
-RUN pip install --no-cache-dir -U "${RAY_PACKAGE}" && \
-    pip install --no-cache-dir --no-deps "ray[llm]"
+# Ray 2.60.0 pins vLLM 0.29.0. Update RAY_VERSION and the base image tag together.
+ARG RAY_VERSION=2.60.0
+RUN pip install --no-cache-dir \
+        "ray[serve]==${RAY_VERSION}" \
+        "grpcio-reflection==$(python -c 'import grpc; print(grpc.__version__)')" && \
+    pip install --no-cache-dir --no-deps "ray[llm]==${RAY_VERSION}"
 
 COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 ```
@@ -110,10 +142,16 @@ COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 :::{tab-item} Dockerfile (vLLM-TorchTPU)
 
 ```dockerfile
-FROM vllm/vllm-torchtpu:latest
+FROM vllm/vllm-torchtpu:v0.29.0
 
-ARG RAY_PACKAGE="ray[default,llm]"
-RUN pip install --no-cache-dir -U "${RAY_PACKAGE}"
+USER root
+
+# Ray 2.60.0 pins vLLM 0.29.0. Update RAY_VERSION and the base image tag together.
+ARG RAY_VERSION=2.60.0
+RUN pip install --no-cache-dir \
+        "ray[serve]==${RAY_VERSION}" \
+        "grpcio-reflection==$(python -c 'import grpc; print(grpc.__version__)')" && \
+    pip install --no-cache-dir --no-deps "ray[llm]==${RAY_VERSION}"
 
 COPY serve_tpu_multihost.py /home/ray/serve_tpu_multihost.py
 ```
