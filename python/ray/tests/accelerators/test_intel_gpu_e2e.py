@@ -63,7 +63,7 @@ def _is_cluster_configured(address: str = "auto") -> bool:
 def _detect_available_gpu_count() -> int:
     """Return the number of GPU devices detected via dpctl."""
     try:
-        return dpctl.SyclContext("level_zero:gpu").device_count
+        return len(dpctl.get_devices(backend="level_zero", device_type="gpu"))
     except Exception:
         # If dpctl cannot enumerate devices, assume no additional GPUs.
         return 0
