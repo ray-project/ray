@@ -5,6 +5,8 @@ what only the V2 reader does, and compare it with the V1 reader on the inputs
 where the two could disagree.
 """
 
+import collections
+import dataclasses
 import datetime
 import os
 import posixpath
@@ -21,6 +23,8 @@ import pytest
 import ray
 from ray.data import DataContext
 from ray.data._internal.datasource_v2.formats.delta.delta_file_indexer import (
+    DeltaTableSnapshot,
+    load_add_actions,
     resolve_data_file_path,
 )
 from ray.data.checkpoint import CheckpointConfig
@@ -191,9 +195,10 @@ def test_reads_through_a_table_rooted_filesystem(partitioned_table):
 
 
 @pytest.mark.parametrize("caller_filesystem", [False, True])
-def test_s3_reads_send_no_head_requests(s3_server, aws_credentials, caller_filesystem):
+def test_s3_reads_send_no_extra_requests(s3_server, aws_credentials, caller_filesystem):
     """The log has every file's size, so no open asks S3 for one. A caller's
-    filesystem is what ``read_unity_catalog`` passes."""
+    filesystem is what ``read_unity_catalog`` passes. The log is loaded once,
+    as by the V1 reader: the listing reuses the table ``read_delta`` opened."""
     import json
 
     import requests
@@ -225,22 +230,37 @@ def test_s3_reads_send_no_head_requests(s3_server, aws_credentials, caller_files
         pa_fs.SubTreeFileSystem("delta/table", s3) if caller_filesystem else None
     )
     recorder = f"{s3_server}/moto-api/recorder"
-    requests.post(f"{recorder}/reset-recording")
-    requests.post(f"{recorder}/start-recording")
 
-    ds = _read("s3://delta/table", storage_options=options, filesystem=filesystem)
-    ids = sorted(row["id"] for row in ds.take_all())
+    def read_and_record(v2: bool):
+        requests.post(f"{recorder}/reset-recording")
+        requests.post(f"{recorder}/start-recording")
+        ds = _read(
+            "s3://delta/table", v2=v2, storage_options=options, filesystem=filesystem
+        )
+        ids = sorted(row["id"] for row in ds.take_all())
+        requests.post(f"{recorder}/stop-recording")
+        recorded = requests.get(f"{recorder}/download-recording").text.splitlines()
+        return ds, ids, [json.loads(line) for line in recorded]
 
-    requests.post(f"{recorder}/stop-recording")
-    recorded = requests.get(f"{recorder}/download-recording").text.splitlines()
+    ds, ids, recorded = read_and_record(v2=True)
+    _, v1_ids, v1_recorded = read_and_record(v2=False)
+
+    def log_requests(recorded):
+        return [(r["method"], r["url"]) for r in recorded if "_delta_log" in r["url"]]
+
     data_file_heads = [
         r["url"]
-        for r in map(json.loads, recorded)
+        for r in recorded
         if r["method"] == "HEAD" and r["url"].endswith(".parquet")
     ]
     assert _uses_v2(ds)
-    assert ids == list(range(20))
+    assert ids == v1_ids == list(range(20))
     assert data_file_heads == []
+    # V1 loads the log once (and reads some files again without
+    # ``filesystem``); V2 sends no request to the log that V1 doesn't.
+    assert collections.Counter(log_requests(recorded)) <= collections.Counter(
+        log_requests(v1_recorded)
+    )
 
 
 def _reverse_checkpoint_rows(path: str, version: int) -> None:
@@ -487,32 +507,59 @@ def test_generated_id_resume_of_the_latest_version(checkpointed_table, tmp_path)
     assert written_rows() == 20
 
 
-@pytest.mark.parametrize("deltalake_version", ["1.5.0", "1.6.6"])
-def test_falls_back_to_v1_with_pyarrow_scan_options(
-    tmp_path, monkeypatch, deltalake_version
-):
-    """V1 reads the version the V2 check opened, even if the table changes in
-    between. deltalake 1.6+ loads the file list with the log, so V1 reuses the
-    checked table rather than loading it again."""
-    path = str(tmp_path / "table")
-    deltalake.write_deltalake(path, pa.table({"x": [1, 2]}))
+def test_falls_back_to_v1_with_pyarrow_scan_options(partitioned_table, monkeypatch):
+    """The V1 reader takes them. The table is opened once, on the driver."""
     opened = []
 
-    class _AppendAfterFirstOpen(deltalake.DeltaTable):
+    class _RecordingTable(deltalake.DeltaTable):
         def __init__(self, *args, **kwargs):
             super().__init__(*args, **kwargs)
             opened.append(self.version())
-            if len(opened) == 1:
-                deltalake.write_deltalake(path, pa.table({"x": [3]}), mode="append")
 
-    monkeypatch.setattr(deltalake, "__version__", deltalake_version)
-    monkeypatch.setattr(deltalake, "DeltaTable", _AppendAfterFirstOpen)
+    monkeypatch.setattr(deltalake, "DeltaTable", _RecordingTable)
 
-    ds = _read(path, batch_size=2)
+    ds = _read(partitioned_table, batch_size=2)
 
     assert not _uses_v2(ds)
-    assert sorted(row["x"] for row in ds.take_all()) == [1, 2]
-    assert opened == ([0] if deltalake_version == "1.6.6" else [0, 0])
+    assert len(ds.take_all()) == 8
+    assert opened == [1]
+
+
+def test_read_delta_rejects_data_files_outside_the_table(tmp_path):
+    """A shallow clone's log names data files by absolute path. The V1 reader
+    can't read them either; V2 says so when ``read_delta`` is called."""
+    import json
+
+    path = str(tmp_path / "table")
+    deltalake.write_deltalake(path, pa.table({"x": [1]}))
+    log_path = os.path.join(path, "_delta_log", f"{0:020d}.json")
+    with open(log_path) as f:
+        actions = [json.loads(line) for line in f]
+    for action in actions:
+        if "add" in action:
+            action["add"]["path"] = os.path.join(path, action["add"]["path"])
+    with open(log_path, "w") as f:
+        f.writelines(json.dumps(action) + "\n" for action in actions)
+
+    with pytest.raises(ValueError, match="absolute path"):
+        _read(path)
+
+
+def test_listing_reloads_add_actions_of_another_version(tmp_path):
+    """If Ray rebuilt the ``add`` actions ``read_delta`` loaded by reopening
+    the table, they may be of a later version; the listing then loads the
+    pinned one."""
+    path = str(tmp_path / "table")
+    deltalake.write_deltalake(path, pa.table({"x": [1]}))
+    deltalake.write_deltalake(path, pa.table({"x": [2]}), mode="append")
+    later = load_add_actions(deltalake.DeltaTable(path, version=1))
+
+    snapshot = DeltaTableSnapshot(
+        table_uri=path, version=0, loaded_add_actions=ray.put(later)
+    )
+
+    assert snapshot.add_actions().num_rows == 1
+    assert dataclasses.replace(snapshot, version=1).add_actions().num_rows == 2
 
 
 @pytest.mark.parametrize(

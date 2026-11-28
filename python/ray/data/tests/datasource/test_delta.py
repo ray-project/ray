@@ -15,7 +15,10 @@ from ray.data._internal.object_extensions.arrow import (
 )
 from ray.data._internal.util import rows_same
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.delta_test_utils import write_column_mapped_table
+from ray.data.tests.delta_test_utils import (
+    write_column_mapped_table,
+    write_deletion_vector_table,
+)
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -253,31 +256,15 @@ def test_delta_read_deletion_vectors_message_is_actionable(tmp_path):
     deleted rows, and no deltalake version changes that. The message therefore
     has to point at the table property, not at a library upgrade.
 
-    deltalake cannot *write* a table declaring the feature either, so the
-    feature and the protocol error are injected rather than provoked; what is
-    under test is Ray's translation of it. The DataSourceV2 reader leaves such
-    a table to the V1 reader, so both readers fail the same way.
+    deltalake cannot *write* a table declaring the feature either, so the log
+    is written by hand. The DataSourceV2 reader leaves such a table to the V1
+    reader, so both readers fail the same way.
     """
-    from deltalake import write_deltalake
-    from deltalake.exceptions import DeltaProtocolError
-    from deltalake.table import ProtocolVersions
-
     path = os.path.join(tmp_path, "tmp_test_delta_dv_message")
-    write_deltalake(path, pa.table({"id": [1, 2, 3]}))
+    write_deletion_vector_table(path)
 
-    protocol_error = DeltaProtocolError(
-        "The table has set these reader features: {'deletionVectors'} but these "
-        "are not yet supported by the deltalake reader."
-    )
-    dv_protocol = ProtocolVersions(3, 7, ["deletionVectors"], ["deletionVectors"])
-
-    with mock.patch(
-        "deltalake.DeltaTable.protocol", return_value=dv_protocol
-    ), mock.patch(
-        "deltalake.DeltaTable.to_pyarrow_dataset", side_effect=protocol_error
-    ):
-        with pytest.raises(RuntimeError) as excinfo:
-            ray.data.read_delta(path)
+    with pytest.raises(RuntimeError) as excinfo:
+        ray.data.read_delta(path)
 
     message = str(excinfo.value)
     # Names the cause and the reader path, so the reason is understandable.
