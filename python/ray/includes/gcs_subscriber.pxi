@@ -1,5 +1,3 @@
-import random
-
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 from libcpp.vector cimport vector as c_vector
@@ -24,7 +22,9 @@ cdef class _GcsSubscriber:
             c_worker_id = worker_id or b""
         # subscriber_id needs to match the binary format of a random
         # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
-        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        # os.urandom rather than the global `random` module so that ray.init()
+        # does not perturb a seed the user set beforehand (#10145).
+        subscriber_id = os.urandom(28)
         gcs_address, gcs_port = parse_address(address)
         self.inner.reset(new CPythonGcsSubscriber(
             gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))

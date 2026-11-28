@@ -330,7 +330,10 @@ class FileSystemStorage(ExternalStorage):
         # Choose the current directory.
         # It chooses a random index to maximize multiple directories that are
         # mounted at different point.
-        self._current_directory_index = random.randrange(0, len(self._directory_paths))
+        # Private RNG so that a seed set before ray.init() is not perturbed (#10145).
+        self._current_directory_index = random.SystemRandom().randrange(
+            0, len(self._directory_paths)
+        )
 
     def spill_objects(self, object_refs, owner_addresses) -> List[str]:
         if len(object_refs) == 0:
@@ -466,7 +469,7 @@ class ExternalStorageSmartOpenImpl(ExternalStorage):
             self._uris = [u.strip("/") for u in uri]
         assert len(self._uris) == len(uri)
 
-        self._current_uri_index = random.randrange(0, len(self._uris))
+        self._current_uri_index = random.SystemRandom().randrange(0, len(self._uris))
         self.prefix = f"{DEFAULT_OBJECT_PREFIX}_{node_id}"
         self.override_transport_params = override_transport_params or {}
 
