@@ -194,6 +194,39 @@ TEST_F(RedisStoreClientTest, BasicSimple) {
   ASSERT_TRUE(WaitForCondition([cnt]() { return *cnt == 0; }, 5000));
 }
 
+TEST_F(RedisStoreClientTest, AsyncMultiGetWithDuplicateKeysCompletes) {
+  // A key listed twice in one request must not stall that request or the later
+  // requests on the same key.
+  std::atomic<int> callbacks{0};
+  store_client_->AsyncPut("T",
+                          "dup",
+                          "v",
+                          true,
+                          {[&callbacks](auto r) {
+                             ASSERT_TRUE(r);
+                             callbacks++;
+                           },
+                           *io_service_pool_->Get()});
+  store_client_->AsyncMultiGet(
+      "T",
+      {"dup", "dup"},
+      {[&callbacks](absl::flat_hash_map<std::string, std::string> m) {
+         ASSERT_EQ(m.size(), 1);
+         ASSERT_EQ(m["dup"], "v");
+         callbacks++;
+       },
+       *io_service_pool_->Get()});
+  store_client_->AsyncGet("T",
+                          "dup",
+                          {[&callbacks](auto s, auto r) {
+                             ASSERT_TRUE(r.has_value());
+                             ASSERT_EQ(*r, "v");
+                             callbacks++;
+                           },
+                           *io_service_pool_->Get()});
+  ASSERT_TRUE(WaitForCondition([&callbacks]() { return callbacks == 3; }, 5000));
+}
+
 TEST_F(RedisStoreClientTest, Complicated) {
   int window = 10;
   std::atomic<size_t> finished{0};
