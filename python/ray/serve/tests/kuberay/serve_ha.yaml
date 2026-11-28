@@ -1,0 +1,124 @@
+# Applied by serve_ha.py after it creates the serve-ha Secret and the
+# serve-ha-scripts ConfigMap. Follows the RayService high-availability guide:
+# doc/source/kuberay/user-guides/rayservice-high-availability.md
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+---
+# Stores the GCS state, so the Ray cluster survives losing its head Pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+spec:
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          # ECR Public mirrors Docker Hub's official images without its pull rate limits.
+          image: public.ecr.aws/docker/library/redis:7.2
+          args: ["--requirepass", "$(REDIS_PASSWORD)"]
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: serve-ha
+                  key: redis_password
+---
+apiVersion: ray.io/v1
+kind: RayService
+metadata:
+  name: serve-ha
+spec:
+  serveConfigV2: |
+    applications:
+      - name: ha
+        import_path: serve_ha_app:app
+        route_prefix: /
+  rayClusterConfig:
+    # Ray's version on master. KubeRay requires 2.52.0 or later for token auth.
+    rayVersion: "3.0.0.dev0"
+    authOptions:
+      mode: token
+      secretName: serve-ha
+    gcsFaultToleranceOptions:
+      redisAddress: redis:6379
+      redisPassword:
+        valueFrom:
+          secretKeyRef:
+            name: serve-ha
+            key: redis_password
+    headGroupSpec:
+      rayStartParams:
+        # Keeps replicas off the head Pod.
+        num-cpus: "0"
+        object-store-memory: "100000000"
+      template: &ray_pod
+        spec:
+          containers:
+            - name: ray
+              # Built from the commit under test by ci/k8s/setup-kuberay.sh.
+              image: ray-ci:kuberay-test
+              env:
+                - name: PYTHONPATH
+                  value: /home/ray/serve_ha
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 1Gi
+                limits:
+                  memory: 3Gi
+              volumeMounts:
+                - name: scripts
+                  mountPath: /home/ray/serve_ha
+          volumes:
+            - name: scripts
+              configMap:
+                name: serve-ha-scripts
+    workerGroupSpecs:
+      - groupName: workers
+        replicas: 3
+        rayStartParams:
+          num-cpus: "1"
+          object-store-memory: "100000000"
+        template: *ray_pod
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: serve-ha-client
+spec:
+  restartPolicy: Never
+  containers:
+    - name: client
+      image: ray-ci:kuberay-test
+      command: ["python", "/home/ray/serve_ha/serve_ha_client.py", "load"]
+      env:
+        - name: RAY_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: serve-ha
+              key: auth_token
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+      volumeMounts:
+        - name: scripts
+          mountPath: /home/ray/serve_ha
+  volumes:
+    - name: scripts
+      configMap:
+        name: serve-ha-scripts
