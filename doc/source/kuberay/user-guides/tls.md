@@ -8,7 +8,7 @@ myst:
 
 # TLS Authentication
 
-Ray can be configured to use TLS on its gRPC channels. This means that connecting to the Ray head will require an appropriate set of credentials and also that data exchanged between various processes (client, head, workers) will be encrypted ([Ray's document](../../core/configure.md#tls-authentication)).
+Ray can be configured to use TLS on its gRPC channels. This means that connecting to the Ray head will require an appropriate set of credentials and also that data exchanged between various processes (client, head, workers) will be encrypted ([Ray's document](../../cluster/configure.md#tls-authentication)).
 
 This document provides detailed instructions for generating a public-private key pair and CA certificate for configuring KubeRay.
 
@@ -127,7 +127,7 @@ To enable TLS authentication in your Ray cluster, set the following environment 
 - `RAY_TLS_SERVER_KEY`: Location of a private key file which is the cryptographic means to prove to other endpoints that you are the authorized user of a given certificate (i.e. `tls.key`).
 - `RAY_TLS_CA_CERT`: Location of a CA certificate file which allows TLS to decide whether an endpoint’s certificate has been signed by the correct authority (i.e. `ca.crt`).
 
-For more information on how to configure Ray with TLS authentication, please refer to [Ray's document](../../core/configure.md#tls-authentication).
+For more information on how to configure Ray with TLS authentication, please refer to [Ray's document](../../cluster/configure.md#tls-authentication).
 
 # Step 4: Verify TLS authentication
 

@@ -295,4 +295,5 @@ To disable task events, set the `enable_task_events` option in {func}`ray.remote
 :maxdepth: 1
 
 nested-tasks
+ray-generator
 ```
