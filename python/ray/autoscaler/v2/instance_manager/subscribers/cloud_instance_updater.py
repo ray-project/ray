@@ -114,11 +114,11 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             ), "Launch request id should have been set by the reconciler"
             requests_by_launch_request_id[event.launch_request_id].append(event)
 
+        shapes_by_id = {}
         for launch_request_id, events in requests_by_launch_request_id.items():
             request_shape = defaultdict(int)
             for event in events:
                 request_shape[event.instance_type] += 1
-            # Make requests to the cloud provider.
-            self._cloud_provider.launch(
-                shape=request_shape, request_id=launch_request_id
-            )
+            shapes_by_id[launch_request_id] = request_shape
+
+        self._cloud_provider.launch_many(shapes_by_id)
