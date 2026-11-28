@@ -532,6 +532,13 @@ def test_wandb_destructor_after_ray_module_is_cleared():
     assert not logger._trial_queues
 
 
+def test_wandb_destructor_after_failed_init(ray_start_2_cpus):
+    # Simulate `__init__` raising before any attribute was set.
+    logger = WandbLoggerCallback.__new__(WandbLoggerCallback)
+
+    logger.__del__()
+
+
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
     Test WANDB_PROCESS_RUN_INFO_HOOK in _WandbLoggingActor is
