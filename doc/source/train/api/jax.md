@@ -1,14 +1,14 @@
 ---
 myst:
   html_meta:
-    description: "API reference for ray.train.v2.jax: JaxTrainer for distributed JAX training."
+    description: "API reference for ray.train.jax: JaxTrainer for distributed JAX training."
 ---
 
 (train-api-jax)=
 
 # JAX
 
-The `ray.train.v2.jax` module runs distributed JAX training.
+The `ray.train.jax` module runs distributed JAX training.
 
 ```{eval-rst}
 .. currentmodule:: ray
@@ -19,5 +19,5 @@ The `ray.train.v2.jax` module runs distributed JAX training.
     :nosignatures:
     :toctree: doc/
 
-    ~train.v2.jax.JaxTrainer
+    ~train.jax.JaxTrainer
 ```

@@ -126,12 +126,12 @@ To shard model parameters, gradients, and optimizer states across TPU devices wi
 
 :::{tab-item} Ray Train with JaxTrainer
 
-When you set `use_tpu=True`, {class}`~ray.train.v2.jax.JaxTrainer` launches one worker per TPU host and initializes JAX's distributed runtime across the slice. As a result, `jax.devices()` returns every chip in the slice from each worker:
+When you set `use_tpu=True`, {class}`~ray.train.jax.JaxTrainer` launches one worker per TPU host and initializes JAX's distributed runtime across the slice. As a result, `jax.devices()` returns every chip in the slice from each worker:
 
 ```python
 import ray.train
 from ray.train import ScalingConfig
-from ray.train.v2.jax import JaxTrainer
+from ray.train.jax import JaxTrainer
 
 
 def train_func():

@@ -8,7 +8,7 @@ myst:
 
 # Get started with distributed training using JAX
 
-This guide introduces the {class}`~ray.train.v2.jax.JaxTrainer` in Ray Train.
+This guide introduces the {class}`~ray.train.jax.JaxTrainer` in Ray Train.
 
 (what-is-jax)=
 
@@ -18,7 +18,7 @@ This guide introduces the {class}`~ray.train.v2.jax.JaxTrainer` in Ray Train.
 
 JAX provides an extensible system of transformations for numerical functions, such as `jax.grad`, `jax.jit`, and `jax.vmap`. It uses the Accelerated Linear Algebra (XLA) compiler to create optimized code that scales efficiently on accelerators such as GPUs and TPUs. You can combine these transformations to build complex, high-performance numerical programs for distributed execution.
 
-JAX and the {class}`~ray.train.v2.jax.JaxTrainer` support accelerators such as GPUs and TPUs. For details, see [Supported platforms](https://docs.jax.dev/en/latest/installation.html#supported-platforms) in the JAX documentation.
+JAX and the {class}`~ray.train.jax.JaxTrainer` support accelerators such as GPUs and TPUs. For details, see [Supported platforms](https://docs.jax.dev/en/latest/installation.html#supported-platforms) in the JAX documentation.
 
 
 ## What are TPUs?
@@ -33,7 +33,7 @@ To learn more about configuring TPUs with KubeRay, see {ref}`kuberay-tpu`.
 
 ## How does `JaxTrainer` work?
 
-The {class}`~ray.train.v2.jax.JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train. It follows the single-program, multiple-data (SPMD) paradigm, where multiple workers run your training code simultaneously.
+The {class}`~ray.train.jax.JaxTrainer` is the core component for orchestrating distributed JAX training in Ray Train. It follows the single-program, multiple-data (SPMD) paradigm, where multiple workers run your training code simultaneously.
 
 For TPUs, each worker runs on a separate TPU virtual machine within a TPU slice. Ray Train automatically reserves TPU slices atomically.
 
@@ -80,7 +80,7 @@ For details, see {ref}`train_scaling_config`.
 The following example shows the final code:
 
 ```python
-from ray.train.v2.jax import JaxTrainer
+from ray.train.jax import JaxTrainer
 from ray.train import ScalingConfig
 
 def train_func():
@@ -98,7 +98,7 @@ result = trainer.fit()
 
 - `train_func` is the training function, the Python code that runs on each distributed training worker.
 - {class}`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use TPUs or GPUs.
-- {class}`~ray.train.v2.jax.JaxTrainer` launches the distributed training job.
+- {class}`~ray.train.jax.JaxTrainer` launches the distributed training job.
 
 Compare a JAX training script with and without Ray Train.
 
@@ -114,7 +114,7 @@ import jax.numpy as jnp
 import optax
 import ray.train
 
-from ray.train.v2.jax import JaxTrainer
+from ray.train.jax import JaxTrainer
 from ray.train import ScalingConfig
 
 def train_func():
@@ -249,7 +249,7 @@ Ray Train automatically initializes the JAX distributed environment based on the
 This function is the entry point that Ray runs on each remote worker.
 
 ```diff
-+from ray.train.v2.jax import JaxTrainer
++from ray.train.jax import JaxTrainer
 +from ray.train import ScalingConfig, report
 
 -def main_logic()
@@ -317,7 +317,7 @@ For details, see {ref}`persistent-storage-guide`.
 
 ## Launch a training job
 
-To launch a distributed training job, pass the training function, scaling configuration, and run configuration to a {class}`~ray.train.v2.jax.JaxTrainer`, then call `fit()`.
+To launch a distributed training job, pass the training function, scaling configuration, and run configuration to a {class}`~ray.train.jax.JaxTrainer`, then call `fit()`.
 
 ```python
 from ray.train import ScalingConfig
@@ -331,7 +331,7 @@ run_config = None
 ```
 
 ```python
-from ray.train.v2.jax import JaxTrainer
+from ray.train.jax import JaxTrainer
 
 trainer = JaxTrainer(
     train_func, scaling_config=scaling_config, run_config=run_config
