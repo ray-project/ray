@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray.experimental.sandbox as sandbox_api
+from ray.experimental.sandbox._internal import orphan_reaper
 from ray.experimental.sandbox.backend.base import SandboxStatus
 from ray.experimental.sandbox.backend.checkpoint_utils import copy_fs_tree
 from ray.experimental.sandbox.backend.gvisor import (
@@ -619,7 +620,7 @@ class TestCheckpointRestore(unittest.TestCase):
                 "ray.experimental.sandbox.backend.checkpoint_utils.copy_fs_tree",
                 side_effect=PermissionError("Permission denied"),
             ),
-            patch.object(self.backend, "delete_sandbox") as mock_delete,
+            patch.object(self.backend, "_delete_sandbox") as mock_delete,
         ):
             with pytest.raises(SandboxError, match="Failed to copy rootfs overlay"):
                 self.backend.checkpoint_sandbox(sandbox_id, leave_running=False)
@@ -643,11 +644,16 @@ class TestCheckpointRestore(unittest.TestCase):
         stack, _, mock_popen = self._fake_runsc()
         with (
             stack,
-            patch.object(self.backend, "delete_sandbox") as mock_delete,
+            patch.object(self.backend, "_delete_sandbox") as mock_delete,
+            patch.object(orphan_reaper, "reap_now") as mock_reap_now,
+            patch.object(orphan_reaper, "reap_soon") as mock_reap_soon,
         ):
             self.backend.checkpoint_sandbox(sandbox_id, leave_running=False)
 
             mock_delete.assert_called_once_with(sandbox_id)
+            # Checkpoints only wake the reaper; they don't wait for its scan.
+            mock_reap_soon.assert_called_once_with()
+            mock_reap_now.assert_not_called()
         assert not mock_popen.called
 
     def test_checkpoint_clears_existing_destination(self):
@@ -1413,7 +1419,7 @@ class TestCheckpointRestore(unittest.TestCase):
         self.backend._sandbox_metadata[sandbox_id]["egress_allowlist"] = ["10.0.0.5/32"]
         ckpt_dir = os.path.join(self.temp_dir, "allowlist_ckpt")
         stack, _, _ = self._fake_runsc()
-        with stack, patch.object(self.backend, "delete_sandbox"):
+        with stack, patch.object(self.backend, "_delete_sandbox"):
             self.backend.checkpoint_sandbox(
                 sandbox_id, checkpoint_path=ckpt_dir, leave_running=False
             )
