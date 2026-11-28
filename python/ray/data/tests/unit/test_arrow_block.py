@@ -3,6 +3,7 @@ from typing import Union
 
 import numpy as np
 import pyarrow as pa
+import pyarrow.compute as pc
 import pytest
 
 from ray.data._internal.arrow_block import (
@@ -63,6 +64,28 @@ class TestArrowBlockColumnAccessor:
             expected = _wrap_as_pa_scalar(expected, dtype=pa.int64())
 
         assert result == expected
+
+    def test_integer_sum_does_not_overflow(self, arr, as_py):
+        arr = pa.array([2**62] * 8, type=pa.int64())
+        accessor = ArrowBlockColumnAccessor(arr)
+
+        assert accessor.sum(ignore_nulls=True) == 2**65
+
+    @pytest.mark.parametrize("encoding", ["dictionary", "run_end"])
+    def test_encoded_integer_sum_does_not_overflow(self, arr, as_py, encoding):
+        values = pa.array([2**62, 2**62], type=pa.int64())
+        if encoding == "dictionary":
+            values = values.dictionary_encode()
+        else:
+            values = pc.run_end_encode(values)
+
+        result = ArrowBlockColumnAccessor(values).sum(ignore_nulls=True, as_py=as_py)
+
+        if as_py:
+            assert result == 2**63
+        else:
+            assert result.type == pa.decimal128(38, 0)
+            assert int(result.as_py()) == 2**63
 
     @pytest.mark.parametrize(
         "ignore_nulls, expected",
