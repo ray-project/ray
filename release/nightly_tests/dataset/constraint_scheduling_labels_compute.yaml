@@ -1,0 +1,41 @@
+# Labeled cluster for the constraint-aware label-scheduling release tests
+# (constraint_label_scheduling.py). Uniform 8-CPU nodes so the tests' CPU
+# quantization math is exact: a 5-CPU "hog" actor fits at most once per node
+# (leaving 3 free CPUs), and a 4-CPU labeled actor cannot fit next to it.
+#
+# pool_a / pool_b are the scarce labeled pools the tests pin operators to;
+# the "common" pool is labeled too so only the negation case relies on
+# absent-key label semantics (the unlabeled head node).
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+advanced_instance_config:
+    IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    # m5.2xlarge: 8 vCPUs, 32 GiB memory (~12 GiB object store).
+    - name: pool-a
+      instance_type: m5.2xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      labels:
+        ray-pool: pool_a
+
+    - name: pool-b
+      instance_type: m5.2xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      labels:
+        ray-pool: pool_b
+
+    - name: common
+      instance_type: m5.2xlarge
+      min_nodes: 4
+      max_nodes: 4
+      market_type: ON_DEMAND
+      labels:
+        ray-pool: common
