@@ -29,6 +29,11 @@ def is_sink_or_write(op: "PhysicalOperator") -> bool:
     return any(isinstance(lop, Write) for lop in op._logical_operators)
 
 
+def has_produced_output(op: "PhysicalOperator") -> bool:
+    """Whether ``op`` has emitted a task output, or completed without one."""
+    return op.metrics.num_task_outputs_generated > 0 or op.has_completed()
+
+
 def bounded_max_size(pool: "AutoscalingActorPool") -> int:
     """The pool's max size as an int; an unbounded pool (``inf``) reads as
     ``sys.maxsize`` so cap arithmetic stays integral."""

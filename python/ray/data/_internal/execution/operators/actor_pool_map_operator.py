@@ -447,6 +447,18 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             bundle=None, actor_locality_enabled=self._actor_locality_enabled
         )
 
+    def _get_actor_location_tracker(self) -> ActorHandle:
+        """The shared ``ActorLocationTracker``, looked up once per operator.
+
+        The lookup is a GCS round trip; a pool scale-up starts many actors in
+        one scheduling step, so repeating it per actor stalls the loop.
+        """
+        tracker = getattr(self, "_actor_location_tracker", None)
+        if tracker is None:
+            tracker = get_or_create_actor_location_tracker()
+            self._actor_location_tracker = tracker
+        return tracker
+
     def _start_actor(
         self,
         labels: Dict[str, str],
@@ -485,7 +497,7 @@ class ActorPoolMapOperator(MapOperator, ReportsExtraResourceUsage):
             logical_actor_id=logical_actor_id,
             src_fn_name=self.name,
             map_transformer=self._map_transformer_ref,
-            actor_location_tracker=get_or_create_actor_location_tracker(),
+            actor_location_tracker=self._get_actor_location_tracker(),
         )
         res_ref = actor.get_location.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id}

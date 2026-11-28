@@ -17,6 +17,7 @@ dispatch pattern.
 from __future__ import annotations
 
 import logging
+import math
 from functools import partial
 from typing import List, cast
 
@@ -24,12 +25,17 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.data._internal.compute import TaskPoolStrategy
+from ray.data._internal.compute import (
+    ActorPoolStrategy,
+    ComputeStrategy,
+    TaskPoolStrategy,
+)
 from ray.data._internal.datasource_v2.common.listing_utils import (
     list_files_for_each_block,
     partition_files,
 )
 from ray.data._internal.datasource_v2.interfaces.file_manifest import PATH_COLUMN_NAME
+from ray.data._internal.execution.execution_flags import actor_only_backend_enabled
 from ray.data._internal.execution.interfaces import (
     BlockEntry,
     PhysicalOperator,
@@ -56,19 +62,39 @@ logger = logging.getLogger(__name__)
 # thousands of explicit paths.
 DEFAULT_MAX_NUM_LIST_FILES_TASKS = 200
 
+# Under the actor-only backend, the fewest paths one listing block holds. A
+# listing task per path costs an actor round trip for a single stat, so small
+# path lists go in one block; large ones still split up to the cap above.
+ACTOR_ONLY_MIN_PATHS_PER_LISTING_BLOCK = 256
 
-def _num_listing_tasks(num_paths: int, should_parallelize: bool) -> int:
-    """Number of parallel listing tasks = one listing block per worker.
 
-    Used for BOTH the input-bundle split and the ListFiles pool size cap, so
-    they stay in sync. Without the pool cap the actor-only backend's sizer gives
-    this trivial source a full equal-share warmup target (observed ~479 actors
-    at scale); capping it at the listing-block count is the genuine parallelism.
-    A single prefix (the common case) lists in one task -> 1.
+def _num_listing_blocks(
+    *, num_paths: int, should_parallelize: bool, min_paths_per_block: int
+) -> int:
+    """Number of blocks the input paths are split into, one listing task each.
+
+    A single prefix (the common case) lists in one block -> 1.
     """
     if should_parallelize and num_paths:
-        return min(DEFAULT_MAX_NUM_LIST_FILES_TASKS, num_paths)
+        return min(
+            DEFAULT_MAX_NUM_LIST_FILES_TASKS,
+            math.ceil(num_paths / min_paths_per_block),
+        )
     return 1
+
+
+def _listing_compute_strategy(
+    *, num_listing_blocks: int, data_context: DataContext
+) -> ComputeStrategy:
+    """An unsized task pool (one task per block), or under the actor-only
+    backend an autoscaling actor pool of 1 up to one actor per block.
+
+    Execution starts once one actor is up, as it does with tasks. Sized
+    explicitly: an unsized task pool would promote to an unbounded actor pool.
+    """
+    if actor_only_backend_enabled(data_context):
+        return ActorPoolStrategy(min_size=1, max_size=num_listing_blocks)
+    return TaskPoolStrategy()
 
 
 def plan_list_files_op(
@@ -87,12 +113,25 @@ def plan_list_files_op(
 
     shuffle_config = op.shuffle_config_factory()
 
-    # Cap the ListFiles pool at the listing-block count (see _num_listing_tasks).
-    # maybe_promote_compute_strategy turns TaskPoolStrategy(size=N) into a fixed
-    # ActorPoolStrategy(size=N) under the actor-only backend; for the common
-    # single-prefix read N=1, so ListFiles becomes a (1,1) pool the sizer leaves
-    # alone. TaskPool mode is unaffected in type (just a max-concurrency cap).
-    num_list_tasks = _num_listing_tasks(len(op.paths), shuffle_config is None)
+    # A single task is required when shuffle needs one global RNG over the full
+    # listing (the indexer shuffles after path discovery), when the partitioner
+    # packs globally (it must see every listing row, not just this shard's), or
+    # when planning already listed the files (they go in one bundle).
+    should_parallelize = (
+        shuffle_config is None
+        and not (partitioner is not None and partitioner.requires_global_input)
+        and op.prelisted_file_infos is None
+    )
+    num_listing_blocks = _num_listing_blocks(
+        num_paths=len(op.paths),
+        should_parallelize=should_parallelize,
+        # One path per block keeps the classic backend's split unchanged.
+        min_paths_per_block=(
+            ACTOR_ONLY_MIN_PATHS_PER_LISTING_BLOCK
+            if actor_only_backend_enabled(data_context)
+            else 1
+        ),
+    )
 
     transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
@@ -133,23 +172,17 @@ def plan_list_files_op(
         _create_input_data_buffer(
             op,
             data_context,
-            # A single task is required when shuffle needs one global RNG over
-            # the full listing (the indexer shuffles after path discovery), or
-            # when the partitioner packs globally (it must see every listing
-            # row, not just this shard's).
-            should_parallelize=(
-                shuffle_config is None
-                and not (partitioner is not None and partitioner.requires_global_input)
-            ),
+            should_parallelize=should_parallelize,
+            num_listing_blocks=num_listing_blocks,
         ),
         data_context,
         name="ListFiles",
         # Listing is extremely fast; default backpressure would starve the
         # downstream reader of inputs.
         generator_backpressure_disabled=True,
-        # One worker per listing block; never the sizer's equal share (see
-        # num_list_tasks above).
-        compute_strategy=TaskPoolStrategy(size=num_list_tasks),
+        compute_strategy=_listing_compute_strategy(
+            num_listing_blocks=num_listing_blocks, data_context=data_context
+        ),
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,
@@ -163,6 +196,7 @@ def _create_input_data_buffer(
     data_context: DataContext,
     *,
     should_parallelize: bool,
+    num_listing_blocks: int,
 ) -> InputDataBuffer:
     """Wrap root paths or retained file infos into listing-input RefBundles.
 
@@ -191,10 +225,7 @@ def _create_input_data_buffer(
         )
 
     if should_parallelize and op.paths:
-        path_splits = np.array_split(
-            list(op.paths),
-            _num_listing_tasks(len(op.paths), should_parallelize),
-        )
+        path_splits = np.array_split(list(op.paths), num_listing_blocks)
     else:
         path_splits = [list(op.paths)]
 

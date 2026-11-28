@@ -39,6 +39,7 @@ from ray.data._internal.experimental.execution.sizer.models import (
 )
 from ray.data._internal.experimental.execution.sizer.op_profile import (
     OpProfiles,
+    has_produced_output,
     is_sink_or_write,
 )
 from ray.data._internal.experimental.execution.sizer.operator_ordering import (
@@ -207,11 +208,7 @@ class SizingTicker:
             return
         if self._warmup_started_t is None:
             self._warmup_started_t = now
-        waiting_on = [
-            op
-            for op in self.critical_ops
-            if op.metrics.num_task_outputs_generated == 0 and not op.has_completed()
-        ]
+        waiting_on = [op for op in self.critical_ops if not has_produced_output(op)]
         waiting_on += [
             op
             for op in self._profiles.actor_pool_ops
