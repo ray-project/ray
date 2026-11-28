@@ -73,54 +73,46 @@ def build_llm_deployment(
     """Helper to build a single vllm deployment from the given llm config.
 
     Examples:
-        .. testcode::
-            :skipif: True
-
-            from ray import serve
-            from ray.serve.llm import LLMConfig, build_llm_deployment
-
-            # Configure the model
-            llm_config = LLMConfig(
-                model_loading_config=dict(
-                    model_id="llama-3.1-8b",
-                    model_source="meta-llama/Llama-3.1-8b-instruct",
-                ),
-                deployment_config=dict(
-                    autoscaling_config=dict(
-                        min_replicas=1,
-                        max_replicas=2,
-                    )
-                ),
-                accelerator_type="A10G",
-            )
-
-            # Build the deployment
-            llm_app = build_llm_deployment(llm_config)
-
-            # Deploy the application
-            model_handle = serve.run(llm_app)
-
-            # Querying the model handle
-            import asyncio
-            model_handle = model_handle.options(stream=True)
-            async def query_model(model_handle):
-                from ray.serve.llm.openai_api_models import ChatCompletionRequest
-
-                request = ChatCompletionRequest(
-                    model="qwen-0.5b",
-                    messages=[
-                        {
-                            "role": "user",
-                            "content": "Hello, world!"
-                        }
-                    ]
-                )
-
-                resp = model_handle.chat.remote(request)
-                async for message in resp:
-                    print("message: ", message)
-
-            asyncio.run(query_model(model_handle))
+        >>> from ray import serve  # doctest: +SKIP_EXAMPLE
+        >>> from ray.serve.llm import LLMConfig, build_llm_deployment
+        >>> # Configure the model
+        >>> llm_config = LLMConfig(
+        ...     model_loading_config=dict(
+        ...         model_id="llama-3.1-8b",
+        ...         model_source="meta-llama/Llama-3.1-8b-instruct",
+        ...     ),
+        ...     deployment_config=dict(
+        ...         autoscaling_config=dict(
+        ...             min_replicas=1,
+        ...             max_replicas=2,
+        ...         )
+        ...     ),
+        ...     accelerator_type="A10G",
+        ... )
+        >>> # Build the deployment
+        >>> llm_app = build_llm_deployment(llm_config)
+        >>> # Deploy the application
+        >>> model_handle = serve.run(llm_app)
+        >>> # Querying the model handle
+        >>> import asyncio
+        >>> model_handle = model_handle.options(stream=True)
+        >>> async def query_model(model_handle):
+        ...     from ray.serve.llm.openai_api_models import ChatCompletionRequest
+        ...
+        ...     request = ChatCompletionRequest(
+        ...         model="qwen-0.5b",
+        ...         messages=[
+        ...             {
+        ...                 "role": "user",
+        ...                 "content": "Hello, world!"
+        ...             }
+        ...         ]
+        ...     )
+        ...
+        ...     resp = model_handle.chat.remote(request)
+        ...     async for message in resp:
+        ...         print("message: ", message)
+        >>> asyncio.run(query_model(model_handle))
 
     Args:
         llm_config: The llm config to build vllm deployment.
