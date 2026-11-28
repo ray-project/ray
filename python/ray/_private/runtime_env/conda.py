@@ -29,6 +29,7 @@ from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.protocol import Protocol
 from ray._private.runtime_env.redaction import redact_runtime_env
+from ray._private.runtime_env.uri_cache import URIDeletionResult, URIDeletionStatus
 from ray._private.runtime_env.validation import parse_and_validate_conda
 from ray._private.utils import (
     get_directory_size_bytes,
@@ -295,7 +296,7 @@ class CondaPlugin(RuntimeEnvPlugin):
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
+    ) -> URIDeletionResult:
         """Delete URI and return the number of bytes deleted."""
         logger.info(f"Got request to delete URI {uri}")
         protocol, hash = parse_uri(uri)
@@ -309,12 +310,14 @@ class CondaPlugin(RuntimeEnvPlugin):
         local_dir_size = get_directory_size_bytes(conda_env_path)
 
         with FileLock(self._installs_and_deletions_file_lock):
+            if not os.path.lexists(conda_env_path):
+                return URIDeletionStatus.REMOVED
             successful = delete_conda_env(prefix=conda_env_path, logger=logger)
         if not successful:
             logger.warning(f"Error when deleting conda env {conda_env_path}. ")
             return 0
 
-        return local_dir_size
+        return local_dir_size or URIDeletionStatus.REMOVED
 
     async def create(
         self,

@@ -12,7 +12,7 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.runtime_env.uri_cache import URICache
+from ray._private.runtime_env.uri_cache import URICache, URIDeletionStatus
 from ray._private.runtime_env.utils import (
     SubprocessCalledProcessError,
     check_output_cmd,
@@ -152,6 +152,60 @@ def test_container_option_serialize(runtime_env_class):
 
 
 class TestURICache:
+    def test_refresh_size_and_external_deletion(self):
+        cache = URICache(lambda uri, logger: URIDeletionStatus.REMOVED, debug_mode=True)
+        cache.add("a", 4)
+        cache.mark_unused("a")
+        cache.add("a", 7)
+        cache.add("a", 7)
+        assert cache.get_total_size_bytes() == 7
+        cache.max_total_size_bytes = 0
+        cache.mark_unused("a")
+        assert "a" not in cache
+        assert cache.get_total_size_bytes() == 0
+
+    def test_unused_notification_before_add(self):
+        unused = []
+        cache = URICache(on_uri_unused=unused.append, debug_mode=True)
+        cache.mark_unused("creating")
+        assert unused == ["creating"]
+
+    def test_failed_eviction_still_counts_disk_usage(self):
+        on_disk = {"a": 8, "b": 8}
+        blocked = True
+
+        def delete_fn(uri, logger):
+            if uri == "a" and blocked:
+                return 0
+            return on_disk.pop(uri)
+
+        cache = URICache(delete_fn, max_total_size_bytes=10, debug_mode=True)
+        cache.add("a", 8)
+        cache.mark_unused("a")
+        cache.add("b", 8)
+        assert cache.get_total_size_bytes() == 16
+        assert "a" not in cache
+
+        cache.mark_unused("b")
+        assert on_disk == {"a": 8}
+        assert cache.get_total_size_bytes() == 8
+
+        blocked = False
+        cache.max_total_size_bytes = 0
+        cache.mark_unused("a")
+        assert not on_disk
+        assert cache.get_total_size_bytes() == 0
+
+    def test_add_existing_uri_is_idempotent(self):
+        cache = URICache(debug_mode=True)
+        cache.add("a", 4)
+        cache.add("a", 4)
+        assert cache.get_total_size_bytes() == 4
+
+        cache.mark_unused("a")
+        cache.add("a", 4)
+        assert cache.get_total_size_bytes() == 4
+
     def test_zero_cache_size(self):
         uris_to_sizes = {"5": 5, "3": 3}
 
@@ -186,6 +240,27 @@ class TestURICache:
         assert cache.get_total_size_bytes() == 8
         # "a" was the only unused URI, so it must have been deleted.
         assert "b" and "c" in cache and "a" not in cache
+
+    def test_delete_can_be_deferred(self):
+        attempts = 0
+
+        def delete_fn(uri, logger):
+            nonlocal attempts
+            attempts += 1
+            return None if attempts == 1 else 4
+
+        cache = URICache(delete_fn, max_total_size_bytes=0, debug_mode=True)
+        cache.add("a", 4)
+        cache.mark_unused("a")
+
+        assert "a" in cache
+        assert cache.get_total_size_bytes() == 4
+
+        cache._evict_if_needed()
+
+        assert "a" not in cache
+        assert cache.get_total_size_bytes() == 0
+        assert attempts == 2
 
     def test_mark_used_nonadded_uri_error(self):
         cache = URICache(debug_mode=True)

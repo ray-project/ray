@@ -11,6 +11,7 @@ from ray._private.runtime_env.packaging import (
     is_jar_uri,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URIDeletionResult, URIDeletionStatus
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
 from ray.exceptions import RuntimeEnvSetupError
@@ -32,7 +33,7 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
+    ) -> URIDeletionResult:
         """Delete URI and return the number of bytes deleted."""
         local_dir = get_local_dir_from_uri(uri, self._resources_dir)
         local_dir_size = get_directory_size_bytes(local_dir)
@@ -40,9 +41,9 @@ class JavaJarsPlugin(RuntimeEnvPlugin):
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
-            return 0
+            return URIDeletionStatus.REMOVED
 
-        return local_dir_size
+        return local_dir_size or URIDeletionStatus.REMOVED
 
     def get_uris(self, runtime_env: dict) -> List[str]:
         return runtime_env.java_jars()

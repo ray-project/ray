@@ -24,6 +24,7 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray._private.runtime_env.uri_cache import URIDeletionResult, URIDeletionStatus
 from ray._private.runtime_env.working_dir import set_pythonpath_in_context
 from ray._private.utils import get_directory_size_bytes
 from ray._raylet import GcsClient
@@ -188,7 +189,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
     def delete_uri(
         self, uri: str, logger: Optional[logging.Logger] = default_logger
-    ) -> int:
+    ) -> URIDeletionResult:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pymodule URI %s", uri)
         if get_local_dir_uri_path(uri) is not None:
@@ -205,9 +206,9 @@ class PyModulesPlugin(RuntimeEnvPlugin):
         deleted = delete_package(uri, self._resources_dir)
         if not deleted:
             logger.warning(f"Tried to delete nonexistent URI: {uri}.")
-            return 0
+            return URIDeletionStatus.REMOVED
 
-        return local_dir_size
+        return local_dir_size or URIDeletionStatus.REMOVED
 
     def get_uris(self, runtime_env) -> List[str]:
         return runtime_env.py_modules()
