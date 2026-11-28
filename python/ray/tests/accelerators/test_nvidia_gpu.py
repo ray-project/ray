@@ -94,6 +94,7 @@ def test_gpu_info_parsing(patch_mock_pynvml):
         # captured through the first digit-containing token instead of
         # collapsing to the ambiguous "RTX".
         ("NVIDIA RTX PRO 6000 Blackwell Server Edition", "RTX-PRO-6000"),
+        ("NVIDIA RTX PRO 4500 Blackwell Server Edition", "RTX-PRO-4500"),
         # Edge cases.
         (None, None),
         ("", None),
