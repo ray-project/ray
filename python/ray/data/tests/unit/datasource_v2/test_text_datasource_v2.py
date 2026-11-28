@@ -25,7 +25,6 @@ from ray.data._internal.datasource_v2.formats.text.text_scanner import TextScann
 from ray.data._internal.datasource_v2.interfaces.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.interfaces.file_partitioner import PartitionHints
 from ray.data._internal.util import RetryingPyFileSystem
-from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -217,27 +216,6 @@ def test_reader_rejects_root_file_when_partition_type_is_declared(tmp_path):
         list(reader.read(_manifest(root)))
 
 
-def test_reader_applies_partition_predicate_before_opening(tmp_path):
-    root = _write(tmp_path / "root.txt", "r\n")
-    nested = _write(tmp_path / "year=2024" / "data.txt", "n\n")
-    schema = pa.schema([(TEXT_COLUMN_NAME, pa.string()), ("year", pa.string())])
-    opened = []
-
-    class CountingReader(TextReader):
-        def _read_bytes(self, path):
-            opened.append(path)
-            return super()._read_bytes(path)
-
-    reader = CountingReader(
-        partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
-        partition_predicate=col("year").is_null(),
-        schema=schema,
-    )
-
-    assert _lines(reader, root, nested) == ["r"]
-    assert opened == [str(root)]
-
-
 def _snappy_stream_compress(data: bytes) -> bytes:
     out = io.BytesIO()
     snappy.stream_compress(io.BytesIO(data), out)
@@ -267,28 +245,6 @@ def test_decompress_snappy_uses_hadoop_framing_for_hdfs():
     assert (
         text_reader_mod._decompress_snappy(io.BytesIO(framed.getvalue()), hdfs) == data
     )
-
-
-def test_reader_retries_transient_errors(tmp_path, monkeypatch):
-    path = _write(tmp_path / "data.txt", "a\n")
-    monkeypatch.setattr(
-        DataContext.get_current(), "retried_io_errors", ["flaky storage"]
-    )
-    attempts = []
-    original = TextReader._read_file
-
-    def flaky(self, file_path, limit):
-        attempts.append(file_path)
-        if len(attempts) == 1:
-            raise OSError("flaky storage")
-        return original(self, file_path, limit)
-
-    monkeypatch.setattr(TextReader, "_read_file", flaky)
-    # ``tests/unit/conftest.py`` makes ``time.sleep`` raise.
-    monkeypatch.setattr("ray.data._internal.util.time.sleep", lambda _: None)
-
-    assert _lines(TextReader(), path) == ["a"]
-    assert len(attempts) == 2
 
 
 def test_reader_runs_pickle_object_gate(tmp_path, monkeypatch):

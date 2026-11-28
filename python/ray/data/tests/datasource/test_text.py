@@ -1,7 +1,11 @@
+import json
 import os
 
+import pyarrow as pa
+import pyarrow.fs as pafs
 import pytest
 from fsspec.implementations.http import HTTPFileSystem
+from fsspec.implementations.local import LocalFileSystem
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -28,6 +32,372 @@ def text_reader_version(request, monkeypatch):
 
 def _to_lines(rows):
     return [row["text"] for row in rows]
+
+
+@pytest.fixture
+def recorded_text_filesystem(tmp_path):
+    class RecordedTextFile:
+        """Record real file IO and optionally fail after partial progress."""
+
+        def __init__(self, file, path, event_path, fail_after):
+            self._file = file
+            self._path = path
+            self._event_path = event_path
+            self._failure_path = event_path + ".failed"
+            self._fail_after = fail_after
+            self._fail_this_open = fail_after is not None and not os.path.exists(
+                self._failure_path
+            )
+            self._record("open")
+
+        def _record(self, event, **kwargs):
+            with open(self._event_path, "a") as log:
+                log.write(json.dumps({"event": event, "path": self._path, **kwargs}))
+                log.write("\n")
+
+        def read(self, size=-1):
+            if self._fail_this_open and self._file.tell() >= self._fail_after:
+                with open(self._failure_path, "w"):
+                    pass
+                self._record("error")
+                raise OSError("injected text stream failure")
+            if self._fail_after is not None and not self._fail_this_open and size > 0:
+                # A retry can see different short reads. Batch boundaries must
+                # still match, since replay skips already-yielded batches.
+                size = min(size, 17)
+            data = self._file.read(size)
+            self._record("read", size=len(data))
+            return data
+
+        def close(self):
+            if not self._file.closed:
+                self._record("close")
+                self._file.close()
+
+        def __getattr__(self, name):
+            return getattr(self._file, name)
+
+    class RecordedTextFileSystemHandler(pafs.FSSpecHandler):
+        def __init__(self, event_path, fail_after=None):
+            super().__init__(LocalFileSystem(skip_instance_cache=True))
+            self._event_path = event_path
+            self._fail_after = fail_after
+
+        def open_input_stream(self, path):
+            return pa.PythonFile(
+                RecordedTextFile(
+                    super().open_input_stream(path),
+                    path,
+                    self._event_path,
+                    self._fail_after,
+                ),
+                mode="r",
+            )
+
+    def make(fail_after=None):
+        event_path = str(tmp_path / "events.jsonl")
+        filesystem = pafs.PyFileSystem(
+            RecordedTextFileSystemHandler(event_path, fail_after=fail_after)
+        )
+        return filesystem, event_path
+
+    return make
+
+
+def _text_file_events(event_path):
+    with open(event_path) as log:
+        return [json.loads(line) for line in log]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "encoding",
+    [pytest.param("utf-8", id="utf8"), pytest.param("utf-16-le", id="utf16_le")],
+)
+def test_read_text_streaming_line_boundaries(
+    ray_start_regular_shared, tmp_path, datasource_v2, restore_data_context, encoding
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+
+    restore_data_context.streaming_read_buffer_size = 7
+    restore_data_context.target_max_block_size = 64
+    text = "你好\r\n\n  \t\r🌍\vfin\fmore\x1cend\x1dnext\x1e\x85\u2028\u2029last"
+    path = tmp_path / "year=2024" / "data.txt"
+    path.parent.mkdir()
+    path.write_text(text, encoding=encoding)
+
+    ds = ray.data.read_text(
+        str(path),
+        encoding=encoding,
+        drop_empty_lines=False,
+        include_paths=True,
+        partitioning=Partitioning(
+            PartitionStyle.HIVE, base_dir=str(tmp_path), field_types={"year": int}
+        ),
+    )
+
+    assert sorted(ds.take_all(), key=lambda row: row["text"]) == [
+        {"text": line, "year": 2024, "path": str(path)}
+        for line in sorted(text.splitlines())
+    ]
+    assert ds.select_columns(["year", "path"]).take_all() == [
+        {"year": 2024, "path": str(path)}
+    ] * len(text.splitlines())
+    assert ds.count() == len(text.splitlines())
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "codec,suffix",
+    [
+        pytest.param("gzip", ".gz", id="gzip"),
+        pytest.param("bz2", ".bz2", id="bz2"),
+        pytest.param("zstd", ".zst", id="zstd"),
+        pytest.param("lz4", ".lz4", id="lz4"),
+    ],
+)
+def test_read_text_streaming_compression(
+    ray_start_regular_shared,
+    tmp_path,
+    datasource_v2,
+    restore_data_context,
+    codec,
+    suffix,
+):
+    restore_data_context.streaming_read_buffer_size = 7
+    restore_data_context.target_max_block_size = 64
+    path = str(tmp_path / ("data.txt" + suffix))
+    text = "你好\r\n🌍\n" * 20
+    with pafs.LocalFileSystem().open_output_stream(path, compression=codec) as stream:
+        stream.write(text.encode("utf-8"))
+
+    assert sorted(_to_lines(ray.data.read_text(path).take_all())) == sorted(
+        text.splitlines()
+    )
+    assert _to_lines(ray.data.read_text(path).limit(1).take_all()) == ["你好"]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "encoding",
+    [pytest.param("utf-8", id="utf8"), pytest.param("UTF_8", id="utf8_alias")],
+)
+def test_read_text_limit_stops_io(
+    ray_start_regular_shared,
+    tmp_path,
+    datasource_v2,
+    restore_data_context,
+    recorded_text_filesystem,
+    encoding,
+):
+    restore_data_context.streaming_read_buffer_size = 4096
+    path = tmp_path / "large.txt"
+    path.write_text("hello\n" * 200_000)
+    filesystem, event_path = recorded_text_filesystem()
+
+    rows = (
+        ray.data.read_text(str(path), filesystem=filesystem, encoding=encoding)
+        .limit(1)
+        .take_all()
+    )
+
+    events = _text_file_events(event_path)
+    assert rows == [{"text": "hello"}]
+    assert sum(e.get("size", 0) for e in events) < path.stat().st_size
+    assert [e["event"] for e in events].count("close") == 1
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_text_retries_after_yielding_batches(
+    ray_start_regular_shared,
+    tmp_path,
+    datasource_v2,
+    restore_data_context,
+    recorded_text_filesystem,
+):
+    restore_data_context.streaming_read_buffer_size = 32
+    restore_data_context.target_max_block_size = 64
+    restore_data_context.retried_io_errors = ["injected text stream failure"]
+    restore_data_context.execution_options.preserve_order = True
+    path = tmp_path / "data.txt"
+    path.write_text("".join(f"{i:04d}\n\n" for i in range(200)))
+    filesystem, event_path = recorded_text_filesystem(fail_after=128)
+
+    rows = (
+        ray.data.read_text(str(path), filesystem=filesystem, override_num_blocks=1)
+        .limit(150)
+        .take_all()
+    )
+
+    events = _text_file_events(event_path)
+    assert _to_lines(rows) == [f"{i:04d}" for i in range(150)]
+    assert [e["event"] for e in events].count("error") == 1
+    assert [e["event"] for e in events].count("open") == 2
+    assert [e["event"] for e in events].count("close") == 2
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_text_partition_predicate_does_not_open_pruned_file(
+    ray_start_regular_shared, tmp_path, datasource_v2, recorded_text_filesystem
+):
+    from ray.data.datasource.partitioning import Partitioning, PartitionStyle
+    from ray.data.expressions import col
+
+    root = tmp_path / "root.txt"
+    root.write_text("root\n")
+    nested = tmp_path / "year=2024" / "nested.txt"
+    nested.parent.mkdir()
+    nested.write_text("nested\n")
+    filesystem, event_path = recorded_text_filesystem()
+
+    rows = (
+        ray.data.read_text(
+            [str(root), str(nested)],
+            filesystem=filesystem,
+            partitioning=Partitioning(PartitionStyle.HIVE, base_dir=str(tmp_path)),
+        )
+        .filter(expr=col("year").is_null())
+        .take_all()
+    )
+
+    assert rows == [{"text": "root", "year": None}]
+    assert [
+        e["path"] for e in _text_file_events(event_path) if e["event"] == "open"
+    ] == [str(root)]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_text_limit_does_not_decode_unread_suffix(
+    ray_start_regular_shared, tmp_path, datasource_v2, restore_data_context
+):
+    restore_data_context.streaming_read_buffer_size = 64
+    path = tmp_path / "data.txt"
+    path.write_bytes(b"hello\n" * 1000 + b"\xff")
+
+    assert ray.data.read_text(str(path)).limit(1).take_all() == [{"text": "hello"}]
+    with pytest.raises(UnicodeDecodeError, match="utf-8"):
+        ray.data.read_text(str(path)).take_all()
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "encoding,data,expected",
+    [
+        pytest.param("punycode", b"hello-", ["hello"], id="punycode"),
+        pytest.param("idna", b"hello\n" * 200, ["hello"] * 200, id="idna"),
+        pytest.param("cp1252", b" \n\x80\nworld\n", ["€", "world"], id="cp1252"),
+        pytest.param(
+            "utf-16", "a\nb".encode("utf-16")[2:], ["a", "b"], id="utf16_no_bom"
+        ),
+        pytest.param(
+            "utf-32", "a\nb".encode("utf-32")[4:], ["a", "b"], id="utf32_no_bom"
+        ),
+        pytest.param(
+            "utf-8-sig", "a\nb".encode("utf-8-sig"), ["a", "b"], id="utf8_with_bom"
+        ),
+        pytest.param(
+            "unicode_escape", b"hello\\nworld", ["hello", "world"], id="unicode_escape"
+        ),
+    ],
+)
+def test_read_text_preserves_whole_file_codec_semantics(
+    ray_start_regular_shared,
+    tmp_path,
+    datasource_v2,
+    restore_data_context,
+    encoding,
+    data,
+    expected,
+):
+    restore_data_context.streaming_read_buffer_size = 4
+    path = tmp_path / "data.txt"
+    path.write_bytes(data)
+
+    ds = ray.data.read_text(str(path), encoding=encoding)
+
+    assert sorted(_to_lines(ds.take_all())) == sorted(expected)
+    assert _to_lines(ds.limit(1).take_all()) == expected[:1]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+@pytest.mark.parametrize(
+    "encoding,data",
+    [
+        pytest.param("cp1252", b"hello\n" * 1000 + b"\x81", id="invalid_suffix"),
+        pytest.param("utf-8-sig", b"\xef", id="one_byte_of_bom"),
+        pytest.param("utf-8-sig", b"\xef\xbb", id="two_bytes_of_bom"),
+    ],
+)
+def test_read_text_fallback_checks_encoding_before_limit(
+    ray_start_regular_shared,
+    tmp_path,
+    datasource_v2,
+    restore_data_context,
+    encoding,
+    data,
+):
+    restore_data_context.streaming_read_buffer_size = 64
+    path = tmp_path / "data.txt"
+    path.write_bytes(data)
+
+    with pytest.raises(UnicodeDecodeError, match="codec can't decode"):
+        ray.data.read_text(str(path), encoding=encoding).limit(1).take_all()
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_text_keeps_emitted_rows_on_tolerated_decode_error(
+    ray_start_regular_shared, tmp_path, datasource_v2, restore_data_context
+):
+    restore_data_context.streaming_read_buffer_size = 4096
+    restore_data_context.target_max_block_size = 4096
+    restore_data_context.max_errored_blocks = 1
+    path = tmp_path / "damaged.txt"
+    # Each row occupies 8 bytes. The invalid byte starts a fresh decode chunk.
+    expected = [f"{i:07d}" for i in range(2048)]
+    path.write_bytes(("\n".join(expected) + "\n").encode() + b"\xff")
+
+    rows = ray.data.read_text(str(path)).take_all()
+
+    assert sorted(_to_lines(rows)) == expected
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_text_limit_is_global_across_read_tasks(
+    ray_start_regular_shared, tmp_path, datasource_v2, restore_data_context
+):
+    restore_data_context.execution_options.preserve_order = True
+    restore_data_context.target_max_block_size = 64
+    paths = [tmp_path / f"{index}.txt" for index in range(4)]
+    for index, path in enumerate(paths):
+        path.write_text("".join(f"{index}:{row}\n" for row in range(20)))
+
+    rows = (
+        ray.data.read_text([str(path) for path in paths], override_num_blocks=4)
+        .limit(7)
+        .take_all()
+    )
+
+    assert _to_lines(rows) == [f"0:{row}" for row in range(7)]
+
+
+@pytest.mark.parametrize("datasource_v2", [True], indirect=True)
+def test_read_text_limit_counts_rows_after_residual_filter(
+    ray_start_regular_shared, tmp_path, datasource_v2, restore_data_context
+):
+    from ray.data.expressions import col
+
+    restore_data_context.target_max_block_size = 64
+    path = tmp_path / "data.txt"
+    path.write_text("skip\n" * 100 + "keep\n")
+
+    rows = (
+        ray.data.read_text(str(path))
+        .filter(expr=col("text") == "keep")
+        .limit(1)
+        .take_all()
+    )
+
+    assert rows == [{"text": "keep"}]
 
 
 def test_empty_text_files(ray_start_regular_shared, tmp_path, text_reader_version):
