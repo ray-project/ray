@@ -245,7 +245,6 @@ ale-py==0.10.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   -r release/ray_release/byod/requirements_byod_3.10.in
-    #   gymnasium
 amqp==5.3.1 \
     --hash=sha256:43b3319e1b4e7d1251833a93d672b4af1e40f3d632d479b98661a95f117880a2 \
     --hash=sha256:cddc00c725449522023bad949f70fff7b48f0b1ade74d170a6f10ab044739432
