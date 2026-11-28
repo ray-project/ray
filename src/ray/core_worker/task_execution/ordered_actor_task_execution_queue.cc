@@ -51,7 +51,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     while (!group_state.pending_tasks.empty()) {
       auto head = group_state.pending_tasks.begin();
       cancel_task_(head->second, status);
-      pending_task_id_to_is_canceled.erase(head->second.TaskID());
+      RemovePendingAttemptLocked(head->second.TaskID());
       group_state.pending_tasks.erase(head);
     }
 
@@ -59,7 +59,7 @@ void OrderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &msg
     while (!group_state.pending_retry_tasks.empty()) {
       auto &req = group_state.pending_retry_tasks.front();
       cancel_task_(req, status);
-      pending_task_id_to_is_canceled.erase(req.TaskID());
+      RemovePendingAttemptLocked(req.TaskID());
       group_state.pending_retry_tasks.pop_front();
     }
   }
@@ -110,7 +110,9 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
   {
     absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
+    // Attempts of one task share the entry, so this attempt inherits a cancel made
+    // while an earlier attempt is still pending.
+    pending_task_id_to_state[task_spec.TaskId()].num_pending_attempts++;
   }
 
   // Set the OnArgsReady callback. In the general case, this should be called
@@ -204,16 +206,23 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   ExecuteQueuedTasks();
 }
 
+void OrderedActorTaskExecutionQueue::RemovePendingAttemptLocked(const TaskID &task_id) {
+  auto it = pending_task_id_to_state.find(task_id);
+  RAY_CHECK(it != pending_task_id_to_state.end())
+      << "Task " << task_id << " left the queue more times than it was enqueued.";
+  if (--it->second.num_pending_attempts == 0) {
+    pending_task_id_to_state.erase(it);
+  }
+}
+
 bool OrderedActorTaskExecutionQueue::CancelTaskIfFound(TaskID task_id) {
   absl::MutexLock lock(&mu_);
-  if (pending_task_id_to_is_canceled.find(task_id) !=
-      pending_task_id_to_is_canceled.end()) {
-    // Mark the task is canceled.
-    pending_task_id_to_is_canceled[task_id] = true;
-    return true;
-  } else {
+  auto it = pending_task_id_to_state.find(task_id);
+  if (it == pending_task_id_to_state.end()) {
     return false;
   }
+  it->second.is_canceled = true;
+  return true;
 }
 
 void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
@@ -234,7 +243,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
                           "intentionally discarded this task."));
       {
         absl::MutexLock lock(&mu_);
-        pending_task_id_to_is_canceled.erase(head->second.TaskID());
+        RemovePendingAttemptLocked(head->second.TaskID());
       }
       group_state.pending_tasks.erase(head);
     }
@@ -318,7 +327,7 @@ void OrderedActorTaskExecutionQueue::ExecuteQueuedTasks() {
                     std::max(group_state_in.next_seq_no, head->first + 1);
                 {
                   absl::MutexLock lock(&mu_);
-                  pending_task_id_to_is_canceled.erase(head->second.TaskID());
+                  RemovePendingAttemptLocked(head->second.TaskID());
                 }
                 group_state_in.pending_tasks.erase(head);
               }
@@ -350,9 +359,9 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   bool is_canceled = false;
   {
     absl::MutexLock lock(&mu_);
-    auto it = pending_task_id_to_is_canceled.find(task_id);
-    if (it != pending_task_id_to_is_canceled.end()) {
-      is_canceled = it->second;
+    auto it = pending_task_id_to_state.find(task_id);
+    if (it != pending_task_id_to_state.end()) {
+      is_canceled = it->second.is_canceled;
     }
   }
 
@@ -365,7 +374,7 @@ void OrderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
   }
 
   absl::MutexLock lock(&mu_);
-  pending_task_id_to_is_canceled.erase(task_id);
+  RemovePendingAttemptLocked(task_id);
 }
 
 }  // namespace core
