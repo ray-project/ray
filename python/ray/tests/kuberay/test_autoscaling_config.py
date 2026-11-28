@@ -9,17 +9,25 @@ import pytest
 import requests
 import yaml
 
-from ray.autoscaler._private.kuberay.autoscaling_config import (
+from ray._private.accelerators import tpu
+from ray._private.accelerators.accelerator import AcceleratorManager
+from ray._private.accelerators.tpu import (
     GKE_TPU_ACCELERATOR_LABEL,
+    GKE_TPU_SLICE_TOPOLOGY_ANNOTATION,
     GKE_TPU_TOPOLOGY_LABEL,
+)
+from ray.autoscaler._private.kuberay.autoscaling_config import (
     AutoscalingConfigProducer,
     _derive_autoscaling_config_from_ray_cr,
     _get_custom_resources,
+    _get_labels_from_group_spec,
     _get_num_tpus,
+    _get_pod_scheduling_metadata,
     _get_ray_resources_from_group_spec,
+    _get_required_node_labels,
     _round_up_k8s_quantity,
 )
-from ray.autoscaler._private.kuberay.utils import tpu_node_selectors_to_type
+from ray.util.debug import reset_log_once
 
 AUTOSCALING_CONFIG_MODULE_PATH = "ray.autoscaler._private.kuberay.autoscaling_config"
 
@@ -116,7 +124,11 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "labels": {},
+                "labels": {
+                    "ray.io/accelerator-type": "TPU-V4",
+                    "ray.io/tpu-topology": "2x2x2",
+                    "ray.io/tpu-pod-type": "v4-16",
+                },
                 "max_workers": 8,
                 "min_workers": 0,
                 "node_config": {},
@@ -229,6 +241,12 @@ def _get_ray_cr_with_top_level_labels() -> dict:
     cr = get_basic_ray_cr()
     # This top-level structured labels take priority.
     cr["spec"]["workerGroupSpecs"][0]["labels"] = {"instance-type": "mx5"}
+    # Top-level labels are merged over, and override, labels derived from the
+    # TPU nodeSelector.
+    cr["spec"]["workerGroupSpecs"][2]["labels"] = {
+        "ray.io/market-type": "spot",
+        "ray.io/tpu-pod-type": "v4-16-custom",
+    }
 
     # rayStartParams labels field should be ignored.
     cr["spec"]["workerGroupSpecs"][0]["rayStartParams"]["labels"] = "instance-type=n2"
@@ -238,6 +256,9 @@ def _get_ray_cr_with_top_level_labels() -> dict:
 def _get_autoscaling_config_with_top_level_labels() -> dict:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["small-group"]["labels"] = {"instance-type": "mx5"}
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {"ray.io/market-type": "spot", "ray.io/tpu-pod-type": "v4-16-custom"}
+    )
     return config
 
 
@@ -421,6 +442,13 @@ def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+    )
     return config
 
 
@@ -444,6 +472,13 @@ def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
     config = _get_basic_autoscaling_config()
     config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
     config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    config["available_node_types"]["tpu-group"]["labels"].update(
+        {
+            "ray.io/accelerator-type": "TPU-V5LITEPOD",
+            "ray.io/tpu-topology": "2x4",
+            "ray.io/tpu-pod-type": "v5litepod-8",
+        }
+    )
     return config
 
 
@@ -627,9 +662,7 @@ def test_autoscaling_config(
 ):
     ray_cr_in["metadata"]["namespace"] = "default"
     # Reset log_once state to ensure each test case is independent.
-    from ray.util.debug import _logged
-
-    _logged.clear()
+    reset_log_once()
     with mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
         if expected_error:
             with pytest.raises(expected_error, match=expected_error_message):
@@ -709,81 +742,6 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
         else:
             out = config_producer._fetch_ray_cr_from_k8s_with_retries()
             assert out == {"ok-key": "ok-value"}
-
-
-TPU_TYPES_ARGS = ",".join(
-    [
-        "accelerator",
-        "topology",
-        "expected_tpu_type",
-    ]
-)
-TPU_TYPES_DATA = (
-    []
-    if platform.system() == "Windows"
-    else [
-        pytest.param(
-            "tpu-v4-podslice",
-            None,
-            None,
-            id="tpu-none-topology",
-        ),
-        pytest.param(
-            None,
-            "2x2x2",
-            None,
-            id="tpu-none-accelerator",
-        ),
-        pytest.param(
-            "tpu-v4-podslice",
-            "2x2x2",
-            "v4-16",
-            id="tpu-v4-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-device",
-            "2x2",
-            "v5litepod-4",
-            id="tpu-v5e-device-test",
-        ),
-        pytest.param(
-            "tpu-v5-lite-podslice",
-            "2x4",
-            "v5litepod-8",
-            id="tpu-v5e-podslice-test",
-        ),
-        pytest.param(
-            "tpu-v5p-slice",
-            "2x2x4",
-            "v5p-32",
-            id="tpu-v5p-test",
-        ),
-        pytest.param(
-            "tpu-v6e-slice",
-            "16x16",
-            "v6e-256",
-            id="tpu-v6e-test",
-        ),
-        pytest.param(
-            "tpu7x",
-            "2x2x2",
-            "v7x-16",
-            id="tpu-v7x-test",
-        ),
-    ]
-)
-
-
-@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
-@pytest.mark.parametrize(TPU_TYPES_ARGS, TPU_TYPES_DATA)
-def test_tpu_node_selectors_to_type(
-    accelerator: str, topology: str, expected_tpu_type: str
-):
-    """Verify that tpu_node_selectors_to_type correctly returns TPU type from
-    TPU nodeSelectors.
-    """
-    tpu_type = tpu_node_selectors_to_type(topology, accelerator)
-    assert expected_tpu_type == tpu_type
 
 
 TPU_PARAM_ARGS = ",".join(
@@ -980,6 +938,22 @@ def test_get_ray_resources_from_group_spec(
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_get_ray_resources_malformed_tpu_topology_skips_head_resource():
+    group_spec = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][2])
+    group_spec["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+        "cloud.google.com/gke-tpu-topology": "4x",
+    }
+    assert _get_ray_resources_from_group_spec(group_spec, False) == {
+        "CPU": 1,
+        "memory": 536870912,
+        "Custom2": 5,
+        "Custom3": 1,
+        "TPU": 4,
+    }
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 def test_top_level_resources_override_warnings():
     """
     Verify all override warnings are logged when a top-level `resources` field is used in
@@ -1013,6 +987,998 @@ def test_top_level_resources_override_warnings():
         # Assert that all expected calls were made, in any order.
         mock_logger.warning.assert_has_calls(expected_calls, any_order=True)
         assert mock_logger.warning.call_count == 4
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_dynamic_slicing_tpu_labels_and_resources():
+    """Verify GKE TPU Dynamic Slicing pod annotations, single-host TPU, and
+    zero-TPU groups derive expected default labels and head resources."""
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    cr["spec"]["workerGroupSpecs"][1]["numOfHosts"] = 4
+    cr["spec"]["workerGroupSpecs"][1]["maxReplicas"] = 2
+
+    # GKE TPU Dynamic Slicing worker group: topology lives on pod annotation
+    # `cloud.google.com/gke-tpu-slice-topology` without `gke-tpu-topology` selector.
+    tpu_ds = cr["spec"]["workerGroupSpecs"][2]
+    tpu_ds["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+    }
+    tpu_ds["template"].setdefault("metadata", {}).setdefault("annotations", {})[
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x2"
+    tpu_ds["resources"] = {"TPU": "8"}
+    tpu_ds["numOfHosts"] = 2
+    tpu_ds["maxReplicas"] = 3
+
+    # Dynamic Slicing overriding a larger shared pool selector (`4x4x4` -> `2x2x2`),
+    # plus a single-host TPU group (`numOfHosts=1`) and zero-TPU groups.
+    tpu_override = copy.deepcopy(tpu_ds)
+    tpu_override["groupName"] = "tpu-ds-override"
+    tpu_override["template"]["spec"]["nodeSelector"][
+        "cloud.google.com/gke-tpu-topology"
+    ] = "4x4x4"
+
+    tpu_single = copy.deepcopy(tpu_ds)
+    tpu_single["groupName"] = "tpu-single"
+    tpu_single["numOfHosts"] = 1
+    tpu_single["template"]["metadata"]["annotations"][
+        "cloud.google.com/gke-tpu-slice-topology"
+    ] = "2x2x1"
+    tpu_zero = copy.deepcopy(tpu_ds)
+    tpu_zero["groupName"] = "tpu-zero-hosts"
+    tpu_zero["numOfHosts"] = 0
+    tpu_zero["template"]["metadata"] = {}
+    tpu_zero["template"]["spec"]["nodeSelector"] = {
+        "cloud.google.com/gke-tpu-accelerator": "tpu7x",
+        "cloud.google.com/gke-tpu-topology": "2x2x1",
+    }
+    tpu_zero_res = copy.deepcopy(tpu_zero)
+    tpu_zero_res["groupName"] = "tpu-zero-resource"
+    tpu_zero_res["resources"] = {"CPU": "4", "TPU": "0"}
+    tpu_zero_res["numOfHosts"] = 1
+    cpu_zero_tpu = copy.deepcopy(cr["spec"]["workerGroupSpecs"][0])
+    cpu_zero_tpu["groupName"] = "cpu-zero-tpu"
+    cpu_zero_tpu["resources"] = {"CPU": "4", "TPU": "0"}
+    cr["spec"]["workerGroupSpecs"].extend(
+        [tpu_override, tpu_single, tpu_zero, tpu_zero_res, cpu_zero_tpu]
+    )
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    autoscaling_cfg = AutoscalingConfig(configs=derived)
+    nt_cfgs = autoscaling_cfg.get_node_type_configs()
+
+    for name in ("tpu-zero-resource", "cpu-zero-tpu"):
+        assert not any(
+            k.startswith("TPU-") and k.endswith("-head")
+            for k in nt_cfgs[name].resources
+        )
+        assert "ray.io/accelerator-type" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-topology" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-pod-type" not in nt_cfgs[name].labels
+    assert nt_cfgs["gpu-group"].max_worker_nodes == 8
+    for name in ("tpu-group", "tpu-ds-override"):
+        assert nt_cfgs[name].max_worker_nodes == 6
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x2",
+            "ray.io/tpu-pod-type": "v7x-16",
+        }
+        assert nt_cfgs[name].resources["TPU-v7x-16-head"] == 1
+    assert nt_cfgs["tpu-single"].max_worker_nodes == 3
+    assert nt_cfgs["tpu-zero-hosts"].max_worker_nodes == 0
+    for name in ("tpu-single", "tpu-zero-hosts"):
+        assert nt_cfgs[name].labels == {
+            "ray.io/accelerator-type": "TPU-V7X",
+            "ray.io/tpu-topology": "2x2x1",
+            "ray.io/tpu-pod-type": "v7x-8",
+        }
+        assert nt_cfgs[name].resources["TPU-v7x-8-head"] == 1
+
+
+def _required_node_affinity(
+    terms: Any,
+    node_selector: Any = None,
+) -> Dict[str, Any]:
+    """Build a pod spec with requiredDuringSchedulingIgnoredDuringExecution."""
+    pod_spec: Dict[str, Any] = {
+        "affinity": {
+            "nodeAffinity": {
+                "requiredDuringSchedulingIgnoredDuringExecution": {
+                    "nodeSelectorTerms": terms,
+                }
+            }
+        }
+    }
+    if node_selector is not None:
+        pod_spec["nodeSelector"] = node_selector
+    return pod_spec
+
+
+def _expr(key: str, operator: str, values: Any = None) -> Dict[str, Any]:
+    """Build a Kubernetes NodeSelectorRequirement dictionary."""
+    req: Dict[str, Any] = {"key": key, "operator": operator}
+    if values is not None:
+        req["values"] = values
+    return req
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(
+    "pod_spec, expected",
+    [
+        pytest.param(
+            {
+                "nodeSelector": {
+                    GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+                    GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+                }
+            },
+            {
+                GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+                GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+            },
+            id="node-selector-only",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr("topology.kubernetes.io/zone", "In", ["us-east5-a"]),
+                        ]
+                    },
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr("topology.kubernetes.io/zone", "In", ["us-east5-b"]),
+                        ]
+                    },
+                ]
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="multi-term-affinity-keeps-common-pin",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(
+                                GKE_TPU_ACCELERATOR_LABEL,
+                                "In",
+                                ["tpu-v6e-slice", "tpu7x"],
+                            ),
+                            _expr(GKE_TPU_TOPOLOGY_LABEL, "In", ["2x2x1", "2x2x2"]),
+                            _expr(GKE_TPU_TOPOLOGY_LABEL, "In", ["2x2x2", "4x4x4"]),
+                        ]
+                    }
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {
+                GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+                GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+            },
+            id="intersecting-in-expressions-pin-singleton",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [], node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"}
+            ),
+            {},
+            id="empty-node-selector-terms-unsatisfiable",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [{}], node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"}
+            ),
+            {},
+            id="only-empty-term-unsatisfiable",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [{"matchFields": [_expr("metadata.name", "In", ["node-0"])]}],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="match-fields-only-term-preserves-node-selector",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [{"matchFields": [_expr("metadata.name", "NotIn", ["node-0"])]}],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="match-fields-notin-single-value-valid",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"])
+                        ]
+                    },
+                    {"matchFields": [_expr("metadata.name", "In", ["node-0"])]},
+                ]
+            ),
+            {},
+            id="match-fields-only-second-term-breaks-uniqueness",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu-v6e-slice"])
+                        ]
+                    }
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="conflicting-in-and-node-selector-unsatisfiable",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(
+                                GKE_TPU_ACCELERATOR_LABEL,
+                                "In",
+                                ["tpu7x", "tpu-v6e-slice"],
+                            )
+                        ]
+                    }
+                ]
+            ),
+            {},
+            id="multi-valued-in-not-pinned",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"])
+                        ]
+                    },
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu-v6e-slice"])
+                        ]
+                    },
+                ]
+            ),
+            {},
+            id="disjoint-terms-not-pinned",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr(GKE_TPU_TOPOLOGY_LABEL, "Exists"),
+                        ]
+                    },
+                    {},
+                    {"matchExpressions": [_expr(GKE_TPU_ACCELERATOR_LABEL, "In", [])]},
+                ]
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="skips-empty-and-empty-in-terms",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {
+                    GKE_TPU_ACCELERATOR_LABEL: "tpu-v6e-slice",
+                    GKE_TPU_TOPOLOGY_LABEL: "4x4",
+                },
+                "affinity": {
+                    "nodeAffinity": {
+                        "preferredDuringSchedulingIgnoredDuringExecution": [
+                            {
+                                "weight": 100,
+                                "preference": {
+                                    "matchExpressions": [
+                                        _expr(
+                                            GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]
+                                        )
+                                    ]
+                                },
+                            }
+                        ]
+                    }
+                },
+            },
+            {
+                GKE_TPU_ACCELERATOR_LABEL: "tpu-v6e-slice",
+                GKE_TPU_TOPOLOGY_LABEL: "4x4",
+            },
+            id="preferred-affinity-ignored",
+        ),
+        # Non-In operator contradiction & narrowing semantics (S1 / nodeaffinity.go).
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "NotIn", ["tpu7x"])
+                        ]
+                    }
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="notin-contradicts-node-selector",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "DoesNotExist")
+                        ]
+                    }
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="does-not-exist-contradicts-node-selector",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "NotIn", ["tpu7x"]),
+                        ]
+                    }
+                ]
+            ),
+            {},
+            id="notin-contradicts-in",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "DoesNotExist"),
+                        ]
+                    }
+                ]
+            ),
+            {},
+            id="does-not-exist-contradicts-in",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr("custom-key", "Exists"),
+                            _expr("custom-key", "DoesNotExist"),
+                        ]
+                    }
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="does-not-exist-contradicts-exists",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr(GKE_TPU_TOPOLOGY_LABEL, "In", ["2x2x2"]),
+                        ]
+                    },
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "NotIn", ["tpu7x"]),
+                        ]
+                    },
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {
+                GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+                GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+            },
+            id="multi-term-skips-notin-contradicted-fallback",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr(GKE_TPU_TOPOLOGY_LABEL, "In", ["2x2x2"]),
+                        ]
+                    },
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "DoesNotExist"),
+                        ]
+                    },
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {
+                GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+                GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+            },
+            id="multi-term-skips-does-not-exist-contradicted-fallback",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(
+                                GKE_TPU_ACCELERATOR_LABEL,
+                                "In",
+                                ["tpu-v6e-slice", "tpu7x"],
+                            ),
+                            _expr(
+                                GKE_TPU_ACCELERATOR_LABEL,
+                                "NotIn",
+                                ["tpu-v6e-slice"],
+                            ),
+                        ]
+                    }
+                ]
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="notin-narrows-multi-valued-in-to-singleton",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(
+                                GKE_TPU_ACCELERATOR_LABEL,
+                                "In",
+                                ["tpu-v4-podslice", "tpu-v6e-slice", "tpu7x"],
+                            ),
+                            _expr(
+                                GKE_TPU_ACCELERATOR_LABEL,
+                                "NotIn",
+                                ["tpu-v4-podslice"],
+                            ),
+                        ]
+                    }
+                ]
+            ),
+            {},
+            id="notin-leaving-multiple-values-stays-unpinned",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr("node-generation", "Gt", ["1"]),
+                            _expr("node-generation", "Lt", ["10"]),
+                        ]
+                    }
+                ]
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="valid-gt-lt-preserves-pins",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr("tier", "In", ["1", "5", "10"]),
+                            _expr("tier", "Gt", ["2"]),
+                            _expr("tier", "Lt", ["8"]),
+                        ]
+                    }
+                ]
+            ),
+            {"tier": "5"},
+            id="gt-lt-narrows-in-to-singleton",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                            _expr("tier", "Gt", ["5"]),
+                            _expr("tier", "Lt", ["6"]),
+                        ]
+                    }
+                ]
+            ),
+            {},
+            id="contradictory-gt-lt-integer-range-unsatisfiable",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr("tier", "Gt", ["5"]),
+                        ]
+                    }
+                ],
+                node_selector={"tier": "3", GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="gt-contradicts-node-selector-int",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr("tier", "Gt", ["5"]),
+                        ]
+                    }
+                ],
+                node_selector={"tier": "non-int", GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="gt-contradicts-non-int-node-selector",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr("tier", "Gt", ["1"]),
+                            _expr("tier", "DoesNotExist"),
+                        ]
+                    }
+                ],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="gt-contradicts-does-not-exist",
+        ),
+        # Malformed non-In expressions & invalid matchFields must invalidate only that term.
+        pytest.param(
+            _required_node_affinity(
+                [
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"])
+                        ]
+                    },
+                    {"matchExpressions": [_expr("k", "NotIn", [])]},
+                    {"matchExpressions": [_expr("k", "Exists", ["unexpected"])]},
+                    {"matchExpressions": [_expr("k", "DoesNotExist", ["unexpected"])]},
+                    {"matchExpressions": [_expr("k", "Gt", [])]},
+                    {"matchExpressions": [_expr("k", "Gt", ["1", "2"])]},
+                    {"matchExpressions": [_expr("k", "Gt", ["not-an-int"])]},
+                    {"matchExpressions": [_expr("k", "Gt", ["1_000"])]},
+                    {"matchExpressions": [_expr("k", "Gt", ["9" * 5000])]},
+                    {"matchExpressions": [_expr("k", "Gt", ["9223372036854775808"])]},
+                    {"matchExpressions": [_expr("k", "Lt", ["1.5"])]},
+                    {"matchExpressions": [_expr("k", "UnknownOp", ["x"])]},
+                    {"matchFields": [_expr("metadata.name", "In", [])]},
+                    {"matchFields": [_expr("metadata.name", "In", ["n0", "n1"])]},
+                    {"matchFields": [_expr("metadata.name", "NotIn", ["n0", "n1"])]},
+                    {"matchFields": [_expr("metadata.name", "Exists")]},
+                    {
+                        "matchFields": [
+                            _expr("metadata.name", "In", ["node-0"]),
+                            _expr("metadata.name", "NotIn", ["node-0"]),
+                        ]
+                    },
+                    {
+                        "matchFields": [
+                            _expr("metadata.name", "In", ["node-0"]),
+                            _expr("metadata.name", "In", ["node-1"]),
+                        ]
+                    },
+                ]
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="multi-term-skips-all-malformed-and-contradicted-terms",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [{"matchExpressions": [_expr("k", "UnknownOp", ["x"])]}],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="sole-unknown-operator-term-unsatisfiable",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [{"matchFields": [_expr("metadata.name", "In", ["n0", "n1"])]}],
+                node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            ),
+            {},
+            id="sole-invalid-match-fields-term-unsatisfiable",
+        ),
+        # Malformed CR input types.
+        pytest.param(
+            {"nodeSelector": None},
+            {},
+            id="null-node-selector",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {
+                    GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+                    "bad-int": 123,
+                    456: "bad-key",
+                }
+            },
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="non-string-node-selector-entries-filtered",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+                "affinity": None,
+            },
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="null-affinity-preserves-node-selector",
+        ),
+        pytest.param(
+            {
+                "nodeSelector": {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+                "affinity": {"nodeAffinity": "not-a-dict"},
+            },
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="malformed-node-affinity-preserves-node-selector",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                "not-a-list", node_selector={GKE_TPU_ACCELERATOR_LABEL: "tpu7x"}
+            ),
+            {},
+            id="non-list-node-selector-terms-unsatisfiable",
+        ),
+        pytest.param(
+            _required_node_affinity(
+                [
+                    "not-a-dict",
+                    {"matchExpressions": "not-a-list"},
+                    {"matchFields": "not-a-list"},
+                    {"matchExpressions": ["not-a-dict"]},
+                    {
+                        "matchExpressions": [
+                            _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"])
+                        ]
+                    },
+                ]
+            ),
+            {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"},
+            id="skips-malformed-term-structures",
+        ),
+    ],
+)
+def test_get_required_node_labels(pod_spec, expected):
+    assert _get_required_node_labels(pod_spec) == expected
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_get_pod_scheduling_metadata_malformed_inputs():
+    for bad_group in (
+        {"template": None},
+        {"template": "bad"},
+        {"template": {"spec": None, "metadata": None}},
+        {"template": {"spec": "bad", "metadata": {"annotations": ["not-a-dict"]}}},
+    ):
+        assert _get_pod_scheduling_metadata(bad_group) == ({}, {})
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_node_affinity_tpu_labels_and_resources():
+    """Verify required nodeAffinity derives TPU labels and head resources,
+    ignores Pod template labels, and preserves explicit overrides."""
+    from ray.autoscaler.v2.instance_manager.config import AutoscalingConfig
+
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+
+    tpu_affinity = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_affinity["groupName"] = "tpu-affinity"
+    tpu_affinity["template"]["spec"].pop("nodeSelector", None)
+    tpu_affinity["template"]["spec"].update(
+        _required_node_affinity(
+            [
+                {
+                    "matchExpressions": [
+                        _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu-v6e-slice"]),
+                        _expr(GKE_TPU_TOPOLOGY_LABEL, "In", ["4x4"]),
+                    ]
+                }
+            ]
+        )
+    )
+    tpu_affinity["labels"] = {"ray.io/tpu-pod-type": "custom-override"}
+    tpu_affinity["resources"] = {"TPU": "4", "TPU-v6e-16-head": "2"}
+
+    # Dynamic Slicing pod annotation combined with required nodeAffinity (no nodeSelector).
+    tpu_ds_affinity = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_ds_affinity["groupName"] = "tpu-ds-affinity"
+    tpu_ds_affinity["template"]["spec"].pop("nodeSelector", None)
+    tpu_ds_affinity["template"]["spec"].update(
+        _required_node_affinity(
+            [
+                {
+                    "matchExpressions": [
+                        _expr(GKE_TPU_ACCELERATOR_LABEL, "In", ["tpu7x"]),
+                    ]
+                }
+            ]
+        )
+    )
+    tpu_ds_affinity["template"].setdefault("metadata", {}).setdefault(
+        "annotations", {}
+    )[GKE_TPU_SLICE_TOPOLOGY_ANNOTATION] = "2x2x2"
+
+    # rayStartParams setting {"TPU": 0} overrides K8s google.com/tpu: 4 limit.
+    tpu_zero_start_param = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_zero_start_param["groupName"] = "tpu-zero-start-param"
+    tpu_zero_start_param["rayStartParams"]["resources"] = '"{"TPU": 0}"'
+
+    # headGroupSpec requesting TPUs derives TPU labels and head resource too.
+    head = cr["spec"]["headGroupSpec"]
+    head["template"]["spec"]["containers"][0]["resources"]["limits"][
+        "google.com/tpu"
+    ] = 4
+    head["template"]["spec"]["nodeSelector"] = {
+        GKE_TPU_ACCELERATOR_LABEL: "tpu-v6e-slice",
+        GKE_TPU_TOPOLOGY_LABEL: "2x4",
+    }
+
+    # Pod metadata.labels and worker group labels must never be read as GKE TPU inputs.
+    tpu_pod_labels_only = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    tpu_pod_labels_only["groupName"] = "tpu-pod-labels-only"
+    tpu_pod_labels_only["template"]["spec"].pop("nodeSelector", None)
+    tpu_pod_labels_only["template"].setdefault("metadata", {})["labels"] = {
+        GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+        GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+    }
+    tpu_pod_labels_only["labels"] = {
+        GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+        GKE_TPU_TOPOLOGY_LABEL: "2x2x2",
+    }
+
+    cr["spec"]["workerGroupSpecs"].extend(
+        [tpu_affinity, tpu_ds_affinity, tpu_zero_start_param, tpu_pod_labels_only]
+    )
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    nt_cfgs = AutoscalingConfig(configs=derived).get_node_type_configs()
+
+    assert nt_cfgs["tpu-affinity"].labels == {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "4x4",
+        "ray.io/tpu-pod-type": "custom-override",
+    }
+    assert nt_cfgs["tpu-affinity"].resources["TPU-v6e-16-head"] == 2
+
+    assert nt_cfgs["tpu-ds-affinity"].labels == {
+        "ray.io/accelerator-type": "TPU-V7X",
+        "ray.io/tpu-topology": "2x2x2",
+        "ray.io/tpu-pod-type": "v7x-16",
+    }
+    assert nt_cfgs["tpu-ds-affinity"].resources["TPU-v7x-16-head"] == 1
+
+    assert nt_cfgs["headgroup"].labels == {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "2x4",
+        "ray.io/tpu-pod-type": "v6e-8",
+    }
+    assert nt_cfgs["headgroup"].resources["TPU-v6e-8-head"] == 1
+
+    for name in ("tpu-zero-start-param", "tpu-pod-labels-only"):
+        assert "ray.io/accelerator-type" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-topology" not in nt_cfgs[name].labels
+        assert "ray.io/tpu-pod-type" not in nt_cfgs[name].labels
+        assert not any(
+            k.startswith("TPU-") and k.endswith("-head")
+            for k in nt_cfgs[name].resources
+        )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(
+    "bad_slice_topology",
+    [
+        pytest.param(
+            "1" * 22 + "x" + "1" * 22 + "x" + "1" * 22,
+            id="over-63-chars-3d",
+        ),
+        pytest.param("9" * 4301 + "x2x2", id="over-4300-digits-single-dim"),
+        pytest.param(
+            "9" * 2000 + "x" + "9" * 2000 + "x" + "9" * 2000,
+            id="over-4300-digits-product",
+        ),
+    ],
+)
+def test_oversized_tpu_slice_topology_annotation_handled_safely(bad_slice_topology):
+    """Oversized numeric slice-topology annotations must never crash config
+    derivation or emit >63-char Ray labels."""
+    reset_log_once()
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"] = {
+        GKE_TPU_ACCELERATOR_LABEL: "tpu7x",
+    }
+    tpu_group["template"].setdefault("metadata", {}).setdefault("annotations", {})[
+        GKE_TPU_SLICE_TOPOLOGY_ANNOTATION
+    ] = bad_slice_topology
+
+    derived = _derive_autoscaling_config_from_ray_cr(cr)
+    tpu_nt = derived["available_node_types"]["tpu-group"]
+    assert tpu_nt["labels"] == {}
+    assert not any(
+        k.startswith("TPU-") and k.endswith("-head") for k in tpu_nt["resources"]
+    )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_derived_labels_validated_and_explicit_labels_not_aliased():
+    """Verify derived labels pass Kubernetes label syntax validation and
+    explicit group_spec['labels'] is never aliased."""
+    cr = get_basic_ray_cr()
+    cpu_group = cr["spec"]["workerGroupSpecs"][0]
+    cpu_group["labels"] = {"pool": "cpu"}
+    labels = _get_labels_from_group_spec(cpu_group, "small-group", {"CPU": 1})
+    assert labels == {"pool": "cpu"}
+    assert labels is not cpu_group["labels"]
+    with pytest.raises(TypeError):
+        _get_labels_from_group_spec(cpu_group, "small-group")  # type: ignore[call-arg]
+
+    class InvalidLabelManager(AcceleratorManager):
+        @staticmethod
+        def get_node_group_accelerator_labels(
+            resources, node_selector, annotations=None, group_name=None
+        ):
+            return {"ray.io/tpu-topology": "1" * 64}
+
+    with mock.patch(
+        f"{AUTOSCALING_CONFIG_MODULE_PATH}.get_all_accelerator_managers",
+        return_value={InvalidLabelManager},
+    ):
+        with pytest.raises(ValueError, match="63 chars or less"):
+            _get_labels_from_group_spec(cpu_group, "small-group", {"CPU": 1})
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_multiple_accelerator_managers_deterministic_and_isolated():
+    """Verify accelerator managers run in deterministic __name__ order, receive
+    isolated resource snapshots, and warn on resource or label key collisions."""
+    observed_in_zeta_res = []
+    observed_in_zeta_lbl = []
+
+    class AlphaManager(AcceleratorManager):
+        @staticmethod
+        def get_node_group_additional_resources(
+            resources, node_selector, annotations=None, group_name=None
+        ):
+            resources["MUTATED_BY_ALPHA"] = 999
+            return {"SHARED_RES": 1, "ALPHA_RES": 1}
+
+        @staticmethod
+        def get_node_group_accelerator_labels(
+            resources, node_selector, annotations=None, group_name=None
+        ):
+            resources["MUTATED_BY_ALPHA_LBL"] = 999
+            return {
+                "ray.io/accelerator-type": "ALPHA-ACCEL",
+                "ray.io/alpha-only": "yes",
+            }
+
+    class ZetaManager(AcceleratorManager):
+        @staticmethod
+        def get_node_group_additional_resources(
+            resources, node_selector, annotations=None, group_name=None
+        ):
+            observed_in_zeta_res.append(dict(resources))
+            return {"SHARED_RES": 2, "ZETA_RES": 1}
+
+        @staticmethod
+        def get_node_group_accelerator_labels(
+            resources, node_selector, annotations=None, group_name=None
+        ):
+            observed_in_zeta_lbl.append(dict(resources))
+            return {
+                "ray.io/accelerator-type": "ZETA-ACCEL",
+                "ray.io/zeta-only": "yes",
+            }
+
+    for managers in ([AlphaManager, ZetaManager], [ZetaManager, AlphaManager]):
+        observed_in_zeta_res.clear()
+        observed_in_zeta_lbl.clear()
+        cr = get_basic_ray_cr()
+        cr["metadata"]["namespace"] = "default"
+        with mock.patch(
+            f"{AUTOSCALING_CONFIG_MODULE_PATH}.get_all_accelerator_managers",
+            return_value=managers,
+        ), mock.patch(f"{AUTOSCALING_CONFIG_MODULE_PATH}.logger") as mock_logger:
+            derived = _derive_autoscaling_config_from_ray_cr(cr)
+
+        nt = derived["available_node_types"]["small-group"]
+        assert nt["resources"]["SHARED_RES"] == 1
+        assert nt["resources"]["ALPHA_RES"] == 1
+        assert nt["resources"]["ZETA_RES"] == 1
+        assert "MUTATED_BY_ALPHA" not in nt["resources"]
+        assert nt["labels"] == {
+            "ray.io/accelerator-type": "ALPHA-ACCEL",
+            "ray.io/alpha-only": "yes",
+            "ray.io/zeta-only": "yes",
+        }
+        assert observed_in_zeta_res
+        assert all(
+            "MUTATED_BY_ALPHA" not in r and "SHARED_RES" not in r
+            for r in observed_in_zeta_res
+        )
+        assert observed_in_zeta_lbl
+        assert all("MUTATED_BY_ALPHA_LBL" not in r for r in observed_in_zeta_lbl)
+        warning_msgs = [
+            call.args[0] % call.args[1:] if len(call.args) > 1 else call.args[0]
+            for call in mock_logger.warning.call_args_list
+        ]
+        assert any("SHARED_RES" in m and "ZetaManager" in m for m in warning_msgs)
+        assert any(
+            "ray.io/accelerator-type" in m and "ZetaManager" in m for m in warning_msgs
+        )
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+def test_distinct_misconfigured_tpu_groups_each_log_once_with_bounded_keys():
+    """Distinct misconfigured TPU worker groups must each emit diagnostics once,
+    and log_once keys must never retain unbounded raw annotation strings."""
+    from ray.util import debug as ray_debug
+
+    reset_log_once()
+    cr = get_basic_ray_cr()
+    cr["metadata"]["namespace"] = "default"
+
+    group_a = copy.deepcopy(cr["spec"]["workerGroupSpecs"][2])
+    group_a["groupName"] = "tpu-missing-a"
+    group_a["template"]["spec"]["nodeSelector"] = {GKE_TPU_ACCELERATOR_LABEL: "tpu7x"}
+
+    group_b = copy.deepcopy(group_a)
+    group_b["groupName"] = "tpu-missing-b"
+
+    group_huge = copy.deepcopy(group_a)
+    group_huge["groupName"] = "tpu-huge-annotation"
+    group_huge["template"].setdefault("metadata", {}).setdefault("annotations", {})[
+        GKE_TPU_SLICE_TOPOLOGY_ANNOTATION
+    ] = "bad-" + ("x" * 10000)
+
+    cr["spec"]["workerGroupSpecs"] = [group_a, group_b, group_huge]
+
+    with mock.patch.object(tpu.logger, "error") as mock_err, mock.patch.object(
+        tpu.logger, "warning"
+    ) as mock_warn:
+        _derive_autoscaling_config_from_ray_cr(cr)
+        assert mock_err.call_count == 2
+        assert mock_warn.call_count == 1
+        assert ray_debug._logged
+        assert max(len(k) for k in ray_debug._logged) < 100
+
+        # Subsequent autoscaler ticks must not re-log the same per-group errors.
+        _derive_autoscaling_config_from_ray_cr(cr)
+        assert mock_err.call_count == 2
+        assert mock_warn.call_count == 1
 
 
 if __name__ == "__main__":
