@@ -902,7 +902,9 @@ def list_nodes(
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `NodeState`)
-            will be queried and returned. See
+            will be queried and returned. This includes a read-only
+            ``accelerator_inventory`` of the node's GPU devices and their CPU
+            NUMA locality. See
             :class:`NodeState <ray.util.state.common.NodeState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.

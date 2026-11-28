@@ -106,6 +106,62 @@ message HealthCheckRequest {}
 
 message HealthCheckReply {}
 
+// The status of an accelerator inventory request. A successful empty inventory
+// (status == OK and zero devices) is distinct from a node whose accelerators
+// could not be inventoried (UNAVAILABLE) or whose accelerator family has no
+// inventory implementation (UNSUPPORTED).
+enum AcceleratorInventoryStatus {
+  ACCELERATOR_INVENTORY_STATUS_UNSPECIFIED = 0;
+  // Discovery succeeded for the supported providers. `devices` may be empty.
+  ACCELERATOR_INVENTORY_STATUS_OK = 1;
+  // No discovery extension produced an inventory for this node's accelerators,
+  // or the discovery library is not installed.
+  ACCELERATOR_INVENTORY_STATUS_UNSUPPORTED = 2;
+  // The accelerator driver/library is present but could not initialize (e.g.
+  // NVML init failed), so no inventory could be produced.
+  ACCELERATOR_INVENTORY_STATUS_UNAVAILABLE = 3;
+  // An unexpected error occurred during discovery.
+  ACCELERATOR_INVENTORY_STATUS_ERROR = 4;
+}
+
+// A single accelerator device visible to the node agent. This is a hardware
+// inventory record, not a free-resource count or a scheduling guarantee.
+message AcceleratorDevice {
+  // Vendor / resource family of the device, e.g. "nvidia".
+  string vendor = 1;
+  // The Ray resource family name, e.g. "GPU".
+  string resource_family = 2;
+  // The driver-reported model/name, e.g. "Tesla V100-SXM2-16GB".
+  string model = 3;
+  // The stable hardware UUID reported by the driver. Required and non-empty; a
+  // device without a determinable UUID is reported as an error, never with an
+  // empty or invented UUID.
+  string uuid = 4;
+  // Total physical memory in bytes.
+  uint64 memory_total_bytes = 5;
+  // Normalized PCI bus ID with a numeric domain formatted to at least 4 hex
+  // digits, e.g. "0000:3b:00.0". Empty if unknown or malformed.
+  string pci_bus_id = 6;
+  // CPU NUMA node closest to the device, read from Linux sysfs. Absent when
+  // unknown (missing/malformed/unreadable sysfs value or non-Linux); unknown
+  // is never mapped to node 0.
+  optional int32 numa_node = 7;
+  // Device kind: "gpu" for a physical GPU, "mig" for a MIG instance.
+  string kind = 8;
+  // For MIG instances, the UUID of the parent physical GPU. Empty for physical GPUs.
+  string parent_uuid = 9;
+}
+
+message GetAcceleratorInventoryRequest {}
+
+message GetAcceleratorInventoryReply {
+  AcceleratorInventoryStatus status = 1;
+  // Human-readable detail for non-OK statuses or partial failures.
+  string status_message = 2;
+  // The discovered devices. Meaningful only when status == OK.
+  repeated AcceleratorDevice devices = 3;
+}
+
 // Service for communicating with the reporter agent module on a remote node.
 service ReporterService {
   // Report OpenCensus metrics to the local metrics agent.
@@ -117,6 +173,16 @@ service ReporterService {
   rpc JaxProfiling(JaxProfilingRequest) returns (JaxProfilingReply);
   // Health check to validate whether the service is running
   rpc HealthCheck(HealthCheckRequest) returns (HealthCheckReply);
+  // Read-only inventory of the accelerators visible to this node's agent.
+  // Idempotent: repeated queries do not reserve devices or change scheduling
+  // state. Concurrent requests share discovery; successful results are cached
+  // for the agent's lifetime, while later queries can retry failed discovery.
+  // The Python State API bounds agent lookup and RPC with one deadline, rather
+  // than using the C++ retryable client. Timeouts and unreachable agents yield
+  // an unavailable inventory without dropping the node row. Dead nodes are not
+  // queried and retain a null inventory.
+  rpc GetAcceleratorInventory(GetAcceleratorInventoryRequest)
+      returns (GetAcceleratorInventoryReply);
 }
 
 message StreamLogRequest {
