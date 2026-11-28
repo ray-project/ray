@@ -15,6 +15,29 @@ from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
+def _slice_block(
+    block: Block, metadata: BlockMetadata, num_rows: int
+) -> Tuple[Block, BlockMetadata]:
+    # Module-level so `cached_remote_fn` reuses one remote function across
+    # executions.
+    block = BlockAccessor.for_block(block).slice(0, num_rows, copy=False)
+    # The slice is a NEW object living on whichever node ran this task, and it
+    # was not produced by the upstream actor. Restamping both keeps object-store
+    # accounting from charging it to the wrong node, and from attributing it to
+    # an actor that never produced it.
+    exec_stats = metadata.exec_stats
+    metadata = replace(
+        metadata,
+        num_rows=num_rows,
+        size_bytes=BlockAccessor.for_block(block).size_bytes(),
+        node_id=ray.get_runtime_context().get_node_id(),
+        exec_stats=(
+            replace(exec_stats, actor_id=None) if exec_stats is not None else None
+        ),
+    )
+    return block, metadata
+
+
 class LimitOperator(PhysicalOperator):
     """Physical operator for limit."""
 
@@ -56,30 +79,7 @@ class LimitOperator(PhysicalOperator):
                 self._consumed_rows += num_rows
             else:
                 # Slice the last block.
-                def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
-                    block = BlockAccessor.for_block(block).slice(
-                        0, num_rows, copy=False
-                    )
-                    # The slice is a NEW object living on whichever node ran
-                    # this task, and it was not produced by the upstream
-                    # actor. Restamping both keeps object-store accounting
-                    # from charging it to the wrong node, and from attributing
-                    # it to an actor that never produced it.
-                    exec_stats = metadata.exec_stats
-                    metadata = replace(
-                        metadata,
-                        num_rows=num_rows,
-                        size_bytes=BlockAccessor.for_block(block).size_bytes(),
-                        node_id=ray.get_runtime_context().get_node_id(),
-                        exec_stats=(
-                            replace(exec_stats, actor_id=None)
-                            if exec_stats is not None
-                            else None
-                        ),
-                    )
-                    return block, metadata
-
-                slice_task = cached_remote_fn(slice_fn, num_cpus=0, num_returns=2)
+                slice_task = cached_remote_fn(_slice_block, num_cpus=0, num_returns=2)
                 label_selector = self.data_context.execution_options.label_selector
                 if label_selector:
                     slice_task = slice_task.options(label_selector=label_selector)

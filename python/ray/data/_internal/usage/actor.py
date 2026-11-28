@@ -70,6 +70,11 @@ class _UsageCollectionActor:
         usage_lib.record_extra_usage_tag(usage_lib.TagKey.DATA_USAGE, payload)
 
 
+# Defined once because each `ray.remote(...)` call on a class adds an entry to Ray's
+# actor method metadata cache.
+_UsageCollectionActorClass = ray.remote(num_cpus=0)(_UsageCollectionActor)
+
+
 def get_or_create_usage_collection_actor() -> "ActorHandle[_UsageCollectionActor]":
     """Return the cluster's usage collection actor, creating it if needed.
 
@@ -85,13 +90,11 @@ def get_or_create_usage_collection_actor() -> "ActorHandle[_UsageCollectionActor
         # undecorated class, so name the handle type we know we get back.
         return cast(
             "ActorHandle[_UsageCollectionActor]",
-            ray.remote(num_cpus=0)(_UsageCollectionActor)
-            .options(
+            _UsageCollectionActorClass.options(
                 name="DataUsageCollectionActor",
                 namespace="DataUsageCollectionActor",
                 get_if_exists=True,
                 lifetime="detached",
                 label_selector=label_selector,
-            )
-            .remote(),
+            ).remote(),
         )
