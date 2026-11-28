@@ -3384,6 +3384,10 @@ cdef class CoreWorker:
         if self._gc_thread is not None:
             self._gc_thread.stop()
             self._gc_thread = None
+        # Set while holding the GIL so that no reference release that checks this
+        # flag can reach the C++ core worker once Shutdown() starts tearing it down.
+        # Calling into it after that exits the process (see GetCoreWorker()).
+        self._is_shut_down = True
         with nogil:
             CCoreWorkerProcess.Shutdown()
 
@@ -4491,6 +4495,8 @@ cdef class CoreWorker:
     def remove_actor_handle_reference(self, ActorID actor_id):
         cdef:
             CActorID c_actor_id = actor_id.native()
+        if self._is_shut_down:
+            return
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
@@ -4654,6 +4660,8 @@ cdef class CoreWorker:
     def remove_object_ref_reference(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
+        if self._is_shut_down:
+            return
         # We need to release the gil since object destruction may call the
         # unhandled exception handler.
         with nogil:
@@ -5426,6 +5434,8 @@ cdef class CoreWorker:
         cdef:
             CObjectID c_generator_id = generator_id.native()
 
+        if self._is_shut_down:
+            return
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().AsyncDelObjectRefStream(c_generator_id)
 

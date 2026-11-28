@@ -8,7 +8,11 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import (
+    SignalActor,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private import ray_constants
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
@@ -164,6 +168,38 @@ def test_ray_shutdown_then_wait(short_gcs_publish_timeout, shutdown_only):
 
     ray.shutdown()
     wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
+
+
+def test_release_object_refs_during_shutdown():
+    """Releasing ObjectRefs from another thread during ray.shutdown() is a no-op.
+
+    Regression test for https://github.com/ray-project/ray/issues/67903.
+    """
+    driver = """
+import threading
+
+import ray
+
+ray.init(num_cpus=1, include_dashboard=False)
+
+refs = [ray.put(i) for i in range(100_000)]
+start = threading.Event()
+
+
+def release_refs():
+    start.wait()
+    while refs:
+        refs.pop()
+
+
+t = threading.Thread(target=release_refs, daemon=True)
+t.start()
+start.set()
+ray.shutdown()
+t.join()
+print("process survived")
+"""
+    assert "process survived" in run_string_as_driver(driver)
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
