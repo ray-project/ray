@@ -2646,6 +2646,74 @@ class TestReconciler:
         assert instances["i-0"].status == Instance.TERMINATING
         assert instances["i-1"].status == Instance.TERMINATING
 
+    @staticmethod
+    def test_terminate_ray_stopping_and_stale_stop_error(setup):
+        """TG8: TerminationRequest for a RAY_STOPPING row is skipped cleanly, and
+        a RayStopError whose ray node already vanished from GCS does not assert."""
+        instance_manager, instance_storage, _, cloud_resource_monitor = setup
+        TestReconciler._add_instances(
+            instance_storage,
+            [
+                create_instance(
+                    "head",
+                    Instance.RAY_RUNNING,
+                    instance_type="head",
+                    node_kind=NodeKind.HEAD,
+                    cloud_instance_id="c-head",
+                    ray_node_id=binary_to_hex(b"h0"),
+                ),
+                create_instance(
+                    "i-stopping",
+                    Instance.RAY_STOPPING,
+                    instance_type="type-1",
+                    cloud_instance_id="c-1",
+                    ray_node_id=binary_to_hex(b"r-1"),
+                ),
+                create_instance(
+                    "i-vanished-stop",
+                    Instance.RAY_STOP_REQUESTED,
+                    instance_type="type-1",
+                    cloud_instance_id="c-2",
+                    ray_node_id=binary_to_hex(b"r-vanished"),
+                ),
+            ],
+        )
+        ray_nodes = [
+            NodeState(node_id=b"h0", status=NodeStatus.RUNNING, instance_id="c-head"),
+            NodeState(node_id=b"r-1", status=NodeStatus.DRAINING, instance_id="c-1"),
+        ]
+        cloud_instances = {
+            "c-head": CloudInstance("c-head", "head", NodeKind.HEAD, True),
+            "c-1": CloudInstance("c-1", "type-1", NodeKind.WORKER, True),
+            "c-2": CloudInstance("c-2", "type-1", NodeKind.WORKER, True),
+        }
+        scheduler = MockScheduler(
+            to_terminate=[
+                TerminationRequest(
+                    id="t-stop",
+                    instance_id="i-stopping",
+                    instance_type="type-1",
+                    instance_status=Instance.RAY_STOPPING,
+                    cause=TerminationRequest.Cause.MAX_NUM_NODE_PER_TYPE,
+                )
+            ]
+        )
+        Reconciler.reconcile(
+            instance_manager=instance_manager,
+            scheduler=scheduler,
+            cloud_provider=MagicMock(),
+            cloud_resource_monitor=cloud_resource_monitor,
+            ray_cluster_resource_state=ClusterResourceState(node_states=ray_nodes),
+            non_terminated_cloud_instances=cloud_instances,
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            ray_stop_errors=[RayStopError(im_instance_id="i-vanished-stop")],
+            autoscaling_config=MockAutoscalingConfig(),
+        )
+        instances, _ = instance_storage.get_instances()
+        assert instances["i-stopping"].status == Instance.RAY_STOPPING
+        assert instances["i-vanished-stop"].status == Instance.TERMINATING
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

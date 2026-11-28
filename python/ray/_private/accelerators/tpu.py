@@ -1,18 +1,21 @@
 import errno
 import glob
+import hashlib
 import itertools
 import logging
+import math
 import os
 import re
 import time
 from functools import lru_cache
-from typing import Dict, List, Optional, Sequence, Set, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 
 import requests
 
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
+from ray.util.debug import log_once
 from ray.util.placement_group import (
     PlacementGroup,
     placement_group,
@@ -28,6 +31,19 @@ GKE_TPU_ACCELERATOR_TYPE_ENV_VAR = "TPU_ACCELERATOR_TYPE"
 GKE_TPU_TOPOLOGY_ENV_VAR = "TPU_TOPOLOGY"
 GKE_TPU_WORKER_ID_ENV_VAR = "TPU_WORKER_ID"
 GKE_TPU_NAME_ENV_VAR = "TPU_NAME"
+
+GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
+GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
+GKE_TPU_SLICE_TOPOLOGY_ANNOTATION = "cloud.google.com/gke-tpu-slice-topology"
+GKE_TPU_SKIP_WEBHOOK_CHECK_ANNOTATION = "cloud.google.com/skip-tpu-webhook-check"
+GKE_TPU_ACCELERATOR_TO_GENERATION = {
+    "tpu-v4-podslice": "v4",
+    "tpu-v5-lite-device": "v5litepod",
+    "tpu-v5-lite-podslice": "v5litepod",
+    "tpu-v5p-slice": "v5p",
+    "tpu-v6e-slice": "v6e",
+    "tpu7x": "v7x",
+}
 
 # Constants for accessing the `accelerator-type` from TPU VM
 # instance metadata.
@@ -152,6 +168,11 @@ VALID_TPU_TOPOLOGY = {
         "2x2x4",
         "2x4x4",
     }.union(_get_larger_3d_topologies(16, 24, 24)),
+}
+
+_GKE_TPU_GENERATION_TOPOLOGY_DIMS = {
+    gen: len(next(iter(topologies)).split("x"))
+    for gen, topologies in VALID_TPU_TOPOLOGY.items()
 }
 
 
@@ -756,6 +777,167 @@ def get_tpu_resource_per_chip() -> int:
     return int(value)
 
 
+_MAX_GKE_TPU_TOPOLOGY_LEN = 63
+_MAX_GKE_TPU_TOPOLOGY_PART_LEN = 6
+_MAX_LOGGED_VALUE_PREVIEW_LEN = 64
+
+
+def _is_valid_gke_tpu_topology(generation: str, topology: str) -> bool:
+    """Validate positive ASCII integer dimensions for a GKE TPU generation.
+
+    Checks dimensionality and length bounds rather than VALID_TPU_TOPOLOGY
+    membership because GKE supports shapes outside that static table
+    (e.g., tpu7x 1x1x1, v4 12x16x16).
+    """
+    expected_dims = _GKE_TPU_GENERATION_TOPOLOGY_DIMS.get(generation)
+    if not expected_dims or not topology or len(topology) > _MAX_GKE_TPU_TOPOLOGY_LEN:
+        return False
+    parts = topology.split("x")
+    return len(parts) == expected_dims and all(
+        1 <= len(part) <= _MAX_GKE_TPU_TOPOLOGY_PART_LEN
+        and part.isascii()
+        and part.isdigit()
+        and not part.startswith("0")
+        for part in parts
+    )
+
+
+def _gke_tpu_log_once_key(
+    reason: str,
+    group_name: Optional[str],
+    accelerator: str = "",
+    topology: str = "",
+) -> str:
+    """Return a fixed-length, per-group log_once key for GKE TPU diagnostics."""
+    payload = f"{group_name or ''}\0{accelerator}\0{topology}".encode("utf-8")
+    digest = hashlib.sha256(payload).hexdigest()[:16]
+    return f"gke_tpu_{reason}_{digest}"
+
+
+def _truncate_for_log(value: str) -> str:
+    if len(value) <= _MAX_LOGGED_VALUE_PREVIEW_LEN:
+        return value
+    return f"{value[:_MAX_LOGGED_VALUE_PREVIEW_LEN]}... (len={len(value)})"
+
+
+def _get_str_from_mapping(mapping: Any, key: str, strip: bool = False) -> str:
+    val = mapping.get(key) if isinstance(mapping, dict) else None
+    if not isinstance(val, str):
+        return ""
+    return val.strip() if strip else val
+
+
+_TPU_HEAD_RESOURCE_PREFIX = "TPU-"
+_TPU_HEAD_RESOURCE_SUFFIX = "-head"
+
+
+def _is_positive_number(val: Any) -> bool:
+    """Return True if val is a finite positive non-boolean int or float."""
+    return (
+        not isinstance(val, bool)
+        and isinstance(val, (int, float))
+        and (isinstance(val, int) or math.isfinite(val))
+        and val > 0
+    )
+
+
+def _is_tpu_head_resource_key(key: Any) -> bool:
+    """Return True if key has the form ``TPU-<pod_type>-head`` with a non-empty,
+    whitespace-free pod type segment.
+    """
+    if (
+        not isinstance(key, str)
+        or not key.startswith(_TPU_HEAD_RESOURCE_PREFIX)
+        or not key.endswith(_TPU_HEAD_RESOURCE_SUFFIX)
+        or len(key) <= len(_TPU_HEAD_RESOURCE_PREFIX) + len(_TPU_HEAD_RESOURCE_SUFFIX)
+    ):
+        return False
+    pod_type = key[len(_TPU_HEAD_RESOURCE_PREFIX) : -len(_TPU_HEAD_RESOURCE_SUFFIX)]
+    return not any(ch.isspace() for ch in pod_type)
+
+
+def _resolve_gke_tpu_node_group(
+    resources: Dict[str, Any],
+    node_selector: Dict[str, str],
+    annotations: Optional[Dict[str, str]] = None,
+    group_name: Optional[str] = None,
+) -> Optional[Tuple[str, str, str]]:
+    """Resolve ``(generation, topology, pod_type)`` for a GKE TPU node group.
+
+    Reads required GKE node labels (`cloud.google.com/gke-tpu-accelerator`,
+    `cloud.google.com/gke-tpu-topology`) and GKE TPU Dynamic Slicing
+    (`cloud.google.com/gke-tpu-slice-topology` on pod annotations).
+    """
+    tpu_val = resources.get("TPU", 0) if isinstance(resources, dict) else 0
+    if not _is_positive_number(tpu_val):
+        return None
+
+    accelerator = _get_str_from_mapping(node_selector, GKE_TPU_ACCELERATOR_LABEL)
+    # On GKE, the built-in TPU mutating webhook (gke-common-webhooks) reads
+    # `cloud.google.com/gke-tpu-slice-topology` on Pod annotations and injects
+    # runtime `TPU_TOPOLOGY` and `TPU_ACCELERATOR_TYPE` env vars, overriding
+    # the parent node-pool `gke-tpu-topology` selector for sub-slicing and
+    # Dynamic Slicing.
+    topology = (
+        _get_str_from_mapping(
+            annotations, GKE_TPU_SLICE_TOPOLOGY_ANNOTATION, strip=True
+        )
+        or _get_str_from_mapping(node_selector, GKE_TPU_TOPOLOGY_LABEL, strip=True)
+    ).lower()
+    group_ctx = f" for group '{group_name}'" if group_name else ""
+
+    if not accelerator or not topology:
+        if log_once(
+            _gke_tpu_log_once_key("missing_selector", group_name, accelerator, topology)
+        ):
+            logger.error(
+                f"Pods using TPUs{group_ctx} require `{GKE_TPU_ACCELERATOR_LABEL}` "
+                f"and either `{GKE_TPU_TOPOLOGY_LABEL}` node selector/affinity or "
+                f"`{GKE_TPU_SLICE_TOPOLOGY_ANNOTATION}` pod annotation. "
+                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
+                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
+            )
+        return None
+
+    generation = GKE_TPU_ACCELERATOR_TO_GENERATION.get(accelerator)
+    if not generation:
+        if log_once(
+            _gke_tpu_log_once_key("unknown_accelerator", group_name, accelerator)
+        ):
+            logger.warning(
+                f"Unrecognized GKE TPU accelerator '{_truncate_for_log(accelerator)}'"
+                f"{group_ctx}; skipping default TPU labels and head resource."
+            )
+        return None
+
+    if not _is_valid_gke_tpu_topology(generation, topology):
+        if log_once(
+            _gke_tpu_log_once_key("invalid_topology", group_name, accelerator, topology)
+        ):
+            logger.warning(
+                f"Invalid GKE TPU topology '{_truncate_for_log(topology)}' for "
+                f"accelerator '{accelerator}'{group_ctx}; skipping default TPU "
+                "labels and head resource."
+            )
+        return None
+
+    try:
+        pod_type = infer_tpu_pod_type_from_topology(topology, generation)
+    except ValueError:
+        if log_once(
+            _gke_tpu_log_once_key("invalid_topology", group_name, accelerator, topology)
+        ):
+            logger.warning(
+                f"Invalid GKE TPU topology '{_truncate_for_log(topology)}' for "
+                f"accelerator '{accelerator}'{group_ctx}; skipping default TPU "
+                "labels and head resource."
+            )
+        return None
+    if not pod_type or len(pod_type) > _MAX_GKE_TPU_TOPOLOGY_LEN:
+        return None
+    return generation, topology, pod_type
+
+
 class TPUAcceleratorManager(AcceleratorManager):
     """Google TPU accelerators."""
 
@@ -1221,3 +1403,129 @@ class TPUAcceleratorManager(AcceleratorManager):
             tpu_labels[ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY] = pod_type
 
         return tpu_labels
+
+    @staticmethod
+    def get_node_group_accelerator_labels(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+        group_name: Optional[str] = None,
+    ) -> Optional[Dict[str, str]]:
+        """Derive TPU node-group labels from GKE TPU selectors and annotations."""
+        resolved = _resolve_gke_tpu_node_group(
+            resources, node_selector, annotations, group_name=group_name
+        )
+        if not resolved:
+            return None
+        generation, topology, pod_type = resolved
+        return {
+            ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: f"TPU-{generation.upper()}",
+            ray._raylet.RAY_NODE_TPU_TOPOLOGY_KEY: topology,
+            ray._raylet.RAY_NODE_TPU_POD_TYPE_KEY: pod_type,
+        }
+
+    @staticmethod
+    def get_node_group_additional_resources(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+        group_name: Optional[str] = None,
+    ) -> Optional[Dict[str, int]]:
+        """Derive TPU head resource (`TPU-<pod-type>-head`) for a TPU node group."""
+        resolved = _resolve_gke_tpu_node_group(
+            resources, node_selector, annotations, group_name=group_name
+        )
+        if not resolved:
+            return None
+        _, _, pod_type = resolved
+        return {f"TPU-{pod_type}-head": 1}
+
+    @staticmethod
+    def get_node_group_replica_metadata(
+        resources: Dict[str, Any],
+        node_selector: Dict[str, str],
+        annotations: Optional[Dict[str, str]] = None,
+        workers_per_replica: Optional[int] = None,
+        group_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Derive TPU slice domain, worker index, and worker-0 head resource
+        metadata for a GKE TPU node group.
+
+        Args:
+            resources: Base Ray resources already parsed for the node group.
+            node_selector: Required pod node labels.
+            annotations: Optional pod metadata annotations dictionary.
+            workers_per_replica: Optional number of workers per replica
+                configured on the node group. When provided, logs a one-time
+                warning if `workers_per_replica * resources["TPU"]` does not
+                match the topology chip (or core) count, while keeping the
+                configured replica size authoritative.
+            group_name: Optional node group name for diagnostics.
+
+        Returns:
+            A dictionary of TPU replica metadata keys, or None if not a GKE
+            TPU node group.
+        """
+        resolved = _resolve_gke_tpu_node_group(
+            resources, node_selector, annotations, group_name=group_name
+        )
+        if not resolved:
+            return None
+        generation, topology, pod_type = resolved
+
+        skip_check = (
+            isinstance(annotations, dict)
+            and isinstance(annotations.get(GKE_TPU_SKIP_WEBHOOK_CHECK_ANNOTATION), str)
+            and annotations[GKE_TPU_SKIP_WEBHOOK_CHECK_ANNOTATION].strip().lower()
+            == "true"
+        )
+        if (
+            not skip_check
+            and workers_per_replica is not None
+            and not isinstance(workers_per_replica, bool)
+            and workers_per_replica > 0
+        ):
+            tpu_val = resources["TPU"]
+            tpu_per_host = int(tpu_val) if int(tpu_val) == tpu_val else None
+            if tpu_per_host is not None:
+                total_chips = get_num_chips_from_topology(topology)
+                cores_per_chip = get_tpu_cores_per_chip(generation)
+                total_tpus = tpu_per_host * workers_per_replica
+                if (
+                    total_tpus != total_chips
+                    and total_tpus != total_chips * cores_per_chip
+                ):
+                    group_ctx = f" '{group_name}'" if group_name else ""
+                    if log_once(
+                        f"tpu_topology_workers_mismatch_{group_name}_{generation}_"
+                        f"{topology}_{tpu_per_host}_{workers_per_replica}"
+                    ):
+                        logger.warning(
+                            "TPU node group%s specifies topology '%s' (%d chips for %s) "
+                            "with %d TPU per worker and workers_per_replica=%d "
+                            "(total %d). Keeping workers_per_replica=%d; verify "
+                            "numOfHosts and TPU topology match.",
+                            group_ctx,
+                            topology,
+                            total_chips,
+                            generation,
+                            tpu_per_host,
+                            workers_per_replica,
+                            total_tpus,
+                            workers_per_replica,
+                        )
+
+        derived_head = f"TPU-{pod_type}-head"
+        head_resources = {
+            key
+            for key, val in resources.items()
+            if _is_tpu_head_resource_key(key) and _is_positive_number(val)
+        }
+        if derived_head not in resources:
+            head_resources.add(derived_head)
+        return {
+            "domain_label_key": ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY,
+            "domain_exclusive": True,
+            "worker_index_label_key": ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY,
+            "head_resources": sorted(head_resources),
+        }
