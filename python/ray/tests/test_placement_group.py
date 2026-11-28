@@ -798,5 +798,74 @@ class TestPlacementGroupValidation:
             _validate_bundle_label_selector([{"INVALID key!": "value"}])
 
 
+def test_placement_group_module_not_shadowed():
+    """Verify ray.util.placement_group is a callable submodule, not shadowed."""
+    import inspect
+    import pickle
+    import subprocess
+    import types
+    from unittest.mock import patch
+
+    import ray.util
+    import ray.util.placement_group as ray_pg
+    from ray.util import placement_group as util_pg
+    from ray.util.placement_group import (
+        PlacementGroup as DirectPlacementGroup,
+        placement_group as pg_fn,
+    )
+
+    # Submodule identity and attribute access work without shadowing.
+    assert isinstance(ray.util.placement_group, types.ModuleType)
+    assert ray.util.placement_group is ray_pg
+    assert util_pg is ray_pg
+    assert sys.modules["ray.util.placement_group"] is ray_pg
+    assert ray.util.placement_group.PlacementGroup is DirectPlacementGroup
+    assert ray_pg.PlacementGroup is DirectPlacementGroup
+    assert ray.util.placement_group.placement_group is pg_fn
+    assert callable(ray.util.placement_group)
+    assert callable(ray_pg.placement_group_table)
+
+    # Introspection (signature and docstring) delegates to the underlying function.
+    assert inspect.signature(ray.util.placement_group) == inspect.signature(pg_fn)
+    assert ray.util.placement_group.__doc__ == pg_fn.__doc__
+
+    # pickle and ray.cloudpickle serialize the callable module and closures over it.
+    assert pickle.loads(pickle.dumps(ray.util.placement_group)) is ray_pg
+    dumped = ray.cloudpickle.dumps(ray.util.placement_group)
+    assert ray.cloudpickle.loads(dumped) is ray_pg
+
+    def _closure():
+        return util_pg
+
+    unpickled_closure = ray.cloudpickle.loads(ray.cloudpickle.dumps(_closure))
+    assert unpickled_closure() is ray_pg
+
+    # Calling ray.util.placement_group(...) delegates to the underlying function
+    # and respects unittest.mock.patch("ray.util.placement_group.placement_group").
+    sentinel = object()
+    with patch(
+        "ray.util.placement_group.placement_group", return_value=sentinel
+    ) as mock_pg:
+        result = ray.util.placement_group([{"CPU": 1}], strategy="SPREAD")
+        assert result is sentinel
+        mock_pg.assert_called_once_with([{"CPU": 1}], strategy="SPREAD")
+
+        result2 = util_pg(bundles=[{"CPU": 2}])
+        assert result2 is sentinel
+        assert mock_pg.call_count == 2
+
+    # Reloading the submodule in an isolated process preserves callable module
+    # identity and signature without mutating live PlacementGroup class objects.
+    reload_script = (
+        "import importlib, inspect, ray.util, ray.util.placement_group as ray_pg; "
+        "reloaded = importlib.reload(ray_pg); "
+        "assert reloaded is ray.util.placement_group; "
+        "assert callable(reloaded); "
+        "assert inspect.signature(reloaded) == "
+        "inspect.signature(reloaded.placement_group)"
+    )
+    subprocess.run([sys.executable, "-c", reload_script], check=True)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
