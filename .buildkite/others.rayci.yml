@@ -5,18 +5,18 @@ steps:
   # docs
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
-    depends_on: oss-ci-base_build-multipy(python=3.10)
+    depends_on: oss-ci-base_build-multipy(python=3.11)
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   # The "docstring-only" label's examples environment, without torch or
   # TensorFlow. See ci/docker/docstring.build.Dockerfile.
   - name: docstringbuild
     wanda: ci/docker/docstring.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy(python=3.10)
+    depends_on: oss-ci-base_test-multipy(python=3.11)
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   # Runs instead of a library's test steps when the "docstring-only" label is
@@ -53,10 +53,10 @@ steps:
       - workflow
     instance_type: medium
     commands:
-      - ./ci/ray_ci/doc/run_docstring_examples.sh docstringbuild 3.10
+      - ./ci/ray_ci/doc/run_docstring_examples.sh docstringbuild 3.11
     depends_on:
       - docstringbuild
-      - ray-core-build(python=3.10)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
 
   # Runs the doctest targets for documentation prose that no library owns,
@@ -85,10 +85,10 @@ steps:
         --only-tags doctest
         --except-tags gpu
         --parallelism-per-worker 3
-        --python-version 3.10
+        --python-version 3.11
     depends_on:
       - doctestbuild
-      - ray-core-build(python=3.10)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
 
   # Opt-in docs example tests, for the "docs-example-test" label. Runs only the
@@ -111,12 +111,12 @@ steps:
     commands:
       - ./ci/ray_ci/doc/run_doc_example_tests.sh
         --build-name doctestbuild
-        --python-version 3.10
+        --python-version 3.11
         --except-tags gpu,post_wheel_build,highly_parallel,timeseries_libs
         --parallelism-per-worker 3
     depends_on:
       - doctestbuild
-      - ray-core-build(python=3.10)
+      - ray-core-build(python=3.11)
       - ray-dashboard-build
 
   # java
@@ -126,11 +126,11 @@ steps:
     commands:
       # Java tests need the C++ API for multi-langauge worker tests.
       - bazel run //ci/ray_ci:test_in_docker -- //... core --build-type multi-lang --build-only
-        --python-version 3.10 --build-name corebuild-py3.10
+        --python-version 3.11 --build-name corebuild-py3.11
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.10 /bin/bash -iecuo pipefail
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild-py3.11 /bin/bash -iecuo pipefail
         "./java/test.sh"
-    depends_on: corebuild-multipy(python=3.10)
+    depends_on: corebuild-multipy(python=3.11)
 
   # bot
   - label: ":robot_face: CI weekly green metric"

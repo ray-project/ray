@@ -1,7 +1,7 @@
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.10
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py3.11
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG PYTHON=3.10
+ARG PYTHON=3.11
 ARG BUILD_VARIANT=build
 ARG PYTHON_DEPSET=python/deplocks/ci/core-${BUILD_VARIANT}-ci_depset_py${PYTHON}.lock
 

@@ -5,10 +5,10 @@
 # builds on oss-ci-base_test rather than an ML base image so it's small to
 # pull. See docstring_examples_depset in ci/raydepsets/configs/docs.depsets.yaml.
 
-ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_test-py3.10
+ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_test-py3.11
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG PYTHON=3.10
+ARG PYTHON=3.11
 ARG PYTHON_DEPSET=python/deplocks/docs/docstring_examples_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]
