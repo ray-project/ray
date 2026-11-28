@@ -13,6 +13,7 @@ gives 0 clean, 10 fixable CRITICAL/HIGH findings, 11 incomplete coverage
 import csv
 import gzip
 import json
+import os
 import re
 import zlib
 from collections import Counter
@@ -997,3 +998,10 @@ def write_report(
         json.dumps(summary, indent=2) + "\n", encoding="utf-8"
     )
     return exit_code(scans, issues)
+
+
+def resolve_path(path: Path) -> Path:
+    """Resolve relative paths against the workspace under ``bazel run``."""
+    if path.is_absolute():
+        return path
+    return Path(os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")) / path
