@@ -5,6 +5,7 @@ import math
 import os
 import threading
 import time
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple, Union
 
 import ray
@@ -316,6 +317,146 @@ def _get_pg_bundle_node_ips(
         if node.get("Alive", False)
     }
     return [node_id_to_ip.get(bundles_to_node_id.get(idx)) for idx in bundle_indices]
+
+
+@PublicAPI(stability="alpha")
+@dataclass(frozen=True)
+class TPUHostInfo:
+    """Metadata for a single host in a TPU slice or subslice placement group.
+
+    Hosts returned by :attr:`SlicePlacementGroup.hosts` and
+    :attr:`SubslicePlacementGroup.hosts` follow a deterministic ``NODE_RANK``
+    ordering contract:
+
+    - Across multiple slices, hosts are ordered slice-major
+      (``slice_index * hosts_per_slice + local_host_rank``).
+    - Within each slice or subslice, hosts are ordered by ascending physical
+      worker position (x varying fastest, then y, then z) whenever physical
+      coordinates are known (from subslice discovery cache), falling back to
+      ``tpu_worker_id`` / bundle host order. This matches the deterministic
+      ``NODE_RANK`` order expected by ``torch_tpu`` and ``libtpu``.
+
+    Args:
+        rank: 0-based deterministic ``NODE_RANK`` of this host.
+        node_id: Ray NodeID where this host's bundle is placed, or None if
+            unplaced or the node is not alive.
+        ip: IP address (``NodeManagerAddress``) of the Ray node, or None if
+            unplaced or the node is not alive.
+        tpu_worker_id: Integer value of the node's ``ray.io/tpu-worker-id`` label,
+            or None if unavailable.
+        slice_name: Value of the node's ``ray.io/tpu-slice-name`` label, or None.
+        bundle_index: First placement group bundle index pinned to this host.
+        coords: Physical worker grid coordinates ``(x, y)`` or ``(x, y, z)``
+            within the slice mesh, or None if coordinates cannot be determined.
+    """
+
+    rank: int
+    node_id: Optional[str]
+    ip: Optional[str]
+    tpu_worker_id: Optional[int]
+    slice_name: Optional[str]
+    bundle_index: int
+    coords: Optional[Tuple[int, ...]] = None
+
+
+def _coords_from_linear_worker_id(
+    linear_id: int,
+    topology: str,
+) -> Optional[Tuple[int, ...]]:
+    """Convert a 0-based linear worker ID (x varying fastest) into grid coords."""
+    if linear_id < 0:
+        return None
+    try:
+        dims = _get_worker_dims_for_topology(topology)
+    except ValueError:
+        try:
+            chip_dims = _parse_topology_dims(topology)
+        except ValueError:
+            return None
+        if len(chip_dims) not in (2, 3):
+            return None
+        return tuple(0 for _ in chip_dims) if linear_id == 0 else None
+    coords: List[int] = []
+    remainder = linear_id
+    for dim in dims:
+        remainder, pos = divmod(remainder, dim)
+        coords.append(pos)
+    return tuple(coords) if remainder == 0 else None
+
+
+def _resolve_hosts_from_pg(
+    pg: PlacementGroup,
+    bundle_indices: Sequence[int],
+    topology: str,
+    rank_offset: int = 0,
+    fallback_slice_name: Optional[str] = None,
+    nodes_by_id: Optional[Dict[str, Dict[str, Any]]] = None,
+    bundles_to_node_id: Optional[Dict[int, str]] = None,
+) -> List[TPUHostInfo]:
+    """Build deterministically ordered TPUHostInfo entries for one slice/subslice."""
+    if bundles_to_node_id is None:
+        bundles_to_node_id = placement_group_table(pg).get("bundles_to_node_id", {})
+    if nodes_by_id is None:
+        nodes_by_id = {
+            node["NodeID"]: node for node in ray.nodes() if node.get("Alive", False)
+        }
+
+    with _tpu_subslice_cache_lock:
+        cache_snapshot = {k: dict(v) for k, v in _tpu_subslice_cache.items()}
+
+    entries: List[Tuple[Tuple[int, int, int], Dict[str, Any]]] = []
+    for local_idx, bundle_idx in enumerate(bundle_indices):
+        raw_node_id = bundles_to_node_id.get(bundle_idx) or None
+        node = nodes_by_id.get(raw_node_id) if raw_node_id is not None else None
+        node_id = raw_node_id if node is not None else None
+        labels = (node.get("Labels") or {}) if node is not None else {}
+        ip = node.get("NodeManagerAddress") if node is not None else None
+        slice_name = (
+            labels.get(ray._raylet.RAY_NODE_TPU_SLICE_NAME_KEY) or fallback_slice_name
+        )
+        wid_raw = labels.get(ray._raylet.RAY_NODE_TPU_WORKER_ID_KEY)
+        tpu_worker_id: Optional[int] = None
+        if wid_raw is not None:
+            try:
+                tpu_worker_id = int(wid_raw)
+            except (TypeError, ValueError):
+                tpu_worker_id = None
+
+        physical_id: Optional[int] = None
+        if slice_name and wid_raw is not None and slice_name in cache_snapshot:
+            physical_id = cache_snapshot[slice_name].get(str(wid_raw))
+
+        effective_id = physical_id if physical_id is not None else tpu_worker_id
+        coords = (
+            _coords_from_linear_worker_id(effective_id, topology)
+            if effective_id is not None
+            else None
+        )
+        # Sort by physical_id when known, else tpu_worker_id, else bundle order.
+        if physical_id is not None:
+            sort_key = (0, physical_id, local_idx)
+        elif tpu_worker_id is not None:
+            sort_key = (1, tpu_worker_id, local_idx)
+        else:
+            sort_key = (2, local_idx, local_idx)
+        entries.append(
+            (
+                sort_key,
+                {
+                    "node_id": node_id,
+                    "ip": ip,
+                    "tpu_worker_id": tpu_worker_id,
+                    "slice_name": slice_name,
+                    "bundle_index": bundle_idx,
+                    "coords": coords,
+                },
+            )
+        )
+
+    entries.sort(key=lambda item: item[0])
+    return [
+        TPUHostInfo(rank=rank_offset + i, **info) for i, (_, info) in enumerate(entries)
+    ]
 
 
 @PublicAPI(stability="alpha")
@@ -1086,6 +1227,91 @@ class SlicePlacementGroup:
             pg,
             [start + h * bundles_per_host for h in range(self.hosts_per_slice)],
         )
+
+    def get_hosts(self, slice_index: int = 0) -> List[TPUHostInfo]:
+        """Returns host metadata for a slice in deterministic ``NODE_RANK`` order.
+
+        Hosts are sorted by physical worker position (x varying fastest) when
+        physical coordinates are cached for the slice, falling back to
+        ``tpu_worker_id`` / bundle host order.
+
+        Args:
+            slice_index: The 0-based index of the TPU slice.
+
+        Returns:
+            A list of :class:`TPUHostInfo` entries with ``rank`` in
+            ``0..hosts_per_slice - 1``.
+
+        Raises:
+            ValueError: If ``slice_index`` is out of range.
+            RuntimeError: If this SlicePlacementGroup has been shut down.
+        """
+        if not (0 <= slice_index < self.num_slices):
+            raise ValueError(
+                f"slice_index {slice_index} is out of range for "
+                f"{self.num_slices} slice(s)."
+            )
+        if not self._managed_pgs:
+            raise RuntimeError("This SlicePlacementGroup has been shut down.")
+        if self._pg_per_slice:
+            pg, start = self._managed_pgs[slice_index], 0
+        else:
+            pg, start = self._managed_pgs[0], slice_index * self.bundles_per_slice
+        bundles_per_host = self.bundles_per_slice // self.hosts_per_slice
+        return _resolve_hosts_from_pg(
+            pg=pg,
+            bundle_indices=[
+                start + h * bundles_per_host for h in range(self.hosts_per_slice)
+            ],
+            topology=self._topology,
+            rank_offset=0,
+        )
+
+    @property
+    def hosts(self) -> List[TPUHostInfo]:
+        """All hosts in this SlicePlacementGroup in deterministic ``NODE_RANK`` order.
+
+        Multi-slice groups are ordered slice-major
+        (``slice_index * hosts_per_slice + local_host_rank``). Within each slice,
+        hosts are ordered by physical worker position (x varying fastest) when
+        known, falling back to ``tpu_worker_id`` / bundle host order.
+
+        Raises:
+            RuntimeError: If this SlicePlacementGroup has been shut down.
+        """
+        if not self._managed_pgs:
+            raise RuntimeError("This SlicePlacementGroup has been shut down.")
+        nodes_by_id = {
+            node["NodeID"]: node for node in ray.nodes() if node.get("Alive", False)
+        }
+        shared_bundles_to_node_id = (
+            None
+            if self._pg_per_slice
+            else placement_group_table(self._managed_pgs[0]).get(
+                "bundles_to_node_id", {}
+            )
+        )
+        bundles_per_host = self.bundles_per_slice // self.hosts_per_slice
+        all_hosts: List[TPUHostInfo] = []
+        for slice_idx in range(self.num_slices):
+            if self._pg_per_slice:
+                pg, start = self._managed_pgs[slice_idx], 0
+            else:
+                pg, start = self._managed_pgs[0], slice_idx * self.bundles_per_slice
+            all_hosts.extend(
+                _resolve_hosts_from_pg(
+                    pg=pg,
+                    bundle_indices=[
+                        start + h * bundles_per_host
+                        for h in range(self.hosts_per_slice)
+                    ],
+                    topology=self._topology,
+                    rank_offset=slice_idx * self.hosts_per_slice,
+                    nodes_by_id=nodes_by_id,
+                    bundles_to_node_id=shared_bundles_to_node_id,
+                )
+            )
+        return all_hosts
 
     def _resolve_placed_worker_addrs(self, slice_index: int) -> List[str]:
         """Returns get_worker_addrs(slice_index), raising if any bundle is unplaced."""
@@ -2285,6 +2511,29 @@ class SubslicePlacementGroup:
         bundles_per_host = pg.bundle_count // self._num_hosts
         return _get_pg_bundle_node_ips(
             pg, [h * bundles_per_host for h in range(self._num_hosts)]
+        )
+
+    @property
+    def hosts(self) -> List[TPUHostInfo]:
+        """Hosts in this subslice in deterministic physical ``NODE_RANK`` order.
+
+        Hosts are sorted by ascending physical worker position (x varying
+        fastest) within the parent slice, with ``rank`` in ``0..num_hosts - 1``
+        and ``coords`` reporting each host's physical worker grid coordinates.
+
+        Raises:
+            RuntimeError: If this SubslicePlacementGroup has been shut down.
+        """
+        pg = self._placement_group
+        if pg is None:
+            raise RuntimeError("This SubslicePlacementGroup has been shut down.")
+        bundles_per_host = pg.bundle_count // self._num_hosts
+        return _resolve_hosts_from_pg(
+            pg=pg,
+            bundle_indices=[h * bundles_per_host for h in range(self._num_hosts)],
+            topology=self._parent_topology,
+            rank_offset=0,
+            fallback_slice_name=self._slice_name,
         )
 
     def _resolve_placed_worker_addrs(self) -> List[str]:
