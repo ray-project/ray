@@ -23,7 +23,11 @@ from ray.serve._private.constants import (
     SERVE_DEPLOYMENT_ACTOR_PREFIX,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.test_utils import get_application_url, request_with_retries
+from ray.serve._private.test_utils import (
+    TEST_METRICS_EXPORT_PORT,
+    get_application_url,
+    request_with_retries,
+)
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.context import _get_global_client
 from ray.util.state import list_actors
@@ -43,7 +47,7 @@ def serve_instance_isolated():
     ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
-        _metrics_export_port=9999,
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(proxy_location="HeadOnly", http_options={"host": "0.0.0.0"})

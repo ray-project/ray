@@ -38,6 +38,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import (
+    TEST_METRICS_EXPORT_PORT,
     check_deployment_status,
     check_num_replicas_gte,
     check_num_replicas_lte,
@@ -125,7 +126,7 @@ def _shared_serve_instance():
     ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
-        _metrics_export_port=9999,
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start(

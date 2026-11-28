@@ -276,7 +276,7 @@ async def serve_start_async(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
-    client = ServeControllerClient(controller)
+    client = ServeControllerClient.from_controller(controller)
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client
@@ -392,7 +392,7 @@ def serve_start(
                 f"HTTP proxies not available after {HTTP_PROXY_TIMEOUT}s."
             )
 
-    client = ServeControllerClient(controller)
+    client = ServeControllerClient.from_controller(controller)
     _set_global_client(client)
     logger.info(f'Started Serve in namespace "{SERVE_NAMESPACE}".')
     return client

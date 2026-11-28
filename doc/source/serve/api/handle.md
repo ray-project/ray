@@ -40,5 +40,7 @@ The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully re
    :toctree: doc/
 
    serve.get_app_handle
+   serve.get_app_handle_async
    serve.get_deployment_handle
+   serve.get_deployment_handle_async
 ```

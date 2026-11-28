@@ -12,7 +12,7 @@ from ray import serve
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
-from ray.serve._private.test_utils import check_apps_running
+from ray.serve._private.test_utils import TEST_METRICS_EXPORT_PORT, check_apps_running
 from ray.serve.config import DeploymentActorConfig
 from ray.serve.context import _get_global_client
 from ray.serve.handle import DeploymentHandle
@@ -74,7 +74,7 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     address_info = ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
-        _metrics_export_port=9999,
+        _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
     serve.start()
