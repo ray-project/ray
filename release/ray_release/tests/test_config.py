@@ -11,6 +11,7 @@ from ray_release.config import (
     load_schema_file,
     parse_test_definition,
     read_and_validate_release_test_collection,
+    validate_byod_type,
     validate_cluster_compute,
     validate_test,
 )
@@ -587,6 +588,13 @@ def test_get_test_cloud_name_unknown_cloud_id():
 def test_load_and_validate_test_collection_file():
     tests = read_and_validate_release_test_collection(_TEST_COLLECTION_FILES)
     assert [test for test in tests if test.get_name() == "test_name"]
+
+
+@pytest.mark.parametrize("byod_type", ["llm-cu130", "llm-vllm-cu130"])
+def test_validate_llm_byod_type(byod_type):
+    validate_byod_type(byod_type, "3.12")
+    with pytest.raises(Exception, match="must use Python 3.12"):
+        validate_byod_type(byod_type, "3.11")
 
 
 if __name__ == "__main__":

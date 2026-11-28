@@ -456,7 +456,15 @@ class Test(dict):
 
     def get_byod_type(self) -> str:
         """Returns the type of the BYOD cluster."""
-        return self._get_byod_config().get("type", "cpu")
+        byod_type = self._get_byod_config().get("type", "cpu")
+        # RAY_RELEASE_LLM_IMAGE=vllm runs the LLM tests on the ray-llm image
+        # built on vllm/vllm-openai (docker/ray-llm-vllm) instead.
+        if (
+            byod_type == "llm-cu130"
+            and os.environ.get("RAY_RELEASE_LLM_IMAGE") == "vllm"
+        ):
+            return "llm-vllm-cu130"
+        return byod_type
 
     def get_tag_suffix(self) -> str:
         """Returns the tag suffix for the BYOD image."""

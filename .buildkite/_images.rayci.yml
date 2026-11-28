@@ -140,6 +140,23 @@ steps:
       ARCH_SUFFIX: ""
     depends_on: ray-llmbase($)
 
+  # ray-llm built on vllm/vllm-openai (docker/ray-llm-vllm), alongside ray-llm.
+  - name: ray-llm-vllmbase
+    label: "wanda: ray-llm-vllm-py{{array.python}}-cu{{array.cuda}}-base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: docker/ray-llm-vllm/cuda.wanda.yaml
+    array:
+      python:
+        - "3.12"
+      cuda:
+        - "13.0.0-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      ARCH_SUFFIX: ""
+
   - name: ray-mlcpubase
     label: "wanda: ray-ml-py{{array.python}}-cpu-base"
     tags:
