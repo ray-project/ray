@@ -4478,6 +4478,147 @@ def test_max_num_nodes_cancels_only_needed_min_worker_launches():
     assert to_terminate == []
 
 
+class TestScoreRequestRuns:
+    @pytest.fixture(params=list(ResourceRequestSource))
+    def source(self, request):
+        return request.param
+
+    @staticmethod
+    def make_node():
+        return SchedulingNode(
+            "worker",
+            {"CPU": 8.0, "GPU": 2.0},
+            {"CPU": 4.0, "GPU": 1.0},
+            {"zone": "a"},
+            SchedulingNodeStatus.SCHEDULABLE,
+        )
+
+    def test_consecutive_identity_only_and_no_input_mutation(self, source):
+        node = self.make_node()
+        request = ResourceRequestUtil.make(
+            {"CPU": 1},
+            label_selectors=[
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["missing"])]
+            ],
+        )
+        equal_request = ResourceRequest()
+        equal_request.CopyFrom(request)
+        empty = ResourceRequestUtil.make({})
+        requests = [request] * 20 + [equal_request] * 5 + [empty] * 3 + [request] * 7
+        for item in requests:
+            node.add_sched_request(item, source)
+        request_ids = [id(item) for item in requests]
+        resources = dict(node.get_available_resources(source))
+        with patch.object(
+            node,
+            "_satisfies_label_constraints",
+            wraps=node._satisfies_label_constraints,
+        ) as check_labels:
+            score = node._compute_score(source)
+        # One check per non-empty identity run, not per copy or unique value.
+        assert check_labels.call_count == 3
+        assert score[0] == 0
+        assert score[2] == 1
+        assert [id(item) for item in node.get_sched_requests(source)] == request_ids
+        assert node.get_available_resources(source) == resources
+        assert node.labels == {"zone": "a"}
+
+    @pytest.mark.parametrize("conserve", [False, True])
+    def test_gpu_zero_key_is_preserved(self, source, conserve, monkeypatch):
+        monkeypatch.setattr(
+            "ray.autoscaler.v2.scheduler.AUTOSCALER_CONSERVE_GPU_NODES", conserve
+        )
+        node = self.make_node()
+        empty = ResourceRequestUtil.make({})
+        node.add_sched_request(empty, source)
+        assert node._compute_score(source)[1] is (not conserve)
+        gpu_zero = ResourceRequestUtil.make({"GPU": 0})
+        assert "GPU" in gpu_zero.resources_bundle
+        for _ in range(5):
+            node.add_sched_request(gpu_zero, source)
+        score = node._compute_score(source)
+        assert score[1] is True
+        assert score[2] == 0
+
+    def test_label_score_uses_first_match_not_maximum(self, source):
+        node = self.make_node()
+        first = ResourceRequestUtil.make(
+            {},
+            label_selectors=[
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["missing"])],
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["a"])],
+            ],
+        )
+        later = ResourceRequestUtil.make(
+            {},
+            label_selectors=[
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["a"])],
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["b"])],
+                [("zone", LabelSelectorOperator.LABEL_OPERATOR_IN, ["c"])],
+            ],
+        )
+        for item in [first] * 10 + [later]:
+            node.add_sched_request(item, source)
+        assert node._compute_score(source)[0] == 1
+        node.sched_requests[source] = [later, first]
+        assert node._compute_score(source)[0] == 3
+
+    def test_score_observes_labels_added_after_placement(self, source):
+        node = self.make_node()
+        first = ResourceRequestUtil.make(
+            {},
+            label_selectors=[
+                [("pg", LabelSelectorOperator.LABEL_OPERATOR_NOT_IN, ["x"])]
+            ],
+        )
+        anti_affinity = ResourceRequestUtil.make(
+            {}, [(ResourceRequestUtil.PlacementConstraintType.ANTI_AFFINITY, "pg", "x")]
+        )
+        assert node._try_schedule_one(first, source)
+        assert node._compute_score(source)[0] == 1
+        assert node._try_schedule_one(anti_affinity, source)
+        assert node.labels["pg"] == "x"
+        assert node._compute_score(source)[0] == 0
+
+    def test_score_recomputes_float_utilization_after_capacity_update(self, source):
+        node = SchedulingNode(
+            "worker",
+            {"CPU": 1.0, "memory": 2.0},
+            {"CPU": 0.7, "memory": 1.1},
+            {},
+            SchedulingNodeStatus.SCHEDULABLE,
+        )
+        node.available_resources_for_sched[source] = {"CPU": 0.7, "memory": 1.1}
+        request = ResourceRequestUtil.make({"CPU": 0.1, "memory": 0.3})
+        for _ in range(3):
+            node.add_sched_request(request, source)
+        utilization = [
+            1.0 * (((1.0 - 0.7) / 1.0) ** 3),
+            2.0 * (((2.0 - 1.1) / 2.0) ** 3),
+        ]
+        assert node._compute_score(source) == (
+            0,
+            True,
+            2,
+            min(utilization),
+            float(sum(utilization)) / 2,
+        )
+        node.update_total_resources({"CPU": 4.0, "memory": 8.0})
+        available = node.get_available_resources(source)
+        assert available == {"CPU": 3.7, "memory": 7.1}
+        utilization = [
+            4.0 * (((4.0 - available["CPU"]) / 4.0) ** 3),
+            8.0 * (((8.0 - available["memory"]) / 8.0) ** 3),
+        ]
+        assert node._compute_score(source) == (
+            0,
+            True,
+            2,
+            min(utilization),
+            float(sum(utilization)) / 2,
+        )
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

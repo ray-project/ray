@@ -681,7 +681,19 @@ class SchedulingNode:
         # Compute the number of resource types being scheduled.
         num_matching_resource_types = 0
         sched_resource_types = set()
+        any_gpu_requests = False
+        matches_labels = 0
+        previous_request = None
         for req in sched_requests:
+            # Consecutive copies have identical request-dependent score inputs.
+            # Evaluate labels against the final node labels, not placement-time state.
+            if req is previous_request:
+                continue
+            previous_request = req
+            if not any_gpu_requests and "GPU" in req.resources_bundle:
+                any_gpu_requests = True
+            if not matches_labels and req.label_selectors:
+                matches_labels = self._satisfies_label_constraints([req])
             for resource_name, v in req.resources_bundle.items():
                 if v > 0:
                     sched_resource_types.add(resource_name)
@@ -708,12 +720,8 @@ class SchedulingNode:
             # TODO: we should also generalize this optimization for accelerators.
             # https://github.com/ray-project/ray/issues/43079
             is_gpu_node = self.total_resources.get("GPU", 0) > 0
-            any_gpu_requests = any("GPU" in r.resources_bundle for r in sched_requests)
             if is_gpu_node and not any_gpu_requests:
                 gpu_ok = False
-
-        # Check if node satisfies label requirements.
-        matches_labels = self._satisfies_label_constraints(sched_requests)
 
         # Prioritize avoiding gpu nodes for non-gpu workloads first,
         # then prioritize matching multiple resource types,
