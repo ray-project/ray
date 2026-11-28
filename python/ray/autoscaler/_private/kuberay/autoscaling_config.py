@@ -323,6 +323,12 @@ def _get_ray_resources_from_group_spec(
     if memory is not None:
         resources["memory"] = memory
 
+    resources.update(
+        _get_custom_accelerator_resources(
+            group_resources, custom_resource_dict, k8s_resources
+        )
+    )
+
     resources.update(custom_resource_dict)
 
     return resources
@@ -494,6 +500,68 @@ def _get_num_tpus(
                 if num_tpus > 0:
                     return num_tpus
     return None
+
+
+# Mirrors addWellKnownAcceleratorResources in the KubeRay operator
+# (ray-operator/controllers/ray/common/pod.go).
+_CUSTOM_ACCELERATOR_RAY_RESOURCES = ("neuron_cores", "NPU", "TPU")
+
+
+def _get_custom_accelerator_ray_resource_name(k8s_key: str) -> Optional[str]:
+    """Maps a K8s resource key to a Ray custom accelerator resource name."""
+    if k8s_key == "aws.amazon.com/neuroncore":
+        return "neuron_cores"
+    if k8s_key == "google.com/tpu":
+        return "TPU"
+    lower_key = k8s_key.lower()
+    if lower_key.startswith("huawei.com/ascend"):
+        # Keys like huawei.com/Ascend910B-memory describe capacity, not
+        # Ray compute resources.
+        if lower_key.endswith(("-memory", "-core")):
+            return None
+        return "NPU"
+    if lower_key == "huawei.com/npu":
+        return "NPU"
+    return None
+
+
+def _get_custom_accelerator_resources(
+    group_resources: Dict[str, str],
+    custom_resource_dict: Dict[str, int],
+    k8s_resources: Dict[str, Dict[str, str]],
+) -> Dict[str, int]:
+    """Derives Neuron core and Ascend NPU resources from K8s container limits.
+
+    Mirrors the KubeRay operator: limits are visited in sorted key order and the
+    first non-zero custom accelerator wins. Nothing is added if the user already
+    named a custom accelerator resource, or if the winner is a TPU (handled by
+    `_get_num_tpus`). Only limits are read, as in the operator.
+
+    Args:
+        group_resources: The top-level `resources` field of the group spec.
+        custom_resource_dict: Custom resources parsed from `rayStartParams`.
+        k8s_resources: The `resources` field of the Ray container.
+
+    Returns:
+        A dict with at most one entry, e.g. {"neuron_cores": 2}.
+    """
+    if any(
+        name in group_resources or name in custom_resource_dict
+        for name in _CUSTOM_ACCELERATOR_RAY_RESOURCES
+    ):
+        return {}
+    limits = k8s_resources.get("limits", {})
+    for k8s_key in sorted(limits):
+        ray_resource_name = _get_custom_accelerator_ray_resource_name(k8s_key)
+        if ray_resource_name is None:
+            continue
+        quantity = _round_up_k8s_quantity(limits[k8s_key])
+        if quantity <= 0:
+            continue
+        if ray_resource_name == "TPU":
+            return {}
+        return {ray_resource_name: quantity}
+    return {}
 
 
 def _round_up_k8s_quantity(quantity: str) -> int:

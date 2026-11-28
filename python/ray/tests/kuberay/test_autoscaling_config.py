@@ -979,6 +979,87 @@ def test_get_ray_resources_from_group_spec(
     assert _get_ray_resources_from_group_spec(group_spec, is_head) == expected_resources
 
 
+NEURON = "aws.amazon.com/neuroncore"
+ASCEND = "huawei.com/Ascend910B"
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
+@pytest.mark.parametrize(
+    "limits,requests_,ray_start_resources,top_level_resources,expected",
+    [
+        pytest.param({NEURON: "2"}, {}, None, None, {"neuron_cores": 2}, id="neuron"),
+        pytest.param({ASCEND: "1"}, {}, None, None, {"NPU": 1}, id="ascend"),
+        pytest.param({"huawei.com/npu": "4"}, {}, None, None, {"NPU": 4}, id="npu"),
+        pytest.param(
+            {ASCEND + "-memory": "32", ASCEND + "-core": "8"},
+            {},
+            None,
+            None,
+            {},
+            id="ascend-metadata-keys-ignored",
+        ),
+        pytest.param(
+            {ASCEND: "1", ASCEND + "-memory": "32"},
+            {},
+            None,
+            None,
+            {"NPU": 1},
+            id="ascend-with-metadata-key",
+        ),
+        pytest.param({NEURON: "0"}, {}, None, None, {}, id="zero-ignored"),
+        pytest.param(
+            {NEURON: "2", "huawei.com/npu": "1"},
+            {},
+            None,
+            None,
+            {"neuron_cores": 2},
+            id="first-sorted-key-wins",
+        ),
+        pytest.param(
+            {NEURON: "0", "huawei.com/npu": "1"},
+            {},
+            None,
+            None,
+            {"NPU": 1},
+            id="zero-skipped-then-next",
+        ),
+        pytest.param(
+            {NEURON: "2"},
+            {},
+            '"{"NPU": 1}"',
+            None,
+            {"NPU": 1},
+            id="ray-start-params-names-accelerator",
+        ),
+        pytest.param(
+            {"huawei.com/npu": "1"},
+            {},
+            None,
+            {"neuron_cores": 1},
+            {"neuron_cores": 1},
+            id="top-level-resources-names-accelerator",
+        ),
+        pytest.param({}, {NEURON: "2"}, None, None, {}, id="requests-ignored"),
+    ],
+)
+def test_get_ray_resources_neuron_and_npu(
+    limits, requests_, ray_start_resources, top_level_resources, expected
+):
+    """Mirrors the KubeRay operator's addWellKnownAcceleratorResources."""
+    group_spec = copy.deepcopy(get_basic_ray_cr()["spec"]["workerGroupSpecs"][0])
+    container_resources = group_spec["template"]["spec"]["containers"][0]["resources"]
+    container_resources["limits"].update(limits)
+    container_resources.setdefault("requests", {}).update(requests_)
+    if ray_start_resources is not None:
+        group_spec["rayStartParams"]["resources"] = ray_start_resources
+    if top_level_resources is not None:
+        group_spec["resources"] = top_level_resources
+
+    resources = _get_ray_resources_from_group_spec(group_spec, False)
+    actual = {k: resources[k] for k in ("neuron_cores", "NPU") if k in resources}
+    assert actual == expected
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Not relevant.")
 def test_top_level_resources_override_warnings():
     """
