@@ -10,10 +10,12 @@ from ray._private.internal_api import memory_summary
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
+from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
+from ray.data.datasource.datasink import DummyOutputDatasink
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
     assert_core_execution_metrics_equals,
@@ -21,6 +23,50 @@ from ray.data.tests.conftest import (
     restore_data_context,  # noqa: F401
 )
 from ray.tests.conftest import shutdown_only  # noqa: F401
+
+
+@pytest.fixture
+def zero_terminal_output_budget(restore_data_context):  # noqa: F811
+    ctx = ray.data.DataContext.get_current()
+    original_limit = ResourceManager.max_task_output_bytes_to_read
+
+    def zero_terminal_limit(resource_manager, op):
+        if not op.output_dependencies:
+            return 0
+        return original_limit(resource_manager, op)
+
+    with patch.object(
+        ResourceManager, "max_task_output_bytes_to_read", zero_terminal_limit
+    ):
+        ctx.output_backpressure_guard_release_interval_s = 60
+        ctx.execution_no_progress_timeout_s = 10
+        yield ctx
+
+
+def test_materialize_drains_zero_budget_terminal_output(
+    ray_start_regular_shared, zero_terminal_output_budget
+):
+    zero_terminal_output_budget.target_max_block_size = 1
+
+    def generate(batch):
+        for i in range(4):
+            yield {"id": np.array([i])}
+
+    ds = ray.data.from_items([{"id": 0}]).map_batches(generate, batch_size=None)
+    assert sorted(ds.materialize().take_all(), key=lambda row: row["id"]) == [
+        {"id": i} for i in range(4)
+    ]
+
+
+def test_write_drains_zero_budget_terminal_output(
+    ray_start_regular_shared, zero_terminal_output_budget
+):
+    sink = DummyOutputDatasink()
+    ray.data.from_items(
+        [{"id": i} for i in range(8)], override_num_blocks=4
+    ).write_datasink(sink, concurrency=2)
+    assert ray.get(sink.data_sink.get_rows_written.remote()) == 8
+    assert sink.num_ok == 1
 
 
 def test_large_e2e_backpressure_no_spilling(

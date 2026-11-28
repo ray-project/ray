@@ -33,4 +33,9 @@ class ResourceBudgetBackpressurePolicy(BackpressurePolicy):
         Returns:
             The maximum bytes that can be read, or None if no limit.
         """
+        if (
+            not any(self._resource_manager.get_downstream_eligible_ops(op))
+            and not self._resource_manager.has_external_consumer
+        ):
+            return None
         return self._resource_manager.max_task_output_bytes_to_read(op)

@@ -644,6 +644,7 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
         MagicMock(),
         DataContext.get_current(),
         BlockRefCounter(),
+        has_external_consumer=False,
     )
     guard = OutputBackpressureGuard(topo, resource_manager)
 
@@ -667,6 +668,97 @@ def test_process_completed_tasks_unblocks_when_non_resource_budget_policy_zeros_
     # and the policy attribution should be cleared.
     assert o2._in_task_output_backpressure is False
     assert o2._task_output_backpressure_policy is None
+
+
+@pytest.mark.parametrize("has_external_consumer", [True, False])
+def test_resource_budget_skips_terminal_output_without_external_consumer(
+    ray_start_regular_shared, has_external_consumer
+):
+    ctx = DataContext.get_current()
+    o1 = InputDataBuffer(ctx, make_ref_bundles([[0]]))
+    o2 = MapOperator.create(make_map_transformer(lambda block: block), o1, ctx)
+    topo = build_streaming_topology(o2, ExecutionOptions(), noop_counter())
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        ctx,
+        BlockRefCounter(),
+        has_external_consumer=has_external_consumer,
+    )
+    policy = ResourceBudgetBackpressurePolicy(ctx, topo, resource_manager)
+
+    with patch.object(
+        resource_manager, "max_task_output_bytes_to_read", return_value=0
+    ):
+        expected = 0 if has_external_consumer else None
+        assert policy.max_task_output_bytes_to_read(o2) == expected
+        # Intermediate operators always keep the limit.
+        assert policy.max_task_output_bytes_to_read(o1) == 0
+
+
+def test_resource_budget_skips_limit_upstream(ray_start_regular_shared):
+    """The producer upstream of a metadata-only Limit is still a terminal
+    producer: Limit doesn't consume task output as a downstream operator."""
+    ctx = DataContext.get_current()
+    o1 = InputDataBuffer(ctx, make_ref_bundles([[0]]))
+    o2 = MapOperator.create(make_map_transformer(lambda block: block), o1, ctx)
+    o3 = LimitOperator(1, o2, ctx)
+    topo = build_streaming_topology(o3, ExecutionOptions(), noop_counter())
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(),
+        ctx,
+        BlockRefCounter(),
+        has_external_consumer=False,
+    )
+    policy = ResourceBudgetBackpressurePolicy(ctx, topo, resource_manager)
+
+    def downstream_ops(op):
+        # o1 -> o2 -> Limit(o3). o3 is ineligible, so from o2 the terminal
+        # eligible-op chain is empty; from o1 it contains o2.
+        if op is o1:
+            return [o2]
+        return []
+
+    with patch.object(
+        resource_manager, "get_downstream_eligible_ops", downstream_ops
+    ), patch.object(resource_manager, "max_task_output_bytes_to_read", return_value=0):
+        assert policy.max_task_output_bytes_to_read(o2) is None
+        assert policy.max_task_output_bytes_to_read(o1) == 0
+        assert policy.max_task_output_bytes_to_read(o3) is None
+
+
+@pytest.mark.parametrize(
+    "consume, without_external_consumer",
+    [
+        (lambda ds: ds.materialize(), True),
+        (lambda ds: list(ds.iter_internal_ref_bundles()), False),
+        (lambda ds: list(ds.iter_batches()), False),
+    ],
+    ids=["materialize", "iter_internal_ref_bundles", "iter_batches"],
+)
+def test_only_materialize_runs_without_external_consumer(
+    ray_start_regular_shared, consume, without_external_consumer
+):
+    """Only `Dataset._execute` (materialize / write) runs without an external
+    consumer, and that is fixed when the executor is constructed."""
+    has_external_consumer = []
+    original = ResourceManager.__init__
+
+    def record(self, *args, **kwargs):
+        original(self, *args, **kwargs)
+        has_external_consumer.append(self.has_external_consumer)
+
+    ds = ray.data.range(10).map_batches(lambda batch: batch)
+    with patch.object(ResourceManager, "__init__", record):
+        consume(ds)
+
+    # Other internal executions (e.g. schema probes) may also run, and those
+    # always have an external consumer.
+    assert has_external_consumer
+    assert (False in has_external_consumer) is without_external_consumer
 
 
 def test_summary_str_backpressure_policies(ray_start_regular_shared):

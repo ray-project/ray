@@ -186,8 +186,21 @@ class StreamingExecutor(Executor, threading.Thread):
         self,
         data_context: DataContext,
         dataset_id: str = "unknown_dataset",
+        has_external_consumer: bool = True,
     ):
+        """Initialize the executor.
+
+        Args:
+            data_context: The DataContext for this execution.
+            dataset_id: The ID of the dataset being executed.
+            has_external_consumer: Whether an external consumer (an iterator
+                or ``streaming_split``) pulls the output. False when the caller
+                drains every output bundle itself (``Dataset.materialize`` and
+                ``write_datasink``); the terminal operator's output reads then
+                skip the resource-budget limit.
+        """
         self._data_context = data_context
+        self._has_external_consumer = has_external_consumer
         # Resolved once so the backend can't change mid-execution.
         self._actor_only_backend = actor_only_backend_enabled(data_context)
         self._ranker = create_ranker()
@@ -349,6 +362,7 @@ class StreamingExecutor(Executor, threading.Thread):
             lambda: self._cluster_autoscaler.get_total_resources(),
             self._data_context,
             self._block_ref_counter,
+            has_external_consumer=self._has_external_consumer,
         )
 
         # Constructed once per executor (not per scheduling iteration) so the
