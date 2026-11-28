@@ -556,6 +556,11 @@ class TestRequestContextMetrics:
                     description=("my_gauge"),
                     tag_keys=("route",),
                 )
+                self.inc_gauge = Gauge(
+                    "my_route_inc_gauge",
+                    description=("my_inc_gauge"),
+                    tag_keys=("route",),
+                )
 
             def __call__(self):
                 # No `tags` argument: the route tag must be filled in from the
@@ -563,6 +568,8 @@ class TestRequestContextMetrics:
                 self.counter.inc()
                 self.histogram.observe(200)
                 self.gauge.set(300)
+                self.inc_gauge.inc(2)
+                self.inc_gauge.dec()
                 return [
                     ray.serve.context._INTERNAL_REPLICA_CONTEXT.deployment,
                     ray.serve.context._INTERNAL_REPLICA_CONTEXT.replica_id.unique_id,
@@ -584,6 +591,7 @@ class TestRequestContextMetrics:
         for metric_name in [
             "ray_my_route_counter_total",
             "ray_my_route_gauge",
+            "ray_my_route_inc_gauge",
             "ray_my_route_histogram_sum",
         ]:
             self._wait_for_labeled_metric(metric_name, expected_metrics, timeseries)
