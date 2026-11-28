@@ -39,6 +39,12 @@ class FakeWorkerPool : public WorkerPoolInterface {
     }
   }
 
+  void PopWorker(const LeaseSpecification &lease_spec,
+                 const rpc::WorkerResourceLimits &,
+                 const PopWorkerCallback &callback) override {
+    PopWorker(lease_spec, callback);
+  }
+
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override {
     pushed_workers.push_back(worker);
   }
