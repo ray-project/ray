@@ -1,6 +1,7 @@
 """An in-memory stand-in for the boto3 S3 client calls ScanStore makes."""
 
 from pathlib import Path
+from typing import Any
 
 from boto3.exceptions import S3UploadFailedError
 from botocore.exceptions import ClientError
@@ -11,7 +12,8 @@ class FakeS3:
         self.objects: dict[tuple[str, str], bytes] = {}
         # Keys whose upload fails, as when the role may not write there.
         self.denied: set[str] = set()
-        # Keys whose download fails, as on a 5xx that outlasts boto3's retries.
+        # Keys whose download or HEAD fails, as on a 5xx that outlasts boto3's
+        # retries.
         self.broken: set[str] = set()
 
     def upload_file(self, filename: str, bucket: str, key: str) -> None:
@@ -34,6 +36,18 @@ class FakeS3:
                 {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
             )
         Path(filename).write_bytes(self.objects[(bucket, key)])
+
+    def head_object(self, Bucket: str, Key: str) -> dict[str, Any]:
+        if Key in self.broken:
+            raise ClientError(
+                {"Error": {"Code": "InternalError", "Message": "try again"}},
+                "HeadObject",
+            )
+        if (Bucket, Key) not in self.objects:
+            raise ClientError(
+                {"Error": {"Code": "404", "Message": "Not Found"}}, "HeadObject"
+            )
+        return {}
 
     def put(self, bucket: str, key: str, data: bytes) -> None:
         self.objects[(bucket, key)] = data
