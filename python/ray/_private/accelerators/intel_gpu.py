@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
@@ -13,6 +14,18 @@ NOSET_ZE_AFFINITY_MASK_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_ZE_AFFINITY_MASK"
 ONEAPI_DEVICE_SELECTOR_ENV_VAR = "ONEAPI_DEVICE_SELECTOR"
 ONEAPI_DEVICE_BACKEND_TYPE = "level_zero"
 ONEAPI_DEVICE_TYPE = "gpu"
+
+# Arc Pro names end in "Graphics" (e.g. "Intel(R) Arc(TM) Pro B50 Graphics"), so
+# the model number is not one of the last two words.
+_ARC_PRO_NAME_PATTERN = re.compile(r"Arc(?:\(TM\))?\s+Pro\s+(B\d+)", re.IGNORECASE)
+
+
+def _accelerator_type_from_device_name(device_name: str) -> str:
+    """Map a SYCL / Level Zero device name to a Ray accelerator type."""
+    arc_pro = _ARC_PRO_NAME_PATTERN.search(device_name)
+    if arc_pro:
+        return f"Intel-GPU-Arc-Pro-{arc_pro.group(1).upper()}"
+    return "Intel-GPU-" + "-".join(device_name.split(" ")[-2:])
 
 
 class IntelGPUAcceleratorManager(AcceleratorManager):
@@ -72,6 +85,8 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         Example:
             name: 'Intel(R) Data Center GPU Max 1550'
             return name: 'Intel-GPU-Max-1550'
+            name: 'Intel(R) Arc(TM) Pro B50 Graphics'
+            return name: 'Intel-GPU-Arc-Pro-B50'
         Returns:
             A string representing the name of Intel GPU type.
         """
@@ -86,7 +101,7 @@ class IntelGPUAcceleratorManager(AcceleratorManager):
         try:
             dev_info = ONEAPI_DEVICE_BACKEND_TYPE + ":" + ONEAPI_DEVICE_TYPE + ":0"
             dev = dpctl.SyclDevice(dev_info)
-            accelerator_type = "Intel-GPU-" + "-".join(dev.name.split(" ")[-2:])
+            accelerator_type = _accelerator_type_from_device_name(dev.name)
         except Exception:
             accelerator_type = None
         return accelerator_type
