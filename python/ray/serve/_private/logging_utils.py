@@ -335,6 +335,40 @@ def redirected_print(*objects, sep=" ", end="\n", file=None, flush=False):
     serve_logger.log(logging.INFO, message, stacklevel=2)
 
 
+def _rotating_file_handler(
+    *,
+    logging_config: LoggingConfig,
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType] = None,
+    max_bytes: Optional[int] = None,
+    backup_count: Optional[int] = None,
+) -> logging.handlers.RotatingFileHandler:
+    """A rotating file handler for a component's log file in the Serve logs dir.
+
+    Rotation defaults to the node's settings.
+    """
+    logs_dir = logging_config.logs_dir or get_serve_logs_dir()
+    os.makedirs(logs_dir, exist_ok=True)
+
+    if max_bytes is None:
+        max_bytes = ray._private.worker._global_node.max_bytes  # type: ignore[attr-defined]
+    if backup_count is None:
+        backup_count = ray._private.worker._global_node.backup_count  # type: ignore[attr-defined]
+
+    log_file_name = get_component_file_name(
+        component_name=component_name,
+        component_id=component_id,
+        component_type=component_type,
+        suffix=".log",
+    )
+    return logging.handlers.RotatingFileHandler(
+        os.path.join(logs_dir, log_file_name),
+        maxBytes=max_bytes,
+        backupCount=backup_count,
+    )
+
+
 def configure_component_logger(
     *,
     component_name: str,
@@ -386,28 +420,13 @@ def configure_component_logger(
     if stream_handler_only:
         return
 
-    if logging_config.logs_dir:
-        logs_dir = logging_config.logs_dir
-    else:
-        logs_dir = get_serve_logs_dir()
-    os.makedirs(logs_dir, exist_ok=True)
-
-    if max_bytes is None:
-        max_bytes = ray._private.worker._global_node.max_bytes  # type: ignore[attr-defined]
-    if backup_count is None:
-        backup_count = ray._private.worker._global_node.backup_count  # type: ignore[attr-defined]
-
-    log_file_name = get_component_file_name(
+    file_handler = _rotating_file_handler(
+        logging_config=logging_config,
         component_name=component_name,
         component_id=component_id,
         component_type=component_type,
-        suffix=".log",
-    )
-
-    file_handler = logging.handlers.RotatingFileHandler(
-        os.path.join(logs_dir, log_file_name),
-        maxBytes=max_bytes,
-        backupCount=backup_count,
+        max_bytes=max_bytes,
+        backup_count=backup_count,
     )
     # Create a memory handler that buffers log records and flushes to file handler
     # Buffer capacity: buffer_size records
@@ -444,6 +463,30 @@ def configure_component_logger(
 
     # Add the memory handler instead of the file handler directly
     logger.addHandler(memory_handler)
+
+
+# Configure a dedicated rotating file logger for autoscaling snapshots.
+def configure_autoscaling_snapshot_logger(
+    *, component_id: str, logging_config: LoggingConfig
+) -> logging.Logger:
+    """Configure a dedicated logger for autoscaling snapshots.
+
+    - Writes to `autoscaling_snapshot_<pid>.log` under the Serve logs dir.
+    """
+    logger_obj = logging.getLogger(f"{SERVE_LOGGER_NAME}.snapshot")
+    logger_obj.propagate = False
+    logger_obj.setLevel(logging_config.log_level)
+    logger_obj.handlers.clear()
+
+    handler = _rotating_file_handler(
+        logging_config=logging_config,
+        component_name="autoscaling_snapshot",
+        component_id=component_id,
+    )
+    handler.setFormatter(JSONFormatter())
+
+    logger_obj.addHandler(handler)
+    return logger_obj
 
 
 def configure_default_serve_logger():
