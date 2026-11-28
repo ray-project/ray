@@ -73,6 +73,7 @@ from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan, SourceOperator
 from ray.data._internal.logical.operators import (
+    AlignToSchema,
     Count,
     Filter,
     FlatMap,
@@ -95,6 +96,7 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
+from ray.data._internal.logical.operators.n_ary_operator import _unify_union_schemas
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.random_config import RandomSeedConfig, get_timestamp_seed
@@ -3560,7 +3562,9 @@ class Dataset:
         return ds_train, ds_test
 
     @PublicAPI(api_group=SMJ_API_GROUP)
-    def union(self, *other: "Dataset") -> "Dataset":
+    def union(
+        self, *other: "Dataset", allow_missing_columns: bool = False
+    ) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The union doesn't append one dataset after another. By default, it
@@ -3570,6 +3574,12 @@ class Dataset:
         interleaves blocks round-robin: one block from each dataset in
         argument order, then the next block from each, until every dataset
         runs out. Within each dataset, blocks keep their order.
+
+        With ``allow_missing_columns=True``, columns are matched by name and
+        ordered by their first appearance across the input datasets. Missing
+        columns are filled with typed nulls. A column is nullable if it is
+        nullable or missing in any input. All rows, including duplicates, are
+        preserved.
 
         .. caution::
             Unioned datasets aren't lineage-serializable. As a result, they can't be
@@ -3586,21 +3596,41 @@ class Dataset:
             [0, 1, 0, 1, 2, 3, 2, 3]
             >>> ctx.execution_options.preserve_order = False
 
+            >>> old = ray.data.from_items([{"id": 1, "text": "hi"}])
+            >>> new = ray.data.from_items([{"score": 0.8, "id": 2}])
+            >>> combined = old.union(new, allow_missing_columns=True)
+            >>> sorted(combined.take_all(), key=lambda row: row["id"])
+            [{'id': 1, 'text': 'hi', 'score': None}, {'id': 2, 'text': None, 'score': 0.8}]
+
         Args:
             *other: The datasets to combine with this one. The datasets
                 must have the same schema as this dataset, otherwise the
-                behavior is undefined.
+                behavior is undefined, unless ``allow_missing_columns=True``.
+            allow_missing_columns: Whether to align columns by name and fill
+                missing columns with nulls. Defaults to False. When True, each
+                input must have a known Arrow schema when ``union()`` is called.
+                For readers that infer their Arrow schema from data, call
+                :meth:`~Dataset.schema` on the input first.
+                Schemas from empty inputs also contribute to the result.
 
         Returns:
             A new dataset holding the rows of the input datasets.
+
+        Raises:
+            ValueError: If ``allow_missing_columns`` is True and an input has
+                an unknown or non-Arrow schema, a duplicate column name, or a
+                column with a different type from the same column in another input.
         """
         start_time = time.perf_counter()
 
         datasets = [self] + list(other)
-        logical_plans = [union_ds._logical_plan for union_ds in datasets]
-        op = UnionLogicalOperator(
-            [plan.dag for plan in logical_plans],
-        )
+        inputs = [dataset._logical_plan.dag for dataset in datasets]
+        if allow_missing_columns:
+            schema = _unify_union_schemas(
+                [dataset._base_schema(fetch_if_missing=False) for dataset in datasets]
+            )
+            inputs = [AlignToSchema(schema, input_dependencies=[op]) for op in inputs]
+        op = UnionLogicalOperator(inputs)
         logical_plan = LogicalPlan(op, self.context)
 
         stats = DatasetStats(

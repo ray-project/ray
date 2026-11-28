@@ -1,7 +1,7 @@
 import functools
 import inspect
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -27,7 +27,7 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data._internal.random_config import RandomSeedConfig
-from ray.data.block import UserDefinedFunction
+from ray.data.block import BlockMetadata, UserDefinedFunction
 from ray.data.expressions import (
     AliasExpr,
     ColumnExpr,
@@ -41,11 +41,14 @@ from ray.data.expressions import (
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
+    import pyarrow as pa
+
     from ray.data.block import Schema
 
 __all__ = [
     "AbstractMap",
     "AbstractUDFMap",
+    "AlignToSchema",
     "Filter",
     "FlatMap",
     "MapBatches",
@@ -465,6 +468,33 @@ class Filter(
 
             return f"{op_name}({expr_str})"
         return super()._get_operator_name(op_name, fn)
+
+
+@dataclass(frozen=True, repr=False, eq=False)
+class AlignToSchema(AbstractMap):
+    """Align blocks to an Arrow schema before concatenating datasets.
+
+    Predicates stay downstream of this operator because they may reference
+    columns that it adds.
+    """
+
+    schema: "pa.Schema"
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = field(init=False, default=False)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    compute: ComputeStrategy = field(default_factory=TaskPoolStrategy, init=False)
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict, init=False)
+    ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = field(
+        init=False, default=None
+    )
+    per_block_limit: Optional[int] = None
+
+    def infer_schema(self) -> "pa.Schema":
+        return self.schema
+
+    def infer_metadata(self) -> BlockMetadata:
+        # Filling missing columns can grow the block.
+        return replace(super().infer_metadata(), size_bytes=None)
 
 
 @dataclass(frozen=True, repr=False, eq=False)

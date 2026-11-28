@@ -1,6 +1,7 @@
 import enum
+from collections import Counter
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Set
+from typing import TYPE_CHECKING, List, Optional, Sequence, Set, Union as TypingUnion
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -13,6 +14,8 @@ from ray.data._internal.utils.transform_pyarrow import _create_empty_table
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
+    import pyarrow as pa
+
     from ray.data.block import Schema
 
 __all__ = [
@@ -217,3 +220,55 @@ class Union(
         self, required_output_columns: Optional[Set[str]]
     ) -> Optional[List[Optional[Set[str]]]]:
         return [required_output_columns for _ in self.input_dependencies]
+
+
+def _unify_union_schemas(
+    schemas: Sequence[Optional[TypingUnion[type, "Schema"]]],
+) -> "pa.Schema":
+    """Compute the target schema for a name-aligned union."""
+    import pyarrow as pa
+
+    from ray.data._internal.arrow_block import (
+        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+        _is_user_visible_column,
+    )
+
+    fields = {}
+    field_counts = Counter()
+    metadata = None
+    for input_index, schema in enumerate(schemas, start=1):
+        if not isinstance(schema, pa.Schema):
+            raise ValueError(
+                f"Union input {input_index} must have a known Arrow schema when "
+                "allow_missing_columns=True."
+            )
+        if len(set(schema.names)) != len(schema):
+            raise ValueError(f"Union input {input_index} has duplicate column names.")
+        if input_index == 1:
+            metadata = schema.metadata
+        for column_field in schema:
+            name = column_field.name
+            if not _is_user_visible_column(name):
+                continue
+            if name not in fields:
+                fields[name] = column_field
+            elif fields[name].type != column_field.type:
+                raise ValueError(
+                    f"Union input {input_index} has type {column_field.type} for column "
+                    f"{name!r}, which conflicts with type {fields[name].type} "
+                    "in an earlier input."
+                )
+            elif column_field.nullable:
+                fields[name] = fields[name].with_nullable(True)
+            field_counts[name] += 1
+
+    target_fields = [
+        column_field.with_nullable(
+            column_field.nullable or field_counts[name] < len(schemas)
+        )
+        for name, column_field in fields.items()
+    ]
+    if not target_fields:
+        # A physical placeholder keeps row counts when zero-column blocks are combined.
+        target_fields = [pa.field(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, pa.null())]
+    return pa.schema(target_fields, metadata=metadata)

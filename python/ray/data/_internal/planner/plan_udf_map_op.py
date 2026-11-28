@@ -28,6 +28,8 @@ import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer, get_or_create_event_loop
+from ray.data._internal.arrow_block import _is_user_visible_column
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
 from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -44,6 +46,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators import (
     AbstractUDFMap,
+    AlignToSchema,
     Filter,
     FlatMap,
     MapBatches,
@@ -146,6 +149,75 @@ class _MapActorContext:
         self.is_async = True
         self.udf_map_asyncio_loop = loop
         self.udf_map_asyncio_thread = thread
+
+
+def plan_align_to_schema_op(
+    op: AlignToSchema,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    schema = op.schema
+    target_names = set(schema.names)
+
+    def align_block(block: Block) -> pa.Table:
+        table = BlockAccessor.for_block(block).to_arrow()
+        if table.schema.equals(schema, check_metadata=True):
+            return table
+
+        names = set(table.column_names)
+        if len(names) != table.num_columns:
+            raise ValueError("A union input block has duplicate column names.")
+        unexpected = {
+            name for name in names - target_names if _is_user_visible_column(name)
+        }
+        if unexpected:
+            raise ValueError(
+                f"A union input block has unexpected columns {sorted(unexpected)}."
+            )
+
+        columns = []
+        for field in schema:
+            if field.name in names:
+                column = table[field.name]
+                if column.type != field.type:
+                    # Dataset schema inference can promote types across its blocks.
+                    message = (
+                        f"Cannot safely promote union input column {field.name!r} "
+                        f"from {column.type} to {field.type}."
+                    )
+                    source_schema = pa.schema([table.schema.field(field.name)])
+                    target_schema = pa.schema([field])
+                    try:
+                        promoted_schema = unify_schemas(
+                            [target_schema, source_schema], promote_types=True
+                        )
+                        if promoted_schema.field(0).type != field.type:
+                            raise ValueError(message)
+                        column = column.cast(field.type, safe=True)
+                    except pa.ArrowException as exc:
+                        raise ValueError(message) from exc
+            else:
+                column = pa.nulls(table.num_rows, type=field.type)
+            if not field.nullable and column.null_count:
+                raise ValueError(
+                    f"Union input column {field.name!r} is non-nullable but contains nulls."
+                )
+            columns.append(column)
+        return pa.Table.from_arrays(columns, schema=schema)
+
+    # Preserve block boundaries for the union's round-robin ordering.
+    transform = BlockMapTransformFn(
+        _generate_transform_fn_for_map_block(align_block), disable_block_shaping=True
+    )
+    return MapOperator.create(
+        MapTransformer([transform]),
+        physical_children[0],
+        data_context,
+        name=op.name,
+        compute_strategy=op.compute,
+        per_block_limit=op.per_block_limit,
+    )
 
 
 def plan_project_op(
