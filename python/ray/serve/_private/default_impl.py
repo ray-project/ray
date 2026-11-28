@@ -139,6 +139,14 @@ def get_request_metadata(init_options, handle_options):
 
 def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
     node_id = ray.get_runtime_context().get_node_id()
+
+    # Under Ray Client, the caller runs outside the cluster and may not be able
+    # to reach the head node's GCS server. Constructing GcsClient would then
+    # block on connection timeouts for each new handle, so skip the AZ lookup.
+    if inside_ray_client_context():
+        return node_id, None
+
+    az: Optional[str] = None
     try:
         cluster_node_info_cache = create_cluster_node_info_cache(
             GcsClient(address=ray.get_runtime_context().gcs_address)
