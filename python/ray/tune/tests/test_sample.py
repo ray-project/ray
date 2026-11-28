@@ -1791,6 +1791,34 @@ class SearchSpaceTest(unittest.TestCase):
 
         self.assertSequenceEqual(config["nosample"], points_to_evaluate[0]["nosample"])
 
+    def testHyperOptSampleFromInitialPoint(self):
+        from ray.tune.search.hyperopt import HyperOptSearch
+
+        def derive(config):
+            assert config["batch_size"] == 4, "sample_from ran for an explicit value"
+            return config["batch_size"] ** 2
+
+        points = [
+            {"batch_size": 3, "nested": {"derived": 6.57}},
+            {"batch_size": 4},
+            {"batch_size": 5, "nested": {"derived": {"weight": 0}}},
+        ]
+        analysis = tune.run(
+            _mock_objective,
+            config={
+                "batch_size": tune.randint(2, 10),
+                "nested": {"derived": tune.sample_from(derive)},
+            },
+            search_alg=HyperOptSearch(points_to_evaluate=points),
+            metric="batch_size",
+            mode="max",
+            num_samples=len(points),
+        )
+        self.assertEqual(
+            [trial.config["nested"]["derived"] for trial in analysis.trials],
+            [6.57, 16, {"weight": 0}],
+        )
+
     def testPointsToEvaluateNevergrad(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),

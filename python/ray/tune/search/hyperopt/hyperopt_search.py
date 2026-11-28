@@ -7,7 +7,9 @@ import numpy as np
 
 # Use cloudpickle instead of pickle to make lambda funcs in HyperOpt pickleable
 from ray import cloudpickle
+from ray._private.dict import unflattened_lookup
 from ray.tune.error import TuneError
+from ray.tune.impl.placeholder import _FunctionResolver, _is_placeholder
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.search import (
     UNDEFINED_METRIC_MODE,
@@ -48,6 +50,28 @@ HYPEROPT_UNDEFINED_DETAILS = (
 )
 
 
+def _apply_sample_from_overrides(value, point, path=()):
+    """Restore explicit values for function placeholders in a seed trial."""
+    if _is_placeholder(value, _FunctionResolver.TOKEN):
+        key = "/".join(map(str, path))
+        try:
+            return unflattened_lookup(key, point)
+        except (KeyError, IndexError, ValueError):
+            return value
+    if isinstance(value, dict):
+        return {
+            k: _apply_sample_from_overrides(v, point, path + (k,))
+            for k, v in value.items()
+        }
+    # HyperOpt evaluates sequence expressions to tuples.
+    if isinstance(value, tuple):
+        return tuple(
+            _apply_sample_from_overrides(v, point, path + (i,))
+            for i, v in enumerate(value)
+        )
+    return value
+
+
 class HyperOptSearch(Searcher):
     """A wrapper around HyperOpt to provide trial suggestions.
 
@@ -80,7 +104,8 @@ class HyperOptSearch(Searcher):
             first. This is for when you already have some good parameters
             you want to run first to help the algorithm make better suggestions
             for future parameters. Needs to be a list of dicts containing the
-            configurations.
+            configurations. An explicit value for a ``tune.sample_from``
+            parameter takes precedence over its sampling function in that trial.
         n_initial_points: number of random evaluations of the
             objective function before starting to approximate it with
             tree parzen estimators. Defaults to 20.
@@ -234,7 +259,9 @@ class HyperOptSearch(Searcher):
         representations where instead the index of the category is expected."""
 
         def _lookup(config_dict, space_dict, key):
-            if isinstance(config_dict[key], dict):
+            if isinstance(config_dict[key], dict) and isinstance(
+                space_dict.get(key), dict
+            ):
                 for k in config_dict[key]:
                     _lookup(config_dict[key], space_dict[key], k)
             else:
@@ -330,10 +357,10 @@ class HyperOptSearch(Searcher):
         self._live_trial_mapping[trial_id] = (new_trial["tid"], new_trial)
 
         # Taken from HyperOpt.base.evaluate
-        config = hpo.base.spec_from_misc(new_trial["misc"])
+        point = hpo.base.spec_from_misc(new_trial["misc"])
 
         # We have to flatten nested spaces here so parameter names match
-        config = flatten_dict(config, flatten_list=True)
+        config = flatten_dict(point, flatten_list=True)
 
         ctrl = hpo.base.Ctrl(self._hpopt_trials, current_trial=new_trial)
         memo = self.domain.memo_from_config(config)
@@ -364,6 +391,8 @@ class HyperOptSearch(Searcher):
                     f"{self._space}"
                 ) from e
             raise e
+        if using_point_to_evaluate:
+            suggested_config = _apply_sample_from_overrides(suggested_config, point)
         return copy.deepcopy(suggested_config)
 
     def on_trial_result(self, trial_id: str, result: Dict) -> None:
