@@ -46,7 +46,12 @@ from ray.data.block import (
     TaskExecWorkerStats,
 )
 from ray.data.context import DataContext
-from ray.exceptions import ActorUnavailableError, ObjectLostError, RayActorError
+from ray.exceptions import (
+    ActorUnavailableError,
+    ObjectLostError,
+    OutOfMemoryError,
+    RayActorError,
+)
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.lineage_tracker import LineageTracker
@@ -225,7 +230,16 @@ def is_data_lineage_recoverable_error(error: BaseException) -> bool:
     the actor is declared dead, so a real death still lands here."""
     if isinstance(error, ActorUnavailableError):
         return False
-    return isinstance(error, (ObjectLostError, RayActorError))
+    return isinstance(error, ObjectLostError) or is_actor_death(error)
+
+
+def is_actor_death(error: BaseException) -> bool:
+    """Whether ``error`` means the actor running the task died. The memory
+    monitor killing the actor fails its tasks with ``OutOfMemoryError``
+    rather than ``ActorDiedError``."""
+    if isinstance(error, ActorUnavailableError):
+        return False
+    return isinstance(error, (RayActorError, OutOfMemoryError))
 
 
 class DataOpTask(OpTask):
@@ -253,6 +267,7 @@ class DataOpTask(OpTask):
         operator_name: str = "Unknown",
         lineage_task_id: Optional[str] = None,
         reconstruction_plan_ids: FrozenSet[str] = frozenset(),
+        cancel_callback: Optional[Callable[[], None]] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -281,6 +296,8 @@ class DataOpTask(OpTask):
             reconstruction_plan_ids: The reconstruction plans this attempt serves; empty
                 for a fresh attempt. Carried here because the output and completion
                 callbacks need them after submission.
+            cancel_callback: Stops the Ray task when it is aborted. Defaults to
+                cancelling ``streaming_gen``. This is exposed as a seam for testing.
         """
         super().__init__(task_index, task_resource_bundle, task_resource_request)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -298,6 +315,14 @@ class DataOpTask(OpTask):
         self._producer_id: str = producer_id
         self._lineage_task_id = lineage_task_id
         self._reconstruction_plan_ids: FrozenSet[str] = reconstruction_plan_ids
+        # Store only an injected callback. Defaulting to a lambda that
+        # captures ``self`` would make every task a reference cycle, keeping
+        # finished tasks (and the input block refs their callbacks capture)
+        # alive until the cyclic GC runs.
+        self._cancel_callback: Optional[Callable[[], None]] = cancel_callback
+        # Whether this task's Ray task has been cancelled (e.g. by an
+        # operator's shutdown), so ``mark_aborted`` doesn't cancel it again.
+        self._cancelled = False
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -326,6 +351,10 @@ class DataOpTask(OpTask):
 
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
+
+    def _cancel(self, force: bool) -> None:
+        self._cancelled = True
+        super()._cancel(force)
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -636,6 +665,12 @@ class DataOpTask(OpTask):
         ``aborted=True`` and the operator doesn't count the task as finished or
         failed: the re-run task is counted instead.
 
+        Cancels the Ray task, which may still be running: Ray core retries a
+        task whose node died, and nothing reads the retry's stream once it is
+        aborted, so it would hold its resources on generator backpressure
+        while the operator has already released them. A task already
+        cancelled (e.g. by its operator's shutdown) isn't cancelled again.
+
         Transitions the task to FINISHED and runs the normal done-callback
         so the owning operator releases every resource the task reserved --
         running-task metrics, logical CPU/GPU/memory usage, actor-pool slot, and
@@ -652,6 +687,11 @@ class DataOpTask(OpTask):
         # Only lineage reconstruction re-runs a task, so only a lineage-tracked
         # task can be aborted for it.
         assert not aborted_for_reconstruction or self.is_lineage_tracked
+        if not self._cancelled:
+            if self._cancel_callback is not None:
+                self._cancel_callback()
+            else:
+                self._cancel(force=False)
         self._task_done_callback(
             exception,
             None,  # TaskExecStats

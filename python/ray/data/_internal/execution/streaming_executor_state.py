@@ -30,6 +30,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     TaskPullRequest,
     Waitable,
+    is_actor_death,
     is_data_lineage_recoverable_error,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
@@ -49,10 +50,18 @@ from ray.data._internal.util import (
     unify_schemas_with_validation,
 )
 from ray.data.exceptions import LineageReconstructionError
-from ray.exceptions import ObjectLostError, RayActorError, UserCodeException
+from ray.exceptions import (
+    ObjectLostError,
+    OutOfMemoryError,
+    RayActorError,
+    UserCodeException,
+)
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.lineage_tracker import LineageTracker
+    from ray.data._internal.execution.lineage_tracker import (
+        LineageTaskId,
+        LineageTracker,
+    )
     from ray.data._internal.execution.metadata_fetcher import MetadataFetcher
     from ray.data._internal.execution.resource_bank import ResourceBankBase
     from ray.data.block import Schema
@@ -717,14 +726,15 @@ def _reconstruct_lost_object(
 ) -> None:
     """Plan and trigger a reconstruction for a lost task output.
 
-    Walks the failed task's dependencies to its seed tasks, gets their retained seed inputs,
-    and resubmits them to the source operator. Only the branches on the
-    path to the lost object are re-executed -- outputs the plan does not need are
-    dropped as ``OBJECT_PRUNED`` rather than re-emitted.
+    Walks the failed task's dependencies up to the nearest tasks whose input is
+    still available -- the failed task itself when only its actor died, else
+    the seed tasks, whose input is retained -- and resubmits those inputs. Only
+    the branches on the path to the lost object are re-executed -- outputs the
+    plan does not need are dropped as ``OBJECT_PRUNED`` rather than re-emitted.
 
     Args:
         topology: The executor's operator topology, searched for the operator
-            that retained each seed task's input.
+            that ran each restart task.
         lineage_tracker: The tracker recording the dataset's task lineage.
         state: The state of the operator whose task output was lost.
         task: The task whose output was lost.
@@ -743,29 +753,49 @@ def _reconstruct_lost_object(
             "by the lineage graph.",
         ) from lost_error
 
+    def owning_op(
+        lineage_task_id: "LineageTaskId",
+    ) -> Optional[LineageReconstructionMixin]:
+        return next(
+            (
+                op
+                for op in topology
+                if isinstance(op, LineageReconstructionMixin)
+                and op.owns_data_task(lineage_task_id)
+            ),
+            None,
+        )
+
+    def available_input(lineage_task_id: "LineageTaskId") -> Optional[RefBundle]:
+        # A lost object may be the failed task's own input, so that input is
+        # trusted only when the task's actor died.
+        if lineage_task_id == task.lineage_task_id and not is_actor_death(lost_error):
+            return None
+        op = owning_op(lineage_task_id)
+        return op.available_task_inputs(lineage_task_id) if op else None
+
     # A retry of a failed reconstruction attempt reuses the reconstruction plans it served; a fresh failure
     # opens a new one. Plans keep separate buckets on shared ancestors, so concurrent
     # plans do not interfere.
     # A plan's trace can stop at a task with a queued reconstruction task and return
-    # no seeds, while another plan of the same task reaches a seed. So each seed is
-    # re-executed only for the plans whose trace returned it.
-    seed_to_plan_ids: Dict[str, Set[str]] = defaultdict(set)
+    # no restart tasks, while another plan of the same task reaches one. So each
+    # restart task is re-executed only for the plans whose trace returned it.
+    restart_inputs: Dict[str, Optional[RefBundle]] = {}
+    restart_to_plan_ids: Dict[str, Set[str]] = defaultdict(set)
     reconstruction_plan_ids: Set[str] = set()
     try:
-        if task.reconstruction_plan_ids:
-            for failed_plan_id in sorted(task.reconstruction_plan_ids):
-                seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
-                    task.lineage_task_id, failed_plan_id
-                )
-                for seed_id in seed_ids:
-                    seed_to_plan_ids[seed_id].add(reconstruction_plan_id)
-                reconstruction_plan_ids.add(reconstruction_plan_id)
-        else:
-            seed_ids, reconstruction_plan_id = lineage_tracker.register_task_failed(
-                task.lineage_task_id
+        for failed_plan_id in sorted(task.reconstruction_plan_ids) or [None]:
+            (
+                plan_restart_inputs,
+                reconstruction_plan_id,
+            ) = lineage_tracker.register_task_failed(
+                task.lineage_task_id,
+                failed_plan_id,
+                available_input=available_input,
             )
-            for seed_id in seed_ids:
-                seed_to_plan_ids[seed_id].add(reconstruction_plan_id)
+            for restart_id, restart_input in plan_restart_inputs.items():
+                restart_inputs[restart_id] = restart_input
+                restart_to_plan_ids[restart_id].add(reconstruction_plan_id)
             reconstruction_plan_ids.add(reconstruction_plan_id)
     except ValueError as err:
         raise LineageReconstructionError(
@@ -774,87 +804,79 @@ def _reconstruct_lost_object(
             f"registered with the lineage graph ({err}).",
         ) from lost_error
 
-    seed_task_ids = sorted(seed_to_plan_ids)
+    restart_task_ids = sorted(restart_inputs)
     plans_str = ", ".join(sorted(reconstruction_plan_ids))
 
-    # Get each seed's retained input from the tracker, and the operator that ran the
-    # seed, which is where the input is re-injected.
+    # Pair each restart task's input with the operator that ran the task, which
+    # is where the input is re-injected.
     resubmissions = []
-    for seed_id in seed_task_ids:
-        try:
-            seed_input = lineage_tracker.get_seed_input(seed_id)
-        except ValueError as err:
+    for restart_id in restart_task_ids:
+        restart_input = restart_inputs[restart_id]
+        if restart_input is None:
             raise LineageReconstructionError(
-                lost_error, f"no retained input for seed task {seed_id} ({err})."
+                lost_error, f"no retained input for seed task {restart_id}."
             ) from lost_error
-        seed_op = next(
-            (
-                op
-                for op in topology
-                if isinstance(op, LineageReconstructionMixin)
-                and op.owns_data_task(seed_id)
-            ),
-            None,
-        )
-        if seed_op is None:
+        restart_op = owning_op(restart_id)
+        if restart_op is None:
             raise LineageReconstructionError(
-                lost_error, f"no operator owns seed task {seed_id}."
+                lost_error, f"no operator owns task {restart_id}."
             ) from lost_error
-        resubmissions.append((seed_id, seed_op, seed_input))
+        resubmissions.append((restart_id, restart_op, restart_input))
 
     # Abort the task so the operator releases every resource it reserved. It's
     # not counted as failed since its lost output is being reconstructed.
     task.mark_aborted(lost_error, aborted_for_reconstruction=True)
 
-    for seed_id, seed_op, seed_input in resubmissions:
-        # Clear the completion state of the seed op and everything downstream so a
-        # re-injected seed input can flow through again.
-        _clear_downstream_completion_state(topology, seed_op)
-        seed_plan_ids = seed_to_plan_ids[seed_id]
-        seed_plans_str = ", ".join(sorted(seed_plan_ids))
-        # If a reconstruction task for this seed is already queued, these plans join it.
-        if seed_op.join_queued_reconstruction_task(seed_id, seed_plan_ids):
+    for restart_id, restart_op, restart_input in resubmissions:
+        # Clear the completion state of the restart op and everything downstream
+        # so a re-injected input can flow through again.
+        _clear_downstream_completion_state(topology, restart_op)
+        restart_plan_ids = restart_to_plan_ids[restart_id]
+        restart_plans_str = ", ".join(sorted(restart_plan_ids))
+        # If a reconstruction task for this task is already queued, these plans
+        # join it.
+        if restart_op.join_queued_reconstruction_task(restart_id, restart_plan_ids):
             logger.info(
                 "[lineage-reconstruction] Plan(s) %s joined the queued reconstruction task "
-                "of seed task %s on operator %r.",
-                seed_plans_str,
-                seed_id,
-                seed_op.name,
+                "of task %s on operator %r.",
+                restart_plans_str,
+                restart_id,
+                restart_op.name,
             )
             continue
-        # `OpState.output_queue` of the source is the seed op's `input_queues[0]`
+        # `OpState.output_queue` of the source is the restart op's `input_queues[0]`
         # (same object, wired in `build_streaming_topology`).
         # Backpressure gates the resubmission like any other input.
-        # The seed's identity travels on the bundle as its `reconstruction_stamp`.
+        # The task's identity travels on the bundle as its `reconstruction_stamp`.
         # Without it the resubmitted bundle is minted a fresh id and the plan never
         # resolves.
-        seed_input = seed_op.stamp_seed_reconstruction_task(
-            seed_id, seed_plan_ids, seed_input
+        restart_input = restart_op.stamp_reconstruction_task(
+            restart_id, restart_plan_ids, restart_input
         )
-        source_op = seed_op.input_dependencies[0]
-        topology[source_op].add_output(seed_input)
+        source_op = restart_op.input_dependencies[0]
+        topology[source_op].add_output(restart_input)
         logger.info(
-            "[lineage-reconstruction] Re-injected seed task %s on operator %r "
+            "[lineage-reconstruction] Re-injected task %s on operator %r "
             "(~%s bytes) for plan(s) %s.",
-            seed_id,
-            seed_op.name,
-            seed_input.size_bytes(),
-            seed_plans_str,
+            restart_id,
+            restart_op.name,
+            restart_input.size_bytes(),
+            restart_plans_str,
         )
 
-    if not seed_task_ids:
+    if not restart_task_ids:
         logger.warning(
             "Reconstructing lost object for task %s via plan(s) %s from pending "
-            "reconstruction tasks. No seed task is resubmitted.",
+            "reconstruction tasks. No task is resubmitted.",
             task.lineage_task_id,
             plans_str,
         )
         return
     logger.warning(
-        "Reconstructing lost object for task %s via plan(s) %s from seed task(s) %s.",
+        "Reconstructing lost object for task %s via plan(s) %s from task(s) %s.",
         task.lineage_task_id,
         plans_str,
-        ", ".join(seed_task_ids),
+        ", ".join(restart_task_ids),
     )
 
 
@@ -1163,7 +1185,11 @@ def process_completed_tasks(
                                     0,
                                 )
                             op_data_tasks.append(task)
-                        except (ObjectLostError, RayActorError) as e:
+                        except (
+                            ObjectLostError,
+                            RayActorError,
+                            OutOfMemoryError,
+                        ) as e:
                             num_errored_blocks, _ = recover_or_count_lost_output(
                                 topology=topology,
                                 lineage_tracker=lineage_tracker,

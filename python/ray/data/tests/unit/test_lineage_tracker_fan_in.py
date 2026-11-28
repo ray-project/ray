@@ -862,7 +862,7 @@ def test_retry_does_not_release_a_queued_sibling_again():
 
     # left is submitted and loses its output. right's input is still queued.
     tracker.register_task_submission(left, left_input, plan)
-    assert tracker.register_task_failed(left, plan) == ([seed], plan)
+    assert tracker.register_task_failed(left, plan) == ({seed: None}, plan)
     tracker.register_task_submission(seed, [], plan)
 
     assert tracker.get_pending_children(seed, plan) == {
@@ -910,7 +910,7 @@ def _register_split_graph(tracker: LineageTracker) -> ReconstructionPlanId:
         ],
     )
     seed_task_ids, plan = tracker.register_task_failed("common")
-    assert seed_task_ids == ["seed"]
+    assert list(seed_task_ids) == ["seed"]
     return plan
 
 
@@ -968,7 +968,7 @@ def _fail_left_after_its_re_execution(tracker: LineageTracker) -> Reconstruction
     """
     plan = _register_split_graph(tracker)
     _re_execute_up_to_left_and_right(tracker, plan)
-    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    assert tracker.register_task_failed("left", plan) == ({"seed": None}, plan)
     return plan
 
 
@@ -993,7 +993,7 @@ def test_retry_does_not_resubmit_the_seed_while_a_parent_re_execution_is_queued(
     reused = ObjectReuseStatus.OBJECT_REUSED
     assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
 
-    assert tracker.register_task_failed("right", plan) == ([], plan)
+    assert tracker.register_task_failed("right", plan) == ({}, plan)
 
     assert _re_execute(tracker, "split", _SEED_OUTPUT, plan, num_outputs=2) == [
         reused,
@@ -1012,7 +1012,7 @@ def test_retry_resubmits_the_seed_while_a_parent_re_execution_is_submitted():
     tracker = LineageTracker()
     plan = _submit_split_for_left(tracker)
 
-    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+    assert tracker.register_task_failed("right", plan) == ({"seed": None}, plan)
 
     reused = ObjectReuseStatus.OBJECT_REUSED
     assert _produce_output(tracker, "split", 1, plan) is reused
@@ -1038,7 +1038,7 @@ def test_retry_resubmits_the_seed_after_a_parent_re_execution_produced_the_input
         _produce_output(tracker, "split", 1, plan) is ObjectReuseStatus.OBJECT_UNRELATED
     )
 
-    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+    assert tracker.register_task_failed("right", plan) == ({"seed": None}, plan)
 
     tracker.register_task_complete("split", 2, plan)
     _re_execute(tracker, "seed", [], plan, num_outputs=1)
@@ -1057,7 +1057,7 @@ def test_retry_does_not_resubmit_a_seed_that_is_already_queued():
     tracker = LineageTracker()
     plan = _fail_left_after_its_re_execution(tracker)
 
-    assert tracker.register_task_failed("right", plan) == ([], plan)
+    assert tracker.register_task_failed("right", plan) == ({}, plan)
 
     reused = ObjectReuseStatus.OBJECT_REUSED
     assert _re_execute(tracker, "seed", [], plan, num_outputs=1) == [reused]
@@ -1079,14 +1079,14 @@ def test_retry_resubmits_the_seed_while_a_later_parent_re_execution_is_submitted
     assert (
         _produce_output(tracker, "split", 1, plan) is ObjectReuseStatus.OBJECT_UNRELATED
     )
-    assert tracker.register_task_failed("right", plan) == (["seed"], plan)
+    assert tracker.register_task_failed("right", plan) == ({"seed": None}, plan)
     _re_execute(tracker, "seed", [], plan, num_outputs=1)
     # The second re-execution of split is submitted, then the first one completes.
     tracker.register_task_submission("split", _SEED_OUTPUT, plan)
     tracker.register_task_complete("split", 2, plan)
     tracker.register_task_submission("left", _LEFT_INPUT, plan)
 
-    assert tracker.register_task_failed("left", plan) == (["seed"], plan)
+    assert tracker.register_task_failed("left", plan) == ({"seed": None}, plan)
 
     reused = ObjectReuseStatus.OBJECT_REUSED
     assert _produce_output(tracker, "split", 0, plan) is reused

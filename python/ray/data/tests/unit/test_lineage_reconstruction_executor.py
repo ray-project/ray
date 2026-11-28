@@ -44,11 +44,12 @@ def _recording_done_callback(done_calls):
     return task_done_callback
 
 
-def _abortable_task(task_done_callback):
+def _abortable_task(task_done_callback, cancel_callback=lambda: None):
     """A ``DataOpTask`` in its freshly-submitted (ACTIVE) state.
 
     ``mark_aborted`` reads neither the generator nor the ref counter, so both are
-    stubs; this keeps the test on the state machine and off a live cluster.
+    stubs, and cancelling goes through ``cancel_callback``; this keeps the test
+    on the state machine and off a live cluster.
     """
     return DataOpTask(
         0,
@@ -57,32 +58,40 @@ def _abortable_task(task_done_callback):
         "test_op",
         task_done_callback=task_done_callback,
         lineage_task_id="seed:0",
+        cancel_callback=cancel_callback,
     )
 
 
 def test_mark_aborted_fires_the_done_callback_exactly_once():
-    """Abort from ACTIVE runs the done-callback with the error and finishes the task.
+    """Abort from ACTIVE cancels the Ray task, runs the done-callback with the
+    error and finishes the task.
 
-    A repeat abort, or an abort after normal completion, must not run it again: that
-    would double-release the task's resource reservations.
+    A repeat abort, or an abort after normal completion, must not run either again:
+    that would double-release the task's resource reservations.
     """
     done_calls = []
-    task = _abortable_task(_recording_done_callback(done_calls))
+    task = _abortable_task(
+        _recording_done_callback(done_calls),
+        cancel_callback=lambda: done_calls.append("cancel"),
+    )
     error = _lost_error()
 
     task.mark_aborted(error)
-    assert done_calls == [_done_call(error)]
+    assert done_calls == ["cancel", _done_call(error)]
     assert task.has_finished
 
-    # A repeat abort doesn't run the done-callback again.
+    # A repeat abort doesn't cancel or run the done-callback again.
     task.mark_aborted(error)
-    assert done_calls == [_done_call(error)]
+    assert done_calls == ["cancel", _done_call(error)]
 
     done_calls.clear()
-    task = _abortable_task(_recording_done_callback(done_calls))
+    task = _abortable_task(
+        _recording_done_callback(done_calls),
+        cancel_callback=lambda: done_calls.append("cancel"),
+    )
     task.mark_done()
     task.mark_aborted(error)
-    # Only the normal completion fired, with no error.
+    # Only the normal completion fired, with no error and no cancel.
     assert done_calls == [_done_call(None)]
 
 
@@ -195,7 +204,7 @@ def test_started_reconstruction_aborts_for_reconstruction():
     tracker = MagicMock()
     # A plan with no seeds to resubmit. The test only checks how the lost task is
     # aborted.
-    tracker.register_task_failed.return_value = (set(), "plan_a")
+    tracker.register_task_failed.return_value = ({}, "plan_a")
     lost_error = _lost_error()
 
     _reconstruct_lost_object({}, tracker, MagicMock(), task, lost_error)
@@ -231,10 +240,9 @@ def test_reconstruction_error_wraps_object_lost_error():
         )
     reconstruction_error = raised.value
 
-    assert isinstance(reconstruction_error, ObjectLostError)
-    assert isinstance(reconstruction_error, LineageReconstructionError)
     assert reconstruction_error.lost_error is object_lost_error
     assert reconstruction_error.__cause__ is object_lost_error
+    assert isinstance(reconstruction_error, ObjectLostError)
     for field in ("object_ref_hex", "owner_address", "call_site"):
         assert getattr(reconstruction_error, field) == getattr(object_lost_error, field)
     assert str(object_lost_error) in str(reconstruction_error)
