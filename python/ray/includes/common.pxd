@@ -350,6 +350,10 @@ cdef extern from "ray/common/ray_object.h" nogil:
         CRayObject(const shared_ptr[CBuffer] &data,
                    const shared_ptr[CBuffer] &metadata,
                    const c_vector[CObjectReference] &nested_refs)
+        CRayObject(const shared_ptr[CBuffer] &data,
+                   const shared_ptr[CBuffer] &metadata,
+                   const c_vector[CObjectReference] &nested_refs,
+                   c_bool copy_data, optional[c_string] tensor_transport)
         c_bool HasData() const
         c_bool HasMetadata() const
         const size_t DataSize() const
