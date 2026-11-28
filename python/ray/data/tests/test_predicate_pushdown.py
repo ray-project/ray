@@ -1,13 +1,18 @@
+import functools
+import operator
 import os
 import re
+import tempfile
 from dataclasses import replace
 from typing import Any, List
 
 import lance
 import pandas as pd
 import pyarrow as pa
+import pyarrow.orc as orc
 import pyarrow.parquet as pq
 import pytest
+from hypothesis import HealthCheck, example, given, settings, strategies as st
 from packaging.version import Version
 from pytest_lazy_fixtures import lf as lazy_fixture
 
@@ -124,6 +129,92 @@ def test_pushed_filter_matches_in_memory_filter(
     pushed = ds.filter(expr=predicate).take_all()
     in_memory = ds.materialize().filter(expr=predicate).take_all()
     assert [row["id"] for row in pushed] == [row["id"] for row in in_memory]
+
+
+@st.composite
+def _division_filter_case(draw):
+    """Rows of a data column ``x`` and a partition ``p``, and filters dividing them."""
+    size = draw(st.integers(1, 6))
+    rows = {
+        name: draw(st.lists(st.integers(-7, 7), min_size=size, max_size=size))
+        for name in ("x", "p")
+    }
+    conjuncts = []
+    for _ in range(draw(st.integers(1, 2))):
+        name = draw(st.sampled_from(["x", "p"]))
+        divisor = draw(st.sampled_from([2, -2, 0.5]))
+        compare = draw(st.sampled_from([operator.eq, operator.lt, operator.ge]))
+        # A row's own quotient, so truncating an odd value flips that row.
+        threshold = draw(st.sampled_from(rows[name])) / divisor
+        conjuncts.append(compare(col(name) / divisor, threshold))
+    return rows, functools.reduce(operator.and_, conjuncts)
+
+
+@pytest.mark.parametrize(
+    "file_format,use_datasource_v2",
+    [("parquet", False), ("parquet", True), ("orc", True)],
+)
+@settings(
+    max_examples=15,
+    derandomize=True,
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(case=_division_filter_case())
+# A root file stores p=7, which PyArrow's truncating 7 / 2 would drop.
+@example(case=({"x": [1], "p": [7]}, (col("p") / 2) == 3.5))
+def test_division_filter_matches_in_memory_filter(
+    ray_start_regular_shared,
+    tmp_path,
+    monkeypatch,
+    file_format,
+    use_datasource_v2,
+    case,
+):
+    """A pushed ``/`` filter keeps Ray's rows, and V2 prunes partitions with it."""
+    rows, predicate = case
+    monkeypatch.setattr(
+        ray.data.DataContext.get_current(), "use_datasource_v2", use_datasource_v2
+    )
+    root = tempfile.mkdtemp(dir=tmp_path)
+    write = pq.write_table if file_format == "parquet" else orc.write_table
+    for value in set(rows["p"]):
+        os.makedirs(f"{root}/p={value}")
+        x = [x for x, p in zip(rows["x"], rows["p"]) if p == value]
+        write(pa.table({"x": x}), f"{root}/p={value}/data.{file_format}")
+    if file_format == "parquet" and use_datasource_v2:
+        # A root file stores ``p`` itself, so the reader applies the ``p`` filter.
+        write(pa.table(rows), f"{root}/root.parquet")
+    read = ray.data.read_parquet if file_format == "parquet" else ray.data.read_orc
+    ds = read(root, partitioning=Partitioning("hive", field_types={"p": int}))
+
+    pushed = ds.filter(expr=predicate)
+    in_memory = ds.materialize().filter(expr=predicate)
+    assert sorted((row["x"], row["p"]) for row in pushed.take_all()) == sorted(
+        (row["x"], row["p"]) for row in in_memory.take_all()
+    )
+    keeps_filter = "Filter" in _get_optimized_plan(pushed)
+    data_filter = "x" in get_column_references(predicate)
+    assert keeps_filter == (data_filter or not use_datasource_v2)
+
+
+def test_division_filter_on_a_partition_skips_pruned_files(
+    ray_start_regular_shared, tmp_path, monkeypatch
+):
+    """A pushed partition ``/`` filter doesn't open the files it prunes."""
+    monkeypatch.setattr(ray.data.DataContext.get_current(), "use_datasource_v2", True)
+    for value in (6, 7):
+        os.makedirs(tmp_path / f"p={value}")
+    pq.write_table(pa.table({"x": [2]}), tmp_path / "p=7" / "data.parquet")
+    # Not a Parquet file, so a read that opens it fails.
+    (tmp_path / "p=6" / "data.parquet").write_bytes(b"not parquet")
+    ds = ray.data.read_parquet(
+        str(tmp_path),
+        partitioning=Partitioning("hive", field_types={"p": int}),
+        schema=pa.schema([("x", pa.int64()), ("p", pa.int64())]),
+    )
+
+    assert ds.filter(expr=(col("p") / 2) == 3.5).take_all() == [{"x": 2, "p": 7}]
 
 
 def test_synthesized_path_residual_preserves_read_constraints(

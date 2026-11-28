@@ -45,6 +45,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 )
 from ray.data._internal.util import call_with_retry, filesystem_for_sized_opens
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.util.expression_utils import division_column_names
 
 if TYPE_CHECKING:
     import pyarrow.compute as pc
@@ -294,18 +295,22 @@ class FooterReader:
                 )
         physical = split.data_predicate
         logical_schema = self.logical_schema
-        if physical is not None and logical_schema is not None:
-            physical_schema = schema.to_arrow_schema()
-            unsafe = {
-                name
-                for name in get_column_references(physical)
-                if physical_schema.get_field_index(name) != -1
-                and (
-                    logical_schema.get_field_index(name) == -1
-                    or physical_schema.field(name).type
-                    != logical_schema.field(name).type
-                )
-            }
+        if physical is not None:
+            # A root file's partition filter with ``/`` reaches here; PyArrow
+            # would truncate integer division.
+            unsafe = division_column_names(predicate=physical)
+            if logical_schema is not None:
+                physical_schema = schema.to_arrow_schema()
+                unsafe |= {
+                    name
+                    for name in get_column_references(physical)
+                    if physical_schema.get_field_index(name) != -1
+                    and (
+                        logical_schema.get_field_index(name) == -1
+                        or physical_schema.field(name).type
+                        != logical_schema.field(name).type
+                    )
+                }
             if unsafe:
                 safe = _split_predicate_by_columns(physical, unsafe)
                 physical = safe.data_predicate

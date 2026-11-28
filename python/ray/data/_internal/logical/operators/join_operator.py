@@ -310,12 +310,12 @@ class Join(
             return None
         left_columns = set(left_schema.names)
         right_columns = set(right_schema.names)
-        from ray.data._internal.datasource_v2.common.pushdown_utils import (
-            combine_predicate_chain,
-            flatten_predicate_chain,
-        )
         from ray.data._internal.planner.plan_expression.expression_visitors import (
             get_column_references,
+        )
+        from ray.data.util.expression_utils import (
+            combine_predicate_chain,
+            flatten_predicate_chain,
         )
 
         for name in get_column_references(condition):

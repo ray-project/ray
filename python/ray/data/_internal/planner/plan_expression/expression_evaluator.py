@@ -49,11 +49,38 @@ def _pa_is_in(left: Any, right: Any) -> Any:
     return pc.is_in(left, right)
 
 
+def _recast_via_widening(value: Any, other: Any) -> Any:
+    """Widen a narrow NumPy column used with a Python number to 64 bits.
+
+    Arrow blocks treat a Python number as 64-bit, so int8 ``x + 100`` is 200
+    there, while NumPy keeps int8 and wraps to -56.
+    """
+    if not isinstance(value, pd.Series) or not isinstance(value.dtype, np.dtype):
+        return value
+    if value.dtype.itemsize >= 8 or isinstance(other, bool):
+        return value
+    if isinstance(other, int) and value.dtype.kind in "iu":
+        return value.astype(np.int64)
+    if isinstance(other, float) and value.dtype.kind == "f":
+        return value.astype(np.float64)
+    return value
+
+
+def _pd_arithmetic(op: Callable[[Any, Any], Any]) -> Callable[[Any, Any], Any]:
+    def apply(left: Any, right: Any) -> Any:
+        return op(
+            _recast_via_widening(value=left, other=right),
+            _recast_via_widening(value=right, other=left),
+        )
+
+    return apply
+
+
 _PANDAS_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
-    Operation.ADD: operator.add,
-    Operation.SUB: operator.sub,
-    Operation.MUL: operator.mul,
-    Operation.DIV: operator.truediv,
+    Operation.ADD: _pd_arithmetic(op=operator.add),
+    Operation.SUB: _pd_arithmetic(op=operator.sub),
+    Operation.MUL: _pd_arithmetic(op=operator.mul),
+    Operation.DIV: _pd_arithmetic(op=operator.truediv),
     Operation.MOD: operator.mod,
     Operation.FLOORDIV: operator.floordiv,
     Operation.GT: operator.gt,
@@ -185,11 +212,28 @@ def _pa_floor_divide(left: Any, right: Any) -> Any:
     return pc.floor(quotient)
 
 
+def _pa_true_divide(left: Any, right: Any) -> Any:
+    # Python's ``/`` divides integers as floats; PyArrow truncates them.
+    # Pushed filters pass PyArrow expressions, which this doesn't cast.
+    if _is_integer_operand(left) and _is_integer_operand(right):
+        # ``safe=False`` rounds integers above 2**53 instead of raising.
+        left, right = (
+            side.cast(pa.float64(), safe=False)
+            if isinstance(side, (pa.Array, pa.ChunkedArray, pa.Scalar))
+            else float(side)
+            for side in (left, right)
+        )
+        # Checked, so integer division by zero still raises.
+        return pc.divide_checked(left, right)
+    # Unchecked, so float division by zero stays inf or NaN, as on pandas blocks.
+    return pc.divide(left, right)
+
+
 _ARROW_EXPR_OPS_MAP: Dict[Operation, Callable[..., Any]] = {
     Operation.ADD: _pa_add_or_concat,
     Operation.SUB: pc.subtract,
     Operation.MUL: pc.multiply,
-    Operation.DIV: pc.divide,
+    Operation.DIV: _pa_true_divide,
     Operation.MOD: lambda left, right: (
         # Modulo op is essentially:
         #   r = N - floor(N/M) * M

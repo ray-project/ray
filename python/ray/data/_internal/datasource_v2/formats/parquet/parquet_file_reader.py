@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from ray.data.datasource.partitioning import Partitioning
 
 from ray._common.utils import env_integer
+from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.datasource_v2.common.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
     FileFormat,
@@ -67,6 +68,7 @@ from ray.data._internal.object_extensions.arrow import raise_on_pickle_object_co
 from ray.data._internal.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.expressions import Expr
+from ray.data.util.expression_utils import division_column_names
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -480,6 +482,9 @@ class ParquetFileReader(FileReader, SupportsMetadata):
                 and schema.get_field_index(name) != -1
                 and physical_schema.field(name).type != schema.field(name).type
             }
+            # A root file's partition filter with ``/`` reaches here; PyArrow
+            # would truncate integer division.
+            unsafe |= division_column_names(predicate=physical_predicate)
             if unsafe:
                 split = _split_predicate_by_columns(physical_predicate, unsafe)
                 physical_predicate = split.data_predicate
@@ -517,7 +522,7 @@ class ParquetFileReader(FileReader, SupportsMetadata):
             raise_on_pickle_object_columns(table)
             table = self._apply_partition_values(table, values, required_columns=needed)
             if residual_predicate is not None:
-                table = table.filter(residual_predicate.to_pyarrow())
+                table = ArrowBlockAccessor(table).filter(residual_predicate)
             yield table
 
     def _iter_fragment_tables_without_pickle_check(

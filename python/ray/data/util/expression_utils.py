@@ -1,6 +1,16 @@
 """Utility functions for expression-based operations."""
 
-from typing import TYPE_CHECKING, Any, Callable, Hashable, List, Optional
+import functools
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Hashable,
+    Iterable,
+    List,
+    Optional,
+    Set,
+)
 
 if TYPE_CHECKING:
     from ray.data.expressions import (
@@ -11,6 +21,7 @@ if TYPE_CHECKING:
         Expr,
         LiteralExpr,
         MonotonicallyIncreasingIdExpr,
+        Operation,
         RandomExpr,
         UDFExpr,
         UnaryExpr,
@@ -262,3 +273,43 @@ def _random_fingerprint_key(expr: "RandomExpr") -> Hashable:
 
 def _uuid_fingerprint_key(expr: "UUIDExpr") -> Hashable:
     return ("uuid", _data_type_key(expr))
+
+
+def flatten_predicate_chain(predicate: "Expr", op: "Operation") -> Iterable["Expr"]:
+    """Operands of ``predicate``'s top level ``op`` chain, left to right (iterative)."""
+    from ray.data.expressions import BinaryExpr
+
+    stack = [predicate]
+    while stack:
+        expr = stack.pop()
+        if isinstance(expr, BinaryExpr) and expr.op == op:
+            stack.append(expr.right)
+            stack.append(expr.left)
+        else:
+            yield expr
+
+
+def combine_predicate_chain(
+    predicates: List["Expr"], op: "Operation"
+) -> Optional["Expr"]:
+    """Fold ``predicates`` into one ``op`` chain, left to right; ``None`` if empty."""
+    from ray.data.expressions import BinaryExpr
+
+    if not predicates:
+        return None
+    return functools.reduce(lambda left, right: BinaryExpr(op, left, right), predicates)
+
+
+def division_column_names(predicate: "Expr") -> Set[str]:
+    """Columns of the top-level ``AND`` conjuncts that use ``/``."""
+    from ray.data._internal.planner.plan_expression.expression_visitors import (
+        get_column_references,
+    )
+    from ray.data.expressions import Operation
+
+    return {
+        name
+        for conjunct in flatten_predicate_chain(predicate, Operation.AND)
+        if conjunct._has_division()
+        for name in get_column_references(conjunct)
+    }
