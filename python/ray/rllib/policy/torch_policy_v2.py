@@ -17,7 +17,11 @@ from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchDistributionWrapper
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.policy import (
+    PRESERVE_CURRENT_POLICY_CONFIG,
+    Policy,
+    PolicySpec,
+)
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
@@ -938,6 +942,29 @@ class TorchPolicyV2(Policy):
     @override(Policy)
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: PolicyState) -> None:
+        # Optimizer state_dicts include LR values. During an Algorithm restore into an
+        # already-constructed Policy, keep the current trial's optimizer LRs only when
+        # its LR control plane differs from the checkpoint's.
+        preserve_current_policy_config = state.get(
+            PRESERVE_CURRENT_POLICY_CONFIG, False
+        )
+        restore_current_lrs = False
+        current_optimizer_lrs = None
+        if preserve_current_policy_config and "policy_spec" in state:
+            policy_spec = PolicySpec.deserialize(state["policy_spec"])
+            checkpoint_config = policy_spec.config or {}
+            lr_keys = ("lr", "lr_schedule", "_lr_vf")
+            if any(
+                checkpoint_config.get(key) != self.config.get(key) for key in lr_keys
+            ):
+                restore_current_lrs = True
+                current_optimizer_lrs = [
+                    [group.get("lr") for group in optimizer.param_groups]
+                    if optimizer is not None
+                    else None
+                    for optimizer in self._optimizers
+                ]
+
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
@@ -960,6 +987,18 @@ class TorchPolicyV2(Policy):
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
+
+        if restore_current_lrs:
+            for optimizer, optimizer_lrs in zip(
+                self._optimizers, current_optimizer_lrs
+            ):
+                if optimizer is not None and optimizer_lrs is not None:
+                    for param_group, lr in zip(optimizer.param_groups, optimizer_lrs):
+                        param_group["lr"] = lr
+
+            # Re-evaluate a current-trial LR schedule at the restored timestep.
+            # For static LR configs this is a no-op and the values above remain.
+            self.on_global_var_update({"timestep": self.global_timestep})
 
     @override(Policy)
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
