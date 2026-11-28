@@ -9,6 +9,7 @@ import os
 import time
 import uuid
 from collections import Counter
+from contextlib import nullcontext
 from functools import partial
 from typing import TYPE_CHECKING, Any, AsyncIterator, Dict, List, Optional, Tuple, Type
 
@@ -352,7 +353,7 @@ class vLLMEngineWrapper:
             logger.info("Max pending requests is set to %d", self.max_pending_requests)
             self.semaphore = asyncio.Semaphore(self.max_pending_requests)
         else:
-            self.semaphore = asyncio.NullContext()
+            self.semaphore = nullcontext()
 
     async def _maybe_get_lora_request(
         self,
