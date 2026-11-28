@@ -77,8 +77,15 @@ class MetricsPusher:
                 if wait_for_stop_event.done():
                     return
 
+                # Read the task info once per iteration. `stop_tasks()` may
+                # clear `self._tasks` while an async `task_func()` is
+                # suspended, so the dict must not be read again after resume.
+                task_info = self._tasks.get(name)
+                if task_info is None:
+                    return
+
                 try:
-                    task_func = self._tasks[name].task_func
+                    task_func = task_info.task_func
                     # Check if the function is a coroutine function
                     if asyncio.iscoroutinefunction(task_func):
                         await task_func()
@@ -88,7 +95,7 @@ class MetricsPusher:
                     logger.exception(f"Failed to run metrics task '{name}': {e}")
 
                 sleep_task = asyncio.create_task(
-                    self._async_sleep(self._tasks[name].interval_s)
+                    self._async_sleep(task_info.interval_s)
                 )
                 try:
                     await asyncio.wait(
