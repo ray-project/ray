@@ -163,7 +163,7 @@ kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/example_placement_group.
 
 # Step 5.5: List all nodes in the Ray cluster. The nodes scaled for the task, actor, and placement group should be annotated with
 #           the expected Ray node labels.
-kubectl exec -it $HEAD_POD -- ray list nodes
+kubectl exec -it $HEAD_POD -- ray list nodes --detail
 ```
 
 ### Step 6: Clean up the Kubernetes cluster
