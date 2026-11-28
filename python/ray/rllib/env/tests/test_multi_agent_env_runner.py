@@ -1,16 +1,19 @@
 import unittest
+from unittest.mock import MagicMock
 
 import gymnasium as gym
 import numpy as np
 
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     EPISODE_AGENT_RETURN_MEAN,
     EPISODE_MODULE_RETURN_MEAN,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.test_utils import check
 
@@ -89,6 +92,45 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
     @classmethod
     def tearDownClass(self) -> None:
         ray.shutdown()
+
+    def test_set_state_stale_version_preserves_newer_weights_sequence(self):
+        # Run the real MultiAgentEnvRunner.set_state method without an expensive env
+        # setup, while asserting its actual module-state dispatch decisions.
+        runner = MagicMock()
+        runner._weights_seq_no = 8
+
+        # A stale payload must not mutate weights OR their current version.
+        MultiAgentEnvRunner.set_state(
+            runner,
+            {COMPONENT_RL_MODULE: {"policy": {"weight": -1}}, WEIGHTS_SEQ_NO: 7},
+        )
+        runner.module.set_state.assert_not_called()
+        self.assertEqual(runner._weights_seq_no, 8)
+
+        # Equal-version weights also do not require a redundant install.
+        MultiAgentEnvRunner.set_state(
+            runner,
+            {COMPONENT_RL_MODULE: {"policy": {"weight": -2}}, WEIGHTS_SEQ_NO: 8},
+        )
+        runner.module.set_state.assert_not_called()
+        self.assertEqual(runner._weights_seq_no, 8)
+
+        # A truly newer version does update both the module and published counter.
+        expected_state = {"policy": {"weight": 9}}
+        MultiAgentEnvRunner.set_state(
+            runner, {COMPONENT_RL_MODULE: expected_state, WEIGHTS_SEQ_NO: 9}
+        )
+        runner.module.set_state.assert_called_once_with(expected_state)
+        self.assertEqual(runner._weights_seq_no, 9)
+
+        # Module-only first installs intentionally bypass the global version gate.
+        runner.module.set_state.reset_mock()
+        forced_state = {"policy": {"weight": 100}}
+        MultiAgentEnvRunner.set_state(
+            runner, {COMPONENT_RL_MODULE: forced_state}
+        )
+        runner.module.set_state.assert_called_once_with(forced_state)
+        self.assertEqual(runner._weights_seq_no, 9)
 
     def test_sample_timesteps(self):
         # Build a multi agent config.
