@@ -13,12 +13,13 @@ plan is a ``Write`` or ``StreamingSplit`` with a ``ReadFiles`` at the
 leaf. V2's plain ``plan_read_files_op`` stays checkpoint-unaware; this
 file is the only place V2 reads pick up a checkpoint filter.
 """
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import pyarrow
 import pyarrow.fs
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
+from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.planner.checkpoint.plan_read_op import (
     create_checkpoint_filter_op,
@@ -39,9 +40,42 @@ def plan_read_files_op_with_checkpoint_filter(
     Defers all wrapping behavior to V1's :func:`create_checkpoint_filter_op`
     so the not-found short-circuit, ``IdColumnCheckpointManager.load_checkpoint``
     invocation, actor-pool sizing, and ``supports_fusion=False`` placement stay
-    in one place across the V1 and V2 read paths.
+    in one place across the V1 and V2 read paths. With
+    ``op.checkpoint_on_input``, the filter goes on the read's input instead, so
+    finished rows are dropped before anything is read for them.
     """
+    if op.checkpoint_on_input:
+        return plan_with_checkpoint_filter_on_input(
+            plan_read_files_op,
+            data_file_dir,
+            data_file_filesystem,
+            op,
+            physical_children,
+            data_context,
+        )
     physical_read_op = plan_read_files_op(op, physical_children, data_context)
     return create_checkpoint_filter_op(
         physical_read_op, data_context, data_file_dir, data_file_filesystem
     )
+
+
+def plan_with_checkpoint_filter_on_input(
+    plan_fn: Callable[..., PhysicalOperator],
+    data_file_dir: Optional[str],
+    data_file_filesystem: Optional["pyarrow.fs.FileSystem"],
+    op: LogicalOperator,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> PhysicalOperator:
+    """Plan ``op`` with ``plan_fn`` over its one input behind a
+    ``CheckpointFilter``, so ``op`` sees only unfinished rows.
+
+    A read whose input rows carry the id column
+    (``ReadFiles.checkpoint_on_input``) is planned this way, or the
+    ``StreamingRepartition`` that cuts its input into read tasks.
+    """
+    (child,) = physical_children
+    filtered = create_checkpoint_filter_op(
+        child, data_context, data_file_dir, data_file_filesystem
+    )
+    return plan_fn(op, [filtered], data_context)
