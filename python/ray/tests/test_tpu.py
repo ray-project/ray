@@ -3823,5 +3823,346 @@ def test_placement_group_torchtpu_env_vars(_clean_ray, ray_tpu_cluster, monkeypa
             ray.util.tpu._tpu_subslice_cache.pop("slice-v7x", None)
 
 
+def test_get_torchtpu_env_vars_rank_port_mds_and_visible_device():
+    """Verify rank, port, MDS, and visible_device options on get_torchtpu_env_vars."""
+    hosts = ["10.0.0.1", "10.0.0.2", "10.0.0.3", "10.0.0.4"]
+
+    # Backwards compatibility: omitting new params omits rank/port/MDS/visible keys.
+    base_env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="4x4", worker_hostnames=hosts, worker_id=1
+    )
+    for key in (
+        "RANK",
+        "LOCAL_RANK",
+        "WORLD_SIZE",
+        "MASTER_PORT",
+        "TPU_VISIBLE_DEVICES",
+        "TPU_SKIP_MDS_QUERY",
+    ):
+        assert key not in base_env
+
+    # Single-slice 4x4 (4 hosts x 4 chips = 16 devices): worker 2, local_rank 3 -> 11.
+    rank_env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="4x4",
+        worker_hostnames=hosts,
+        worker_id=2,
+        local_rank=3,
+        master_port=29500,
+        skip_mds_query=True,
+        visible_device=3,
+    )
+    assert rank_env["RANK"] == "11"
+    assert rank_env["LOCAL_RANK"] == "3"
+    assert rank_env["WORLD_SIZE"] == "16"
+    assert rank_env["MASTER_ADDR"] == "10.0.0.1"
+    assert rank_env["MASTER_PORT"] == "29500"
+    assert rank_env["TPU_VISIBLE_DEVICES"] == "3"
+    assert rank_env["TPU_SKIP_MDS_QUERY"] == "1"
+    assert rank_env["TPU_WORKER_ID"] == "2"
+
+    # Multi-slice 2x(4x4): slice 1, worker 1, local_rank 2 -> RANK=22, WORLD_SIZE=32.
+    # Multi-device mask string is trimmed and normalized.
+    ms_env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="4x4",
+        worker_hostnames=hosts,
+        worker_id=1,
+        local_rank=2,
+        master_addr="10.0.0.100",
+        master_port=29501,
+        skip_mds_query=True,
+        visible_device=" 0, 1 ",
+        slice_index=1,
+        num_slices=2,
+    )
+    assert ms_env["RANK"] == "22"
+    assert ms_env["LOCAL_RANK"] == "2"
+    assert ms_env["WORLD_SIZE"] == "32"
+    assert ms_env["MASTER_ADDR"] == "10.0.0.100"
+    assert ms_env["MASTER_PORT"] == "29501"
+    assert ms_env["TPU_VISIBLE_DEVICES"] == "0,1"
+    assert ms_env["TPU_SKIP_MDS_QUERY"] == "1"
+
+    # Single-host topology with local_rank defaults worker_id to 0.
+    sh_env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x2",
+        worker_hostnames=["10.0.0.1"],
+        local_rank=2,
+        master_port=29502,
+    )
+    assert sh_env["RANK"] == "2"
+    assert sh_env["LOCAL_RANK"] == "2"
+    assert sh_env["WORLD_SIZE"] == "4"
+    assert sh_env["TPU_WORKER_ID"] == "0"
+    assert "TPU_SKIP_MDS_QUERY" not in sh_env
+    assert "TPU_VISIBLE_DEVICES" not in sh_env
+
+    # Dual-device (v7x) topology: 2x2x2 (2 hosts x 4 chips x 2 devices = 16 devices).
+    v7x_env = ray.util.tpu.get_torchtpu_env_vars(
+        topology="2x2x2",
+        worker_hostnames=["10.0.0.1", "10.0.0.2"],
+        worker_id=1,
+        tpu_resource_per_chip=2,
+        accelerator_type="v7x",
+        local_rank=7,
+        master_port=29503,
+        visible_device=7,
+    )
+    assert v7x_env["RANK"] == "15"
+    assert v7x_env["LOCAL_RANK"] == "7"
+    assert v7x_env["WORLD_SIZE"] == "16"
+    assert v7x_env["TPU_VISIBLE_DEVICES"] == "7"
+
+    # SlicePlacementGroup forwarding (single-slice and multi-slice).
+    spg_single = object.__new__(ray.util.tpu.SlicePlacementGroup)
+    spg_single._topology = "4x4"
+    spg_single._num_slices = 1
+    spg_single._tpu_resource_per_chip = 1
+    spg_single._accelerator_version = "v6e"
+    spg_single_env = spg_single.get_torchtpu_env_vars(
+        worker_id=2,
+        worker_hostnames=hosts,
+        local_rank=1,
+        master_port=29504,
+        skip_mds_query=True,
+        visible_device=1,
+    )
+    assert spg_single_env["RANK"] == "9"
+    assert spg_single_env["LOCAL_RANK"] == "1"
+    assert spg_single_env["WORLD_SIZE"] == "16"
+    assert spg_single_env["MASTER_PORT"] == "29504"
+    assert spg_single_env["TPU_VISIBLE_DEVICES"] == "1"
+    assert spg_single_env["TPU_SKIP_MDS_QUERY"] == "1"
+
+    spg_multi = object.__new__(ray.util.tpu.SlicePlacementGroup)
+    spg_multi._topology = "4x4"
+    spg_multi._num_slices = 2
+    spg_multi._tpu_resource_per_chip = 1
+    spg_multi._accelerator_version = "v6e"
+    spg_multi.get_worker_addrs = MagicMock(return_value=["10.0.0.1"])
+    spg_multi_env = spg_multi.get_torchtpu_env_vars(
+        worker_id=1,
+        slice_index=1,
+        worker_hostnames=["10.0.1.1", "10.0.1.2", "10.0.1.3", "10.0.1.4"],
+        local_rank=3,
+        master_port=29505,
+        skip_mds_query=True,
+        visible_device=3,
+    )
+    assert spg_multi_env["RANK"] == "23"
+    assert spg_multi_env["LOCAL_RANK"] == "3"
+    assert spg_multi_env["WORLD_SIZE"] == "32"
+    assert spg_multi_env["MASTER_ADDR"] == "10.0.0.1"
+    assert spg_multi_env["MASTER_PORT"] == "29505"
+    assert spg_multi_env["TPU_VISIBLE_DEVICES"] == "3"
+    assert spg_multi_env["TPU_SKIP_MDS_QUERY"] == "1"
+
+    # SubslicePlacementGroup forwarding.
+    sg = ray.util.tpu.SubslicePlacementGroup(
+        placement_group=MagicMock(),
+        parent_topology="4x4",
+        subslice_topology="2x4",
+        subslice_index=0,
+        slice_name="slice-0",
+        num_hosts=2,
+        chips_per_host=4,
+        bundle_resources={"CPU": 4, "TPU": 4},
+        accelerator_version="v6e",
+    )
+    sg_env = sg.get_torchtpu_env_vars(
+        worker_id=1,
+        worker_hostnames=["10.0.0.1", "10.0.0.2"],
+        local_rank=2,
+        master_port=29510,
+        skip_mds_query=True,
+        visible_device=2,
+    )
+    assert sg_env["RANK"] == "6"
+    assert sg_env["LOCAL_RANK"] == "2"
+    assert sg_env["WORLD_SIZE"] == "8"
+    assert sg_env["MASTER_PORT"] == "29510"
+    assert sg_env["TPU_VISIBLE_DEVICES"] == "2"
+    assert sg_env["TPU_SKIP_MDS_QUERY"] == "1"
+    assert sg_env["TPU_TOPOLOGY"] == "2x4"
+
+
+@pytest.mark.parametrize(
+    "kwargs, exc_type, match",
+    [
+        (
+            {"topology": "4x4", "local_rank": 0},
+            ValueError,
+            "worker_hostnames or slicebuilder_addresses is required",
+        ),
+        (
+            {
+                "topology": "4x4",
+                "worker_hostnames": ["10.0.0.1", "10.0.0.2"],
+                "local_rank": 0,
+            },
+            ValueError,
+            "worker_id is required when local_rank is specified",
+        ),
+        (
+            {
+                "topology": "4x4",
+                "worker_hostnames": [
+                    "10.0.0.1",
+                    "10.0.0.2",
+                    "10.0.0.3",
+                    "10.0.0.4",
+                ],
+                "worker_id": 0,
+                "local_rank": 4,
+            },
+            ValueError,
+            "local_rank 4 is out of bounds",
+        ),
+        (
+            {
+                "topology": "2x2",
+                "worker_hostnames": ["10.0.0.1"],
+                "local_rank": -1,
+            },
+            ValueError,
+            "local_rank -1 is out of bounds",
+        ),
+        (
+            {
+                "topology": "2x2x2",
+                "worker_hostnames": ["10.0.0.1", "10.0.0.2"],
+                "worker_id": 0,
+                "tpu_resource_per_chip": 2,
+                "accelerator_type": "v7x",
+                "local_rank": 8,
+            },
+            ValueError,
+            "local_rank 8 is out of bounds",
+        ),
+        (
+            {
+                "topology": "4x4",
+                "slicebuilder_addresses": [
+                    "10.0.0.1:8471",
+                    "10.0.0.2:8471",
+                    "10.0.0.3:8471",
+                ],
+                "worker_id": 0,
+                "local_rank": 0,
+            },
+            ValueError,
+            "must be divisible by the number of hosts",
+        ),
+        (
+            {"topology": "2x2", "worker_hostnames": ["10.0.0.1"], "local_rank": "0"},
+            TypeError,
+            "local_rank must be an integer",
+        ),
+        (
+            {"topology": "2x2", "worker_hostnames": ["10.0.0.1"], "local_rank": True},
+            TypeError,
+            "local_rank must be an integer",
+        ),
+        (
+            {"topology": "2x2", "master_port": 0},
+            ValueError,
+            "master_port must be in",
+        ),
+        (
+            {"topology": "2x2", "master_port": 70000},
+            ValueError,
+            "master_port must be in",
+        ),
+        (
+            {"topology": "2x2", "master_port": "29500"},
+            TypeError,
+            "master_port must be an integer",
+        ),
+        (
+            {"topology": "2x2", "master_port": True},
+            TypeError,
+            "master_port must be an integer",
+        ),
+        (
+            {"topology": "2x2", "skip_mds_query": "false"},
+            TypeError,
+            "skip_mds_query must be a bool",
+        ),
+        (
+            {"topology": "2x2", "skip_mds_query": 1},
+            TypeError,
+            "skip_mds_query must be a bool",
+        ),
+        (
+            {"topology": "2x2", "visible_device": -1},
+            ValueError,
+            "visible_device must be >= 0",
+        ),
+        (
+            {"topology": "2x2", "visible_device": True},
+            TypeError,
+            "visible_device must be an int or str",
+        ),
+        (
+            {"topology": "2x2", "visible_device": 1.5},
+            TypeError,
+            "visible_device must be an int or str",
+        ),
+        (
+            {"topology": "2x2", "visible_device": "   "},
+            ValueError,
+            "visible_device must not be empty",
+        ),
+        (
+            {"topology": "2x2", "visible_device": ","},
+            ValueError,
+            "Invalid visible_device",
+        ),
+        (
+            {"topology": "2x2", "visible_device": "0,,1"},
+            ValueError,
+            "Invalid visible_device",
+        ),
+        (
+            {"topology": "2x2", "visible_device": "-1"},
+            ValueError,
+            "Invalid visible_device",
+        ),
+        (
+            {"topology": "2x2", "visible_device": "abc"},
+            ValueError,
+            "Invalid visible_device",
+        ),
+        (
+            {"topology": "2x2", "num_slices": 0},
+            ValueError,
+            "num_slices must be >= 1",
+        ),
+        (
+            {"topology": "2x2", "num_slices": True},
+            TypeError,
+            "num_slices must be an integer",
+        ),
+        (
+            {"topology": "2x2", "slice_index": -1, "num_slices": 2},
+            ValueError,
+            "slice_index -1 is out of range",
+        ),
+        (
+            {"topology": "2x2", "slice_index": 2, "num_slices": 2},
+            ValueError,
+            "slice_index 2 is out of range",
+        ),
+        (
+            {"topology": "2x2", "slice_index": False, "num_slices": 2},
+            TypeError,
+            "slice_index must be an integer",
+        ),
+    ],
+)
+def test_get_torchtpu_env_vars_rank_and_port_validation(kwargs, exc_type, match):
+    with pytest.raises(exc_type, match=match):
+        ray.util.tpu.get_torchtpu_env_vars(**kwargs)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
