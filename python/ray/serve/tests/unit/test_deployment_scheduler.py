@@ -27,11 +27,13 @@ from ray.serve._private.deployment_scheduler import (
     AvailableNodeResources,
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
+    PackNodeScorer,
     ReplicaSchedulingRequest,
     ReplicaSchedulingRequestStatus,
     RequestedResources,
     Resources,
     SpreadDeploymentSchedulingPolicy,
+    _best_fit_node,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
@@ -492,17 +494,11 @@ def test_get_available_resources_per_node_pg():
 
 
 def test_best_fit_node():
-    """Test DeploymentScheduler._best_fit_node()."""
-
-    scheduler = default_impl.create_deployment_scheduler(
-        MockClusterNodeInfoCache(),
-        head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=None,
-    )
+    """Test _best_fit_node()."""
 
     # None of the nodes can schedule the replica
     assert (
-        scheduler._best_fit_node(
+        _best_fit_node(
             required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
             available_resources={
                 "node1": AvailableNodeResources(GPU=3, CPU=3),
@@ -513,7 +509,7 @@ def test_best_fit_node():
     )
 
     # Only node2 can fit the replica
-    assert "node2" == scheduler._best_fit_node(
+    assert "node2" == _best_fit_node(
         required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
             "node1": AvailableNodeResources(CPU=3),
@@ -523,7 +519,7 @@ def test_best_fit_node():
     )
 
     # We should prioritize minimizing fragementation of GPUs over CPUs
-    assert "node1" == scheduler._best_fit_node(
+    assert "node1" == _best_fit_node(
         required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
             "node1": AvailableNodeResources(GPU=2, CPU=10, customx=1),
@@ -533,7 +529,7 @@ def test_best_fit_node():
 
     # When GPU is the same, should prioritize minimizing fragmentation
     # of CPUs over customer resources
-    assert "node2" == scheduler._best_fit_node(
+    assert "node2" == _best_fit_node(
         required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
             "node1": AvailableNodeResources(GPU=10, CPU=5, customx=0.1),
@@ -549,7 +545,7 @@ def test_best_fit_node():
         original = Resources.CUSTOM_PRIORITY
         Resources.CUSTOM_PRIORITY = ["customx", "customy"]
 
-        assert "node2" == scheduler._best_fit_node(
+        assert "node2" == _best_fit_node(
             required_resources=RequestedResources(customx=1, customy=1),
             available_resources={
                 "node1": AvailableNodeResources(customx=2, customy=5),
@@ -558,7 +554,7 @@ def test_best_fit_node():
         )
 
         # If customx and customy are equal, GPU should determine best fit
-        assert "node2" == scheduler._best_fit_node(
+        assert "node2" == _best_fit_node(
             required_resources=RequestedResources(customx=1, customy=1, GPU=1),
             available_resources={
                 "node1": AvailableNodeResources(customx=2, customy=2, GPU=10),
@@ -573,17 +569,11 @@ def test_best_fit_node():
 def test_best_fit_node_tie_break_key():
     """Test that _best_fit_node uses tie_break_key only to break ties."""
 
-    scheduler = default_impl.create_deployment_scheduler(
-        MockClusterNodeInfoCache(),
-        head_node_id_override="fake-head-node-id",
-        create_placement_group_fn_override=None,
-    )
-
     required_resources = RequestedResources(CPU=1)
     tie_break_key = {"node1": 5, "node2": 1, "node3": 3}.get
 
     # All nodes leave identical remaining space, so the smallest key wins.
-    assert "node2" == scheduler._best_fit_node(
+    assert "node2" == _best_fit_node(
         required_resources=required_resources,
         available_resources={
             "node1": AvailableNodeResources(CPU=3),
@@ -594,7 +584,7 @@ def test_best_fit_node_tie_break_key():
     )
 
     # Best fit dominates: node1 leaves less space and wins despite the largest key.
-    assert "node1" == scheduler._best_fit_node(
+    assert "node1" == _best_fit_node(
         required_resources=required_resources,
         available_resources={
             "node1": AvailableNodeResources(CPU=2),
@@ -605,7 +595,7 @@ def test_best_fit_node_tie_break_key():
     )
 
     # An equal key keeps the first node seen; the tie break only wins if strictly smaller.
-    assert "node1" == scheduler._best_fit_node(
+    assert "node1" == _best_fit_node(
         required_resources=required_resources,
         available_resources={
             "node1": AvailableNodeResources(CPU=3),
@@ -1313,7 +1303,7 @@ def test_schedule_pins_actor_to_bundle_0():
 
 
 def test_filter_nodes_by_label_selector():
-    """Test _filter_nodes_by_label_selector logic used by _find_best_fit_node_for_pack
+    """Test _filter_nodes_by_label_selector logic used by _filter_candidate_nodes
     when bin-packing, such that label constraints are enforced for the preferred node."""
 
     class MockScheduler(default_impl.DeploymentScheduler):
@@ -3226,16 +3216,7 @@ def _compaction_cluster(cluster_node_info_cache, dep_id, filler_dep_id, idle_nod
 
 
 def _pack(scheduler, cluster_node_info_cache, request):
-    all_node_labels = {
-        node_id: cluster_node_info_cache.get_node_labels(node_id)
-        for node_id in cluster_node_info_cache.get_active_node_ids()
-    }
-    return scheduler._pack_schedule_replica(
-        request,
-        all_node_labels,
-        scheduler._get_available_resources_per_node(),
-        scheduler._get_node_to_running_replicas(),
-    )
+    return scheduler._schedule_one(request, PackNodeScorer(), scheduler._cluster_view())
 
 
 def _replica_request(replica_id, on_scheduled, num_cpus=1):
@@ -3959,6 +3940,104 @@ def test_only_a_success_clears_the_failure_streak():
         timer.advance(100)
         assert scheduler.get_node_to_compact(allow_new_compaction=True) is None
         assert scheduler._num_consecutive_failed_compactions == 1
+
+
+def test_best_fit_ties_go_to_the_lowest_node_id():
+    for order in (["node2", "node1"], ["node1", "node2"]):
+        available = {n: AvailableNodeResources(CPU=2) for n in order}
+        assert _best_fit_node(RequestedResources(CPU=1), available) == "node1"
+
+    available = {n: AvailableNodeResources(CPU=2) for n in ("node1", "node2")}
+    assert (
+        _best_fit_node(
+            RequestedResources(CPU=1),
+            available,
+            tie_break_key={"node1": 1, "node2": 0}.get,
+        )
+        == "node2"
+    )
+
+
+def _request(replica_id: ReplicaID, num_cpus: float = 1) -> ReplicaSchedulingRequest:
+    return ReplicaSchedulingRequest(
+        replica_id=replica_id,
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": num_cpus},
+        actor_options={},
+        actor_init_args=(),
+        on_scheduled=Mock(),
+    )
+
+
+def _target_node(request: ReplicaSchedulingRequest) -> str:
+    strategy = request.on_scheduled.call_args.args[0]._options["scheduling_strategy"]
+    return strategy.node_id
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+@pytest.mark.parametrize("ids", [["r1", "r2"], ["r2", "r1"]])
+def test_equal_replicas_are_placed_in_replica_id_order(ids):
+    d_id = DeploymentID(name="deployment1")
+    node1, node2 = f"{1:056x}", f"{2:056x}"
+    cache = MockClusterNodeInfoCache()
+    cache.add_node(node2, {"CPU": 1})
+    cache.add_node(node1, {"CPU": 1})
+    scheduler = _compaction_scheduler(cache)
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+
+    requests = {i: _request(ReplicaID(i, d_id)) for i in ids}
+    scheduler.schedule(upscales={d_id: list(requests.values())}, downscales={})
+
+    assert _target_node(requests["r1"]) == node1
+    assert _target_node(requests["r2"]) == node2
+
+
+@pytest.mark.parametrize("nodes", [["node1", "node2"], ["node2", "node1"]])
+def test_downscale_ties_go_to_the_lowest_node_id(nodes):
+    d_id = DeploymentID(name="deployment1")
+    cache = MockClusterNodeInfoCache()
+    for node_id in nodes:
+        cache.add_node(node_id, {"CPU": 2})
+    scheduler = _compaction_scheduler(cache)
+    scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+    scheduler.on_deployment_deployed(d_id, rconfig(ray_actor_options={"num_cpus": 1}))
+    for node_id in nodes:
+        scheduler.on_replica_running(ReplicaID(f"on_{node_id}", d_id), node_id)
+
+    to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            d_id: DeploymentDownscaleRequest(deployment_id=d_id, num_to_stop=1)
+        },
+    )
+    assert to_stop == {d_id: {ReplicaID("on_node1", d_id)}}
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY, reason="Needs pack strategy."
+)
+@pytest.mark.parametrize("nodes", [["node1", "node2"], ["node2", "node1"]])
+def test_compaction_ties_go_to_the_lowest_node_id(nodes):
+    d_id = DeploymentID(name="deployment1")
+    filler_id = DeploymentID(name="filler")
+    cache = MockClusterNodeInfoCache()
+    for node_id in nodes + ["node3"]:
+        cache.add_node(node_id, {"CPU": 2})
+    scheduler = _compaction_scheduler(cache)
+    for dep, cpus in ((d_id, 1), (filler_id, 0)):
+        scheduler.on_deployment_created(dep, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            dep, rconfig(ray_actor_options={"num_cpus": cpus})
+        )
+    scheduler.on_replica_running(ReplicaID("a", d_id), "node1")
+    scheduler.on_replica_running(ReplicaID("b", d_id), "node2")
+    scheduler.on_replica_running(ReplicaID("c", d_id), "node3")
+    scheduler.on_replica_running(ReplicaID("f", filler_id), "node3")
+
+    assert scheduler.get_node_to_compact(allow_new_compaction=True)[0] == "node1"
 
 
 if __name__ == "__main__":
