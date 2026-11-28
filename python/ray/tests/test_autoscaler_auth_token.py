@@ -492,6 +492,68 @@ def test_docker_mode_mounts_token_and_restarts_container(clean_auth_env, monkeyp
     )
 
 
+def script_new_container(runner: MockProcessRunner):
+    runner.respond_to_call("json .Mounts", ["[]"])
+    runner.respond_to_call("json .Config.Env", ["[]"])
+    runner.respond_to_call(".State.Running", ["false"] * 4)
+
+
+# An image can hold a Ray older than `ray up`, with a different default mode,
+# so every container runs with the YAML's mode. None leaves auth_mode out.
+@pytest.mark.parametrize(
+    "auth_mode, container_auth_mode",
+    [("token", "token"), ("disabled", "disabled"), (None, "token")],
+)
+def test_docker_containers_run_with_cluster_auth_mode(
+    clean_auth_env, auth_mode, container_auth_mode
+):
+    config = copy.deepcopy(DOCKER_CONFIG)
+    if auth_mode:
+        config["auth_mode"] = auth_mode
+
+    result = ray_up(config, script_runner=script_new_container)
+
+    env_option = f"--env=RAY_AUTH_MODE={container_auth_mode}"
+    result.runner.assert_has_call("1.2.3.4", pattern=f"docker run.* {env_option} ")
+    # The head's autoscaler starts worker containers with these run options.
+    assert result.remote_config["docker"]["run_options"] == [env_option]
+
+
+def test_docker_auth_mode_overrides_run_options(clean_auth_env):
+    config = copy.deepcopy(DOCKER_CONFIG)
+    config["docker"]["run_options"] = ["-e RAY_AUTH_MODE=disabled"]
+
+    result = ray_up(config, script_runner=script_new_container)
+
+    # Docker keeps the last value it's given.
+    result.runner.assert_has_call(
+        "1.2.3.4",
+        pattern=r"docker run.* -e RAY_AUTH_MODE=disabled .*--env=RAY_AUTH_MODE=token ",
+    )
+
+
+@pytest.mark.parametrize("auth_mode", ["token", "disabled"])
+def test_docker_container_user_takes_unreadable_token(clean_auth_env, auth_mode):
+    config = copy.deepcopy(DOCKER_CONFIG)
+    config["auth_mode"] = auth_mode
+
+    result = ray_up(config, script_runner=script_new_container)
+
+    # The bind-mounted token keeps the host user's UID, which the container
+    # user may not have.
+    chowns = [
+        " ".join(map(str, c))
+        for c in result.runner.calls
+        if re.search(
+            r"test -r \S*/\.ray/auth_token \|\| sudo chown", " ".join(map(str, c))
+        )
+    ]
+    if auth_mode == "token":
+        assert len(chowns) == 1 and "docker exec" in chowns[0], chowns
+    else:
+        assert chowns == []
+
+
 def test_fake_docker_runner_skips_only_token_upload(clean_auth_env, monkeypatch):
     monkeypatch.setenv("RAY_FAKE_CLUSTER", "1")
     runner = FakeDockerCommandRunner(

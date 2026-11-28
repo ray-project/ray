@@ -12,6 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import click
 
 from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+from ray.autoscaler._private.auth_token import AUTH_TOKEN_REMOTE_PATH
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,
@@ -939,8 +940,30 @@ class DockerCommandRunner(CommandRunnerInterface):
                         f"command like 'chown {current_user} {mount}' to "
                         "your `setup_commands`."
                     )
+        if AUTH_TOKEN_REMOTE_PATH in file_mounts:
+            self._make_auth_token_readable()
         self.initialized = True
         return docker_run_executed
+
+    def _make_auth_token_readable(self) -> None:
+        """Give the container user the owner-only auth token file.
+
+        The token is bind mounted with the owner and mode it has on the host,
+        and the host's SSH user can have a different UID than the container
+        user, who then can't read it.
+        """
+        path = AUTH_TOKEN_REMOTE_PATH
+        try:
+            self.run(f"test -r {path} || sudo chown $(id -u):$(id -g) {path}")
+        except Exception:
+            cli_logger.warning(
+                "The container user can't read the auth token file {} and "
+                "couldn't take ownership of it with `sudo chown`, so Ray on "
+                "this node can't authenticate. Install `sudo` in the image, or "
+                "run the container as a user whose UID matches the SSH user's "
+                "on the host.",
+                path,
+            )
 
     def _configure_runtime(self, run_options: List[str]) -> List[str]:
         if self.docker_config.get("disable_automatic_runtime_detection"):

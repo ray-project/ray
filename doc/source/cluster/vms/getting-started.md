@@ -284,7 +284,7 @@ To launch a cluster without authentication, set the `auth_mode` key in the clust
 auth_mode: disabled
 ```
 
-`ray up` then sets `RAY_AUTH_MODE=disabled` in the start commands of every node. Set the mode with the `auth_mode` key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`. Every client of the cluster still needs `RAY_AUTH_MODE=disabled`.
+`ray up` then sets `RAY_AUTH_MODE=disabled` in the start commands of every node. Set the mode with the `auth_mode` key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`. In Docker mode, every node's container also runs with `RAY_AUTH_MODE=disabled`, so `ray exec` commands and jobs on the cluster need no setting. Every other client of the cluster still needs `RAY_AUTH_MODE=disabled`.
 
 :::{warning}
 Ray 2.61 mounts the token file on every node. After you upgrade an existing `ray up` cluster to Ray 2.61, the first `ray up` updates every node once, including the head node. Each node reruns its setup commands and restarts Ray, and in Docker mode its container restarts. The cluster doesn't relaunch instances. Run this first `ray up` without `--no-restart`, because `--no-restart` doesn't work on a cluster until one full `ray up` has shipped the token.

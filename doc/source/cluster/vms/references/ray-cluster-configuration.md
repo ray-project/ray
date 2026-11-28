@@ -406,7 +406,7 @@ The name of the cluster. This is the namespace of the cluster.
 
 ### `auth_mode`
 
-Ray's {ref}`authentication mode <token-auth>` on every node, either `token` or `disabled`. Unless this is `disabled`, `ray up` ships this machine's auth token to the head node, which ships it to every worker node it launches. When you set this key, `ray up` sets `RAY_AUTH_MODE` to its value in every node's start commands. Set the mode with this key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`.
+Ray's {ref}`authentication mode <token-auth>` on every node, either `token` or `disabled`. Unless this is `disabled`, `ray up` ships this machine's auth token to the head node, which ships it to every worker node it launches. When you set this key, `ray up` sets `RAY_AUTH_MODE` to its value in every node's start commands. In Docker mode, every node's container runs with `RAY_AUTH_MODE` set to this key's value, or to `token` if you leave it out, so commands and jobs in the containers use the cluster's mode even with an image that holds an older Ray. Set the mode with this key, not with `RAY_AUTH_MODE` in start commands or Docker `run_options`.
 
 * **Required:** No
 * **Importance:** High
