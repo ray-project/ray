@@ -40,6 +40,7 @@ from ray.serve.config import (
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
     RequestRouterConfig,
+    TopologySpread,
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
@@ -671,6 +672,30 @@ def handle_num_replicas_auto(
     return max_ongoing_requests, autoscaling_config
 
 
+TOPOLOGY_SPREAD_RULE_KEYS = frozenset({"label_key", "min_domains"})
+
+
+def topology_spread_to_dicts(
+    topology_spread: Optional[List[Union[TopologySpread, Dict[str, Any]]]],
+) -> Optional[List[Dict[str, Any]]]:
+    """Converts `topology_spread` rules to dicts, dropping default fields."""
+    if topology_spread is None:
+        return None
+    if not isinstance(topology_spread, list):
+        raise TypeError(
+            "topology_spread must be a list of TopologySpread rules. "
+            f"Got: {type(topology_spread)}."
+        )
+    return [
+        (
+            rule
+            if isinstance(rule, TopologySpread)
+            else TopologySpread.model_validate(rule)
+        ).model_dump(exclude_defaults=True)
+        for rule in topology_spread
+    ]
+
+
 class ReplicaConfig:
     """Internal datastructure wrapping config options for a deployment's replicas.
 
@@ -696,6 +721,8 @@ class ReplicaConfig:
     be modified externally after it is created.
     """
 
+    topology_spread: Optional[List[Dict[str, Any]]] = None
+
     def __init__(
         self,
         deployment_def_name: str,
@@ -709,6 +736,7 @@ class ReplicaConfig:
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
+        topology_spread: Optional[List[Dict[str, Any]]] = None,
     ):
         """Construct a ReplicaConfig with serialized properties.
 
@@ -738,6 +766,7 @@ class ReplicaConfig:
         self.placement_group_fallback_strategy = placement_group_fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
+        self.topology_spread = topology_spread
 
         self._normalize_bundle_label_selector()
         self._validate()
@@ -767,6 +796,7 @@ class ReplicaConfig:
         self._validate_ray_actor_options()
         self._validate_placement_group_options()
         self._validate_max_replicas_per_node()
+        self._validate_topology_spread()
 
         if (
             self.max_replicas_per_node is not None
@@ -777,6 +807,17 @@ class ReplicaConfig:
                 "placement_group_bundles is provided."
             )
 
+        if (
+            self.topology_spread
+            and self.placement_group_bundles is not None
+            and self.placement_group_strategy != "STRICT_PACK"
+        ):
+            raise ValueError(
+                "Setting topology_spread is only supported with the STRICT_PACK "
+                "placement_group_strategy, because Serve can only steer a "
+                "STRICT_PACK placement group to a node."
+            )
+
     def update(
         self,
         ray_actor_options: dict,
@@ -785,6 +826,7 @@ class ReplicaConfig:
         placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
+        topology_spread: Optional[List[Dict[str, Any]]] = None,
     ):
         self.ray_actor_options = ray_actor_options
 
@@ -796,6 +838,7 @@ class ReplicaConfig:
         self.placement_group_fallback_strategy = placement_group_fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
+        self.topology_spread = topology_spread
 
         self._normalize_bundle_label_selector()
         self._validate()
@@ -815,6 +858,7 @@ class ReplicaConfig:
         placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
+        topology_spread: Optional[List[Dict[str, Any]]] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
 
@@ -872,6 +916,7 @@ class ReplicaConfig:
             placement_group_bundle_label_selector=placement_group_bundle_label_selector,
             placement_group_fallback_strategy=placement_group_fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            topology_spread=topology_spread,
         )
 
         config._deployment_def = deployment_def
@@ -931,6 +976,44 @@ class ReplicaConfig:
                 "Valid values are None or an integer "
                 f"in the range of [1, {MAX_REPLICAS_PER_NODE_MAX_VALUE}]."
             )
+
+    def _validate_topology_spread(self) -> None:
+        if self.topology_spread is None:
+            return
+        if not isinstance(self.topology_spread, list):
+            raise TypeError(
+                "topology_spread must be a list of rules. "
+                f"Got: {type(self.topology_spread)}."
+            )
+        for i, rule in enumerate(self.topology_spread):
+            if not isinstance(rule, dict):
+                raise TypeError(
+                    f"topology_spread rule at index {i} must be a dictionary. "
+                    f"Got: {type(rule)}."
+                )
+            unknown = set(rule) - TOPOLOGY_SPREAD_RULE_KEYS
+            if unknown:
+                raise ValueError(
+                    f"topology_spread rule at index {i} has unknown keys "
+                    f"{sorted(unknown)}. Allowed keys: "
+                    f"{sorted(TOPOLOGY_SPREAD_RULE_KEYS)}."
+                )
+            label_key = rule.get("label_key")
+            if not isinstance(label_key, str) or not label_key:
+                raise ValueError(
+                    f"topology_spread rule at index {i} needs a non-empty "
+                    f"string label_key. Got: {label_key!r}."
+                )
+            min_domains = rule.get("min_domains")
+            if (
+                not isinstance(min_domains, int)
+                or isinstance(min_domains, bool)
+                or min_domains < 1
+            ):
+                raise ValueError(
+                    f"topology_spread rule at index {i} needs min_domains to be "
+                    f"a positive integer. Got: {min_domains!r}."
+                )
 
     def _validate_placement_group_options(self) -> None:
         if self.placement_group_strategy is not None:
@@ -1108,6 +1191,9 @@ class ReplicaConfig:
                 proto.max_replicas_per_node if proto.max_replicas_per_node else None
             ),
             needs_pickle=needs_pickle,
+            topology_spread=(
+                json.loads(proto.topology_spread) if proto.topology_spread else None
+            ),
         )
 
     @classmethod
@@ -1138,6 +1224,10 @@ class ReplicaConfig:
             self.max_replicas_per_node if self.max_replicas_per_node is not None else 0
         )
 
+        topology_spread = (
+            json.dumps(self.topology_spread) if self.topology_spread is not None else ""
+        )
+
         return ReplicaConfigProto(
             deployment_def_name=self.deployment_def_name,
             deployment_def=self.serialized_deployment_def,
@@ -1149,6 +1239,7 @@ class ReplicaConfig:
             placement_group_bundle_label_selector=bundle_label_selector,
             placement_group_fallback_strategy=fallback_strategy,
             max_replicas_per_node=max_replicas_per_node,
+            topology_spread=topology_spread,
         )
 
     def to_proto_bytes(self):
@@ -1164,4 +1255,5 @@ class ReplicaConfig:
             "placement_group_bundle_label_selector": self.placement_group_bundle_label_selector,
             "placement_group_fallback_strategy": self.placement_group_fallback_strategy,
             "max_replicas_per_node": self.max_replicas_per_node,
+            "topology_spread": self.topology_spread,
         }

@@ -1491,6 +1491,28 @@ def test_redeploy_new_version(mock_deployment_state_manager):
     )
 
 
+def test_outdated_replicas_reach_the_scheduler(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+    ds = _deploy_running(
+        dsm, TEST_DEPLOYMENT_ID, num_replicas=4, version="1", max_surge_percent=50
+    )
+    old_replicas = {r.replica_id for r in ds._replicas.get()}
+    assert ds.get_outdated_replica_ids() == set()
+
+    reported = {}
+    dsm._deployment_scheduler.on_replicas_outdated = (
+        lambda deployment_id, replica_ids: reported.__setitem__(
+            deployment_id, replica_ids
+        )
+    )
+    info_2, _ = deployment_info(num_replicas=4, version="2", max_surge_percent=50)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info_2)
+    dsm.update()
+
+    assert reported[TEST_DEPLOYMENT_ID] == old_replicas
+
+
 def test_redeploy_different_num_replicas(mock_deployment_state_manager):
     """Tests status changes when redeploying with different num_replicas.
 

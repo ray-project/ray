@@ -39,12 +39,15 @@ from ray.serve._private.constants import (
     RAY_SERVE_COMPACTION_MAX_BACKOFF_TIME_S,
     RAY_SERVE_COMPACTION_TIMEOUT_S,
     RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES,
+    RAY_SERVE_MIN_REPLICA_NODES,
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.scheduling_rules import (
+    RAY_NODE_ID_LABEL,
     ExcludeNodesConstraint,
+    MinTopologyDomainsConstraint,
     SchedulingConstraint,
     SchedulingContext,
     rule_tiers,
@@ -569,6 +572,17 @@ class SpreadNodeScorer(NodeScorer):
         return chosen_node
 
 
+def _topology_rules(
+    topology_spread: Optional[List[Dict[str, Any]]],
+) -> Tuple[SchedulingConstraint, ...]:
+    """The rules for a `topology_spread` option. A floor of 1 adds no rule."""
+    return tuple(
+        MinTopologyDomainsConstraint(rule["label_key"], rule["min_domains"])
+        for rule in topology_spread or []
+        if rule["min_domains"] > 1
+    )
+
+
 class DeploymentScheduler:
     """A centralized scheduler for all Serve deployments.
 
@@ -606,6 +620,9 @@ class DeploymentScheduler:
         self._running_replicas: DefaultDict[
             DeploymentID, Dict[ReplicaID, str]
         ] = defaultdict(dict)
+        self._outdated_replicas: DefaultDict[
+            DeploymentID, Set[ReplicaID]
+        ] = defaultdict(set)
         # Dedupes pack scheduling order logs across control loops.
         self._last_pack_schedule_order_log_key: Optional[tuple] = None
         # Dedupes repeated pack placement failure logs for stuck replicas.
@@ -672,6 +689,27 @@ class DeploymentScheduler:
             ]
         if replica_config.placement_group_strategy:
             info.placement_group_strategy = replica_config.placement_group_strategy
+        info.rules = _topology_rules(self._topology_spread_for(info, replica_config))
+
+    @staticmethod
+    def _topology_spread_for(
+        info: DeploymentSchedulingInfo, replica_config: ReplicaConfig
+    ) -> Optional[List[Dict[str, Any]]]:
+        """The deployment's `topology_spread`, or the default node floor."""
+        if info.is_gang:
+            return None
+        topology_spread = getattr(replica_config, "topology_spread", None)
+        if topology_spread is not None:
+            return topology_spread
+        steers_placement_group = (
+            replica_config.placement_group_bundles is None
+            or replica_config.placement_group_strategy == "STRICT_PACK"
+        )
+        if info.pins_replicas or not steers_placement_group:
+            return None
+        return [
+            {"label_key": RAY_NODE_ID_LABEL, "min_domains": RAY_SERVE_MIN_REPLICA_NODES}
+        ]
 
     def on_deployment_deleted(self, deployment_id: DeploymentID) -> None:
         """Called whenever a deployment is deleted."""
@@ -687,6 +725,8 @@ class DeploymentScheduler:
         assert not self._running_replicas[deployment_id]
         self._running_replicas.pop(deployment_id, None)
 
+        self._outdated_replicas.pop(deployment_id, None)
+
         del self._deployments[deployment_id]
 
     def on_replica_stopping(self, replica_id: ReplicaID) -> None:
@@ -696,7 +736,14 @@ class DeploymentScheduler:
         self._launching_replicas[deployment_id].pop(replica_id, None)
         self._recovering_replicas[deployment_id].discard(replica_id)
         self._running_replicas[deployment_id].pop(replica_id, None)
+        self._outdated_replicas[deployment_id].discard(replica_id)
         self._logged_pack_placement_failures.discard(replica_id)
+
+    def on_replicas_outdated(
+        self, deployment_id: DeploymentID, replica_ids: Set[ReplicaID]
+    ) -> None:
+        """Sets the replicas a rollout will stop. They don't count toward floors."""
+        self._outdated_replicas[deployment_id] = set(replica_ids)
 
     def on_replica_running(self, replica_id: ReplicaID, node_id: str) -> None:
         """Called whenever a deployment replica is running with a known node id."""
@@ -1224,11 +1271,15 @@ class DeploymentScheduler:
             Counter
         )
         for deployment_id, replica_nodes in self._running_replicas.items():
-            for node_id in replica_nodes.values():
-                if node_id in active_nodes:
+            outdated = self._outdated_replicas.get(deployment_id, set())
+            for replica_id, node_id in replica_nodes.items():
+                if node_id in active_nodes and replica_id not in outdated:
                     replicas_per_node[deployment_id][node_id] += 1
         for deployment_id, launching_replicas in self._launching_replicas.items():
-            for info in launching_replicas.values():
+            outdated = self._outdated_replicas.get(deployment_id, set())
+            for replica_id, info in launching_replicas.items():
+                if replica_id in outdated:
+                    continue
                 target = info.target_node_id
                 if target is not None and target in active_nodes:
                     replicas_per_node[deployment_id][target] += 1
@@ -1248,11 +1299,14 @@ class DeploymentScheduler:
                 counts[node_id] -= 1
 
     def _num_replicas(self, deployment_id: DeploymentID) -> int:
-        return (
+        """Replicas in every state, leaving out outdated ones."""
+        return max(
+            0,
             len(self._pending_replicas[deployment_id])
             + len(self._launching_replicas[deployment_id])
             + len(self._recovering_replicas[deployment_id])
             + len(self._running_replicas[deployment_id])
+            - len(self._outdated_replicas.get(deployment_id, ())),
         )
 
     def _context_for(
@@ -1597,9 +1651,14 @@ class DeploymentScheduler:
         """
         max_num_to_stop = min(max_num_to_stop, len(replicas_priority))
         rules = self._deployments[deployment_id].rules
-        node_by_replica = dict(self._running_replicas[deployment_id])
+        outdated = self._outdated_replicas.get(deployment_id, set())
+        node_by_replica = {
+            replica_id: node_id
+            for replica_id, node_id in self._running_replicas[deployment_id].items()
+            if replica_id not in outdated
+        }
         for replica_id, info in self._launching_replicas[deployment_id].items():
-            if info.target_node_id is not None:
+            if info.target_node_id is not None and replica_id not in outdated:
                 node_by_replica[replica_id] = info.target_node_id
         node_labels = {
             node_id: self._cluster_node_info_cache.get_node_labels(node_id)

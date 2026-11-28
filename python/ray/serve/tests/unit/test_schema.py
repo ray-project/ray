@@ -21,6 +21,7 @@ from ray.serve.config import (
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
     GangSchedulingConfig,
+    TopologySpread,
     gRPCOptions,
 )
 from ray.serve.deployment import Deployment, deployment_to_schema, schema_to_deployment
@@ -369,6 +370,28 @@ class TestDeploymentSchema:
         with pytest.raises(ValueError):
             DeploymentSchema.model_validate(deployment_schema)
 
+    def test_topology_spread(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["topology_spread"] = [
+            {"label_key": "ray.io/availability-zone", "min_domains": 2},
+            {"label_key": "ray.io/node-id", "min_domains": 3},
+        ]
+        schema = DeploymentSchema.model_validate(deployment_schema)
+        assert schema.topology_spread == [
+            TopologySpread(label_key="ray.io/availability-zone", min_domains=2),
+            TopologySpread(label_key="ray.io/node-id", min_domains=3),
+        ]
+
+        for bad_rule in (
+            {"label_key": "ray.io/node-id", "min_domains": 0},
+            {"label_key": "", "min_domains": 2},
+            {"label_key": "ray.io/node-id"},
+            {"label_key": "ray.io/node-id", "min_domains": 2, "max_skew": 1},
+        ):
+            deployment_schema["topology_spread"] = [bad_rule]
+            with pytest.raises(ValueError):
+                DeploymentSchema.model_validate(deployment_schema)
+
     def test_mutually_exclusive_max_replicas_per_node_and_placement_group_bundles(self):
         # max_replicas_per_node and placement_group_bundles
         # cannot be set at the same time
@@ -579,6 +602,19 @@ class TestDeploymentSchema:
         deployment_schema["gang_scheduling_config"] = {"gang_size": gang_size}
 
         with pytest.raises(ValidationError):
+            DeploymentSchema.model_validate(deployment_schema)
+
+    def test_mutually_exclusive_topology_spread_and_gang_scheduling_config(self):
+        deployment_schema = self.get_minimal_deployment_schema()
+        deployment_schema["num_replicas"] = 2
+        deployment_schema["gang_scheduling_config"] = {"gang_size": 2}
+        deployment_schema["topology_spread"] = []
+        DeploymentSchema.model_validate(deployment_schema)
+
+        deployment_schema["topology_spread"] = [
+            {"label_key": "ray.io/node-id", "min_domains": 2}
+        ]
+        with pytest.raises(ValueError, match="topology_spread is not allowed"):
             DeploymentSchema.model_validate(deployment_schema)
 
     def test_mutually_exclusive_max_replicas_per_node_and_gang_scheduling_config(self):
@@ -1683,6 +1719,24 @@ def test_deployment_info_to_schema_omits_max_replicas_per_node_when_none():
 
     schema = _deployment_info_to_schema("test_deployment", info)
     assert schema.max_replicas_per_node is DEFAULT.VALUE
+
+
+def test_deployment_info_to_schema_includes_topology_spread():
+    rules = [{"label_key": "ray.io/availability-zone", "min_domains": 2}]
+    info = DeploymentInfo(
+        deployment_config=DeploymentConfig.from_default(num_replicas=2),
+        replica_config=ReplicaConfig.create(
+            deployment_def="", init_args=(), init_kwargs={}, topology_spread=rules
+        ),
+        start_time_ms=0,
+        deployer_job_id="fake_job_id",
+    )
+
+    schema = _deployment_info_to_schema("test_deployment", info)
+    assert schema.topology_spread == [
+        TopologySpread(label_key="ray.io/availability-zone", min_domains=2)
+    ]
+    assert schema_to_deployment(schema)._replica_config.topology_spread == rules
 
 
 class TestTracingConfig:

@@ -1899,6 +1899,26 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.health_check_period_s == 20
         assert updated_info.deployment_config.health_check_timeout_s == 60
 
+    def test_override_topology_spread(self, info):
+        def override(**options):
+            config = ServeApplicationSchema(
+                name="default",
+                import_path="test.import.path",
+                deployments=[DeploymentSchema(name="A", **options)],
+            )
+            return override_deployment_info({"A": info}, config)["A"]
+
+        rules = [{"label_key": "ray.io/availability-zone", "min_domains": 2}]
+        assert override(topology_spread=rules).replica_config.topology_spread == rules
+        assert override(topology_spread=[]).replica_config.topology_spread == []
+        assert override().replica_config.topology_spread is None
+
+        info.deployment_config.gang_scheduling_config = GangSchedulingConfig(
+            gang_size=1
+        )
+        with pytest.raises(ValueError, match="topology_spread is not allowed"):
+            override(topology_spread=rules)
+
     def test_noop_deployment_override_keeps_actor_options(self, info):
         original_actor_options = dict(info.replica_config.ray_actor_options)
         config = ServeApplicationSchema(

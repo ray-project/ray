@@ -639,6 +639,7 @@ class DeploymentTargetState:
             placement_group_fallback_strategy=(
                 info.replica_config.placement_group_fallback_strategy
             ),
+            topology_spread=getattr(info.replica_config, "topology_spread", None),
         )
 
         return cls(info, target_num_replicas, version, deleting)
@@ -704,6 +705,10 @@ class DeploymentTargetState:
         )
         fallback_match = current_fallback == other_fallback
 
+        topology_spread_match = getattr(
+            self.info.replica_config, "topology_spread", None
+        ) == getattr(other_target_state.info.replica_config, "topology_spread", None)
+
         # TODO(zcin): version can be None, this is from an outdated codepath.
         # We should remove outdated code, so version can never be None.
         version_match = (
@@ -717,6 +722,7 @@ class DeploymentTargetState:
                 strategy_match,
                 bundle_label_selector_match,
                 fallback_match,
+                topology_spread_match,
                 max_replicas_match,
                 deployment_config_match,
                 version_match,
@@ -4404,6 +4410,28 @@ class DeploymentState:
             self._in_transition = True
         return uncovered
 
+    def get_outdated_replica_ids(self) -> Set[ReplicaID]:
+        """Replicas a rollout will stop because their version needs a restart."""
+        target_version = self._target_state.version
+        states = [
+            ReplicaState.STARTING,
+            ReplicaState.UPDATING,
+            ReplicaState.RECOVERING,
+            ReplicaState.RUNNING,
+            ReplicaState.PENDING_MIGRATION,
+        ]
+        if (
+            target_version is None
+            or self._replicas.count(exclude_version=target_version, states=states) == 0
+        ):
+            return set()
+        return {
+            replica.replica_id
+            for replica in self._replicas.get(states=states)
+            if replica.version != target_version
+            and replica.version.requires_actor_restart(target_version)
+        }
+
     def _stop_or_update_outdated_version_replicas(
         self, max_to_stop: float = math.inf
     ) -> bool:
@@ -7584,6 +7612,10 @@ class DeploymentStateManager:
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         # (Replicas are only added in scale_deployment_replicas when deployment
         # actors are ready, so no additional gate needed here.)
+        for deployment_id, deployment_state in self._deployment_states.items():
+            self._deployment_scheduler.on_replicas_outdated(
+                deployment_id, deployment_state.get_outdated_replica_ids()
+            )
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales
         )
