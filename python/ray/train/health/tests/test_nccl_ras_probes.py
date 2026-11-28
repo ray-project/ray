@@ -1,8 +1,4 @@
-"""Tests of the NCCL hang detector's probes, in ``ray.train.health.nccl_ras``.
-
-Most are copies of ``test_nccl_ras_callback.py``'s, which check the same
-queries in ``NCCLRASCallback``'s module.
-"""
+"""Tests of the NCCL hang detector's probes, in ``ray.train.health.nccl_ras``."""
 import subprocess
 import sys
 import threading
@@ -169,7 +165,7 @@ def test_ncclras_probes_return_the_report_as_detail(monkeypatch):
 
     assert json_probe.poll().detail == "{}"
     assert text_probe.poll().detail == "report"
-    # ncclras gets the probe's timeout_s, the callback's 8s.
+    # ncclras gets the probe's timeout_s of 8s.
     assert calls == [("json", 8.0, "host:1"), ("text", 8.0, "host:1")]
 
 

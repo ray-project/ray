@@ -556,7 +556,7 @@ def test_the_nccl_hang_detector_reattempts_a_hung_run(fake_ncclras, tmp_path):
 
 @pytest.mark.parametrize("fake_ncclras", [_ras_report(_HEALTHY_COMM)], indirect=True)
 def test_the_nccl_hang_detector_lets_a_healthy_run_finish(fake_ncclras, tmp_path):
-    """Like test_nccl_ras_hang_detection.py's healthy run on GPUs: when the
+    """Like test_nccl_ras_e2e.py's healthy run on GPUs: when the
     ranks agree, nothing is suspected, so the run finishes and nothing is
     uploaded. It trains for longer than a hang takes to confirm."""
     trainer = DataParallelTrainer(
@@ -579,7 +579,7 @@ def test_the_nccl_hang_detector_lets_a_healthy_run_finish(fake_ncclras, tmp_path
 def test_the_nccl_hang_detector_names_only_the_hung_communicator(
     fake_ncclras, tmp_path
 ):
-    """Like test_nccl_ras_hang_detection.py's two communicators on GPUs, of
+    """Like test_nccl_ras_e2e.py's two communicators on GPUs, of
     which only one hangs: the hang is confirmed in that one alone."""
     trainer = DataParallelTrainer(
         lambda: time.sleep(300),

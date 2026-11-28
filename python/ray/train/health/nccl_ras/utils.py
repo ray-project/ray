@@ -1,7 +1,5 @@
 """What the NCCL hang detector's evaluators share: the parsed ``ncclras``
-report, and the translation of its ranks to Ray Train's. Copied in order from
-``NCCLRASCallback``'s module, ``ray.train.v2._internal.callbacks.nccl_ras``,
-which keeps its own copies until it's deleted."""
+report, and the translation of its ranks to Ray Train's."""
 import json
 import logging
 import re

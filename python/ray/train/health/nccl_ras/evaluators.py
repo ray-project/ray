@@ -262,9 +262,8 @@ class NCCLHangEvaluator(Evaluator):
         self, results: Mapping[str, ProbeResult]
     ) -> Union[None, RASReport, Exception]:
         """Take the report to evaluate: the latest from the node evaluated
-        last, or else from the first other node whose report parses, as the
-        callback tried the next worker. Every node sees the whole RAS mesh, so
-        one report per poll is enough.
+        last, or else from the first other node whose report parses. Every
+        node sees the whole RAS mesh, so one report per poll is enough.
 
         Args:
             results: ``NCCLRASProbe``'s latest result on each node.
@@ -282,10 +281,9 @@ class NCCLHangEvaluator(Evaluator):
         if not answered:
             errors = [result.error for result in results.values()]
             if errors and all(getattr(error, "fatal", False) for error in errors):
-                # Like the callback, which tried every worker, wait for every
-                # worker node: one that failed first can't stop the detector
-                # alone. A node whose NodeMonitor failed never reports, so
-                # warn meanwhile.
+                # Wait for every worker node: one that failed first can't
+                # stop the detector alone. A node whose NodeMonitor failed
+                # never reports, so warn meanwhile.
                 worker_nodes = {worker.metadata.node_id for worker in self._workers()}
                 if worker_nodes <= results.keys():
                     return errors[0]
