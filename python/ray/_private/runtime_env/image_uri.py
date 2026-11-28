@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import shlex
+import sys
 import tempfile
 from typing import List, Optional
 
@@ -18,7 +19,15 @@ from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 default_logger = logging.getLogger(__name__)
 
 
+def _check_container_platform():
+    if sys.platform != "linux":
+        raise RuntimeError(
+            "Podman runtime env worker containers require a Linux Ray node"
+        )
+
+
 async def _create_impl(image_uri: str, logger: logging.Logger):
+    _check_container_platform()
     # Pull image if it doesn't exist
     # Also get path to `default_worker.py` inside the image.
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -78,13 +87,12 @@ def _modify_context_impl(
     context: RuntimeEnvContext,
     logger: logging.Logger,
     ray_tmp_dir: str,
+    manager_address: Optional[str] = None,
 ):
+    _check_container_platform()
     context.override_worker_entrypoint = worker_path
 
-    container_driver = "podman"
     container_command = [
-        container_driver,
-        "run",
         "-v",
         ray_tmp_dir + ":" + ray_tmp_dir,
         "--cgroup-manager=cgroupfs",
@@ -137,13 +145,14 @@ def _modify_context_impl(
     # --cgroup-manager=cgroupfs --network=host --pid=host --ipc=host
     # --userns=keep-id rayproject/ray:nightly-py39
     logger.info(
-        "Starting worker in container with prefix %s %s",
+        "Starting worker in container with prefix podman create %s %s",
         shlex.join(container_command + run_options),
         image_uri,
     )
 
     context.container = {
-        "command": container_command,
+        "manager_address": manager_address,
+        "options": container_command,
         "run_options": run_options,
         "image": image_uri,
         "entrypoint": "python",
@@ -162,6 +171,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
 
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
+        self.container_manager_address = None
 
     async def create(
         self,
@@ -192,6 +202,7 @@ class ImageURIPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self.container_manager_address,
         )
 
 
@@ -202,6 +213,7 @@ class ContainerPlugin(RuntimeEnvPlugin):
 
     def __init__(self, ray_tmp_dir: str):
         self._ray_tmp_dir = ray_tmp_dir
+        self.container_manager_address = None
 
     async def create(
         self,
@@ -240,4 +252,5 @@ class ContainerPlugin(RuntimeEnvPlugin):
             context,
             logger,
             self._ray_tmp_dir,
+            self.container_manager_address,
         )
