@@ -83,6 +83,21 @@ def test_normalizer():
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
 
+@pytest.mark.parametrize(
+    ("norm", "dtype", "row", "expected"),
+    [
+        ("l2", "uint8", [30, 40], [0.6, 0.8]),
+        ("l2", "int64", [3 * 2**32, 4 * 2**32], [0.6, 0.8]),
+        ("l1", "int8", [-128, 32], [-0.8, 0.2]),
+        ("max", "int8", [-128, 32], [-1.0, 0.25]),
+    ],
+)
+def test_normalizer_integer_overflow(norm, dtype, row, expected):
+    batch = pd.DataFrame([row], columns=["a", "b"], dtype=dtype)
+    result = Normalizer(["a", "b"], norm=norm).transform_batch(batch)
+    np.testing.assert_allclose(result, [expected])
+
+
 def test_normalizer_serialization():
     """Test Normalizer serialization and deserialization functionality."""
     from ray.data.preprocessor import SerializablePreprocessorBase
