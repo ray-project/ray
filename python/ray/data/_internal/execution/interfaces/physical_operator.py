@@ -436,7 +436,14 @@ class DataOpTask(OpTask):
             # ``pending_meta_ref``). A None result means the metadata isn't
             # available yet: leave the pair pending (refs stay set) and retry
             # next call.
-            object_size = metadata_fetcher.in_data_ready_get_object_size(self)
+            try:
+                object_size = metadata_fetcher.in_data_ready_get_object_size(self)
+            except Exception:
+                # Consume the failed pair so a later poll can't count it again
+                # if the executor tolerates the error.
+                self._pending_block_ref = ray.ObjectRef.nil()
+                self._pending_meta_ref = ray.ObjectRef.nil()
+                raise
             if object_size is None:
                 break
             self._object_size_ready_callback(self._pending_block_ref, object_size)

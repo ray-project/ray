@@ -1575,6 +1575,37 @@ class TestDataOpTask:
                 ray.wait([streaming_gen], fetch_local=False)
                 data_op_task.on_data_ready(None, InlineMetadataFetcher())
 
+    def test_metadata_size_fallback_advances_after_failure(
+        self, ray_start_regular_shared
+    ):
+        @ray.remote(max_retries=0)
+        def fail_before_metadata():
+            yield pa.table({"id": [0]})
+            raise ValueError("failed before metadata yield")
+
+        gen = fail_before_metadata.remote()
+        ready, _ = ray.wait([gen.completed()], timeout=10)
+        assert ready
+        done = []
+        task = DataOpTask(
+            0,
+            gen,
+            BlockRefCounter(),
+            "test_op",
+            task_done_callback=lambda *args: done.append(args),
+        )
+        # Exercise the size-lookup fallback using its injection seam, while
+        # retrieving the task's actual error reference through Ray Core.
+        fetcher = ThreadedMetadataFetcher(get_object_locations=lambda refs: {})
+        with pytest.raises(ray.exceptions.RayTaskError, match="failed before metadata"):
+            task.on_data_ready(None, fetcher)
+
+        task.on_data_ready(None, fetcher)
+        fetcher.submit("op", [task])
+        fetcher.emit_ready_and_fire_done_callbacks()
+        assert len(done) == 1
+        assert task.has_finished
+
     @pytest.mark.parametrize(
         "lineage_task_id", [None, "seed:0"], ids=["untracked", "tracked"]
     )
