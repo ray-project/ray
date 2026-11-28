@@ -280,15 +280,16 @@ def ray_start_stop_in_specific_directory(request, create_auth_token):  # noqa: F
         )
 
 
-@pytest.fixture
-def ray_instance(
+def _start_ray_instance(
     request: pytest.FixtureRequest,
+    **default_env_vars: str,
 ) -> Generator[Dict[str, Any], None, None]:
-    """Starts and stops a Ray instance for this test.
+    """Starts and stops a Ray instance.
 
     Args:
         request: request.param should contain a dictionary of env vars and
             their values. The Ray instance will be started with these env vars.
+        **default_env_vars: Env vars to set unless request.param overrides them.
 
     Yields:
         Dict[str, Any]: The dict returned by ``ray.init`` for the started cluster.
@@ -301,7 +302,7 @@ def ray_instance(
     except AttributeError:
         requested_env_vars = {}
 
-    os.environ.update(requested_env_vars)
+    os.environ.update({**default_env_vars, **requested_env_vars})
     yield ray.init(
         address="local",
         _metrics_export_port=9999,
@@ -316,6 +317,29 @@ def ray_instance(
 
     os.environ.clear()
     os.environ.update(original_env_vars)
+
+
+@pytest.fixture
+def ray_instance(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
+    """Starts and stops a Ray instance for this test."""
+    yield from _start_ray_instance(request)
+
+
+@pytest.fixture(scope="module")
+def ray_instance_module(
+    request: pytest.FixtureRequest,
+) -> Generator[Dict[str, Any], None, None]:
+    """Starts and stops one Ray instance shared by every test in the module."""
+    # It outlives the first usage report (60s), which bazel sends to Serve's HTTP port.
+    # Its prestarted workers run out after one test, so give cold-started proxies the
+    # 60s serve.start() waits for (3 x 20s) instead of 15s.
+    yield from _start_ray_instance(
+        request,
+        RAY_USAGE_STATS_ENABLED="0",
+        RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S="20",
+    )
 
 
 @pytest.fixture
