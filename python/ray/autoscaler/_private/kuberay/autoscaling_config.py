@@ -1,12 +1,14 @@
 import decimal
 import json
 import logging
+import re
 import time
 from itertools import chain
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import requests
 
+from ray._private.accelerators import get_all_accelerator_managers
 from ray._private.label_utils import (
     validate_node_label_syntax,
 )
@@ -37,12 +39,11 @@ ORIGINATED_FROM_CRD_VALUE_RAYJOB = "RayJob"
 MAX_RAYCLUSTER_FETCH_TRIES = 5
 RAYCLUSTER_FETCH_RETRY_S = 5
 
-GKE_TPU_TOPOLOGY_LABEL = "cloud.google.com/gke-tpu-topology"
-GKE_TPU_ACCELERATOR_LABEL = "cloud.google.com/gke-tpu-accelerator"
-
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
 _HEAD_GROUP_NAME = "headgroup"
+
+_NODE_LABEL_FIELD_PATH_RE = re.compile(r"\Ametadata\.labels\['([^']+)'\]\Z")
 
 
 class AutoscalingConfigProducer:
@@ -187,6 +188,78 @@ def _generate_legacy_autoscaling_config_fields() -> Dict[str, Any]:
     }
 
 
+def _parse_worker_group_label_refs(
+    group_spec: Dict[str, Any],
+    group_name: Optional[str] = None,
+) -> List[str]:
+    """Parse workerGroupSpecs[].labelRefs into delivered Ray label keys.
+
+    Args:
+        group_spec: Worker group specification dictionary from the RayCluster CR.
+        group_name: Optional worker group name for warning context.
+
+    Returns:
+        The deduplicated list of delivered Ray label keys preserving
+        first-seen order.
+    """
+    raw_refs = group_spec.get("labelRefs")
+    if not isinstance(raw_refs, list):
+        return []
+
+    wg_label = group_name or group_spec.get("groupName") or "<unknown>"
+
+    def _warn_skipped(idx: int, reason: str) -> None:
+        if log_once(f"kuberay_invalid_label_ref:{wg_label}:{idx}:{reason}"):
+            logger.warning(
+                f"Skipping workerGroupSpecs[{wg_label!r}].labelRefs[{idx}]: {reason}"
+            )
+
+    delivered_keys: List[str] = []
+    seen_delivered: Set[str] = set()
+
+    for idx, ref in enumerate(raw_refs):
+        if not isinstance(ref, dict):
+            _warn_skipped(idx, "entry is not a mapping")
+            continue
+        value_from = ref.get("valueFrom")
+        node_ref = value_from.get("nodeRef") if isinstance(value_from, dict) else None
+        field_path = node_ref.get("fieldPath") if isinstance(node_ref, dict) else None
+        if not isinstance(field_path, str):
+            _warn_skipped(idx, "missing string valueFrom.nodeRef.fieldPath")
+            continue
+        match = _NODE_LABEL_FIELD_PATH_RE.match(field_path)
+        if not match:
+            _warn_skipped(
+                idx,
+                f"unsupported fieldPath {field_path!r} (expected metadata.labels['<key>'])",
+            )
+            continue
+        node_label_key = match.group(1)
+        if not node_label_key.strip() or any(c.isspace() for c in node_label_key):
+            _warn_skipped(idx, f"invalid node label key {node_label_key!r}")
+            continue
+
+        raw_name = ref.get("name")
+        if raw_name is None or raw_name == "":
+            delivered_key = node_label_key
+        elif (
+            isinstance(raw_name, str)
+            and raw_name.strip()
+            and not any(c.isspace() for c in raw_name)
+        ):
+            delivered_key = raw_name
+        else:
+            _warn_skipped(idx, f"invalid target label name {raw_name!r}")
+            continue
+
+        if delivered_key in seen_delivered:
+            continue
+        seen_delivered.add(delivered_key)
+        delivered_keys.append(delivered_key)
+
+    return delivered_keys
+
+
 def _generate_available_node_types_from_ray_cr_spec(
     ray_cr_spec: Dict[str, Any],
 ) -> Dict[str, Any]:
@@ -206,7 +279,8 @@ def _generate_available_node_types_from_ray_cr_spec(
 
 
 def _node_type_from_group_spec(
-    group_spec: Dict[str, Any], is_head: bool
+    group_spec: Dict[str, Any],
+    is_head: bool,
 ) -> Dict[str, Any]:
     """Converts CR group spec to autoscaler node type."""
     group_name = _HEAD_GROUP_NAME if is_head else group_spec["groupName"]
@@ -214,14 +288,25 @@ def _node_type_from_group_spec(
     if is_head:
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
+        num_of_hosts = 1
     else:
         # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
         # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
-        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
-        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
+        raw_num_hosts = group_spec.get("numOfHosts")
+        num_of_hosts = 1 if raw_num_hosts is None else max(0, int(raw_num_hosts))
+        min_workers = group_spec["minReplicas"] * num_of_hosts
+        max_workers = group_spec["maxReplicas"] * num_of_hosts
 
-    resources = _get_ray_resources_from_group_spec(group_spec, is_head)
-    labels = _get_labels_from_group_spec(group_spec, group_name)
+    pod_scheduling_metadata = _get_pod_scheduling_metadata(group_spec)
+    resources = _get_ray_resources_from_group_spec(
+        group_spec, is_head, pod_scheduling_metadata=pod_scheduling_metadata
+    )
+    labels = _get_labels_from_group_spec(
+        group_spec,
+        group_name,
+        resources,
+        pod_scheduling_metadata=pod_scheduling_metadata,
+    )
 
     node_type = {
         "min_workers": min_workers,
@@ -232,6 +317,55 @@ def _node_type_from_group_spec(
         "resources": resources,
         "labels": labels,
     }
+
+    if not is_head:
+        node_selector, pod_annotations = pod_scheduling_metadata
+        delivered_label_ref_keys = _parse_worker_group_label_refs(
+            group_spec, group_name=group_name
+        )
+        replica_meta: Dict[str, Any] = {}
+        if num_of_hosts > 0:
+            for accelerator_manager in sorted(
+                get_all_accelerator_managers(), key=lambda m: m.__name__
+            ):
+                meta = accelerator_manager.get_node_group_replica_metadata(
+                    dict(resources),
+                    node_selector,
+                    pod_annotations,
+                    workers_per_replica=num_of_hosts,
+                    group_name=group_name,
+                )
+                if meta:
+                    replica_meta = dict(meta)
+                    if replica_meta.get("head_resources") is None:
+                        replica_meta.pop("head_resources", None)
+                    else:
+                        replica_meta["head_resources"] = list(
+                            replica_meta["head_resources"]
+                        )
+                    break
+
+            if replica_meta or num_of_hosts > 1:
+                node_type["replica_config"] = {
+                    **replica_meta,
+                    "workers_per_replica": num_of_hosts,
+                }
+
+        runtime_label_keys = list(
+            dict.fromkeys(
+                key
+                for key in chain(
+                    delivered_label_ref_keys,
+                    (
+                        replica_meta.get("domain_label_key"),
+                        replica_meta.get("worker_index_label_key"),
+                    ),
+                )
+                if isinstance(key, str) and key and key not in labels
+            )
+        )
+        if runtime_label_keys:
+            node_type["runtime_label_keys"] = runtime_label_keys
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:
@@ -244,8 +378,223 @@ def _node_type_from_group_spec(
     return node_type
 
 
+_INT64_MIN = -(1 << 63)
+_INT64_MAX = (1 << 63) - 1
+_MAX_K8S_LABEL_VALUE_LEN = 63
+
+
+def _parse_k8s_int64(value: Any) -> Optional[int]:
+    """Parse a base-10 signed 64-bit integer matching K8s strconv.ParseInt."""
+    if not isinstance(value, str) or not value or len(value) > _MAX_K8S_LABEL_VALUE_LEN:
+        return None
+    digits = value[1:] if value[0] in "+-" else value
+    if not digits or not (digits.isascii() and digits.isdigit()):
+        return None
+    parsed = int(value)
+    if _INT64_MIN <= parsed <= _INT64_MAX:
+        return parsed
+    return None
+
+
+def _evaluate_node_selector_term(
+    term: Any,
+    node_selector: Dict[str, str],
+) -> Optional[Dict[str, str]]:
+    """Return labels pinned by a single NodeSelectorTerm ANDed with `node_selector`.
+
+    Returns None when the term is empty, parse-invalid, or unsatisfiable
+    according to Kubernetes nodeaffinity semantics.
+    """
+    if not isinstance(term, dict):
+        return None
+    raw_me = term.get("matchExpressions")
+    raw_mf = term.get("matchFields")
+    match_expressions = [] if raw_me is None else raw_me
+    match_fields = [] if raw_mf is None else raw_mf
+    if (
+        not isinstance(match_expressions, list)
+        or not isinstance(match_fields, list)
+        or (not match_expressions and not match_fields)
+    ):
+        return None
+
+    field_in: Dict[str, str] = {}
+    field_not_in: Dict[str, Set[str]] = {}
+    for expr in match_fields:
+        if not isinstance(expr, dict):
+            return None
+        key = expr.get("key")
+        op = expr.get("operator")
+        vals = expr.get("values")
+        if (
+            not isinstance(key, str)
+            or not key
+            or op not in ("In", "NotIn")
+            or not isinstance(vals, list)
+            or len(vals) != 1
+            or not isinstance(vals[0], str)
+        ):
+            return None
+        val = vals[0]
+        if op == "In":
+            if key in field_in and field_in[key] != val:
+                return None
+            field_in[key] = val
+            if val in field_not_in.get(key, ()):
+                return None
+        else:
+            field_not_in.setdefault(key, set()).add(val)
+            if field_in.get(key) == val:
+                return None
+
+    allowed: Dict[str, Set[str]] = {k: {v} for k, v in node_selector.items()}
+    must_exist: Set[str] = set(node_selector.keys())
+    must_not_exist: Set[str] = set()
+    excluded: Dict[str, Set[str]] = {}
+    gt_bounds: Dict[str, int] = {}
+    lt_bounds: Dict[str, int] = {}
+
+    for expr in match_expressions:
+        if not isinstance(expr, dict):
+            return None
+        key = expr.get("key")
+        op = expr.get("operator")
+        vals = expr.get("values")
+        if not isinstance(key, str) or not key:
+            return None
+
+        if op in ("In", "NotIn"):
+            if (
+                not isinstance(vals, list)
+                or not vals
+                or not all(isinstance(v, str) for v in vals)
+            ):
+                return None
+            val_set = set(vals)
+            if op == "In":
+                must_exist.add(key)
+                allowed[key] = (
+                    val_set if key not in allowed else (allowed[key] & val_set)
+                )
+            else:
+                excluded.setdefault(key, set()).update(val_set)
+        elif op in ("Exists", "DoesNotExist"):
+            if vals is not None and (not isinstance(vals, list) or len(vals) != 0):
+                return None
+            if op == "Exists":
+                must_exist.add(key)
+            else:
+                must_not_exist.add(key)
+        elif op in ("Gt", "Lt"):
+            if not isinstance(vals, list) or len(vals) != 1:
+                return None
+            bound = _parse_k8s_int64(vals[0])
+            if bound is None:
+                return None
+            must_exist.add(key)
+            if op == "Gt":
+                gt_bounds[key] = (
+                    max(gt_bounds[key], bound) if key in gt_bounds else bound
+                )
+            else:
+                lt_bounds[key] = (
+                    min(lt_bounds[key], bound) if key in lt_bounds else bound
+                )
+        else:
+            return None
+
+    if must_exist & must_not_exist:
+        return None
+
+    for key in gt_bounds.keys() | lt_bounds.keys():
+        lo = gt_bounds.get(key, _INT64_MIN - 1)
+        hi = lt_bounds.get(key, _INT64_MAX + 1)
+        if lo + 1 >= hi:
+            return None
+
+    pins: Dict[str, str] = {}
+    for key, vals in allowed.items():
+        narrowed = vals - excluded.get(key, set())
+        if key in gt_bounds or key in lt_bounds:
+            lo = gt_bounds.get(key, _INT64_MIN - 1)
+            hi = lt_bounds.get(key, _INT64_MAX + 1)
+            narrowed = {
+                v
+                for v in narrowed
+                if (parsed := _parse_k8s_int64(v)) is not None and lo < parsed < hi
+            }
+        if not narrowed:
+            return None
+        if len(narrowed) == 1:
+            pins[key] = next(iter(narrowed))
+
+    return pins
+
+
+def _get_required_node_labels(pod_spec: Dict[str, Any]) -> Dict[str, str]:
+    """Return node labels guaranteed by pod `nodeSelector` and required `nodeAffinity`.
+
+    A label key is guaranteed when set in `nodeSelector` or when every
+    satisfiable `nodeSelectorTerm` pins it to the same value (Kubernetes ANDs
+    expressions within a term and ORs terms).
+    """
+    if not isinstance(pod_spec, dict):
+        return {}
+    raw_selector = pod_spec.get("nodeSelector")
+    node_selector = (
+        {
+            k: v
+            for k, v in raw_selector.items()
+            if isinstance(k, str) and isinstance(v, str)
+        }
+        if isinstance(raw_selector, dict)
+        else {}
+    )
+    affinity = pod_spec.get("affinity")
+    node_affinity = affinity.get("nodeAffinity") if isinstance(affinity, dict) else None
+    if not isinstance(node_affinity, dict):
+        return node_selector
+    required = node_affinity.get("requiredDuringSchedulingIgnoredDuringExecution")
+    if not isinstance(required, dict):
+        return node_selector
+    terms = required.get("nodeSelectorTerms")
+    if not isinstance(terms, list) or not terms:
+        return {}
+
+    satisfiable_terms = [
+        pins
+        for term in terms
+        if (pins := _evaluate_node_selector_term(term, node_selector)) is not None
+    ]
+    if not satisfiable_terms:
+        return {}
+    first, *rest = satisfiable_terms
+    return {k: v for k, v in first.items() if all(other.get(k) == v for other in rest)}
+
+
+def _get_pod_scheduling_metadata(
+    group_spec: Dict[str, Any],
+) -> Tuple[Dict[str, str], Dict[str, str]]:
+    """Returns required pod node labels and pod annotations."""
+    template = group_spec.get("template")
+    if not isinstance(template, dict):
+        return {}, {}
+    pod_spec = template.get("spec")
+    node_selector = (
+        _get_required_node_labels(pod_spec) if isinstance(pod_spec, dict) else {}
+    )
+    metadata = template.get("metadata")
+    raw_annotations = (
+        metadata.get("annotations") if isinstance(metadata, dict) else None
+    )
+    annotations = raw_annotations if isinstance(raw_annotations, dict) else {}
+    return node_selector, annotations
+
+
 def _get_ray_resources_from_group_spec(
-    group_spec: Dict[str, Any], is_head: bool
+    group_spec: Dict[str, Any],
+    is_head: bool,
+    pod_scheduling_metadata: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None,
 ) -> Dict[str, int]:
     """Infers Ray resources from group `Resources` field, rayStartCommands, or K8s limits.
     The resources extracted are used in autoscaling calculations.
@@ -281,70 +630,71 @@ def _get_ray_resources_from_group_spec(
     if num_gpus is not None:
         resources["GPU"] = num_gpus
 
-    if num_tpus is not None:
+    if num_tpus is not None and "TPU" not in custom_resource_dict:
         # Add TPU Ray resource if not already added by ray_start_params,
         # but specified in k8s_resource_limits.
-        if "TPU" not in custom_resource_dict:
-            resources["TPU"] = num_tpus
-
-        """Add TPU head resource, similar to the GCP node_provider.
-        Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
-        has sufficient resources to make scaling decisions.
-        TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
-        specifying the number of workers per slice. Each replica of a TPU worker
-        group has one TPU head.
-
-        For example, a v4-16 worker group with 2 replicas should have the following
-        resource labels on worker 0 of each replica:
-            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
-        """
-        if (
-            "nodeSelector" in group_spec["template"]["spec"]
-            and GKE_TPU_TOPOLOGY_LABEL in group_spec["template"]["spec"]["nodeSelector"]
-            and GKE_TPU_ACCELERATOR_LABEL
-            in group_spec["template"]["spec"]["nodeSelector"]
-        ):
-            topology = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_TOPOLOGY_LABEL
-            ]
-            accelerator = group_spec["template"]["spec"]["nodeSelector"][
-                GKE_TPU_ACCELERATOR_LABEL
-            ]
-            accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
-            if accelerator_type:
-                resources[f"TPU-{accelerator_type}-head"] = 1
-        else:
-            logger.error(
-                f"Pods using TPUs require both `{GKE_TPU_TOPOLOGY_LABEL}` and `{GKE_TPU_ACCELERATOR_LABEL}` node selectors. "
-                "See https://docs.ray.io/en/latest/kuberay/user-guides/tpu.html#configuring-kubernetes-pods-for-tpu-usage "
-                "and https://cloud.google.com/kubernetes-engine/docs/how-to/tpus."
-            )
+        resources["TPU"] = num_tpus
 
     if memory is not None:
         resources["memory"] = memory
 
     resources.update(custom_resource_dict)
 
+    node_selector, annotations = (
+        pod_scheduling_metadata
+        if pod_scheduling_metadata is not None
+        else _get_pod_scheduling_metadata(group_spec)
+    )
+    base_resources = dict(resources)
+    derived_resource_owners: Dict[str, str] = {}
+    for accelerator_manager in sorted(
+        get_all_accelerator_managers(), key=lambda m: m.__name__
+    ):
+        additional = accelerator_manager.get_node_group_additional_resources(
+            dict(base_resources), node_selector, annotations, group_name=group_name
+        )
+        if additional:
+            for key, val in additional.items():
+                if key in derived_resource_owners:
+                    logger.warning(
+                        "Accelerator manager '%s' attempted to set additional "
+                        "resource '%s' already set by '%s' for group '%s'; "
+                        "keeping existing value.",
+                        accelerator_manager.__name__,
+                        key,
+                        derived_resource_owners[key],
+                        group_name,
+                    )
+                    continue
+                if key not in resources:
+                    derived_resource_owners[key] = accelerator_manager.__name__
+                    resources[key] = val
+
     return resources
 
 
 def _get_labels_from_group_spec(
-    group_spec: Dict[str, Any], group_name: str = ""
+    group_spec: Dict[str, Any],
+    group_name: str,
+    resources: Dict[str, Any],
+    pod_scheduling_metadata: Optional[Tuple[Dict[str, str], Dict[str, str]]] = None,
 ) -> Dict[str, str]:
     """Parses Ray node labels for the autoscaling config based on the following
     priority:
     1. Top-level `labels` field in the group spec.
-    2. `labels` field in `rayStartParams`.
+    2. Accelerator labels derived from the Pod `nodeSelector`, `annotations`,
+       and required `nodeAffinity` terms.
+    3. `labels` field in `rayStartParams` (ignored with a warning).
 
     Args:
         group_spec: The group specification dictionary.
         group_name: The name of the group (used in warning messages).
+        resources: Base Ray resources already parsed for the group.
+        pod_scheduling_metadata: Optional pre-parsed `(node_selector, annotations)`.
 
     Returns:
         A dictionary of labels for the node type.
     """
-    labels_dict = {}
-
     ray_start_params = group_spec.get("rayStartParams", {})
     labels_str = ray_start_params.get("labels")
     # Use a unique log_once key per group to ensure each group's warning is shown.
@@ -368,12 +718,45 @@ def _get_labels_from_group_spec(
             )
 
     # Check for top-level structured Labels field.
-    if "labels" in group_spec and isinstance(group_spec.get("labels"), dict):
-        labels_dict = group_spec.get("labels")
+    raw_labels = group_spec.get("labels")
+    explicit_labels = dict(raw_labels) if isinstance(raw_labels, dict) else {}
+    if explicit_labels:
         # Validate node labels follow expected Kubernetes label syntax.
-        validate_node_label_syntax(labels_dict)
+        validate_node_label_syntax(explicit_labels)
 
-    return labels_dict
+    node_selector, annotations = (
+        pod_scheduling_metadata
+        if pod_scheduling_metadata is not None
+        else _get_pod_scheduling_metadata(group_spec)
+    )
+    derived_labels: Dict[str, str] = {}
+    derived_label_owners: Dict[str, str] = {}
+    for accelerator_manager in sorted(
+        get_all_accelerator_managers(), key=lambda m: m.__name__
+    ):
+        accel_labels = accelerator_manager.get_node_group_accelerator_labels(
+            dict(resources), node_selector, annotations, group_name=group_name
+        )
+        if accel_labels:
+            for key, val in accel_labels.items():
+                if key in derived_labels:
+                    logger.warning(
+                        "Accelerator manager '%s' attempted to set label '%s' "
+                        "already set by '%s' for group '%s'; keeping existing value.",
+                        accelerator_manager.__name__,
+                        key,
+                        derived_label_owners[key],
+                        group_name,
+                    )
+                    continue
+                derived_labels[key] = val
+                derived_label_owners[key] = accelerator_manager.__name__
+
+    if derived_labels:
+        validate_node_label_syntax(derived_labels)
+
+    # Explicit group labels take precedence over derived ones.
+    return {**derived_labels, **explicit_labels}
 
 
 def _get_num_cpus(

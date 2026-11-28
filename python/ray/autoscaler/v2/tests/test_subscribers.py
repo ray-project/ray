@@ -182,7 +182,7 @@ class TestCloudInstanceUpdater:
                 ),
             ]
         )
-        mock_provider.launch.assert_not_called()
+        mock_provider.launch_many.assert_not_called()
 
     def test_launch_new_instances(self):
         mock_provider = mock.MagicMock()
@@ -213,11 +213,8 @@ class TestCloudInstanceUpdater:
         )
 
         def verify():
-            mock_provider.launch.assert_has_calls(
-                [
-                    mock.call(shape={"type-1": 2}, request_id="1"),
-                    mock.call(shape={"type-1": 1, "type-2": 1}, request_id="2"),
-                ]
+            mock_provider.launch_many.assert_called_once_with(
+                {"1": {"type-1": 2}, "2": {"type-1": 1, "type-2": 1}}
             )
             return True
 
@@ -248,11 +245,11 @@ class TestCloudInstanceUpdater:
         )
 
         def verify():
-            assert mock_provider.launch.call_count == 2
-            mock_provider.launch.assert_has_calls(
+            assert mock_provider.launch_many.call_count == 2
+            mock_provider.launch_many.assert_has_calls(
                 [
-                    mock.call(shape={"type-1": 1}, request_id="1"),
-                    mock.call(shape={"type-1": 1}, request_id="2"),
+                    mock.call({"1": {"type-1": 1}}),
+                    mock.call({"2": {"type-1": 1}}),
                 ]
             )
             return True
@@ -399,6 +396,85 @@ class TestCloudInstanceUpdater:
             return True
 
         wait_for_condition(verify)
+
+    def test_launch_batches_into_icloud_instance_provider_launch_many(self):
+        """ICloudInstanceProvider subclasses receive one coalesced launch_many batch,
+        while plain duck-typed mocks fall back to per-request launch calls."""
+        from ray.autoscaler.v2.instance_manager.node_provider import (
+            ICloudInstanceProvider,
+        )
+
+        class _RecordingProvider(ICloudInstanceProvider):
+            def __init__(self):
+                self.batch_calls = []
+                self.single_calls = []
+
+            def get_non_terminated(self):
+                return {}
+
+            def terminate(self, ids, request_id):
+                return None
+
+            def launch(self, shape, request_id):
+                self.single_calls.append((request_id, dict(shape)))
+
+            def launch_many(self, requests):
+                self.batch_calls.append({k: dict(v) for k, v in requests.items()})
+
+            def poll_errors(self):
+                return []
+
+        events = [
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-a",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-a",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-b",
+                instance_type="type-1",
+            ),
+            InstanceUpdateEvent(
+                new_instance_status=Instance.REQUESTED,
+                launch_request_id="req-b",
+                instance_type="type-2",
+            ),
+        ]
+        typed_provider = _RecordingProvider()
+        CloudInstanceUpdater(typed_provider).notify(events)
+        assert typed_provider.batch_calls == [
+            {"req-a": {"type-1": 2}, "req-b": {"type-1": 1, "type-2": 1}}
+        ]
+        assert typed_provider.single_calls == []
+
+        class _DefaultBatchProvider(ICloudInstanceProvider):
+            def __init__(self):
+                self.single_calls = []
+
+            def get_non_terminated(self):
+                return {}
+
+            def terminate(self, ids, request_id):
+                return None
+
+            def launch(self, shape, request_id):
+                self.single_calls.append((request_id, dict(shape)))
+
+            def poll_errors(self):
+                return []
+
+        default_provider = _DefaultBatchProvider()
+        CloudInstanceUpdater(default_provider).notify(events)
+        assert default_provider.single_calls == [
+            ("req-a", {"type-1": 2}),
+            ("req-b", {"type-1": 1, "type-2": 1}),
+        ]
 
 
 class TestReadOnlyProvider:

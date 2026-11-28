@@ -1,3 +1,5 @@
+import logging
+
 import pyarrow.fs
 import pytest
 
@@ -85,6 +87,58 @@ def test_scaling_config_accelerator_type():
     }
 
 
+def test_scaling_config_tpu_labels_and_resources():
+    scaling_config = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+    )
+    assert scaling_config._resources_per_worker_not_none == {"CPU": 1, "TPU": 4}
+    assert (
+        scaling_config._label_selector_per_worker(4)
+        == [{"ray.io/accelerator-type": "TPU-V6E", "ray.io/tpu-topology": "4x4"}] * 4
+    )
+    assert (
+        scaling_config._label_selector_per_worker(4, include_tpu_labels=False) is None
+    )
+
+    shorthand_config = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology=" 2X2X2 ",
+        accelerator_type="tpu7x",
+    )
+    assert (
+        shorthand_config._label_selector_per_worker(2)
+        == [{"ray.io/accelerator-type": "TPU-V7X", "ray.io/tpu-topology": "2x2x2"}] * 2
+    )
+
+    single_worker_custom = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"CPU": 2},
+        label_selector={"market-type": "spot"},
+    )
+    assert single_worker_custom._resources_per_worker_not_none == {"CPU": 2, "TPU": 1}
+    assert single_worker_custom._label_selector_per_worker(1) == [
+        {"ray.io/accelerator-type": "TPU-V6E", "market-type": "spot"}
+    ]
+    assert single_worker_custom._label_selector_per_worker(
+        1, include_tpu_labels=False
+    ) == [{"market-type": "spot"}]
+
+    topology_custom_cpu = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+        resources_per_worker={"CPU": 2},
+    )
+    assert topology_custom_cpu._resources_per_worker_not_none == {"CPU": 2, "TPU": 4}
+
+
 def test_scaling_config_tpu_min_workers_multiple():
     with pytest.raises(ValueError, match="min_workers"):
         ScalingConfig(
@@ -94,6 +148,229 @@ def test_scaling_config_tpu_min_workers_multiple():
             accelerator_type="TPU-V4",
             resources_per_worker={"TPU": 4},
         )
+
+    with pytest.raises(
+        ValueError, match="evenly divide the logical TPU devices per host"
+    ):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="4x4",
+            accelerator_type="TPU-V6E",
+            resources_per_worker={"TPU": 8},
+        )
+
+    with pytest.raises(ValueError, match="TPU"):
+        ScalingConfig(num_workers=1, use_tpu=True, resources_per_worker={"TPU": 0})
+
+
+def test_scaling_config_tpu_multi_host_and_multi_slice_label_selector():
+    """Verify multi-host, multi-slice, elastic, and validation paths for TPU label_selector."""
+    # 1. Multi-host single-slice dict selector (v6e 4x4 -> 4 workers).
+    single_slice_cfg = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        label_selector={"market-type": "spot"},
+    )
+    assert (
+        single_slice_cfg._label_selector_per_worker(4)
+        == [
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "4x4",
+                "market-type": "spot",
+            }
+        ]
+        * 4
+    )
+    assert (
+        single_slice_cfg._label_selector_per_worker(4, include_tpu_labels=False)
+        == [{"market-type": "spot"}] * 4
+    )
+
+    # 2. Multi-slice dict selector (v6e 4x4, 8 workers = 2 slices) with decoupled copies.
+    multi_slice_dict_cfg = ScalingConfig(
+        num_workers=8,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        label_selector={"pool": "a"},
+    )
+    with_tpu = multi_slice_dict_cfg._label_selector_per_worker(8)
+    without_tpu = multi_slice_dict_cfg._label_selector_per_worker(
+        8, include_tpu_labels=False
+    )
+    assert len(with_tpu) == 8
+    assert len(without_tpu) == 8
+    assert len({id(d) for d in with_tpu}) == 8
+    assert len({id(d) for d in without_tpu}) == 8
+    without_tpu[0]["pool"] = "mutated"
+    assert multi_slice_dict_cfg.label_selector == {"pool": "a"}
+    assert without_tpu[1] == {"pool": "a"}
+
+    # 3. Multi-slice per-worker list selector (4 pool=a + 4 pool=b).
+    multi_slice_list_cfg = ScalingConfig(
+        num_workers=8,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        label_selector=[{"pool": "a"}] * 4 + [{"pool": "b"}] * 4,
+    )
+    assert (
+        multi_slice_list_cfg._label_selector_per_worker(8, include_tpu_labels=False)
+        == [{"pool": "a"}] * 4 + [{"pool": "b"}] * 4
+    )
+    assert multi_slice_list_cfg._label_selector_per_worker(8) == (
+        [
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "4x4",
+                "pool": "a",
+            }
+        ]
+        * 4
+        + [
+            {
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "4x4",
+                "pool": "b",
+            }
+        ]
+        * 4
+    )
+
+    # 4. Elastic multi-slice list selector slices cleanly on downscale.
+    elastic_cfg = ScalingConfig(
+        num_workers=(4, 8),
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        label_selector=[{"pool": "a"}] * 4 + [{"pool": "b"}] * 4,
+    )
+    assert (
+        elastic_cfg._label_selector_per_worker(4, include_tpu_labels=False)
+        == [{"pool": "a"}] * 4
+    )
+    assert elastic_cfg._label_selector_per_worker(8, include_tpu_labels=False) == (
+        [{"pool": "a"}] * 4 + [{"pool": "b"}] * 4
+    )
+
+    # 5. Negative: mismatched list length raises ValueError.
+    with pytest.raises(ValueError, match="must be the same length as `max_workers`"):
+        ScalingConfig(
+            num_workers=8,
+            use_tpu=True,
+            topology="4x4",
+            accelerator_type="TPU-V6E",
+            label_selector=[{"pool": "a"}] * 4,
+        )
+
+    # 6. Negative: invalid accelerator_type without topology fails eagerly in __post_init__.
+    with pytest.raises(ValueError, match="Invalid accelerator_type"):
+        ScalingConfig(num_workers=1, use_tpu=True, accelerator_type="INVALID-TPU")
+
+    # 7. _tpu_label_selector helper across non-TPU, accelerator-only, and full TPU configs.
+    assert ScalingConfig(num_workers=2, use_tpu=False)._tpu_label_selector() == {}
+    assert ScalingConfig(
+        num_workers=1, use_tpu=True, accelerator_type="TPU-V6E"
+    )._tpu_label_selector() == {"ray.io/accelerator-type": "TPU-V6E"}
+    assert single_slice_cfg._tpu_label_selector() == {
+        "ray.io/accelerator-type": "TPU-V6E",
+        "ray.io/tpu-topology": "4x4",
+    }
+
+
+def test_scaling_config_resolve_worker_group_label_selector(caplog, propagate_logs):
+    """Verify _uses_slice_placement_group and _resolve_worker_group_label_selector."""
+    slice_cfg = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        label_selector={"pool": "base"},
+    )
+    non_slice_tpu_cfg = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        label_selector={"pool": "base"},
+    )
+    topo_only_tpu_cfg = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+    )
+    list_override_tpu_cfg = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        topology="2x4",
+        label_selector=[{"ray.io/tpu-topology": "4x4", "pool": "custom"}],
+    )
+    cpu_cfg = ScalingConfig(num_workers=2, use_tpu=False)
+
+    assert slice_cfg._uses_slice_placement_group is True
+    assert non_slice_tpu_cfg._uses_slice_placement_group is False
+    assert topo_only_tpu_cfg._uses_slice_placement_group is False
+    assert topo_only_tpu_cfg._workers_per_slice is None
+    assert cpu_cfg._uses_slice_placement_group is False
+
+    # SlicePlacementGroup path delegates TPU hardware labels to SlicePlacementGroup.
+    assert slice_cfg._resolve_worker_group_label_selector(4) == [{"pool": "base"}] * 4
+    assert topo_only_tpu_cfg._resolve_worker_group_label_selector(1) == [
+        {"ray.io/tpu-topology": "2x4"}
+    ]
+    assert list_override_tpu_cfg._label_selector_per_worker(1) == [
+        {"ray.io/tpu-topology": "4x4", "pool": "custom"}
+    ]
+    assert list_override_tpu_cfg._resolve_worker_group_label_selector(1) == [
+        {"ray.io/tpu-topology": "4x4", "pool": "custom"}
+    ]
+    assert cpu_cfg._resolve_worker_group_label_selector(2) is None
+
+    # Empty/None callback selectors are ignored; non-empty callback overrides prior selector.
+    cfg_logger = logging.getLogger("ray.train.v2.api.config")
+    cfg_logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level("WARNING", logger="ray.train.v2.api.config"):
+            resolved = slice_cfg._resolve_worker_group_label_selector(
+                4,
+                callback_selectors=[
+                    ("NoOpCallback", None),
+                    ("EmptyCallback", {}),
+                    ("FirstCallback", {"zone": "us-central1"}),
+                    ("SecondCallback", {"zone": "us-east1"}),
+                ],
+            )
+    finally:
+        cfg_logger.removeHandler(caplog.handler)
+    assert resolved == [{"zone": "us-east1"}] * 4
+    assert len({id(d) for d in resolved}) == 4
+    assert "Overriding `ScalingConfig.label_selector`" in caplog.text
+    assert "Overriding previous callback `label_selector`" in caplog.text
+
+    # Non-SlicePlacementGroup TPU path keeps generated TPU hardware labels merged under callback.
+    merged = non_slice_tpu_cfg._resolve_worker_group_label_selector(
+        1,
+        callback_selectors=[("ZoneCallback", {"zone": "us-west1"})],
+    )
+    assert merged == [
+        {"ray.io/accelerator-type": "TPU-V6E", "zone": "us-west1"},
+    ]
+
+    # Lazy callback iteration stops immediately on invalid callback output.
+    visited = []
+
+    def bad_type_callbacks():
+        visited.append("bad")
+        yield ("BadTypeCallback", 123)
+        visited.append("unreached")
+        yield ("UnreachedCallback", {"zone": "b"})
+
+    with pytest.raises(TypeError, match="BadTypeCallback.*type int"):
+        slice_cfg._resolve_worker_group_label_selector(4, bad_type_callbacks())
+    assert visited == ["bad"]
 
 
 def test_storage_filesystem_repr():
@@ -111,6 +388,87 @@ def test_scaling_config_default_workers():
     config_gpu = ScalingConfig(use_gpu=True)
     assert config_gpu.num_workers == 1
     assert config_gpu.total_resources == {"GPU": 1}
+
+
+def test_scaling_config_chips_per_vm_validation():
+    """Verify chips_per_vm shapes _workers_per_slice and rejects non-int or non-positive values."""
+    two_vm_cfg = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=4,
+    )
+    assert two_vm_cfg._resources_per_worker_not_none == {"CPU": 1, "TPU": 4}
+    assert two_vm_cfg._workers_per_slice == 2
+
+    eight_chip_host_cfg = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=8,
+    )
+    assert eight_chip_host_cfg._resources_per_worker_not_none == {"CPU": 1, "TPU": 8}
+    assert eight_chip_host_cfg._workers_per_slice == 2
+
+    assert ScalingConfig(num_workers=2, use_tpu=False)._workers_per_slice is None
+
+    with pytest.raises(ValueError, match="chips_per_vm"):
+        ScalingConfig(num_workers=2, use_tpu=False, chips_per_vm=4)
+
+    for bad_chips_per_vm in (True, False, 4.0, 0, -4):
+        with pytest.raises(ValueError, match="chips_per_vm"):
+            ScalingConfig(
+                num_workers=1,
+                use_tpu=True,
+                chips_per_vm=bad_chips_per_vm,
+            )
+
+
+def test_scaling_config_rejects_topology_outside_generation_table():
+    """Invalid TPU topologies for a generation fail eagerly in ScalingConfig.__post_init__."""
+    with pytest.raises(ValueError, match="Invalid accelerator topology"):
+        ScalingConfig(
+            num_workers=768,
+            use_tpu=True,
+            topology="12x16x16",
+            accelerator_type="TPU-V4",
+        )
+    with pytest.raises(ValueError, match="Invalid accelerator topology"):
+        ScalingConfig(
+            num_workers=2,
+            use_tpu=True,
+            topology="2x2x2",
+            accelerator_type="TPU-V6E",
+        )
+
+
+def test_scaling_config_non_tpu_accelerator_isolation_and_zero_resource_filtering():
+    """GPU and non-TPU configs never emit TPU labels, and zero-valued CPU entries are stripped."""
+    gpu_a100 = ScalingConfig(
+        num_workers=2,
+        use_gpu=True,
+        accelerator_type="NVIDIA-A100",
+    )
+    assert gpu_a100._resolve_worker_group_label_selector(2) is None
+
+    non_tpu_with_topo = ScalingConfig(
+        num_workers=2,
+        use_tpu=False,
+        topology="4x4",
+        accelerator_type="NVIDIA-A100",
+    )
+    assert non_tpu_with_topo._uses_slice_placement_group is False
+    assert non_tpu_with_topo._resolve_worker_group_label_selector(2) is None
+
+    zero_cpu_tpu = ScalingConfig(
+        num_workers=1,
+        use_tpu=True,
+        accelerator_type="TPU-V6E",
+        resources_per_worker={"TPU": 1, "CPU": 0},
+    )
+    assert zero_cpu_tpu._resources_per_worker_not_none == {"TPU": 1}
 
 
 if __name__ == "__main__":

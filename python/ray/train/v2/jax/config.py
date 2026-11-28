@@ -15,7 +15,7 @@ from ray.train.constants import (
 )
 from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
-from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
+from ray.util.tpu import get_tpu_coordinator_env_vars
 
 logger = logging.getLogger(__name__)
 
@@ -175,19 +175,14 @@ class _JaxBackend(Backend):
             num_slices = 1
 
         # Calculate the number of workers per slice for multi-slice env setup.
-        if backend_config.use_tpu and num_slices > 1:
-            # Handle the case where a user requests less workers than the total
-            # capacity of the TPU slice.
-            scaling_config = worker_group._train_run_context.scaling_config
-            workers_per_slice, _ = get_tpu_worker_resources(
-                topology=scaling_config.topology,
-                accelerator_type=scaling_config.accelerator_type,
-                resources_per_worker=scaling_config.resources_per_worker,
-                num_slices=1,
-            )
-        else:
-            # Assume even distribution based on the requested number of workers.
-            workers_per_slice = max(1, len(worker_group) // num_slices)
+        scaling_config = getattr(
+            getattr(worker_group, "_train_run_context", None), "scaling_config", None
+        )
+        workers_per_slice = (
+            getattr(scaling_config, "_workers_per_slice", None)
+            if backend_config.use_tpu and num_slices > 1
+            else None
+        ) or max(1, len(worker_group) // num_slices)
 
         # Set up JAX distributed environment on all workers
         num_workers_total = len(worker_group)

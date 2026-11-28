@@ -84,11 +84,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         total_num_workers = min(int(total_num_workers), self.scaling_config.max_workers)
 
         # Multi-host TPUs are scheduled atomically in interconnected slices defined by a topology.
-        if (
-            self.scaling_config.use_tpu
-            and self.scaling_config.topology
-            and self.scaling_config.accelerator_type
-        ):
+        if self.scaling_config._workers_per_slice is not None:
             total_num_workers = self._get_strict_tpu_worker_count(
                 total_num_workers=total_num_workers,
             )
@@ -115,48 +111,26 @@ class ElasticScalingPolicy(ScalingPolicy):
         Returns:
             The number of workers aligned to fully intact TPU slices.
         """
-        from ray.util.tpu import get_num_tpu_slices, get_tpu_worker_resources
+        from ray.util.tpu import get_num_tpu_slices
 
-        single_worker_resources = self.scaling_config._resources_per_worker_not_none
+        workers_per_slice = self.scaling_config._workers_per_slice
+        num_slices_from_resources = total_num_workers // workers_per_slice
 
-        try:
-            workers_per_slice, _ = get_tpu_worker_resources(
-                topology=self.scaling_config.topology,
-                accelerator_type=self.scaling_config.accelerator_type,
-                resources_per_worker=single_worker_resources,
-                num_slices=1,
-            )
+        if num_slices_from_resources > 0:
+            try:
+                num_intact_slices = get_num_tpu_slices(
+                    topology=self.scaling_config.topology,
+                    accelerator_type=self.scaling_config.accelerator_type,
+                )
+                num_slices_from_resources = min(
+                    num_slices_from_resources, num_intact_slices
+                )
+            except Exception as e:
+                logger.warning(
+                    f"Failed to check cluster state for intact TPU slices: {e}"
+                )
 
-            if workers_per_slice == 0:
-                # A single worker requires more resources than exist in a
-                # full slice — impossible scheduling configuration for TPU.
-                return 0
-
-            num_slices_from_resources = total_num_workers // workers_per_slice
-
-            if num_slices_from_resources > 0:
-                try:
-                    num_intact_slices = get_num_tpu_slices(
-                        topology=self.scaling_config.topology,
-                        accelerator_type=self.scaling_config.accelerator_type,
-                    )
-                    num_slices_from_resources = min(
-                        num_slices_from_resources, num_intact_slices
-                    )
-                except Exception as e:
-                    logger.warning(
-                        f"Failed to check cluster state for intact TPU slices: {e}"
-                    )
-
-            return num_slices_from_resources * workers_per_slice
-
-        except Exception as e:
-            logger.warning(
-                f"Could not calculate TPU slice boundaries for elastic scaling: {e}. "
-                "Worker counts may not align with TPU topology."
-            )
-
-        return 0
+        return num_slices_from_resources * workers_per_slice
 
     def _effective_min_workers(self) -> int:
         # A worker group needs at least one worker, even when min_workers is 0.

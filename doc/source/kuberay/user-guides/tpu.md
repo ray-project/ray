@@ -196,7 +196,9 @@ The `ray.util.tpu` package uses the default TPU node labels and {ref}`label sele
 
 #### `SlicePlacementGroup`
 
-{class}`~ray.util.tpu.SlicePlacementGroup` reserves one or more available TPU slices that match your `topology` and `accelerator_version`, and creates a Ray {ref}`placement group <ray-placement-group-doc-ref>` pinned to those physical slices through the `ray.io/tpu-slice-name` node label. By default, it creates one bundle per TPU host, such as `{"TPU": 4}` on a four-chip host. To create one bundle per logical TPU device instead, pass `resources_per_bundle={"TPU": 1}`. For topologies such as TPU v6e `2x4` that can run on either one eight-chip VM or two four-chip VMs, set `chips_per_vm` to match your node pool. {class}`~ray.train.ScalingConfig` with `use_tpu=True` and {class}`~ray.serve.llm.LLMConfig` with `accelerator_config={"kind": "tpu", "topology": ...}` both create a `SlicePlacementGroup` for their workers.
+{class}`~ray.util.tpu.SlicePlacementGroup` reserves one or more TPU slices matching your requested topology and accelerator version. It creates one Ray {ref}`placement group <ray-placement-group-doc-ref>` per slice with TPU topology and accelerator label selectors, adding `ray.io/tpu-slice-name` strict-pack locality and `ray.io/tpu-worker-id` selectors for multi-host slices.
+
+By default, each bundle covers one TPU host, such as `{"TPU": 4}` on a four-chip host; pass `resources_per_bundle={"TPU": 1}` for one bundle per logical TPU device. For topologies such as TPU v6e `2x4` that can run on either one eight-chip VM or two four-chip VMs, set `chips_per_vm` to match your node pool. {class}`~ray.train.ScalingConfig` with `use_tpu=True` and {class}`~ray.serve.llm.LLMConfig` with `accelerator_config={"kind": "tpu", "topology": ...}` both accept `chips_per_vm` and create a `SlicePlacementGroup` for their workers.
 
 Call {func}`ray.util.tpu.slice_placement_group` to reserve slices and {func}`ray.util.tpu.run_on_slice` to launch tasks or actors across the bundles. The following example reserves two multi-host slices and runs one host-level task on every host:
 
@@ -254,10 +256,10 @@ The Ray autoscaler scales TPU worker groups the same way it scales any KubeRay w
 
 ### Multi-host autoscaling
 
-A multi-host TPU worker group sets `google.com/tpu` container limits or requests and `numOfHosts` greater than `1`. Ray treats each replica of the worker group as one TPU Pod slice and scales it atomically. Scaling up creates `numOfHosts` Ray nodes per replica, and scaling down removes `numOfHosts` Ray nodes per replica. When Ray schedules the deletion of a single node in a multi-host worker group, KubeRay terminates the whole replica that the node belongs to.
+A multi-host TPU worker group sets `google.com/tpu` container limits or requests and `numOfHosts` greater than `1`. Ray treats each replica of the worker group as one TPU Pod slice and scales it atomically. Scaling up creates `numOfHosts` Ray nodes per replica, and scaling down removes `numOfHosts` Ray nodes per replica once every host in the slice stays idle for longer than `idleTimeoutSeconds`.
 
 :::{caution}
-Run tasks or actors on every host of a multi-host replica. Ray considers a host with no running work idle, and removing an idle host also removes the other hosts in its slice.
+If you set `autoscalerOptions.version: v1`, run tasks or actors on every host of a multi-host replica. Autoscaler V1 evaluates idle timeouts per host, and removing an idle host causes KubeRay to terminate the remaining hosts in its slice.
 :::
 
 (kuberay-tpu-pod-config)=

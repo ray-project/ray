@@ -109,6 +109,7 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
                 use_tpu=True,
                 accelerator_type="TPU-V6E",
                 topology="2x4",
+                chips_per_vm=4,
                 resources_per_worker={"TPU": 4, "CPU": 1},
                 num_workers=(2, 6),  # Scale between 1 and 3 slices.
                 elastic_resize_monitor_interval_s=elastic_resize_monitor_interval_s,
@@ -138,7 +139,7 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
         print(message)
         print(f"{'-' * 80}\n")
 
-    def provision_tpu_node(slice_name: str, worker_id: int, is_head: bool = False):
+    def provision_tpu_node(slice_name: str, worker_id: int):
         pod_type = "v6e-8"
         topology = "2x4"
 
@@ -156,12 +157,11 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
             "ray.io/tpu-slice-name": slice_name,
             "ray.io/tpu-worker-id": str(worker_id),
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V6E",
         }
 
-        resources = {"TPU": 4, "accelerator_type:TPU-V6E": 1}
-
-        if is_head:
-            resources[f"TPU-{pod_type}-head"] = 1
+        resources = {"TPU": 4}
 
         node = cluster.add_node(
             num_cpus=8,
@@ -193,24 +193,16 @@ def test_elastic_training_tpu(monkeypatch, tmp_path, cluster):
     print_status(
         "Adding 1 TPU node. Waiting for training to ignore it since it's not a full slice."
     )
-    ALL_NODES.append(
-        provision_tpu_node(slice_name="slice-A", worker_id=0, is_head=True)
-    )
+    ALL_NODES.append(provision_tpu_node(slice_name="slice-A", worker_id=0))
 
     print_status("Adding 2nd TPU node to complete slice-A. Training should start.")
-    ALL_NODES.append(
-        provision_tpu_node(slice_name="slice-A", worker_id=1, is_head=False)
-    )
+    ALL_NODES.append(provision_tpu_node(slice_name="slice-A", worker_id=1))
     print_status("Waiting for initial scale-up to 2 workers...")
     wait_for_condition(lambda: verify_active_workers(2), timeout=120)
 
     print_status("Adding full second TPU slice. Policy should upscale.")
-    ALL_NODES.append(
-        provision_tpu_node(slice_name="slice-B", worker_id=0, is_head=True)
-    )
-    ALL_NODES.append(
-        provision_tpu_node(slice_name="slice-B", worker_id=1, is_head=False)
-    )
+    ALL_NODES.append(provision_tpu_node(slice_name="slice-B", worker_id=0))
+    ALL_NODES.append(provision_tpu_node(slice_name="slice-B", worker_id=1))
     print_status("Waiting for elastic scale-up to 4 workers.")
     wait_for_condition(lambda: verify_active_workers(4), timeout=120)
 

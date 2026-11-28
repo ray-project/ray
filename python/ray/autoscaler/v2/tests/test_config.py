@@ -13,6 +13,7 @@ from ray.autoscaler._private.constants import PENDING_NODE_IDLE_TERMINATION_GATE
 from ray.autoscaler._private.util import format_readonly_node_type
 from ray.autoscaler.v2.instance_manager import config as config_mod
 from ray.autoscaler.v2.instance_manager.config import (
+    AutoscalingConfig,
     FileConfigReader,
     Provider,
     ReadOnlyProviderConfigReader,
@@ -287,6 +288,693 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
     # 4 actual workers (3 x worker.custom + 1 x fallback).
     # The old buggy `len(available_node_types)` returned 3 instead of 4.
     assert cfg.get_config("max_workers") == 4
+
+
+def _make_internal_replica_autoscaling_cfg(
+    *,
+    disable_launch_config_check: bool = True,
+    node_type: str = "tpu",
+    min_workers: int = 0,
+    max_workers: int = 8,
+    replica_config=None,
+    head_replica_config=None,
+) -> AutoscalingConfig:
+    available = {
+        "head": {"node_config": {}, "resources": {"CPU": 0}, "max_workers": 3},
+    }
+    if node_type != "head":
+        available[node_type] = {
+            "node_config": {},
+            "resources": {"CPU": 4},
+            "min_workers": min_workers,
+            "max_workers": max_workers,
+        }
+    cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": max(max_workers, 8),
+            "provider": {
+                "type": "aws",
+                "disable_launch_config_check": disable_launch_config_check,
+            },
+            "head_node_type": "head",
+            "available_node_types": available,
+        },
+        skip_content_hash=True,
+    )
+    if replica_config is not None:
+        cfg._configs["available_node_types"][node_type][
+            "replica_config"
+        ] = replica_config
+    if head_replica_config is not None:
+        cfg._configs["available_node_types"]["head"][
+            "replica_config"
+        ] = head_replica_config
+    return cfg
+
+
+def test_multihost_launch_config_check_rejected():
+    autoscaling_cfg = _make_internal_replica_autoscaling_cfg(
+        disable_launch_config_check=False,
+        replica_config={"workers_per_replica": 4},
+    )
+    with pytest.raises(ValueError, match="workers_per_replica=4 > 1"):
+        autoscaling_cfg.get_node_type_configs()
+
+    # Single-host replica_config (workers_per_replica=1) is allowed even with
+    # launch config checks enabled.
+    single_host_cfg = _make_internal_replica_autoscaling_cfg(
+        disable_launch_config_check=False,
+        node_type="cpu",
+        max_workers=3,
+        replica_config={"workers_per_replica": 1},
+    )
+    cfgs = single_host_cfg.get_node_type_configs()
+    assert cfgs["cpu"].workers_per_replica == 1
+    assert cfgs["head"].workers_per_replica == 1
+
+    # Head node type cannot set workers_per_replica > 1 even when max_workers + 1
+    # would otherwise be divisible by workers_per_replica.
+    head_multihost_cfg = _make_internal_replica_autoscaling_cfg(
+        disable_launch_config_check=True,
+        node_type="head",
+        head_replica_config={"workers_per_replica": 4},
+    )
+    with pytest.raises(ValueError, match="Head node type head cannot set"):
+        head_multihost_cfg.get_node_type_configs()
+
+
+def test_multihost_replica_config_validation():
+    from ray.autoscaler.v2.instance_manager.config import (
+        NodeTypeConfig,
+        WorkerReplicaConfig,
+    )
+
+    # Public ray-schema.json accepts `replica_config` once the replica-aware
+    # scheduler lands.
+    schema_cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": 8,
+            "provider": {"type": "aws", "disable_launch_config_check": True},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "tpu": {
+                    "node_config": {},
+                    "resources": {"CPU": 4},
+                    "min_workers": 4,
+                    "max_workers": 8,
+                    "replica_config": {"workers_per_replica": 4},
+                },
+            },
+        },
+        skip_content_hash=True,
+    )
+    assert schema_cfg.get_node_type_configs()["tpu"].workers_per_replica == 4
+
+    valid_cfg = _make_internal_replica_autoscaling_cfg(
+        min_workers=4,
+        max_workers=8,
+        replica_config={"workers_per_replica": 4},
+    )
+    cfgs = valid_cfg.get_node_type_configs()
+    assert cfgs["tpu"].replica_config == WorkerReplicaConfig(workers_per_replica=4)
+    assert cfgs["tpu"].workers_per_replica == 4
+    assert cfgs["head"].workers_per_replica == 1
+
+    for bad_size in (0, -1, True, False, "4"):
+        with pytest.raises(ValueError, match="workers_per_replica"):
+            WorkerReplicaConfig(workers_per_replica=bad_size)
+
+    with pytest.raises(ValueError, match=r"min_worker_nodes \(2\)"):
+        NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4},
+            min_worker_nodes=2,
+            max_worker_nodes=8,
+            replica_config=WorkerReplicaConfig(workers_per_replica=4),
+        )
+
+    with pytest.raises(ValueError, match=r"max_worker_nodes \(6\)"):
+        NodeTypeConfig(
+            name="tpu",
+            resources={"CPU": 4},
+            min_worker_nodes=0,
+            max_worker_nodes=6,
+            replica_config=WorkerReplicaConfig(workers_per_replica=4),
+        )
+
+    # Size-multiple and field validation through AutoscalingConfig.get_node_type_configs.
+    bad_min_cfg = _make_internal_replica_autoscaling_cfg(
+        min_workers=2,
+        max_workers=8,
+        replica_config={"workers_per_replica": 4},
+    )
+    with pytest.raises(ValueError, match=r"min_worker_nodes \(2\)"):
+        bad_min_cfg.get_node_type_configs()
+
+    bad_max_cfg = _make_internal_replica_autoscaling_cfg(
+        min_workers=0,
+        max_workers=6,
+        replica_config={"workers_per_replica": 4},
+    )
+    with pytest.raises(ValueError, match=r"max_worker_nodes \(6\)"):
+        bad_max_cfg.get_node_type_configs()
+
+    bad_type_cfg = _make_internal_replica_autoscaling_cfg(replica_config="not-a-dict")
+    with pytest.raises(ValueError, match="must be a dict"):
+        bad_type_cfg.get_node_type_configs()
+
+    unknown_field_cfg = _make_internal_replica_autoscaling_cfg(
+        replica_config={"workers_per_replica": 4, "unknown_field": True},
+    )
+    with pytest.raises(ValueError, match="Unknown replica_config fields"):
+        unknown_field_cfg.get_node_type_configs()
+
+
+def test_foreground_node_launch_uncaps_max_concurrent_launches_unless_overridden(
+    monkeypatch,
+):
+    """Foreground node-launch providers (KubeRay) bypass the default 10-node per-tick
+    cap unless AUTOSCALER_MAX_CONCURRENT_LAUNCHES is set, while Conservative
+    upscaling_speed and non-foreground VM providers stay bounded."""
+    from collections import Counter
+
+    from ray.autoscaler._private.constants import (
+        AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
+        DISABLE_LAUNCH_CONFIG_CHECK_KEY,
+        FOREGROUND_NODE_LAUNCH_KEY,
+    )
+    from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
+    from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage
+    from ray.autoscaler.v2.instance_manager.node_provider import (
+        CloudInstance,
+        ICloudInstanceProvider,
+    )
+    from ray.autoscaler.v2.instance_manager.reconciler import Reconciler
+    from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
+    from ray.autoscaler.v2.instance_manager.subscribers.cloud_resource_monitor import (
+        CloudResourceMonitor,
+    )
+    from ray.autoscaler.v2.scheduler import ResourceDemandScheduler
+    from ray.core.generated.autoscaler_pb2 import (
+        ClusterResourceState,
+        NodeState,
+        NodeStatus,
+        ResourceRequest,
+        ResourceRequestByCount,
+    )
+    from ray.core.generated.instance_manager_pb2 import Instance, NodeKind
+
+    monkeypatch.delenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES", raising=False)
+
+    def _make_cfg(
+        foreground: bool, upscaling_speed: float = 1000.0
+    ) -> AutoscalingConfig:
+        if foreground:
+            from ray.autoscaler._private.kuberay.autoscaling_config import (
+                _derive_autoscaling_config_from_ray_cr,
+            )
+            from ray.tests.kuberay.test_autoscaling_config import get_basic_ray_cr
+
+            ray_cr = get_basic_ray_cr()
+            ray_cr["metadata"]["namespace"] = "default"
+            ray_cr["spec"]["headGroupSpec"]["rayStartParams"] = {"num-cpus": "0"}
+            wg = ray_cr["spec"]["workerGroupSpecs"][0]
+            wg.update(
+                groupName="tpu-4h",
+                replicas=0,
+                minReplicas=0,
+                maxReplicas=10,
+                numOfHosts=4,
+            )
+            wg["template"]["spec"]["nodeSelector"] = {
+                "cloud.google.com/gke-tpu-accelerator": "tpu-v6e-slice",
+                "cloud.google.com/gke-tpu-topology": "4x4",
+            }
+            wg["template"]["spec"]["containers"][0]["resources"] = {
+                "limits": {"cpu": "4", "google.com/tpu": "4"},
+                "requests": {"cpu": "4", "google.com/tpu": "4"},
+            }
+            ray_cr["spec"]["workerGroupSpecs"] = [wg]
+            raw = _derive_autoscaling_config_from_ray_cr(ray_cr)
+            raw["upscaling_speed"] = upscaling_speed
+            cfg = AutoscalingConfig(configs=raw, skip_content_hash=True)
+            cfg._configs["available_node_types"]["tpu-4h"]["replica_config"] = {
+                "workers_per_replica": 4
+            }
+            return cfg
+        cfg = AutoscalingConfig(
+            configs={
+                "cluster_name": "test",
+                "max_workers": 40,
+                "upscaling_speed": upscaling_speed,
+                "idle_timeout_minutes": 5,
+                "provider": {
+                    "type": "aws",
+                    DISABLE_LAUNCH_CONFIG_CHECK_KEY: True,
+                    FOREGROUND_NODE_LAUNCH_KEY: False,
+                },
+                "head_node_type": "headgroup",
+                "available_node_types": {
+                    "headgroup": {"node_config": {}, "resources": {"CPU": 0}},
+                    "tpu-4h": {
+                        "node_config": {},
+                        "resources": {"CPU": 4, "TPU": 4},
+                        "min_workers": 0,
+                        "max_workers": 40,
+                    },
+                },
+            },
+            skip_content_hash=True,
+        )
+        cfg._configs["available_node_types"]["tpu-4h"]["replica_config"] = {
+            "workers_per_replica": 4
+        }
+        return cfg
+
+    fg_cfg = _make_cfg(foreground=True, upscaling_speed=1000.0)
+    vm_cfg = _make_cfg(foreground=False, upscaling_speed=1000.0)
+    assert fg_cfg.get_max_concurrent_launches() == sys.maxsize
+    assert vm_cfg.get_max_concurrent_launches() == AUTOSCALER_MAX_CONCURRENT_LAUNCHES
+
+    monkeypatch.setenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES", "24")
+    assert fg_cfg.get_max_concurrent_launches() == 24
+    assert vm_cfg.get_max_concurrent_launches() == 24
+    monkeypatch.delenv("AUTOSCALER_MAX_CONCURRENT_LAUNCHES")
+
+    class _NoopProvider(ICloudInstanceProvider):
+        def get_non_terminated(self):
+            return {"hpod": CloudInstance("hpod", "headgroup", NodeKind.HEAD, True)}
+
+        def terminate(self, ids, request_id):
+            return None
+
+        def launch(self, shape, request_id):
+            return None
+
+        def poll_errors(self):
+            return []
+
+    def _run_cold_start_tick(acfg: AutoscalingConfig) -> Counter:
+        storage = InstanceStorage(cluster_id="fg", storage=InMemoryStorage())
+        im = InstanceManager(
+            instance_storage=storage, instance_status_update_subscribers=[]
+        )
+        hnid = b"h".ljust(28, b"\0")
+        head_im = Instance(
+            instance_id="h0",
+            instance_type="headgroup",
+            status=Instance.RAY_RUNNING,
+            node_kind=NodeKind.HEAD,
+            node_id=hnid.hex(),
+            cloud_instance_id="hpod",
+            version=0,
+        )
+        assert storage.batch_upsert_instances([head_im], expected_storage_version=0)[0]
+        crs = ClusterResourceState(
+            node_states=[
+                NodeState(
+                    node_id=hnid,
+                    instance_id="hpod",
+                    ray_node_type_name="headgroup",
+                    status=NodeStatus.RUNNING,
+                )
+            ],
+            pending_resource_requests=[
+                ResourceRequestByCount(
+                    request=ResourceRequest(resources_bundle={"CPU": 1, "TPU": 4}),
+                    count=20,
+                )
+            ],
+        )
+        Reconciler.reconcile(
+            instance_manager=im,
+            scheduler=ResourceDemandScheduler(),
+            cloud_provider=_NoopProvider(),
+            cloud_resource_monitor=CloudResourceMonitor(),
+            ray_cluster_resource_state=crs,
+            non_terminated_cloud_instances={
+                "hpod": CloudInstance("hpod", "headgroup", NodeKind.HEAD, True)
+            },
+            cloud_provider_errors=[],
+            ray_install_errors=[],
+            autoscaling_config=acfg,
+        )
+        insts, _ = storage.get_instances()
+        return Counter(i.status for i in insts.values() if i.node_kind != NodeKind.HEAD)
+
+    # Aggressive KubeRay cold start launches all 20 workers (5 x 4-host slices) in 1 tick.
+    assert _run_cold_start_tick(fg_cfg) == {Instance.REQUESTED: 20}
+    # Conservative KubeRay cold start (upscaling_speed=1.0) still rounds 1 worker up to 1 slice (4 REQUESTED, 16 QUEUED).
+    cons_cfg = _make_cfg(foreground=True, upscaling_speed=1.0)
+    assert _run_cold_start_tick(cons_cfg) == {
+        Instance.REQUESTED: 4,
+        Instance.QUEUED: 16,
+    }
+
+
+def test_replica_config_locality_fields_and_runtime_label_keys():
+    import jsonschema
+
+    from ray.autoscaler.v2.instance_manager.config import (
+        NodeTypeConfig,
+        WorkerReplicaConfig,
+    )
+
+    # Positive round-trip: multi-host TPU with deduplication, single-host TPU,
+    # explicit JSON nulls, and omitted defaults.
+    valid_cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": 16,
+            "provider": {"type": "aws", "disable_launch_config_check": True},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "tpu-mh": {
+                    "node_config": {},
+                    "resources": {"CPU": 4, "TPU": 4, "TPU-v6e-16-head": 1},
+                    "min_workers": 4,
+                    "max_workers": 8,
+                    "runtime_label_keys": [
+                        "ray.io/tpu-slice-name",
+                        "ray.io/tpu-worker-id",
+                        "ray.io/tpu-slice-name",
+                    ],
+                    "replica_config": {
+                        "workers_per_replica": 4,
+                        "domain_label_key": "ray.io/tpu-slice-name",
+                        "domain_exclusive": True,
+                        "worker_index_label_key": "ray.io/tpu-worker-id",
+                        "head_resources": ["TPU-v6e-16-head", "TPU-v6e-16-head"],
+                    },
+                },
+                "tpu-sh": {
+                    "node_config": {},
+                    "resources": {"CPU": 4, "TPU": 4},
+                    "min_workers": 0,
+                    "max_workers": 4,
+                    "replica_config": {
+                        "workers_per_replica": 1,
+                        "domain_label_key": "ray.io/tpu-slice-name",
+                        "worker_index_label_key": "ray.io/tpu-worker-id",
+                        "head_resources": ["TPU-v6e-4-head"],
+                    },
+                },
+                "explicit-nulls": {
+                    "node_config": {},
+                    "resources": {"CPU": 4},
+                    "min_workers": 0,
+                    "max_workers": 2,
+                    "replica_config": {
+                        "workers_per_replica": 1,
+                        "domain_label_key": None,
+                        "domain_exclusive": False,
+                        "worker_index_label_key": None,
+                    },
+                },
+                "defaults-only": {
+                    "node_config": {},
+                    "resources": {"CPU": 2},
+                    "min_workers": 0,
+                    "max_workers": 2,
+                },
+            },
+        }
+    )
+    cfgs = valid_cfg.get_node_type_configs()
+    assert cfgs["tpu-mh"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=4,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v6e-16-head",),
+    )
+    assert cfgs["tpu-mh"].runtime_label_keys == (
+        "ray.io/tpu-slice-name",
+        "ray.io/tpu-worker-id",
+    )
+    assert cfgs["tpu-sh"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key="ray.io/tpu-slice-name",
+        domain_exclusive=True,
+        worker_index_label_key="ray.io/tpu-worker-id",
+        head_resources=("TPU-v6e-4-head",),
+    )
+    assert cfgs["tpu-sh"].runtime_label_keys == ()
+    assert cfgs["explicit-nulls"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key=None,
+        domain_exclusive=False,
+        worker_index_label_key=None,
+        head_resources=(),
+    )
+    assert cfgs["defaults-only"].replica_config is None
+    assert cfgs["defaults-only"].runtime_label_keys == ()
+
+    # workers_per_replica == 1 with locality metadata works without
+    # disable_launch_config_check.
+    single_host_clique_cfg = AutoscalingConfig(
+        configs={
+            "cluster_name": "test",
+            "max_workers": 4,
+            "provider": {"type": "aws", "disable_launch_config_check": False},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "gpu-clique": {
+                    "node_config": {},
+                    "resources": {"CPU": 8, "GPU": 8},
+                    "min_workers": 0,
+                    "max_workers": 4,
+                    "runtime_label_keys": ["ray.io/gpu-domain"],
+                    "replica_config": {
+                        "workers_per_replica": 1,
+                        "domain_label_key": "ray.io/gpu-domain",
+                        "domain_exclusive": False,
+                    },
+                },
+            },
+        }
+    )
+    sh_cfgs = single_host_clique_cfg.get_node_type_configs()
+    assert sh_cfgs["gpu-clique"].replica_config == WorkerReplicaConfig(
+        workers_per_replica=1,
+        domain_label_key="ray.io/gpu-domain",
+        domain_exclusive=False,
+    )
+    assert sh_cfgs["gpu-clique"].runtime_label_keys == ("ray.io/gpu-domain",)
+
+    # Negative Python dataclass validation.
+    for bad_excl in (1, 0, "true", "false", None):
+        with pytest.raises(ValueError, match="domain_exclusive"):
+            WorkerReplicaConfig(domain_exclusive=bad_excl)
+
+    for bad_key in ("", "   ", 123, True, []):
+        with pytest.raises(ValueError, match="domain_label_key"):
+            WorkerReplicaConfig(domain_label_key=bad_key)
+        with pytest.raises(ValueError, match="worker_index_label_key"):
+            WorkerReplicaConfig(worker_index_label_key=bad_key)
+
+    with pytest.raises(ValueError, match="must be distinct"):
+        WorkerReplicaConfig(
+            domain_label_key="ray.io/same",
+            worker_index_label_key="ray.io/same",
+        )
+
+    for bad_heads in (
+        "TPU-head",
+        None,
+        {"TPU": 1},
+        {"TPU"},
+        123,
+        [""],
+        ["  "],
+        [1],
+        [None],
+    ):
+        with pytest.raises(ValueError, match="head_resources"):
+            WorkerReplicaConfig(head_resources=bad_heads)
+
+    for bad_rt in (
+        "ray.io/x",
+        None,
+        {"a": 1},
+        {"a"},
+        123,
+        [""],
+        ["  "],
+        [123],
+        [None],
+    ):
+        with pytest.raises(ValueError, match="runtime_label_keys"):
+            NodeTypeConfig(
+                name="worker",
+                min_worker_nodes=0,
+                max_worker_nodes=2,
+                resources={"CPU": 4},
+                runtime_label_keys=bad_rt,
+            )
+
+    # Raw dict checks when schema validation is bypassed (mutated _configs).
+    for mutated_fields, match in (
+        ({"replica_config": "invalid"}, "replica_config must be a dict"),
+        ({"replica_config": {"head_resources": None}}, "head_resources"),
+        ({"replica_config": {"domain_exclusive": None}}, "domain_exclusive"),
+        ({"runtime_label_keys": None}, "runtime_label_keys"),
+    ):
+        cfg = AutoscalingConfig(
+            configs={
+                "cluster_name": "test",
+                "provider": {"type": "aws", "disable_launch_config_check": True},
+                "head_node_type": "head",
+                "available_node_types": {
+                    "head": {"node_config": {}, "resources": {"CPU": 0}},
+                    "worker": {"node_config": {}, "resources": {"CPU": 4}},
+                },
+            }
+        )
+        cfg._configs["available_node_types"]["worker"].update(mutated_fields)
+        with pytest.raises(ValueError, match=match):
+            cfg.get_node_type_configs()
+
+    # Negative JSON Schema validation.
+    def _make_schema_cfg(worker_overrides):
+        worker = {"node_config": {}, "resources": {"CPU": 4}}
+        worker.update(worker_overrides)
+        return {
+            "cluster_name": "test",
+            "provider": {"type": "aws", "disable_launch_config_check": True},
+            "head_node_type": "head",
+            "available_node_types": {
+                "head": {"node_config": {}, "resources": {"CPU": 0}},
+                "worker": worker,
+            },
+        }
+
+    invalid_schema_cases = [
+        {"replica_config": {"domain_exclusive": 1}},
+        {"replica_config": {"domain_exclusive": "true"}},
+        {"replica_config": {"domain_exclusive": None}},
+        {"replica_config": {"domain_label_key": ""}},
+        {"replica_config": {"domain_label_key": 123}},
+        {"replica_config": {"worker_index_label_key": ""}},
+        {"replica_config": {"worker_index_label_key": 123}},
+        {"replica_config": {"head_resources": "TPU-head"}},
+        {"replica_config": {"head_resources": [""]}},
+        {"replica_config": {"head_resources": [1]}},
+        {"replica_config": {"head_resources": None}},
+        {"runtime_label_keys": "ray.io/x"},
+        {"runtime_label_keys": [""]},
+        {"runtime_label_keys": [1]},
+        {"runtime_label_keys": None},
+    ]
+    for case in invalid_schema_cases:
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            AutoscalingConfig(configs=_make_schema_cfg(case))
+
+
+def test_node_type_config_replica_properties():
+    from ray.autoscaler.v2.instance_manager.config import (
+        NodeTypeConfig,
+        WorkerReplicaConfig,
+    )
+
+    plain = NodeTypeConfig(name="cpu", min_worker_nodes=0, max_worker_nodes=4)
+    assert plain.workers_per_replica == 1
+    assert not plain.is_multi_worker_replica
+    assert plain.domain_label_key is None
+    assert not plain.domain_exclusive
+    assert plain.worker_index_label_key is None
+    assert plain.head_resources == ()
+
+    single_host_dom = NodeTypeConfig(
+        name="gpu-clique",
+        min_worker_nodes=0,
+        max_worker_nodes=4,
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=1,
+            domain_label_key="nvidia.com/gpu.clique",
+            domain_exclusive=False,
+        ),
+    )
+    assert single_host_dom.workers_per_replica == 1
+    assert not single_host_dom.is_multi_worker_replica
+    assert single_host_dom.domain_label_key == "nvidia.com/gpu.clique"
+    assert not single_host_dom.domain_exclusive
+    assert single_host_dom.worker_index_label_key is None
+    assert single_host_dom.head_resources == ()
+
+    multi_host = NodeTypeConfig(
+        name="tpu-slice",
+        min_worker_nodes=0,
+        max_worker_nodes=8,
+        replica_config=WorkerReplicaConfig(
+            workers_per_replica=4,
+            domain_label_key="ray.io/tpu-slice-name",
+            domain_exclusive=True,
+            worker_index_label_key="ray.io/tpu-worker-id",
+            head_resources=("TPU-v6e-16-head",),
+        ),
+    )
+    assert multi_host.workers_per_replica == 4
+    assert multi_host.is_multi_worker_replica
+    assert multi_host.domain_label_key == "ray.io/tpu-slice-name"
+    assert multi_host.domain_exclusive
+    assert multi_host.worker_index_label_key == "ray.io/tpu-worker-id"
+    assert multi_host.head_resources == ("TPU-v6e-16-head",)
+
+
+def test_non_kuberay_labels_overlapping_replica_and_runtime_keys():
+    """Direct non-KubeRay YAML may overlap static `labels` with
+    `replica_config.domain_label_key` or `runtime_label_keys` without failing
+    parsing or dropping static labels."""
+    from ray.autoscaler.v2.instance_manager.config import WorkerReplicaConfig
+
+    raw_cfg = {
+        "cluster_name": "overlap-test",
+        "provider": {"type": "aws", "disable_launch_config_check": True},
+        "head_node_type": "head",
+        "available_node_types": {
+            "head": {"node_config": {}, "resources": {"CPU": 2}},
+            "worker": {
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 4,
+                "resources": {"CPU": 4, "GPU": 4},
+                "labels": {
+                    "ray.io/gpu-clique": "static-clique-a",
+                    "topology.kubernetes.io/zone": "us-central1-a",
+                },
+                "replica_config": {
+                    "workers_per_replica": 2,
+                    "domain_label_key": "ray.io/gpu-clique",
+                    "domain_exclusive": False,
+                },
+                "runtime_label_keys": [
+                    "ray.io/gpu-clique",
+                    "topology.kubernetes.io/zone",
+                ],
+            },
+        },
+    }
+    nt_cfgs = AutoscalingConfig(configs=raw_cfg).get_node_type_configs()
+    worker = nt_cfgs["worker"]
+    assert worker.labels == {
+        "ray.io/gpu-clique": "static-clique-a",
+        "topology.kubernetes.io/zone": "us-central1-a",
+    }
+    assert worker.replica_config == WorkerReplicaConfig(
+        workers_per_replica=2,
+        domain_label_key="ray.io/gpu-clique",
+        domain_exclusive=False,
+    )
+    assert worker.runtime_label_keys == (
+        "ray.io/gpu-clique",
+        "topology.kubernetes.io/zone",
+    )
 
 
 if __name__ == "__main__":

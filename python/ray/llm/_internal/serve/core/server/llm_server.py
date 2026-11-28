@@ -29,6 +29,10 @@ from ray.llm._internal.serve.constants import (
     RAYLLM_VLLM_ENGINE_CLS_ENV,
     get_llm_serve_runtime_env,
 )
+from ray.llm._internal.serve.core.configs.accelerators import (
+    _resolve_bundle_label_selector,
+    prepare_tpu_bundles_and_label_selector,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     DiskMultiplexConfig,
     LLMConfig,
@@ -830,6 +834,21 @@ class LLMServer(LLMServerProtocol):
             pg_bundles = _merge_replica_actor_and_child_actor_bundles(
                 engine_config.placement_bundles, replica_actor_resources
             )
+            if any(b.get("TPU", 0) > 0 for b in pg_bundles):
+                pg_bundles, label_selector = prepare_tpu_bundles_and_label_selector(
+                    pg_bundles, llm_config.accelerator_type
+                )
+                if label_selector is not None:
+                    deployment_options[
+                        "placement_group_bundle_label_selector"
+                    ] = _resolve_bundle_label_selector(
+                        num_bundles=len(label_selector),
+                        user_selectors=deployment_options.get(
+                            "placement_group_bundle_label_selector"
+                        ),
+                        base_selectors=label_selector,
+                        selector_name="placement_group_bundle_label_selector",
+                    )
 
             deployment_options.update(
                 {
@@ -837,6 +856,13 @@ class LLMServer(LLMServerProtocol):
                     "placement_group_strategy": engine_config.placement_strategy,
                 }
             )
+        else:
+            # Deferred PG creation (for example, multi-host TPU SlicePlacementGroup)
+            # omits placement_group_bundles from Serve deployment options. Strip
+            # placement_group_bundle_label_selector so DeploymentSchema and
+            # ReplicaConfig do not reject an orphaned selector; VLLMEngineConfig
+            # forwards the selector from llm_config.deployment_config at runtime.
+            deployment_options.pop("placement_group_bundle_label_selector", None)
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env

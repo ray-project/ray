@@ -25,8 +25,13 @@ def ray_tpu_single_host():
         # Simulate one node with 8 TPU chips.
         cluster.add_node(
             num_cpus=4,
-            resources={"TPU": 8, "accelerator_type:TPU-V6E": 1},
+            resources={"TPU": 8},
             env_vars={"TPU_ACCELERATOR_TYPE": "v6e-8"},
+            labels={
+                "ray.io/accelerator-type": "TPU-V6E",
+                "ray.io/tpu-topology": "2x4",
+                "ray.io/tpu-pod-type": "v6e-8",
+            },
         )
 
         ray.init(address=cluster.address)
@@ -56,6 +61,8 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-A",
             "ray.io/tpu-worker-id": "0",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         slice_a_worker_env = {
             "TPU_NAME": "slice-A",
@@ -67,20 +74,18 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-A",
             "ray.io/tpu-worker-id": "1",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         cluster.add_node(
             num_cpus=8,
-            resources={
-                "TPU": 4,
-                f"TPU-{pod_type}-head": 1,
-                "accelerator_type:TPU-V4": 1,
-            },
+            resources={"TPU": 4},
             env_vars=slice_a_head_env,
             labels=slice_a_head_labels,
         )
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
+            resources={"TPU": 4},
             env_vars=slice_a_worker_env,
             labels=slice_a_worker_labels,
         )
@@ -95,6 +100,8 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-B",
             "ray.io/tpu-worker-id": "0",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         slice_b_worker_env = {
             "TPU_NAME": "slice-B",
@@ -106,20 +113,18 @@ def ray_tpu_multi_host():
             "ray.io/tpu-slice-name": "slice-B",
             "ray.io/tpu-worker-id": "1",
             "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+            "ray.io/accelerator-type": "TPU-V4",
         }
         cluster.add_node(
             num_cpus=8,
-            resources={
-                "TPU": 4,
-                f"TPU-{pod_type}-head": 1,
-                "accelerator_type:TPU-V4": 1,
-            },
+            resources={"TPU": 4},
             env_vars=slice_b_head_env,
             labels=slice_b_head_labels,
         )
         cluster.add_node(
             num_cpus=8,
-            resources={"TPU": 4, "accelerator_type:TPU-V4": 1},
+            resources={"TPU": 4},
             env_vars=slice_b_worker_env,
             labels=slice_b_worker_labels,
         )
@@ -917,16 +922,67 @@ def test_single_host_data_iterator_2d_truncation_failure(ray_tpu_single_host, tm
 
 
 def test_scaling_config_validation():
-    with pytest.raises(
-        ValueError, match="Cannot set `label_selector` when `use_tpu=True`"
-    ):
+    cfg = ScalingConfig(
+        num_workers=2,
+        use_tpu=True,
+        topology="2x2x2",
+        accelerator_type="TPU-V4",
+        label_selector={"subcluster": "my_subcluster"},
+    )
+    assert (
+        cfg._label_selector_per_worker(2)
+        == [
+            {
+                "ray.io/accelerator-type": "TPU-V4",
+                "ray.io/tpu-topology": "2x2x2",
+                "subcluster": "my_subcluster",
+            }
+        ]
+        * 2
+    )
+    assert (
+        cfg._label_selector_per_worker(2, include_tpu_labels=False)
+        == [{"subcluster": "my_subcluster"}] * 2
+    )
+
+    with pytest.raises(ValueError, match="must be the same length as `max_workers`"):
         ScalingConfig(
             num_workers=2,
             use_tpu=True,
             topology="2x2x2",
             accelerator_type="TPU-V4",
-            label_selector={"subcluster": "my_subcluster"},
+            label_selector=[{"subcluster": "only_one"}],
         )
+
+
+def test_jax_backend_multislice_uses_scaling_config_workers_per_slice(monkeypatch):
+    """_JaxBackend.on_start assigns slice_id via ScalingConfig._workers_per_slice when the last slice is partial."""
+    from unittest.mock import MagicMock
+
+    from ray.train.v2.jax.config import JaxConfig, _JaxBackend
+
+    scaling_config = ScalingConfig(
+        num_workers=4,
+        use_tpu=True,
+        topology="4x4",
+        accelerator_type="TPU-V6E",
+        chips_per_vm=8,
+    )
+    assert scaling_config._workers_per_slice == 2
+
+    worker_group = MagicMock()
+    worker_group.__len__.return_value = 3
+    worker_group.execute_single.return_value = ("10.0.0.1", 12345)
+    worker_group.get_worker_group_context.return_value = MagicMock(num_slices=2)
+    worker_group._train_run_context = MagicMock(scaling_config=scaling_config)
+
+    monkeypatch.setattr(ray, "get", lambda futures: None)
+    _JaxBackend().on_start(worker_group, JaxConfig(use_tpu=True))
+
+    assert [
+        call.kwargs["jax_env_vars"]["MEGASCALE_SLICE_ID"]
+        for call in worker_group.execute_single_async.call_args_list
+    ] == ["0", "0", "1"]
 
 
 def train_func_with_collate_fn(config):

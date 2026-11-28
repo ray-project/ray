@@ -1,16 +1,20 @@
+import math
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple, Union
 
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
+import ray
 import ray.util.accelerators.accelerators as accelerators
-from ray._private.accelerators.tpu import get_chips_per_host
+from ray._common.utils import RESOURCE_CONSTRAINT_PREFIX
+from ray._private.accelerators.tpu import _is_positive_number, get_chips_per_host
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import (
     get_tpu_version_from_type,
+    normalize_bundle_label_selector,
     slice_placement_group,
 )
 
@@ -29,6 +33,77 @@ TPU_ACCELERATOR_VALUES = {
 def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
     """Formats the accelerator type into a Ray custom resource string."""
     return f"accelerator_type:{accelerator_type_str}"
+
+
+def prepare_tpu_bundles_and_label_selector(
+    bundles: List[Dict[str, float]],
+    accelerator_type_str: Optional[str] = None,
+) -> Tuple[List[Dict[str, float]], Optional[List[Dict[str, str]]]]:
+    """Strip accelerator_type:* resource constraints from bundles and build a
+    matching per-bundle ray.io/accelerator-type label selector for TPU bundles.
+
+    Note: ``TPUAccelerator.default_bundles`` retains ``accelerator_type:*``
+    in the raw bundle list for callers that inspect ``placement_bundles``, while
+    placement group creation routes TPU hardware selection through node labels
+    (since KubeRay autoscaler node types derive ``ray.io/accelerator-type``
+    labels rather than ``accelerator_type:*`` custom resources).
+    """
+    top_level_accel = (
+        accelerator_type_str.strip()
+        if isinstance(accelerator_type_str, str)
+        else accelerator_type_str
+    ) or None
+    clean_bundles: List[Dict[str, float]] = []
+    bundle_accels: List[Optional[str]] = []
+    for b in bundles:
+        clean_b: Dict[str, float] = {}
+        bundle_accel = top_level_accel if _is_positive_number(b.get("TPU", 0)) else None
+        for k, v in b.items():
+            if k.startswith(RESOURCE_CONSTRAINT_PREFIX):
+                if _is_positive_number(v) and bundle_accel is None:
+                    suffix = k[len(RESOURCE_CONSTRAINT_PREFIX) :].strip()
+                    if suffix:
+                        bundle_accel = suffix
+            else:
+                clean_b[k] = v
+        clean_bundles.append(clean_b)
+        bundle_accels.append(bundle_accel)
+
+    label_selector = (
+        [
+            {ray._raylet.RAY_NODE_ACCELERATOR_TYPE_KEY: accel} if accel else {}
+            for accel in bundle_accels
+        ]
+        if any(bundle_accels)
+        else None
+    )
+    return clean_bundles, label_selector
+
+
+def _resolve_bundle_label_selector(
+    num_bundles: int,
+    user_selectors: Optional[Sequence[Dict[str, str]]] = None,
+    base_selectors: Optional[List[Dict[str, str]]] = None,
+    *,
+    selector_name: str = "bundle_label_selector",
+) -> Optional[List[Dict[str, str]]]:
+    """Normalize, broadcast, and merge user bundle_label_selector with base selectors.
+
+    Returns None when neither base_selectors nor user_selectors are present.
+    A single-element user selector broadcasts to all num_bundles. User keys take
+    precedence over base_selectors keys on conflict.
+    """
+    expanded_user = normalize_bundle_label_selector(
+        user_selectors, num_bundles=num_bundles, selector_name=selector_name
+    )
+    if expanded_user is None:
+        return base_selectors
+    if base_selectors is None:
+        return expanded_user
+    return [
+        {**base_sel, **user_sel}
+        for base_sel, user_sel in zip(base_selectors, expanded_user)
+    ]
 
 
 def infer_hardware_kind_from_bundles(
@@ -66,6 +141,7 @@ class GPUConfig(AcceleratorConfig):
 class TPUConfig(AcceleratorConfig):
     kind: Literal["tpu"] = "tpu"
     topology: Optional[str] = None
+    chips_per_vm: Optional[int] = Field(default=None, gt=0)
 
 
 AnyAcceleratorConfig = Annotated[
@@ -84,7 +160,6 @@ class AcceleratorBackend(ABC):
     ) -> List[Dict[str, float]]:
         pass
 
-    @abstractmethod
     def create_placement_group(
         self,
         *,
@@ -92,8 +167,17 @@ class AcceleratorBackend(ABC):
         strategy: str,
         name: str,
         accelerator_type_str: Optional[str] = None,
+        bundle_label_selector: Optional[Sequence[Dict[str, str]]] = None,
     ) -> PlacementGroup:
-        pass
+        resolved_selector = _resolve_bundle_label_selector(
+            len(bundles), bundle_label_selector
+        )
+        return placement_group(
+            bundles=bundles,
+            strategy=strategy,
+            name=name,
+            bundle_label_selector=resolved_selector,
+        )
 
     @property
     def requires_deferred_placement_group(self) -> bool:
@@ -126,16 +210,6 @@ class CPUAccelerator(AcceleratorBackend):
     ):
         return [{"CPU": 1} for _ in range(num_devices)]
 
-    def create_placement_group(
-        self,
-        *,
-        bundles: List[Dict[str, float]],
-        strategy: str,
-        name: str,
-        accelerator_type_str: Optional[str] = None,
-    ):
-        return placement_group(bundles=bundles, strategy=strategy, name=name)
-
     @property
     def requires_remote_initialization(self) -> bool:
         return False
@@ -153,16 +227,6 @@ class GPUAccelerator(AcceleratorBackend):
         if accelerator_type_str:
             bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
         return [bundle.copy() for _ in range(num_devices)]
-
-    def create_placement_group(
-        self,
-        *,
-        bundles: List[Dict[str, float]],
-        strategy: str,
-        name: str,
-        accelerator_type_str: Optional[str] = None,
-    ):
-        return placement_group(bundles=bundles, strategy=strategy, name=name)
 
     @property
     def requires_remote_initialization(self) -> bool:
@@ -197,7 +261,11 @@ class TPUAccelerator(AcceleratorBackend):
                 "in order to compute TPU resource requirements."
             )
         version = get_tpu_version_from_type(accelerator_type_str)
-        chips_per_host = get_chips_per_host(self._config.topology, version)
+        chips_per_host = (
+            self._config.chips_per_vm
+            if self._config.chips_per_vm is not None
+            else get_chips_per_host(self._config.topology, version)
+        )
 
         if num_devices > chips_per_host and num_devices % chips_per_host != 0:
             raise ValueError(
@@ -220,10 +288,24 @@ class TPUAccelerator(AcceleratorBackend):
         strategy: str,
         name: str,
         accelerator_type_str: Optional[str] = None,
+        bundle_label_selector: Optional[Sequence[Dict[str, str]]] = None,
     ) -> PlacementGroup:
 
         if not self._config.topology:
-            return placement_group(bundles=bundles, strategy=strategy, name=name)
+            clean_bundles, label_selector = prepare_tpu_bundles_and_label_selector(
+                bundles, accelerator_type_str
+            )
+            resolved_selector = _resolve_bundle_label_selector(
+                len(clean_bundles),
+                bundle_label_selector,
+                base_selectors=label_selector,
+            )
+            return placement_group(
+                bundles=clean_bundles,
+                strategy=strategy,
+                name=name,
+                bundle_label_selector=resolved_selector,
+            )
 
         if not accelerator_type_str:
             raise ValueError(
@@ -234,7 +316,19 @@ class TPUAccelerator(AcceleratorBackend):
 
         if bundles:
             # Filter for bundles that actually specify TPU resources
-            tpu_bundles = [b for b in bundles if b.get("TPU", 0) > 0]
+            clean_bundles, _ = prepare_tpu_bundles_and_label_selector(bundles)
+            for b in clean_bundles:
+                if "TPU" in b:
+                    tpu_val = b["TPU"]
+                    if (
+                        isinstance(tpu_val, bool)
+                        or not isinstance(tpu_val, (int, float))
+                        or (isinstance(tpu_val, float) and not math.isfinite(tpu_val))
+                    ):
+                        raise ValueError(
+                            f"TPU resource count must be a finite number, got {tpu_val!r}."
+                        )
+            tpu_bundles = [b for b in clean_bundles if b.get("TPU", 0) > 0]
 
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}
@@ -258,12 +352,19 @@ class TPUAccelerator(AcceleratorBackend):
             )
             self.shutdown()
 
+        if strategy != "PACK":
+            logger.warning(
+                f"Ignoring placement group strategy {strategy!r} for TPU topology "
+                f"{self._config.topology!r}; SlicePlacementGroup manages per-slice placement."
+            )
+
         self._slice_pg_wrapper = slice_placement_group(
             topology=self._config.topology,
             accelerator_version=version,
             resources_per_bundle=worker_bundle,
-            strategy=strategy,
             name=name,
+            chips_per_vm=self._config.chips_per_vm,
+            bundle_label_selector=bundle_label_selector,
         )
         return self._slice_pg_wrapper.placement_group
 
