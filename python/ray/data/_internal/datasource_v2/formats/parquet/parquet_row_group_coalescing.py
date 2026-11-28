@@ -9,6 +9,10 @@ __all__ = [
 ]
 
 
+def _add_memory(a: Optional[int], b: Optional[int]) -> Optional[int]:
+    return None if a is None or b is None else a + b
+
+
 def coalesce_row_groups(per_rg: List[FileChunk], target: int) -> Tuple[FileChunk, ...]:
     """Merge runs of consecutive row groups into ~``target``-byte runs.
 
@@ -57,6 +61,7 @@ def coalesce_row_groups(per_rg: List[FileChunk], target: int) -> Tuple[FileChunk
                 unit_ids=cur.unit_ids + rg.unit_ids,
                 num_rows=cur.num_rows + rg.num_rows,
                 size_bytes=cur.size_bytes + rg.size_bytes,
+                memory_bytes=_add_memory(cur.memory_bytes, rg.memory_bytes),
             )
             cur_sizes.append(rg.size_bytes)
             cur_rows.append(rg.num_rows)

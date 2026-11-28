@@ -743,8 +743,9 @@ class DataContext:
             ``ray.data.read_webdataset()`` route through the DataSourceV2 pipeline.
             Defaults to True; override with ``RAY_DATA_USE_DATASOURCE_V2``
             (``0`` for V1, ``1`` for V2).
-        small_shuffle_chunk_size: Target uncompressed size in bytes of the row-group
-            runs that ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
+        small_shuffle_chunk_size: Target size in bytes, as estimated once decoded
+            to Arrow, of the row-group runs that
+            ``FileShuffleConfig(small_chunks_shuffle=True)`` shuffles.
             Contiguous row groups are coalesced up to this size; a single row group
             larger than it is shuffled on its own.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray

@@ -5,6 +5,7 @@ include-paths schema augmentation against a local tmpdir.
 """
 
 import os
+import sys
 from unittest.mock import Mock, PropertyMock
 
 import pyarrow as pa
@@ -48,7 +49,7 @@ from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
     PartitionHints,
 )
 from ray.data._internal.util import unify_schemas_with_validation
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 from ray.data.expressions import col
 
@@ -505,11 +506,52 @@ def test_parquet_fragment_workers(tmp_path, monkeypatch, cap, expected_workers):
         assert pool.call_args.kwargs["preserve_ordering"]
 
 
-def test_get_file_partitioner_returns_bin_packer(tmp_path):
-    """Parquet sizes read units from footer stats, so the hints are unused."""
+def _bin_bytes(partitioner, sizes):
+    """The bytes in each bin ``partitioner`` makes of one file's row groups."""
+    partitioner.add_input(
+        FileManifest.construct_manifest(
+            paths=["f"] * len(sizes),
+            sizes=[sum(sizes)] * len(sizes),
+            chunk_metadatas=[
+                FileChunk(unit_ids=(i,), num_rows=1, size_bytes=size).to_metadata()
+                for i, size in enumerate(sizes)
+            ],
+        )
+    )
+    partitioner.finalize()
+    bins = []
+    while partitioner.has_partition():
+        chunks = partitioner.next_partition().file_chunk_metadatas
+        bins.append(sum(chunk["size_bytes"] for chunk in chunks))
+    return bins
+
+
+@pytest.mark.parametrize(
+    "bucket, budget",
+    [
+        pytest.param(2, 2, id="follows_block_target"),
+        pytest.param(
+            sys.maxsize, DEFAULT_TARGET_MAX_BLOCK_SIZE, id="default_when_sizing_off"
+        ),
+    ],
+)
+def test_file_partitioner_bins_fill_to_the_block_target(tmp_path, bucket, budget):
+    """Bins close at the block target, or at the default one when block sizing is off."""
     datasource = ParquetDatasourceV2([str(tmp_path)])
-    hints = PartitionHints(min_bucket_size=1, max_bucket_size=2, num_buckets=7)
-    assert isinstance(datasource.get_file_partitioner(hints=hints), OnlineBinPacker)
+    hints = PartitionHints(min_bucket_size=1, max_bucket_size=bucket, num_buckets=7)
+    partitioner = datasource.get_file_partitioner(hints=hints)
+    assert isinstance(partitioner, OnlineBinPacker)
+    assert _bin_bytes(partitioner, [budget // 2] * 4) == [budget, budget]
+
+
+@pytest.mark.parametrize("schema", [None, pa.schema([("a", pa.string())])])
+def test_reader_drops_type_options_when_it_casts(schema):
+    """A reader that casts to the schema doesn't pass ``dictionary_columns``."""
+    reader = ParquetFileReader(
+        schema=schema, parquet_format_kwargs={"dictionary_columns": ["a"]}
+    )
+    expected = set() if schema is not None else {"a"}
+    assert set(reader._make_format().read_options.dictionary_columns) == expected
 
 
 def test_paths_and_filesystem_resolved(tmp_path):

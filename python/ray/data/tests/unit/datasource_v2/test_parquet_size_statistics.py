@@ -227,5 +227,43 @@ def test_corrupt_footer_gives_none(tmp_path, monkeypatch, payload):
     assert read_footer_stats(metadata) is None
 
 
+def _write_row_groups(tmp_path, alike):
+    """A file of 60 row groups, with the same rows in each when ``alike``."""
+    path = tmp_path / "row_groups.parquet"
+    schema = pa.schema([("a", pa.string()), ("b", pa.list_(pa.int64()))])
+    with pq.ParquetWriter(path, schema) as writer:
+        for group in range(60):
+            length = 1 if alike else 1 + group
+            rows = 20 if alike else 20 + group
+            columns = {"a": ["x" * length] * rows, "b": [[1] * length] * rows}
+            writer.write_table(pa.table(columns, schema=schema))
+    return pq.read_metadata(str(path))
+
+
+@pytest.mark.parametrize("alike", [False, True], ids=["differing", "alike"])
+@pytest.mark.parametrize(
+    "wanted", [[0, 29, 59], [59], [3, 4, 40]], ids=["spread", "last", "adjacent"]
+)
+def test_wanted_row_groups_match_the_full_walk(tmp_path, alike, wanted):
+    metadata = _write_row_groups(tmp_path, alike)
+    every = read_footer_stats(metadata)
+    stats = read_footer_stats(metadata, row_groups=wanted)
+
+    assert every is not None and stats is not None
+    assert stats == [
+        leaves if group in wanted else [] for group, leaves in enumerate(every)
+    ]
+
+
+def test_row_group_not_found_walks_them_all(tmp_path, monkeypatch):
+    metadata = _write_row_groups(tmp_path, alike=False)
+
+    def lost(self, footer, metadata, row_group):
+        raise pss._ThriftDesync("not found")
+
+    monkeypatch.setattr(pss._CompactReader, "_jump", lost)
+    assert read_footer_stats(metadata, row_groups=[59]) == read_footer_stats(metadata)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

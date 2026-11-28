@@ -10,6 +10,7 @@ Constructed from `read_api.read_parquet` when
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Union
 
@@ -50,7 +51,7 @@ from ray.data._internal.util import (
     call_with_retry,
     filesystem_for_sized_opens,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -64,6 +65,9 @@ if TYPE_CHECKING:
 
     from ray.data._internal.datasource_v2.common.online_bin_packer import (
         OnlineBinPacker,
+    )
+    from ray.data._internal.datasource_v2.interfaces.file_partitioner import (
+        PartitionHints,
     )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
@@ -253,12 +257,16 @@ class ParquetDatasourceV2(FileDataSourceV2):
             ),
             partitioning=self._partitioning,
             logical_schema=self._user_schema,
+            format_kwargs=self._parquet_format_kwargs,
+            synthesized_columns=[c.name for c in self._synthesized_columns],
         )
 
     def get_file_partitioner(self, **kwargs):
         # Listing rows carry per-row-group stats, so bin-pack them into read
         # units instead of size-estimating whole files.
-        return make_row_group_bin_packer(self._shuffle)
+        return make_row_group_bin_packer(
+            shuffle=self._shuffle, hints=kwargs.get("hints")
+        )
 
     @override
     def resolve_partitioning(
@@ -412,6 +420,7 @@ class ParquetDatasourceV2(FileDataSourceV2):
 
 def make_row_group_bin_packer(
     shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]],
+    hints: Optional["PartitionHints"] = None,
 ) -> "OnlineBinPacker":
     """Bin packer for the per-row-group listing rows ``FooterFileIndexer`` emits.
 
@@ -419,6 +428,7 @@ def make_row_group_bin_packer(
 
     Args:
         shuffle: The read's shuffle setting.
+        hints: The read's sizing hints; ``max_bucket_size`` is the bin budget.
 
     Returns:
         The ``OnlineBinPacker``, configured from the environment.
@@ -426,10 +436,16 @@ def make_row_group_bin_packer(
     from ray.data._internal.datasource_v2.common.online_bin_packer import (
         OnlineBinPacker,
     )
-    from ray.data._internal.util import MiB
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
-    max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", 128 * MiB)
+    # Bins are budgeted on the estimated decoded size, so a read task's output
+    # stays near ``target_max_block_size``. Without a block target ``read_api``
+    # passes ``sys.maxsize``, one bin for every file, so that takes the default.
+    # ``RAY_DATA_PARQUET_BIN_PACKING_BYTES`` overrides the budget, in decoded bytes.
+    budget = hints.max_bucket_size if hints is not None else None
+    if not budget or budget >= sys.maxsize:
+        budget = DEFAULT_TARGET_MAX_BLOCK_SIZE
+    max_bin_bytes = env_integer("RAY_DATA_PARQUET_BIN_PACKING_BYTES", budget)
     max_shared_open_bins = env_integer(
         "RAY_DATA_PARQUET_BIN_PACKING_MAX_SHARED_OPEN_BINS", 16
     )

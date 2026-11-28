@@ -250,7 +250,7 @@ class DeltaDatasourceV2(DataSourceWithMetadata[FileManifest]):
     ) -> "OnlineBinPacker":
         # The footer-read listing emits one row per row-group run with exact
         # sizes, as for Parquet.
-        return make_row_group_bin_packer(self._shuffle_config)
+        return make_row_group_bin_packer(self._shuffle_config, hints=hints)
 
     @override
     def infer_schema(self, sample: Optional[FileManifest]) -> pa.Schema:

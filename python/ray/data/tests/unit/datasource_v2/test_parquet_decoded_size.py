@@ -263,7 +263,8 @@ def test_estimate_against_pyarrow(tmp_path, case):
 
 
 def test_inexact_leaves_without_size_statistics_fall_back(tmp_path):
-    """Without SizeStatistics, string and list leaves fall back; the int64 stays exact."""
+    """Without SizeStatistics, a list leaf and a string leaf with no min and max fall
+    back; the int64 stays exact."""
     table = pa.table(
         {
             "i": pa.array(np.arange(N, dtype="int64")),
@@ -271,7 +272,7 @@ def test_inexact_leaves_without_size_statistics_fall_back(tmp_path):
             "l": pa.array([[i] * (i % 3) for i in range(N)]),
         }
     )
-    path = _write(table, tmp_path / "f.parquet")
+    path = _write(table, tmp_path / "f.parquet", write_statistics=["i"])
 
     assert _estimate(path, size_statistics=_no_size_statistics) == _allocated(
         path, columns=["i"]
@@ -293,6 +294,34 @@ def test_strings_without_a_dictionary_are_bounded_by_the_footer(
         use_dictionary=False,
         column_encoding={"a": encoding},
     )
+
+    estimate = _estimate(path, size_statistics=_no_size_statistics)
+    assert _allocated(path) <= estimate <= slack * _allocated(path)
+
+
+@pytest.mark.parametrize(
+    "values, slack",
+    [
+        # A few values of similar lengths: each is charged the longest's bytes.
+        (
+            [
+                None if i % 7 == 0 else ("GET", "DELETE", "OPTIONS")[i % 3]
+                for i in range(N)
+            ],
+            1.3,
+        ),
+        # Every value distinct: the dictionary page holds them all.
+        ([f"value-{i}" for i in range(N)], 1.5),
+        ([None] * N, 1.01),
+    ],
+    ids=["few values", "all distinct", "all null"],
+)
+def test_strings_with_a_dictionary_are_guessed_from_min_and_max(
+    tmp_path, values, slack
+):
+    """Without SizeStatistics, a string chunk with a dictionary page is sized from
+    the footer's min and max."""
+    path = _write(_table(values, pa.string()), tmp_path / "f.parquet")
 
     estimate = _estimate(path, size_statistics=_no_size_statistics)
     assert _allocated(path) <= estimate <= slack * _allocated(path)
