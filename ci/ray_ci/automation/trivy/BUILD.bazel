@@ -229,3 +229,30 @@ py_test(
         ci_require("pyyaml"),
     ],
 )
+
+py_library(
+    name = "local_scan_images",
+    srcs = ["local_scan_images.py"],
+    deps = [
+        ":scan_images",
+        ":trivy_report",
+        ci_require("click"),
+    ],
+)
+
+py_test(
+    name = "test_local_scan_images",
+    size = "small",
+    srcs = ["test_local_scan_images.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":local_scan_images",
+        ":scan_images",
+        ci_require("click"),
+        ci_require("pytest"),
+    ],
+)

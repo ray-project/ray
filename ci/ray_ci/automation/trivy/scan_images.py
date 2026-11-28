@@ -132,6 +132,9 @@ class Target:
     scanned: bool = False
     # Set once the final status is written and handed to the reporter.
     reported: bool = False
+    # CI refs name single-platform images, so an index is an error there.
+    # local_scan_images' targets may name an index, resolved to the architecture.
+    may_be_index = False
 
     @property
     def name(self) -> str:
@@ -240,7 +243,8 @@ def check_target(target: Target, architecture: str) -> None:
     """Record the digest, or why this ref must not be scanned. The checks
     run on the digest itself, since the tag can be re-pushed meanwhile."""
     try:
-        digest = registry.digest(target.ref)
+        platform = f"linux/{OCI_ARCH[architecture]}" if target.may_be_index else None
+        digest = registry.digest(target.ref, platform)
         pinned = f"{target.repo}@{digest}"
         manifest = registry.manifest(pinned)
         if manifest.get("mediaType") not in IMAGE_MANIFEST_TYPES:
