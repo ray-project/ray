@@ -4,6 +4,7 @@ import time
 import pytest
 
 import ray
+from ray import serve
 from ray._common.test_utils import SignalActor, async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
@@ -834,6 +835,36 @@ class TestMultiDeploymentIsolation:
         # Cleanup
         ray.kill(prefill_router._tree_actor)
         ray.kill(decode_router._tree_actor)
+
+
+class TestTreeActorRestart:
+    @pytest.mark.asyncio
+    async def test_cached_handle_survives_tree_actor_restart(self):
+        """The router keeps using its cached handle after the tree actor dies."""
+        serve.start()
+        try:
+            router = PrefixCacheAffinityRouter(
+                deployment_id=DeploymentID(name="RestartTest", app_name="app"),
+                handle_source=DeploymentHandleSource.REPLICA,
+                use_replica_queue_len_cache=False,
+                get_curr_time_s=TIMER.time,
+            )
+            router.initialize_state()
+            ray.kill(router._tree_actor, no_restart=False)
+
+            replica = FakeRunningReplica("r1")
+            replica.set_queue_len_response(0)
+            router.update_replicas([replica])
+
+            def tenant_added() -> bool:
+                tenants = ray.get(
+                    router._tree_actor.getattr.remote("tenant_to_char_count")
+                )
+                return replica.replica_id.to_full_id_str() in tenants
+
+            await async_wait_for_condition(tenant_added, timeout=30)
+        finally:
+            serve.shutdown()
 
 
 if __name__ == "__main__":
