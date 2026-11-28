@@ -104,7 +104,10 @@ from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequestStatus,
     SpreadDeploymentSchedulingPolicy,
 )
-from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+from ray.serve._private.exceptions import (
+    DeploymentIsBeingDeletedError,
+    HealthCheckFailedError,
+)
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.storage.kv_store import KVStoreBase
 from ray.serve._private.thirdparty.get_asgi_route_name import RoutePattern
@@ -782,14 +785,25 @@ def _push_freshness_window_s(health_check_period_s: float) -> float:
 class PushedHealth(NamedTuple):
     """One replica's self-health as the controller received it.
 
-    checked_at is replica-clock and only ever compared against the same replica's
-    previous value; received_at is controller-clock, so freshness is immune to skew.
+    check_seq is the replica's number for the check, taken as it started, so it
+    orders this result against the same replica's others; received_at is
+    controller-clock, so freshness is immune to skew.
     """
 
-    checked_at: float
+    check_seq: int
     received_at: float
     healthy: bool
     consecutive_failures: int
+
+
+class ProbeOutcome(NamedTuple):
+    """What the active pull probe came to this tick."""
+
+    response: ReplicaHealthCheckResponse
+    # The replica's number for the check the probe ran, if it answered with one.
+    check_seq: Optional[int]
+    # Sent, and neither answered nor timed out yet.
+    in_flight: bool
 
 
 class HealthSource(Enum):
@@ -797,7 +811,6 @@ class HealthSource(Enum):
 
     NOTHING = 1
     PROBE = 2
-    SUPERSEDED_PROBE = 3
     PUSH = 4
 
 
@@ -823,29 +836,28 @@ class PushedHealthTracker:
     def __init__(self, timer: TimerBase = Timer()):
         self._timer = timer
         self._pushed: Optional[PushedHealth] = None
-        # The newest push already consumed, so a repeat is not applied twice.
-        self._consumed_push_checked_at: float = 0.0
-        # When the newest applied push arrived, and when the probe it may have
-        # superseded started. The two settle which observation is newer.
+        # The newest check acted on or passed over, pushed or probed, so a result
+        # from an older one that arrives later is not applied.
+        self._consumed_check_seq: int = 0
+        # When the newest applied push arrived; while fresh, it stands in for a probe.
         self._applied_push_received_at: float = 0.0
-        self._applied_probe_started_at: float = 0.0
 
     def record(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
         """Stash the newest pushed result.
 
-        checked_at is replica-clock and only orders pushes from one replica. Arrival
-        is stamped here instead, on the controller clock, so freshness does not
-        depend on the replica's.
+        check_seq only orders results from one replica. Arrival is stamped here
+        instead, on the controller clock, so freshness does not depend on the
+        replica's.
         """
-        stashed = self._pushed.checked_at if self._pushed is not None else 0.0
-        if checked_at > max(self._consumed_push_checked_at, stashed):
+        stashed = self._pushed.check_seq if self._pushed is not None else 0
+        if check_seq > max(self._consumed_check_seq, stashed):
             self._pushed = PushedHealth(
-                checked_at, self._timer.time(), healthy, consecutive_failures
+                check_seq, self._timer.time(), healthy, consecutive_failures
             )
 
     def should_defer_probe(self, health_check_period_s: float) -> bool:
@@ -859,18 +871,18 @@ class PushedHealthTracker:
         window_s = _push_freshness_window_s(health_check_period_s)
         return self._timer.time() - newest < window_s
 
-    def _take_fresh_push(self, health_check_period_s: float) -> Optional[PushedHealth]:
+    def _take_fresh_push(
+        self, health_check_period_s: float, waited_on_probe: bool = False
+    ) -> Optional[PushedHealth]:
         """Consume the stashed push if it is still worth acting on."""
         if self._pushed is None:
             return None
         pushed = self._pushed
         self._pushed = None
-        self._consumed_push_checked_at = pushed.checked_at
+        self._consumed_check_seq = pushed.check_seq
         window_s = _push_freshness_window_s(health_check_period_s)
-        if self._timer.time() - pushed.received_at > window_s:
+        if not waited_on_probe and self._timer.time() - pushed.received_at > window_s:
             return None  # stale; the pull path stays the fallback
-        if pushed.received_at < self._applied_probe_started_at:
-            return None  # a probe already reported something newer
         self._applied_push_received_at = pushed.received_at
         return pushed
 
@@ -887,37 +899,48 @@ class PushedHealthTracker:
 
     def resolve(
         self,
-        probe_response: ReplicaHealthCheckResponse,
+        probe: ProbeOutcome,
         probe_started_at: float,
         probed_failures: int,
         health_check_period_s: float,
     ) -> ResolvedHealth:
-        """Decide what this tick acts on: the probe, the push, or nothing."""
-        if (
-            probe_response
-            in (
-                ReplicaHealthCheckResponse.SUCCEEDED,
-                ReplicaHealthCheckResponse.APP_FAILURE,
-                ReplicaHealthCheckResponse.ACTOR_UNAVAILABLE,
-            )
-            and probe_started_at < self._applied_push_received_at
-        ):
-            # This probe was in flight when a newer push was applied, so it carries
-            # the older observation. ACTOR_CRASHED is exempt: a crash is
-            # authoritative and a dead replica pushes nothing.
+        """Decide what this tick acts on: the probe, the push, or nothing.
+
+        The newer check wins, by the number the replica gave it as it started rather
+        than by when its result arrived: a check that started before a probe can
+        report after the probe was sent.
+        """
+        if probe.check_seq is not None:
+            # A push for an older check is dropped; one for a newer check decides.
+            self._consumed_check_seq = max(self._consumed_check_seq, probe.check_seq)
+            if self._pushed is not None and self._pushed.check_seq < probe.check_seq:
+                self._pushed = None
+            if self._pushed is None:
+                return ResolvedHealth(HealthSource.PROBE, probe.response, None)
+            if probe.response is ReplicaHealthCheckResponse.SUCCEEDED:
+                # The pass ended the streak, so the newer check's own count applies.
+                probed_failures = 0
+        elif probe.response is not ReplicaHealthCheckResponse.NONE:
+            if (
+                probe.response is ReplicaHealthCheckResponse.ACTOR_CRASHED
+                or self._pushed is None
+                or self._pushed.received_at <= probe_started_at
+            ):
+                # A crash is authoritative, and a dead replica pushes nothing.
+                return ResolvedHealth(HealthSource.PROBE, probe.response, None)
+            # No number to weigh, but the replica pushed while the probe waited, so
+            # that push is the newer word.
+        elif probe.in_flight:
+            # Its number is known only once it answers, so a push that lands
+            # meanwhile waits to be weighed against it.
             return ResolvedHealth(
-                HealthSource.SUPERSEDED_PROBE, ReplicaHealthCheckResponse.NONE, None
+                HealthSource.NOTHING, ReplicaHealthCheckResponse.NONE, None
             )
-
-        if probe_response is not ReplicaHealthCheckResponse.NONE:
-            # Watermark by when this probe started: a push that arrived before that
-            # is strictly older information and must not overwrite the result.
-            self._applied_probe_started_at = probe_started_at
-            return ResolvedHealth(HealthSource.PROBE, probe_response, None)
-
-        # No probe resolved this tick, so a fresh push is never discarded in favour
-        # of an older in-flight probe result.
-        pushed = self._take_fresh_push(health_check_period_s)
+        # One that waited on a probe aged on hold, not because the replica went quiet.
+        pushed = self._take_fresh_push(
+            health_check_period_s,
+            waited_on_probe=probe.response is not ReplicaHealthCheckResponse.NONE,
+        )
         if pushed is None:
             return ResolvedHealth(
                 HealthSource.NOTHING, ReplicaHealthCheckResponse.NONE, None
@@ -1919,7 +1942,7 @@ class ActorReplicaWrapper:
             # ValueError means the placement group is already gone.
             logger.debug(f"Gang placement group {pg_name} was already removed.")
 
-    def _resolve_active_probe(self) -> ReplicaHealthCheckResponse:
+    def _resolve_active_probe(self) -> ProbeOutcome:
         """Check the active health check (if any).
 
         self._probe_ref will be reset to `None` when the active health
@@ -1927,6 +1950,9 @@ class ActorReplicaWrapper:
         start a new health check, that's up to the caller.
 
         Returns:
+            The probe's response, the number the replica gave the check if it
+            answered with one, and whether the probe is still in flight. The
+            response is:
             - NONE if there's no active health check, or it hasn't returned
               yet and the timeout is not up.
             - SUCCEEDED if the active health check succeeded.
@@ -1942,6 +1968,7 @@ class ActorReplicaWrapper:
         # check cycles.
         self._last_health_check_latency_ms = None
         self._last_health_check_failed = None
+        check_seq: Optional[int] = None
 
         if self._probe_ref is None:
             # There is no outstanding health check.
@@ -1949,7 +1976,9 @@ class ActorReplicaWrapper:
         elif check_obj_ref_ready_nowait(self._probe_ref):  # type: ignore[arg-type]
             # Object ref is ready, ray.get it to check for exceptions.
             try:
-                ray.get(self._probe_ref)
+                reply = ray.get(self._probe_ref)
+                # Python replicas answer with the check's number; Java ones do not.
+                check_seq = reply if type(reply) is int else None
                 # Calculate health check latency.
                 self._last_health_check_latency_ms = (
                     time.time() - self._probe_started_at
@@ -1968,6 +1997,9 @@ class ActorReplicaWrapper:
             except RayError as e:
                 # Health check failed due to application-level exception.
                 logger.warning(f"Health check for {self._replica_id} failed: {e}")
+                cause = getattr(e, "cause", None)
+                if isinstance(cause, HealthCheckFailedError):
+                    check_seq = cause.check_seq
                 response = ReplicaHealthCheckResponse.APP_FAILURE
                 self._last_health_check_failed = True
         elif time.time() - self._probe_started_at > self.health_check_timeout_s:
@@ -1990,16 +2022,16 @@ class ActorReplicaWrapper:
         if response is not ReplicaHealthCheckResponse.NONE:
             self._probe_ref = None
 
-        return response
+        return ProbeOutcome(response, check_seq, self._probe_ref is not None)
 
     def record_pushed_health(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
         """Stash the replica's latest pushed self-health observation."""
-        self._pushed_health_tracker.record(checked_at, healthy, consecutive_failures)
+        self._pushed_health_tracker.record(check_seq, healthy, consecutive_failures)
 
     def _should_start_new_probe(self) -> bool:
         """Determines if a new health check should be kicked off.
@@ -2075,9 +2107,9 @@ class ActorReplicaWrapper:
             3) Consuming a pushed self-health observation when no probe resolved.
             4) Kicking off a new health check if needed.
         """
-        probe_response: ReplicaHealthCheckResponse = self._resolve_active_probe()
+        probe = self._resolve_active_probe()
         resolved = self._pushed_health_tracker.resolve(
-            probe_response,
+            probe,
             self._probe_started_at,
             self._consecutive_health_check_failures,
             self.health_check_period_s,
@@ -2085,11 +2117,7 @@ class ActorReplicaWrapper:
         response = resolved.response
         if resolved.consecutive_failures is not None:
             self._consecutive_health_check_failures = resolved.consecutive_failures
-        if resolved.source is HealthSource.SUPERSEDED_PROBE:
-            # Keep the latency sample -- the probe really did take that long -- but
-            # not the failure: the counter tracks what the controller acted on.
-            self._last_health_check_failed = None
-        elif resolved.source is HealthSource.PUSH:
+        if resolved.source is HealthSource.PUSH:
             # Only the probe paths set this, so the flag would go silent for the
             # path the controller now acts on most.
             self._last_health_check_failed = (
@@ -2557,12 +2585,12 @@ class DeploymentReplica:
 
     def record_pushed_health(
         self,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
     ) -> None:
         """Stash the replica's pushed self-health for the next health check."""
-        self._actor.record_pushed_health(checked_at, healthy, consecutive_failures)
+        self._actor.record_pushed_health(check_seq, healthy, consecutive_failures)
 
     def pull_routing_stats(self) -> Optional[Dict[str, Any]]:
         """Get the latest response from the routing stats on the replica.
@@ -5840,18 +5868,30 @@ class DeploymentState:
     def record_pushed_health(
         self,
         replica_id: ReplicaID,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
-    ) -> None:
+    ) -> Optional[Tuple[float, float]]:
         """Hand a pushed self-health result to the replica it describes.
 
         A push for a replica this controller does not track is dropped: the pull
-        probe covers it once the replica exists.
+        probe covers it once the replica exists. Returns the health-check period and
+        timeout the controller judges the replica by: changing only those needs no
+        reconfigure, so this reply is how new ones reach the replica.
         """
         replica = self._replicas.get_by_id(replica_id)
         if replica is not None:
-            replica.record_pushed_health(checked_at, healthy, consecutive_failures)
+            replica.record_pushed_health(check_seq, healthy, consecutive_failures)
+            if replica.actor_details.state == ReplicaState.RECOVERING:
+                # Its version is the target's until check_ready fetches its own.
+                return None
+            # Its own version's, which mid-rollout can differ from the target's.
+            config = replica.version.deployment_config
+        elif self._target_state.info is not None:
+            config = self._target_state.info.deployment_config
+        else:
+            return None
+        return config.health_check_period_s, config.health_check_timeout_s
 
     def check_and_update_replicas(self):
         """Check current state of all DeploymentReplica being tracked, and compare
@@ -6955,18 +6995,18 @@ class DeploymentStateManager:
     def record_replica_health(
         self,
         replica_id: ReplicaID,
-        checked_at: float,
+        check_seq: int,
         healthy: bool,
         consecutive_failures: int,
-    ) -> None:
+    ) -> Optional[Tuple[float, float]]:
         """Route a replica's pushed self-health to the replica itself."""
         deployment_state = self._deployment_states.get(replica_id.deployment_id)
         if deployment_state is None:
             # A deployment this controller no longer tracks; the push has nowhere
             # to land and the replica is on its way out.
-            return
-        deployment_state.record_pushed_health(
-            replica_id, checked_at, healthy, consecutive_failures
+            return None
+        return deployment_state.record_pushed_health(
+            replica_id, check_seq, healthy, consecutive_failures
         )
 
     def _map_actor_names_to_deployment(
