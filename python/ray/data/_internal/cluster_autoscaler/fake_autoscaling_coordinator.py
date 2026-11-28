@@ -1,16 +1,17 @@
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, FrozenSet, List, Optional
+from typing import Callable, Dict, FrozenSet, Iterable, List, Optional
 
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
     LabelSelector,
-    NodeResources,
     ResourceDict,
     ResourceRequestPriority,
     ResourceRequestStrategy,
     ResourceType,
+    SplitReservedResources,
 )
+from ray.data._internal.execution.interfaces.common import PlacementGroupIdStr
 
 
 class FakeAutoscalingCoordinator(AutoscalingCoordinator):
@@ -32,6 +33,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         get_time: Callable[[], float] = time.time,
         initial_cluster_resources: Optional[List[ResourceDict]] = None,
         initial_cluster_resources_by_node: Optional[Dict[str, ResourceDict]] = None,
+        placement_group_resources_by_node: Optional[Dict[str, ResourceDict]] = None,
     ):
         """Initialize the coordinator.
 
@@ -46,6 +48,9 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
             initial_cluster_resources_by_node: Per-node allocation returned by
                 ``get_reserved_resources`` while an unexpired
                 allocation exists.
+            placement_group_resources_by_node: Per-node placement-group part
+                returned by ``get_reserved_resources`` while an unexpired
+                allocation exists.
         """
         if initial_cluster_resources is None:
             initial_cluster_resources = []
@@ -55,7 +60,11 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         self._get_time = get_time
         self._initial_cluster_resources = initial_cluster_resources
         self._initial_cluster_resources_by_node = initial_cluster_resources_by_node
+        self._placement_group_resources_by_node = (
+            placement_group_resources_by_node or {}
+        )
         self._allocation: Optional[FakeAutoscalingCoordinator.Allocation] = None
+        self.placement_group_ids: FrozenSet[PlacementGroupIdStr] = frozenset()
 
     def request_resources(
         self,
@@ -90,19 +99,37 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
     def cancel_request(self) -> None:
         self._allocation = None
 
-    def get_reserved_resources(self) -> NodeResources:
+    def register_placement_groups(
+        self, placement_group_ids: Iterable[PlacementGroupIdStr]
+    ) -> None:
+        """Record them; the fake reserves every requested bundle regardless."""
+        self.placement_group_ids = frozenset(placement_group_ids)
+
+    def get_reserved_resources(self) -> SplitReservedResources:
         """Return the reserved resources if they haven't expired."""
         if self._allocation is None:
-            return {}
+            return SplitReservedResources({}, {})
 
         if self._allocation.expiration_time_s < self._get_time():
             self._allocation = None
-            return {}
+            return SplitReservedResources({}, {})
 
+        placement_group = {
+            n: r.copy() for n, r in self._placement_group_resources_by_node.items()
+        }
         # An explicit per-node seed wins (its docstring promises exactly this);
         # otherwise synthesize one node per reserved bundle.
         if self._initial_cluster_resources_by_node:
-            return {
-                n: r.copy() for n, r in self._initial_cluster_resources_by_node.items()
-            }
-        return {f"node_{i}": r.copy() for i, r in enumerate(self._allocation.resources)}
+            return SplitReservedResources(
+                non_placement_group={
+                    n: r.copy()
+                    for n, r in self._initial_cluster_resources_by_node.items()
+                },
+                placement_group=placement_group,
+            )
+        return SplitReservedResources(
+            non_placement_group={
+                f"node_{i}": r.copy() for i, r in enumerate(self._allocation.resources)
+            },
+            placement_group=placement_group,
+        )

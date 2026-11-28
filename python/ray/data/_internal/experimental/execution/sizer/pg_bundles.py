@@ -32,9 +32,8 @@ class PlacementGroupBundles:
     them each static-PG op may land in.
 
     Shapes are fixed at PG creation, so this is read once when the sizer is
-    built. A PG the view has no bundles for (not created yet, or the PG table
-    unreadable) is left out: its ops' PG capacity is unknown, and the sizer
-    caps them at their pool's max size instead (see
+    built. A PG the view has no bundles for is left out: its ops' PG capacity
+    is unknown, and the sizer caps them at their pool's max size instead (see
     ``OperatorSizer._read_pg_capacity``).
     """
 

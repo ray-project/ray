@@ -293,6 +293,7 @@ class _FakeOp(ExperimentalActorPoolMapOperator):
         self._user_set_ray_remote_args = dict(user_ray_remote_args or {})
         self._ray_remote_args = dict(ray_remote_args or {})
         self._user_set_ray_remote_args_fn = uses_ray_remote_args_fn
+        self._fn_placement_groups = {}
         self._placement_constraint = None
         self._data_context = DataContext.get_current()
         self._pool = pool
@@ -435,8 +436,11 @@ class _FakeReporter(ActorOnlyResourceReporter):
     def get_cluster_view(self, **kwargs):
         return self.view
 
-    def prefetch_pg_bundles(self, placement_groups):
+    def cache_pg_bundle_shapes(self, placement_groups):
         pass
+
+    def register_placement_groups(self, placement_groups):
+        self.registered_placement_groups = list(placement_groups)
 
 
 class _FakeClock:
@@ -1090,6 +1094,66 @@ def test_pg_bundles_are_per_bundle_slots(caplog, propagate_logs):
     ledger = ConstraintAwareCapacityLedger(snapshot)
     assert ledger.max_upscale_delta(anywhere) == 4
     assert ledger.max_upscale_delta(big) == 0  # 4 GPU free, but split in two
+
+
+def test_placement_group_bundles_are_not_free_for_non_pg_ops():
+    """The slice includes the placement group's bundles on the nodes Ray placed
+    them, but only PG actors can use them: non-PG ops see that node's capacity
+    without them, read from each tick's view, so a group Ray places after the
+    sizer is built is taken out on the next tick. The group is registered with
+    the coordinator."""
+    pg = _FakePG("pg1")
+    reserved_by_node = {
+        "g1": ExecutionResources(cpu=8, gpu=4),
+        "c1": ExecutionResources(cpu=8),
+    }
+    view = DatasetAllocationView(
+        reserved_by_node=reserved_by_node,
+        labels_by_node={"g1": {}, "c1": {}},
+        pg_bundles={"pg1": [ExecutionResources(cpu=1, gpu=1)] * 2},
+    )
+    infer = _pg_op("infer", pg, cpu=1, gpu=1, running=2)
+    write = _FakeOp(
+        "write",
+        _FakePool(min_size=1, max_size=10, cpu=1, running=1),
+        node="g1",
+        inputs=[infer],
+    )
+    sizer, _ = _bootstrapped(infer, write, view=view)
+    assert sizer.reporter.registered_placement_groups == [pg]
+
+    # Pending group: it holds nothing yet.
+    assert _snapshot_of(sizer).reserved_by_node["g1"] == reserved_by_node["g1"]
+
+    sizer.reporter.view = replace(
+        view, pg_reserved_by_node={"g1": ExecutionResources(cpu=2, gpu=2)}
+    )
+    capacity = _snapshot_of(sizer)
+    assert capacity.reserved_by_node["g1"] == ExecutionResources(cpu=6, gpu=2)
+    assert capacity.free_by_node["g1"] == ExecutionResources(cpu=5, gpu=2)
+    assert capacity.free_by_node["c1"] == ExecutionResources(cpu=8)
+
+
+def test_fn_placement_groups_are_registered():
+    """Placement groups a ray_remote_args_fn creates per actor are registered
+    with the coordinator alongside the static ones (each sizing tick does
+    this), so the coordinator takes their bundles out of the non-PG slice."""
+    static_pg = _FakePG("static")
+    infer = _pg_op("infer", static_pg, gpu=1)
+    embed = _FakeOp(
+        "embed",
+        _FakePool(min_size=1, max_size=4, gpu=1),
+        node=None,
+        uses_ray_remote_args_fn=True,
+        inputs=[infer],
+    )
+    sizer, _ = _bootstrapped(infer, embed)
+    assert sizer.reporter.registered_placement_groups == [static_pg]
+
+    fn_pg = _FakePG("fn")
+    embed._fn_placement_groups = {"fn": cast(Any, fn_pg)}
+    sizer._register_placement_groups()
+    assert sizer.reporter.registered_placement_groups == [static_pg, fn_pg]
 
 
 @pytest.mark.parametrize(

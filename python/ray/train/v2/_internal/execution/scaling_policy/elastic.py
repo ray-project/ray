@@ -276,12 +276,13 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         reserved_resources = None
         try:
+            # Workers fit in placement-group bundles and packed ones alike.
             reserved_resources = ray.get(
                 self._autoscaling_coordinator.get_reserved_resources.remote(
                     self._requester_id
                 ),
                 timeout=AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
-            )
+            ).total()
         except Exception:
             msg = (
                 f"Failed to get reserved resources for {self._requester_id}."

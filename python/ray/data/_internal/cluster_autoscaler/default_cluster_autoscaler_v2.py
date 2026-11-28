@@ -443,7 +443,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         """Get total resources available from the autoscaling coordinator."""
-        resources = self._autoscaling_coordinator.get_reserved_resources()
+        resources = self._autoscaling_coordinator.get_reserved_resources().total()
         total = ExecutionResources.zero()
         for res in resources.values():
             total = total.add(ExecutionResources.from_resource_dict(res))

@@ -1,7 +1,8 @@
 """Unit tests for ``ActorOnlyResourceReporter`` and its wiring into the cluster
 autoscaler's utilization gauge. Fakes only; no cluster."""
 import sys
-from typing import Any, cast
+from types import SimpleNamespace
+from typing import Any, FrozenSet, List, cast
 
 import pytest
 
@@ -142,6 +143,86 @@ def test_per_node_allocation_and_change_tracking():
     view = reporter.get_cluster_view()
     assert view.reserved_by_node["node1"].cpu == 2
     assert view.labels_by_node == {} and view.pg_bundles == {}
+
+
+def _fake_pg(id_hex: str, bundle_specs=()) -> Any:
+    return SimpleNamespace(
+        id=SimpleNamespace(hex=lambda: id_hex), bundle_specs=list(bundle_specs)
+    )
+
+
+@pytest.mark.parametrize(
+    "pg_ids, expected",
+    [
+        # Several ops sharing one group register it once.
+        (["pg1", "pg1"], {"pg1"}),
+        # Every group the dataset uses is registered.
+        (["pg1", "pg2"], {"pg1", "pg2"}),
+        ([], set()),
+    ],
+)
+def test_register_placement_groups(pg_ids, expected):
+    coordinator = FakeAutoscalingCoordinator()
+    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+    reporter.register_placement_groups([_fake_pg(pg_id) for pg_id in pg_ids])
+    assert coordinator.placement_group_ids == expected
+
+
+class _RecordingCoordinator(FakeAutoscalingCoordinator):
+    """Records every placement-group registration it is sent."""
+
+    def __init__(self):
+        super().__init__()
+        self.sent: List[FrozenSet[str]] = []
+
+    def register_placement_groups(self, placement_group_ids):
+        self.sent.append(frozenset(placement_group_ids))
+        super().register_placement_groups(placement_group_ids)
+
+
+def test_register_placement_groups_sends_only_changes():
+    """Re-registering the same set sends nothing; a new group sends the whole
+    set again."""
+    coordinator = _RecordingCoordinator()
+    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+
+    reporter.register_placement_groups([_fake_pg("pg1")])
+    reporter.register_placement_groups([_fake_pg("pg1")])
+    reporter.register_placement_groups([_fake_pg("pg1"), _fake_pg("pg2")])
+    assert coordinator.sent == [frozenset({"pg1"}), frozenset({"pg1", "pg2"})]
+
+
+def test_cache_pg_bundle_shapes_reads_bundle_specs():
+    """Shapes come from the group's own bundle specs, in bundle-index order."""
+    reporter = ActorOnlyResourceReporter(
+        _topology(), FakeAutoscalingCoordinator(), _FakeResourceBank()
+    )
+    reporter.cache_pg_bundle_shapes(
+        [_fake_pg("pg1", [{"CPU": 1, "GPU": 1}, {"CPU": 2}])]
+    )
+    view = reporter.get_cluster_view(include_pg_bundles=True)
+    assert view.pg_bundles == {
+        "pg1": [ExecutionResources(cpu=1, gpu=1), ExecutionResources(cpu=2)]
+    }
+
+
+def test_cluster_view_carries_placement_group_part():
+    """``reserved_by_node`` is the whole allocation; ``pg_reserved_by_node``
+    is the part the coordinator says the registered groups hold."""
+    coordinator = FakeAutoscalingCoordinator(
+        initial_cluster_resources_by_node={"g1": {"CPU": 6}, "c1": {"CPU": 8}},
+        placement_group_resources_by_node={"g1": {"CPU": 2, "GPU": 2}},
+    )
+    coordinator.request_resources([{"CPU": 1}], expire_after_s=60)
+    reporter = ActorOnlyResourceReporter(_topology(), coordinator, _FakeResourceBank())
+
+    view = reporter.get_cluster_view()
+    assert view.reserved_by_node == {
+        "g1": ExecutionResources(cpu=8, gpu=2),
+        "c1": ExecutionResources(cpu=8),
+    }
+    assert view.pg_reserved_by_node == {"g1": ExecutionResources(cpu=2, gpu=2)}
+    assert reporter.get_global_limits() == ExecutionResources(cpu=16, gpu=2)
 
 
 @pytest.mark.parametrize("cpu_running,should_scale_up", [(4.0, False), (8.0, True)])

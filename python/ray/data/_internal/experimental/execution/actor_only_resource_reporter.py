@@ -42,7 +42,8 @@ class DatasetAllocationView:
     """Snapshot of the cluster as visible to one dataset, taken once per sizing
     tick so every sizing phase plans against the same numbers."""
 
-    # This dataset's coordinator allocation, per node.
+    # This dataset's coordinator allocation, per node, including
+    # ``pg_reserved_by_node``.
     reserved_by_node: Dict[NodeIdStr, ExecutionResources]
     # Node labels (``ray.nodes()[...]["Labels"]``) per alive node; resolves
     # label_selector eligibility. Empty when constraint-aware placement is off.
@@ -50,6 +51,11 @@ class DatasetAllocationView:
     # Bundle shapes per placement group the topology references. Only populated
     # on the PG-aware path; carries no node mapping (Ray core places PGs).
     pg_bundles: Dict[PlacementGroupIdStr, List[ExecutionResources]] = field(
+        default_factory=dict
+    )
+    # The part of ``reserved_by_node`` this dataset's registered placement
+    # groups hold, on the nodes Ray placed them. Only PG actors can use it.
+    pg_reserved_by_node: Dict[NodeIdStr, ExecutionResources] = field(
         default_factory=dict
     )
     # Nodes Ray core is draining. Their allocation is still reported, but
@@ -76,9 +82,11 @@ class ActorOnlyResourceReporter:
         self._autoscaling_coordinator = autoscaling_coordinator
         self._resource_bank = resource_bank
         # Placement-group bundle shapes, keyed by ``PlacementGroup.id.hex()``.
-        # Shapes are fixed at PG creation, so each PG is fetched at most once
-        # (``prefetch_pg_bundles``) and served from here afterwards.
+        # Shapes are fixed at PG creation, so each PG is cached once
+        # (``cache_pg_bundle_shapes``) and served from here afterwards.
         self._pg_bundles_by_id: Dict[PlacementGroupIdStr, List[ExecutionResources]] = {}
+        # Placement groups last registered with the coordinator.
+        self._registered_pg_ids: FrozenSet[PlacementGroupIdStr] = frozenset()
         # Signature of the last-seen per-node allocation and when it last
         # changed (see ``seconds_since_allocation_change``).
         self._alloc_signature: Optional[
@@ -109,7 +117,8 @@ class ActorOnlyResourceReporter:
     def get_global_limits(self) -> ExecutionResources:
         """This dataset's allocated cluster capacity, from the coordinator."""
         limits = ExecutionResources.zero()
-        for bundle in self._autoscaling_coordinator.get_reserved_resources().values():
+        reserved = self._autoscaling_coordinator.get_reserved_resources().total()
+        for bundle in reserved.values():
             limits = limits.add(ExecutionResources.from_resource_dict(bundle))
         return limits
 
@@ -121,11 +130,27 @@ class ActorOnlyResourceReporter:
     def get_reserved_resources_by_node(self) -> Dict[NodeIdStr, ExecutionResources]:
         """This dataset's coordinator allocation keyed by node id -- the view
         actors are placed against. Sums to ``get_global_limits``."""
+        reserved_by_node, _ = self._get_split_reserved_by_node()
+        return reserved_by_node
+
+    def _get_split_reserved_by_node(
+        self,
+    ) -> Tuple[
+        Dict[NodeIdStr, ExecutionResources], Dict[NodeIdStr, ExecutionResources]
+    ]:
+        """Read the coordinator allocation once.
+
+        Returns:
+            The whole allocation per node, and the placement-group part of it.
+        """
+        split = self._autoscaling_coordinator.get_reserved_resources()
         alloc = {
             node_id: ExecutionResources.from_resource_dict(resources)
-            for node_id, resources in (
-                self._autoscaling_coordinator.get_reserved_resources().items()
-            )
+            for node_id, resources in split.total().items()
+        }
+        pg_alloc = {
+            node_id: ExecutionResources.from_resource_dict(resources)
+            for node_id, resources in split.placement_group.items()
         }
         # Object store is left out on purpose: it is shared from each node's
         # leftover capacity and moves whenever other requesters come and go,
@@ -134,35 +159,43 @@ class ActorOnlyResourceReporter:
         if signature != self._alloc_signature:
             self._alloc_signature = signature
             self._alloc_changed_at = time.monotonic()
-        return alloc
+        return alloc, pg_alloc
 
     def seconds_since_allocation_change(self) -> float:
         """How long the per-node allocation has been unchanged, as of the last
         ``get_reserved_resources_by_node`` call."""
         return time.monotonic() - self._alloc_changed_at
 
-    def prefetch_pg_bundles(self, placement_groups: List["PlacementGroup"]) -> None:
-        """Fetch and cache the bundle shapes of the given placement groups.
+    def cache_pg_bundle_shapes(self, placement_groups: List["PlacementGroup"]) -> None:
+        """Cache each placement group's bundle shapes for ``get_cluster_view``.
 
-        A PG whose table is not readable yet is left uncached and retried on
-        the next call, so an early fetch never pins it to "no bundles".
+        Shapes come from ``PlacementGroup.bundle_specs``, which the creating
+        process already holds, so no GCS read is needed. Where the bundles
+        were placed comes from the coordinator (``pg_reserved_by_node``).
         """
-        from ray.util.placement_group import placement_group_table
-
         for pg in placement_groups:
             pg_id = pg.id.hex()
             if pg_id in self._pg_bundles_by_id:
                 continue
-            table = placement_group_table(pg)
-            bundles = table.get("bundles", {}) or {}
-            if not bundles:
-                continue
-            # ``bundles`` is keyed by bundle index; keep an index-ordered list
-            # so consumers can index by ``placement_group_bundle_index``.
+            # Index-ordered, so consumers can index by
+            # ``placement_group_bundle_index``.
             self._pg_bundles_by_id[pg_id] = [
-                ExecutionResources.from_resource_dict(bundles[idx])
-                for idx in sorted(bundles)
+                ExecutionResources.from_resource_dict(bundle)
+                for bundle in pg.bundle_specs
             ]
+
+    def register_placement_groups(
+        self, placement_groups: List["PlacementGroup"]
+    ) -> None:
+        """Register this dataset's placement groups with the coordinator, so
+        other requesters are not handed the capacity they hold.
+
+        Replaces the registered set; sends nothing when it hasn't changed.
+        """
+        pg_ids = frozenset(pg.id.hex() for pg in placement_groups)
+        if pg_ids != self._registered_pg_ids:
+            self._autoscaling_coordinator.register_placement_groups(pg_ids)
+            self._registered_pg_ids = pg_ids
 
     def get_cluster_view(
         self,
@@ -172,10 +205,12 @@ class ActorOnlyResourceReporter:
         include_draining_nodes: bool = False,
     ) -> DatasetAllocationView:
         """Snapshot of the cluster as visible to this dataset right now."""
+        reserved_by_node, pg_reserved_by_node = self._get_split_reserved_by_node()
         return DatasetAllocationView(
-            reserved_by_node=self.get_reserved_resources_by_node(),
+            reserved_by_node=reserved_by_node,
             labels_by_node=get_alive_node_labels() if include_labels else {},
             pg_bundles=dict(self._pg_bundles_by_id) if include_pg_bundles else {},
+            pg_reserved_by_node=pg_reserved_by_node,
             draining_nodes=(
                 frozenset(get_draining_nodes())
                 if include_draining_nodes
