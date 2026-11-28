@@ -1,6 +1,7 @@
 from collections import defaultdict
 from typing import Dict
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.stopper.stopper import Stopper
 from ray.util.annotations import PublicAPI
 
@@ -18,7 +19,12 @@ class MaximumIterationStopper(Stopper):
         self._iter = defaultdict(lambda: 0)
 
     def __call__(self, trial_id: str, result: Dict):
-        self._iter[trial_id] += 1
+        # Use the reported iteration: a trial restored from an older checkpoint
+        # replays iterations, which counting calls would count twice.
+        iteration = result.get(TRAINING_ITERATION)
+        if iteration is None:
+            iteration = self._iter[trial_id] + 1
+        self._iter[trial_id] = iteration
         return self._iter[trial_id] >= self._max_iter
 
     def stop_all(self):
