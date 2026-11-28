@@ -5,6 +5,21 @@ load("@rules_python//python:defs.bzl", "py_binary")
 # rule out of this file to keep it in sync with the API-page set.
 exports_files(["test.rules.txt"])
 
+# Read by //ci/ray_ci/automation/trivy:build_report, for the images the scan
+# steps should cover.
+exports_files(
+    ["image-scan.rayci.yml"],
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
+
+# Every pipeline file, which //ci/ray_ci/automation/trivy:test_build_report
+# searches for steps that publish images, to check the scans cover them.
+filegroup(
+    name = "pipelines",
+    srcs = glob(["**/*.yml"]),
+    visibility = ["//ci/ray_ci/automation/trivy:__pkg__"],
+)
+
 py_binary(
     name = "copy_files",
     srcs = ["copy_files.py"],

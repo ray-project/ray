@@ -694,6 +694,7 @@ ci/docker/forge.aarch64.wanda.yaml
 .buildkite/hooks/post-command
 .buildkite/release/
 .buildkite/release-automation/
+.buildkite/image-scan.rayci.yml
 build-wheel.sh
 build-image.sh
 @ tools
@@ -749,6 +750,12 @@ ci/ci.sh
 # fallback.
 .buildkite/dependencies.rayci.yml
 @ deplock_check
+;
+
+# The push steps here are what the Trivy scans must cover
+# (//ci/ray_ci/automation/trivy:test_build_report checks them).
+.buildkite/linux_aarch64.rayci.yml
+@ java tools
 ;
 
 .buildkite/*.rayci.yml
