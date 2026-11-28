@@ -157,13 +157,13 @@ llms_txt_exclude = [
 # sphinx-collections). No docname enumeration needed here. Notebooks remain
 # fully rendered in the HTML build; only the agent corpus drops them.
 
-# Thin API-reference hub pages: a title plus an autosummary table, under 40 words
-# of real prose. The per-symbol pages they link to are already excluded above via
-# the `*/api/doc/*` patterns, so an agent gains nothing from the shell — and a
-# description on one would only restate its title. `data/api/_autogen` has no
-# title at all, and the two `*_regression_example` pages are literalinclude
-# stubs with zero prose. Every remaining in-scope page carries a curated
-# description; these are the pages where exclusion beats describing.
+# Thin API-reference pages: a title plus autosummary tables or inline autodoc
+# directives, under 40 words of real prose. The per-symbol pages an autosummary
+# table links to are already excluded above via the `*/api/doc/*` patterns, so an
+# agent gains nothing from the shell — and a description on one would only
+# restate its title. `data/api/_autogen` has no title at all. Every remaining
+# in-scope page carries a curated description; these are the pages where
+# exclusion beats describing.
 llms_txt_exclude += [
     "data/api/_autogen",
     "data/api/aggregate",
@@ -217,6 +217,19 @@ llms_txt_exclude += [
     "tune/api/result_grid",
     "tune/api/search_space",
     "tune/api/syncing",
+    "rllib/api/algorithm-config",
+    "rllib/api/connector-v2",
+    "rllib/api/distributions",
+    "rllib/api/env/external",
+    "rllib/api/env/multi_agent_env",
+    "rllib/api/env/multi_agent_env_runner",
+    "rllib/api/env/multi_agent_episode",
+    "rllib/api/env/single_agent_env_runner",
+    "rllib/api/env/single_agent_episode",
+    "rllib/api/env/utils",
+    "rllib/api/index",
+    "rllib/api/learner",
+    "rllib/api/offline",
 ]
 
 # -- sphinx-collections: pull external template files at build time -----------

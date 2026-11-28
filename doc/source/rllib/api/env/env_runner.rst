@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for the EnvRunner base class that samples environments: env and module creation, sampling, metrics, and single- and multi-agent runners.
+
 .. _env-runner-reference-docs:
 
 EnvRunner API

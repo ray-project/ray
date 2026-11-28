@@ -1,3 +1,6 @@
+.. meta::
+   :description: API reference for RLlib environments: gymnasium and MultiAgentEnv support, env vectorization, external envs, and the EnvRunner and episode APIs.
+
 .. _env-reference-docs:
 
 Environments
