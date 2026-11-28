@@ -877,9 +877,9 @@ Query reads require an explicit Arrow schema. DataSourceV2 planning needs it on 
 
 In the default `read_mode="hs2"`, non-nullable fields reject null rows. Table reads support scalar boolean values, numbers, strings, binary values, dates, timestamps, and decimals. Hive `TIMESTAMP` maps to `pa.timestamp("us")` without a time zone; `impyla` truncates sub-microsecond precision. Complex types are unsupported in this mode.
 
-Because table reads use `SELECT *`, an unsupported column type prevents reading the whole table. Use `query=` to select supported columns and provide a matching schema.
+In HS2 mode, table schema inference checks every column before Dataset optimization. An unsupported column type prevents planning a table read, even if you later select supported columns. Use `query=` to select supported columns and provide a matching schema.
 
-The scanner doesn't push Ray Data filters, projections, or `Dataset.limit()` into HiveServer2. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause.
+For table reads, Ray pushes required columns and `Dataset.limit()` into HiveServer2 when the operation order permits. This reduces returned data and Ray processing. It doesn't guarantee less storage scanning. The `limit` argument applies only to table reads and adds a SQL `LIMIT` clause. Dataset filters run in Ray and prevent a later limit from moving ahead of them. Ray sends query SQL unchanged. For projections containing special column names, Ray reads all columns and selects the requested columns locally.
 
 Pass a zero-argument `connection_factory` that Ray can serialize and that returns a new connection from `impala.dbapi.connect()` on each call. Ray calls the factory on the driver for table metadata and on the read worker for data. Query reads with an explicit schema only call it on the read worker. Ray closes each returned connection. Install the factory's dependencies and make its credentials and certificate files available wherever it runs.
 
@@ -913,6 +913,7 @@ def create_connection():
 dataset = ray.data.read_hive(
     "analytics.events", connection_factory=create_connection, user="reader"
 )
+reduced_dataset = dataset.select_columns(["name"]).limit(20)
 query_dataset = ray.data.read_hive(
     query="SELECT * FROM analytics.events",
     schema=pa.schema(
@@ -936,7 +937,7 @@ aliased_query_dataset = ray.data.read_hive(
 )
 ```
 
-The example uses the binary HiveServer2 protocol. Each read runs at most one data query in one Ray task. With the default error tolerance, a read error or worker loss fails that Dataset execution. `read_hive` preserves `DataContext.max_errored_blocks`. If you allow block errors, execution can skip failed output and return an incomplete result. The HiveServer2 reader ignores `override_num_blocks` with a warning to preserve streaming. Output blocks follow Ray's normal block-sizing policy. This parameter doesn't parallelize the HiveServer2 query. Ray doesn't retry failed reads. Each Dataset execution starts a new query, except for a table read with `limit=0`, which skips the data query. Pass only trusted, row-producing SQL.
+The example uses the binary HiveServer2 protocol. Each read runs at most one data query in one Ray task. With the default error tolerance, a read error or worker loss fails that Dataset execution. `read_hive` preserves `DataContext.max_errored_blocks`. If you allow block errors, execution can skip failed output and return an incomplete result. The HiveServer2 reader ignores `override_num_blocks` with a warning to preserve streaming. Output blocks follow Ray's normal block-sizing policy. This parameter doesn't parallelize the HiveServer2 query. Ray doesn't retry failed reads. Pass only trusted, row-producing SQL.
 
 :::{note}
 The reader attempts to cancel the HiveServer2 operation and close its cursor and connection when reading ends. Closing a Dataset iterator can force Ray to stop the read worker before Python cleanup runs. Immediate operation cancellation or explicit connection cleanup isn't guaranteed.

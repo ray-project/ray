@@ -125,7 +125,7 @@ def count_required_parameters(fn: Callable) -> int:
         [
             p
             for p in params
-            if p.default == inspect.Parameter.empty and p.kind in positional_param_kinds
+            if p.default is inspect.Parameter.empty and p.kind in positional_param_kinds
         ]
     )
 

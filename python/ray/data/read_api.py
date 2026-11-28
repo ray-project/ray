@@ -4235,6 +4235,14 @@ def read_webdataset(
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://github.com/webdataset/webdataset>`_ files.
 
+    Note:
+        With ``DataContext.use_datasource_v2`` enabled:
+
+        - A field whose dtype differs between samples can fail the read.
+        - The default decoder returns grayscale images as ``(H, W, 1)``.
+        - Arrays in one field whose number of dimensions differs between
+          samples, such as ``.npy`` members, can get a leading axis of size 1.
+
     Args:
         paths: A single file/directory path or a list of file/directory paths.
             A list of paths can contain both files and directories.
@@ -4295,6 +4303,43 @@ def read_webdataset(
 
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        from ray.data._internal.datasource_v2.formats.webdataset.webdataset_datasource_v2 import (
+            WebDatasetDatasourceV2,
+        )
+
+        datasource_v2 = WebDatasetDatasourceV2(
+            paths=paths if isinstance(paths, list) else [paths],
+            filesystem=filesystem,
+            decoder=decoder,
+            fileselect=fileselect,
+            filerename=filerename,
+            suffixes=suffixes,
+            verbose_open=verbose_open,
+            expand_json=expand_json,
+            include_paths=include_paths,
+            file_extensions=file_extensions,
+            shuffle=shuffle,
+            open_stream_args=arrow_open_stream_args,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            label_selector=label_selector,
+            fallback_strategy=fallback_strategy,
+            max_calls=max_calls,
+            resources=resources,
+            accelerator_type=accelerator_type,
+            runtime_env=runtime_env,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
 
     datasource = WebDatasetDatasource(
         paths,
@@ -4509,9 +4554,10 @@ def read_hive(
         needs it on the driver before the read worker executes the query.
         See `issue #66840 <https://github.com/ray-project/ray/issues/66840>`_
         for optional schema inference from the same query execution.
-        Table reads select every column. In HS2 mode, if a table has
-        unsupported column types, use ``query`` to select supported columns
-        and provide a matching schema.
+        In HS2 mode, table schema inference checks every column before Dataset
+        optimization. If a table has unsupported column types, use ``query``
+        to select supported columns and provide a matching schema, even when
+        you need only a subset of the table columns.
 
         In ``read_mode="hs2"``, each Dataset execution runs at most one
         HiveServer2 data query in one Ray task. Ray doesn't retry failed
@@ -4519,8 +4565,10 @@ def read_hive(
         tolerance, a read error or worker loss fails that Dataset execution.
         This API preserves ``DataContext.max_errored_blocks``. If you allow
         block errors, execution can skip failed output and return an
-        incomplete result. This scanner doesn't push
-        Dataset filters, projections, or ``Dataset.limit()`` into HiveServer2.
+        incomplete result. For table reads, Ray pushes required columns and
+        ``Dataset.limit()`` into HiveServer2 when the operation order permits.
+        Dataset filters run in Ray and prevent a later limit from moving ahead
+        of them. Ray sends query SQL unchanged.
         The ``limit`` argument adds a SQL ``LIMIT`` for table reads.
         The HiveServer2 reader ignores ``override_num_blocks`` with a warning
         to preserve streaming. Output blocks follow Ray's normal block-sizing
@@ -4531,6 +4579,9 @@ def read_hive(
         can force Ray to stop the read worker before Python cleanup runs.
         Immediate operation cancellation or explicit connection cleanup isn't
         guaranteed.
+
+        For projections containing special column names, Ray reads all columns
+        and selects the requested columns locally.
 
     Notes:
         Direct reads retain Hive's schema. Widening supports only signed
@@ -6945,7 +6996,93 @@ def read_delta(
             _, normalized_path = pafs.FileSystem.from_uri(path)
             filesystem = pafs.SubTreeFileSystem(normalized_path, resolved.filesystem)
 
-    dt = DeltaTable(path, version=version, storage_options=storage_options)
+    ctx = DataContext.get_current()
+    dt = None
+    # The V2 reader doesn't turn ``partition_filters`` into partition pruning
+    # yet, so it would read every partition. Such a read goes to the V1
+    # reader without opening the table for the V2 checks.
+    if (
+        ctx.use_datasource_v2
+        and ctx._use_delta_datasource_v2
+        and partition_filters is None
+    ):
+        import deltalake
+        from packaging.version import parse as parse_version
+
+        from ray.data._internal.datasource_v2.formats.delta.delta_datasource_v2 import (
+            DeltaDatasourceV2,
+            delta_datasource_v2_unsupported_reason,
+        )
+
+        # The V2 reader lists the data files in its listing tasks, so the driver
+        # only needs the log's metadata. deltalake 1.6 and later ignore
+        # ``without_files`` (with a DeprecationWarning) and load the file list:
+        # they have no metadata-only load yet
+        # (https://github.com/delta-io/delta-rs/issues/5034).
+        loads_files = parse_version(deltalake.__version__) >= parse_version("1.6")
+        checked_table = DeltaTable(
+            path,
+            version=version,
+            storage_options=storage_options,
+            **({} if loads_files else {"without_files": True}),
+        )
+        unsupported_reason = delta_datasource_v2_unsupported_reason(
+            checked_table,
+            include_paths=include_paths,
+            arrow_parquet_args=arrow_parquet_args,
+        )
+        if unsupported_reason is None:
+            datasource_v2 = DeltaDatasourceV2(
+                checked_table,
+                storage_options=storage_options,
+                filesystem=filesystem,
+                columns=columns,
+                include_paths=include_paths,
+                shuffle=shuffle,
+            )
+            return _read_datasource_v2(
+                datasource_v2,
+                parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+                num_cpus=num_cpus,
+                num_gpus=num_gpus,
+                memory=memory,
+                ray_remote_args=ray_remote_args,
+                label_selector=label_selector,
+                fallback_strategy=fallback_strategy,
+                max_calls=max_calls,
+                resources=resources,
+                accelerator_type=accelerator_type,
+                runtime_env=runtime_env,
+                concurrency=concurrency,
+            )
+        logger.info(
+            "Reading Delta table %r with the V1 reader: %s.", path, unsupported_reason
+        )
+        # Read the version that was checked. With its file list loaded, the
+        # checked table is the one V1 needs, so don't load it again.
+        dt = (
+            checked_table
+            if loads_files
+            else DeltaTable(
+                path,
+                version=checked_table.version(),
+                storage_options=storage_options,
+            )
+        )
+
+    elif (
+        ctx.use_datasource_v2
+        and ctx._use_delta_datasource_v2
+        and partition_filters is not None
+    ):
+        logger.info(
+            "Reading Delta table %r with the V1 reader: the DataSourceV2 reader "
+            "doesn't apply `partition_filters` yet.",
+            path,
+        )
+
+    if dt is None:
+        dt = DeltaTable(path, version=version, storage_options=storage_options)
     # The data files of a column-mapped table name their columns with physical
     # names (such as ``col-<uuid>``) that only the log maps to the table's
     # column names. ``to_pyarrow_dataset`` doesn't apply that mapping, and some

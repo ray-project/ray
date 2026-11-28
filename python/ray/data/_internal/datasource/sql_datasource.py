@@ -118,7 +118,8 @@ class SQLDatasource(Datasource):
             parallelism: The number of shards to split the read into.
 
         Returns:
-            bool: True if sharding is supported, False otherwise.
+            bool: True if sharding is supported, or False if sharding is not
+                requested or not supported.
         """
         if parallelism <= 1 or self.shard_keys is None:
             return False
@@ -145,13 +146,17 @@ class SQLDatasource(Datasource):
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:
-            """Read all data in a single block when sharding is not supported."""
+            """Read all data in a single block without sharding."""
             with _connect(self.connection_factory) as cursor:
                 _execute(cursor, self.sql, self.sql_params)
                 return [_cursor_to_block(cursor)]
 
-        # Check if sharding is supported by the database first
-        # If not, fall back to reading all data in a single task without counting rows
+        # A single task or a read without shard keys never needs a sharding probe.
+        # Fall back to reading all data in a single task without counting rows.
+        if parallelism <= 1 or self.shard_keys is None:
+            metadata = BlockMetadata(None, None, None, None)
+            return [ReadTask(fallback_read_fn, metadata)]
+
         if not self.supports_sharding(parallelism):
             logger.info(
                 "Sharding is not supported. "
