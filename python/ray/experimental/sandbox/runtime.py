@@ -1,33 +1,71 @@
 import asyncio
+import json
 import os
 import tempfile
 import threading
 from typing import Callable, Dict, List, Optional, Union
 
 from ray.experimental.sandbox._internal import image_push
-from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
 from ray.experimental.sandbox.backend.base import (
+    BaseSandboxBackend,
     ExecResult,
     SandboxStatus,
 )
-from ray.experimental.sandbox.backend.gvisor import GVisorSandboxBackend
+from ray.experimental.sandbox.backend.base import check_local_resources
+from ray.experimental.sandbox.backend.registry import (
+    needs_image_manager,
+    registered_backends,
+    resolve_backend_factory,
+)
 from ray.experimental.sandbox.config import (
     SandboxConfig,
-    parse_memory_bytes,
     pop_removed_readonly,
 )
-from ray.experimental.sandbox.exceptions import SandboxCreationError
+from ray.experimental.sandbox.exceptions import SandboxCreationError, SandboxError
 from ray.experimental.sandbox.image_manager import ImageManager
 from ray.util.annotations import PublicAPI
+
+
+def _checkpoint_format(checkpoint_path: str) -> Optional[str]:
+    """The backend that took a checkpoint, if this process can tell.
+
+    A ``<name>://`` handle names its backend when ``<name>`` is a registered
+    backend; other schemes are left to the backend.
+    """
+    if "://" in checkpoint_path:
+        scheme = checkpoint_path.split("://", 1)[0].lower()
+        return scheme if scheme in registered_backends() else None
+    try:
+        with open(
+            os.path.join(checkpoint_path, "manifest.json"), encoding="utf-8"
+        ) as f:
+            return json.load(f).get("backend", "gvisor")
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 @PublicAPI(stability="alpha")
 class SandboxRuntime:
     """Low-level interface for managing local sandbox runtime environments."""
 
-    def __init__(self):
-        self._image_manager = ImageManager()
-        self._backend = GVisorSandboxBackend(image_manager=self._image_manager)
+    def __init__(self, backend: Union[str, BaseSandboxBackend, None] = None):
+        """Create a runtime on a sandbox backend.
+
+        Args:
+            backend: A backend instance, or the name of one (see
+                ``ray.experimental.sandbox.backend.registry``). None reads
+                the ``RAY_SANDBOX_BACKEND`` environment variable and
+                defaults to gVisor. A backend that doesn't use a local image
+                cache (``needs_image_manager = False``) gets no
+                ``ImageManager``.
+        """
+        if backend is None or isinstance(backend, str):
+            factory = resolve_backend_factory(backend)
+            manager = ImageManager() if needs_image_manager(factory) else None
+            self._backend = factory(image_manager=manager)
+        else:
+            self._backend = backend
+        self._image_manager = getattr(self._backend, "image_manager", None)
         self._ttl_timers: Dict[str, threading.Timer] = {}
 
     @property
@@ -36,7 +74,7 @@ class SandboxRuntime:
         return self._image_manager
 
     @property
-    def backend(self) -> GVisorSandboxBackend:
+    def backend(self) -> BaseSandboxBackend:
         """The backend instance used by this runtime."""
         return self._backend
 
@@ -59,15 +97,22 @@ class SandboxRuntime:
     ) -> None:
         """Reject unsupported resource limits before downloading an image.
 
+        The backend decides: by default (gVisor) the node's cgroups must be
+        able to enforce them; a backend that runs sandboxes elsewhere may
+        check nothing here.
+
         Args:
             cpu: CPU limit to enforce. Zero means no limit.
             memory: Memory limit to enforce, such as "512Mi". Zero means no limit.
         """
+        check = getattr(self._backend, "check_resources", None)
         try:
-            config = SandboxConfig(image="resource-preflight", cpu=cpu, memory=memory)
-            memory_bytes = parse_memory_bytes(config.memory) or 0
-            if config.cpu > 0 or memory_bytes > 0:
-                SandboxCgroupManager().check(config.cpu, memory_bytes)
+            if check is not None:
+                check(cpu=cpu, memory=memory)
+            else:  # a backend that doesn't subclass BaseSandboxBackend
+                check_local_resources(cpu, memory)
+        except SandboxCreationError:
+            raise
         except Exception as err:
             raise SandboxCreationError(
                 f"Cannot enforce sandbox resources: {err}"
@@ -384,6 +429,16 @@ class SandboxRuntime:
         Returns:
             The immutable ``registry/repo@sha256:...`` reference.
         """
+        for method in (
+            "get_config",
+            "sandbox_dir",
+            "export_rootfs_changes",
+            "mount_points",
+        ):
+            if not hasattr(self._backend, method):
+                raise NotImplementedError(
+                    f"{type(self._backend).__name__} does not support commit()"
+                )
         cfg = self._backend.get_config(instance_id)
         # Fail before the export, which pauses a running sandbox.
         image_push.validate_commit(cfg.image, image, self._image_manager.images_dir)
@@ -412,6 +467,7 @@ class SandboxRuntime:
         checkpoint_path: Optional[str] = None,
         leave_running: bool = True,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> str:
         """Create a checkpoint of the running sandbox.
@@ -422,6 +478,8 @@ class SandboxRuntime:
                 If None, a default directory inside the sandbox storage root is used.
             leave_running: If True, keep the sandbox running after checkpointing.
             timeout_seconds: Timeout for the checkpoint operation.
+            remote: If True, mark checkpoint as remote/shared across VM nodes.
+                Requires a ``checkpoint_path`` on storage that every node mounts.
             **kwargs: Backend-specific arguments.
 
         Returns:
@@ -431,6 +489,7 @@ class SandboxRuntime:
             sandbox_id=instance_id,
             checkpoint_path=checkpoint_path,
             leave_running=leave_running,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
@@ -450,6 +509,7 @@ class SandboxRuntime:
         memory: Optional[Union[str, int, float]] = None,
         ttl_seconds: Optional[int] = None,
         timeout_seconds: float = 30.0,
+        remote: Optional[bool] = None,
         **kwargs,
     ) -> str:
         """Restore a sandbox instance from a previously saved checkpoint.
@@ -465,6 +525,8 @@ class SandboxRuntime:
             memory: Memory allocation override.
             ttl_seconds: Optional time-to-live for the restored sandbox.
             timeout_seconds: Timeout for the restore operation.
+            remote: If True, allow restore on a different VM node than where the
+                checkpoint was taken. If None, inherits from checkpoint manifest.
             **kwargs: Backend-specific arguments. The removed ``readonly``
                 option is handled as in ``create``.
 
@@ -472,19 +534,49 @@ class SandboxRuntime:
             A unique string identifier for the restored sandbox.
         """
         pop_removed_readonly(kwargs)
+        self._check_checkpoint_format(checkpoint_path)
         instance_id = self._backend.restore_sandbox(
             checkpoint_path=checkpoint_path,
             cpu=cpu,
             memory=memory,
+            remote=remote,
             timeout_seconds=timeout_seconds,
             **kwargs,
         )
         if ttl_seconds is not None and ttl_seconds > 0:
+            # A backend can hand back an id this runtime already tracks (one
+            # that resumes the checkpointed sandbox in place): its old timer
+            # must not delete the restored sandbox.
+            old = self._ttl_timers.pop(instance_id, None)
+            if old is not None:
+                old.cancel()
             timer = threading.Timer(ttl_seconds, self._expire, args=(instance_id,))
             timer.daemon = True
             self._ttl_timers[instance_id] = timer
             timer.start()
         return instance_id
+
+    def _check_checkpoint_format(self, checkpoint_path: str) -> None:
+        expected = getattr(self._backend, "checkpoint_format", None)
+        found = _checkpoint_format(str(checkpoint_path))
+        if expected is not None and found is not None and found != expected:
+            raise SandboxError(
+                f"The checkpoint at '{checkpoint_path}' was taken by the {found} "
+                f"sandbox backend, but this runtime uses {expected}: select "
+                f"{found} (RAY_SANDBOX_BACKEND={found}) to restore it"
+            )
+
+    def delete_checkpoint(self, checkpoint_path: str) -> None:
+        """Delete a checkpoint that's no longer needed.
+
+        On gVisor that removes the checkpoint directory. A backend whose
+        checkpoints hold resources elsewhere releases them.
+
+        Args:
+            checkpoint_path: The checkpoint, as ``checkpoint()`` returned it.
+        """
+        self._check_checkpoint_format(checkpoint_path)
+        self._backend.delete_checkpoint(checkpoint_path)
 
     def pause(self, instance_id: str, timeout_seconds: float = 10.0) -> None:
         """Pause a running sandbox instance.

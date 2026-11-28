@@ -19,7 +19,12 @@ py_library(
 
 py_library(
     name = "conftest",
-    srcs = ["tests/conftest.py"],
+    # substrate_fake.py is a helper that test_substrate_backend.py loads by
+    # path, in its own processes too.
+    srcs = [
+        "tests/conftest.py",
+        "tests/substrate_fake.py",
+    ],
     deps = [
         "//python/ray/tests:conftest",
     ],
@@ -32,6 +37,7 @@ py_test_module_list(
         exclude = [
             "tests/conftest.py",
             "tests/__init__.py",
+            "tests/substrate_fake.py",
             "tests/test_gvisor_gpu.py",
             "tests/test_gvisor_multi_gpu.py",
         ],

@@ -1,3 +1,5 @@
+import os
+import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
@@ -16,6 +18,46 @@ class SandboxStatus(Enum):
     PAUSED = "PAUSED"
     TERMINATED = "TERMINATED"
     ERROR = "ERROR"
+
+
+def check_local_resources(cpu: float = 0.0, memory: Union[str, int, float] = 0):
+    """Check that this node's cgroups can enforce ``cpu`` and ``memory``."""
+    from ray.experimental.sandbox._internal.cgroup import SandboxCgroupManager
+    from ray.experimental.sandbox.config import parse_memory_bytes
+
+    config = SandboxConfig(image="resource-preflight", cpu=cpu, memory=memory)
+    memory_bytes = parse_memory_bytes(config.memory) or 0
+    if config.cpu > 0 or memory_bytes > 0:
+        SandboxCgroupManager().check(config.cpu, memory_bytes)
+
+
+def validate_checkpoint_dir(path: str) -> str:
+    """Return the real path of a checkpoint directory, or raise.
+
+    A checkpoint directory has a ``manifest.json`` with ``version`` and
+    ``sandbox_id``, and a ``state`` directory. ``/``, the home directory and
+    the working directory are refused whatever they hold.
+
+    Raises:
+        SandboxError: ``path`` isn't a checkpoint directory.
+    """
+    from ray.experimental.sandbox.backend.checkpoint_utils import (
+        load_checkpoint_manifest,
+    )
+    from ray.experimental.sandbox.exceptions import SandboxError
+
+    real = os.path.realpath(path)
+    refused = {
+        os.path.realpath(os.sep),
+        os.path.realpath(os.path.expanduser("~")),
+        os.path.realpath(os.getcwd()),
+    }
+    if real in refused:
+        raise SandboxError(f"Refusing to delete '{path}' as a checkpoint")
+    manifest, _ = load_checkpoint_manifest(real)
+    if not isinstance(manifest, dict) or not {"version", "sandbox_id"} <= set(manifest):
+        raise SandboxError(f"'{path}' is not a checkpoint directory")
+    return real
 
 
 @PublicAPI(stability="alpha")
@@ -50,6 +92,16 @@ ExecutionResult = ExecResult
 
 class BaseSandboxBackend(ABC):
     """Abstract Base Class defining the contract for Sandbox Backends."""
+
+    #: Whether the backend runs images from a local ``ImageManager`` cache. A
+    #: backend that sets it False gets ``image_manager=None`` from
+    #: ``SandboxRuntime`` and must provide its own ``image_manager``.
+    needs_image_manager: bool = True
+
+    #: The ``backend`` that this backend's checkpoint manifests carry (a
+    #: manifest without the field is gVisor's), or None to skip the check.
+    #: ``SandboxRuntime.restore`` refuses a checkpoint of another backend.
+    checkpoint_format: Optional[str] = None
 
     def __init__(self, image_manager: Optional[Any] = None):
         if image_manager is None:
@@ -185,6 +237,7 @@ class BaseSandboxBackend(ABC):
         exclude_committed_zero_pages: bool = True,
         direct: bool = False,
         timeout_seconds: float = 30.0,
+        remote: bool = False,
         **kwargs,
     ) -> Dict[str, Any]:
         """Save the sandbox state to a checkpoint bundle directory.
@@ -198,6 +251,8 @@ class BaseSandboxBackend(ABC):
             exclude_committed_zero_pages: If True, exclude committed zero-filled pages.
             direct: If True, use O_DIRECT for writing checkpoint pages.
             timeout_seconds: Timeout in seconds for the checkpoint operation.
+            remote: If True, checkpoint path is on a remote or shared mount accessible
+                across different VM nodes, allowing restoration on any node in the cluster.
             **kwargs: Backend-specific arguments.
 
         Returns:
@@ -214,6 +269,7 @@ class BaseSandboxBackend(ABC):
         background: Optional[bool] = None,
         direct: bool = False,
         timeout_seconds: float = 30.0,
+        remote: Optional[bool] = None,
         **kwargs,
     ) -> str:
         """Restore a new sandbox instance from a checkpoint bundle.
@@ -227,12 +283,41 @@ class BaseSandboxBackend(ABC):
                 uses it whenever the checkpoint is uncompressed.
             direct: If True, use O_DIRECT for reading checkpoint pages.
             timeout_seconds: Timeout in seconds for restore to reach 'running' state.
+            remote: If True, treat the checkpoint as remote/shared, allowing restoration
+                on a different VM node than where the checkpoint was captured. If None,
+                defaults to the value recorded in the checkpoint manifest.
             **kwargs: Backend-specific arguments.
 
         Returns:
             A unique string identifier for the restored sandbox instance.
         """
         pass
+
+    def check_resources(
+        self, cpu: float = 0.0, memory: Union[str, int, float] = 0
+    ) -> None:
+        """Reject resource limits this node can't enforce, before any pull.
+
+        The default checks that the node's cgroups can enforce them. A backend
+        that doesn't run sandboxes on this node overrides it.
+
+        Args:
+            cpu: CPU limit to enforce. Zero means no limit.
+            memory: Memory limit to enforce, such as "512Mi". Zero means none.
+        """
+        check_local_resources(cpu, memory)
+
+    def delete_checkpoint(self, checkpoint_path: str) -> None:
+        """Delete a checkpoint; later restores of it fail.
+
+        The default removes the checkpoint directory, after checking that it
+        is one (see :func:`validate_checkpoint_dir`).
+
+        Args:
+            checkpoint_path: Path of the checkpoint, as ``checkpoint`` returned.
+        """
+        path = validate_checkpoint_dir(str(checkpoint_path))
+        shutil.rmtree(path)
 
     @abstractmethod
     def pause_sandbox(
