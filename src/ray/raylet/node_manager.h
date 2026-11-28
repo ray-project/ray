@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <atomic>
+#include <boost/asio/steady_timer.hpp>
 #include <cstdint>
 #include <deque>
 #include <memory>
@@ -26,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "ray/asio/instrumented_io_context.h"
 #include "ray/asio/periodical_runner_interface.h"
 #include "ray/common/bundle_spec.h"
@@ -372,6 +374,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void FreeLocalObjects(const std::vector<ObjectID> &object_ids);
 
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
+#if defined(__linux__)
+  FRIEND_TEST(NodeManagerProcessGroupTest, StopCleansDisconnectedWorker);
+#endif
 
   /// Handle an accepted client connection.
   void HandleAccept(const boost::system::error_code &error);
@@ -844,6 +849,46 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   int WaitForRuntimeEnvAgentPort(const NodeID &self_node_id,
                                  const NodeManagerConfig &config);
+
+#if !defined(_WIN32)
+  /** @brief Tracks a disconnected worker's group until cleanup finishes. */
+  struct PendingProcessGroupCleanup {
+    ActorID actor_id;
+    WorkerProcessGroup group;
+    bool wait_for_exit;
+    boost::asio::steady_timer timer;
+  };
+
+  /**
+   * @brief Retain the worker's group for cleanup after it leaves the worker pool.
+   * @param worker Worker being disconnected.
+   * @param group Process group recorded at registration.
+   * @param graceful Whether to wait for the leader to exit before signaling the group.
+   */
+  void ScheduleProcessGroupCleanup(const WorkerInterface &worker,
+                                   WorkerProcessGroup group,
+                                   bool graceful);
+
+  /**
+   * @brief Attempt pending cleanup and schedule another poll if needed.
+   * @param worker_id Worker whose process group is being cleaned up.
+   * @return True when no further cleanup is pending, false when a retry is scheduled.
+   */
+  bool PollProcessGroupCleanup(const WorkerID &worker_id);
+
+  /// Owns deferred cleanup after the worker no longer belongs to the worker pool.
+  absl::flat_hash_map<WorkerID, PendingProcessGroupCleanup>
+      pending_process_group_cleanup_;
+#endif
+
+  /**
+   * @brief Interrupt graceful cleanup for the specified actor's worker.
+   * @param worker_id Worker named in the force-kill request.
+   * @param actor_id Actor that must match the pending cleanup record.
+   * @return OK if no matching cleanup remains, or IOError if a retry is scheduled.
+   */
+  Status ForceCleanupPendingProcessGroup(const WorkerID &worker_id,
+                                         const ActorID &actor_id);
 
   /// ID of this node.
   NodeID self_node_id_;

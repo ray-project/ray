@@ -146,8 +146,10 @@ class MockWorker : public WorkerInterface {
 
   const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
   const rpc::Address &GetOwnerAddress() const override { return address_; }
-  std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
-  void SetSavedProcessGroupId(pid_t pgid) override { (void)pgid; }
+  std::optional<WorkerProcessGroup> GetSavedProcessGroup() const override {
+    return group_;
+  }
+  void SetSavedProcessGroup(WorkerProcessGroup group) override { group_ = group; }
 
   void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override {
     RAY_CHECK(false) << "Method unused";
@@ -198,6 +200,7 @@ class MockWorker : public WorkerInterface {
   LeaseID lease_id_;
   JobID job_id_;
   ActorID actor_id_;
+  std::optional<WorkerProcessGroup> group_;
   ActorID root_detached_actor_id_;
   std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;

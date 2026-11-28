@@ -97,8 +97,10 @@ class FakeWorker : public WorkerInterface {
     return connection_;
   }
   const rpc::Address &GetOwnerAddress() const override { return owner_address_; }
-  std::optional<pid_t> GetSavedProcessGroupId() const override { return std::nullopt; }
-  void SetSavedProcessGroupId(pid_t pgid) override {}
+  std::optional<WorkerProcessGroup> GetSavedProcessGroup() const override {
+    return std::nullopt;
+  }
+  void SetSavedProcessGroup(WorkerProcessGroup group) override {}
   void ActorCallArgWaitComplete(const TaskID &task_id, int32_t attempt_number) override {}
   void ClearAllocatedInstances() override {}
   void ClearLifetimeAllocatedInstances() override {}

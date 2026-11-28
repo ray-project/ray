@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,6 +39,15 @@ enum WorkerType : int;
 }  // namespace rpc
 
 namespace raylet {
+
+/** @brief Identity of an isolated worker process group captured at registration. */
+struct WorkerProcessGroup {
+  pid_t id;
+#if defined(__linux__)
+  /// Used to detect PID reuse before signaling a group with a live leader.
+  std::optional<uint64_t> leader_start_time = std::nullopt;
+#endif
+};
 
 /// \class WorkerInterface
 ///
@@ -82,10 +92,9 @@ class WorkerInterface {
   virtual const std::shared_ptr<ClientConnection> Connection() const = 0;
   virtual void SetOwnerAddress(const rpc::Address &address) = 0;
   virtual const rpc::Address &GetOwnerAddress() const = 0;
-  /// Optional saved process group id (PGID) for this worker's process group.
-  /// Set at registration time from getpgid(pid) and used for safe cleanup.
-  virtual std::optional<pid_t> GetSavedProcessGroupId() const = 0;
-  virtual void SetSavedProcessGroupId(pid_t pgid) = 0;
+  /// Captured while the registering worker is the leader of an isolated group.
+  virtual std::optional<WorkerProcessGroup> GetSavedProcessGroup() const = 0;
+  virtual void SetSavedProcessGroup(WorkerProcessGroup group) = 0;
 
   virtual void ActorCallArgWaitComplete(const TaskID &task_id,
                                         int32_t attempt_number) = 0;

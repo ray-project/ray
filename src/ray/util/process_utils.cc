@@ -29,6 +29,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -159,6 +160,31 @@ bool IsProcessAlive(pid_t pid) {
 }
 
 #if defined(__linux__)
+std::optional<uint64_t> ReadProcessStartTime(pid_t pid) {
+  std::ifstream stat(absl::StrFormat("%s/%d/stat", kProcDirectory, pid));
+  // The process may exit after open. Read through the stream so a procfs read
+  // error sets badbit. A NUL delimiter preserves newlines in the process name.
+  std::string contents;
+  if (!std::getline(stat, contents, '\0')) {
+    return std::nullopt;
+  }
+  // The parenthesized comm (field 2) can contain spaces and parentheses.
+  const auto comm_end = contents.rfind(')');
+  if (comm_end == std::string::npos) {
+    return std::nullopt;
+  }
+  std::istringstream fields(contents.substr(comm_end + 1));
+  std::string skipped;
+  for (int field = 3; field < 22; ++field) {
+    fields >> skipped;
+  }
+  uint64_t start_time = 0;
+  if (fields >> start_time) {
+    return start_time;
+  }
+  return std::nullopt;
+}
+
 static inline std::error_code KillProcLinux(pid_t pid) {
   std::error_code error;
   if (kill(pid, SIGKILL) != 0) {
