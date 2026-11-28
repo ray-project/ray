@@ -214,6 +214,8 @@ def get_prerequisite_step(
         tag_suffix = "-".join(tag_parts[py_index + 1 :]) if py_index is not None else ""
         if tag_suffix == "cpu":
             bare_key = config["release_image_step_ray_cpu"]
+        elif tag_suffix == "neuron":
+            bare_key = config["release_image_step_ray_neuron"]
         else:
             bare_key = config["release_image_step_ray_cuda"]
 
@@ -226,8 +228,8 @@ def get_prerequisite_step(
     python_raw = tag_parts[py_index][2:]  # e.g., "310"
     tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
 
-    if tag_suffix == "cpu":
-        # anyscalecpubuild has only a python dimension
+    if tag_suffix in ("cpu", "neuron"):
+        # the cpu and neuron publish steps have only a python dimension
         return f"{bare_key}--python{python_raw}"
 
     # cuda publish steps have gpu + python dimensions (alphabetical order)

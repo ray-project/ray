@@ -1,0 +1,127 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+# trn2.48xlarge is only available through an EC2 Capacity Block. The block, its
+# zone, and the subnet and security group for the EFA interfaces come from the
+# environment of the run:
+#   NEURON_TEST_ZONE, NEURON_TEST_CAPACITY_RESERVATION_ID,
+#   NEURON_TEST_SUBNET_ID, NEURON_TEST_SECURITY_GROUP_ID
+# The security group has to allow all traffic to and from itself, as EFA requires.
+zones:
+    - {{env["NEURON_TEST_ZONE"] | default("us-east-2b")}}
+enable_cross_zone_scaling: false
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    - instance_type: trn2.48xlarge
+      min_nodes: 2
+      max_nodes: 2
+      market_type: ON_DEMAND
+      advanced_instance_config:
+          Placement:
+              AvailabilityZone: {{env["NEURON_TEST_ZONE"]}}
+          InstanceMarketOptions:
+              MarketType: capacity-block
+          CapacityReservationSpecification:
+              CapacityReservationTarget:
+                  CapacityReservationId: {{env["NEURON_TEST_CAPACITY_RESERVATION_ID"]}}
+          # All 16 EFA network cards. Card 0 also carries IP traffic; the rest
+          # are EFA only.
+          NetworkInterfaces:
+              - NetworkCardIndex: 0
+                DeviceIndex: 0
+                InterfaceType: efa
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 1
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 2
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 3
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 4
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 5
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 6
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 7
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 8
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 9
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 10
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 11
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 12
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 13
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 14
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}
+              - NetworkCardIndex: 15
+                DeviceIndex: 1
+                InterfaceType: efa-only
+                SubnetId: {{env["NEURON_TEST_SUBNET_ID"]}}
+                Groups:
+                    - {{env["NEURON_TEST_SECURITY_GROUP_ID"]}}

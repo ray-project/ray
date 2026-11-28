@@ -1,0 +1,25 @@
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
+
+# trn2.48xlarge is only available through an EC2 Capacity Block. The block, its
+# zone and the subnet in that zone come from the environment of the run:
+#   NEURON_TEST_ZONE, NEURON_TEST_CAPACITY_RESERVATION_ID
+zones:
+    - {{env["NEURON_TEST_ZONE"] | default("us-east-2b")}}
+enable_cross_zone_scaling: false
+
+head_node:
+    instance_type: m5.2xlarge
+
+worker_nodes:
+    - instance_type: trn2.48xlarge
+      min_nodes: 1
+      max_nodes: 1
+      market_type: ON_DEMAND
+      advanced_instance_config:
+          Placement:
+              AvailabilityZone: {{env["NEURON_TEST_ZONE"]}}
+          InstanceMarketOptions:
+              MarketType: capacity-block
+          CapacityReservationSpecification:
+              CapacityReservationTarget:
+                  CapacityReservationId: {{env["NEURON_TEST_CAPACITY_RESERVATION_ID"]}}
