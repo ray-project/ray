@@ -460,6 +460,36 @@ def test_json_write_date_outside_nanosecond_range(
     assert {"ts": row["ts"], "td": row["td"]} == expected
 
 
+@pytest.mark.parametrize("block_format", ["arrow", "pandas"])
+@pytest.mark.parametrize(
+    "date_unit, expected",
+    [
+        ("ms", [1704067200000, 253402214400000, None]),
+        ("s", [1704067200, 253402214400, None]),
+    ],
+)
+def test_json_write_date_columns(
+    ray_start_regular_shared, tmp_path, block_format, date_unit, expected
+):
+    # pandas 3 raises NotImplementedError on Arrow-backed date columns, and
+    # pandas < 3 overflows on dates after 2262.
+    dates = [datetime.date(2024, 1, 1), datetime.date(9999, 12, 31), None]
+    table = pa.table(
+        {"d32": pa.array(dates, pa.date32()), "d64": pa.array(dates, pa.date64())}
+    )
+    if block_format == "arrow":
+        block = table
+    else:
+        block = table.to_pandas(types_mapper=pd.ArrowDtype)
+
+    ray.data.from_blocks([block]).write_json(tmp_path, date_unit=date_unit)
+
+    [filename] = os.listdir(tmp_path)
+    with open(os.path.join(tmp_path, filename)) as f:
+        rows = [json.loads(line) for line in f]
+    assert rows == [{"d32": value, "d64": value} for value in expected]
+
+
 @pytest.mark.parametrize("override_num_blocks", [None, 2])
 def test_json_roundtrip(
     ray_start_regular_shared,
