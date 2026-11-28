@@ -221,28 +221,27 @@ def test_max_placeable_actors(free, per_actor, expected):
     "count,favored,expected",
     [
         # Cost-class-major: pending/idle victims on EVERY node are taken
-        # before a favored node's busy actor (node-major would take bA third).
-        pytest.param(4, {"A"}, ["pA", "iA", "iB", "iC"], id="all-cheap-before-busy"),
+        # before a favored node's busy actor (node-major would take A third).
+        pytest.param(4, {"A"}, ["A", "A", "B", "C"], id="all-cheap-before-busy"),
         # Busy actors follow, favored node first.
-        pytest.param(5, {"A"}, ["pA", "iA", "iB", "iC", "bA"], id="busy-favored-first"),
-        pytest.param(2, {"A"}, ["pA", "iA"], id="favored-first-within-class"),
+        pytest.param(5, {"A"}, ["A", "A", "B", "C", "A"], id="busy-favored-first"),
+        pytest.param(2, {"A"}, ["A", "A"], id="favored-first-within-class"),
         # No favored nodes: the cheap class walks nodes by queue size.
-        pytest.param(3, set(), ["pA", "iA", "iB"], id="unfavored-by-queue-size"),
+        pytest.param(3, set(), ["A", "A", "B"], id="unfavored-by-queue-size"),
     ],
 )
 def test_locality_victims(count, favored, expected):
     p = LocalityBasedActorPlacement()
     assert (
-        p.pick_downscale_victims(_victim_view(), count=count, favored_nodes=favored)
+        p.pick_downscale_nodes(_victim_view(), count=count, favored_nodes=favored)
         == expected
     )
 
 
-def test_locality_victims_full_drain_returns_all_pendings_first():
+def test_locality_victims_full_drain_sheds_everything():
     p = LocalityBasedActorPlacement()
-    victims = p.pick_downscale_victims(_victim_view(), count=99, favored_nodes={"A"})
-    assert victims[0] == "pA"
-    assert sorted(victims) == ["bA", "bB", "iA", "iB", "iC", "pA"]
+    nodes = p.pick_downscale_nodes(_victim_view(), count=99, favored_nodes={"A"})
+    assert Counter(nodes) == Counter({"A": 3, "B": 2, "C": 1})
 
 
 def test_locality_favored_nodes_ignore_queue_on_slow_path():

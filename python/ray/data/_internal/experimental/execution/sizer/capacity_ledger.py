@@ -60,7 +60,7 @@ class ConstraintAwareCapacityLedger:
 
     def max_upscale_delta(self, op: ExperimentalActorPoolMapOperator) -> int:
         """Max additional actors of ``op`` that currently fit (reclaimable
-        draining actors included -- reviving them needs no new capacity)."""
+        draining actors included -- reclaiming them needs no new capacity)."""
         reclaimable = op.actor_pool.num_reclaimable_draining_actors()
         if op in self._unknown_pg_headroom:
             # Headroom is max_size - current_size, and current_size still
@@ -74,7 +74,7 @@ class ConstraintAwareCapacityLedger:
             if math.isinf(count):
                 return _UNBOUNDED_PLACEABLE
             total += count
-        # Draining actors this op can revive hold their (committed, i.e.
+        # Draining actors this op can reclaim hold their (committed, i.e.
         # not-free) slot, so they place without consuming free capacity.
         return int(total) + reclaimable
 

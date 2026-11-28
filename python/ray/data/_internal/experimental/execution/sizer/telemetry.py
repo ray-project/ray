@@ -12,6 +12,10 @@ from ray.data._internal.execution.util import locality_string, memory_string
 from ray.data._internal.experimental.execution.operators.actor_pool_map_operator import (  # noqa: E501
     ExperimentalActorPoolMapOperator,
 )
+from ray.data._internal.experimental.execution.operators.actor_pool_models import (
+    PlacedScalingRequest,
+    ScaleUpRequest,
+)
 from ray.data._internal.experimental.execution.sizer.metrics import SizerMetrics
 from ray.data._internal.experimental.execution.sizer.models import (
     PerOpSizingRequest,
@@ -21,9 +25,6 @@ from ray.data._internal.experimental.execution.sizer.models import (
 if TYPE_CHECKING:
     from ray.data._internal.actor_autoscaler import ActorPoolScalingRequest
     from ray.data._internal.execution.streaming_executor_state import Topology
-    from ray.data._internal.experimental.execution.operators.actor_pool_models import (
-        ExperimentalActorPoolScalingRequest,
-    )
     from ray.data._internal.experimental.execution.sizer.actor_placement_strategy import (  # noqa: E501
         ActorPlacementStrategy,
     )
@@ -110,9 +111,7 @@ class SizerTelemetry:
         self,
         alloc: Dict[NodeIdStr, ExecutionResources],
         free: Dict[NodeIdStr, ExecutionResources],
-        placed: Dict[
-            ExperimentalActorPoolMapOperator, "ExperimentalActorPoolScalingRequest"
-        ],
+        placed: Dict[ExperimentalActorPoolMapOperator, "PlacedScalingRequest"],
         placement: "ActorPlacementStrategy",
     ) -> None:
         """What was placed where, and the capacity the strategy saw doing it."""
@@ -129,18 +128,16 @@ class SizerTelemetry:
         breakdown = placement.upscale_breakdown()
         parts = []
         for op, req in placed.items():
-            if req.delta > 0:
+            where = dict(Counter(req.nodes)) if req.nodes else "untargeted"
+            if isinstance(req, ScaleUpRequest):
                 via = breakdown.get(op.id)
                 via_str = f" via={via[0]}collocate/{via[1]}spread" if via else ""
-                parts.append(
-                    f"{op.name}: +{req.delta}@"
-                    f"{dict(Counter(req.target_nodes_to_scale_actors_on))}{via_str}"
+                reclaim_str = (
+                    f" reclaim={req.num_to_reclaim}" if req.num_to_reclaim else ""
                 )
+                parts.append(f"{op.name}: +{req.delta}@{where}{reclaim_str}{via_str}")
             else:
-                parts.append(
-                    f"{op.name}: {req.delta} "
-                    f"(victims={len(req.actor_ids_to_downscale)})"
-                )
+                parts.append(f"{op.name}: {req.delta}@{where}")
         summary = "; ".join(parts)
         cap = self._capacity_map(alloc, free)
         if (
@@ -235,9 +232,7 @@ class SizerTelemetry:
             else:
                 down -= r.delta
         nodes = {
-            node
-            for r in where.request.values()
-            for node in r.target_nodes_to_scale_actors_on
+            node for r in where.request.values() if r.delta > 0 for node in r.nodes
         }
         logger.debug(
             "OperatorSizer tick: e2e=%.1fms (cross_op_optimize=%.1f "
