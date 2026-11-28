@@ -157,6 +157,14 @@ SIZER_WARMUP_TIMEOUT_S: float = env_float("RAY_DATA_SIZER_WARMUP_TIMEOUT_S", 300
 # as a capacity-transfer recipient.
 SIZER_SHORTFALL_TICKS: int = env_integer("RAY_DATA_SIZER_SHORTFALL_TICKS", 3)
 
+# Fraction of an operator's actors that must have a task in flight, at every
+# sample of the signal window, for it to count as a silent bottleneck. Below 1
+# because some actors are always between tasks: a task needs a full input
+# bundle, and a slow upstream leaves less than one queued.
+SIZER_SILENT_BOTTLENECK_BUSY_FRACTION: float = env_float(
+    "RAY_DATA_SIZER_SILENT_BOTTLENECK_BUSY_FRACTION", 0.6
+)
+
 
 def actor_only_backend_enabled(
     data_context: Optional["DataContext"] = None,

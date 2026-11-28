@@ -176,12 +176,14 @@ class TransferState:
 class DonorCapacity:
     """How much an operator can give up without losing throughput.
 
-        work_floor = ceil(peak productive tasks / max_actor_concurrency)
+        work_floor = ceil(peak productive slots / max_actor_concurrency)
         protected  = max(min_size, work_floor)
         removable  = serving_size - protected
 
-    Productive means in-flight minus output-blocked, taken at its windowed
-    peak: blocked actors are not producing, so they are not protected. Whether
+    Productive slots are tasks actually running (in-flight capped at each
+    actor's concurrency) on actors that are not output-blocked, taken at
+    their windowed peak: queued tasks and blocked actors are not producing,
+    so they are not protected. Whether
     the op wants to grow is deliberately ignored -- a backpressured feeder's
     demand is phantom exactly when its consumer is the bottleneck.
     """
@@ -205,7 +207,11 @@ def assess_donor(
     if peak is None:
         protected = cur
     else:
-        protected = max(pool.min_size(), math.ceil(peak / conc))
+        # Starting actors have not had a chance to work yet, so the productive
+        # window cannot vouch for them: an op that just grew is not a donor.
+        protected = (
+            max(pool.min_size(), math.ceil(peak / conc)) + pool.num_pending_actors()
+        )
     removable = cur - protected
     # The no_donor_surplus refusal counter says a transfer was blocked but not
     # why. ``protected`` is a MAX over the productive window, so one early
@@ -424,6 +430,16 @@ def plan_transfer(
         # The shortfall is from last tick's sizing pass. Capacity has freed
         # since, so normal sizing grants it this tick.
         return None, "capacity_already_free"
+    if recipient_per_actor.gpu == 0 and any(d.per_actor.gpu > 0 for d in donors):
+        # Evicting a GPU actor for its CPU leaves a GPU idle, so a CPU-only
+        # recipient takes GPU actors only when CPU-only donors can't cover it.
+        cpu_only = [donor for donor in donors if donor.per_actor.gpu == 0]
+        if cpu_only:
+            cpu_only_plan, refusal = plan_transfer(
+                recipient, recipient_per_actor, want, nodes, free, cpu_only, node_rank
+            )
+            if cpu_only_plan is not None:
+                return cpu_only_plan, refusal
     num_removable_actors_by_op = {donor.op: donor.removable for donor in donors}
     recipient_constrained = is_constrained(recipient)
 
