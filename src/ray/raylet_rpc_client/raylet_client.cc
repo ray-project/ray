@@ -14,6 +14,7 @@
 
 #include "ray/raylet_rpc_client/raylet_client.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <set>
@@ -170,9 +171,8 @@ void RayletClient::PushMutableObject(
     request.set_total_data_size(data_size);
     request.set_total_metadata_size(metadata_size);
 
-    uint64_t chunk_size = (i < total_num_chunks - 1) ? kMaxGrpcPayloadSize
-                                                     : (data_size % kMaxGrpcPayloadSize);
     uint64_t offset = i * kMaxGrpcPayloadSize;
+    uint64_t chunk_size = std::min(kMaxGrpcPayloadSize, data_size - offset);
     request.set_offset(offset);
     request.set_chunk_size(chunk_size);
     request.set_data(static_cast<char *>(data) + offset, chunk_size);
