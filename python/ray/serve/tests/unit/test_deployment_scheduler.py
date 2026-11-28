@@ -2437,12 +2437,29 @@ class TestScheduleGangPlacementGroups:
         assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
 
 
+class FakeProbe:
+    def __init__(self, deployment_id, resources, label_selector):
+        self.deployment_id = deployment_id
+        self.resources = resources
+        self.label_selector = label_selector
+        self.node = None
+        self.killed = False
+
+    def landed_node(self):
+        return self.node
+
+    def kill(self):
+        self.killed = True
+
+
 def _compaction_scheduler(cluster_node_info_cache, head_node_id="fake-head-node-id"):
-    return default_impl.create_deployment_scheduler(
+    scheduler = default_impl.create_deployment_scheduler(
         cluster_node_info_cache,
         head_node_id_override=head_node_id,
         create_placement_group_fn_override=None,
     )
+    scheduler._create_domain_probe_fn = FakeProbe
+    return scheduler
 
 
 @pytest.mark.skipif(
@@ -4460,6 +4477,342 @@ class TestRolloutFloors:
         scheduler.on_replicas_outdated(d_id, {ReplicaID("other", d_id)})
         scheduler.on_replicas_outdated(d_id, set())
         assert not scheduler._outdated_replicas[d_id]
+
+
+def _actor_options(request: ReplicaSchedulingRequest) -> dict:
+    return request.on_scheduled.call_args.args[0]._options
+
+
+class TestRuleSelectors:
+    def test_rule_tiers_go_to_ray_core(self):
+        a1, b1 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (2, {ZONE: "a"}), b1: (2, {ZONE: "b"})},
+            [MinTopologyDomainsConstraint(ZONE, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+
+        request = _request(ReplicaID("r1", d_id))
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        options = _actor_options(request)
+        assert options["label_selector"] == {ZONE: "exists(),!in(a)"}
+        assert options["fallback_strategy"] == [{"label_selector": {}}]
+
+    def test_rules_merge_into_the_replicas_own_selectors(self):
+        a1, b1, c1 = _hex(1), _hex(2), _hex(3)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (2, {ZONE: "a"}), b1: (2, {ZONE: "b"}), c1: (2, {ZONE: "c"})},
+            [MinTopologyDomainsConstraint(ZONE, 2)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+
+        request = _request(ReplicaID("r1", d_id))
+        request.actor_options = {
+            "label_selector": {ZONE: "in(a,b)"},
+            "fallback_strategy": [{"label_selector": {ZONE: "c"}}],
+        }
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        options = _actor_options(request)
+        assert options["label_selector"] == {ZONE: "in(a,b),exists(),!in(a)"}
+        assert options["fallback_strategy"] == [
+            {"label_selector": {ZONE: "c,exists(),!in(a)"}},
+            {"label_selector": {ZONE: "in(a,b)"}},
+            {"label_selector": {ZONE: "c"}},
+        ]
+
+    def test_deployments_without_rules_keep_their_options(self):
+        scheduler, d_id = _rules_scheduler({_hex(1): (2, {})}, [])
+        request = _request(ReplicaID("r1", d_id))
+        request.actor_options = {"label_selector": {ZONE: "a"}}
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        options = _actor_options(request)
+        assert options["label_selector"] == {ZONE: "a"}
+        assert "fallback_strategy" not in options
+
+
+class TestRequiredFloors:
+    @staticmethod
+    def _scheduled(request) -> bool:
+        return request.on_scheduled.called
+
+    def test_holds_only_the_replicas_the_floor_needs(self):
+        a1, a2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), a2: (4, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        requests = [_request(ReplicaID(f"r{i}", d_id)) for i in range(3)]
+        scheduler.schedule(upscales={d_id: requests}, downscales={})
+
+        assert [self._scheduled(r) for r in requests] == [True, False, True]
+        assert scheduler._held_replicas[d_id] == {ReplicaID("r1", d_id)}
+        assert ReplicaID("r1", d_id) in scheduler._pending_replicas[d_id]
+
+    def test_held_set_clears_once_nothing_waits(self):
+        a1 = _hex(1)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        scheduler.schedule(
+            upscales={d_id: [_request(ReplicaID("r1", d_id))]}, downscales={}
+        )
+        assert scheduler._held_replicas[d_id] == {ReplicaID("r1", d_id)}
+
+        scheduler.on_replica_stopping(ReplicaID("r1", d_id))
+        assert not scheduler._held_replicas[d_id]
+        scheduler.schedule(upscales={}, downscales={})
+        assert not scheduler._held_replicas
+
+    def test_held_replica_places_once_the_domain_joins(self):
+        a1, b1 = _hex(1), _hex(2)
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(a1, {"CPU": 4}, {ZONE: "a"})
+        scheduler = _compaction_scheduler(cache)
+        d_id = DeploymentID(name="deployment1")
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+        scheduler._deployments[d_id].rules = (
+            MinTopologyDomainsConstraint(ZONE, 2, required=True),
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+
+        request = _request(ReplicaID("r1", d_id))
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        assert not request.on_scheduled.called
+
+        cache.add_node(b1, {"CPU": 4}, {ZONE: "b"})
+        scheduler.schedule(upscales={}, downscales={})
+        assert _target_node(request) == b1
+        assert not scheduler._held_replicas[d_id]
+
+    def test_a_full_new_zone_holds_the_replica(self):
+        a1, b1 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), b1: (0, {ZONE: "b"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        request = _request(ReplicaID("r1", d_id))
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        assert not request.on_scheduled.called
+
+    def test_downscale_keeps_a_replica_in_each_required_zone(self):
+        a1, b1 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), b1: (4, {ZONE: "b"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("a_0", d_id), a1)
+        scheduler.on_replica_running(ReplicaID("a_1", d_id), a1)
+        scheduler.on_replica_running(ReplicaID("b_0", d_id), b1)
+        scheduler.on_replica_running(ReplicaID("b_1", d_id), b1)
+
+        stopped = _downscale(scheduler, d_id, 2)
+        assert len(stopped) == 2
+        assert {r.unique_id[0] for r in stopped} == {"a", "b"}
+
+
+class TestRequiredWaitTimeout:
+    def test_held_replica_places_after_the_rules_wait_timeout(self):
+        a1 = _hex(1)
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            scheduler, d_id = _rules_scheduler(
+                {a1: (4, {ZONE: "a"})},
+                [
+                    MinTopologyDomainsConstraint(
+                        ZONE, 2, required=True, wait_timeout_s=60
+                    )
+                ],
+            )
+            scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+            request = _request(ReplicaID("r1", d_id))
+            scheduler.schedule(upscales={d_id: [request]}, downscales={})
+            assert not request.on_scheduled.called
+
+            timer.advance(59)
+            scheduler.schedule(upscales={}, downscales={})
+            assert not request.on_scheduled.called
+
+            timer.advance(1)
+            scheduler.schedule(upscales={}, downscales={})
+            assert _target_node(request) == a1
+            assert ReplicaID("r1", d_id) not in scheduler._held_since
+
+    def test_no_timeout_waits_forever(self):
+        a1 = _hex(1)
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            scheduler, d_id = _rules_scheduler(
+                {a1: (4, {ZONE: "a"})},
+                [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+            )
+            scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+            request = _request(ReplicaID("r1", d_id))
+            scheduler.schedule(upscales={d_id: [request]}, downscales={})
+            timer.advance(10**6)
+            scheduler.schedule(upscales={}, downscales={})
+            assert not request.on_scheduled.called
+
+    def test_only_the_timed_out_rule_gives_way(self):
+        a1 = _hex(1)
+        slice_key = "ray.io/tpu-slice-name"
+        timer = MockTimer(0)
+        with mock.patch("time.time", new=timer.time):
+            scheduler, d_id = _rules_scheduler(
+                {a1: (4, {ZONE: "a", slice_key: "s1"})},
+                [
+                    MinTopologyDomainsConstraint(
+                        ZONE, 2, required=True, wait_timeout_s=10
+                    ),
+                    MinTopologyDomainsConstraint(slice_key, 2, required=True),
+                ],
+            )
+            scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+            request = _request(ReplicaID("r1", d_id))
+            scheduler.schedule(upscales={d_id: [request]}, downscales={})
+            timer.advance(100)
+            scheduler.schedule(upscales={}, downscales={})
+            assert not request.on_scheduled.called
+
+    def test_stopping_a_held_replica_forgets_its_wait(self):
+        a1 = _hex(1)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        scheduler.schedule(
+            upscales={d_id: [_request(ReplicaID("r1", d_id))]}, downscales={}
+        )
+        assert ReplicaID("r1", d_id) in scheduler._held_since
+        scheduler.on_replica_stopping(ReplicaID("r1", d_id))
+        assert ReplicaID("r1", d_id) not in scheduler._held_since
+
+
+class TestDomainProbes:
+    def test_probe_asks_for_the_missing_domain(self):
+        a1 = _hex(1)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+            num_cpus=2,
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        scheduler.schedule(
+            upscales={d_id: [_request(ReplicaID("r1", d_id), num_cpus=2)]},
+            downscales={},
+        )
+
+        probe = scheduler._probes[d_id]
+        assert probe.label_selector == {ZONE: "exists(),!in(a)"}
+        assert probe.resources["CPU"] == 2
+
+        scheduler.schedule(upscales={}, downscales={})
+        assert scheduler._probes[d_id] is probe
+
+    def test_landed_probe_leaves_room_for_the_held_replica(self):
+        a1, b1 = _hex(1), _hex(2)
+        cache = MockClusterNodeInfoCache()
+        cache.add_node(a1, {"CPU": 4}, {ZONE: "a"})
+        scheduler = _compaction_scheduler(cache)
+        d_id = DeploymentID(name="deployment1")
+        scheduler.on_deployment_created(d_id, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id, rconfig(ray_actor_options={"num_cpus": 1})
+        )
+        scheduler._deployments[d_id].rules = (
+            MinTopologyDomainsConstraint(ZONE, 2, required=True),
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        request = _request(ReplicaID("r1", d_id))
+        scheduler.schedule(upscales={d_id: [request]}, downscales={})
+        probe = scheduler._probes[d_id]
+
+        cache.add_node(b1, {"CPU": 4}, {ZONE: "b"})
+        probe.node = b1
+        scheduler.schedule(upscales={}, downscales={})
+        assert _target_node(request) == b1
+        assert probe.killed
+        assert d_id not in scheduler._probes
+
+    def test_no_probe_while_a_missing_domain_has_room(self):
+        a1, b1 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), b1: (4, {ZONE: "b"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        scheduler.on_replica_running(ReplicaID("r1", d_id), a1)
+        scheduler.schedule(upscales={}, downscales={})
+        assert d_id not in scheduler._probes
+
+    def test_no_probe_while_replicas_recover(self):
+        a1 = _hex(1)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_recovering(ReplicaID("r0", d_id))
+        scheduler.on_replica_recovering(ReplicaID("r1", d_id))
+        scheduler.schedule(upscales={}, downscales={})
+        assert d_id not in scheduler._probes
+
+    def test_probe_avoids_the_node_being_compacted(self):
+        a1, a2 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), a2: (0, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        scheduler._compacting_node = CompactingNodeInfo(
+            target_node_id=a2,
+            start_timestamp_s=0,
+            cached_running_replicas_on_target_node=set(),
+        )
+        scheduler.schedule(
+            upscales={d_id: [_request(ReplicaID("r1", d_id))]}, downscales={}
+        )
+        assert scheduler._probes[d_id].label_selector == {
+            ZONE: "exists(),!in(a)",
+            RAY_NODE_ID_LABEL: f"!in({a2})",
+        }
+
+    def test_no_probe_once_required_floors_hold(self):
+        a1, b1 = _hex(1), _hex(2)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"}), b1: (4, {ZONE: "b"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        _place(scheduler, d_id, ["r1", "r2"])
+        assert d_id not in scheduler._probes
+
+    def test_best_effort_floors_never_probe(self):
+        scheduler, d_id = _rules_scheduler(
+            {_hex(1): (4, {ZONE: "a"})}, [MinTopologyDomainsConstraint(ZONE, 2)]
+        )
+        _place(scheduler, d_id, ["r1", "r2"])
+        assert d_id not in scheduler._probes
+
+    def test_deleting_the_deployment_removes_its_probe(self):
+        a1 = _hex(1)
+        scheduler, d_id = _rules_scheduler(
+            {a1: (4, {ZONE: "a"})},
+            [MinTopologyDomainsConstraint(ZONE, 2, required=True)],
+        )
+        scheduler.on_replica_running(ReplicaID("r0", d_id), a1)
+        scheduler.schedule(
+            upscales={d_id: [_request(ReplicaID("r1", d_id))]}, downscales={}
+        )
+        probe = scheduler._probes[d_id]
+        scheduler.on_replica_stopping(ReplicaID("r0", d_id))
+        scheduler.on_replica_stopping(ReplicaID("r1", d_id))
+        scheduler.on_deployment_deleted(d_id)
+        assert probe.killed
 
 
 if __name__ == "__main__":
