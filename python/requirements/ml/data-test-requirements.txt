@@ -31,7 +31,12 @@ pytest-mock
 hypothesis==6.168.5 ; python_version < '3.11'
 hypothesis==6.170.15 ; python_version >= '3.11'
 decord
-snowflake-connector-python>=4.3.0
+# 4.3 caps pyOpenSSL<26 (needed for cryptography 50). Below 3.12: 4.8.1+ dropped
+# Python 3.10 (the compiled pin also serves the 3.10 CI locks) and 5.x needs
+# protobuf >= 6, pinned below on py<3.12 (#66119). From 3.12: filelock 4 is
+# required and every 4.x caps filelock<4, so 5.x it is.
+snowflake-connector-python>=4.4.0,<4.8.1; python_version < '3.12'
+snowflake-connector-python>=5.1; python_version >= '3.12'
 pyiceberg[sql-sqlite]==0.11.0; python_version < '3.14'
 pyiceberg[sql-sqlite]==0.12.0; python_version >= '3.14'
 clickhouse-connect
