@@ -5,7 +5,9 @@ import logging
 import subprocess
 import sys
 import tempfile
-from datetime import timedelta
+import threading
+import time
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 from unittest import mock
@@ -16,8 +18,16 @@ from click.testing import CliRunner
 
 from ci.ray_ci.automation.trivy import local_scan_images, registry, scan_images
 from ci.ray_ci.automation.trivy.fake_tools import FakeDocker, faked_scan_tools
-from ci.ray_ci.automation.trivy.local_scan_images import local_targets, read_images
-from ci.ray_ci.automation.trivy.scan_images import check_target, write_status
+from ci.ray_ci.automation.trivy.local_scan_images import (
+    WorkDirLock,
+    local_targets,
+    read_images,
+)
+from ci.ray_ci.automation.trivy.scan_images import (
+    GROUP_FAILED,
+    check_target,
+    write_status,
+)
 from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER
 from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA
 from ci.ray_ci.automation.trivy.trivy_report import (
@@ -163,14 +173,18 @@ def write_metadata(store_root: Path, created: str) -> Path:
 
 class FakeStageSnapshot:
     """Stands in for trivy_db.stage_snapshot: records where each call staged
-    the DBs."""
+    the DBs, and whether the kept DBs in ``kept`` were still there then."""
 
-    def __init__(self, error: Optional[Exception] = None) -> None:
-        self.calls: list[Path] = []
+    def __init__(
+        self, error: Optional[Exception] = None, kept: Optional[Path] = None
+    ) -> None:
+        self.calls: list[tuple[Path, bool]] = []
         self.error = error
+        self.kept = kept
 
     def __call__(self, store, workdir):
-        self.calls.append(store.root)
+        kept = bool(self.kept and (self.kept / DB_FOLDER / DB_METADATA).is_file())
+        self.calls.append((store.root, kept))
         if self.error:
             raise self.error
         return write_metadata(store.root, "2026-11-24T06:12:00Z")
@@ -234,13 +248,78 @@ def warnings(caplog) -> list[str]:
     return [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
 
 
-def test_each_run_downloads_the_dbs_into_a_temporary_directory(tmp_path: Path, caplog):
+def test_without_a_work_dir_the_dbs_are_fetched_with_a_warning(tmp_path: Path, caplog):
     caplog.set_level(logging.INFO)
     result, stage_snapshot, _ = invoke(tmp_path)
     assert result.exit_code == EXIT_CLEAN, result.output
-    (root,) = stage_snapshot.calls
+    ((root, _),) = stage_snapshot.calls
     assert not root.exists()  # a temporary directory, gone after the run
-    assert f"temporary directory under {tempfile.gettempdir()}" in caplog.text
+    (warning,) = warnings(caplog)
+    assert "for this run only" in warning
+    assert f"temporary directory under {tempfile.gettempdir()}" in warning
+    assert "Pass --work-dir DIR to keep them" in warning
+    assert "reuse them, saving bandwidth and disk" in warning
+    assert "grows stale, so pass --refresh-db" in warning
+
+
+def test_a_new_work_dir_fetches_and_keeps_the_dbs_with_a_warning(
+    tmp_path: Path, caplog
+):
+    caplog.set_level(logging.INFO)
+    result, stage_snapshot, _ = invoke(tmp_path, "--work-dir", "cache")
+    assert result.exit_code == EXIT_CLEAN, result.output
+    work = tmp_path / "cache"
+    ((root, _),) = stage_snapshot.calls
+    # Downloaded beside the kept DBs, then moved into place.
+    assert root.is_relative_to(work) and root != work
+    assert (work / DB_FOLDER / DB_METADATA).is_file()
+    # The scan's temporary files are gone; the DBs and the lock file stay.
+    assert sorted(p.name for p in work.iterdir()) == [".lock", DB_FOLDER]
+    (warning,) = warnings(caplog)
+    assert f"{work} has no Trivy DBs yet" in warning
+    assert f"Later runs with --work-dir {work} reuse them" in warning
+    assert "grows stale, so pass --refresh-db" in warning
+
+
+def test_kept_dbs_are_reused_without_a_warning(tmp_path: Path, caplog):
+    caplog.set_level(logging.INFO)
+    created = (date.today() - timedelta(days=3)).isoformat()
+    write_metadata(tmp_path / "cache", f"{created}T06:12:00Z")
+    result, stage_snapshot, scan_group = invoke(tmp_path, "--work-dir", "cache")
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert stage_snapshot.calls == []
+    assert scan_group.called
+    assert warnings(caplog) == []
+    assert (
+        f"Reusing the Trivy DBs in {tmp_path / 'cache'} (DB created {created}, "
+        "3 days ago); pass --refresh-db to download fresh ones."
+    ) in caplog.text
+
+
+def test_refresh_db_replaces_kept_dbs_without_a_warning(tmp_path: Path, caplog):
+    caplog.set_level(logging.INFO)
+    work = tmp_path / "cache"
+    write_metadata(work, "2026-01-01T00:00:00Z")
+    stage_snapshot = FakeStageSnapshot(kept=work)
+    result, _, _ = invoke(
+        tmp_path, "--work-dir", "cache", "--refresh-db", stage_snapshot=stage_snapshot
+    )
+    assert result.exit_code == EXIT_CLEAN, result.output
+    # The kept DBs stayed until the new ones were complete.
+    ((_, kept),) = stage_snapshot.calls
+    assert kept
+    assert sorted(p.name for p in work.iterdir()) == [".lock", DB_FOLDER]
+    assert warnings(caplog) == []
+    assert "Downloading fresh Trivy DBs" in caplog.text
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text())
+    assert summary["scanner"]["db"]["created"] == "2026-11-24T06:12:00Z"
+
+
+def test_refresh_db_needs_a_work_dir(tmp_path: Path):
+    result, stage_snapshot, _ = invoke(tmp_path, "--refresh-db")
+    assert result.exit_code == 2
+    assert "--refresh-db needs --work-dir" in result.output
+    assert stage_snapshot.calls == []
 
 
 def test_a_failed_db_download_stops_the_run_with_its_cause(tmp_path: Path):
@@ -409,6 +488,21 @@ def test_an_image_with_no_os_packages_keeps_its_other_findings(tmp_path: Path, c
     assert any("no OS packages detected" in w for w in warnings(caplog))
 
 
+def test_a_kept_db_older_than_a_week_warns(tmp_path: Path, caplog):
+    caplog.set_level(logging.INFO)
+    created = (date.today() - timedelta(days=30)).isoformat()
+    write_metadata(tmp_path / "cache", f"{created}T00:00:00Z")
+    result, stage_snapshot, _ = invoke(tmp_path, "--work-dir", "cache")
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert stage_snapshot.calls == []
+    (warning,) = warnings(caplog)
+    assert (
+        f"(DB created {created}, 30 days ago): CVEs published since then are missing"
+    ) in warning
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "The reused DB was 30 days old" in report
+
+
 def test_images_are_resolved_before_any_download(tmp_path: Path):
     """A mistyped image name mustn't cost a 1 GB DB download first."""
 
@@ -426,6 +520,46 @@ def test_images_are_resolved_before_any_download(tmp_path: Path):
     assert (tmp_path / "out" / "results" / "ubuntu_22.04.status.json").is_file()
 
 
+def test_a_failed_refresh_keeps_the_kept_dbs(tmp_path: Path):
+    work = tmp_path / "cache"
+    kept = write_metadata(work, "2026-01-01T00:00:00Z")
+    (work / DB_FOLDER / "trivy-db.tar.gz").write_bytes(b"the kept DB")
+    before = kept.read_text()
+    failing = FakeStageSnapshot(error=registry.RegistryError("toomanyrequests"))
+    result, _, _ = invoke(
+        tmp_path, "--work-dir", "cache", "--refresh-db", stage_snapshot=failing
+    )
+    assert result.exit_code == 1
+    assert kept.read_text() == before
+    assert (work / DB_FOLDER / "trivy-db.tar.gz").read_bytes() == b"the kept DB"
+    # The next run reuses them.
+    result, stage_snapshot, _ = invoke(tmp_path, "--work-dir", "cache")
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert stage_snapshot.calls == []
+
+
+def test_runs_share_a_work_dir_and_a_download_waits(tmp_path: Path, caplog):
+    """Scans reading the kept DBs share the lock; a download waits for
+    them."""
+    caplog.set_level(logging.INFO)
+    reading, also_reading = WorkDirLock(tmp_path), WorkDirLock(tmp_path)
+    reading.shared()
+    also_reading.shared()
+    assert "Waiting" not in caplog.text
+    downloading = WorkDirLock(tmp_path)
+    got = threading.Event()
+    thread = threading.Thread(target=lambda: (downloading.exclusive(), got.set()))
+    thread.start()
+    time.sleep(0.2)
+    assert not got.is_set()
+    reading.close()
+    also_reading.close()
+    thread.join(timeout=5)
+    assert got.is_set()
+    downloading.close()
+    assert f"Waiting for another local_scan_images run using {tmp_path}" in caplog.text
+
+
 def test_this_runs_earlier_results_are_cleared(tmp_path: Path):
     results = tmp_path / "out" / "results"
     results.mkdir(parents=True)
@@ -436,6 +570,16 @@ def test_this_runs_earlier_results_are_cleared(tmp_path: Path):
     assert result.exit_code == EXIT_INCOMPLETE
     assert not (results / "ubuntu_22.04.json.gz").exists()
     assert (results / "notes.txt").read_text() == "not ours"
+
+
+def test_a_group_failure_on_kept_dbs_suggests_refreshing(tmp_path: Path):
+    write_metadata(tmp_path / "cache", f"{date.today().isoformat()}T00:00:00Z")
+    failing = FakeScanGroup(error=f"{GROUP_FAILED}: copy of db/x.tar.gz failed")
+    result, _, _ = invoke(tmp_path, "--work-dir", "cache", scan_group=failing)
+    assert result.exit_code == EXIT_INCOMPLETE
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "while reusing the DBs in" in report
+    assert "pass --refresh-db to download fresh ones" in report
 
 
 def test_another_runs_containers_are_left_for_a_day(tmp_path: Path):

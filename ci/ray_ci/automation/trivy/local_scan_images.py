@@ -14,7 +14,9 @@ images into an OCI layout and runs the pinned Trivy in a network-less
 container. trivy_report renders the results. Like CI's scan jobs, it needs
 Linux x86_64, Docker, and access to the registries and the DBs' upstream.
 
-Each run downloads the DBs, over 1 GB, into a temporary directory.
+The DBs are over 1 GB. --work-dir keeps them, so later runs with the same
+--work-dir reuse them instead of downloading them again; runs may share it.
+A reused DB grows stale; --refresh-db downloads fresh ones.
 
 crane uses docker's credentials. For a private ECR registry,
 local_scan_images logs in itself with your AWS credentials, but only to registries in us-west-2.
@@ -25,19 +27,22 @@ Exit codes are trivy_report's: 0 clean, 10 fixable CRITICAL/HIGH findings,
 Example:
     bazel run //ci/ray_ci/automation/trivy:local_scan_images -- \\
         --image rayproject/ray:2.60.0-py312-cpu --image ubuntu:22.04 \\
-        --output-dir /tmp/trivy-report
+        --work-dir ~/.cache/ray-trivy --output-dir /tmp/trivy-report
 """
 
 import contextlib
 import dataclasses
+import fcntl
+import json
 import logging
 import os
 import re
+import shutil
 import signal
 import sys
 import tempfile
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -46,6 +51,7 @@ import click
 from ci.ray_ci.automation.trivy import registry, scan_images, trivy_db, trivy_report
 from ci.ray_ci.automation.trivy.scan_images import (
     BASE_IMAGE,
+    GROUP_FAILED,
     OCI_ARCH,
     Target,
 )
@@ -60,6 +66,11 @@ IMAGE_TYPE = "image"
 # Only the characters an image's name, tag or digest uses: nothing a shell, the
 # markdown or crane (a leading "-" reads as a flag) would act on.
 IMAGE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:@-]*")
+STALE_DB_NOTE = (
+    "A reused DB grows stale, so pass --refresh-db when you want fresh ones."
+)
+# A reused DB older than this gets a warning: it lacks newer advisories.
+STALE_DB_DAYS = 7
 # A local run may go on for hours, so only containers and volumes older than
 # this are taken for another run's leftovers (CI's jobs are shorter).
 LOCAL_STALE_AFTER = timedelta(days=1)
@@ -148,16 +159,129 @@ def local_targets(images: Sequence[str], architecture: str) -> list[LocalTarget]
     return targets
 
 
-def download_dbs(store: LocalStore, workdir: Path) -> None:
-    """Download a DB snapshot into ``store``."""
-    logger.info(
-        "Downloading the Trivy DBs (over 1 GB) into a temporary directory "
-        f"under {tempfile.gettempdir()}, which also holds the pulled images."
-    )
+def db_age_days(store: LocalStore) -> Optional[int]:
+    """How many days ago the kept DB was built, or None if unknown."""
     try:
-        trivy_db.stage_snapshot(store, workdir)
+        metadata = json.loads(
+            store.path(DB_FOLDER, DB_METADATA).read_text(encoding="utf-8")
+        )
+        created = date.fromisoformat(metadata["db"]["created"][:10])
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return (date.today() - created).days
+
+
+def _log_reuse(store: LocalStore) -> None:
+    days = db_age_days(store)
+    if days is None:
+        age = "DB date unknown"
+    else:
+        age = f"DB created {date.today() - timedelta(days=days)}, "
+        age += f"{days} day{'' if days == 1 else 's'} ago"
+    if days is not None and days > STALE_DB_DAYS:
+        logger.warning(
+            f"Reusing the Trivy DBs in {store.root} ({age}): CVEs published "
+            "since then are missing. Pass --refresh-db to download fresh ones."
+        )
+    else:
+        logger.info(
+            f"Reusing the Trivy DBs in {store.root} ({age}); "
+            "pass --refresh-db to download fresh ones."
+        )
+
+
+class WorkDirLock:
+    """Lets runs share a --work-dir. A run downloads DBs holding the lock
+    exclusively, and scans holding it shared, so a download waits for the
+    runs reading the kept DBs, and they wait for it. (flock switches modes
+    by dropping one lock, then taking the other.)"""
+
+    def __init__(self, work_dir: Path) -> None:
+        self.work_dir = work_dir
+        self.file = open(work_dir / ".lock", "a")
+
+    def exclusive(self) -> None:
+        self._take(fcntl.LOCK_EX)
+
+    def shared(self) -> None:
+        self._take(fcntl.LOCK_SH)
+
+    def _take(self, mode: int) -> None:
+        try:
+            fcntl.flock(self.file, mode | fcntl.LOCK_NB)
+        except BlockingIOError:
+            logger.info(
+                f"Waiting for another local_scan_images run using {self.work_dir}"
+            )
+            fcntl.flock(self.file, mode)
+
+    def close(self) -> None:
+        self.file.close()
+
+
+def _swap_in(new: Path, dest: Path) -> None:
+    """Put a complete download in place of the kept DBs, so a failed one
+    never leaves them half replaced."""
+    old = dest.with_name(f"{dest.name}.old")
+    shutil.rmtree(old, ignore_errors=True)
+    if dest.exists():
+        dest.rename(old)
+    new.rename(dest)
+    shutil.rmtree(old, ignore_errors=True)
+
+
+def prepare_dbs(
+    store: LocalStore,
+    workdir: Path,
+    kept: bool,
+    refresh: bool,
+    lock: Optional[WorkDirLock] = None,
+) -> bool:
+    """Reuse the DB snapshot a kept --work-dir holds, or download one,
+    warning about the download unless it was asked for. Returns whether it
+    reused kept DBs. With ``lock``, it returns holding it shared."""
+
+    def reusable() -> bool:
+        return kept and not refresh and store.exists(DB_FOLDER, DB_METADATA)
+
+    if lock:
+        lock.shared()
+        if not reusable():
+            lock.exclusive()
+    # Under the exclusive lock, another run may have just downloaded them.
+    if reusable():
+        _log_reuse(store)
+        if lock:
+            lock.shared()
+        return True
+    if refresh:
+        logger.info(
+            f"Downloading fresh Trivy DBs into {store.root} (--refresh-db); "
+            "the kept ones stay until the new ones are complete."
+        )
+    elif kept:
+        logger.warning(
+            f"{store.root} has no Trivy DBs yet, so this run downloads them "
+            f"(over 1 GB). Later runs with --work-dir {store.root} reuse them, "
+            f"saving bandwidth and disk. {STALE_DB_NOTE}"
+        )
+    else:
+        logger.warning(
+            "Downloading the Trivy DBs (over 1 GB) for this run only, into a "
+            f"temporary directory under {tempfile.gettempdir()} that also holds "
+            "the pulled images. Pass --work-dir DIR to keep them: later runs "
+            "with the same --work-dir reuse them, saving bandwidth and disk. "
+            f"{STALE_DB_NOTE}"
+        )
+    fresh = LocalStore(workdir / "fresh")
+    try:
+        trivy_db.stage_snapshot(fresh, workdir)
     except (trivy_db.TrivyDbError, registry.RegistryError, StoreError, OSError) as e:
         raise click.ClickException(f"Could not download the Trivy DBs: {e}") from e
+    _swap_in(fresh.root / DB_FOLDER, store.root / DB_FOLDER)
+    if lock:
+        lock.shared()
+    return False
 
 
 def login(targets: Sequence[LocalTarget]) -> None:
@@ -269,6 +393,18 @@ def _user_path(path: Optional[Path]) -> Optional[Path]:
     "and results/.",
 )
 @click.option(
+    "--work-dir",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Keeps the Trivy DBs for later runs to reuse, and holds the scan's "
+    "temporary files. Without it, each run downloads the DBs (over 1 GB) into "
+    "the system temp directory ($TMPDIR), which also holds the pulled images.",
+)
+@click.option(
+    "--refresh-db",
+    is_flag=True,
+    help="Download fresh DBs into --work-dir, replacing the ones it keeps.",
+)
+@click.option(
     "--ignorefile",
     type=click.Path(dir_okay=False, path_type=Path),
     help="A Trivy YAML ignore file (.yaml or .yml) for every image: your own, "
@@ -280,9 +416,12 @@ def main(
     images_file: Optional[Path],
     architecture: str,
     output_dir: Path,
+    work_dir: Optional[Path],
+    refresh_db: bool,
     ignorefile: Optional[Path],
 ) -> None:
     output_dir = _user_path(output_dir)
+    work_dir = _user_path(work_dir)
     images_file = _user_path(images_file)
     ignorefile = _user_path(ignorefile)
     for path, option in ((images_file, "--images-file"), (ignorefile, "--ignorefile")):
@@ -294,6 +433,11 @@ def main(
             f"{ignorefile} isn't a Trivy YAML ignore file (.yaml or .yml); "
             "the plain .trivyignore format isn't supported",
             param_hint="--ignorefile",
+        )
+    if refresh_db and not work_dir:
+        raise click.UsageError(
+            "--refresh-db needs --work-dir: without it, every run downloads "
+            "fresh DBs."
         )
     targets = local_targets(read_images(images, images_file), architecture)
     results_dir = output_dir / "results"
@@ -314,17 +458,33 @@ def main(
         sys.exit(write_outputs(output_dir, results_dir, targets, {}, [], architecture))
 
     issues: list[str] = []
+    notes: list[str] = []
     with contextlib.ExitStack() as stack:
-        root = Path(stack.enter_context(tempfile.TemporaryDirectory()))
+        lock = None
+        if work_dir:
+            work_dir.mkdir(parents=True, exist_ok=True)
+            root = work_dir
+            lock = WorkDirLock(work_dir)
+            stack.callback(lock.close)
+        else:
+            root = Path(stack.enter_context(tempfile.TemporaryDirectory()))
         # Layouts and unpacked DBs take several GB; keep them beside the DBs.
         scratch = Path(stack.enter_context(tempfile.TemporaryDirectory(dir=root)))
         store = LocalStore(root)
         (scratch / "db").mkdir()
-        download_dbs(store, scratch / "db")
+        reused = prepare_dbs(
+            store, scratch / "db", work_dir is not None, refresh_db, lock
+        )
         scanner, issue = trivy_report.load_metadata(
             store.path(DB_FOLDER, DB_METADATA), store.url(DB_FOLDER) + DB_METADATA
         )
         issues += [issue] if issue else []
+        days = db_age_days(store) if reused else None
+        if days is not None and days > STALE_DB_DAYS:
+            notes.append(
+                f"The reused DB was {days} days old, so CVEs published since "
+                "then are missing; --refresh-db downloads fresh ones."
+            )
         if not ignorefile:
             ignorefile = scratch / "none.trivyignore.yaml"
             ignorefile.write_text("# No ignores; pass --ignorefile for some.\n")
@@ -341,8 +501,18 @@ def main(
             ignore_files={IMAGE_TYPE: ignorefile},
             stale_after=LOCAL_STALE_AFTER,
         )
+    if reused and all(t.error.startswith(GROUP_FAILED) for t in targets):
+        hint = (
+            f"every image failed before scanning while reusing the DBs in "
+            f"{root}; if the error is about the DBs, pass --refresh-db to "
+            "download fresh ones"
+        )
+        logger.warning(hint)
+        issues.append(hint)
     sys.exit(
-        write_outputs(output_dir, results_dir, targets, scanner, issues, architecture)
+        write_outputs(
+            output_dir, results_dir, targets, scanner, issues, architecture, notes
+        )
     )
 
 
