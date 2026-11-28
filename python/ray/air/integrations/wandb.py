@@ -791,7 +791,7 @@ class WandbLoggerCallback(LoggerCallback):
         self._cleanup_logging_actors(timeout=self._upload_timeout, kill_on_timeout=True)
 
     def __del__(self):
-        if ray.is_initialized():
+        if ray is not None and ray.is_initialized():
             for trial in list(self._trial_logging_actors):
                 self._signal_logging_actor_stop(trial=trial)
 
