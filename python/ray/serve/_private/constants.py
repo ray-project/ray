@@ -510,10 +510,18 @@ RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR = get_env_float(
     "RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR", 0.2
 )
 
+# Replicas run their own health check and push the result; the controller
+# pull-probes only when a pushed result goes stale. Removed once the stack lands.
+RAY_SERVE_ENABLE_PUSH_HEALTH = get_env_bool("RAY_SERVE_ENABLE_PUSH_HEALTH", "0")
+
 # Replica autoscaling metrics push interval.
 RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
     "RAY_SERVE_REPLICA_AUTOSCALING_METRIC_PUSH_INTERVAL_S", 10.0
 )
+
+# A push outstanding longer than this is abandoned rather than waited on: an
+# unbounded guard lets one stuck receiver silence a replica permanently.
+RAY_SERVE_MAX_PUSH_IN_FLIGHT_S = get_env_float("RAY_SERVE_MAX_PUSH_IN_FLIGHT_S", 20.0)
 
 # Handle autoscaling metrics push interval. (This interval will affect the cold start time period)
 RAY_SERVE_HANDLE_AUTOSCALING_METRIC_PUSH_INTERVAL_S = get_env_float(
