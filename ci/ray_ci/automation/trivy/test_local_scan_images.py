@@ -1,16 +1,37 @@
+import gzip
 import hashlib
+import json
+import logging
+import subprocess
 import sys
+import tempfile
+from datetime import timedelta
 from pathlib import Path
+from typing import Optional
 from unittest import mock
 
 import click
 import pytest
+from click.testing import CliRunner
 
-from ci.ray_ci.automation.trivy import registry, scan_images
+from ci.ray_ci.automation.trivy import local_scan_images, registry, scan_images
+from ci.ray_ci.automation.trivy.fake_tools import FakeDocker, faked_scan_tools
 from ci.ray_ci.automation.trivy.local_scan_images import local_targets, read_images
-from ci.ray_ci.automation.trivy.scan_images import check_target
+from ci.ray_ci.automation.trivy.scan_images import check_target, write_status
+from ci.ray_ci.automation.trivy.scan_store import DB_FOLDER
+from ci.ray_ci.automation.trivy.trivy_db import DB_METADATA
+from ci.ray_ci.automation.trivy.trivy_report import (
+    EXIT_CLEAN,
+    EXIT_FINDINGS,
+    EXIT_INCOMPLETE,
+)
 
 OCI_MANIFEST = "application/vnd.oci.image.manifest.v1+json"
+CLEAN_RESULT = {
+    "SchemaVersion": 2,
+    "Results": [{"Target": "debian", "Class": "os-pkgs", "Packages": [{}]}],
+}
+IMAGES = ("rayproject/ray:2.60.0-py312-cpu", "ubuntu:22.04")
 
 
 @pytest.fixture(autouse=True)
@@ -129,6 +150,299 @@ def test_check_target_resolves_a_multi_platform_image(arch: str, platform: str):
         check_target(target, arch)
     digest.assert_called_once_with("rayproject/ray:2.60.0-py312-cpu", platform)
     assert (target.error, target.digest) == ("", "sha256:" + "d" * 64)
+
+
+def write_metadata(store_root: Path, created: str) -> Path:
+    path = store_root / DB_FOLDER / DB_METADATA
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"trivy": {"version": "0.76.1"}, "db": {"created": created}})
+    )
+    return path
+
+
+class FakeStageSnapshot:
+    """Stands in for trivy_db.stage_snapshot: records where each call staged
+    the DBs."""
+
+    def __init__(self, error: Optional[Exception] = None) -> None:
+        self.calls: list[Path] = []
+        self.error = error
+
+    def __call__(self, store, workdir):
+        self.calls.append(store.root)
+        if self.error:
+            raise self.error
+        return write_metadata(store.root, "2026-11-24T06:12:00Z")
+
+
+class FakeScanGroup:
+    """Stands in for scan_images.scan_group: every image gets ``result``, or
+    fails with ``error``."""
+
+    def __init__(self, result: Optional[dict] = None, error: str = "") -> None:
+        self.result = result or CLEAN_RESULT
+        self.error = error
+        self.kw: dict = {}
+        self.ignore_text = ""
+        self.called = False
+
+    def __call__(self, targets, architecture, store, results_dir, workdir, base, **kw):
+        self.called = True
+        self.kw = kw
+        self.ignore_text = kw["ignore_files"]["image"].read_text()
+        for target in targets:
+            if self.error:
+                target.error = self.error
+            else:
+                result = results_dir / f"{target.name}.json.gz"
+                result.write_bytes(gzip.compress(json.dumps(self.result).encode()))
+                target.scanned = True
+            write_status(results_dir, target)
+
+
+def resolves(ref: str, platform: Optional[str] = None) -> str:
+    return digest_of(ref)
+
+
+def invoke(
+    tmp_path: Path, *args: str, stage_snapshot=None, scan_group=None, digest=resolves
+):
+    """Run main with the DB download and the scan faked. Images resolve
+    unless ``digest`` raises."""
+    stage_snapshot = stage_snapshot or FakeStageSnapshot()
+    scan_group = scan_group or FakeScanGroup()
+    with mock.patch.object(
+        local_scan_images.trivy_db, "stage_snapshot", stage_snapshot
+    ), mock.patch.object(
+        local_scan_images.scan_images, "scan_group", scan_group
+    ), mock.patch.multiple(
+        scan_images.registry,
+        digest=digest,
+        manifest=mock.Mock(return_value={"mediaType": OCI_MANIFEST}),
+        config=mock.Mock(return_value={"architecture": "amd64"}),
+    ):
+        result = CliRunner().invoke(
+            local_scan_images.main,
+            ["--image", "ubuntu:22.04", "--output-dir", str(tmp_path / "out"), *args],
+            env={"BUILD_WORKING_DIRECTORY": str(tmp_path)},
+        )
+    return result, stage_snapshot, scan_group
+
+
+def warnings(caplog) -> list[str]:
+    return [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_each_run_downloads_the_dbs_into_a_temporary_directory(tmp_path: Path, caplog):
+    caplog.set_level(logging.INFO)
+    result, stage_snapshot, _ = invoke(tmp_path)
+    assert result.exit_code == EXIT_CLEAN, result.output
+    (root,) = stage_snapshot.calls
+    assert not root.exists()  # a temporary directory, gone after the run
+    assert f"temporary directory under {tempfile.gettempdir()}" in caplog.text
+
+
+def test_a_failed_db_download_stops_the_run_with_its_cause(tmp_path: Path):
+    stage_snapshot = FakeStageSnapshot(
+        error=registry.RegistryError("crane digest failed")
+    )
+    result, _, scan_group = invoke(tmp_path, stage_snapshot=stage_snapshot)
+    assert result.exit_code == 1
+    assert "Could not download the Trivy DBs: crane digest failed" in result.output
+    assert not scan_group.called
+
+
+@pytest.mark.parametrize("name", ["mine.trivyignore.yaml", "mine.yml"])
+def test_the_given_ignore_file_applies_to_every_image(tmp_path: Path, name: str):
+    mine = tmp_path / name
+    mine.write_text("vulnerabilities:\n  - id: CVE-2026-0001\n")
+    result, _, scan_group = invoke(tmp_path, "--ignorefile", name)
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert scan_group.kw["ignore_files"] == {"image": mine}
+
+
+def test_without_an_ignore_file_nothing_is_ignored(tmp_path: Path):
+    result, _, scan_group = invoke(tmp_path)
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert scan_group.ignore_text.startswith("#")
+    assert "vulnerabilities" not in scan_group.ignore_text
+
+
+@pytest.mark.parametrize("option", ["--ignorefile", "--images-file"])
+def test_a_missing_input_file_is_a_usage_error(tmp_path: Path, option: str):
+    result, stage_snapshot, _ = invoke(tmp_path, option, "gone.txt")
+    assert result.exit_code == 2
+    assert f"{tmp_path / 'gone.txt'} is not a file" in result.output
+    assert stage_snapshot.calls == []
+
+
+def test_images_scan_end_to_end_into_the_report(tmp_path: Path):
+    """The real scan_group, with crane and docker faked: each image's variant for
+    the architecture is scanned with the given ignore file, and the report
+    names the images by the names given."""
+    mine = tmp_path / "mine.trivyignore.yaml"
+    mine.write_text("vulnerabilities: []\n")
+    docker = FakeDocker()
+    digest = mock.Mock(side_effect=lambda ref, platform=None: digest_of(ref))
+    staged = {}
+
+    def stage(workdir, layout, dbs, image_types, ignore_files=None):
+        staged.update(image_types=image_types, ignore_files=ignore_files)
+        (workdir / "staging").mkdir()
+        return workdir / "staging"
+
+    args = [a for image in IMAGES for a in ("--image", image)]
+    with faked_scan_tools(
+        tmp_path, docker, digest, lambda ref: {"mediaType": OCI_MANIFEST}, stage
+    ), mock.patch.object(
+        local_scan_images.trivy_db, "stage_snapshot", FakeStageSnapshot()
+    ):
+        result = CliRunner().invoke(
+            local_scan_images.main,
+            [*args, "--ignorefile", str(mine), "--output-dir", str(tmp_path / "out")],
+        )
+    # The fixture has fixable CRITICAL/HIGH findings.
+    assert result.exit_code == EXIT_FINDINGS, result.output
+    assert {c.args for c in digest.call_args_list} == {
+        (image, "linux/amd64") for image in IMAGES
+    }
+    assert staged == {"image_types": {"image"}, "ignore_files": {"image": mine}}
+    runs = [c for c in docker.calls if c[:2] == ["docker", "run"]]
+    assert len(runs) == 2
+    for run in runs:
+        assert "/data/ignore/image.trivyignore.yaml" in run
+
+    out = tmp_path / "out"
+    summary = json.loads((out / "summary.json").read_text())
+    assert [i["name"] for i in summary["images"]] == list(IMAGES)
+    assert all(i["scanned"] and i["python_version"] == "" for i in summary["images"])
+    assert [i["digest"] for i in summary["images"]] == [
+        digest_of(image) for image in IMAGES
+    ]
+    report = (out / "report.md").read_text()
+    annotation = (out / "annotation.md").read_text()
+    assert annotation.startswith("## Trivy image scan: CRITICAL/HIGH")
+    for image in IMAGES:
+        assert f"| `{image}` |" in report
+    # A finding in both images reads "all 2 scanned images"; one in a single
+    # image would name it.
+    assert "all 2 scanned images" in report
+    assert "py ·" not in report
+    assert "Scanned each image for linux/amd64." in report
+    for image in IMAGES:
+        name = local_targets([image], "x86_64")[0].name
+        assert (out / "results" / f"{name}.status.json").is_file()
+        assert (out / "results" / f"{name}.json.gz").is_file()
+
+
+def test_an_image_that_fails_is_reported_not_scanned(tmp_path: Path):
+    def scan_group(targets, *a, **kw):
+        for target in targets:
+            target.error = "crane digest failed: MANIFEST_UNKNOWN"
+            write_status(a[2], target)
+
+    result, _, _ = invoke(tmp_path, scan_group=scan_group)
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "- `ubuntu:22.04`: crane digest failed: MANIFEST_UNKNOWN" in report
+
+
+def test_a_failed_ecr_login_only_warns(caplog):
+    """One registry's failed login mustn't stop the other images."""
+    ecr = "123.dkr.ecr.us-east-1.amazonaws.com"
+    targets = local_targets([f"{ecr}/app:1", f"{ecr}/tool:2", "ubuntu:22.04"], "x86_64")
+    login = mock.Mock(side_effect=subprocess.CalledProcessError(1, ["docker"]))
+    with mock.patch.object(local_scan_images, "ecr_docker_login", login):
+        local_scan_images.login(targets)
+    login.assert_called_once_with(ecr)
+    (warning,) = warnings(caplog)
+    assert warning.startswith(f"Could not log in to {ecr}: CalledProcessError")
+
+
+@pytest.mark.parametrize("name", ["mine.trivyignore", "mine.txt"])
+def test_an_ignore_file_must_be_yaml(tmp_path: Path, name: str):
+    """Trivy reads a plain ignore file staged as .yaml as YAML, and fails."""
+    (tmp_path / name).write_text("CVE-2026-0001\n")
+    result, stage_snapshot, _ = invoke(tmp_path, "--ignorefile", name)
+    assert result.exit_code == 2
+    assert "isn't a Trivy YAML ignore file (.yaml or .yml)" in result.output
+    assert stage_snapshot.calls == []
+
+
+LIBRARY_ONLY_RESULT = {
+    "SchemaVersion": 2,
+    "Results": [
+        {
+            "Target": "app",
+            "Class": "lang-pkgs",
+            "Type": "gobinary",
+            "Packages": [{"Name": "stdlib"}],
+            "Vulnerabilities": [
+                {
+                    "VulnerabilityID": "CVE-2026-0001",
+                    "Severity": "HIGH",
+                    "PkgName": "stdlib",
+                    "InstalledVersion": "1.22.0",
+                    "FixedVersion": "1.22.1",
+                    "Status": "fixed",
+                }
+            ],
+        }
+    ],
+}
+
+
+def test_an_image_with_no_os_packages_keeps_its_other_findings(tmp_path: Path, caplog):
+    """E.g. a FROM scratch image: its libraries' findings still count."""
+    caplog.set_level(logging.INFO)
+    scan_group = FakeScanGroup(result=LIBRARY_ONLY_RESULT)
+    result, _, _ = invoke(tmp_path, scan_group=scan_group)
+    assert result.exit_code == EXIT_FINDINGS, result.output
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "CVE-2026-0001" in report
+    assert "### Incomplete" not in report
+    assert (
+        "`ubuntu:22.04`: no OS packages detected (OS: not detected); "
+        "its other packages were checked."
+    ) in report
+    assert any("no OS packages detected" in w for w in warnings(caplog))
+
+
+def test_images_are_resolved_before_any_download(tmp_path: Path):
+    """A mistyped image name mustn't cost a 1 GB DB download first."""
+
+    def unknown(ref, platform=None):
+        raise registry.RegistryError(f"crane digest {ref} failed: MANIFEST_UNKNOWN")
+
+    result, stage_snapshot, scan_group = invoke(tmp_path, digest=unknown)
+    assert result.exit_code == EXIT_INCOMPLETE, result.output
+    assert stage_snapshot.calls == []
+    assert not scan_group.called
+    report = (tmp_path / "out" / "report.md").read_text()
+    assert "- `ubuntu:22.04`: crane digest ubuntu:22.04 failed: MANIFEST_UNKNOWN" in (
+        report
+    )
+    assert (tmp_path / "out" / "results" / "ubuntu_22.04.status.json").is_file()
+
+
+def test_this_runs_earlier_results_are_cleared(tmp_path: Path):
+    results = tmp_path / "out" / "results"
+    results.mkdir(parents=True)
+    (results / "ubuntu_22.04.json.gz").write_bytes(b"an earlier run's")
+    (results / "notes.txt").write_text("not ours")
+    failing = FakeScanGroup(error="docker run --rm failed: boom")
+    result, _, _ = invoke(tmp_path, scan_group=failing)
+    assert result.exit_code == EXIT_INCOMPLETE
+    assert not (results / "ubuntu_22.04.json.gz").exists()
+    assert (results / "notes.txt").read_text() == "not ours"
+
+
+def test_another_runs_containers_are_left_for_a_day(tmp_path: Path):
+    """A local run may go on for hours."""
+    result, _, scan_group = invoke(tmp_path)
+    assert result.exit_code == EXIT_CLEAN, result.output
+    assert scan_group.kw["stale_after"] == timedelta(days=1)
 
 
 if __name__ == "__main__":

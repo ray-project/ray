@@ -230,12 +230,17 @@ py_test(
     ],
 )
 
-py_library(
+py_binary(
     name = "local_scan_images",
     srcs = ["local_scan_images.py"],
+    exec_compatible_with = ["//bazel:py3"],
     deps = [
+        ":registry",
         ":scan_images",
+        ":scan_store",
+        ":trivy_db",
         ":trivy_report",
+        "//ci/ray_ci:ray_ci_lib",
         ci_require("click"),
     ],
 )
@@ -244,14 +249,19 @@ py_test(
     name = "test_local_scan_images",
     size = "small",
     srcs = ["test_local_scan_images.py"],
+    data = glob(["testdata/*.json"]),
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "ci_unit",
         "team:ci",
     ],
     deps = [
+        ":fake_tools",
         ":local_scan_images",
         ":scan_images",
+        ":scan_store",
+        ":trivy_db",
+        ":trivy_report",
         ci_require("click"),
         ci_require("pytest"),
     ],
