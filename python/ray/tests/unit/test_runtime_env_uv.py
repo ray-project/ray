@@ -69,6 +69,23 @@ def test_get_uri_changes_with_referenced_env_var_in_install_options():
     assert uv.get_uri(first) != uv.get_uri(second)
 
 
+@pytest.mark.parametrize(
+    "env_var",
+    [
+        "UV_INDEX_URL",
+        "UV_EXTRA_INDEX_URL",
+        "GIT_CONFIG_COUNT",
+        "HTTPS_PROXY",
+        "SSL_CERT_FILE",
+    ],
+)
+def test_get_uri_changes_with_install_env_vars(env_var):
+    default = {"uv": ["demo-package==1.0"]}
+    custom = {"uv": ["demo-package==1.0"], "env_vars": {env_var: "custom"}}
+
+    assert uv.get_uri(default) != uv.get_uri(custom)
+
+
 def test_get_uri_ignores_unreferenced_env_vars():
     first = {"uv": ["demo-package==1.0"], "env_vars": {"UNUSED": "first"}}
     second = {"uv": ["demo-package==1.0"], "env_vars": {"UNUSED": "second"}}
