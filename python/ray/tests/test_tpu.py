@@ -199,13 +199,13 @@ def ray_single_host_tpu_cluster(ray_start_cluster):
     cluster = ray_start_cluster
 
     cluster.add_node(
-        num_cpus=2,
+        num_cpus=4,
         resources={"TPU": 4},
         env_vars={"TPU_NAME": "test-v7x-single-1", "TPU_ACCELERATOR_TYPE": pod_type},
         labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
     )
     cluster.add_node(
-        num_cpus=2,
+        num_cpus=4,
         resources={"TPU": 4},
         env_vars={"TPU_NAME": "test-v7x-single-2", "TPU_ACCELERATOR_TYPE": pod_type},
         labels={"ray.io/tpu-pod-type": pod_type, "ray.io/tpu-topology": topology},
@@ -243,13 +243,13 @@ def ray_tpu_cluster(ray_start_cluster):
         "ray.io/tpu-topology": topology,
     }
     cluster.add_node(
-        num_cpus=2,
+        num_cpus=4,
         resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
         env_vars={**slice_0_env_common, "TPU_WORKER_ID": "0"},
         labels=slice_0_head_labels,
     )
     cluster.add_node(
-        num_cpus=2,
+        num_cpus=4,
         resources={"TPU": 4},
         env_vars={**slice_0_env_common, "TPU_WORKER_ID": "1"},
         labels=slice_0_worker_labels,
@@ -273,13 +273,13 @@ def ray_tpu_cluster(ray_start_cluster):
         "ray.io/tpu-topology": topology,
     }
     cluster.add_node(
-        num_cpus=2,
+        num_cpus=4,
         resources={"TPU": 4, f"TPU-{pod_type}-head": 1},
         env_vars={**slice_1_env_common, "TPU_WORKER_ID": "0"},
         labels=slice_1_head_labels,
     )
     cluster.add_node(
-        num_cpus=2,
+        num_cpus=4,
         resources={"TPU": 4},
         env_vars={**slice_1_env_common, "TPU_WORKER_ID": "1"},
         labels=slice_1_worker_labels,
@@ -314,7 +314,7 @@ def ray_v6e_tpu_cluster(ray_start_cluster):
         }
         # A single-host v6e-8 has 8 chips on one node
         cluster.add_node(
-            num_cpus=4,
+            num_cpus=8,
             resources={"TPU": 8, f"TPU-{pod_type}-head": 1},
             env_vars={**env_common, "TPU_WORKER_ID": "0"},
             labels=head_labels,
@@ -371,8 +371,8 @@ def test_slice_placement_group(ray_tpu_cluster):
     assert slice_placement_group.num_hosts == 2
     assert slice_placement_group.placement_group.bundle_count == 2
     assert slice_placement_group.placement_group.bundle_specs == [
-        {"TPU": 4, "CPU": 1.0},
-        {"TPU": 4, "CPU": 1.0},
+        {"TPU": 4, "CPU": 4.0},
+        {"TPU": 4, "CPU": 4.0},
     ]
 
 
@@ -386,10 +386,10 @@ def test_multi_slice_placement_group(ray_tpu_cluster):
     assert multi_slice_placement_group.placement_group.bundle_count == 4
     assert multi_slice_placement_group.num_hosts == 4
     assert multi_slice_placement_group.placement_group.bundle_specs == [
-        {"TPU": 4, "CPU": 1.0},  # slice 1, host 1
-        {"TPU": 4, "CPU": 1.0},  # slice 1, host 2
-        {"TPU": 4, "CPU": 1.0},  # slice 2, host 1
-        {"TPU": 4, "CPU": 1.0},  # slice 2, host 2
+        {"TPU": 4, "CPU": 4.0},  # slice 1, host 1
+        {"TPU": 4, "CPU": 4.0},  # slice 1, host 2
+        {"TPU": 4, "CPU": 4.0},  # slice 2, host 1
+        {"TPU": 4, "CPU": 4.0},  # slice 2, host 2
     ]
 
 
@@ -405,8 +405,8 @@ def test_pg_per_slice(ray_tpu_cluster):
     for pg in multi_slice_placement_group.slice_placement_groups:
         assert pg.bundle_count == 2
         assert pg.bundle_specs == [
-            {"TPU": 4, "CPU": 1.0},
-            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 4.0},
+            {"TPU": 4, "CPU": 4.0},
         ]
     with pytest.raises(
         ValueError,
@@ -443,8 +443,8 @@ def test_single_host_slice_placement_group(ray_tpu_cluster):
         assert slice_placement_group.num_hosts == 2
         assert slice_placement_group.placement_group.bundle_count == 2
         assert slice_placement_group.placement_group.bundle_specs == [
-            {"TPU": 4, "CPU": 1.0},
-            {"TPU": 4, "CPU": 1.0},
+            {"TPU": 4, "CPU": 4.0},
+            {"TPU": 4, "CPU": 4.0},
         ]
         # Single-host bundles are not pinned to a tpu-worker-id label.
         assert slice_placement_group.bundle_label_selector == [{}, {}]
@@ -2148,7 +2148,7 @@ def test_subslice_placement_group_basic_mocked(mock_4x4_pgs):
         assert sg.slice_name == slice_name
         assert sg.num_hosts == 2  # 2 workers in a 2x4 subslice of 4x4
         assert sg.chips_per_host == 4
-        assert sg.bundle_resources == {"CPU": 1, "TPU": 4}
+        assert sg.bundle_resources == {"CPU": 4, "TPU": 4}
         assert len(sg.bundle_label_selector) == 2
 
         # Verify cache was populated with each worker's physical position.
@@ -3108,7 +3108,7 @@ def test_subslice_placement_group_v7x_per_device_bundles(monkeypatch):
     ):
         sg_whole = ray.util.tpu.subslice_placement_group("2x2x2", "v7x")
         assert mock_pg.call_args.kwargs["strategy"] == "SPREAD"
-        assert sg_whole.bundle_resources == {"CPU": 1, "TPU": 8}
+        assert sg_whole.bundle_resources == {"CPU": 8, "TPU": 8}
         assert sg_whole.num_hosts == 2
         assert [s["ray.io/tpu-worker-id"] for s in sg_whole.bundle_label_selector] == [
             "1",
@@ -3220,9 +3220,9 @@ def test_subslice_placement_group_jax_env_vars(monkeypatch):
 @pytest.mark.parametrize(
     "resources_per_bundle, expected_bundles",
     [
-        (None, [{"CPU": 1, "TPU": 4}]),
-        ({"TPU": 4}, [{"CPU": 1, "TPU": 4}]),
-        ({"TPU": 2}, [{"CPU": 1, "TPU": 2}] * 2),
+        (None, [{"CPU": 4, "TPU": 4}]),
+        ({"TPU": 4}, [{"CPU": 4, "TPU": 4}]),
+        ({"TPU": 2}, [{"CPU": 2, "TPU": 2}] * 2),
     ],
 )
 def test_build_subslice_pg_sizes_bundles_from_subslice_chips(
@@ -3251,6 +3251,122 @@ def test_build_subslice_pg_sizes_bundles_from_subslice_chips(
     env = sg.get_jax_env_vars(worker_hostnames=["10.0.0.10"])
     assert env["TPU_CHIPS_PER_PROCESS_BOUNDS"] == "2,2,1"
     assert env["TPU_PROCESS_BOUNDS"] == "1,1,1"
+
+
+def test_bundle_cpu_sizing_scales_with_tpus_and_warns_on_undersized_cpu(caplog):
+    """Default bundle CPU scales with TPUs; undersized explicit CPU warns."""
+    # Default: 1 CPU per TPU device in get_tpu_worker_resources.
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="4x4", accelerator_type="v6e"
+    )
+    assert num_workers == 4
+    assert resources == {"TPU": 4, "CPU": 4}
+
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e"
+    )
+    assert num_workers == 1
+    assert resources == {"TPU": 8, "CPU": 8}
+
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="4x4", accelerator_type="v6e", resources_per_worker={"TPU": 1}
+    )
+    assert num_workers == 16
+    assert resources == {"TPU": 1, "CPU": 1}
+
+    # Fractional TPU defaults to at least 1 CPU, and explicit CPU < 1 warns.
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="4x4", accelerator_type="v6e", resources_per_worker={"TPU": 0.5}
+    )
+    assert num_workers == 32
+    assert resources == {"TPU": 0.5, "CPU": 1}
+
+    with caplog.at_level("WARNING", logger="ray.util.tpu"):
+        caplog.clear()
+        _, resources = ray.util.tpu.get_tpu_worker_resources(
+            topology="4x4",
+            accelerator_type="v6e",
+            resources_per_worker={"TPU": 0.5, "CPU": 0.5},
+        )
+        assert resources == {"TPU": 0.5, "CPU": 0.5}
+        assert any("may remain PENDING" in r.message for r in caplog.records)
+
+    # Exact boundary (CPU == TPU) and explicit sufficient CPU do not warn.
+    with caplog.at_level("WARNING", logger="ray.util.tpu"):
+        caplog.clear()
+        _, resources = ray.util.tpu.get_tpu_worker_resources(
+            topology="4x4",
+            accelerator_type="v6e",
+            resources_per_worker={"TPU": 4, "CPU": 4},
+        )
+        assert resources == {"TPU": 4, "CPU": 4}
+        assert not caplog.records
+
+        _, resources = ray.util.tpu.get_tpu_worker_resources(
+            topology="4x4",
+            accelerator_type="v6e",
+            resources_per_worker={"TPU": 4, "CPU": 8},
+        )
+        assert resources == {"TPU": 4, "CPU": 8}
+        assert not caplog.records
+
+    # Explicit undersized CPU warns clearly.
+    with caplog.at_level("WARNING", logger="ray.util.tpu"):
+        caplog.clear()
+        _, resources = ray.util.tpu.get_tpu_worker_resources(
+            topology="4x4",
+            accelerator_type="v6e",
+            resources_per_worker={"TPU": 4, "CPU": 1},
+        )
+        assert resources == {"TPU": 4, "CPU": 1}
+        assert any("may remain PENDING" in r.message for r in caplog.records)
+
+    # Invalid TPU divisibility raises ValueError without logging a spurious warning.
+    with caplog.at_level("WARNING", logger="ray.util.tpu"):
+        caplog.clear()
+        with pytest.raises(ValueError, match="not divisible"):
+            ray.util.tpu.get_tpu_worker_resources(
+                topology="4x4",
+                accelerator_type="v6e",
+                resources_per_worker={"TPU": 3, "CPU": 1},
+            )
+        assert not caplog.records
+
+    # _build_subslice_pg warns on undersized CPU and does not warn on sufficient CPU.
+    with caplog.at_level("WARNING", logger="ray.util.tpu"), patch(
+        "ray.util.tpu.placement_group", return_value=MagicMock()
+    ):
+        caplog.clear()
+        sg = ray.util.tpu._build_subslice_pg(
+            worker_ids=["0"],
+            subslice_index=0,
+            slice_name="slice-4chip",
+            subslice_topology="2x2",
+            parent_topology="4x4",
+            chips_per_vm=4,
+            resources_per_bundle={"TPU": 4, "CPU": 1},
+            strategy="SPREAD",
+            name="",
+            lifetime=None,
+        )
+        assert sg.bundle_resources == {"TPU": 4, "CPU": 1}
+        assert any("may remain PENDING" in r.message for r in caplog.records)
+
+        caplog.clear()
+        sg = ray.util.tpu._build_subslice_pg(
+            worker_ids=["0"],
+            subslice_index=0,
+            slice_name="slice-4chip",
+            subslice_topology="2x2",
+            parent_topology="4x4",
+            chips_per_vm=4,
+            resources_per_bundle={"TPU": 4, "CPU": 8},
+            strategy="SPREAD",
+            name="",
+            lifetime=None,
+        )
+        assert sg.bundle_resources == {"TPU": 4, "CPU": 8}
+        assert not caplog.records
 
 
 def test_build_slice_worker_to_node_ignores_dead_nodes(monkeypatch):
