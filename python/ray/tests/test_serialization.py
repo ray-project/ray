@@ -837,6 +837,73 @@ def test_inspect_func_serialization_prints_qualname():
     ), f"Expected inner closure qualname in output, got:\n{output}"
 
 
+def test_inspect_serializability_does_not_rewrap_std_streams():
+    """Regression test for https://github.com/ray-project/ray/issues/51337.
+
+    Inspecting a nested closure must not wrap sys.stdout/sys.stderr again on
+    every recursive frame. Stacked colorama wrappers eventually caused infinite
+    recursion in colorama's ansitowin32.py.
+    """
+    import threading
+
+    from ray.util.check_serialize import inspect_serializability
+
+    lock = threading.Lock()
+
+    def inner():
+        return lock
+
+    def middle():
+        return inner()
+
+    def outer():
+        return middle()
+
+    stdout, stderr = sys.stdout, sys.stderr
+    try:
+        for _ in range(3):
+            serializable, _ = inspect_serializability(outer, print_file=io.StringIO())
+            assert not serializable
+            assert sys.stdout is stdout
+            assert sys.stderr is stderr
+    finally:
+        sys.stdout, sys.stderr = stdout, stderr
+
+
+def test_inspect_serializability_nested_call_keeps_caller_stdout():
+    """A nested inspect_serializability call made while an outer one is
+    serializing must not change the stream the caller's stdout points at."""
+    from contextlib import redirect_stdout
+
+    from ray.util.check_serialize import inspect_serializability
+
+    class Reentrant:
+        def __reduce_ex__(self, protocol):
+            with io.StringIO() as temporary:
+                with redirect_stdout(temporary):
+                    inspect_serializability(0, print_file=io.StringIO())
+            return int, (0,)
+
+    caller_output = io.StringIO()
+    with redirect_stdout(caller_output):
+        inspect_serializability(Reentrant(), print_file=io.StringIO())
+        print("after inspection")
+
+    assert caller_output.getvalue() == "after inspection\n"
+
+
+def test_inspect_serializability_prints_to_redirected_stdout():
+    """With no print_file, the report goes to the stdout in effect at call time."""
+    from contextlib import redirect_stdout
+
+    from ray.util.check_serialize import inspect_serializability
+
+    output = io.StringIO()
+    with redirect_stdout(output):
+        inspect_serializability(0)
+    assert "Checking Serializability of 0" in output.getvalue()
+
+
 def test_streaming_generator_replay_inconsistent_error_deserialization(monkeypatch):
     """The STREAMING_GENERATOR_REPLAY_INCONSISTENT error type must deserialize
     to StreamingGeneratorReplayInconsistentError carrying the C++-side
