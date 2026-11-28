@@ -151,11 +151,21 @@ class GeneralAdvantageEstimation(ConnectorV2):
             # Drop vf-preds, not needed in loss. Note that in the DefaultPPORLModule,
             # vf-preds are recomputed with each `forward_train` call anyway to compute
             # the vf loss.
-            # Standardize advantages (used for more stable and better weighted
-            # policy gradient computations).
-            module_advantages = (module_advantages - module_advantages.mean()) / max(
-                1e-4, module_advantages.std()
-            )
+            # Exclude masked bootstrap timesteps from the normalization statistics.
+            loss_mask = batch[module_id].get(Columns.LOSS_MASK)
+            if loss_mask is None:
+                valid_advantages = module_advantages
+            else:
+                loss_mask = unpad_data_if_necessary(
+                    episode_lens, convert_to_numpy(loss_mask)
+                ).astype(bool, copy=False)
+                valid_advantages = module_advantages[loss_mask]
+            if valid_advantages.size:
+                module_advantages = (module_advantages - valid_advantages.mean()) / max(
+                    1e-4, valid_advantages.std()
+                )
+            else:
+                module_advantages = np.zeros_like(module_advantages)
 
             # Zero-pad the new computations, if necessary.
             if module.is_stateful():
