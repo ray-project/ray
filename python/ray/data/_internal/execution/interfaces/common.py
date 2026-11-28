@@ -15,6 +15,9 @@ NodeIdStr = str
 # labels must be set before creation, and the Core ID only exists afterwards.
 LogicalActorId = str
 
+# Placement-group id strings (``PlacementGroup.id.hex()``).
+PlacementGroupIdStr = str
+
 # The ID of a physical operator (``PhysicalOperator.id``).
 OperatorId = str
 
