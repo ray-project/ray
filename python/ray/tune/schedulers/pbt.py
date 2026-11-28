@@ -508,7 +508,10 @@ class PopulationBasedTraining(FIFOScheduler):
                 "of `num_to_keep`."
             )
 
-        self._trial_state[trial] = _PBTTrialState(trial)
+        # A trial that is retried after a failure is added again. Keep its
+        # state so it does not look like it has never been perturbed.
+        if trial not in self._trial_state:
+            self._trial_state[trial] = _PBTTrialState(trial)
 
         for attr in self._hyperparam_mutations.keys():
             if attr not in trial.config:
