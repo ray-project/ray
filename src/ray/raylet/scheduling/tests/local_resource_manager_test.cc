@@ -20,6 +20,7 @@
 #include <string>
 
 #include "gtest/gtest.h"
+#include "ray/common/constants.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/util/clock.h"
 
@@ -571,6 +572,44 @@ TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime
     manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
     ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
   }
+}
+
+TEST_F(LocalResourceManagerTest, SetLocalNodeLabelsReplacesUserAndPreservesReserved) {
+  // Seed the manager with a reserved (ray.io/) label and a user label.
+  NodeResources resources = CreateNodeResources({{ResourceID::CPU(), 2.0}});
+  resources.labels[kLabelKeyNodeID] = "node-abc";  // reserved, must be preserved
+  resources.labels["region"] = "us-west";          // user label, may be replaced
+  manager = std::make_unique<LocalResourceManager>(local_node_id,
+                                                   resources,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   nullptr,
+                                                   fake_resource_usage_gauge_,
+                                                   clock_);
+
+  // Replace the user labels.
+  auto merged = manager->SetLocalNodeLabels({{"region", "us-east"}, {"tier", "gpu"}});
+
+  // Reserved label preserved; user labels fully replaced by the new set.
+  EXPECT_EQ(merged.at(kLabelKeyNodeID), "node-abc");
+  EXPECT_EQ(merged.at("region"), "us-east");
+  EXPECT_EQ(merged.at("tier"), "gpu");
+  EXPECT_EQ(merged.size(), 3u);
+
+  // The update bumps the resource-view version, so it is re-broadcast with the new
+  // labels.
+  auto sync_msg = GetSyncMessageForResourceReport();
+  EXPECT_EQ(sync_msg.labels().at("tier"), "gpu");
+  EXPECT_EQ(sync_msg.labels().at(kLabelKeyNodeID), "node-abc");
+
+  // A caller-supplied reserved key is ignored, and a subsequent update replaces the
+  // prior user labels (empty user set clears them, reserved stays).
+  auto merged2 = manager->SetLocalNodeLabels({{std::string(kLabelKeyNodeID), "spoofed"}});
+  EXPECT_EQ(merged2.at(kLabelKeyNodeID), "node-abc");  // not overwritten
+  EXPECT_FALSE(merged2.contains("region"));            // prior user labels cleared
+  EXPECT_FALSE(merged2.contains("tier"));
+  EXPECT_EQ(merged2.size(), 1u);
 }
 
 }  // namespace ray
