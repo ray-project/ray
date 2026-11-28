@@ -1375,6 +1375,61 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         gid = group or login_gid
         return uid if gid is None else f"{uid}:{gid}"
 
+    def exec_argv(
+        self,
+        sandbox_id: str,
+        command: Union[str, List[str]],
+        cwd: Optional[str] = None,
+        env: Optional[Dict[str, str]] = None,
+        shell: Optional[str] = None,
+        user: Optional[str] = None,
+        pid_file: Optional[str] = None,
+    ) -> List[str]:
+        """Build the ``runsc exec`` argument vector for a command.
+
+        Exposed so that callers needing their own process supervision (for
+        example streaming stdout while writing stdin) can spawn the command
+        themselves instead of going through :meth:`exec_command`, without
+        duplicating the runsc flag and working-directory logic. The argv is
+        wrapped as every exec is, with the sandbox's OOM score; the command
+        itself runs in the sandbox's Sentry, inside the sandbox's cgroup, so
+        a command spawned this way is held to the sandbox's CPU and memory
+        limits.
+
+        Args:
+            sandbox_id: Unique string identifier of the sandbox.
+            command: Command string or list of argument strings.
+            cwd: Optional working directory override.
+            env: Optional additional environment variables.
+            shell: Optional shell for string commands, overriding the
+                sandbox's configured shell (default /bin/bash).
+            user: Optional user to run as, in any form :meth:`exec_command`
+                accepts (default: the image user).
+            pid_file: Optional host path runsc writes the command's pid inside
+                the sandbox to, so that the command can be killed later, as
+                :meth:`exec_command` does with one that times out.
+
+        Returns:
+            The full argument vector, ready to hand to a process launcher.
+        """
+        meta = self._get_metadata_or_raise(sandbox_id)
+        config: SandboxConfig = meta["config"]
+
+        runsc_args = self._runsc_base_args(config)
+        runsc_args.extend(["exec", "-cwd", cwd or meta["cwd"]])
+        if pid_file:
+            runsc_args.extend(["-internal-pid-file", pid_file])
+        if user is not None:
+            runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
+        if env:
+            for k, v in env.items():
+                runsc_args.extend(["-env", f"{k}={v}"])
+        if isinstance(command, list):
+            runsc_args.extend([sandbox_id] + command)
+        else:
+            runsc_args.extend([sandbox_id, shell or config.shell, "-c", command])
+        return self._wrap_workload(meta, runsc_args)
+
     def exec_command(
         self,
         sandbox_id: str,
@@ -1389,31 +1444,19 @@ class GVisorSandboxBackend(BaseSandboxBackend):
         """Execute a process inside the running gVisor sandbox instance via runsc exec."""
         meta = self._get_metadata_or_raise(sandbox_id)
         config: SandboxConfig = meta["config"]
-
-        exec_env = {}
-        if env:
-            exec_env.update(env)
-
-        exec_cwd = cwd or meta["cwd"]
         # The command's PID inside the sandbox, to kill it if it times out.
         pid_file = os.path.join(meta["root_dir"], f".exec-{uuid.uuid4().hex}.pid")
-
-        # Production execution against running container via `runsc exec`
-        runsc_args = self._runsc_base_args(config)
-        runsc_args.extend(["exec", "-cwd", exec_cwd, "-internal-pid-file", pid_file])
-        if user is not None:
-            runsc_args.extend(["-user", self._resolve_exec_user(sandbox_id, user)])
-        if env:
-            for k, v in env.items():
-                runsc_args.extend(["-env", f"{k}={v}"])
-        if isinstance(command, list):
-            runsc_args.extend([sandbox_id] + command)
-        else:
-            exec_shell = shell or config.shell
-            runsc_args.extend([sandbox_id, exec_shell, "-c", command])
+        runsc_args = self.exec_argv(
+            sandbox_id,
+            command,
+            cwd=cwd,
+            env=env,
+            shell=shell,
+            user=user,
+            pid_file=pid_file,
+        )
 
         start_time = time.time()
-        runsc_args = self._wrap_workload(meta, runsc_args)
 
         try:
             proc = subprocess.Popen(
