@@ -36,6 +36,10 @@ from ray.exceptions import (
     TaskCancelledError,
 )
 from ray.serve._private import autoscaling_metrics_codec
+from ray.serve._private.backpressure import (
+    DrainRateTracker,
+    reject_for_backpressure,
+)
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -93,7 +97,6 @@ from ray.serve._private.utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import (
-    BackPressureError,
     DeploymentUnavailableError,
     RayServeException,
     ReplicaUnavailableError,
@@ -121,6 +124,7 @@ class RouterMetricsManager:
         queued_requests_gauge: metrics.Gauge,
         running_requests_gauge: metrics.Gauge,
         event_loop: asyncio.AbstractEventLoop,
+        has_queue_pressure: Optional[Callable[[], bool]] = None,
     ):
         self._handle_id = handle_id
         self._deployment_id = deployment_id
@@ -189,6 +193,18 @@ class RouterMetricsManager:
             }
         )
         self._reserved_slots_gauge.set(0)
+
+        # Counts requests handed off to a replica (each one drains this
+        # router's queue) and estimates the drain rate for the
+        # `queue_drain_rate` Retry-After policy. Pending work is
+        # `has_queue_pressure`: requests waiting on the request router, not
+        # `num_queued_requests`, which also counts requests that are only
+        # being routed. Requests already running on replicas can't drain it
+        # further. All accesses happen on the router's event loop.
+        self._drain_rate_tracker = DrainRateTracker(
+            has_pending_work=has_queue_pressure or (lambda: False)
+        )
+
         # Regularly aggregate and push autoscaling metrics to controller
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
@@ -251,14 +267,16 @@ class RouterMetricsManager:
             deployment_config = self._deployment_config
             assert deployment_config is not None
             backpressure_config = deployment_config.backpressure_config
-            e = BackPressureError(
+            # Use the depth observed here, not the configured cap: it can be
+            # above the cap when replica-rejected requests re-enter the queue.
+            _, error = reject_for_backpressure(
+                self._drain_rate_tracker,
+                backpressure_config,
                 num_queued_requests=self.num_queued_requests,
                 max_queued_requests=max_queued_requests,
-                status_code=backpressure_config.status_code,
-                retry_after_s=backpressure_config.retry_after_s,
+                request_id=request_meta.request_id,
             )
-            logger.warning(e.message)
-            raise e
+            raise error
 
         self.inc_num_total_requests(request_meta.route)
         yield
@@ -319,6 +337,9 @@ class RouterMetricsManager:
             return
 
         self._deployment_config = deployment_config
+        self._drain_rate_tracker.update_policy(
+            deployment_config.backpressure_config.retry_after_policy
+        )
 
         # Start the metrics pusher if autoscaling is enabled.
         autoscaling_config = self.autoscaling_config
@@ -397,6 +418,19 @@ class RouterMetricsManager:
         self.num_queued_requests -= 1
         if not self._cached_metrics_enabled:
             self.num_queued_requests_gauge.set(self.num_queued_requests)
+
+    def inc_num_assigned_requests(self):
+        """Count a request that left the queue because a replica took it.
+
+        Called exactly once per request, only when a replica accepted it
+        (not on replica rejection, failed sends, or cancellation while
+        queued), so the count is the router's queue drain throughput.
+        """
+        self._drain_rate_tracker.record_drain()
+
+    def _get_drain_counter(self) -> int:
+        """Monotonic count of assigned requests. Private; used for testing."""
+        return self._drain_rate_tracker.drain_counter
 
     def inc_reserved_slots(self):
         self._num_reserved_slots += 1
@@ -538,6 +572,7 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
+        await self._drain_rate_tracker.shutdown()
 
         self._shutdown = True
 
@@ -701,6 +736,7 @@ class AsyncioRouter:
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
             event_loop,
+            has_queue_pressure=self._request_router_has_queue_pressure,
         )
 
         self._objref_resolution_latency_ms = metrics.Histogram(
@@ -757,6 +793,15 @@ class AsyncioRouter:
             controller_handle, self._event_loop
         )
         shared.register(self)
+
+    def _request_router_has_queue_pressure(self) -> bool:
+        """Busy-clock signal: requests are waiting on the request router.
+
+        Reads the current request router without lazy-loading it, so sampling
+        never constructs one.
+        """
+        request_router = self._request_router
+        return request_router is not None and request_router.has_queue_pressure()
 
     @property
     def _active_request_router(self) -> RequestRouter:
@@ -1060,6 +1105,7 @@ class AsyncioRouter:
             callback_registered = True
 
             if not with_rejection:
+                self._metrics_manager.inc_num_assigned_requests()
                 self._register_decrement_queue_len_cache_callback(
                     result, replica.replica_id
                 )
@@ -1071,6 +1117,7 @@ class AsyncioRouter:
                 replica.replica_id, queue_info.num_ongoing_requests
             )
             if queue_info.accepted:
+                self._metrics_manager.inc_num_assigned_requests()
                 self._active_request_router.on_request_routed(
                     pr, replica.replica_id, result
                 )
@@ -1534,6 +1581,9 @@ class AsyncioRouter:
                     replica.replica_id, queue_info.num_ongoing_requests
                 )
                 if queue_info.accepted:
+                    # The reservation is the hand-off: the request leaves the
+                    # queue here whether or not it's dispatched later.
+                    self._metrics_manager.inc_num_assigned_requests()
                     return replica, slot_token
 
             is_retry = True

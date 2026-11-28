@@ -12,6 +12,7 @@ import ray
 from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
+from ray.serve._private.backpressure import DrainRateEstimator
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -32,6 +33,7 @@ from ray.serve._private.request_router import (
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.test_utils import (
     FAKE_REPLICA_DEFAULT_MAX_ONGOING_REQUESTS as DEFAULT_MAX_ONGOING_REQUESTS,
+    FakeClock,
     FakeRunningReplica,
     MockTimer,
 )
@@ -2252,6 +2254,157 @@ def test_compute_backoff_s_does_not_overflow():
     )
 
     assert router._compute_backoff_s(2048) == router.max_backoff_s
+
+
+@pytest.mark.asyncio
+class TestHasQueuePressure:
+    """`has_queue_pressure` is the router's busy-clock signal: a routing task
+    in backoff, or a request waiting for a routing task. A request that is
+    only being routed, with nothing behind it, is neither."""
+
+    async def test_requests_placed_on_first_attempt_are_not_pressure(
+        self, pow_2_router
+    ):
+        s = pow_2_router
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(0)
+        s.update_replicas([r1])
+
+        for _ in range(10):
+            assert (await s._choose_replica_for_request(fake_pending_request())) == r1
+            assert s.num_routing_tasks_in_backoff == 0
+            assert not s.has_queue_pressure()
+
+    async def test_routing_task_in_backoff_is_pressure(self, pow_2_router):
+        """No replica has a free slot: the routing task backs off. Its
+        request has left `_pending_requests_to_route`, but the router is
+        still under pressure."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        s.update_replicas([r1])
+
+        task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+        await async_wait_for_condition(lambda: s.num_routing_tasks_in_backoff == 1)
+        assert len(s._pending_requests_to_route) == 0
+        assert s.has_queue_pressure()
+
+        r1.set_queue_len_response(0)
+        assert (await task) == r1
+        await async_wait_for_condition(lambda: s.num_routing_tasks_in_backoff == 0)
+        assert not s.has_queue_pressure()
+
+    async def test_backoff_plus_requests_waiting_for_routing_tasks(self, pow_2_router):
+        """One full replica caps the router at two routing tasks, both in
+        backoff; the other requests wait for a routing task."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        s.update_replicas([r1])
+
+        tasks = [
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+            for _ in range(5)
+        ]
+        await async_wait_for_condition(
+            lambda: s.num_routing_tasks_in_backoff == s.max_num_routing_tasks
+        )
+        assert len(s._pending_requests_to_route) == 5 - s.max_num_routing_tasks
+        assert s.has_queue_pressure()
+
+        r1.set_queue_len_response(0)
+        assert all(replica == r1 for replica in await asyncio.gather(*tasks))
+        await async_wait_for_condition(lambda: s.curr_num_routing_tasks == 0)
+        assert not s.has_queue_pressure()
+
+    async def test_request_waiting_without_backoff_is_pressure(self, pow_2_router):
+        """Under heavy CPU load, routing tasks can fall behind: a request
+        waits for a routing task with none in backoff. That backlog counts.
+        Cancelling it leaves a done entry in the deque, which no longer
+        counts and is cleaned up."""
+        s = pow_2_router
+        # The request was queued but no routing task has picked it up yet.
+        pending_request = fake_pending_request()
+        s._pending_requests_to_route.append(pending_request)
+        assert s.num_routing_tasks_in_backoff == 0
+        assert s.has_queue_pressure()
+
+        pending_request.future.cancel()
+        assert not s.has_queue_pressure()
+        assert len(s._pending_requests_to_route) == 0
+
+    async def test_cancelled_waiting_requests_stop_counting(self, pow_2_router):
+        """Requests cancelled while waiting for a routing task stay in
+        `_pending_requests_to_route` until popped. They must not keep the
+        router under pressure after the caller has gone away."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+        r1 = FakeRunningReplica("r1")
+        r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        s.update_replicas([r1])
+
+        tasks = [
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+            for _ in range(5)
+        ]
+        await async_wait_for_condition(
+            lambda: s.num_routing_tasks_in_backoff == s.max_num_routing_tasks
+        )
+        assert s.has_queue_pressure()
+
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        await async_wait_for_condition(lambda: s.curr_num_routing_tasks == 0)
+        assert s.num_routing_tasks_in_backoff == 0
+        assert not s.has_queue_pressure()
+        assert len(s._pending_requests_to_route) == 0
+
+    async def test_light_traffic_then_burst_trains_only_on_the_burst(
+        self, pow_2_router
+    ):
+        """Five minutes at 8 req/s on 8 replicas, each request placed on its
+        first attempt, then a burst that fills every replica. Only the burst
+        enters the busy clock."""
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+        replicas = [FakeRunningReplica(f"r{i}") for i in range(8)]
+        for replica in replicas:
+            replica.set_queue_len_response(0)
+        s.update_replicas(replicas)
+
+        clock = FakeClock()
+        estimator = DrainRateEstimator(clock=clock)
+        estimator.sample(has_pending_work=s.has_queue_pressure())
+        for _ in range(300):
+            for _ in range(8):
+                await s._choose_replica_for_request(fake_pending_request())
+                estimator.record_drain()
+            clock.now_s += 1
+            estimator.sample(has_pending_work=s.has_queue_pressure())
+        assert estimator.drain_counter == 2400
+        assert estimator.num_samples == 0
+        assert not estimator.warm
+
+        for replica in replicas:
+            replica.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
+        tasks = [
+            loop.create_task(s._choose_replica_for_request(fake_pending_request()))
+            for _ in range(20)
+        ]
+        await async_wait_for_condition(lambda: s.num_routing_tasks_in_backoff > 0)
+        for _ in range(3):
+            clock.now_s += 1
+            estimator.sample(has_pending_work=s.has_queue_pressure())
+        assert estimator.num_samples == 3
+        assert estimator.warm
+
+        for replica in replicas:
+            replica.set_queue_len_response(0)
+        await asyncio.gather(*tasks)
+        await async_wait_for_condition(lambda: s.curr_num_routing_tasks == 0)
 
 
 if __name__ == "__main__":

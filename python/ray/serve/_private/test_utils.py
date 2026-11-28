@@ -2,12 +2,13 @@ import asyncio
 import datetime
 import glob
 import json
+import logging
 import os
 import random
 import socket
 import threading
 import time
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from copy import copy, deepcopy
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union, cast
@@ -44,6 +45,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SOCKET_PATH,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -116,6 +118,47 @@ dead_replicas_context: Set[ReplicaID] = set()
 # controller crashed before the actor finished its initial setup.
 uninitialized_replicas_context: Set[ReplicaID] = set()
 replica_rank_context: Dict[str, Optional[ReplicaRank]] = {}
+
+
+# Runtime env that keeps a rejecting process's drain-rate estimator cold, so a
+# test that blocks requests gets the static fallback however slowly it runs.
+# Blocked requests keep requests queued, which would otherwise warm the
+# estimator up within a few sampling intervals. Set it on the process whose
+# router (or replica) does the rejecting.
+COLD_ESTIMATOR_RUNTIME_ENV = {
+    "env_vars": {"RAY_SERVE_BACKPRESSURE_DRAIN_RATE_WARMUP_SAMPLES": str(10**9)}
+}
+
+
+class FakeClock:
+    """A monotonic clock for `DrainRateEstimator`, advanced by hand."""
+
+    def __init__(self, now_s: float = 0.0):
+        self.now_s = now_s
+
+    def __call__(self) -> float:
+        return self.now_s
+
+    def advance(self, seconds: float):
+        self.now_s += seconds
+
+
+@contextmanager
+def capture_serve_log_records():
+    """Collect records emitted on the Serve logger, whatever its config."""
+    records: List[logging.LogRecord] = []
+
+    class _Handler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    serve_logger = logging.getLogger(SERVE_LOGGER_NAME)
+    handler = _Handler()
+    serve_logger.addHandler(handler)
+    try:
+        yield records
+    finally:
+        serve_logger.removeHandler(handler)
 
 
 class MockTimer(TimerBase):

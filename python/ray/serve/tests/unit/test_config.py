@@ -244,14 +244,44 @@ class TestDeploymentConfig:
                     backpressure_config={"retry_after_s": invalid_retry_after}
                 )
 
+    def test_backpressure_config_retry_after_policy_validation(self):
+        assert BackpressureConfig().retry_after_policy == "static"
+        assert DeploymentConfig().backpressure_config.retry_after_policy == "static"
+        for policy in ("static", "queue_drain_rate"):
+            assert (
+                BackpressureConfig(retry_after_policy=policy).retry_after_policy
+                == policy
+            )
+            assert (
+                DeploymentConfig(
+                    backpressure_config={"retry_after_policy": policy}
+                ).backpressure_config.retry_after_policy
+                == policy
+            )
+
+        for invalid_policy in ("auto", "", None, 1):
+            with pytest.raises(ValidationError):
+                BackpressureConfig(retry_after_policy=invalid_policy)
+            with pytest.raises(ValidationError):
+                DeploymentConfig(
+                    backpressure_config={"retry_after_policy": invalid_policy}
+                )
+
     def test_backpressure_config_proto_round_trip(self):
         # Explicit values survive the proto round trip.
         config = DeploymentConfig(
-            backpressure_config=BackpressureConfig(status_code=429, retry_after_s=7.5)
+            backpressure_config=BackpressureConfig(
+                status_code=429,
+                retry_after_s=7.5,
+                retry_after_policy="queue_drain_rate",
+            )
         )
         round_tripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
         assert round_tripped.backpressure_config.status_code == 429
         assert round_tripped.backpressure_config.retry_after_s == 7.5
+        assert (
+            round_tripped.backpressure_config.retry_after_policy == "queue_drain_rate"
+        )
 
         # Defaults survive the round trip (None must not become 0.0).
         round_tripped = DeploymentConfig.from_proto_bytes(
@@ -259,6 +289,7 @@ class TestDeploymentConfig:
         )
         assert round_tripped.backpressure_config.status_code == 503
         assert round_tripped.backpressure_config.retry_after_s is None
+        assert round_tripped.backpressure_config.retry_after_policy == "static"
 
         # Protos from older versions don't have the field at all (e.g., sent
         # by an older controller during a rolling upgrade); simulate by
@@ -269,6 +300,24 @@ class TestDeploymentConfig:
         from_old_proto = DeploymentConfig.from_proto(old_proto)
         assert from_old_proto.backpressure_config.status_code == 503
         assert from_old_proto.backpressure_config.retry_after_s is None
+        assert from_old_proto.backpressure_config.retry_after_policy == "static"
+
+        # Protos from versions that predate `retry_after_policy` only lack that
+        # field; it must fall back to "static" without touching the others.
+        old_proto = DeploymentConfig(
+            backpressure_config=BackpressureConfig(
+                status_code=429,
+                retry_after_s=7.5,
+                retry_after_policy="queue_drain_rate",
+            )
+        ).to_proto()
+        old_proto.backpressure_config.ClearField("retry_after_policy")
+        from_old_proto = DeploymentConfig.from_proto_bytes(
+            old_proto.SerializeToString()
+        )
+        assert from_old_proto.backpressure_config.status_code == 429
+        assert from_old_proto.backpressure_config.retry_after_s == 7.5
+        assert from_old_proto.backpressure_config.retry_after_policy == "static"
 
     def test_deployment_config_update(self):
         b = DeploymentConfig(num_replicas=1, max_ongoing_requests=1)
