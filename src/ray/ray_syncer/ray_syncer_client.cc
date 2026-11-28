@@ -55,8 +55,11 @@ RayClientBidiReactor::RayClientBidiReactor(
 }
 
 void RayClientBidiReactor::OnDone(const grpc::Status &status) {
+  // `self` keeps the reactor alive until this handler has finished, including
+  // through cleanup_cb_; resetting self_ref_ then drops the last owning
+  // reference once the handler returns.
   io_context_.dispatch(
-      [this, status]() {
+      [this, self = self_ref_, status]() {
         cleanup_cb_(this, !status.ok());
         self_ref_.reset();
       },
@@ -65,7 +68,7 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
 
 void RayClientBidiReactor::DoDisconnect() {
   io_context_.dispatch(
-      [this]() {
+      [this, self = self_ref_]() {
         StartWritesDone();
         // Free the hold to allow OnDone being called.
         RemoveHold();
