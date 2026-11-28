@@ -227,6 +227,34 @@ class TestGetURIForDirectory:
         deleted_uri = get_uri_for_directory(random_dir, include_gitignore=True)
         assert deleted_uri == excluded_uri
 
+    def test_excludes_pattern_matching_root(self, random_dir):
+        # A pattern like ".*" must not exclude the working_dir itself, only
+        # the dotfiles inside it. See #53635.
+        (random_dir / ".hidden").write_text(random_string())
+        excluded_uri = get_uri_for_directory(
+            random_dir, include_gitignore=True, excludes=[".*"]
+        )
+
+        # Excluding the dotfiles should be the same as deleting them.
+        (random_dir / ".hidden").unlink()
+        deleted_uri = get_uri_for_directory(random_dir, include_gitignore=True)
+        assert deleted_uri == excluded_uri
+
+        # Modifying a non-excluded file should modify the URI.
+        (random_dir / "subdir" / "new_file").write_text(random_string())
+        assert (
+            get_uri_for_directory(random_dir, include_gitignore=True, excludes=[".*"])
+            != excluded_uri
+        )
+
+    def test_ignore_file_pattern_matching_root(self, random_dir):
+        # A .rayignore containing ".*" must not exclude its own directory.
+        (random_dir / "subdir" / ".rayignore").write_text(".*")
+        uri = get_uri_for_directory(random_dir, include_gitignore=True)
+
+        (random_dir / "subdir" / "new_file").write_text(random_string())
+        assert get_uri_for_directory(random_dir, include_gitignore=True) != uri
+
     def test_empty_directory(self):
         try:
             os.mkdir("d1")
@@ -1409,6 +1437,40 @@ def test_travel(tmp_path, ignore_gitignore, monkeypatch):
     _dir_travel(root, [exclude_spec], handler, include_gitignore=not ignore_gitignore)
     assert file_paths == visited_file_paths
     assert dir_paths == visited_dir_paths
+
+
+@pytest.mark.parametrize("ignore_file", [None, ".gitignore", ".rayignore"])
+def test_create_package_dotfile_pattern(tmp_path, ignore_file):
+    # Patterns matching "." (e.g. ".*") should only exclude the dotfiles and not
+    # the directory being packaged or the directory holding the ignore file.
+    # See #53635.
+    src = tmp_path / "src"
+    sub = src / "sub"
+    sub.mkdir(parents=True)
+    for d in [src, sub]:
+        (d / "file.py").write_text("x")
+        (d / ".hidden").write_text("x")
+
+    excludes = []
+    if ignore_file is None:
+        excludes = [".*"]
+    else:
+        (sub / ignore_file).write_text(".*")
+
+    target = tmp_path / "pkg.zip"
+    create_package(str(src), target, include_gitignore=True, excludes=excludes)
+    with zipfile.ZipFile(target) as zf:
+        names = set(zf.namelist())
+
+    assert "file.py" in names
+    assert "sub/file.py" in names
+    assert "sub/.hidden" not in names
+    if ignore_file is None:
+        assert ".hidden" not in names
+    else:
+        # The ignore file only applies to its own directory.
+        assert ".hidden" in names
+        assert f"sub/{ignore_file}" not in names
 
 
 def test_is_whl_uri():
