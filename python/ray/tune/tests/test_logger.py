@@ -1,4 +1,5 @@
 import csv
+import gc
 import glob
 import json
 import os
@@ -6,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import weakref
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -28,6 +30,7 @@ from ray.tune.logger import (
     TBXLoggerCallback,
 )
 from ray.tune.logger.aim import AimLoggerCallback
+from ray.tune.progress_reporter import TrialProgressCallback
 from ray.tune.utils import flatten_dict
 
 
@@ -375,6 +378,132 @@ class AimLoggerSuite(unittest.TestCase):
         for run in runs:
             assert run.repo.path == os.path.join(custom_repo, ".aim")
             assert run.experiment == "custom"
+
+
+class TrialStateCleanupSuite(unittest.TestCase):
+    """Regression tests for https://github.com/ray-project/ray/issues/64231.
+
+    The default loggers and the progress callback must not retain per-trial
+    state after a trial finishes; otherwise the driver process RSS grows
+    linearly with the number of completed trials until OOM.
+    """
+
+    def setUp(self):
+        self.test_dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def _make_trial(self, trial_id):
+        logdir = os.path.join(self.test_dir, trial_id)
+        os.makedirs(logdir, exist_ok=True)
+        trial = Trial(
+            evaluated_params={"a": 1, "b": 2},
+            trial_id=trial_id,
+            logdir=logdir,
+        )
+        trial.last_result = result(0, 1)
+        return trial
+
+    def test_json_logger_releases_trial_configs(self):
+        logger = JsonLoggerCallback()
+        refs = []
+        for i in range(10):
+            trial = self._make_trial(f"json_{i}")
+            refs.append(weakref.ref(trial))
+            logger.log_trial_start(trial)
+            logger.log_trial_result(0, trial, result(0, i))
+            logger.log_trial_end(trial)
+
+        self.assertEqual(len(logger._trial_configs), 0)
+        self.assertEqual(len(logger._trial_files), 0)
+        # The config dicts keyed by trial pinned the Trial objects; after
+        # cleanup the trials must be collectable.
+        del trial
+        gc.collect()
+        self.assertEqual([ref() for ref in refs if ref() is not None], [])
+
+    def test_json_logger_releases_config_without_result_file(self):
+        """log_trial_end must clean up even when no result file was opened."""
+        logger = JsonLoggerCallback()
+        trial = self._make_trial("json_no_file")
+        logger.update_config(trial, trial.config)
+        logger.log_trial_end(trial)
+        self.assertEqual(len(logger._trial_configs), 0)
+
+    def test_csv_logger_releases_trial_continue(self):
+        logger = CSVLoggerCallback()
+        refs = []
+        for i in range(10):
+            trial = self._make_trial(f"csv_{i}")
+            refs.append(weakref.ref(trial))
+            logger.log_trial_result(0, trial, result(0, i))
+            logger.log_trial_result(1, trial, result(1, i + 1))
+            logger.log_trial_end(trial)
+
+        self.assertEqual(len(logger._trial_continue), 0)
+        self.assertEqual(len(logger._trial_files), 0)
+        self.assertEqual(len(logger._trial_csv), 0)
+        del trial
+        gc.collect()
+        self.assertEqual([ref() for ref in refs if ref() is not None], [])
+
+    def test_csv_logger_releases_state_on_failed_trial(self):
+        logger = CSVLoggerCallback()
+        trial = self._make_trial("csv_failed")
+        logger.log_trial_result(0, trial, result(0, 1))
+        logger.log_trial_end(trial, failed=True)
+        self.assertEqual(len(logger._trial_continue), 0)
+        self.assertEqual(len(logger._trial_files), 0)
+        self.assertEqual(len(logger._trial_csv), 0)
+
+    def test_progress_callback_releases_trial_state(self):
+        callback = TrialProgressCallback()
+        refs = []
+        for i in range(10):
+            trial = self._make_trial(f"progress_{i}")
+            refs.append(weakref.ref(trial))
+            callback.on_trial_result(0, [], trial, result(0, i))
+            # Simulate the notebook path, which records each trial's row
+            # for the progress table in _last_result.
+            callback.display_result(trial, result(0, i), error=False, done=False)
+            callback.on_trial_complete(1, [], trial)
+
+        for bookkeeping in (
+            callback._completed_trials,
+            callback._last_print,
+            callback._last_print_iteration,
+            callback._last_result_str,
+        ):
+            self.assertEqual(len(bookkeeping), 0)
+        # Finished trials' rows stay in the notebook progress table, re-keyed
+        # by trial name (str) so the Trial objects themselves are released.
+        self.assertEqual(len(callback._last_result), 10)
+        self.assertTrue(
+            all(isinstance(k, str) for k in callback._last_result))
+        table = callback.generate_trial_table(callback._last_result, ["a"])
+        for i in range(10):
+            self.assertIn(f"progress_{i}", table)
+        del trial
+        gc.collect()
+        self.assertEqual([ref() for ref in refs if ref() is not None], [])
+
+    def test_progress_callback_releases_trial_state_on_error(self):
+        callback = TrialProgressCallback()
+        trial = self._make_trial("progress_error")
+        callback.on_trial_result(0, [], trial, result(0, 1))
+        callback.display_result(trial, result(0, 1), error=False, done=False)
+        callback.on_trial_error(1, [], trial)
+        for bookkeeping in (
+            callback._completed_trials,
+            callback._last_print,
+            callback._last_print_iteration,
+            callback._last_result_str,
+        ):
+            self.assertEqual(len(bookkeeping), 0)
+        # Errored trials keep their table row, re-keyed by str(trial) so the
+        # Trial object itself is released.
+        self.assertEqual(list(callback._last_result.keys()), [str(trial)])
 
 
 if __name__ == "__main__":
