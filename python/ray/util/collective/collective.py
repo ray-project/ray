@@ -228,9 +228,9 @@ def create_collective_group(
         raise RuntimeError(
             "World size must be greater than zero. Got '{}'.".format(world_size)
         )
-    if not all(ranks) >= 0:
+    if not all(r >= 0 for r in ranks):
         raise RuntimeError("Ranks must be non-negative.")
-    if not all(ranks) < world_size:
+    if not all(r < world_size for r in ranks):
         raise RuntimeError("Ranks cannot be greater than world_size.")
 
     # Check if backend is registered and available
@@ -323,7 +323,7 @@ def allreduce(
     """
     _check_single_tensor_input(tensor)
     g = get_group_handle(group_name)
-    opts = types.AllReduceOptions
+    opts = types.AllReduceOptions()
     opts.reduceOp = op
     g.allreduce([tensor], opts)
 
@@ -344,7 +344,7 @@ def allreduce_multigpu(
         raise RuntimeError("Multigpu calls requires NCCL and Cupy.")
     _check_tensor_list_input(tensor_list)
     g = get_group_handle(group_name)
-    opts = types.AllReduceOptions
+    opts = types.AllReduceOptions()
     opts.reduceOp = op
     g.allreduce(tensor_list, opts)
 

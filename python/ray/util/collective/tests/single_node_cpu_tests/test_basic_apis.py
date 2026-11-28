@@ -1,7 +1,9 @@
 """Test the collective group APIs."""
+
 import pytest
 
 import ray
+from ray.util.collective.collective import create_collective_group
 from ray.util.collective.tests.cpu_util import Worker, create_collective_workers
 from ray.util.collective.types import Backend
 
@@ -120,6 +122,20 @@ def test_destroy_group(ray_start_single_node, backend):
     assert actor0_is_init
     actor1_is_init = ray.get(actors[0].report_is_group_initialized.remote())
     assert actor1_is_init
+
+
+def test_create_collective_group_rank_validation():
+    class DummyActor:
+        _ray_actor_id = "dummy"
+
+    # len(ranks) == 2, world_size == 1 (rank 1 >= world_size)
+    with pytest.raises(RuntimeError, match="Ranks cannot be greater than world_size"):
+        create_collective_group(
+            actors=[DummyActor(), DummyActor()],
+            world_size=1,
+            ranks=[0, 1],
+            backend="gloo",
+        )
 
 
 if __name__ == "__main__":
