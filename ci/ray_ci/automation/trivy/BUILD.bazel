@@ -21,3 +21,24 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_test(
+    name = "test_workspace_contexts",
+    size = "small",
+    srcs = ["test_workspace_contexts.py"],
+    data = [
+        "//:WORKSPACE",
+        "//:wanda_specs",
+        "//ci/ray_ci/automation/trivy/pin:trivy_versions.bzl",
+    ],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ci_require("bazel-runfiles"),
+        ci_require("pytest"),
+        ci_require("pyyaml"),
+    ],
+)
