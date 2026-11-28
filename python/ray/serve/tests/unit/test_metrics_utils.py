@@ -1,12 +1,18 @@
 import asyncio
 import sys
+import time
 
 import numpy as np
 import pytest
 
+import ray.serve._private.replica as replica_mod
 from ray._common.test_utils import async_wait_for_condition
 from ray.serve._private import autoscaling_metrics_merge as merge
-from ray.serve._private.common import TimeStampedValue
+from ray.serve._private.common import (
+    DeploymentID,
+    ReplicaID,
+    TimeStampedValue,
+)
 from ray.serve._private.metrics_utils import (
     InMemoryMetricsStore,
     MetricsPusher,
@@ -208,6 +214,54 @@ class TestMetricsPusher:
 
         assert not metrics_pusher.stop_event.is_set()
         assert all(t.done() for t in new_tasks)
+
+    @pytest.mark.asyncio
+    async def test_a_task_cancelled_mid_run_ends_cleanly(self):
+        """Its function may swallow the cancel, as the replica self-check does, and the
+        loop must then stop rather than reread the registration cancel_task removed."""
+        metrics_pusher = MetricsPusher()
+        metrics_pusher.start()
+        started = asyncio.Event()
+
+        async def swallows_the_cancel():
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                pass
+
+        metrics_pusher.register_or_update_task("hung", swallows_the_cancel, 0.01)
+        task = metrics_pusher._async_tasks["hung"]
+        await started.wait()
+        # Shutdown sets the stop event before cancelling, so do the same here.
+        metrics_pusher.stop_event.set()
+        metrics_pusher.cancel_task("hung")
+        await asyncio.wait_for(task, timeout=1)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("fixed_rate", [False, True])
+    async def test_a_fixed_rate_task_sleeps_only_what_is_left_of_its_interval(
+        self, fixed_rate
+    ):
+        """A self-check slower than a quarter period would otherwise push that much
+        later every cycle, and miss the controller's freshness window each time."""
+        slept = []
+
+        async def record_sleep(amount):
+            slept.append(amount)
+            await asyncio.Event().wait()
+
+        metrics_pusher = MetricsPusher(async_sleep=record_sleep)
+        metrics_pusher.start()
+        metrics_pusher.register_or_update_task(
+            "slow", lambda: time.sleep(0.05), 1.0, fixed_rate=fixed_rate
+        )
+        await async_wait_for_condition(lambda: len(slept) == 1, retry_interval_ms=1)
+        if fixed_rate:
+            assert slept[0] <= 0.95
+        else:
+            assert slept[0] == 1.0
+        await metrics_pusher.graceful_shutdown()
 
 
 def assert_timeseries_equal(actual, expected):
@@ -1468,6 +1522,812 @@ class TestCythonImplementationEdgeCases:
         assert len(result) == 4
         # Check that values are computed correctly despite extreme changes
         assert result[0].value == pytest.approx(1e-10, rel=1e-6)
+
+
+async def _fails(*_):
+    raise RuntimeError("intended to fail")
+
+
+def _bare_manager():
+    """A ReplicaMetricsManager with only what the self-check uses."""
+    import threading
+    from unittest.mock import Mock
+
+    from ray.serve._private.replica import ReplicaMetricsManager
+
+    m = ReplicaMetricsManager.__new__(ReplicaMetricsManager)
+    m._health_check_period_s = 10.0
+    m._health_check_timeout_s = 30.0
+    m._health_checks_started = 0
+    m._consecutive_failures = 0
+    m._last_counted_failure_at = 0.0
+    m._pending_health_push_ref = None
+    m._pending_health_push_started_at = 0.0
+    m._pending_health_push_healthy = True
+    m._health_config_generation = 0
+    m._pending_health_push_generation = 0
+    m._self_health_paused = False
+    m._self_health_epoch = 0
+    m._metrics_push_lock = threading.Lock()
+    m._controller_handle = Mock()
+    m._metrics_pusher = MetricsPusher()
+    m._replica_id = ReplicaID("r1", DeploymentID(name="d", app_name="app"))
+    return m
+
+
+def _bare_replica(active=True):
+    """A Replica with only what check_health and the self-check use."""
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    r = replica_mod.Replica.__new__(replica_mod.Replica)
+    r._deployment_config = SimpleNamespace(
+        health_check_period_s=10.0, health_check_timeout_s=30.0
+    )
+    r._self_health_active = active
+    r._healthy = False
+    r._health_verdict_seq = 0
+    r._user_callable_wrapper = Mock()
+    r._user_callable_wrapper.call_user_health_check.return_value = None
+    r._metrics_manager = _bare_manager()
+    return r
+
+
+class TestSelfHealthPush:
+    """The replica runs its own health check on a timer and heartbeats the result."""
+
+    @pytest.mark.asyncio
+    async def test_healthy_eval_heartbeats(self):
+        m = _bare_manager()
+
+        async def ok(_):
+            return None
+
+        m._eval_self_health_fn = ok
+        await m._eval_and_push_self_health()
+        args = m._controller_handle.record_replica_health.remote.call_args.args
+        assert args[0] == m._replica_id and args[2] is True
+
+    @pytest.mark.asyncio
+    async def test_failing_eval_heartbeats_unhealthy(self):
+        m = _bare_manager()
+
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+
+    @pytest.mark.asyncio
+    async def test_failures_are_counted_once_per_period(self, monkeypatch):
+        """Evals run twice per period, but the controller weighs the count against a
+        threshold calibrated to the period."""
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 1
+        await m._eval_and_push_self_health()  # same period, must not count again
+        assert m._consecutive_failures == 1
+        m._last_counted_failure_at -= m._health_check_period_s  # a period on
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 2
+
+    @pytest.mark.asyncio
+    async def test_a_pass_clears_the_failure_count(self, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        m._eval_self_health_fn = AsyncMock()
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 0
+        assert m._controller_handle.record_replica_health.remote.call_args.args[3] == 0
+
+    def test_the_check_runs_every_half_period_start_to_start(self):
+        from unittest.mock import Mock
+
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m.start_self_health_pusher(_fails, 10.0, 30.0)
+        register = m._metrics_pusher.register_or_update_task.call_args
+        assert register.args[2] == 5.0
+        assert register.kwargs["fixed_rate"] is True
+
+    @pytest.mark.asyncio
+    async def test_no_heartbeat_while_the_last_is_in_flight(self, monkeypatch):
+        from unittest.mock import AsyncMock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        m = _bare_manager()
+        m._pending_health_push_ref = "in_flight"
+        m._pending_health_push_started_at = time.time()
+        m._eval_self_health_fn = AsyncMock()
+        await m._eval_and_push_self_health()
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_period_or_timeout_changed_alone_reaches_the_self_check(
+        self, monkeypatch
+    ):
+        """Changing only health_check_period_s or health_check_timeout_s needs no
+        reconfigure, so the replica learns them from the reply to its heartbeat.
+        Counting failures against the old period would replace it in a sixth of the
+        time going from 10s to 60s."""
+        from unittest.mock import Mock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m._metrics_pusher.stop_event.is_set.return_value = False
+        reply = asyncio.get_running_loop().create_future()
+        reply.set_result((60.0, 45.0))
+        m._controller_handle.record_replica_health.remote.return_value = reply
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 1
+        m._last_counted_failure_at -= 15.0  # past the old period, inside the new
+        await m._eval_and_push_self_health()
+        assert m._health_check_period_s == 60.0
+        assert m._health_check_timeout_s == 45.0
+        assert m._consecutive_failures == 1
+        register = m._metrics_pusher.register_or_update_task.call_args
+        assert register.args[2] == 30.0
+        assert register.kwargs["fixed_rate"] is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("reconfigured", ["before_next_check", "while_awaiting"])
+    async def test_a_reply_from_before_a_reconfigure_keeps_its_period(
+        self, monkeypatch, reconfigured
+    ):
+        """The controller can answer a heartbeat before a deploy that changes the
+        period, and the replica reads that reply only at its next check. reconfigure()
+        can set the new period before then, or while the reply is awaited, which
+        yields even for a ready ref. Either way the older reply must not undo it."""
+        from unittest.mock import AsyncMock, Mock
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m._metrics_pusher.stop_event.is_set.return_value = False
+        old_reply = asyncio.get_running_loop().create_future()
+        old_reply.set_result((10.0, 30.0))
+
+        async def reply_awaited_across_a_reconfigure():
+            m.start_self_health_pusher(AsyncMock(), 4.0, 30.0)  # as reconfigure() does
+            return 10.0, 30.0
+
+        first_reply = (
+            reply_awaited_across_a_reconfigure()
+            if reconfigured == "while_awaiting"
+            else old_reply
+        )
+        push = m._controller_handle.record_replica_health.remote
+        push.side_effect = [first_reply, old_reply]
+        m.start_self_health_pusher(AsyncMock(), 10.0, 30.0)
+        await m._eval_and_push_self_health()  # its reply carries the old period
+        if reconfigured == "before_next_check":
+            m.start_self_health_pusher(AsyncMock(), 4.0, 30.0)  # as reconfigure() does
+        await m._eval_and_push_self_health()
+        assert m._health_check_period_s == 4.0
+
+    @pytest.mark.asyncio
+    async def test_a_reconfigure_starting_during_the_reply_await_holds_the_check(
+        self, monkeypatch
+    ):
+        """Awaiting the reply yields even for a ready ref, and reconfigure() can pause
+        the self-check right then. The user check must not then run alongside the
+        user's reconfigure."""
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        m = _bare_manager()
+        evals = []
+
+        async def check(_):
+            evals.append(1)
+
+        async def reply_awaited_as_a_reconfigure_starts():
+            m.pause_self_health()  # what reconfigure() does first
+            return 10.0, 30.0
+
+        push = m._controller_handle.record_replica_health.remote
+        push.return_value = reply_awaited_as_a_reconfigure_starts()
+        m._eval_self_health_fn = check
+        await m._eval_and_push_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == [1]
+        assert push.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_shutdown_does_not_wait_on_a_hung_check(self):
+        """The loop sees the stop event only between runs, so a check that never
+        returns would hold graceful_shutdown for its whole timeout. And the check it
+        interrupts confirmed nothing, so it must not reach the controller."""
+        m = _bare_manager()
+        never = asyncio.Event()
+
+        async def hung(_):
+            await never.wait()
+
+        m.start_self_health_pusher(hung, 10.0, 30.0)
+        await asyncio.sleep(0)  # let the task start and block inside the check
+        started = time.monotonic()
+        await m.shutdown()
+        assert time.monotonic() - started < 1.0  # not the 10 s graceful timeout
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        assert m._consecutive_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_graceful_shutdown_ends_the_self_check_before_the_destructor(self):
+        """__del__ may free what check_health uses. Both run on the user code loop, so
+        the check in flight must be cancelled there before __del__ starts, and must
+        not report what it saw."""
+        import threading
+        from types import SimpleNamespace
+
+        user_loop = asyncio.new_event_loop()
+        user_thread = threading.Thread(target=user_loop.run_forever, daemon=True)
+        user_thread.start()
+        main_loop = asyncio.get_running_loop()
+        started = asyncio.Event()
+        events = []
+
+        def on_user_loop(coro):
+            # What _run_user_code does when user code has its own thread.
+            return asyncio.wrap_future(
+                asyncio.run_coroutine_threadsafe(coro, user_loop)
+            )
+
+        async def user_check():
+            events.append("check")
+            main_loop.call_soon_threadsafe(started.set)
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                events.append("check cancelled")
+                raise
+
+        async def user_destructor():
+            events.append("destructor")
+
+        r = _bare_replica()
+        m = r._metrics_manager
+        r._deployment_config = SimpleNamespace(
+            health_check_period_s=10.0,
+            graceful_shutdown_timeout_s=5.0,
+            graceful_shutdown_wait_loop_s=0.01,
+        )
+        r._user_callable_initialized = True
+        r._ingress = False
+        r.get_num_ongoing_requests = lambda: 0
+        r._direct_ingress_http_server = None
+        r._direct_ingress_http_server_task = None
+        r._direct_ingress_grpc_server = None
+        r._direct_ingress_grpc_server_task = None
+        r._internal_grpc_port = None
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: on_user_loop(user_check())
+        )
+        r._user_callable_wrapper.call_destructor.side_effect = lambda: on_user_loop(
+            user_destructor()
+        )
+        m.start_self_health_pusher(r._run_self_health_check, 10.0, 30.0)
+        await started.wait()
+        try:
+            await r._perform_graceful_shutdown()
+        finally:
+            user_loop.call_soon_threadsafe(user_loop.stop)
+            user_thread.join(timeout=5)
+        assert events == ["check", "check cancelled", "destructor"]
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_pass_past_the_threshold_clears_the_count(self, monkeypatch):
+        from ray.serve._private.constants import (
+            REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
+        )
+
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._eval_self_health_fn = r._run_self_health_check
+        evals = []
+
+        async def bad():
+            evals.append(1)
+            raise RuntimeError("intended to fail")
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: bad()
+        for _ in range(REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 2):
+            m._last_counted_failure_at -= m._health_check_period_s
+            await m._eval_and_push_self_health()
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+        # The check keeps running past the threshold rather than latching...
+        assert len(evals) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD + 2
+
+        # ...so a pass clears the count. One counted during a controller restart would
+        # otherwise replace a replica that had already recovered.
+        r._user_callable_wrapper.call_user_health_check.side_effect = None
+        await m._eval_and_push_self_health()
+        assert m._consecutive_failures == 0
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is True
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_paused_check_neither_runs_nor_reports_until_resumed(self):
+        """The controller does not health-check an UPDATING replica, so a failure seen
+        during a reconfigure would be applied once it is RUNNING again."""
+        m = _bare_manager()
+        evals = []
+
+        async def bad(_):
+            evals.append(1)
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = bad
+        m.pause_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == []
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        m.resume_self_health()
+        await m._eval_and_push_self_health()
+        assert evals == [1]
+        assert m._consecutive_failures == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("finished", [False, True])
+    async def test_a_check_running_when_a_reconfigure_starts_is_dropped(self, finished):
+        """Whether or not the reconfigure is over by the time the check returns: one
+        that ran entirely inside it leaves the pause flag clear at both ends."""
+        m = _bare_manager()
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fails_once_released(_):
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        m._eval_self_health_fn = fails_once_released
+        check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        m.pause_self_health()
+        if finished:
+            m.resume_self_health()
+        release.set()
+        await check
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        assert m._consecutive_failures == 0
+
+    @pytest.mark.asyncio
+    async def test_unhealthy_bypasses_an_in_flight_heartbeat(self, monkeypatch):
+        m = _bare_manager()
+        # A healthy heartbeat the controller has not accepted yet.
+        m._pending_health_push_ref = "in_flight"
+        m._pending_health_push_started_at = time.time()
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        args = m._controller_handle.record_replica_health.remote.call_args.args
+        assert args[2] is False  # the change went out anyway
+
+    @pytest.mark.asyncio
+    async def test_repeat_unhealthy_does_not_pile_up_heartbeats(self, monkeypatch):
+        m = _bare_manager()
+        m._pending_health_push_ref = "in_flight"
+        m._pending_health_push_started_at = time.time()
+        m._pending_health_push_healthy = (
+            False  # an unhealthy heartbeat already in flight
+        )
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+
+        m._eval_self_health_fn = _fails
+        await m._eval_and_push_self_health()
+        # The payload is absolute, so a second unhealthy heartbeat adds nothing.
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_eval_does_not_retire_the_pusher(self):
+        """CancelledError is not an Exception and MetricsPusher only catches Exception,
+        so letting it out would end the heartbeat task for the replica's lifetime."""
+        m = _bare_manager()
+
+        async def cancelled(_):
+            raise asyncio.CancelledError()
+
+        m._eval_self_health_fn = cancelled
+        await m._eval_and_push_self_health()
+        assert (
+            m._controller_handle.record_replica_health.remote.call_args.args[2] is False
+        )
+
+    def test_self_check_gets_the_configured_period_and_timeout(self, monkeypatch):
+        from unittest.mock import Mock
+
+        monkeypatch.setattr(replica_mod, "RAY_SERVE_ENABLE_PUSH_HEALTH", True)
+
+        r = _bare_replica(active=False)
+        r._deployment_config.health_check_timeout_s = 45.0
+        r._metrics_manager = Mock()
+        r._start_self_health_pusher()
+        args = r._metrics_manager.start_self_health_pusher.call_args.args
+        assert args[0] == r._run_self_health_check  # reports only unsuperseded checks
+        assert args[1] == 10.0  # the configured period, not the eval cadence
+        assert args[2] == 45.0  # the configured timeout
+
+        m = _bare_manager()
+        m._metrics_pusher = Mock()
+        m.start_self_health_pusher(*args)
+        assert m._health_check_period_s == 10.0
+        assert m._health_check_timeout_s == 45.0
+
+
+class TestReplicaHealthVerdict:
+    """The checks behind probes and the self-check, and the verdict they leave."""
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("active", [False, True])
+    async def test_a_probe_runs_its_own_check_past_a_failed_then_stuck_one(
+        self, active
+    ):
+        """A check fails, and the next one hangs. The controller does not cancel a
+        probe it timed out, so that check can still be running when a probe arrives.
+        The probe runs its own check, as on master, rather than wait behind the stuck
+        one or replay the failure, either of which gets a recovered replica replaced.
+        """
+        r = _bare_replica(active=active)
+        stuck = asyncio.Event()
+
+        async def hangs():
+            stuck.set()
+            await asyncio.Event().wait()
+
+        async def passes():
+            return None
+
+        checks = iter([_fails, hangs, passes])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.check_health()
+        first = asyncio.create_task(r.check_health())
+        await asyncio.wait_for(stuck.wait(), timeout=5)
+        await asyncio.wait_for(r.check_health(), timeout=5)
+        assert r._healthy is True
+        first.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await first
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("active", [False, True])
+    async def test_a_check_that_started_earlier_does_not_overwrite_a_later_verdict(
+        self, active
+    ):
+        """Checks do not wait for each other, so a slow one can finish after one that
+        started later and saw newer state. With the self-check on, the later-started
+        verdict stands; with it off, the last to finish wins, as on master."""
+        r = _bare_replica(active=active)
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_fail():
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        async def passes():
+            return None
+
+        checks = iter([slow_fail, passes])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        first = asyncio.create_task(r.check_health())
+        await started.wait()
+        await asyncio.wait_for(r.check_health(), timeout=5)
+        release.set()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await first
+        assert r._healthy is active
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "late, probe",
+        [("passes", "fails"), ("fails", "passes"), ("fails", None)],
+        ids=["stale-pass", "stale-fail", "no-probe"],
+    )
+    async def test_a_self_check_a_later_probe_overtook_is_not_reported(
+        self, late, probe
+    ):
+        """A probe runs its own check while a slow self-check is still going, and
+        answers the controller first. The self-check's result, pushed later, would
+        read as the newest: a stale pass would clear the probe's strikes, and a stale
+        failure would charge a replica that had recovered. With no probe in between,
+        the self-check reports as usual."""
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._eval_self_health_fn = r._run_self_health_check
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def outcome(result):
+            if result == "fails":
+                raise RuntimeError("intended to fail")
+
+        async def slow_self_check():
+            started.set()
+            await release.wait()
+            await outcome(late)
+
+        checks = iter([slow_self_check, lambda: outcome(probe)])
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: next(
+            checks
+        )()
+        self_check = asyncio.create_task(m._eval_and_push_self_health())
+        await started.wait()
+        if probe == "fails":
+            with pytest.raises(RuntimeError, match="intended to fail"):
+                await r.check_health()
+        elif probe == "passes":
+            await r.check_health()
+        release.set()
+        await self_check
+        push = m._controller_handle.record_replica_health.remote
+        if probe is None:
+            assert push.call_args.args[2] is False
+        else:
+            push.assert_not_called()
+            assert m._consecutive_failures == 0
+            assert r._healthy is (probe == "passes")
+
+    @pytest.mark.asyncio
+    async def test_a_probe_pass_clears_what_the_self_check_counted(self, monkeypatch):
+        """Fail, probe pass, fail is one strike on master. The controller resets its
+        own count on the pass but takes the replica's through max(), so a count left
+        standing would make it two. A re-initialize after a controller restart passes
+        through the same check_health()."""
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._eval_self_health_fn = r._run_self_health_check
+        user_check = r._user_callable_wrapper.call_user_health_check
+        user_check.side_effect = lambda: _fails()
+        await m._eval_and_push_self_health()
+        user_check.side_effect = None
+        await r.check_health()  # the probe
+        user_check.side_effect = lambda: _fails()
+        m._last_counted_failure_at -= m._health_check_period_s  # a period on
+        await m._eval_and_push_self_health()
+        assert m._controller_handle.record_replica_health.remote.call_args.args[3] == 1
+
+    @pytest.mark.asyncio
+    async def test_a_hung_self_check_times_out_as_a_failure(self, monkeypatch):
+        """After health_check_timeout_s, as the controller times out a probe. Left
+        unbounded, one hang, such as a call with no timeout on a half-open connection,
+        would end the heartbeat for the replica's lifetime, where on master the next
+        probe passes."""
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._health_check_timeout_s = 0.05
+        m._eval_self_health_fn = r._run_self_health_check
+        cancelled = []
+
+        async def hangs():
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled.append(1)
+                raise
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = [hangs(), None]
+        push = m._controller_handle.record_replica_health.remote
+        self_check = asyncio.create_task(m._eval_and_push_self_health())
+        await asyncio.wait({self_check}, timeout=5)
+        assert self_check.done()  # ended by its own deadline, not this test's
+        assert push.call_args.args[2:] == (False, 1)
+        assert cancelled == [1]
+        await m._eval_and_push_self_health()
+        assert push.call_args.args[2:] == (True, 0)
+
+    @pytest.mark.asyncio
+    async def test_a_timed_out_self_check_a_later_probe_overtook_is_not_reported(
+        self,
+    ):
+        """The probe's pass is the newer verdict. The timeout, pushed after it, would
+        read as the newest and charge a replica that had answered."""
+        r = _bare_replica()
+        m = r._metrics_manager
+        m._health_check_timeout_s = 0.5
+        m._eval_self_health_fn = r._run_self_health_check
+        started = asyncio.Event()
+
+        async def hangs():
+            started.set()
+            await asyncio.Event().wait()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = [hangs(), None]
+        self_check = asyncio.create_task(m._eval_and_push_self_health())
+        await asyncio.wait_for(started.wait(), timeout=5)
+        await r.check_health()  # the probe
+        await asyncio.wait({self_check}, timeout=5)
+        assert self_check.done()  # ended by its own deadline, not this test's
+        m._controller_handle.record_replica_health.remote.assert_not_called()
+        assert m._consecutive_failures == 0
+        assert r._healthy is True
+
+    @pytest.mark.asyncio
+    async def test_a_cancelled_check_confirms_nothing(self):
+        """It must not flip _healthy, which backs the replica's /-/healthz and so its
+        place in the load balancer rotation."""
+        r = _bare_replica(active=False)
+        r._healthy = True
+
+        async def cancelled():
+            raise asyncio.CancelledError()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: cancelled()
+        )
+        with pytest.raises(asyncio.CancelledError):
+            await r.check_health()
+        assert r._healthy is True
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("overlap", ["ends_during", "spans", "starts_during"])
+    async def test_a_check_a_reconfigure_overlaps_leaves_healthy_alone(self, overlap):
+        """The verdict may describe the reconfigure, and /-/healthz would still read it
+        once the replica is RUNNING, however the two overlapped. A probe can start
+        while the pause is already on."""
+        r = _bare_replica()
+        manager = r._metrics_manager
+        r._healthy = True
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def fails_once_released():
+            started.set()
+            await release.wait()
+            raise RuntimeError("intended to fail")
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = (
+            lambda: fails_once_released()
+        )
+        if overlap == "starts_during":
+            manager.pause_self_health()
+        check = asyncio.create_task(r.check_health())
+        await started.wait()
+        if overlap != "starts_during":
+            manager.pause_self_health()
+        if overlap != "ends_during":
+            manager.resume_self_health()
+        release.set()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await check
+        assert r._healthy is True
+
+    @pytest.mark.asyncio
+    async def test_without_push_health_a_pause_does_not_hold_the_verdict(self):
+        """The pause belongs to the self-check; with it off, checks set _healthy as on
+        master."""
+        r = _bare_replica(active=False)
+        r._healthy = True
+        r._metrics_manager.pause_self_health()
+
+        r._user_callable_wrapper.call_user_health_check.side_effect = lambda: _fails()
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.check_health()
+        assert r._healthy is False
+
+    @pytest.mark.asyncio
+    async def test_a_reinit_keeps_the_running_self_check(self, monkeypatch):
+        """A restarted controller calls initialize again on every replica it recovers.
+        Re-registering would put back the period the replica started with over one
+        it has taken up from a heartbeat reply since."""
+        from unittest.mock import Mock
+
+        monkeypatch.setattr(replica_mod, "RAY_SERVE_ENABLE_PUSH_HEALTH", True)
+        r = _bare_replica()
+        r._metrics_manager.start_self_health_pusher = Mock()
+        r._user_callable_initialized_lock = asyncio.Lock()
+        r._user_callable_initialized = True
+        await r.initialize(None, None)
+        r._user_callable_wrapper.call_user_health_check.assert_called_once()
+        r._metrics_manager.start_self_health_pusher.assert_not_called()
+
+
+class TestReconfigureSelfHealth:
+    """How reconfigure() treats the self-check."""
+
+    def _replica(self):
+        from unittest.mock import AsyncMock, Mock
+
+        from ray.serve._private.config import DeploymentConfig
+        from ray.serve._private.version import DeploymentVersion
+
+        r = replica_mod.Replica.__new__(replica_mod.Replica)
+        r._deployment_config = DeploymentConfig()
+        r._rank = None
+        r._version = DeploymentVersion("1", DeploymentConfig(), {})
+        r._metrics_manager = Mock()
+        r._user_callable_initialized = False
+        r._user_callable_wrapper = Mock()
+        r._user_callable_wrapper.set_sync_method_threadpool_limit = AsyncMock()
+        r._set_internal_replica_context = Mock()
+        return r
+
+    @pytest.mark.asyncio
+    async def test_self_health_is_paused_while_the_user_reconfigure_runs(self):
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        seen = []
+
+        async def user_reconfigure(*args, **kwargs):
+            manager = r._metrics_manager
+            seen.append(
+                (manager.pause_self_health.called, manager.resume_self_health.called)
+            )
+
+        r._user_callable_wrapper.call_reconfigure = user_reconfigure
+        await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
+        assert seen == [(True, False)]
+        r._metrics_manager.resume_self_health.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_a_failed_reconfigure_still_resumes_self_health(self):
+        from unittest.mock import AsyncMock
+
+        from ray.serve._private.config import DeploymentConfig
+
+        r = self._replica()
+        r._user_callable_wrapper.call_reconfigure = AsyncMock(
+            side_effect=ValueError("intended to fail")
+        )
+        with pytest.raises(RuntimeError, match="intended to fail"):
+            await r.reconfigure(DeploymentConfig(user_config={"v": 2}), None)
+        r._metrics_manager.resume_self_health.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_reconfigure_reregisters_the_self_check_with_the_new_period(
+        self, monkeypatch
+    ):
+        from ray.serve._private.config import DeploymentConfig
+
+        monkeypatch.setattr(replica_mod, "RAY_SERVE_ENABLE_PUSH_HEALTH", True)
+        r = self._replica()
+        r._user_callable_initialized = True
+        await r.reconfigure(DeploymentConfig(health_check_period_s=4.0), None)
+        assert r._metrics_manager.start_self_health_pusher.call_args.args[1] == 4.0
+
+
+class TestBoundedPushGuard:
+    """A push that never completes must not silence the replica permanently."""
+
+    def test_no_ref_is_not_blocked(self):
+        assert _bare_manager()._push_blocked(None, 0.0) is False
+
+    def test_completed_ref_is_not_blocked(self, monkeypatch):
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: True)
+        assert _bare_manager()._push_blocked("ref", time.time()) is False
+
+    def test_fresh_in_flight_ref_blocks(self, monkeypatch):
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        assert _bare_manager()._push_blocked("ref", time.time()) is True
+
+    def test_overdue_ref_is_abandoned(self, monkeypatch):
+        monkeypatch.setattr(replica_mod, "check_obj_ref_ready_nowait", lambda r: False)
+        # Absolute durations either side of the documented 20s, so the bound itself is
+        # pinned rather than whatever the constant happens to say.
+        assert _bare_manager()._push_blocked("ref", time.time() - 21.0) is False
+        assert _bare_manager()._push_blocked("ref", time.time() - 19.0) is True
 
 
 if __name__ == "__main__":

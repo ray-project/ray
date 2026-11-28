@@ -1,6 +1,7 @@
 import asyncio
 import bisect
 import logging
+import time
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import (
@@ -36,6 +37,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 class _MetricsTask:
     task_func: Union[Callable, Callable[[], Awaitable]]
     interval_s: float
+    fixed_rate: bool = False
 
 
 class MetricsPusher:
@@ -77,6 +79,7 @@ class MetricsPusher:
                 if wait_for_stop_event.done():
                     return
 
+                started_at = time.monotonic()
                 try:
                     task_func = self._tasks[name].task_func
                     # Check if the function is a coroutine function
@@ -87,9 +90,17 @@ class MetricsPusher:
                 except Exception as e:
                     logger.exception(f"Failed to run metrics task '{name}': {e}")
 
-                sleep_task = asyncio.create_task(
-                    self._async_sleep(self._tasks[name].interval_s)
-                )
+                registered = self._tasks.get(name)
+                if registered is None:
+                    # Removed while task_func ran, by cancel_task or a shutdown that
+                    # gave up waiting; a task_func that swallows the cancel still
+                    # returns here.
+                    return
+                sleep_s = registered.interval_s
+                if registered.fixed_rate:
+                    # Start to start, so a slow run does not push the next one back.
+                    sleep_s = max(0.0, sleep_s - (time.monotonic() - started_at))
+                sleep_task = asyncio.create_task(self._async_sleep(sleep_s))
                 try:
                     await asyncio.wait(
                         [sleep_task, wait_for_stop_event],
@@ -107,6 +118,7 @@ class MetricsPusher:
         name: str,
         task_func: Union[Callable, Callable[[], Awaitable]],
         interval_s: float,
+        fixed_rate: bool = False,
     ) -> None:
         """Register a sync or async task under the provided name, or update it.
 
@@ -117,11 +129,24 @@ class MetricsPusher:
             name: Unique name for the task.
             task_func: Either a sync function or async function (coroutine function).
             interval_s: Interval in seconds between task executions.
+            fixed_rate: Measure the interval from each run's start rather than its
+                end, so a slow run does not stretch the cadence.
         """
 
-        self._tasks[name] = _MetricsTask(task_func, interval_s)
+        self._tasks[name] = _MetricsTask(task_func, interval_s, fixed_rate)
         if name not in self._async_tasks or self._async_tasks[name].done():
             self._async_tasks[name] = asyncio.create_task(self.metrics_task(name))
+
+    def cancel_task(self, name: str) -> None:
+        """Cancel one task now instead of waiting for it to see the stop event.
+
+        The loop checks the stop event only between runs, so a task blocked inside
+        its function would otherwise hold graceful_shutdown for its full timeout.
+        """
+        self._tasks.pop(name, None)
+        task = self._async_tasks.pop(name, None)
+        if task is not None:
+            task.cancel()
 
     def stop_tasks(self):
         self.stop_event.set()
