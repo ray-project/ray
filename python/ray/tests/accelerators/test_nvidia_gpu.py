@@ -86,6 +86,7 @@ def test_gpu_info_parsing(patch_mock_pynvml):
         ("NVIDIA B300", "B300"),
         ("NVIDIA GB200", "GB200"),
         ("NVIDIA GB300", "GB300"),
+        ("NVIDIA GB10", "GB10"),
         # Consumer GPUs: the regex does not match the mixed-case product line,
         # so we fall back to a hyphen-joined product name.
         ("NVIDIA GeForce RTX 5090", "GeForce-RTX-5090"),

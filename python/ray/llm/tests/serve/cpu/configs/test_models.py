@@ -61,6 +61,14 @@ class TestModelConfig:
         assert llm_config.model_loading_config.model_id == "test_model"
         assert llm_config.accelerator_type is None
 
+    def test_gb10_accelerator_type(self):
+        """Test that GB10 (DGX Spark, NVML name "NVIDIA GB10") is accepted."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="GB10",
+        )
+        assert llm_config.accelerator_type == "GB10"
+
     def test_invalid_accelerator_type(self):
         """Test that invalid accelerator types raise validation errors."""
         with pytest.raises(pydantic.ValidationError):
