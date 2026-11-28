@@ -522,6 +522,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         mock_pynvml.nvmlDeviceGetProcessesUtilizationInfo.return_value = [
             mock_process_utilization
         ]
+        mock_pynvml.nvmlDeviceGetTotalEnergyConsumption.return_value = 987654321
         mock_pynvml.nvmlDeviceGetName.return_value = b"NVIDIA GeForce RTX 3080"
         mock_pynvml.nvmlDeviceGetUUID.return_value = (
             b"GPU-12345678-1234-1234-1234-123456789abc"
@@ -547,6 +548,7 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(gpu_info["processes_pids"][1234]["pid"], 1234)
         self.assertEqual(gpu_info["processes_pids"][1234]["gpu_memory_usage"], 256)
         self.assertEqual(gpu_info["processes_pids"][1234]["gpu_utilization"], 35)
+        self.assertEqual(gpu_info["energy_mj"], 987654321)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_errors(self, mock_pynvml):
@@ -597,6 +599,20 @@ class TestNvidiaGpuProvider(unittest.TestCase):
         self.assertEqual(
             gpu_info["processes_pids"], {}
         )  # Should be empty dict due to error
+
+    @patch("ray._private.thirdparty.pynvml", create=True)
+    def test_get_gpu_utilization_without_energy_counter(self, mock_pynvml):
+        """Test that a GPU without an energy counter still reports other stats."""
+        self._configure_nvidia_collection(mock_pynvml, ["Tesla P100-PCIE-16GB"])
+        mock_pynvml.nvmlDeviceGetTotalEnergyConsumption.side_effect = (
+            mock_pynvml.NVMLError("Not Supported")
+        )
+
+        result = self.provider.get_gpu_utilization()
+
+        self.assertIsNone(result[0]["energy_mj"])
+        self.assertEqual(result[0]["power_mw"], 100000)
+        self.assertEqual(result[0]["memory_used"], 256)
 
     @patch("ray._private.thirdparty.pynvml", create=True)
     def test_get_gpu_utilization_with_mig(self, mock_pynvml):

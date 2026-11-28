@@ -198,6 +198,9 @@ All node-level NPU metrics have the following Ray labels. Prometheus normally ad
 * - `ray_node_gpu_temperature_celsius`
   - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
   - The current GPU temperature per GPU, in Celsius.
+* - `ray_node_gpu_energy_millijoules`
+  - `instance`, `GpuDeviceName`, `GpuIndex`, `GpuUuid`
+  - The total GPU energy used per GPU since the NVIDIA driver was last loaded, in millijoules. The count restarts when the driver reloads. Only NVIDIA Volta and newer GPUs report it, and MIG instances don't.
 * - `ray_tpu_tensorcore_utilization`
   - `instance`, `TpuIndex`, `TpuDeviceName`, `TpuType`, `TpuTopology`
   - The TensorCore utilization percentage per TPU device (0.\.100). Exported on Google Cloud TPU nodes when the GKE TPU device plugin metric server is active. See {ref}`What the KubeRay TPU webhook configures <kuberay-tpu-webhook-config>`.

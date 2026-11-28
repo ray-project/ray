@@ -67,6 +67,8 @@ class GpuUtilizationInfo(TypedDict):
     # Optional: power in milliwatts, temperature in Celsius (e.g. from NVIDIA/AMD)
     power_mw: NotRequired[Optional[int]]
     temperature_c: NotRequired[Optional[int]]
+    # Optional: energy in millijoules since the driver was last loaded (NVIDIA)
+    energy_mj: NotRequired[Optional[int]]
 
 
 # tpu utilization for google tpu
@@ -509,6 +511,15 @@ class NvidiaGpuProvider(GpuProvider):
                 if log_once("gpu_temperature"):
                     logger.info(f"Failed to retrieve GPU temperature: {e}")
 
+            # Optional: energy since the driver was last loaded (millijoules),
+            # reported on Volta and newer
+            energy_mj = None
+            try:
+                energy_mj = self._pynvml.nvmlDeviceGetTotalEnergyConsumption(gpu_handle)
+            except (self._pynvml.NVMLError, AttributeError) as e:
+                if log_once("gpu_energy"):
+                    logger.info(f"Failed to retrieve GPU energy: {e}")
+
             return GpuUtilizationInfo(
                 index=gpu_index,
                 name=self._decode(self._pynvml.nvmlDeviceGetName(gpu_handle)),
@@ -519,6 +530,7 @@ class NvidiaGpuProvider(GpuProvider):
                 processes_pids=processes_pids,
                 power_mw=power_mw,
                 temperature_c=temperature_c,
+                energy_mj=energy_mj,
             )
 
         except Exception as e:
