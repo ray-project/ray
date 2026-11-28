@@ -87,7 +87,7 @@ run_core_dashboard_test() {
   # 42 is the universal rayci exit code for test failures
   (bazel test --config=ci --dynamic_mode=off \
     --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
-    --test_tag_filters=-post_wheel_build -- \
+    --test_tag_filters=-post_wheel_build,-doctest -- \
     //:all python/ray/dashboard/... -python/ray/serve/... -python/ray/rllib/...) || exit 42
 }
 

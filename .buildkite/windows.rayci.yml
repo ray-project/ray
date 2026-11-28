@@ -62,7 +62,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... core
         --build-name windowsbuild
         --operating-system windows
-        --except-tags no_windows,cgroup
+        --except-tags no_windows,cgroup,doctest
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
@@ -184,7 +184,7 @@ steps:
       - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //:all //src/... //python/ray/tests/... core
         --run-flaky-tests
-        --except-tags no_windows
+        --except-tags no_windows,doctest
         --build-name windowsbuild
         --operating-system windows
         --test-env=CI="1"

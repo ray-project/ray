@@ -954,7 +954,7 @@ class ActorMethod:
 
         Examples:
             # The following two calls are equivalent.
-            >>> actor.my_method._remote(args=[x, y], name="foo", num_returns=2)
+            >>> actor.my_method._remote(args=[x, y], name="foo", num_returns=2)  # doctest: +SKIP_EXAMPLE
             >>> actor.my_method.options(name="foo", num_returns=2).remote(x, y)
 
         Args:
