@@ -59,6 +59,7 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py311
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
@@ -85,6 +86,7 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py311
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
@@ -99,3 +101,4 @@ depsets:
     output: python/deplocks/docs/docstring_examples_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
+      - py311

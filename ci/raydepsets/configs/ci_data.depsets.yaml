@@ -57,6 +57,7 @@ depsets:
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
+      - py311
       - py312
 
   - name: data_pyarrow_latest_depset_${PYTHON_SHORT}
@@ -74,6 +75,7 @@ depsets:
       - --override python/requirements/ml/lerobot_overrides.txt
     build_arg_sets:
       - py310
+      - py311
       - py312
 
   - name: data_pyarrow_v23_depset_${PYTHON_SHORT}
@@ -90,6 +92,7 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py311
 
   - name: data_mongo_depset_${PYTHON_SHORT}
     operation: expand
@@ -105,6 +108,7 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py311
 
   - name: data_pyarrow_nightly_depset_${PYTHON_SHORT}
     operation: expand
@@ -119,3 +123,4 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py311
